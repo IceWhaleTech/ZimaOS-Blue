@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+server/bin/
+web/dist/
+docs-site/.vitepress/dist/
+docs-site/.vitepress/cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+coverage.out
+coverage.html
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Config (local overrides)
+config.local.yaml
+config.local.yml

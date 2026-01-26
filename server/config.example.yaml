@@ -1,0 +1,55 @@
+# Default configuration for ZimaOS-Echo
+# Copy this file to config.yaml and modify as needed
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: "30s"
+  write_timeout: "30s"
+  idle_timeout: "120s"
+
+log:
+  level: "info"      # debug, info, warn, error
+  format: "console"  # json, console
+  output: "stdout"   # stdout, stderr, or file path
+
+worker:
+  pool_size: 10
+  max_queue_len: 100
+
+# Resource limits (Go runtime level)
+resources:
+  max_memory_mb: 512      # Maximum memory in MB (0 = no limit)
+  max_cpu_percent: 50     # Maximum CPU percentage (0 = no limit)
+  max_open_files: 65536   # Maximum open file descriptors
+  max_goroutines: 10000   # Maximum goroutines (0 = no limit)
+  gc_percent: 100         # GC target percentage
+
+# Cgroup v2 configuration (Linux only)
+# Requires root privileges or appropriate cgroup delegation
+cgroup:
+  enabled: false
+  cgroup_root: "/sys/fs/cgroup"
+  cgroup_name: "zimaos-echo"
+
+  # IO bandwidth limits
+  io:
+    enabled: false
+    read_bps: 0           # Max read bytes/sec (0 = unlimited)
+    write_bps: 0          # Max write bytes/sec (0 = unlimited)
+    read_iops: 0          # Max read IOPS (0 = unlimited)
+    write_iops: 0         # Max write IOPS (0 = unlimited)
+    devices: []           # Device major:minor list (empty = auto-detect root)
+
+  # Memory limits (alternative to resources.max_memory_mb)
+  memory:
+    enabled: false
+    max_bytes: 0          # Hard limit in bytes (0 = unlimited)
+    high_bytes: 0         # Soft limit in bytes (0 = disabled)
+    swap_max_bytes: 0     # Swap limit in bytes (0 = unlimited)
+
+  # CPU limits (alternative to resources.max_cpu_percent)
+  cpu:
+    enabled: false
+    max_percent: 0        # Max CPU percentage (0 = unlimited)
+    weight: 100           # CPU weight (1-10000, default 100)

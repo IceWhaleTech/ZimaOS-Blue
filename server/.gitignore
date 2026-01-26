@@ -1,0 +1,22 @@
+# Server build
+bin/
+coverage.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Air (hot reload)
+tmp/
+
+# Config files (local)
+config.local.yaml
+.env
+.env.local

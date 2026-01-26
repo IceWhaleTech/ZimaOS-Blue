@@ -1,0 +1,425 @@
+package plugin
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+)
+
+// Registry manages all loaded plugins
+type Registry struct {
+	plugins      map[string]*PluginInfo
+	nativePlugins map[string]NativePlugin
+	tools        map[string]*Tool
+	hooks        map[string][]HookHandler
+	services     map[string]Service
+	commands     map[string]*Command
+	httpHandlers map[string]HTTPHandler
+	mu           sync.RWMutex
+}
+
+// NewRegistry creates a new plugin registry
+func NewRegistry() *Registry {
+	return &Registry{
+		plugins:       make(map[string]*PluginInfo),
+		nativePlugins: make(map[string]NativePlugin),
+		tools:         make(map[string]*Tool),
+		hooks:         make(map[string][]HookHandler),
+		services:      make(map[string]Service),
+		commands:      make(map[string]*Command),
+		httpHandlers:  make(map[string]HTTPHandler),
+	}
+}
+
+// RegisterNativePlugin registers a Go native plugin
+func (r *Registry) RegisterNativePlugin(plugin NativePlugin) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	id := plugin.ID()
+	if _, exists := r.plugins[id]; exists {
+		return fmt.Errorf("plugin %s already registered", id)
+	}
+
+	manifest := plugin.Manifest()
+	r.plugins[id] = &PluginInfo{
+		Manifest: manifest,
+		Origin:   OriginNative,
+		Status:   StatusLoaded,
+		IsNative: true,
+	}
+	r.nativePlugins[id] = plugin
+
+	logger.Info().Str("plugin_id", id).Msg("Registered native plugin")
+	return nil
+}
+
+// LoadPluginsFromDir loads plugins from a directory
+func (r *Registry) LoadPluginsFromDir(ctx context.Context, dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Directory doesn't exist, skip
+		}
+		return err
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		pluginPath := filepath.Join(dir, entry.Name())
+		if err := r.loadPlugin(ctx, pluginPath, OriginWorkspace); err != nil {
+			logger.Warn().Err(err).Str("path", pluginPath).Msg("Failed to load plugin")
+		}
+	}
+
+	return nil
+}
+
+// loadPlugin loads a single plugin from a path
+func (r *Registry) loadPlugin(ctx context.Context, path string, origin PluginOrigin) error {
+	// Look for manifest file
+	manifestPath := filepath.Join(path, "clawdbot.plugin.json")
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("failed to read manifest: %w", err)
+	}
+
+	var manifest Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	// Validate manifest
+	if manifest.ID == "" {
+		return fmt.Errorf("manifest missing required field: id")
+	}
+	if manifest.ConfigSchema == nil {
+		manifest.ConfigSchema = make(map[string]interface{})
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Check for duplicate
+	if existing, exists := r.plugins[manifest.ID]; exists {
+		logger.Warn().
+			Str("plugin_id", manifest.ID).
+			Str("existing_path", existing.Path).
+			Str("new_path", path).
+			Msg("Plugin already loaded, skipping")
+		return nil
+	}
+
+	r.plugins[manifest.ID] = &PluginInfo{
+		Manifest: &manifest,
+		Origin:   origin,
+		Status:   StatusLoaded,
+		Path:     path,
+		IsNative: false,
+	}
+
+	logger.Info().
+		Str("plugin_id", manifest.ID).
+		Str("path", path).
+		Str("origin", string(origin)).
+		Msg("Loaded plugin manifest")
+
+	return nil
+}
+
+// InitializePlugins initializes all loaded plugins
+func (r *Registry) InitializePlugins(ctx context.Context) error {
+	r.mu.RLock()
+	nativePlugins := make([]NativePlugin, 0, len(r.nativePlugins))
+	for _, p := range r.nativePlugins {
+		nativePlugins = append(nativePlugins, p)
+	}
+	r.mu.RUnlock()
+
+	for _, plugin := range nativePlugins {
+		api := r.createPluginAPI(plugin.ID())
+		if err := plugin.Init(ctx, api); err != nil {
+			r.mu.Lock()
+			if info, exists := r.plugins[plugin.ID()]; exists {
+				info.Status = StatusError
+				info.Error = err.Error()
+			}
+			r.mu.Unlock()
+			logger.Error().Err(err).Str("plugin_id", plugin.ID()).Msg("Failed to initialize plugin")
+			continue
+		}
+	}
+
+	return nil
+}
+
+// StartPlugins starts all loaded plugins
+func (r *Registry) StartPlugins(ctx context.Context) error {
+	r.mu.RLock()
+	nativePlugins := make([]NativePlugin, 0, len(r.nativePlugins))
+	for _, p := range r.nativePlugins {
+		nativePlugins = append(nativePlugins, p)
+	}
+	r.mu.RUnlock()
+
+	for _, plugin := range nativePlugins {
+		if err := plugin.Start(ctx); err != nil {
+			logger.Error().Err(err).Str("plugin_id", plugin.ID()).Msg("Failed to start plugin")
+			continue
+		}
+		logger.Info().Str("plugin_id", plugin.ID()).Msg("Started plugin")
+	}
+
+	// Start registered services
+	r.mu.RLock()
+	services := make([]Service, 0, len(r.services))
+	for _, s := range r.services {
+		services = append(services, s)
+	}
+	r.mu.RUnlock()
+
+	for _, service := range services {
+		if err := service.Start(ctx); err != nil {
+			logger.Error().Err(err).Str("service", service.Name()).Msg("Failed to start service")
+			continue
+		}
+		logger.Info().Str("service", service.Name()).Msg("Started service")
+	}
+
+	return nil
+}
+
+// StopPlugins stops all loaded plugins
+func (r *Registry) StopPlugins(ctx context.Context) error {
+	// Stop services first
+	r.mu.RLock()
+	services := make([]Service, 0, len(r.services))
+	for _, s := range r.services {
+		services = append(services, s)
+	}
+	r.mu.RUnlock()
+
+	for _, service := range services {
+		if err := service.Stop(ctx); err != nil {
+			logger.Error().Err(err).Str("service", service.Name()).Msg("Failed to stop service")
+		}
+	}
+
+	// Stop native plugins
+	r.mu.RLock()
+	nativePlugins := make([]NativePlugin, 0, len(r.nativePlugins))
+	for _, p := range r.nativePlugins {
+		nativePlugins = append(nativePlugins, p)
+	}
+	r.mu.RUnlock()
+
+	for _, plugin := range nativePlugins {
+		if err := plugin.Stop(ctx); err != nil {
+			logger.Error().Err(err).Str("plugin_id", plugin.ID()).Msg("Failed to stop plugin")
+		}
+	}
+
+	return nil
+}
+
+// GetPlugin returns plugin info by ID
+func (r *Registry) GetPlugin(id string) *PluginInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.plugins[id]
+}
+
+// ListPlugins returns all loaded plugins
+func (r *Registry) ListPlugins() []*PluginInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	plugins := make([]*PluginInfo, 0, len(r.plugins))
+	for _, p := range r.plugins {
+		plugins = append(plugins, p)
+	}
+	return plugins
+}
+
+// GetTool returns a tool by name
+func (r *Registry) GetTool(name string) *Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.tools[name]
+}
+
+// ListTools returns all registered tools
+func (r *Registry) ListTools() []*Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tools := make([]*Tool, 0, len(r.tools))
+	for _, t := range r.tools {
+		tools = append(tools, t)
+	}
+	return tools
+}
+
+// GetCommand returns a command by name
+func (r *Registry) GetCommand(name string) *Command {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.commands[name]
+}
+
+// ListCommands returns all registered commands
+func (r *Registry) ListCommands() []*Command {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	commands := make([]*Command, 0, len(r.commands))
+	for _, c := range r.commands {
+		commands = append(commands, c)
+	}
+	return commands
+}
+
+// TriggerHook triggers all handlers for a hook event
+func (r *Registry) TriggerHook(ctx context.Context, event string, data interface{}) error {
+	r.mu.RLock()
+	handlers := r.hooks[event]
+	r.mu.RUnlock()
+
+	for _, handler := range handlers {
+		if err := handler(ctx, data); err != nil {
+			logger.Error().Err(err).Str("event", event).Msg("Hook handler error")
+		}
+	}
+
+	return nil
+}
+
+// GetHTTPHandler returns an HTTP handler by path
+func (r *Registry) GetHTTPHandler(path string) HTTPHandler {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.httpHandlers[path]
+}
+
+// createPluginAPI creates a PluginAPI for a plugin
+func (r *Registry) createPluginAPI(pluginID string) PluginAPI {
+	return &pluginAPIImpl{
+		registry: r,
+		pluginID: pluginID,
+	}
+}
+
+// pluginAPIImpl implements PluginAPI
+type pluginAPIImpl struct {
+	registry *Registry
+	pluginID string
+}
+
+func (a *pluginAPIImpl) PluginID() string {
+	return a.pluginID
+}
+
+func (a *pluginAPIImpl) PluginConfig() map[string]interface{} {
+	a.registry.mu.RLock()
+	defer a.registry.mu.RUnlock()
+
+	if info, exists := a.registry.plugins[a.pluginID]; exists {
+		return info.Config
+	}
+	return nil
+}
+
+func (a *pluginAPIImpl) RegisterTool(tool Tool) error {
+	a.registry.mu.Lock()
+	defer a.registry.mu.Unlock()
+
+	if _, exists := a.registry.tools[tool.Name]; exists {
+		return fmt.Errorf("tool %s already registered", tool.Name)
+	}
+
+	a.registry.tools[tool.Name] = &tool
+	logger.Info().Str("plugin_id", a.pluginID).Str("tool", tool.Name).Msg("Registered tool")
+	return nil
+}
+
+func (a *pluginAPIImpl) RegisterHook(event string, handler HookHandler) error {
+	a.registry.mu.Lock()
+	defer a.registry.mu.Unlock()
+
+	a.registry.hooks[event] = append(a.registry.hooks[event], handler)
+	logger.Info().Str("plugin_id", a.pluginID).Str("event", event).Msg("Registered hook")
+	return nil
+}
+
+func (a *pluginAPIImpl) RegisterService(service Service) error {
+	a.registry.mu.Lock()
+	defer a.registry.mu.Unlock()
+
+	name := service.Name()
+	if _, exists := a.registry.services[name]; exists {
+		return fmt.Errorf("service %s already registered", name)
+	}
+
+	a.registry.services[name] = service
+	logger.Info().Str("plugin_id", a.pluginID).Str("service", name).Msg("Registered service")
+	return nil
+}
+
+func (a *pluginAPIImpl) RegisterCommand(command Command) error {
+	a.registry.mu.Lock()
+	defer a.registry.mu.Unlock()
+
+	if _, exists := a.registry.commands[command.Name]; exists {
+		return fmt.Errorf("command %s already registered", command.Name)
+	}
+
+	a.registry.commands[command.Name] = &command
+	logger.Info().Str("plugin_id", a.pluginID).Str("command", command.Name).Msg("Registered command")
+	return nil
+}
+
+func (a *pluginAPIImpl) RegisterHTTPHandler(path string, handler HTTPHandler) error {
+	a.registry.mu.Lock()
+	defer a.registry.mu.Unlock()
+
+	if _, exists := a.registry.httpHandlers[path]; exists {
+		return fmt.Errorf("HTTP handler for %s already registered", path)
+	}
+
+	a.registry.httpHandlers[path] = handler
+	logger.Info().Str("plugin_id", a.pluginID).Str("path", path).Msg("Registered HTTP handler")
+	return nil
+}
+
+func (a *pluginAPIImpl) Logger() Logger {
+	return &pluginLogger{pluginID: a.pluginID}
+}
+
+// pluginLogger implements Logger for plugins
+type pluginLogger struct {
+	pluginID string
+}
+
+func (l *pluginLogger) Debug(msg string, fields ...interface{}) {
+	logger.Debug().Str("plugin_id", l.pluginID).Interface("fields", fields).Msg(msg)
+}
+
+func (l *pluginLogger) Info(msg string, fields ...interface{}) {
+	logger.Info().Str("plugin_id", l.pluginID).Interface("fields", fields).Msg(msg)
+}
+
+func (l *pluginLogger) Warn(msg string, fields ...interface{}) {
+	logger.Warn().Str("plugin_id", l.pluginID).Interface("fields", fields).Msg(msg)
+}
+
+func (l *pluginLogger) Error(msg string, fields ...interface{}) {
+	logger.Error().Str("plugin_id", l.pluginID).Interface("fields", fields).Msg(msg)
+}

@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  zimaos-echo:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: zimaos-echo:latest
+    container_name: zimaos-echo
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - echo-data:/app/data
+      - ./config:/app/config:ro
+
+    environment:
+      - ECHO_ENV=production
+      - ECHO_LOG_LEVEL=info
+      # LLM Provider API Keys (uncomment and set as needed)
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # - OLLAMA_HOST=http://ollama:11434
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+
+  # Optional: Ollama for local LLM
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   ports:
+  #     - "11434:11434"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 8G
+
+volumes:
+  echo-data:
+    driver: local
+  # ollama-data:
+  #   driver: local
+
+networks:
+  default:
+    name: zimaos-echo-network

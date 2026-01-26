@@ -1,0 +1,101 @@
+import api from './client'
+
+// Types
+export interface Conversation {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ToolCall {
+  id: string
+  name: string
+  arguments: string
+}
+
+export interface Message {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
+  created_at: string
+}
+
+export interface SendMessageRequest {
+  message: string
+  provider: string
+  model: string
+  temperature?: number
+  max_tokens?: number
+}
+
+export interface SendMessageResponse {
+  id: string
+  role: string
+  content: string
+}
+
+export interface ProviderInfo {
+  name: string
+  models: string[]
+}
+
+export interface ToolDefinition {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export interface StreamChunk {
+  delta: string
+  done: boolean
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+}
+
+// Conversation API
+export const conversationApi = {
+  create: (title?: string) =>
+    api.post<Conversation>('/conversations', { title: title || 'New Conversation' }),
+
+  list: (limit = 50, offset = 0) =>
+    api.get<Conversation[]>('/conversations', { params: { limit, offset } }),
+
+  get: (id: string) => api.get<Conversation>(`/conversations/${id}`),
+
+  delete: (id: string) => api.delete(`/conversations/${id}`),
+
+  search: (query: string, limit = 20) =>
+    api.get<Conversation[]>('/conversations', { params: { q: query, limit } }),
+}
+
+// Message API
+export const messageApi = {
+  list: (conversationId: string, limit = 100, offset = 0) =>
+    api.get<Message[]>(`/conversations/${conversationId}/messages`, {
+      params: { limit, offset },
+    }),
+
+  send: (conversationId: string, request: SendMessageRequest) =>
+    api.post<SendMessageResponse>(`/conversations/${conversationId}/messages`, request),
+
+  // Note: For streaming, use the SSE utility instead
+  getStreamUrl: (conversationId: string) =>
+    `/api/v1/conversations/${conversationId}/messages/stream`,
+}
+
+// Provider API
+export const providerApi = {
+  list: () => api.get<ProviderInfo[]>('/providers'),
+}
+
+// Tool API
+export const toolApi = {
+  list: () => api.get<ToolDefinition[]>('/tools'),
+}

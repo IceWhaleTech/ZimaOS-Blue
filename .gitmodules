@@ -1,0 +1,3 @@
+[submodule "reference/clawdbot"]
+	path = reference/clawdbot
+	url = https://github.com/clawdbot/clawdbot.git

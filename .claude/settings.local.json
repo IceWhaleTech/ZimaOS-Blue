@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(git config:*)",
+      "Bash(git restore --source=HEAD :/)",
+      "WebFetch(domain:github.com)",
+      "Bash(git submodule add:*)",
+      "Bash(taskkill:*)",
+      "Bash(git submodule:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go version:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(./node_modules/.bin/tailwindcss:*)",
+      "Bash(npm run test:run:*)",
+      "Bash(npm run build:*)",
+      "Bash(./bin/echo.exe:*)",
+      "Bash(find:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(npm run test:*)",
+      "Bash(go get:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && cat \"\"{}\"\"')",
+      "Bash(ls -la \"g:\\\\GitHub\\\\ZimaOS-Echo\\\\server\\\\internal\"\" 2>/dev/null || echo \"Directory listing \")",
+      "WebFetch(domain:docs.clawd.bot)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(ls:*)",
+      "Bash(xargs -I {} bash -c 'echo \"\"=== $\\(basename {}\\) ===\"\" && ls -1 {}.go 2>/dev/null | head -5')"
+    ]
+  }
+}
