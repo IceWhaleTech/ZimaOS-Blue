@@ -208,8 +208,8 @@ profiling:
 - [x] **v0.3.0** - API 层（REST、WebSocket、流式传输）
 - [x] **v0.4.0** - 插件系统（Go 模块、WASM 支持）
 - [x] **v0.5.0** - 生产就绪（指标、性能分析、备份）
-- [x] **v0.6.0** - 消息渠道（Telegram、Discord、Slack、iMessage）
-- [ ] **v0.7.0** - 安全性（OIDC、MFA、审计日志）
+- [x] **v0.6.0** - 消息渠道（Telegram、Discord、Slack、WhatsApp、Signal、iMessage）
+- [x] **v0.7.0** - 安全性（OIDC、MFA、WebAuthn、审计日志、沙箱）
 - [x] **v0.8.0** - 性能（ECache、Zorm、HTTP/2）
 - [x] **v0.9.0** - 未来增强（A2UI、浏览器自动化）
 - [ ] **v1.0.0** - RAG 和知识库

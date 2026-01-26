@@ -208,8 +208,8 @@ profiling:
 - [x] **v0.3.0** - API Layer (REST, WebSocket, Streaming)
 - [x] **v0.4.0** - Plugin System (Go modules, WASM support)
 - [x] **v0.5.0** - Production Ready (Metrics, Profiling, Backup)
-- [x] **v0.6.0** - Message Channels (Telegram, Discord, Slack, iMessage)
-- [ ] **v0.7.0** - Security (OIDC, MFA, Audit logging)
+- [x] **v0.6.0** - Message Channels (Telegram, Discord, Slack, WhatsApp, Signal, iMessage)
+- [x] **v0.7.0** - Security (OIDC, MFA, WebAuthn, Audit logging, Sandbox)
 - [x] **v0.8.0** - Performance (ECache, Zorm, HTTP/2)
 - [x] **v0.9.0** - Future Enhancements (A2UI, Browser Automation)
 - [ ] **v1.0.0** - RAG & Knowledge Base
