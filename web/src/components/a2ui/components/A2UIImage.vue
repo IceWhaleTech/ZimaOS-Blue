@@ -22,8 +22,8 @@ const caption = computed(() => props.component.props?.caption as string)
 const componentStyle = computed(() => {
   const style = props.component.style || {}
   return {
-    maxWidth: style.maxWidth || '100%',
-    borderRadius: style.borderRadius,
+    maxWidth: (style.maxWidth as string) || '100%',
+    borderRadius: style.borderRadius as string | undefined,
   }
 })
 

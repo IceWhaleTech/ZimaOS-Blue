@@ -17,10 +17,10 @@ const content = computed(() => props.component.props?.content as string || '')
 const componentStyle = computed(() => {
   const style = props.component.style || {}
   return {
-    fontSize: style.fontSize,
-    fontWeight: style.fontWeight,
-    color: style.color,
-    textAlign: style.textAlign,
+    fontSize: style.fontSize as string | undefined,
+    fontWeight: style.fontWeight as string | number | undefined,
+    color: style.color as string | undefined,
+    textAlign: style.textAlign as 'left' | 'center' | 'right' | 'justify' | undefined,
   }
 })
 </script>

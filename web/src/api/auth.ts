@@ -56,10 +56,10 @@ export const authApi = {
 
   refresh: () => api.post<RefreshResponse>('/auth/refresh'),
 
-  me: () => api.get<User>('/auth/me'),
+  me: () => api.get<User>('/users/me'),
 
   updateProfile: (data: { email?: string; password?: string }) =>
-    api.put<User>('/auth/me', data),
+    api.put<User>('/users/me', data),
 }
 
 // API Keys API

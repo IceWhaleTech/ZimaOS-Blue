@@ -3,8 +3,8 @@
     :is="componentMap[component.type] || 'A2UIUnknown'"
     :component="component"
     :form-data="formData"
-    @action="$emit('action', $event.actionId, $event.confirmRequired, $event.confirmDialog)"
-    @update:form-data="$emit('update:form-data', $event.key, $event.value)"
+    @action="(payload: { actionId: string; confirmRequired: boolean; confirmDialog?: { title: string; message: string; confirm_text: string; cancel_text: string } }) => $emit('action', payload)"
+    @update:form-data="(payload: { key: string; value: unknown }) => $emit('update:form-data', payload)"
   />
 </template>
 

@@ -100,10 +100,11 @@ export const useChatStore = defineStore('chat', () => {
     try {
       loading.value = true
       error.value = null
-      const response = await messageApi.list(conversationId, {
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      })
+      const response = await messageApi.list(
+        conversationId,
+        PAGE_SIZE,
+        page * PAGE_SIZE
+      )
       const fetchedMessages = response.data
 
       if (page === 0) {
@@ -182,7 +183,7 @@ export const useChatStore = defineStore('chat', () => {
           streamingContent.value += chunk.delta
           // Update the last message (assistant's response)
           const lastMessage = messages.value[messages.value.length - 1]
-          if (lastMessage.role === 'assistant') {
+          if (lastMessage && lastMessage.role === 'assistant') {
             lastMessage.content = streamingContent.value
           }
         },

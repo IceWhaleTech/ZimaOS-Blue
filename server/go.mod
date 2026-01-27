@@ -5,17 +5,24 @@ go 1.24.0
 toolchain go1.24.12
 
 require (
+	github.com/IceWhaleTech/zorm v0.0.0-20260116154824-52cb5178f97d
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/dop251/goja v0.0.0-20260106131823-651366fbe6e3
 	github.com/fsnotify/fsnotify v1.7.0
+	github.com/go-jose/go-jose/v3 v3.0.4
+	github.com/go-rod/rod v0.116.2
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/go-webauthn/webauthn v0.15.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/mattn/go-sqlite3 v1.14.33
+	github.com/orca-zhang/ecache v1.1.3
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slack-go/slack v0.17.3
@@ -24,6 +31,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.21.0
 	golang.org/x/crypto v0.47.0
+	golang.org/x/net v0.49.0
+	golang.org/x/sys v0.40.0
 	golang.org/x/time v0.5.0
 	maunium.net/go/mautrix v0.26.2
 	modernc.org/sqlite v1.29.5
@@ -31,7 +40,6 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/IceWhaleTech/zorm v0.0.0-20260116154824-52cb5178f97d // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -39,15 +47,12 @@ require (
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
-	github.com/go-rod/rod v0.116.2 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/go-webauthn/x v0.1.26 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/google/go-tpm v0.9.6 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
@@ -58,7 +63,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
-	github.com/orca-zhang/ecache v1.1.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -88,8 +92,6 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
-	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

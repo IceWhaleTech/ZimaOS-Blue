@@ -256,3 +256,188 @@ func itoa64(i int64) string {
 
 	return string(buf[pos:])
 }
+
+// AuthConfig holds configuration for authentication rate limiting.
+type AuthConfig struct {
+	// LoginRate is the number of login attempts allowed per window.
+	LoginRate int
+	// LoginWindow is the time window for login rate limiting.
+	LoginWindow time.Duration
+	// PasswordResetRate is the number of password reset requests allowed per window.
+	PasswordResetRate int
+	// PasswordResetWindow is the time window for password reset rate limiting.
+	PasswordResetWindow time.Duration
+	// MFARate is the number of MFA attempts allowed per window.
+	MFARate int
+	// MFAWindow is the time window for MFA rate limiting.
+	MFAWindow time.Duration
+	// BlockDuration is how long to block after exceeding limits.
+	BlockDuration time.Duration
+}
+
+// DefaultAuthConfig returns the default authentication rate limiting configuration.
+func DefaultAuthConfig() AuthConfig {
+	return AuthConfig{
+		LoginRate:           5,
+		LoginWindow:         time.Minute,
+		PasswordResetRate:   3,
+		PasswordResetWindow: time.Hour,
+		MFARate:             5,
+		MFAWindow:           time.Minute,
+		BlockDuration:       15 * time.Minute,
+	}
+}
+
+// AuthLimiter provides specialized rate limiting for authentication endpoints.
+type AuthLimiter struct {
+	loginLimiter    *Limiter
+	passwordLimiter *Limiter
+	mfaLimiter      *Limiter
+	blocked         map[string]time.Time
+	blockDuration   time.Duration
+	mu              sync.RWMutex
+}
+
+// NewAuthLimiter creates a new authentication rate limiter.
+func NewAuthLimiter(cfg AuthConfig) *AuthLimiter {
+	return &AuthLimiter{
+		loginLimiter: New(Config{
+			Rate:            cfg.LoginRate,
+			Window:          cfg.LoginWindow,
+			CleanupInterval: time.Minute,
+		}),
+		passwordLimiter: New(Config{
+			Rate:            cfg.PasswordResetRate,
+			Window:          cfg.PasswordResetWindow,
+			CleanupInterval: time.Minute,
+		}),
+		mfaLimiter: New(Config{
+			Rate:            cfg.MFARate,
+			Window:          cfg.MFAWindow,
+			CleanupInterval: time.Minute,
+		}),
+		blocked:       make(map[string]time.Time),
+		blockDuration: cfg.BlockDuration,
+	}
+}
+
+// AllowLogin checks if a login attempt is allowed.
+func (a *AuthLimiter) AllowLogin(key string) bool {
+	if a.IsBlocked(key) {
+		return false
+	}
+	return a.loginLimiter.Allow(key)
+}
+
+// AllowPasswordReset checks if a password reset request is allowed.
+func (a *AuthLimiter) AllowPasswordReset(key string) bool {
+	if a.IsBlocked(key) {
+		return false
+	}
+	return a.passwordLimiter.Allow(key)
+}
+
+// AllowMFA checks if an MFA attempt is allowed.
+func (a *AuthLimiter) AllowMFA(key string) bool {
+	if a.IsBlocked(key) {
+		return false
+	}
+	return a.mfaLimiter.Allow(key)
+}
+
+// Block blocks a key for the configured duration.
+func (a *AuthLimiter) Block(key string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.blocked[key] = time.Now().Add(a.blockDuration)
+}
+
+// IsBlocked checks if a key is currently blocked.
+func (a *AuthLimiter) IsBlocked(key string) bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	blockedUntil, exists := a.blocked[key]
+	if !exists {
+		return false
+	}
+	return time.Now().Before(blockedUntil)
+}
+
+// Unblock removes a block for a key.
+func (a *AuthLimiter) Unblock(key string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.blocked, key)
+}
+
+// LoginMiddleware returns middleware for login rate limiting.
+func (a *AuthLimiter) LoginMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			key := c.RealIP()
+
+			if !a.AllowLogin(key) {
+				c.Response().Header().Set("X-RateLimit-Remaining", "0")
+				c.Response().Header().Set("Retry-After", itoa(int(a.blockDuration.Seconds())))
+
+				return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+					"error":       "too many login attempts",
+					"retry_after": int(a.blockDuration.Seconds()),
+				})
+			}
+
+			c.Response().Header().Set("X-RateLimit-Remaining", itoa(a.loginLimiter.Remaining(key)))
+
+			return next(c)
+		}
+	}
+}
+
+// PasswordResetMiddleware returns middleware for password reset rate limiting.
+func (a *AuthLimiter) PasswordResetMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			key := c.RealIP()
+
+			if !a.AllowPasswordReset(key) {
+				c.Response().Header().Set("X-RateLimit-Remaining", "0")
+
+				return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+					"error": "too many password reset requests",
+				})
+			}
+
+			c.Response().Header().Set("X-RateLimit-Remaining", itoa(a.passwordLimiter.Remaining(key)))
+
+			return next(c)
+		}
+	}
+}
+
+// MFAMiddleware returns middleware for MFA rate limiting.
+func (a *AuthLimiter) MFAMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			key := c.RealIP()
+
+			if !a.AllowMFA(key) {
+				c.Response().Header().Set("X-RateLimit-Remaining", "0")
+
+				return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+					"error": "too many MFA attempts",
+				})
+			}
+
+			c.Response().Header().Set("X-RateLimit-Remaining", itoa(a.mfaLimiter.Remaining(key)))
+
+			return next(c)
+		}
+	}
+}
+
+// Stop stops all rate limiters.
+func (a *AuthLimiter) Stop() {
+	a.loginLimiter.Stop()
+	a.passwordLimiter.Stop()
+	a.mfaLimiter.Stop()
+}

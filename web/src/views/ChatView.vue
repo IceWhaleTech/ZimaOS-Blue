@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
@@ -7,12 +8,24 @@ import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
 
+const { t } = useI18n()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
-const showSidebar = ref(true)
+const showSidebar = ref(false) // Default closed on mobile
+const isMobile = ref(false)
+const showModelSelector = ref(false)
+
+// Check if mobile on mount and resize
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768
+  // Auto-show sidebar on desktop
+  if (!isMobile.value) {
+    showSidebar.value = true
+  }
+}
 
 // Keyboard shortcuts
 useChatShortcuts({
@@ -37,6 +50,16 @@ watch(
   async () => {
     await nextTick()
     scrollToBottom()
+  }
+)
+
+// Close sidebar when selecting conversation on mobile
+watch(
+  () => chatStore.currentConversationId,
+  () => {
+    if (isMobile.value) {
+      showSidebar.value = false
+    }
   }
 )
 
@@ -78,7 +101,10 @@ async function handleSelectConversation(id: string) {
 }
 
 async function handleCreateConversation() {
-  await chatStore.createConversation()
+  await chatStore.createConversation(t('chat.newConversation'))
+  if (isMobile.value) {
+    showSidebar.value = false
+  }
 }
 
 async function handleDeleteConversation(id: string) {
@@ -95,44 +121,71 @@ function toggleSidebar() {
   showSidebar.value = !showSidebar.value
 }
 
+function toggleModelSelector() {
+  showModelSelector.value = !showModelSelector.value
+}
+
+// Close model selector when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.model-selector-container')) {
+    showModelSelector.value = false
+  }
+}
+
+const currentModelDisplay = computed(() => {
+  const model = settingsStore.selectedModel
+  if (!model) return t('chat.selectModel')
+  // Truncate long model names on mobile
+  if (isMobile.value && model.length > 15) {
+    return model.substring(0, 12) + '...'
+  }
+  return model
+})
+
+// Get translated provider name
+function getProviderDisplayName(providerName: string): string {
+  const key = `settings.providers.${providerName.toLowerCase()}`
+  const translated = t(key)
+  // If translation key doesn't exist, return original name
+  return translated === key ? providerName : translated
+}
+
 onMounted(async () => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  document.addEventListener('click', handleClickOutside)
+
   await Promise.all([
     chatStore.fetchConversations(),
     settingsStore.fetchProviders(),
     settingsStore.fetchTools(),
   ])
 })
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
-  <div class="chat-view h-full flex">
-    <!-- Sidebar toggle button (mobile) -->
-    <button
-      class="fixed top-20 left-4 z-50 md:hidden p-2 bg-gray-800 rounded-lg text-white"
+  <div class="chat-view h-full flex relative">
+    <!-- Overlay for mobile sidebar -->
+    <div
+      v-if="showSidebar && isMobile"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
       @click="toggleSidebar"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-6 w-6"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M4 6h16M4 12h16M4 18h16"
-        />
-      </svg>
-    </button>
+    />
 
     <!-- Conversation sidebar -->
     <aside
-      class="conversation-sidebar w-80 flex-shrink-0 border-r border-gray-700 transition-transform duration-300 bg-gray-800"
+      class="conversation-sidebar flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar z-40"
       :class="{
-        '-translate-x-full absolute md:relative md:translate-x-0': !showSidebar,
-        'translate-x-0': showSidebar,
+        'w-80': !isMobile,
+        'w-[85vw] max-w-80 fixed left-0 top-0 h-full': isMobile,
+        '-translate-x-full': !showSidebar && isMobile,
+        'translate-x-0': showSidebar || !isMobile,
       }"
     >
       <ConversationList
@@ -147,12 +200,14 @@ onMounted(async () => {
     </aside>
 
     <!-- Main chat area -->
-    <main class="flex-1 flex flex-col min-w-0 bg-gray-900">
+    <main class="flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-surface-base relative">
       <!-- Chat header -->
-      <header class="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800">
-        <div class="flex items-center gap-3">
+      <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
+        <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <!-- Sidebar toggle button -->
           <button
-            class="md:hidden p-1 text-gray-400 hover:text-white"
+            class="flex-shrink-0 p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer"
+            :class="{ 'md:hidden': !isMobile }"
             @click="toggleSidebar"
           >
             <svg
@@ -170,47 +225,113 @@ onMounted(async () => {
               />
             </svg>
           </button>
-          <h2 class="text-lg font-semibold text-white truncate">
-            {{ chatStore.currentConversation?.title || 'New Chat' }}
+          <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
+            {{ chatStore.currentConversation?.title || t('chat.newChat') }}
           </h2>
         </div>
 
         <!-- Model selector -->
-        <div class="flex items-center gap-2 text-sm">
-          <select
-            :value="settingsStore.selectedProvider"
-            class="bg-gray-700 text-white rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
+        <div class="model-selector-container relative flex-shrink-0">
+          <!-- Mobile: Compact button -->
+          <button
+            v-if="isMobile"
+            class="flex items-center gap-1 px-3 py-1.5 glass-card text-gray-900 dark:text-white text-sm transition-all duration-200 cursor-pointer"
+            @click.stop="toggleModelSelector"
           >
-            <option
-              v-for="provider in settingsStore.providers"
-              :key="provider.name"
-              :value="provider.name"
+            <span class="truncate max-w-[100px]">{{ currentModelDisplay }}</span>
+            <svg
+              class="w-4 h-4 flex-shrink-0 transition-transform duration-200"
+              :class="{ 'rotate-180': showModelSelector }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              {{ provider.name }}
-            </option>
-          </select>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
 
-          <select
-            :value="settingsStore.selectedModel"
-            class="bg-gray-700 text-white rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
+          <!-- Mobile: Dropdown -->
+          <div
+            v-if="isMobile && showModelSelector"
+            class="absolute right-0 top-full mt-2 w-64 glass-card shadow-xl z-50 p-4"
           >
-            <option
-              v-for="model in settingsStore.availableModels"
-              :key="model"
-              :value="model"
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.provider') }}</label>
+                <select
+                  :value="settingsStore.selectedProvider"
+                  class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
+                  @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
+                >
+                  <option
+                    v-for="provider in settingsStore.providers"
+                    :key="provider.name"
+                    :value="provider.name"
+                    class="bg-white dark:bg-surface-elevated"
+                  >
+                    {{ getProviderDisplayName(provider.name) }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.model') }}</label>
+                <select
+                  :value="settingsStore.selectedModel"
+                  class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
+                  @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
+                >
+                  <option
+                    v-for="model in settingsStore.availableModels"
+                    :key="model"
+                    :value="model"
+                    class="bg-white dark:bg-surface-elevated"
+                  >
+                    {{ model }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Desktop: Inline selectors -->
+          <div v-else-if="!isMobile" class="flex items-center gap-2 text-sm">
+            <select
+              :value="settingsStore.selectedProvider"
+              class="glass-input text-gray-900 dark:text-white px-3 py-1.5 cursor-pointer"
+              @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
             >
-              {{ model }}
-            </option>
-          </select>
+              <option
+                v-for="provider in settingsStore.providers"
+                :key="provider.name"
+                :value="provider.name"
+                class="bg-white dark:bg-surface-elevated"
+              >
+                {{ getProviderDisplayName(provider.name) }}
+              </option>
+            </select>
+
+            <select
+              :value="settingsStore.selectedModel"
+              class="glass-input text-gray-900 dark:text-white px-3 py-1.5 cursor-pointer"
+              @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="model in settingsStore.availableModels"
+                :key="model"
+                :value="model"
+                class="bg-white dark:bg-surface-elevated"
+              >
+                {{ model }}
+              </option>
+            </select>
+          </div>
         </div>
       </header>
 
       <!-- Messages area -->
       <div
         ref="messagesContainer"
-        class="flex-1 overflow-y-auto"
+        class="flex-1 overflow-y-auto overscroll-contain pb-32"
         @scroll="handleScroll"
       >
         <!-- Load more indicator -->
@@ -218,12 +339,9 @@ onMounted(async () => {
           v-if="chatStore.loadingMore"
           class="flex justify-center py-4"
         >
-          <div class="flex items-center gap-2 text-gray-400 text-sm">
-            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Loading older messages...
+          <div class="flex items-center gap-2 text-gray-500 dark:text-slate-400 text-sm">
+            <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+            {{ t('chat.loadingOlderMessages') }}
           </div>
         </div>
 
@@ -233,23 +351,23 @@ onMounted(async () => {
           class="flex justify-center py-4"
         >
           <button
-            class="text-sm text-blue-400 hover:text-blue-300"
+            class="text-sm text-accent hover:text-accent-light px-4 py-2 transition-colors cursor-pointer"
             @click="chatStore.loadMoreMessages()"
           >
-            Load older messages
+            {{ t('chat.loadOlderMessages') }}
           </button>
         </div>
 
         <!-- Empty state -->
         <div
           v-if="chatStore.messages.length === 0 && !chatStore.loading"
-          class="h-full flex items-center justify-center"
+          class="h-full flex items-center justify-center p-4"
         >
-          <div class="text-center text-gray-400 max-w-md px-4">
-            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+          <div class="text-center text-gray-500 dark:text-slate-400 max-w-md">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent to-cta flex items-center justify-center shadow-glow">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-8 w-8 text-white"
+                class="h-8 w-8 sm:h-10 sm:w-10 text-white"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -262,14 +380,18 @@ onMounted(async () => {
                 />
               </svg>
             </div>
-            <h3 class="text-xl font-semibold text-white mb-2">Start a conversation</h3>
-            <p>Send a message to begin chatting with the AI assistant.</p>
-            <div class="mt-4 text-sm">
-              <p>Current model: <span class="text-blue-400">{{ settingsStore.selectedModel }}</span></p>
+            <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ t('chat.startConversation') }}</h3>
+            <p class="text-sm sm:text-base text-gray-500 dark:text-slate-400">{{ t('chat.startConversationDesc') }}</p>
+            <div class="mt-6 glass-card p-4 inline-block">
+              <p class="text-sm">{{ t('chat.currentModel') }}: <span class="text-accent font-medium">{{ settingsStore.selectedModel }}</span></p>
             </div>
-            <div class="mt-6 text-xs text-gray-500">
-              <p>Keyboard shortcuts:</p>
-              <p class="mt-1">Ctrl+N: New chat | Ctrl+/: Focus input | Ctrl+B: Toggle sidebar</p>
+            <div v-if="!isMobile" class="mt-6 text-xs text-gray-400 dark:text-slate-500">
+              <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
+              <p class="space-x-4">
+                <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+N</span> {{ t('chat.newChatShortcut') }}
+                <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+/</span> {{ t('chat.focusInputShortcut') }}
+                <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+B</span> {{ t('chat.toggleSidebarShortcut') }}
+              </p>
             </div>
           </div>
         </div>
@@ -288,25 +410,27 @@ onMounted(async () => {
       <!-- Error message -->
       <div
         v-if="chatStore.error"
-        class="px-4 py-2 bg-red-900/50 border-t border-red-700 text-red-200 text-sm flex items-center justify-between"
+        class="px-3 sm:px-4 py-3 bg-red-500/10 border-t border-red-500/30 text-red-400 text-xs sm:text-sm flex items-center justify-between gap-2"
       >
-        <span>{{ chatStore.error }}</span>
+        <span class="truncate">{{ chatStore.error }}</span>
         <button
-          class="text-red-300 hover:text-white"
+          class="text-red-400 hover:text-red-300 flex-shrink-0 px-3 py-1 rounded hover:bg-red-500/10 transition-colors cursor-pointer"
           @click="chatStore.clearError"
         >
-          Dismiss
+          {{ t('chat.dismiss') }}
         </button>
       </div>
 
-      <!-- Input area -->
-      <ChatInput
-        ref="chatInputRef"
-        :disabled="chatStore.sending"
-        :streaming="chatStore.streaming"
-        @send="handleSend"
-        @cancel="handleCancel"
-      />
+      <!-- Input area - floating at bottom -->
+      <div class="absolute bottom-0 left-0 right-0 z-10">
+        <ChatInput
+          ref="chatInputRef"
+          :disabled="chatStore.sending"
+          :streaming="chatStore.streaming"
+          @send="handleSend"
+          @cancel="handleCancel"
+        />
+      </div>
     </main>
   </div>
 </template>
@@ -316,15 +440,57 @@ onMounted(async () => {
   height: calc(100vh - 64px);
 }
 
+/* Safe area for mobile devices with notches */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .chat-view {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 .conversation-sidebar {
   height: 100%;
 }
 
-@media (max-width: 768px) {
+/* Prevent body scroll when sidebar is open on mobile */
+@media (max-width: 767px) {
   .conversation-sidebar {
-    position: absolute;
-    z-index: 40;
-    height: calc(100vh - 64px);
+    padding-top: 64px; /* Account for header */
   }
+}
+
+/* Smooth scrolling for messages */
+.overscroll-contain {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Custom scrollbar for desktop */
+@media (min-width: 768px) {
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: var(--color-bg-surface);
+    border-radius: 4px;
+  }
+
+  .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+}
+
+/* Select dropdown styling */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394A3B8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
 }
 </style>

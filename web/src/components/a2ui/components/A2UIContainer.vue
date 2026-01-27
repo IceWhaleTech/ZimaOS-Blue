@@ -29,12 +29,12 @@ defineEmits<{
 const componentStyle = computed(() => {
   const style = props.component.style || {}
   return {
-    display: 'flex',
-    flexDirection: style.direction || 'column',
-    gap: style.gap || '0.75rem',
-    padding: style.padding,
-    backgroundColor: style.backgroundColor,
-    borderRadius: style.borderRadius,
+    display: 'flex' as const,
+    flexDirection: (style.direction as 'row' | 'column') || 'column',
+    gap: (style.gap as string) || '0.75rem',
+    padding: style.padding as string | undefined,
+    backgroundColor: style.backgroundColor as string | undefined,
+    borderRadius: style.borderRadius as string | undefined,
   }
 })
 </script>

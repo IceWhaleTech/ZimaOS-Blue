@@ -1,0 +1,659 @@
+package workflow
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strconv"
+
+	"github.com/labstack/echo/v4"
+)
+
+// Handler handles HTTP requests for workflows.
+type Handler struct {
+	service *WorkflowService
+}
+
+// NewHandler creates a new workflow handler.
+func NewHandler(service *WorkflowService) *Handler {
+	return &Handler{service: service}
+}
+
+// RegisterRoutes registers the workflow routes.
+func (h *Handler) RegisterRoutes(e *echo.Echo) {
+	g := e.Group("/api/v1/workflows")
+
+	// Workflow CRUD
+	g.POST("", h.CreateWorkflow)
+	g.GET("", h.ListWorkflows)
+	g.GET("/:id", h.GetWorkflow)
+	g.PUT("/:id", h.UpdateWorkflow)
+	g.DELETE("/:id", h.DeleteWorkflow)
+
+	// Workflow control
+	g.POST("/:id/enable", h.EnableWorkflow)
+	g.POST("/:id/disable", h.DisableWorkflow)
+	g.POST("/:id/validate", h.ValidateWorkflow)
+
+	// Execution
+	g.POST("/:id/execute", h.ExecuteWorkflow)
+	g.GET("/:id/executions", h.ListExecutions)
+	g.GET("/:id/executions/:executionId", h.GetExecution)
+	g.POST("/:id/executions/:executionId/cancel", h.CancelExecution)
+	g.POST("/:id/executions/:executionId/retry", h.RetryExecution)
+	g.GET("/:id/executions/:executionId/logs", h.GetExecutionLogs)
+
+	// Stats
+	g.GET("/stats", h.GetStats)
+
+	// Webhooks
+	webhookGroup := e.Group("/api/v1/webhooks")
+	webhookGroup.Any("/*", h.HandleWebhook)
+}
+
+// CreateWorkflowRequest represents a create workflow request.
+type CreateWorkflowRequest struct {
+	Name        string            `json:"name" validate:"required"`
+	Description string            `json:"description,omitempty"`
+	Nodes       []Node            `json:"nodes" validate:"required,min=1"`
+	Connections []Connection      `json:"connections,omitempty"`
+	Variables   map[string]string `json:"variables,omitempty"`
+	Settings    *WorkflowSettings `json:"settings,omitempty"`
+	Tags        []string          `json:"tags,omitempty"`
+}
+
+// CreateWorkflow creates a new workflow.
+func (h *Handler) CreateWorkflow(c echo.Context) error {
+	var req CreateWorkflowRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	tenantID := c.Get("tenant_id").(string)
+	userID := c.Get("user_id").(string)
+
+	workflow := &Workflow{
+		TenantID:    tenantID,
+		Name:        req.Name,
+		Description: req.Description,
+		Status:      WorkflowStatusDraft,
+		Nodes:       req.Nodes,
+		Connections: req.Connections,
+		Variables:   req.Variables,
+		Settings:    req.Settings,
+		Tags:        req.Tags,
+		CreatedBy:   userID,
+		UpdatedBy:   userID,
+	}
+
+	created, err := h.service.CreateWorkflow(c.Request().Context(), workflow)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, created)
+}
+
+// GetWorkflow retrieves a workflow by ID.
+func (h *Handler) GetWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	workflow, err := h.service.GetWorkflow(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, workflow)
+}
+
+// UpdateWorkflowRequest represents an update workflow request.
+type UpdateWorkflowRequest struct {
+	Name        string            `json:"name,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Status      WorkflowStatus    `json:"status,omitempty"`
+	Nodes       []Node            `json:"nodes,omitempty"`
+	Connections []Connection      `json:"connections,omitempty"`
+	Variables   map[string]string `json:"variables,omitempty"`
+	Settings    *WorkflowSettings `json:"settings,omitempty"`
+	Tags        []string          `json:"tags,omitempty"`
+}
+
+// UpdateWorkflow updates an existing workflow.
+func (h *Handler) UpdateWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	var req UpdateWorkflowRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// Get existing workflow
+	workflow, err := h.service.GetWorkflow(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Update fields
+	if req.Name != "" {
+		workflow.Name = req.Name
+	}
+	if req.Description != "" {
+		workflow.Description = req.Description
+	}
+	if req.Status != "" {
+		workflow.Status = req.Status
+	}
+	if req.Nodes != nil {
+		workflow.Nodes = req.Nodes
+	}
+	if req.Connections != nil {
+		workflow.Connections = req.Connections
+	}
+	if req.Variables != nil {
+		workflow.Variables = req.Variables
+	}
+	if req.Settings != nil {
+		workflow.Settings = req.Settings
+	}
+	if req.Tags != nil {
+		workflow.Tags = req.Tags
+	}
+
+	userID := c.Get("user_id").(string)
+	workflow.UpdatedBy = userID
+
+	updated, err := h.service.UpdateWorkflow(c.Request().Context(), workflow)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, updated)
+}
+
+// DeleteWorkflow deletes a workflow.
+func (h *Handler) DeleteWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	err := h.service.DeleteWorkflow(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+// ListWorkflows lists workflows with pagination.
+func (h *Handler) ListWorkflows(c echo.Context) error {
+	tenantID := c.Get("tenant_id").(string)
+
+	opts := &ListOptions{
+		Offset:  0,
+		Limit:   20,
+		Filters: make(map[string]string),
+	}
+
+	if offset := c.QueryParam("offset"); offset != "" {
+		opts.Offset, _ = strconv.Atoi(offset)
+	}
+	if limit := c.QueryParam("limit"); limit != "" {
+		opts.Limit, _ = strconv.Atoi(limit)
+	}
+	if sort := c.QueryParam("sort"); sort != "" {
+		opts.Sort = sort
+	}
+	if order := c.QueryParam("order"); order != "" {
+		opts.Order = order
+	}
+	if status := c.QueryParam("status"); status != "" {
+		opts.Filters["status"] = status
+	}
+	if name := c.QueryParam("name"); name != "" {
+		opts.Filters["name"] = name
+	}
+
+	workflows, total, err := h.service.ListWorkflows(c.Request().Context(), tenantID, opts)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"workflows": workflows,
+		"total":     total,
+		"offset":    opts.Offset,
+		"limit":     opts.Limit,
+	})
+}
+
+// EnableWorkflow enables a workflow.
+func (h *Handler) EnableWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	err := h.service.EnableWorkflow(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "enabled"})
+}
+
+// DisableWorkflow disables a workflow.
+func (h *Handler) DisableWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	err := h.service.DisableWorkflow(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "disabled"})
+}
+
+// ValidateWorkflow validates a workflow definition.
+func (h *Handler) ValidateWorkflow(c echo.Context) error {
+	var workflow Workflow
+	if err := c.Bind(&workflow); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	err := h.service.ValidateWorkflow(c.Request().Context(), &workflow)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"valid": false,
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"valid": true,
+	})
+}
+
+// ExecuteWorkflowRequest represents an execute workflow request.
+type ExecuteWorkflowRequest struct {
+	TriggerData map[string]interface{} `json:"trigger_data,omitempty"`
+}
+
+// ExecuteWorkflow manually executes a workflow.
+func (h *Handler) ExecuteWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	var req ExecuteWorkflowRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	execution, err := h.service.ExecuteWorkflow(c.Request().Context(), id, req.TriggerData)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		if err == ErrMaxExecutionsReached {
+			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "max concurrent executions reached"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusAccepted, execution)
+}
+
+// GetExecution retrieves an execution by ID.
+func (h *Handler) GetExecution(c echo.Context) error {
+	executionID := c.Param("executionId")
+
+	execution, err := h.service.GetExecution(c.Request().Context(), executionID)
+	if err != nil {
+		if err == ErrExecutionNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, execution)
+}
+
+// ListExecutions lists executions for a workflow.
+func (h *Handler) ListExecutions(c echo.Context) error {
+	workflowID := c.Param("id")
+
+	opts := &ListOptions{
+		Offset: 0,
+		Limit:  20,
+	}
+
+	if offset := c.QueryParam("offset"); offset != "" {
+		opts.Offset, _ = strconv.Atoi(offset)
+	}
+	if limit := c.QueryParam("limit"); limit != "" {
+		opts.Limit, _ = strconv.Atoi(limit)
+	}
+
+	executions, total, err := h.service.ListExecutions(c.Request().Context(), workflowID, opts)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"executions": executions,
+		"total":      total,
+		"offset":     opts.Offset,
+		"limit":      opts.Limit,
+	})
+}
+
+// CancelExecution cancels a running execution.
+func (h *Handler) CancelExecution(c echo.Context) error {
+	executionID := c.Param("executionId")
+
+	err := h.service.CancelExecution(c.Request().Context(), executionID)
+	if err != nil {
+		if err == ErrExecutionNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+// RetryExecution retries a failed execution.
+func (h *Handler) RetryExecution(c echo.Context) error {
+	executionID := c.Param("executionId")
+
+	execution, err := h.service.RetryExecution(c.Request().Context(), executionID)
+	if err != nil {
+		if err == ErrExecutionNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "execution not found"})
+		}
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusAccepted, execution)
+}
+
+// GetExecutionLogs retrieves logs for an execution.
+func (h *Handler) GetExecutionLogs(c echo.Context) error {
+	executionID := c.Param("executionId")
+
+	opts := &ListOptions{
+		Offset: 0,
+		Limit:  100,
+	}
+
+	if offset := c.QueryParam("offset"); offset != "" {
+		opts.Offset, _ = strconv.Atoi(offset)
+	}
+	if limit := c.QueryParam("limit"); limit != "" {
+		opts.Limit, _ = strconv.Atoi(limit)
+	}
+
+	logs, total, err := h.service.GetExecutionLogs(c.Request().Context(), executionID, opts)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"logs":   logs,
+		"total":  total,
+		"offset": opts.Offset,
+		"limit":  opts.Limit,
+	})
+}
+
+// GetStats returns workflow statistics.
+func (h *Handler) GetStats(c echo.Context) error {
+	tenantID := c.Get("tenant_id").(string)
+
+	stats, err := h.service.GetStats(c.Request().Context(), tenantID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, stats)
+}
+
+// HandleWebhook handles incoming webhook requests.
+func (h *Handler) HandleWebhook(c echo.Context) error {
+	path := c.Param("*")
+	method := c.Request().Method
+
+	// Read headers
+	headers := make(map[string]string)
+	for key, values := range c.Request().Header {
+		if len(values) > 0 {
+			headers[key] = values[0]
+		}
+	}
+
+	// Read body
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read body"})
+	}
+
+	execution, err := h.service.HandleWebhook(c.Request().Context(), path, method, headers, body)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "webhook not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusAccepted, map[string]interface{}{
+		"execution_id": execution.ID,
+		"status":       execution.Status,
+	})
+}
+
+// WorkflowTemplateResponse represents a workflow template.
+type WorkflowTemplateResponse struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	Tags        []string `json:"tags"`
+	Workflow    Workflow `json:"workflow"`
+}
+
+// GetTemplates returns available workflow templates.
+func (h *Handler) GetTemplates(c echo.Context) error {
+	templates := []WorkflowTemplateResponse{
+		{
+			ID:          "http-webhook",
+			Name:        "HTTP Webhook Handler",
+			Description: "Receive HTTP webhooks and process data",
+			Category:    "integration",
+			Tags:        []string{"webhook", "http", "api"},
+			Workflow: Workflow{
+				Name: "HTTP Webhook Handler",
+				Nodes: []Node{
+					{
+						ID:   "trigger-1",
+						Type: NodeTypeTrigger,
+						Name: "Webhook Trigger",
+						Config: map[string]interface{}{
+							"trigger": map[string]interface{}{
+								"type": "webhook",
+								"webhook": map[string]interface{}{
+									"path":   "/my-webhook",
+									"method": "POST",
+								},
+							},
+						},
+					},
+					{
+						ID:   "action-1",
+						Type: NodeTypeAction,
+						Name: "Process Data",
+						Config: map[string]interface{}{
+							"type": "javascript",
+							"javascript": map[string]interface{}{
+								"code": "return { processed: true, data: input.body };",
+							},
+						},
+					},
+				},
+				Connections: []Connection{
+					{
+						ID:         "conn-1",
+						SourceNode: "trigger-1",
+						TargetNode: "action-1",
+					},
+				},
+			},
+		},
+		{
+			ID:          "scheduled-task",
+			Name:        "Scheduled Task",
+			Description: "Run a task on a schedule",
+			Category:    "automation",
+			Tags:        []string{"schedule", "cron", "automation"},
+			Workflow: Workflow{
+				Name: "Scheduled Task",
+				Nodes: []Node{
+					{
+						ID:   "trigger-1",
+						Type: NodeTypeTrigger,
+						Name: "Schedule Trigger",
+						Config: map[string]interface{}{
+							"trigger": map[string]interface{}{
+								"type": "schedule",
+								"schedule": map[string]interface{}{
+									"cron": "0 0 * * * *", // Every hour
+								},
+							},
+						},
+					},
+					{
+						ID:   "action-1",
+						Type: NodeTypeAction,
+						Name: "HTTP Request",
+						Config: map[string]interface{}{
+							"type": "http",
+							"http": map[string]interface{}{
+								"url":    "https://api.example.com/health",
+								"method": "GET",
+							},
+						},
+					},
+				},
+				Connections: []Connection{
+					{
+						ID:         "conn-1",
+						SourceNode: "trigger-1",
+						TargetNode: "action-1",
+					},
+				},
+			},
+		},
+		{
+			ID:          "ha-automation",
+			Name:        "Home Assistant Automation",
+			Description: "Automate Home Assistant based on state changes",
+			Category:    "smart-home",
+			Tags:        []string{"home-assistant", "smart-home", "automation"},
+			Workflow: Workflow{
+				Name: "Home Assistant Automation",
+				Nodes: []Node{
+					{
+						ID:   "trigger-1",
+						Type: NodeTypeTrigger,
+						Name: "State Change Trigger",
+						Config: map[string]interface{}{
+							"trigger": map[string]interface{}{
+								"type": "ha_state",
+								"ha": map[string]interface{}{
+									"entity_id": "binary_sensor.motion",
+									"to_state":  "on",
+								},
+							},
+						},
+					},
+					{
+						ID:   "action-1",
+						Type: NodeTypeAction,
+						Name: "Turn On Light",
+						Config: map[string]interface{}{
+							"type": "ha_service",
+							"ha": map[string]interface{}{
+								"domain":    "light",
+								"service":   "turn_on",
+								"entity_id": "light.living_room",
+							},
+						},
+					},
+				},
+				Connections: []Connection{
+					{
+						ID:         "conn-1",
+						SourceNode: "trigger-1",
+						TargetNode: "action-1",
+					},
+				},
+			},
+		},
+	}
+
+	return c.JSON(http.StatusOK, templates)
+}
+
+// ImportWorkflow imports a workflow from JSON.
+func (h *Handler) ImportWorkflow(c echo.Context) error {
+	var workflow Workflow
+	if err := json.NewDecoder(c.Request().Body).Decode(&workflow); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+	}
+
+	tenantID := c.Get("tenant_id").(string)
+	userID := c.Get("user_id").(string)
+
+	// Reset IDs and metadata
+	workflow.ID = ""
+	workflow.TenantID = tenantID
+	workflow.Status = WorkflowStatusDraft
+	workflow.CreatedBy = userID
+	workflow.UpdatedBy = userID
+
+	created, err := h.service.CreateWorkflow(c.Request().Context(), &workflow)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, created)
+}
+
+// ExportWorkflow exports a workflow as JSON.
+func (h *Handler) ExportWorkflow(c echo.Context) error {
+	id := c.Param("id")
+
+	workflow, err := h.service.GetWorkflow(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrWorkflowNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workflow not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Remove sensitive/internal fields
+	exportWorkflow := *workflow
+	exportWorkflow.TenantID = ""
+	exportWorkflow.CreatedBy = ""
+	exportWorkflow.UpdatedBy = ""
+
+	c.Response().Header().Set("Content-Disposition", "attachment; filename=workflow-"+id+".json")
+	return c.JSON(http.StatusOK, exportWorkflow)
+}

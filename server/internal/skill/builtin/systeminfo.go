@@ -3,10 +3,9 @@ package builtin
 import (
 	"context"
 	"fmt"
-	"os"
-	"runtime"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sysinfo"
 )
 
 // SystemInfo is a built-in system information skill
@@ -21,14 +20,14 @@ func NewSystemInfo() *SystemInfo {
 			ID:          "system-info",
 			Name:        "System Info",
 			Version:     "1.0.0",
-			Description: "Returns system information",
+			Description: "Returns comprehensive system information including OS, hardware, network, and GPU details",
 			Category:    "system",
-			Tags:        []string{"system", "info", "utility"},
+			Tags:        []string{"system", "info", "utility", "hardware", "network"},
 			Inputs: []skill.Parameter{
 				{
 					Name:        "type",
 					Type:        "string",
-					Description: "Type of info to retrieve: 'all', 'os', 'memory', 'cpu'",
+					Description: "Type of info to retrieve: 'all', 'os', 'memory', 'cpu', 'disk', 'network', 'gpu', 'runtime'",
 					Required:    false,
 					Default:     "all",
 				},
@@ -57,7 +56,16 @@ func (s *SystemInfo) Validate(input map[string]any) error {
 		if !ok {
 			return fmt.Errorf("type must be a string")
 		}
-		validTypes := map[string]bool{"all": true, "os": true, "memory": true, "cpu": true}
+		validTypes := map[string]bool{
+			"all":     true,
+			"os":      true,
+			"memory":  true,
+			"cpu":     true,
+			"disk":    true,
+			"network": true,
+			"gpu":     true,
+			"runtime": true,
+		}
 		if !validTypes[typeStr] {
 			return fmt.Errorf("invalid type: %s", typeStr)
 		}
@@ -76,45 +84,30 @@ func (s *SystemInfo) Execute(ctx context.Context, input map[string]any) (*skill.
 
 	switch infoType {
 	case "os":
-		info["os"] = s.getOSInfo()
+		info["os"] = sysinfo.CollectOS()
 	case "memory":
-		info["memory"] = s.getMemoryInfo()
+		hw := sysinfo.CollectHardware()
+		info["memory"] = hw.Memory
 	case "cpu":
-		info["cpu"] = s.getCPUInfo()
+		hw := sysinfo.CollectHardware()
+		info["cpu"] = hw.CPU
+	case "disk":
+		hw := sysinfo.CollectHardware()
+		info["disk"] = hw.Disk
+	case "network":
+		info["network"] = sysinfo.CollectNetwork()
+	case "gpu":
+		hw := sysinfo.CollectHardware()
+		info["gpu"] = hw.GPU
+	case "runtime":
+		info["runtime"] = sysinfo.CollectRuntime()
 	case "all":
-		info["os"] = s.getOSInfo()
-		info["memory"] = s.getMemoryInfo()
-		info["cpu"] = s.getCPUInfo()
+		fullInfo := sysinfo.Collect()
+		info["os"] = fullInfo.OS
+		info["hardware"] = fullInfo.Hardware
+		info["network"] = fullInfo.Network
+		info["runtime"] = fullInfo.Runtime
 	}
 
 	return skill.NewResult(info), nil
-}
-
-func (s *SystemInfo) getOSInfo() map[string]any {
-	hostname, _ := os.Hostname()
-	return map[string]any{
-		"os":       runtime.GOOS,
-		"arch":     runtime.GOARCH,
-		"hostname": hostname,
-		"go_version": runtime.Version(),
-	}
-}
-
-func (s *SystemInfo) getMemoryInfo() map[string]any {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	return map[string]any{
-		"alloc_mb":       m.Alloc / 1024 / 1024,
-		"total_alloc_mb": m.TotalAlloc / 1024 / 1024,
-		"sys_mb":         m.Sys / 1024 / 1024,
-		"num_gc":         m.NumGC,
-	}
-}
-
-func (s *SystemInfo) getCPUInfo() map[string]any {
-	return map[string]any{
-		"num_cpu":       runtime.NumCPU(),
-		"num_goroutine": runtime.NumGoroutine(),
-		"gomaxprocs":    runtime.GOMAXPROCS(0),
-	}
 }

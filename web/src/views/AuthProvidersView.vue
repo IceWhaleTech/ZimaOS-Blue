@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { extauthAdminApi, getProviderDisplayName } from '@/api/extauth'
 import type { ProviderConfig, ProviderType, CreateProviderRequest, UpdateProviderRequest } from '@/api/extauth'
-
-const authStore = useAuthStore()
 
 const providers = ref<ProviderConfig[]>([])
 const loading = ref(false)

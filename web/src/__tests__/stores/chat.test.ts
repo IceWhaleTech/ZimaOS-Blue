@@ -115,7 +115,7 @@ describe('Chat Store', () => {
       await store.selectConversation('1')
 
       expect(store.currentConversationId).toBe('1')
-      expect(messageApi.list).toHaveBeenCalledWith('1')
+      expect(messageApi.list).toHaveBeenCalledWith('1', 50, 0)
       expect(store.messages).toEqual(mockMessages)
     })
 

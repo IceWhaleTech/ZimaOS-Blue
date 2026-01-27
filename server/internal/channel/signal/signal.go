@@ -601,3 +601,209 @@ func normalizePhoneNumber(phone string) string {
 func (c *Channel) GetConfigPath() string {
 	return filepath.Join(c.config.ConfigPath, "data")
 }
+
+// SendImage sends an image message through Signal.
+func (c *Channel) SendImage(ctx context.Context, chatID string, imagePath string, caption string) error {
+	c.mu.RLock()
+	if !c.isRegistered {
+		c.mu.RUnlock()
+		return fmt.Errorf("Signal not registered")
+	}
+	c.mu.RUnlock()
+
+	args := []string{
+		"--config", c.config.ConfigPath,
+		"-u", c.config.PhoneNumber,
+		"send",
+		"-a", imagePath,
+	}
+
+	if caption != "" {
+		args = append(args, "-m", caption)
+	}
+
+	// Determine if sending to group or individual
+	if strings.HasPrefix(chatID, "group.") || len(chatID) > 20 {
+		args = append(args, "-g", chatID)
+	} else {
+		args = append(args, chatID)
+	}
+
+	cmd := exec.CommandContext(ctx, c.config.SignalCLIPath, args...)
+	cmd.Dir = c.config.ConfigPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		c.logger.Error("failed to send Signal image",
+			zap.String("recipient", chatID),
+			zap.String("image", imagePath),
+			zap.String("output", string(output)),
+			zap.Error(err))
+		return fmt.Errorf("failed to send Signal image: %w", err)
+	}
+
+	c.logger.Debug("Signal image sent",
+		zap.String("recipient", chatID),
+		zap.String("image", imagePath))
+
+	return nil
+}
+
+// SendFile sends a file/document message through Signal.
+func (c *Channel) SendFile(ctx context.Context, chatID string, filePath string, caption string) error {
+	c.mu.RLock()
+	if !c.isRegistered {
+		c.mu.RUnlock()
+		return fmt.Errorf("Signal not registered")
+	}
+	c.mu.RUnlock()
+
+	args := []string{
+		"--config", c.config.ConfigPath,
+		"-u", c.config.PhoneNumber,
+		"send",
+		"-a", filePath,
+	}
+
+	if caption != "" {
+		args = append(args, "-m", caption)
+	}
+
+	// Determine if sending to group or individual
+	if strings.HasPrefix(chatID, "group.") || len(chatID) > 20 {
+		args = append(args, "-g", chatID)
+	} else {
+		args = append(args, chatID)
+	}
+
+	cmd := exec.CommandContext(ctx, c.config.SignalCLIPath, args...)
+	cmd.Dir = c.config.ConfigPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		c.logger.Error("failed to send Signal file",
+			zap.String("recipient", chatID),
+			zap.String("file", filePath),
+			zap.String("output", string(output)),
+			zap.Error(err))
+		return fmt.Errorf("failed to send Signal file: %w", err)
+	}
+
+	c.logger.Debug("Signal file sent",
+		zap.String("recipient", chatID),
+		zap.String("file", filePath))
+
+	return nil
+}
+
+// SendImageData sends an image from raw data through Signal.
+func (c *Channel) SendImageData(ctx context.Context, chatID string, imageData []byte, filename string, caption string) error {
+	// Create a temporary file
+	tmpDir := filepath.Join(c.config.ConfigPath, "tmp")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	tmpFile := filepath.Join(tmpDir, filename)
+	if err := os.WriteFile(tmpFile, imageData, 0644); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	defer os.Remove(tmpFile)
+
+	return c.SendImage(ctx, chatID, tmpFile, caption)
+}
+
+// SendFileData sends a file from raw data through Signal.
+func (c *Channel) SendFileData(ctx context.Context, chatID string, fileData []byte, filename string, caption string) error {
+	// Create a temporary file
+	tmpDir := filepath.Join(c.config.ConfigPath, "tmp")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	tmpFile := filepath.Join(tmpDir, filename)
+	if err := os.WriteFile(tmpFile, fileData, 0644); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	defer os.Remove(tmpFile)
+
+	return c.SendFile(ctx, chatID, tmpFile, caption)
+}
+
+// SendWithAttachment sends a message with an attachment.
+func (c *Channel) SendWithAttachment(ctx context.Context, msg channel.OutgoingMessage) error {
+	if len(msg.Attachments) == 0 {
+		return c.Send(ctx, msg)
+	}
+
+	for _, att := range msg.Attachments {
+		var err error
+		filename := att.Name
+		if filename == "" {
+			filename = fmt.Sprintf("attachment_%d", time.Now().UnixNano())
+		}
+
+		switch att.Type {
+		case channel.MessageTypeImage:
+			err = c.SendImageData(ctx, msg.ChatID, att.Data, filename, msg.Content)
+		default:
+			err = c.SendFileData(ctx, msg.ChatID, att.Data, filename, msg.Content)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to send attachment %s: %w", filename, err)
+		}
+	}
+
+	return nil
+}
+
+// SendMultipleAttachments sends a message with multiple attachments.
+func (c *Channel) SendMultipleAttachments(ctx context.Context, chatID string, attachmentPaths []string, caption string) error {
+	c.mu.RLock()
+	if !c.isRegistered {
+		c.mu.RUnlock()
+		return fmt.Errorf("Signal not registered")
+	}
+	c.mu.RUnlock()
+
+	args := []string{
+		"--config", c.config.ConfigPath,
+		"-u", c.config.PhoneNumber,
+		"send",
+	}
+
+	// Add all attachments
+	for _, path := range attachmentPaths {
+		args = append(args, "-a", path)
+	}
+
+	if caption != "" {
+		args = append(args, "-m", caption)
+	}
+
+	// Determine if sending to group or individual
+	if strings.HasPrefix(chatID, "group.") || len(chatID) > 20 {
+		args = append(args, "-g", chatID)
+	} else {
+		args = append(args, chatID)
+	}
+
+	cmd := exec.CommandContext(ctx, c.config.SignalCLIPath, args...)
+	cmd.Dir = c.config.ConfigPath
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		c.logger.Error("failed to send Signal attachments",
+			zap.String("recipient", chatID),
+			zap.Int("attachment_count", len(attachmentPaths)),
+			zap.String("output", string(output)),
+			zap.Error(err))
+		return fmt.Errorf("failed to send Signal attachments: %w", err)
+	}
+
+	c.logger.Debug("Signal attachments sent",
+		zap.String("recipient", chatID),
+		zap.Int("attachment_count", len(attachmentPaths)))
+
+	return nil
+}

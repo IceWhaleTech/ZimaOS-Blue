@@ -33,7 +33,10 @@ export const useTenantStore = defineStore('tenant', () => {
 
       // Auto-select first tenant if none selected
       if (!currentTenantId.value && tenants.value.length > 0) {
-        await selectTenant(tenants.value[0].id)
+        const firstTenant = tenants.value[0]
+        if (firstTenant) {
+          await selectTenant(firstTenant.id)
+        }
       } else if (currentTenantId.value) {
         // Load current tenant details
         const tenant = tenants.value.find((t) => t.id === currentTenantId.value)
@@ -42,7 +45,10 @@ export const useTenantStore = defineStore('tenant', () => {
         } else {
           // Tenant no longer accessible, select first available
           if (tenants.value.length > 0) {
-            await selectTenant(tenants.value[0].id)
+            const firstTenant = tenants.value[0]
+            if (firstTenant) {
+              await selectTenant(firstTenant.id)
+            }
           } else {
             currentTenantId.value = null
             currentTenant.value = null
@@ -127,7 +133,10 @@ export const useTenantStore = defineStore('tenant', () => {
 
       if (currentTenant.value?.id === tenantId) {
         if (tenants.value.length > 0) {
-          await selectTenant(tenants.value[0].id)
+          const firstTenant = tenants.value[0]
+          if (firstTenant) {
+            await selectTenant(firstTenant.id)
+          }
         } else {
           currentTenant.value = null
           currentTenantId.value = null

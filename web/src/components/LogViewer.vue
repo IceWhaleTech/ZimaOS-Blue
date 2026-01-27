@@ -97,13 +97,60 @@ function getLevelBgColor(level: LogEntry['level']): string {
   }
 }
 
+function isRequestLog(entry: LogEntry): boolean {
+  return entry.message === 'request' && entry.metadata?.method !== undefined
+}
+
+function getMethodColor(method: string): string {
+  switch (method?.toUpperCase()) {
+    case 'GET':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    case 'POST':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    case 'PUT':
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+    case 'PATCH':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    case 'DELETE':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
+
+function getStatusColor(status: number): string {
+  if (status >= 500) {
+    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+  } else if (status >= 400) {
+    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+  } else if (status >= 300) {
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+  } else if (status >= 200) {
+    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+  }
+  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+}
+
+function formatLatency(latency: number): string {
+  if (typeof latency !== 'number') return ''
+  // latency is in nanoseconds from Go's time.Duration
+  if (latency >= 1_000_000_000) {
+    return `${(latency / 1_000_000_000).toFixed(2)}s`
+  } else if (latency >= 1_000_000) {
+    return `${(latency / 1_000_000).toFixed(0)}ms`
+  } else if (latency >= 1_000) {
+    return `${(latency / 1_000).toFixed(0)}µs`
+  }
+  return `${latency}ns`
+}
+
 function formatTimestamp(date: Date): string {
   return new Date(date).toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     fractionalSecondDigits: 3,
-  })
+  } as Intl.DateTimeFormatOptions)
 }
 
 function toggleLevel(level: string) {
@@ -244,7 +291,29 @@ function toggleLevel(level: string) {
             <span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">
               [{{ entry.source }}]
             </span>
-            <span class="text-gray-900 dark:text-gray-100 break-all">
+            <!-- Request log with tags -->
+            <template v-if="isRequestLog(entry)">
+              <span
+                class="px-1.5 py-0.5 text-xs font-medium rounded"
+                :class="getMethodColor(entry.metadata?.method as string)"
+              >
+                {{ entry.metadata?.method }}
+              </span>
+              <span class="text-gray-900 dark:text-gray-100 break-all flex-1 truncate" :title="entry.metadata?.uri as string">
+                {{ entry.metadata?.uri }}
+              </span>
+              <span
+                class="px-1.5 py-0.5 text-xs font-medium rounded"
+                :class="getStatusColor(entry.metadata?.status as number)"
+              >
+                {{ entry.metadata?.status }}
+              </span>
+              <span class="text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                {{ formatLatency(entry.metadata?.latency as number) }}
+              </span>
+            </template>
+            <!-- Regular log message -->
+            <span v-else class="text-gray-900 dark:text-gray-100 break-all">
               {{ entry.message }}
             </span>
           </div>

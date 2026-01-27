@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getErrorMessage } from '@/utils/error'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -31,6 +32,12 @@ api.interceptors.response.use(
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
+
+    // Enhance error with translated message
+    if (error.response) {
+      error.translatedMessage = getErrorMessage(error)
+    }
+
     return Promise.reject(error)
   }
 )

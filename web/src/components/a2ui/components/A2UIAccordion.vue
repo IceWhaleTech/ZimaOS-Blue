@@ -73,7 +73,9 @@ function getSectionChildren(sectionIndex: number): Component[] {
   if (!section || !props.component.children) return []
 
   if (section.children && Array.isArray(section.children)) {
-    return section.children.map(i => props.component.children![i]).filter(Boolean)
+    return section.children
+      .map(i => props.component.children![i])
+      .filter((c): c is Component => c !== undefined)
   }
 
   // If no specific children mapping, distribute children evenly

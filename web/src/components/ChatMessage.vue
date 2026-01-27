@@ -43,7 +43,7 @@ function handleCopyClick(event: Event) {
   <div
     class="message flex gap-3 p-4"
     :class="{
-      'bg-gray-800/50': isAssistant,
+      'bg-gray-100 dark:bg-gray-800/50': isAssistant,
       'justify-end': isUser,
     }"
   >
@@ -71,7 +71,7 @@ function handleCopyClick(event: Event) {
 
       <div
         v-else
-        class="assistant-message prose prose-invert max-w-none"
+        class="assistant-message prose prose-slate dark:prose-invert max-w-none"
         @click="handleCopyClick"
         v-html="renderedContent"
       />
@@ -87,7 +87,7 @@ function handleCopyClick(event: Event) {
 
       <!-- Timestamp -->
       <div
-        class="timestamp text-xs text-gray-500 mt-1"
+        class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1"
         :class="{ 'text-right': isUser }"
       >
         {{ formattedTime }}
@@ -116,14 +116,19 @@ function handleCopyClick(event: Event) {
 }
 
 .prose :deep(.inline-code) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.1);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.875em;
 }
 
+:root.dark .prose :deep(.inline-code),
+[data-theme="dark"] .prose :deep(.inline-code) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .prose :deep(a) {
-  color: #60a5fa;
+  color: #3b82f6;
 }
 
 .prose :deep(a:hover) {
@@ -139,6 +144,11 @@ function handleCopyClick(event: Event) {
   border-left-width: 4px;
   padding-left: 1rem;
   font-style: italic;
+  color: #6b7280;
+}
+
+:root.dark .prose :deep(blockquote),
+[data-theme="dark"] .prose :deep(blockquote) {
   color: #9ca3af;
 }
 </style>

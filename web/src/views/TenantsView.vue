@@ -1,18 +1,18 @@
 <template>
   <div class="tenants-view">
     <div class="header">
-      <h1>Workspaces</h1>
+      <h1>{{ t('tenants.title') }}</h1>
       <button class="btn btn-primary" @click="showCreateModal = true">
-        + New Workspace
+        + {{ t('tenants.newWorkspace') }}
       </button>
     </div>
 
     <!-- Tenants Grid -->
-    <div v-if="loading" class="loading">Loading workspaces...</div>
+    <div v-if="loading" class="loading">{{ t('tenants.loadingWorkspaces') }}</div>
     <div v-else-if="tenants.length === 0" class="empty-state">
-      <p>No workspaces yet. Create your first workspace to get started!</p>
+      <p>{{ t('tenants.noWorkspacesYet') }}</p>
       <button class="btn btn-primary" @click="showCreateModal = true">
-        Create Workspace
+        {{ t('tenants.createWorkspace') }}
       </button>
     </div>
     <div v-else class="tenants-grid">
@@ -35,21 +35,21 @@
         </div>
         <p v-if="tenant.description" class="tenant-description">{{ tenant.description }}</p>
         <div class="tenant-meta">
-          <span>Created {{ formatDate(tenant.created_at) }}</span>
+          <span>{{ t('tenants.created') }} {{ formatDate(tenant.created_at) }}</span>
         </div>
         <div class="tenant-actions" @click.stop>
           <button class="btn btn-sm btn-secondary" @click="editTenant(tenant)">
-            Edit
+            {{ t('tenants.edit') }}
           </button>
           <button class="btn btn-sm btn-secondary" @click="manageTenant(tenant)">
-            Manage
+            {{ t('tenants.manage') }}
           </button>
           <button
             v-if="tenant.owner_id === userId"
             class="btn btn-sm btn-danger"
             @click="confirmDelete(tenant)"
           >
-            Delete
+            {{ t('tenants.delete') }}
           </button>
         </div>
       </div>
@@ -59,48 +59,48 @@
     <div v-if="showCreateModal || editingTenant" class="modal-overlay" @click="closeModal">
       <div class="modal" @click.stop>
         <div class="modal-header">
-          <h2>{{ editingTenant ? 'Edit Workspace' : 'Create Workspace' }}</h2>
+          <h2>{{ editingTenant ? t('tenants.editWorkspace') : t('tenants.createWorkspace') }}</h2>
           <button class="close-btn" @click="closeModal">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="name">Name</label>
+            <label for="name">{{ t('tenants.name') }}</label>
             <input
               id="name"
               v-model="formData.name"
               type="text"
-              placeholder="My Workspace"
+              :placeholder="t('tenants.namePlaceholder')"
               @input="!editingTenant && generateSlug()"
             />
           </div>
           <div class="form-group">
-            <label for="slug">Slug</label>
+            <label for="slug">{{ t('tenants.slug') }}</label>
             <input
               id="slug"
               v-model="formData.slug"
               type="text"
-              placeholder="my-workspace"
+              :placeholder="t('tenants.slugPlaceholder')"
               :disabled="!!editingTenant"
             />
-            <p class="hint">URL-friendly identifier (cannot be changed after creation)</p>
+            <p class="hint">{{ t('tenants.slugHint') }}</p>
           </div>
           <div class="form-group">
-            <label for="description">Description</label>
+            <label for="description">{{ t('tenants.description') }}</label>
             <textarea
               id="description"
               v-model="formData.description"
-              placeholder="What is this workspace for?"
+              :placeholder="t('tenants.descriptionPlaceholder')"
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeModal">Cancel</button>
+          <button class="btn btn-secondary" @click="closeModal">{{ t('tenants.cancel') }}</button>
           <button
             class="btn btn-primary"
             :disabled="!canSubmit || submitting"
             @click="handleSubmit"
           >
-            {{ submitting ? 'Saving...' : editingTenant ? 'Save' : 'Create' }}
+            {{ submitting ? t('tenants.saving') : editingTenant ? t('tenants.save') : t('tenants.create') }}
           </button>
         </div>
       </div>
@@ -110,21 +110,21 @@
     <div v-if="deletingTenant" class="modal-overlay" @click="deletingTenant = null">
       <div class="modal modal-sm" @click.stop>
         <div class="modal-header">
-          <h2>Delete Workspace</h2>
+          <h2>{{ t('tenants.deleteWorkspace') }}</h2>
           <button class="close-btn" @click="deletingTenant = null">&times;</button>
         </div>
         <div class="modal-body">
-          <p>Are you sure you want to delete <strong>{{ deletingTenant.name }}</strong>?</p>
-          <p class="warning">This action cannot be undone. All data will be permanently deleted.</p>
+          <p v-html="t('tenants.deleteConfirm', { name: deletingTenant.name })"></p>
+          <p class="warning">{{ t('tenants.deleteWarning') }}</p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="deletingTenant = null">Cancel</button>
+          <button class="btn btn-secondary" @click="deletingTenant = null">{{ t('tenants.cancel') }}</button>
           <button
             class="btn btn-danger"
             :disabled="deleting"
             @click="handleDelete"
           >
-            {{ deleting ? 'Deleting...' : 'Delete' }}
+            {{ deleting ? t('tenants.deleting') : t('tenants.delete') }}
           </button>
         </div>
       </div>
@@ -135,9 +135,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTenantStore } from '@/stores/tenant'
 import type { Tenant } from '@/api/tenant'
 import { getStatusLabel, getStatusColor } from '@/api/tenant'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const tenantStore = useTenantStore()
@@ -175,7 +178,11 @@ function generateSlug() {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
+  return new Date(dateStr).toLocaleDateString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
 }
 
 async function selectTenant(tenant: Tenant) {

@@ -13,26 +13,36 @@ import (
 
 // Registry manages all loaded plugins
 type Registry struct {
-	plugins      map[string]*PluginInfo
-	nativePlugins map[string]NativePlugin
-	tools        map[string]*Tool
-	hooks        map[string][]HookHandler
-	services     map[string]Service
-	commands     map[string]*Command
-	httpHandlers map[string]HTTPHandler
-	mu           sync.RWMutex
+	plugins         map[string]*PluginInfo
+	nativePlugins   map[string]NativePlugin
+	tools           map[string]*Tool
+	hooks           map[string][]HookHandler
+	services        map[string]Service
+	commands        map[string]*Command
+	httpHandlers    map[string]HTTPHandler
+	mu              sync.RWMutex
+	isolationConfig *IsolationConfig
 }
 
 // NewRegistry creates a new plugin registry
 func NewRegistry() *Registry {
+	return NewRegistryWithConfig(nil)
+}
+
+// NewRegistryWithConfig creates a new plugin registry with custom isolation config
+func NewRegistryWithConfig(config *IsolationConfig) *Registry {
+	if config == nil {
+		config = DefaultIsolationConfig()
+	}
 	return &Registry{
-		plugins:       make(map[string]*PluginInfo),
-		nativePlugins: make(map[string]NativePlugin),
-		tools:         make(map[string]*Tool),
-		hooks:         make(map[string][]HookHandler),
-		services:      make(map[string]Service),
-		commands:      make(map[string]*Command),
-		httpHandlers:  make(map[string]HTTPHandler),
+		plugins:         make(map[string]*PluginInfo),
+		nativePlugins:   make(map[string]NativePlugin),
+		tools:           make(map[string]*Tool),
+		hooks:           make(map[string][]HookHandler),
+		services:        make(map[string]Service),
+		commands:        make(map[string]*Command),
+		httpHandlers:    make(map[string]HTTPHandler),
+		isolationConfig: config,
 	}
 }
 
@@ -135,18 +145,65 @@ func (r *Registry) loadPlugin(ctx context.Context, path string, origin PluginOri
 	return nil
 }
 
-// InitializePlugins initializes all loaded plugins
+// InitializePlugins initializes all loaded plugins in dependency order
 func (r *Registry) InitializePlugins(ctx context.Context) error {
 	r.mu.RLock()
-	nativePlugins := make([]NativePlugin, 0, len(r.nativePlugins))
-	for _, p := range r.nativePlugins {
-		nativePlugins = append(nativePlugins, p)
+	pluginsCopy := make(map[string]*PluginInfo, len(r.plugins))
+	for id, info := range r.plugins {
+		pluginsCopy[id] = info
 	}
 	r.mu.RUnlock()
 
-	for _, plugin := range nativePlugins {
+	// Resolve dependencies
+	resolver := NewDependencyResolver(pluginsCopy)
+	result := resolver.Resolve()
+
+	// Log warnings
+	for _, warning := range result.Warnings {
+		logger.Warn().Msg(warning)
+	}
+
+	// Check for errors
+	if len(result.Errors) > 0 {
+		for _, err := range result.Errors {
+			logger.Error().Err(err).Msg("Dependency resolution error")
+		}
+		// Continue with plugins that don't have dependency errors
+	}
+
+	// Initialize plugins in dependency order
+	for _, pluginID := range result.Order {
+		r.mu.RLock()
+		plugin, exists := r.nativePlugins[pluginID]
+		r.mu.RUnlock()
+
+		if !exists {
+			continue // Not a native plugin, skip
+		}
+
+		// Check if dependencies are satisfied
+		satisfied, depErrors := resolver.CheckDependenciesSatisfied(pluginID)
+		if !satisfied {
+			for _, err := range depErrors {
+				logger.Error().Err(err).Str("plugin_id", pluginID).Msg("Dependency not satisfied")
+			}
+			r.mu.Lock()
+			if info, exists := r.plugins[pluginID]; exists {
+				info.Status = StatusError
+				info.Error = "dependency not satisfied"
+			}
+			r.mu.Unlock()
+			continue
+		}
+
 		api := r.createPluginAPI(plugin.ID())
-		if err := plugin.Init(ctx, api); err != nil {
+
+		// Use isolated execution for plugin initialization
+		err := safeExecute(ctx, r.isolationConfig.InitTimeout, plugin.ID(), "init", func(ctx context.Context) error {
+			return plugin.Init(ctx, api)
+		})
+
+		if err != nil {
 			r.mu.Lock()
 			if info, exists := r.plugins[plugin.ID()]; exists {
 				info.Status = StatusError
@@ -161,17 +218,48 @@ func (r *Registry) InitializePlugins(ctx context.Context) error {
 	return nil
 }
 
-// StartPlugins starts all loaded plugins
+// StartPlugins starts all loaded plugins in dependency order
 func (r *Registry) StartPlugins(ctx context.Context) error {
 	r.mu.RLock()
-	nativePlugins := make([]NativePlugin, 0, len(r.nativePlugins))
-	for _, p := range r.nativePlugins {
-		nativePlugins = append(nativePlugins, p)
+	pluginsCopy := make(map[string]*PluginInfo, len(r.plugins))
+	for id, info := range r.plugins {
+		pluginsCopy[id] = info
 	}
 	r.mu.RUnlock()
 
-	for _, plugin := range nativePlugins {
-		if err := plugin.Start(ctx); err != nil {
+	// Resolve dependencies for start order
+	resolver := NewDependencyResolver(pluginsCopy)
+	result := resolver.Resolve()
+
+	// Start plugins in dependency order
+	for _, pluginID := range result.Order {
+		r.mu.RLock()
+		plugin, exists := r.nativePlugins[pluginID]
+		info := r.plugins[pluginID]
+		r.mu.RUnlock()
+
+		if !exists {
+			continue // Not a native plugin, skip
+		}
+
+		// Skip plugins in error state
+		if info != nil && info.Status == StatusError {
+			logger.Warn().Str("plugin_id", pluginID).Msg("Skipping plugin in error state")
+			continue
+		}
+
+		// Use isolated execution for plugin start
+		err := safeExecute(ctx, r.isolationConfig.StartTimeout, plugin.ID(), "start", func(ctx context.Context) error {
+			return plugin.Start(ctx)
+		})
+
+		if err != nil {
+			r.mu.Lock()
+			if info, exists := r.plugins[plugin.ID()]; exists {
+				info.Status = StatusError
+				info.Error = err.Error()
+			}
+			r.mu.Unlock()
 			logger.Error().Err(err).Str("plugin_id", plugin.ID()).Msg("Failed to start plugin")
 			continue
 		}
@@ -187,7 +275,12 @@ func (r *Registry) StartPlugins(ctx context.Context) error {
 	r.mu.RUnlock()
 
 	for _, service := range services {
-		if err := service.Start(ctx); err != nil {
+		// Use isolated execution for service start
+		err := safeExecute(ctx, r.isolationConfig.StartTimeout, "service", fmt.Sprintf("start.%s", service.Name()), func(ctx context.Context) error {
+			return service.Start(ctx)
+		})
+
+		if err != nil {
 			logger.Error().Err(err).Str("service", service.Name()).Msg("Failed to start service")
 			continue
 		}
@@ -208,7 +301,12 @@ func (r *Registry) StopPlugins(ctx context.Context) error {
 	r.mu.RUnlock()
 
 	for _, service := range services {
-		if err := service.Stop(ctx); err != nil {
+		// Use isolated execution for service stop
+		err := safeExecute(ctx, r.isolationConfig.StopTimeout, "service", fmt.Sprintf("stop.%s", service.Name()), func(ctx context.Context) error {
+			return service.Stop(ctx)
+		})
+
+		if err != nil {
 			logger.Error().Err(err).Str("service", service.Name()).Msg("Failed to stop service")
 		}
 	}
@@ -222,7 +320,12 @@ func (r *Registry) StopPlugins(ctx context.Context) error {
 	r.mu.RUnlock()
 
 	for _, plugin := range nativePlugins {
-		if err := plugin.Stop(ctx); err != nil {
+		// Use isolated execution for plugin stop
+		err := safeExecute(ctx, r.isolationConfig.StopTimeout, plugin.ID(), "stop", func(ctx context.Context) error {
+			return plugin.Stop(ctx)
+		})
+
+		if err != nil {
 			logger.Error().Err(err).Str("plugin_id", plugin.ID()).Msg("Failed to stop plugin")
 		}
 	}
@@ -291,11 +394,18 @@ func (r *Registry) ListCommands() []*Command {
 func (r *Registry) TriggerHook(ctx context.Context, event string, data interface{}) error {
 	r.mu.RLock()
 	handlers := r.hooks[event]
+	timeout := r.isolationConfig.HookTimeout
 	r.mu.RUnlock()
 
-	for _, handler := range handlers {
-		if err := handler(ctx, data); err != nil {
-			logger.Error().Err(err).Str("event", event).Msg("Hook handler error")
+	for i, handler := range handlers {
+		// Use isolated execution for hook handlers
+		err := safeExecute(ctx, timeout, fmt.Sprintf("hook.%s.%d", event, i), "trigger", func(ctx context.Context) error {
+			return handler(ctx, data)
+		})
+
+		if err != nil {
+			logger.Error().Err(err).Str("event", event).Int("handler_index", i).Msg("Hook handler error")
+			// Continue processing other handlers even if one fails
 		}
 	}
 
@@ -307,6 +417,45 @@ func (r *Registry) GetHTTPHandler(path string) HTTPHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.httpHandlers[path]
+}
+
+// ResolveDependencies resolves plugin dependencies and returns the result
+func (r *Registry) ResolveDependencies() *ResolutionResult {
+	r.mu.RLock()
+	pluginsCopy := make(map[string]*PluginInfo, len(r.plugins))
+	for id, info := range r.plugins {
+		pluginsCopy[id] = info
+	}
+	r.mu.RUnlock()
+
+	resolver := NewDependencyResolver(pluginsCopy)
+	return resolver.Resolve()
+}
+
+// GetPluginDependencies returns the dependencies of a plugin
+func (r *Registry) GetPluginDependencies(pluginID string) []string {
+	r.mu.RLock()
+	pluginsCopy := make(map[string]*PluginInfo, len(r.plugins))
+	for id, info := range r.plugins {
+		pluginsCopy[id] = info
+	}
+	r.mu.RUnlock()
+
+	resolver := NewDependencyResolver(pluginsCopy)
+	return resolver.GetDependencies(pluginID)
+}
+
+// GetPluginDependents returns plugins that depend on the given plugin
+func (r *Registry) GetPluginDependents(pluginID string) []string {
+	r.mu.RLock()
+	pluginsCopy := make(map[string]*PluginInfo, len(r.plugins))
+	for id, info := range r.plugins {
+		pluginsCopy[id] = info
+	}
+	r.mu.RUnlock()
+
+	resolver := NewDependencyResolver(pluginsCopy)
+	return resolver.GetDependents(pluginID)
 }
 
 // createPluginAPI creates a PluginAPI for a plugin
@@ -345,6 +494,11 @@ func (a *pluginAPIImpl) RegisterTool(tool Tool) error {
 		return fmt.Errorf("tool %s already registered", tool.Name)
 	}
 
+	// Wrap the handler with isolation
+	if tool.Handler != nil {
+		tool.Handler = WrapToolHandler(a.pluginID, tool.Handler, a.registry.isolationConfig.ToolTimeout)
+	}
+
 	a.registry.tools[tool.Name] = &tool
 	logger.Info().Str("plugin_id", a.pluginID).Str("tool", tool.Name).Msg("Registered tool")
 	return nil
@@ -354,7 +508,10 @@ func (a *pluginAPIImpl) RegisterHook(event string, handler HookHandler) error {
 	a.registry.mu.Lock()
 	defer a.registry.mu.Unlock()
 
-	a.registry.hooks[event] = append(a.registry.hooks[event], handler)
+	// Wrap the handler with isolation
+	wrappedHandler := WrapHookHandler(a.pluginID, handler, a.registry.isolationConfig.HookTimeout)
+
+	a.registry.hooks[event] = append(a.registry.hooks[event], wrappedHandler)
 	logger.Info().Str("plugin_id", a.pluginID).Str("event", event).Msg("Registered hook")
 	return nil
 }
@@ -368,7 +525,10 @@ func (a *pluginAPIImpl) RegisterService(service Service) error {
 		return fmt.Errorf("service %s already registered", name)
 	}
 
-	a.registry.services[name] = service
+	// Wrap the service with isolation
+	isolatedService := NewIsolatedService(service, a.pluginID, a.registry.isolationConfig)
+
+	a.registry.services[name] = isolatedService
 	logger.Info().Str("plugin_id", a.pluginID).Str("service", name).Msg("Registered service")
 	return nil
 }
@@ -379,6 +539,11 @@ func (a *pluginAPIImpl) RegisterCommand(command Command) error {
 
 	if _, exists := a.registry.commands[command.Name]; exists {
 		return fmt.Errorf("command %s already registered", command.Name)
+	}
+
+	// Wrap the handler with isolation
+	if command.Handler != nil {
+		command.Handler = WrapCommandHandler(a.pluginID, command.Handler, a.registry.isolationConfig.CommandTimeout)
 	}
 
 	a.registry.commands[command.Name] = &command
@@ -394,7 +559,10 @@ func (a *pluginAPIImpl) RegisterHTTPHandler(path string, handler HTTPHandler) er
 		return fmt.Errorf("HTTP handler for %s already registered", path)
 	}
 
-	a.registry.httpHandlers[path] = handler
+	// Wrap the handler with isolation
+	wrappedHandler := WrapHTTPHandler(a.pluginID, handler, a.registry.isolationConfig.HTTPTimeout)
+
+	a.registry.httpHandlers[path] = wrappedHandler
 	logger.Info().Str("plugin_id", a.pluginID).Str("path", path).Msg("Registered HTTP handler")
 	return nil
 }
@@ -422,4 +590,43 @@ func (l *pluginLogger) Warn(msg string, fields ...interface{}) {
 
 func (l *pluginLogger) Error(msg string, fields ...interface{}) {
 	logger.Error().Str("plugin_id", l.pluginID).Interface("fields", fields).Msg(msg)
+}
+
+// StopPlugin stops a specific plugin by ID
+func (r *Registry) StopPlugin(ctx context.Context, id string) error {
+	r.mu.RLock()
+	plugin, exists := r.nativePlugins[id]
+	r.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("plugin %s not found or not a native plugin", id)
+	}
+
+	err := safeExecute(ctx, r.isolationConfig.StopTimeout, id, "stop", func(ctx context.Context) error {
+		return plugin.Stop(ctx)
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to stop plugin %s: %w", id, err)
+	}
+
+	r.mu.Lock()
+	if info, exists := r.plugins[id]; exists {
+		info.Status = StatusStopped
+	}
+	r.mu.Unlock()
+
+	logger.Info().Str("plugin_id", id).Msg("Stopped plugin")
+	return nil
+}
+
+// UnregisterPlugin removes a plugin from the registry
+func (r *Registry) UnregisterPlugin(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.plugins, id)
+	delete(r.nativePlugins, id)
+
+	logger.Info().Str("plugin_id", id).Msg("Unregistered plugin")
 }

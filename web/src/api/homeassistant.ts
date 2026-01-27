@@ -102,7 +102,7 @@ export async function processCommand(command: string): Promise<HACommandResult> 
 
 // Helper functions
 export function getEntityDomain(entityId: string): string {
-  return entityId.split('.')[0]
+  return entityId.split('.')[0] || ''
 }
 
 export function getEntityName(entity: HAEntity): string {

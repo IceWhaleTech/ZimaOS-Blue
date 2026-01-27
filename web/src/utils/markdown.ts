@@ -14,7 +14,7 @@ function escapeHtml(text: string): string {
     '"': '&quot;',
     "'": '&#039;',
   }
-  return text.replace(/[&<>"']/g, (char) => map[char])
+  return text.replace(/[&<>"']/g, (char) => map[char] || char)
 }
 
 // Parse inline markdown elements
@@ -554,6 +554,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    if (line === undefined) continue
 
     // Code block handling
     if (line.startsWith('```')) {
@@ -594,13 +595,13 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 
     // Headers
     const headerMatch = line.match(/^(#{1,6})\s+(.+)$/)
-    if (headerMatch) {
+    if (headerMatch && headerMatch[1] && headerMatch[2]) {
       flushList()
       const level = headerMatch[1].length
       const text = parseInline(headerMatch[2])
       const sizes = ['text-2xl', 'text-xl', 'text-lg', 'text-base', 'text-sm', 'text-sm']
       result.push(
-        `<h${level} class="${sizes[level - 1]} font-bold my-2">${text}</h${level}>`
+        `<h${level} class="${sizes[level - 1] || 'text-sm'} font-bold my-2">${text}</h${level}>`
       )
       continue
     }
@@ -624,7 +625,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 
     // Unordered list
     const ulMatch = line.match(/^[-*+]\s+(.+)$/)
-    if (ulMatch) {
+    if (ulMatch && ulMatch[1]) {
       inList = true
       listItems.push(`<li>${parseInline(ulMatch[1])}</li>`)
       continue
@@ -632,7 +633,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 
     // Ordered list
     const olMatch = line.match(/^\d+\.\s+(.+)$/)
-    if (olMatch) {
+    if (olMatch && olMatch[1]) {
       if (!inList) {
         inList = true
         listItems = []

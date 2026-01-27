@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi } from '@/api/extauth'
 
+const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -75,7 +77,7 @@ function goToLogin() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-900 px-4">
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
     <div class="max-w-md w-full text-center">
       <!-- Loading State -->
       <div v-if="status === 'loading'" class="space-y-6">
@@ -102,8 +104,8 @@ function goToLogin() {
           </svg>
         </div>
         <div>
-          <h2 class="text-xl font-semibold text-white">Completing sign in...</h2>
-          <p class="text-gray-400 mt-2">Please wait while we verify your credentials</p>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('auth.completingSignIn') }}</h2>
+          <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.verifyingCredentials') }}</p>
         </div>
       </div>
 
@@ -126,8 +128,8 @@ function goToLogin() {
           </svg>
         </div>
         <div>
-          <h2 class="text-xl font-semibold text-white">Sign in successful!</h2>
-          <p class="text-gray-400 mt-2">Redirecting you to the application...</p>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('auth.signInSuccessful') }}</h2>
+          <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.redirecting') }}</p>
         </div>
       </div>
 
@@ -150,15 +152,15 @@ function goToLogin() {
           </svg>
         </div>
         <div>
-          <h2 class="text-xl font-semibold text-white">Sign in failed</h2>
-          <p class="text-gray-400 mt-2">{{ errorMessage }}</p>
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('auth.signInFailed') }}</h2>
+          <p class="text-gray-500 dark:text-gray-400 mt-2">{{ errorMessage }}</p>
         </div>
         <button
           type="button"
           class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
           @click="goToLogin"
         >
-          Back to Login
+          {{ t('auth.backToLogin') }}
         </button>
       </div>
     </div>

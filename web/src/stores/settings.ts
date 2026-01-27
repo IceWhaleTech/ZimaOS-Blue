@@ -11,6 +11,7 @@ interface StoredSettings {
   temperature: number
   maxTokens: number
   apiKeys: Record<string, string>
+  baseUrls: Record<string, string>
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -40,6 +41,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? 2048)
   const apiKeys = ref<Record<string, string>>(stored.apiKeys || {})
+  const baseUrls = ref<Record<string, string>>(stored.baseUrls || {})
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -59,7 +61,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProvider, selectedModel, temperature, maxTokens, apiKeys],
+    [selectedProvider, selectedModel, temperature, maxTokens, apiKeys, baseUrls],
     () => {
       saveSettings({
         selectedProvider: selectedProvider.value,
@@ -67,6 +69,7 @@ export const useSettingsStore = defineStore('settings', () => {
         temperature: temperature.value,
         maxTokens: maxTokens.value,
         apiKeys: apiKeys.value,
+        baseUrls: baseUrls.value,
       })
     },
     { deep: true }
@@ -84,13 +87,19 @@ export const useSettingsStore = defineStore('settings', () => {
       if (providers.value.length > 0) {
         const providerNames = providers.value.map((p) => p.name)
         if (!providerNames.includes(selectedProvider.value)) {
-          selectedProvider.value = providers.value[0].name
+          const firstProvider = providers.value[0]
+          if (firstProvider) {
+            selectedProvider.value = firstProvider.name
+          }
         }
 
         // Set default model if current one is not available
         const currentModels = currentProvider.value?.models || []
         if (currentModels.length > 0 && !currentModels.includes(selectedModel.value)) {
-          selectedModel.value = currentModels[0]
+          const firstModel = currentModels[0]
+          if (firstModel) {
+            selectedModel.value = firstModel
+          }
         }
       }
     } catch (e) {
@@ -114,7 +123,10 @@ export const useSettingsStore = defineStore('settings', () => {
     // Reset model when provider changes
     const models = providers.value.find((p) => p.name === provider)?.models || []
     if (models.length > 0) {
-      selectedModel.value = models[0]
+      const firstModel = models[0]
+      if (firstModel) {
+        selectedModel.value = firstModel
+      }
     }
   }
 
@@ -140,6 +152,16 @@ export const useSettingsStore = defineStore('settings', () => {
     apiKeys.value = newKeys
   }
 
+  function setBaseUrl(provider: string, url: string) {
+    baseUrls.value = { ...baseUrls.value, [provider]: url }
+  }
+
+  function clearBaseUrl(provider: string) {
+    const newUrls = { ...baseUrls.value }
+    delete newUrls[provider]
+    baseUrls.value = newUrls
+  }
+
   function clearError() {
     error.value = null
   }
@@ -153,6 +175,7 @@ export const useSettingsStore = defineStore('settings', () => {
     temperature,
     maxTokens,
     apiKeys,
+    baseUrls,
     loading,
     error,
 
@@ -170,6 +193,8 @@ export const useSettingsStore = defineStore('settings', () => {
     setMaxTokens,
     setApiKey,
     clearApiKey,
+    setBaseUrl,
+    clearBaseUrl,
     clearError,
   }
 })

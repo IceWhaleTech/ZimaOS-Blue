@@ -96,7 +96,7 @@ func (s *HAService) GetAllEntities(ctx context.Context) ([]*Entity, error) {
 			entities = append(entities, e)
 		}
 		s.cacheMu.RUnlock()
-		return entities, nil
+		return s.applyEntityFilter(entities), nil
 	}
 	s.cacheMu.RUnlock()
 
@@ -115,7 +115,7 @@ func (s *HAService) GetAllEntities(ctx context.Context) ([]*Entity, error) {
 	s.cacheExpiry = time.Now().Add(s.cacheTTL)
 	s.cacheMu.Unlock()
 
-	return entities, nil
+	return s.applyEntityFilter(entities), nil
 }
 
 // GetEntitiesByDomain returns entities filtered by domain.
@@ -559,4 +559,103 @@ func (s *HAService) UnsubscribeStateChanges() {
 	s.callbackMu.Lock()
 	s.stateCallback = nil
 	s.callbackMu.Unlock()
+}
+
+// applyEntityFilter filters entities based on the configured filter rules.
+func (s *HAService) applyEntityFilter(entities []*Entity) []*Entity {
+	if s.config == nil || s.config.EntityFilter == nil {
+		return entities
+	}
+
+	filter := s.config.EntityFilter
+	var filtered []*Entity
+
+	for _, e := range entities {
+		if s.shouldIncludeEntity(e, filter) {
+			filtered = append(filtered, e)
+		}
+	}
+
+	return filtered
+}
+
+// shouldIncludeEntity checks if an entity should be included based on filter rules.
+func (s *HAService) shouldIncludeEntity(e *Entity, filter *EntityFilter) bool {
+	domain := e.Domain
+	entityID := e.EntityID
+
+	// Check exclude lists first (exclusions take priority)
+	for _, excludeDomain := range filter.ExcludeDomains {
+		if domain == excludeDomain {
+			return false
+		}
+	}
+
+	for _, excludeEntity := range filter.ExcludeEntities {
+		if entityID == excludeEntity {
+			return false
+		}
+	}
+
+	// If include lists are specified, entity must match at least one
+	hasIncludeRules := len(filter.IncludeDomains) > 0 || len(filter.IncludeEntities) > 0
+
+	if !hasIncludeRules {
+		return true
+	}
+
+	// Check include lists
+	for _, includeDomain := range filter.IncludeDomains {
+		if domain == includeDomain {
+			return true
+		}
+	}
+
+	for _, includeEntity := range filter.IncludeEntities {
+		if entityID == includeEntity {
+			return true
+		}
+	}
+
+	return false
+}
+
+// SetEntityFilter sets the entity filter configuration.
+func (s *HAService) SetEntityFilter(filter *EntityFilter) {
+	if s.config == nil {
+		s.config = &Config{}
+	}
+	s.config.EntityFilter = filter
+	// Invalidate cache to apply new filter
+	s.cacheMu.Lock()
+	s.cacheExpiry = time.Time{}
+	s.cacheMu.Unlock()
+}
+
+// GetEntityFilter returns the current entity filter configuration.
+func (s *HAService) GetEntityFilter() *EntityFilter {
+	if s.config == nil {
+		return nil
+	}
+	return s.config.EntityFilter
+}
+
+// SetPollInterval sets the polling interval for entity state updates.
+func (s *HAService) SetPollInterval(interval time.Duration) {
+	if s.config == nil {
+		s.config = &Config{}
+	}
+	s.config.PollInterval = interval
+	s.cacheTTL = interval
+}
+
+// GetPollInterval returns the current polling interval.
+func (s *HAService) GetPollInterval() time.Duration {
+	if s.config == nil {
+		return s.cacheTTL
+	}
+	if s.config.PollInterval > 0 {
+		return s.config.PollInterval
+	}
+	return s.cacheTTL
 }

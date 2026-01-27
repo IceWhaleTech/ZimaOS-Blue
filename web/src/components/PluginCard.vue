@@ -93,8 +93,8 @@ const typeLabel = computed(() => {
         <div>
           <h3 class="text-white font-medium">{{ plugin.name }}</h3>
           <div class="flex items-center gap-2 text-xs text-gray-400">
-            <span>v{{ plugin.version }}</span>
-            <span>•</span>
+            <span v-if="plugin.version && plugin.version !== 'latest'">v{{ plugin.version }}</span>
+            <span v-if="plugin.version && plugin.version !== 'latest'">•</span>
             <span>{{ typeLabel }}</span>
           </div>
         </div>
@@ -122,7 +122,7 @@ const typeLabel = computed(() => {
 
     <!-- Author & Capabilities -->
     <div class="flex flex-wrap gap-2 mb-4">
-      <span v-if="plugin.author" class="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300">
+      <span v-if="plugin.author && plugin.author !== 'clawdbot' && plugin.author !== 'moltbot'" class="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300">
         by {{ plugin.author }}
       </span>
       <span

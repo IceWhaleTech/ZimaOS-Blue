@@ -1,63 +1,436 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { storeToRefs } from 'pinia'
+import Skeleton from '@/components/Skeleton.vue'
 
+const { t } = useI18n()
 const systemStore = useSystemStore()
-const { health, loading, error } = storeToRefs(systemStore)
+const { health, workerStats, loading } = storeToRefs(systemStore)
+
+let refreshInterval: ReturnType<typeof setInterval> | null = null
+const autoRefresh = ref(true)
+
+// Format uptime string to limit decimal places
+function formatUptime(uptime: string): string {
+  return uptime.replace(/(\d+)\.(\d{2})\d*s/g, '$1.$2s')
+}
 
 onMounted(() => {
-  systemStore.fetchHealth()
+  systemStore.fetchAll()
+  refreshInterval = setInterval(() => {
+    if (autoRefresh.value) {
+      systemStore.fetchAll()
+    }
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
 })
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold text-gray-900 mb-8">Welcome to ZimaOS Echo</h1>
-
-    <div v-if="loading" class="text-center py-8">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-      <p class="mt-4 text-gray-500">Loading...</p>
+  <div class="home-page">
+    <!-- Hero Section -->
+    <div class="hero-section">
+      <div class="hero-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+      <h1 class="hero-title">{{ t('home.welcome') }}</h1>
+      <p class="hero-description">{{ t('home.description') }}</p>
     </div>
 
-    <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4">
-      <p class="text-red-700">{{ error }}</p>
+    <!-- Auto Refresh Toggle -->
+    <div class="refresh-toggle">
+      <label class="toggle-label">
+        <input v-model="autoRefresh" type="checkbox" class="toggle-checkbox" />
+        <span class="toggle-text">{{ t('dashboard.autoRefresh') }}</span>
+      </label>
     </div>
 
-    <div v-else-if="health" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-medium text-gray-500 mb-2">Status</h3>
-        <p class="text-2xl font-bold" :class="health.status === 'ok' ? 'text-green-600' : 'text-red-600'">
-          {{ health.status.toUpperCase() }}
-        </p>
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <!-- Status Card -->
+      <div class="stat-card">
+        <div class="stat-icon status-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">{{ t('home.status') }}</span>
+          <Skeleton v-if="loading && !health" height="1.75rem" width="4rem" rounded="md" />
+          <span v-else class="stat-value" :class="health?.status === 'ok' ? 'text-cta' : 'text-red-400'">
+            {{ health?.status === 'ok' ? t('common.online') : (health?.status?.toUpperCase() || '-') }}
+          </span>
+        </div>
       </div>
 
-      <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-medium text-gray-500 mb-2">Version</h3>
-        <p class="text-2xl font-bold text-gray-900">{{ health.version }}</p>
+      <!-- Version Card -->
+      <div class="stat-card">
+        <div class="stat-icon version-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">{{ t('home.version') }}</span>
+          <Skeleton v-if="loading && !health" height="1.75rem" width="5rem" rounded="md" />
+          <span v-else class="stat-value">{{ health?.version || '-' }}</span>
+        </div>
       </div>
 
-      <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-medium text-gray-500 mb-2">Uptime</h3>
-        <p class="text-2xl font-bold text-gray-900">{{ health.uptime }}</p>
+      <!-- Uptime Card -->
+      <div class="stat-card">
+        <div class="stat-icon uptime-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">{{ t('home.uptime') }}</span>
+          <Skeleton v-if="loading && !health" height="1.75rem" width="6rem" rounded="md" />
+          <span v-else class="stat-value">{{ health ? formatUptime(health.uptime) : '-' }}</span>
+        </div>
       </div>
 
-      <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-medium text-gray-500 mb-2">Memory</h3>
-        <p class="text-2xl font-bold text-gray-900">
-          {{ (health.mem_alloc_bytes / 1024 / 1024).toFixed(2) }} MB
-        </p>
+      <!-- Memory Card -->
+      <div class="stat-card">
+        <div class="stat-icon memory-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">{{ t('home.memory') }}</span>
+          <Skeleton v-if="loading && !health" height="1.75rem" width="5rem" rounded="md" />
+          <span v-else class="stat-value">{{ health ? (health.mem_alloc_bytes / 1024 / 1024).toFixed(1) + ' MB' : '-' }}</span>
+        </div>
       </div>
 
-      <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-medium text-gray-500 mb-2">Goroutines</h3>
-        <p class="text-2xl font-bold text-gray-900">{{ health.goroutines }}</p>
+      <!-- Goroutines Card -->
+      <div class="stat-card">
+        <div class="stat-icon goroutines-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">{{ t('home.goroutines') }}</span>
+          <Skeleton v-if="loading && !health" height="1.75rem" width="3rem" rounded="md" />
+          <span v-else class="stat-value">{{ health?.goroutines || '-' }}</span>
+        </div>
       </div>
 
-      <div class="bg-white rounded-lg shadow p-6">
-        <h3 class="text-sm font-medium text-gray-500 mb-2">Go Version</h3>
-        <p class="text-2xl font-bold text-gray-900">{{ health.go_version }}</p>
+      <!-- CPUs Card -->
+      <div class="stat-card">
+        <div class="stat-icon cpu-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">{{ t('dashboard.cpus') }}</span>
+          <Skeleton v-if="loading && !health" height="1.75rem" width="2rem" rounded="md" />
+          <span v-else class="stat-value">{{ health?.num_cpu || '-' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Worker Pool Section -->
+    <div class="worker-section">
+      <div class="worker-header">
+        <div class="worker-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        </div>
+        <h2 class="worker-title">{{ t('dashboard.workerPool') }}</h2>
+      </div>
+
+      <div class="worker-stats">
+        <div class="worker-stat">
+          <span class="worker-stat-label">{{ t('dashboard.poolSize') }}</span>
+          <Skeleton v-if="loading && !workerStats" height="1.5rem" width="3rem" rounded="md" />
+          <span v-else class="worker-stat-value">{{ workerStats?.pool_size || '-' }}</span>
+        </div>
+        <div class="worker-stat">
+          <span class="worker-stat-label">{{ t('dashboard.running') }}</span>
+          <Skeleton v-if="loading && !workerStats" height="1.5rem" width="2rem" rounded="md" />
+          <span v-else class="worker-stat-value">{{ workerStats?.running || '-' }}</span>
+        </div>
+        <div class="worker-stat">
+          <span class="worker-stat-label">{{ t('dashboard.totalTasks') }}</span>
+          <Skeleton v-if="loading && !workerStats" height="1.5rem" width="4rem" rounded="md" />
+          <span v-else class="worker-stat-value">{{ workerStats?.total || '-' }}</span>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="worker-progress">
+        <div class="progress-header">
+          <span class="progress-label">{{ t('dashboard.poolUsage') }}</span>
+          <Skeleton v-if="loading && !workerStats" height="1rem" width="3rem" rounded="md" />
+          <span v-else class="progress-value">
+            {{ workerStats ? `${workerStats.running}/${workerStats.pool_size}` : '-' }}
+          </span>
+        </div>
+        <div class="progress-bar">
+          <div
+            v-if="workerStats"
+            class="progress-fill"
+            :style="{ width: `${(workerStats.running / workerStats.pool_size) * 100}%` }"
+          ></div>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.home-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Hero Section */
+.hero-section {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.hero-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--color-accent, #3B82F6), var(--color-cta, #10B981));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+}
+
+.hero-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 8px;
+}
+
+.hero-description {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Refresh Toggle */
+.refresh-toggle {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.toggle-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.toggle-text {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (min-width: 640px) {
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.stat-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  background: var(--glass-bg-hover);
+  transform: translateY(-2px);
+}
+
+.stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.status-icon { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+.version-icon { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
+.uptime-icon { background: rgba(139, 92, 246, 0.15); color: #8B5CF6; }
+.memory-icon { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+.goroutines-icon { background: rgba(6, 182, 212, 0.15); color: #06B6D4; }
+.cpu-icon { background: rgba(236, 72, 153, 0.15); color: #EC4899; }
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Worker Section */
+.worker-section {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.worker-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.worker-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3B82F6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.worker-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.worker-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.worker-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.worker-stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.worker-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.worker-progress {
+  margin-top: 16px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.progress-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.progress-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--glass-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent, #3B82F6), var(--color-cta, #10B981));
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+/* Dark mode adjustments */
+:root.light .stat-card,
+:root.light .worker-section {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+:root.light .stat-card:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+</style>

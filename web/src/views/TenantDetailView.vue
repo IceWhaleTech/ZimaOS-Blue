@@ -18,21 +18,21 @@
           :class="{ active: activeTab === 'members' }"
           @click="activeTab = 'members'"
         >
-          Members
+          {{ t('tenants.tabs.members') }}
         </button>
         <button
           class="tab-btn"
           :class="{ active: activeTab === 'invitations' }"
           @click="activeTab = 'invitations'"
         >
-          Invitations
+          {{ t('tenants.tabs.invitations') }}
         </button>
         <button
           class="tab-btn"
           :class="{ active: activeTab === 'settings' }"
           @click="activeTab = 'settings'"
         >
-          Settings
+          {{ t('tenants.tabs.settings') }}
         </button>
         <button
           v-if="isOwner"
@@ -40,16 +40,16 @@
           :class="{ active: activeTab === 'limits' }"
           @click="activeTab = 'limits'"
         >
-          Limits
+          {{ t('tenants.tabs.limits') }}
         </button>
       </div>
 
       <!-- Members Tab -->
       <div v-if="activeTab === 'members'" class="tab-content">
         <div class="section-header">
-          <h2>Members</h2>
+          <h2>{{ t('tenants.members.title') }}</h2>
           <button v-if="isAdmin" class="btn btn-primary" @click="showInviteModal = true">
-            + Invite Member
+            + {{ t('tenants.members.inviteMember') }}
           </button>
         </div>
 
@@ -82,14 +82,14 @@
       <!-- Invitations Tab -->
       <div v-if="activeTab === 'invitations'" class="tab-content">
         <div class="section-header">
-          <h2>Pending Invitations</h2>
+          <h2>{{ t('tenants.invitations.title') }}</h2>
           <button v-if="isAdmin" class="btn btn-primary" @click="showInviteModal = true">
-            + Invite Member
+            + {{ t('tenants.members.inviteMember') }}
           </button>
         </div>
 
         <div v-if="invitations.length === 0" class="empty-state">
-          <p>No pending invitations</p>
+          <p>{{ t('tenants.invitations.noPendingInvitations') }}</p>
         </div>
         <div v-else class="invitations-list">
           <div v-for="invitation in invitations" :key="invitation.id" class="invitation-card">
@@ -100,14 +100,14 @@
               </span>
             </div>
             <div class="invitation-meta">
-              <span>Expires {{ formatDate(invitation.expires_at) }}</span>
+              <span>{{ t('tenants.invitations.expires') }} {{ formatDate(invitation.expires_at) }}</span>
             </div>
             <button
               v-if="isAdmin"
               class="btn btn-sm btn-danger"
               @click="cancelInvitation(invitation.id)"
             >
-              Cancel
+              {{ t('tenants.invitations.cancel') }}
             </button>
           </div>
         </div>
@@ -116,12 +116,12 @@
       <!-- Settings Tab -->
       <div v-if="activeTab === 'settings'" class="tab-content">
         <div class="section-header">
-          <h2>Settings</h2>
+          <h2>{{ t('tenants.settings.title') }}</h2>
         </div>
 
         <div class="settings-form">
           <div class="form-group">
-            <label for="language">Default Language</label>
+            <label for="language">{{ t('tenants.settings.defaultLanguage') }}</label>
             <select id="language" v-model="settingsForm.default_language" :disabled="!isAdmin">
               <option value="en">English</option>
               <option value="zh">Chinese</option>
@@ -131,7 +131,7 @@
           </div>
 
           <div class="form-group">
-            <label for="timezone">Timezone</label>
+            <label for="timezone">{{ t('tenants.settings.timezone') }}</label>
             <select id="timezone" v-model="settingsForm.timezone" :disabled="!isAdmin">
               <option value="UTC">UTC</option>
               <option value="America/New_York">Eastern Time</option>
@@ -144,7 +144,7 @@
 
           <div v-if="isAdmin" class="form-actions">
             <button class="btn btn-primary" :disabled="savingSettings" @click="saveSettings">
-              {{ savingSettings ? 'Saving...' : 'Save Settings' }}
+              {{ savingSettings ? t('tenants.settings.saving') : t('tenants.settings.saveSettings') }}
             </button>
           </div>
         </div>
@@ -153,28 +153,28 @@
       <!-- Limits Tab -->
       <div v-if="activeTab === 'limits' && isOwner" class="tab-content">
         <div class="section-header">
-          <h2>Resource Limits</h2>
+          <h2>{{ t('tenants.limits.title') }}</h2>
         </div>
 
         <div class="limits-grid">
           <div class="limit-card">
-            <div class="limit-label">Max Users</div>
+            <div class="limit-label">{{ t('tenants.limits.maxUsers') }}</div>
             <div class="limit-value">{{ limits?.max_users || 0 }}</div>
           </div>
           <div class="limit-card">
-            <div class="limit-label">Max Storage</div>
+            <div class="limit-label">{{ t('tenants.limits.maxStorage') }}</div>
             <div class="limit-value">{{ formatStorage(limits?.max_storage || 0) }}</div>
           </div>
           <div class="limit-card">
-            <div class="limit-label">Max API Requests/Day</div>
+            <div class="limit-label">{{ t('tenants.limits.maxApiRequests') }}</div>
             <div class="limit-value">{{ limits?.max_api_requests || 0 }}</div>
           </div>
           <div class="limit-card">
-            <div class="limit-label">Max Workflows</div>
+            <div class="limit-label">{{ t('tenants.limits.maxWorkflows') }}</div>
             <div class="limit-value">{{ limits?.max_workflows || 0 }}</div>
           </div>
           <div class="limit-card">
-            <div class="limit-label">Max Channels</div>
+            <div class="limit-label">{{ t('tenants.limits.maxChannels') }}</div>
             <div class="limit-value">{{ limits?.max_channels || 0 }}</div>
           </div>
         </div>
@@ -185,35 +185,35 @@
     <div v-if="showInviteModal" class="modal-overlay" @click="showInviteModal = false">
       <div class="modal" @click.stop>
         <div class="modal-header">
-          <h2>Invite Member</h2>
+          <h2>{{ t('tenants.invite.title') }}</h2>
           <button class="close-btn" @click="showInviteModal = false">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="invite-email">Email Address</label>
+            <label for="invite-email">{{ t('tenants.invite.emailAddress') }}</label>
             <input
               id="invite-email"
               v-model="inviteForm.email"
               type="email"
-              placeholder="user@example.com"
+              :placeholder="t('tenants.invite.emailPlaceholder')"
             />
           </div>
           <div class="form-group">
-            <label for="invite-role">Role</label>
+            <label for="invite-role">{{ t('tenants.invite.role') }}</label>
             <select id="invite-role" v-model="inviteForm.role">
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
+              <option value="member">{{ t('tenants.members.roles.member') }}</option>
+              <option value="admin">{{ t('tenants.members.roles.admin') }}</option>
             </select>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showInviteModal = false">Cancel</button>
+          <button class="btn btn-secondary" @click="showInviteModal = false">{{ t('tenants.cancel') }}</button>
           <button
             class="btn btn-primary"
             :disabled="!canInvite || inviting"
             @click="handleInvite"
           >
-            {{ inviting ? 'Sending...' : 'Send Invitation' }}
+            {{ inviting ? t('tenants.invite.sending') : t('tenants.invite.sendInvitation') }}
           </button>
         </div>
       </div>
@@ -223,16 +223,16 @@
     <div v-if="removingMember" class="modal-overlay" @click="removingMember = null">
       <div class="modal modal-sm" @click.stop>
         <div class="modal-header">
-          <h2>Remove Member</h2>
+          <h2>{{ t('tenants.members.remove') }}</h2>
           <button class="close-btn" @click="removingMember = null">&times;</button>
         </div>
         <div class="modal-body">
-          <p>Are you sure you want to remove <strong>{{ removingMember.username }}</strong> from this workspace?</p>
+          <p v-html="t('tenants.members.removeConfirm', { username: removingMember.username })"></p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="removingMember = null">Cancel</button>
+          <button class="btn btn-secondary" @click="removingMember = null">{{ t('tenants.cancel') }}</button>
           <button class="btn btn-danger" :disabled="removing" @click="handleRemoveMember">
-            {{ removing ? 'Removing...' : 'Remove' }}
+            {{ removing ? t('tenants.members.removing') : t('tenants.members.remove') }}
           </button>
         </div>
       </div>
@@ -243,10 +243,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTenantStore } from '@/stores/tenant'
 import type { TenantMember, TenantInvitation, MemberRole, TenantSettings, TenantLimits } from '@/api/tenant'
 import { getRoleLabel, getRoleColor, formatStorageSize } from '@/api/tenant'
 import * as tenantApi from '@/api/tenant'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -298,7 +301,11 @@ function getInitial(name: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString()
+  return new Date(dateStr).toLocaleDateString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
 }
 
 function formatStorage(bytes: number): string {

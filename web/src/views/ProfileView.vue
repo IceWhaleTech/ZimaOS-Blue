@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi, getProviderDisplayName } from '@/api/extauth'
 import type { CreateApiKeyRequest } from '@/api/auth'
 import type { ProviderInfo, LinkedAccount, ProviderType } from '@/api/extauth'
+import MFASettings from '@/components/MFASettings.vue'
 
+const { t } = useI18n()
 const authStore = useAuthStore()
 
 // Profile editing
@@ -29,22 +32,22 @@ const newKeyExpiry = ref('30d')
 const createdKey = ref<string | null>(null)
 const copiedKey = ref(false)
 
-const availableScopes = [
-  { value: 'chat', label: 'Chat', description: 'Send and receive chat messages' },
-  { value: 'chat.read', label: 'Chat Read', description: 'Read chat history only' },
-  { value: 'skills.execute', label: 'Execute Skills', description: 'Execute skills and tools' },
-  { value: 'skills.list', label: 'List Skills', description: 'List available skills' },
-  { value: 'plugins.manage', label: 'Manage Plugins', description: 'Enable/disable plugins' },
-  { value: 'system.read', label: 'System Read', description: 'Read system status' },
-]
+const availableScopes = computed(() => [
+  { value: 'chat', label: t('profile.scopeChat'), description: t('profile.scopeChatDesc') },
+  { value: 'chat.read', label: t('profile.scopeChatRead'), description: t('profile.scopeChatReadDesc') },
+  { value: 'skills.execute', label: t('profile.scopeSkillsExecute'), description: t('profile.scopeSkillsExecuteDesc') },
+  { value: 'skills.list', label: t('profile.scopeSkillsList'), description: t('profile.scopeSkillsListDesc') },
+  { value: 'plugins.manage', label: t('profile.scopePluginsManage'), description: t('profile.scopePluginsManageDesc') },
+  { value: 'system.read', label: t('profile.scopeSystemRead'), description: t('profile.scopeSystemReadDesc') },
+])
 
-const expiryOptions = [
-  { value: '7d', label: '7 days' },
-  { value: '30d', label: '30 days' },
-  { value: '90d', label: '90 days' },
-  { value: '365d', label: '1 year' },
-  { value: '', label: 'Never' },
-]
+const expiryOptions = computed(() => [
+  { value: '7d', label: t('profile.expiry7Days') },
+  { value: '30d', label: t('profile.expiry30Days') },
+  { value: '90d', label: t('profile.expiry90Days') },
+  { value: '365d', label: t('profile.expiry1Year') },
+  { value: '', label: t('profile.expiryNever') },
+])
 
 const passwordsMatch = computed(() => {
   if (!editPassword.value && !editPasswordConfirm.value) return true
@@ -90,22 +93,22 @@ async function linkProvider(provider: ProviderInfo) {
     const callbackUrl = `${window.location.origin}/auth/callback/${provider.id}`
     window.location.href = `/api/v1/auth/link/${provider.id}?redirect_uri=${encodeURIComponent(callbackUrl)}`
   } catch (e) {
-    authStore.error = e instanceof Error ? e.message : 'Failed to start linking'
+    authStore.error = e instanceof Error ? e.message : t('profile.failedToStartLinking')
     linkingProvider.value = null
   }
 }
 
 async function unlinkProvider(providerId: string) {
-  if (!confirm('Are you sure you want to unlink this account?')) {
+  if (!confirm(t('profile.confirmUnlinkAccount'))) {
     return
   }
   try {
     unlinkingProvider.value = providerId
     await extauthApi.unlinkAccount(providerId)
     linkedAccounts.value = linkedAccounts.value.filter(a => a.provider_id !== providerId)
-    showSaveStatus('Account unlinked successfully')
+    showSaveStatus(t('profile.accountUnlinkedSuccessfully'))
   } catch (e) {
-    authStore.error = e instanceof Error ? e.message : 'Failed to unlink account'
+    authStore.error = e instanceof Error ? e.message : t('profile.failedToUnlinkAccount')
   } finally {
     unlinkingProvider.value = null
   }
@@ -171,7 +174,7 @@ async function saveProfile() {
   const success = await authStore.updateProfile(data)
   if (success) {
     isEditingProfile.value = false
-    showSaveStatus('Profile updated successfully')
+    showSaveStatus(t('profile.profileUpdatedSuccessfully'))
   }
 }
 
@@ -180,6 +183,10 @@ function showSaveStatus(message: string) {
   setTimeout(() => {
     profileSaveStatus.value = null
   }, 3000)
+}
+
+function handleMFAStatusChange(message: string) {
+  showSaveStatus(message)
 }
 
 function openCreateKeyModal() {
@@ -226,7 +233,7 @@ async function copyKey() {
 }
 
 async function deleteApiKey(id: string) {
-  if (confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+  if (confirm(t('profile.confirmDeleteApiKey'))) {
     await authStore.deleteApiKey(id)
   }
 }
@@ -250,8 +257,8 @@ function toggleScope(scope: string) {
 </script>
 
 <template>
-  <div class="profile-view p-6 max-w-4xl mx-auto">
-    <h1 class="text-2xl font-bold text-white mb-6">Profile</h1>
+  <div class="profile-view p-4 sm:p-6 max-w-4xl mx-auto">
+    <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ $t('profile.title') }}</h1>
 
     <!-- Save status notification -->
     <div
@@ -262,11 +269,11 @@ function toggleScope(scope: string) {
     </div>
 
     <!-- User Profile Section -->
-    <section class="mb-8">
-      <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+    <section class="mb-6 sm:mb-8">
+      <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5"
+          class="h-5 w-5 flex-shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -278,26 +285,26 @@ function toggleScope(scope: string) {
             d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
           />
         </svg>
-        Account Information
+        <span class="truncate">{{ $t('profile.accountInformation') }}</span>
       </h2>
 
-      <div class="bg-gray-800 rounded-lg p-6">
+      <div class="glass-card p-4 sm:p-6">
         <div v-if="authStore.user" class="space-y-4">
           <!-- Username (read-only) -->
           <div>
-            <label class="block text-sm text-gray-400 mb-1">Username</label>
-            <div class="text-white font-medium">{{ authStore.user.username }}</div>
+            <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ $t('profile.username') }}</label>
+            <div class="text-gray-900 dark:text-white font-medium">{{ authStore.user.username }}</div>
           </div>
 
           <!-- Role -->
           <div>
-            <label class="block text-sm text-gray-400 mb-1">Role</label>
+            <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ $t('profile.role') }}</label>
             <span
               class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
               :class="
                 authStore.user.role === 'admin'
-                  ? 'bg-purple-900/50 text-purple-300'
-                  : 'bg-blue-900/50 text-blue-300'
+                  ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
+                  : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
               "
             >
               {{ authStore.user.role }}
@@ -306,88 +313,91 @@ function toggleScope(scope: string) {
 
           <!-- Email -->
           <div>
-            <label class="block text-sm text-gray-400 mb-1">Email</label>
+            <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ $t('profile.email') }}</label>
             <div v-if="!isEditingProfile" class="flex items-center gap-2">
-              <span class="text-white">{{ authStore.user.email || 'Not set' }}</span>
+              <span class="text-gray-900 dark:text-white">{{ authStore.user.email || $t('profile.notSet') }}</span>
             </div>
             <input
               v-else
               v-model="editEmail"
               type="email"
-              class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter email address"
+              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+              :placeholder="$t('profile.enterEmailAddress')"
             />
           </div>
 
           <!-- Password (edit mode only) -->
           <div v-if="isEditingProfile" class="space-y-4">
             <div>
-              <label class="block text-sm text-gray-400 mb-1">New Password</label>
+              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ $t('profile.newPassword') }}</label>
               <input
                 v-model="editPassword"
                 type="password"
-                class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Leave blank to keep current password"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                :placeholder="$t('profile.leaveBlankToKeepPassword')"
               />
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-1">Confirm Password</label>
+              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ $t('profile.confirmPassword') }}</label>
               <input
                 v-model="editPasswordConfirm"
                 type="password"
-                class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
                 :class="{ 'ring-2 ring-red-500': editPassword && !passwordsMatch }"
-                placeholder="Confirm new password"
+                :placeholder="$t('profile.confirmNewPasswordPlaceholder')"
               />
-              <p v-if="editPassword && !passwordsMatch" class="text-red-400 text-sm mt-1">
-                Passwords do not match
+              <p v-if="editPassword && !passwordsMatch" class="text-red-500 dark:text-red-400 text-sm mt-1">
+                {{ $t('profile.passwordsDoNotMatch') }}
               </p>
             </div>
           </div>
 
           <!-- Member since -->
           <div>
-            <label class="block text-sm text-gray-400 mb-1">Member since</label>
-            <div class="text-white">{{ formatDate(authStore.user.created_at) }}</div>
+            <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ $t('profile.memberSince') }}</label>
+            <div class="text-gray-900 dark:text-white">{{ formatDate(authStore.user.created_at) }}</div>
           </div>
 
           <!-- Action buttons -->
           <div class="flex gap-3 pt-4">
             <button
               v-if="!isEditingProfile"
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors"
               @click="startEditProfile"
             >
-              Edit Profile
+              {{ $t('profile.editProfile') }}
             </button>
             <template v-else>
               <button
-                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
-                :disabled="authStore.loading || (editPassword && !passwordsMatch)"
+                class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+                :disabled="authStore.loading || (editPassword && !passwordsMatch) || false"
                 @click="saveProfile"
               >
-                {{ authStore.loading ? 'Saving...' : 'Save Changes' }}
+                {{ authStore.loading ? $t('profile.saving') : $t('profile.saveChanges') }}
               </button>
               <button
-                class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm transition-colors"
+                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded-lg text-sm transition-colors"
                 @click="cancelEditProfile"
               >
-                Cancel
+                {{ $t('common.cancel') }}
               </button>
             </template>
           </div>
         </div>
 
-        <div v-else class="text-gray-400 text-center py-4">Loading user information...</div>
+        <div v-else class="text-gray-500 dark:text-slate-400 text-center py-4">{{ $t('profile.loadingUserInformation') }}</div>
       </div>
     </section>
 
+    <!-- MFA Settings Section -->
+    <MFASettings @status-change="handleMFAStatusChange" />
+
     <!-- Linked Accounts Section -->
-    <section v-if="availableProviders.length > 0" class="mb-8">
-      <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+    <section v-if="availableProviders.length > 0" class="mb-6 sm:mb-8">
+      <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5"
+          class="h-5 w-5 flex-shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -399,22 +409,22 @@ function toggleScope(scope: string) {
             d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
           />
         </svg>
-        Linked Accounts
+        <span class="truncate">{{ $t('profile.linkedAccounts') }}</span>
       </h2>
 
-      <div class="bg-gray-800 rounded-lg overflow-hidden">
-        <div v-if="loadingLinkedAccounts" class="p-6 text-gray-400 text-center">
-          Loading linked accounts...
+      <div class="glass-card overflow-hidden">
+        <div v-if="loadingLinkedAccounts" class="p-4 sm:p-6 text-gray-500 dark:text-slate-400 text-center">
+          {{ $t('profile.loadingLinkedAccounts') }}
         </div>
-        <div v-else class="divide-y divide-gray-700">
+        <div v-else class="divide-y divide-gray-200 dark:divide-slate-700">
           <div
             v-for="provider in availableProviders"
             :key="provider.id"
-            class="p-4 flex items-center justify-between"
+            class="p-3 sm:p-4 flex items-center justify-between"
           >
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
               <!-- Provider Icon -->
-              <div class="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center">
+              <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
                 <img
                   v-if="provider.icon_url"
                   :src="provider.icon_url"
@@ -423,7 +433,7 @@ function toggleScope(scope: string) {
                 />
                 <svg
                   v-else
-                  class="h-6 w-6 text-gray-300"
+                  class="h-6 w-6 text-gray-600 dark:text-gray-300"
                   viewBox="0 0 24 24"
                   fill="currentColor"
                 >
@@ -432,17 +442,17 @@ function toggleScope(scope: string) {
               </div>
 
               <!-- Provider Info -->
-              <div>
-                <h3 class="text-white font-medium">{{ getProviderName(provider) }}</h3>
+              <div class="min-w-0">
+                <h3 class="text-gray-900 dark:text-white font-medium truncate">{{ getProviderName(provider) }}</h3>
                 <template v-if="isProviderLinked(provider.id)">
-                  <p class="text-sm text-gray-400">
-                    {{ getLinkedAccount(provider.id)?.email || getLinkedAccount(provider.id)?.name || 'Connected' }}
+                  <p class="text-sm text-gray-500 dark:text-slate-400 truncate">
+                    {{ getLinkedAccount(provider.id)?.email || getLinkedAccount(provider.id)?.name || $t('profile.connected') }}
                   </p>
-                  <p class="text-xs text-gray-500">
-                    Linked {{ formatDate(getLinkedAccount(provider.id)!.created_at) }}
+                  <p class="text-xs text-gray-400 dark:text-slate-500">
+                    {{ $t('profile.linked') }} {{ formatDate(getLinkedAccount(provider.id)!.created_at) }}
                   </p>
                 </template>
-                <p v-else class="text-sm text-gray-500">Not connected</p>
+                <p v-else class="text-sm text-gray-400 dark:text-slate-500">{{ $t('profile.notConnected') }}</p>
               </div>
             </div>
 
@@ -450,18 +460,18 @@ function toggleScope(scope: string) {
             <button
               v-if="isProviderLinked(provider.id)"
               :disabled="unlinkingProvider === provider.id"
-              class="px-4 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+              class="px-3 sm:px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
               @click="unlinkProvider(provider.id)"
             >
-              {{ unlinkingProvider === provider.id ? 'Unlinking...' : 'Unlink' }}
+              {{ unlinkingProvider === provider.id ? $t('profile.unlinking') : $t('profile.unlink') }}
             </button>
             <button
               v-else
               :disabled="linkingProvider === provider.id"
-              class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              class="px-3 sm:px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
               @click="linkProvider(provider)"
             >
-              {{ linkingProvider === provider.id ? 'Connecting...' : 'Connect' }}
+              {{ linkingProvider === provider.id ? $t('profile.connecting') : $t('profile.connect') }}
             </button>
           </div>
         </div>
@@ -469,12 +479,12 @@ function toggleScope(scope: string) {
     </section>
 
     <!-- API Keys Section -->
-    <section class="mb-8">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+    <section class="mb-6 sm:mb-8">
+      <div class="flex items-center justify-between mb-3 sm:mb-4">
+        <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
+            class="h-5 w-5 flex-shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -486,10 +496,10 @@ function toggleScope(scope: string) {
               d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
             />
           </svg>
-          API Keys
+          <span class="truncate">{{ $t('profile.apiKeys') }}</span>
         </h2>
         <button
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+          class="px-3 sm:px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2 flex-shrink-0"
           @click="openCreateKeyModal"
         >
           <svg
@@ -501,46 +511,47 @@ function toggleScope(scope: string) {
           >
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
-          Create API Key
+          <span class="hidden sm:inline">{{ $t('profile.createApiKey') }}</span>
+          <span class="sm:hidden">{{ $t('profile.create') }}</span>
         </button>
       </div>
 
-      <div class="bg-gray-800 rounded-lg overflow-hidden">
-        <div v-if="authStore.apiKeys.length === 0" class="p-6 text-gray-400 text-center">
-          No API keys created yet. Create one to access the API programmatically.
+      <div class="glass-card overflow-hidden">
+        <div v-if="authStore.apiKeys.length === 0" class="p-4 sm:p-6 text-gray-500 dark:text-slate-400 text-center">
+          {{ $t('profile.noApiKeysCreated') }}
         </div>
-        <div v-else class="divide-y divide-gray-700">
+        <div v-else class="divide-y divide-gray-200 dark:divide-slate-700">
           <div
             v-for="key in authStore.apiKeys"
             :key="key.id"
-            class="p-4 flex items-center justify-between"
+            class="p-3 sm:p-4 flex items-center justify-between"
           >
-            <div class="flex-1">
-              <div class="flex items-center gap-3">
-                <h3 class="text-white font-medium">{{ key.name }}</h3>
-                <code class="text-xs bg-gray-700 px-2 py-1 rounded text-gray-300">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <h3 class="text-gray-900 dark:text-white font-medium">{{ key.name }}</h3>
+                <code class="text-xs bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
                   {{ key.key_prefix }}...
                 </code>
               </div>
-              <div class="flex items-center gap-4 mt-2 text-sm text-gray-400">
-                <span>Created: {{ formatDate(key.created_at) }}</span>
-                <span v-if="key.expires_at">Expires: {{ formatDate(key.expires_at) }}</span>
-                <span v-else class="text-green-400">Never expires</span>
-                <span v-if="key.last_used_at">Last used: {{ formatDate(key.last_used_at) }}</span>
+              <div class="flex items-center gap-2 sm:gap-4 mt-2 text-xs sm:text-sm text-gray-500 dark:text-slate-400 flex-wrap">
+                <span>{{ $t('profile.created') }}: {{ formatDate(key.created_at) }}</span>
+                <span v-if="key.expires_at">{{ $t('profile.expires') }}: {{ formatDate(key.expires_at) }}</span>
+                <span v-else class="text-green-600 dark:text-green-400">{{ $t('profile.neverExpires') }}</span>
+                <span v-if="key.last_used_at" class="hidden sm:inline">{{ $t('profile.lastUsed') }}: {{ formatDate(key.last_used_at) }}</span>
               </div>
               <div class="flex flex-wrap gap-1 mt-2">
                 <span
                   v-for="scope in key.scopes"
                   :key="scope"
-                  class="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300"
+                  class="text-xs bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300"
                 >
                   {{ scope }}
                 </span>
               </div>
             </div>
             <button
-              class="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors"
-              title="Delete API key"
+              class="p-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors flex-shrink-0"
+              :title="$t('profile.deleteApiKey')"
               @click="deleteApiKey(key.id)"
             >
               <svg
@@ -569,31 +580,31 @@ function toggleScope(scope: string) {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="closeCreateKeyModal"
     >
-      <div class="bg-gray-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div class="p-6">
-          <h3 class="text-lg font-semibold text-white mb-4">
-            {{ createdKey ? 'API Key Created' : 'Create API Key' }}
+      <div class="bg-white dark:bg-slate-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
+        <div class="p-4 sm:p-6">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            {{ createdKey ? $t('profile.apiKeyCreated') : $t('profile.createApiKey') }}
           </h3>
 
           <!-- Show created key -->
           <div v-if="createdKey" class="space-y-4">
-            <div class="bg-yellow-900/30 border border-yellow-600 rounded-lg p-4">
-              <p class="text-yellow-200 text-sm mb-2">
-                Make sure to copy your API key now. You won't be able to see it again!
+            <div class="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded-lg p-4">
+              <p class="text-yellow-800 dark:text-yellow-200 text-sm mb-2">
+                {{ $t('profile.copyApiKeyWarning') }}
               </p>
               <div class="flex items-center gap-2">
-                <code class="flex-1 bg-gray-900 px-3 py-2 rounded text-green-400 text-sm break-all">
+                <code class="flex-1 bg-gray-100 dark:bg-gray-900 px-3 py-2 rounded text-green-600 dark:text-green-400 text-sm break-all">
                   {{ createdKey }}
                 </code>
                 <button
-                  class="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-                  :class="{ 'bg-green-600': copiedKey }"
+                  class="p-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  :class="{ 'bg-green-500 dark:bg-green-600': copiedKey }"
                   @click="copyKey"
                 >
                   <svg
                     v-if="!copiedKey"
                     xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-white"
+                    class="h-5 w-5 text-gray-700 dark:text-white"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -624,10 +635,10 @@ function toggleScope(scope: string) {
               </div>
             </div>
             <button
-              class="w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+              class="w-full px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded-lg transition-colors"
               @click="closeCreateKeyModal"
             >
-              Done
+              {{ $t('profile.done') }}
             </button>
           </div>
 
@@ -635,34 +646,34 @@ function toggleScope(scope: string) {
           <form v-else @submit.prevent="createApiKey" class="space-y-4">
             <!-- Name -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Name</label>
+              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ $t('profile.name') }}</label>
               <input
                 v-model="newKeyName"
                 type="text"
                 required
-                class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., My App API Key"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                :placeholder="$t('profile.apiKeyNamePlaceholder')"
               />
             </div>
 
             <!-- Scopes -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Permissions</label>
+              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ $t('profile.permissions') }}</label>
               <div class="space-y-2">
                 <label
                   v-for="scope in availableScopes"
                   :key="scope.value"
-                  class="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
+                  class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <input
                     type="checkbox"
                     :checked="newKeyScopes.includes(scope.value)"
-                    class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                    class="mt-1 w-4 h-4 rounded border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-accent focus:ring-accent"
                     @change="toggleScope(scope.value)"
                   />
                   <div>
-                    <div class="text-white text-sm font-medium">{{ scope.label }}</div>
-                    <div class="text-gray-400 text-xs">{{ scope.description }}</div>
+                    <div class="text-gray-900 dark:text-white text-sm font-medium">{{ scope.label }}</div>
+                    <div class="text-gray-500 dark:text-slate-400 text-xs">{{ scope.description }}</div>
                   </div>
                 </label>
               </div>
@@ -670,10 +681,10 @@ function toggleScope(scope: string) {
 
             <!-- Expiry -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Expiration</label>
+              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ $t('profile.expiration') }}</label>
               <select
                 v-model="newKeyExpiry"
-                class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
               >
                 <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">
                   {{ opt.label }}
@@ -686,16 +697,16 @@ function toggleScope(scope: string) {
               <button
                 type="submit"
                 :disabled="authStore.loading || !newKeyName || newKeyScopes.length === 0"
-                class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50"
               >
-                {{ authStore.loading ? 'Creating...' : 'Create API Key' }}
+                {{ authStore.loading ? $t('profile.creating') : $t('profile.createApiKey') }}
               </button>
               <button
                 type="button"
-                class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+                class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded-lg transition-colors"
                 @click="closeCreateKeyModal"
               >
-                Cancel
+                {{ $t('common.cancel') }}
               </button>
             </div>
           </form>

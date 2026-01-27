@@ -1,0 +1,144 @@
+{
+  "name": "ZimaOS Echo",
+  "title": "ZimaOS Echo - AI Assistant",
+  "description": "A powerful AI assistant for ZimaOS with smart home integration, multi-channel support, and voice capabilities",
+  "version": "0.5.0",
+  "icon": "/app/icon.png",
+  "category": "ai",
+  "author": {
+    "name": "IceWhale Technology",
+    "email": "support@icewhale.io",
+    "url": "https://www.zimaspace.com"
+  },
+  "license": "Apache-2.0",
+  "repository": "https://github.com/IceWhaleTech/ZimaOS-Echo",
+  "homepage": "https://www.zimaspace.com/echo",
+  "documentation": "https://docs.zimaspace.com/echo",
+  "requirements": {
+    "zimaos_version": ">=1.0.0",
+    "memory": "512MB",
+    "storage": "1GB",
+    "architecture": ["amd64", "arm64"]
+  },
+  "ports": [
+    {
+      "container": 8080,
+      "host": 8765,
+      "protocol": "tcp",
+      "description": "Web UI and API"
+    }
+  ],
+  "volumes": [
+    {
+      "container": "/app/data",
+      "host": "/DATA/AppData/zimaos-echo/data",
+      "description": "Application data and database"
+    },
+    {
+      "container": "/app/config",
+      "host": "/DATA/AppData/zimaos-echo/config",
+      "description": "Configuration files"
+    }
+  ],
+  "environment": [
+    {
+      "name": "ECHO_SERVER_PORT",
+      "value": "8080",
+      "description": "Server port"
+    },
+    {
+      "name": "ECHO_LOG_LEVEL",
+      "value": "info",
+      "description": "Log level (debug, info, warn, error)"
+    },
+    {
+      "name": "TZ",
+      "value": "${SYSTEM_TIMEZONE}",
+      "description": "Timezone"
+    }
+  ],
+  "capabilities": [
+    "ai_assistant",
+    "smart_home",
+    "voice_control",
+    "multi_channel",
+    "browser_automation"
+  ],
+  "integrations": {
+    "home_assistant": {
+      "enabled": true,
+      "auto_discover": true,
+      "description": "Control smart home devices through natural language"
+    },
+    "zimaos_files": {
+      "enabled": true,
+      "permissions": ["read", "write"],
+      "description": "Access and manage files on ZimaOS"
+    },
+    "zimaos_apps": {
+      "enabled": true,
+      "description": "Interact with other ZimaOS applications"
+    }
+  },
+  "health_check": {
+    "endpoint": "/health",
+    "interval": "30s",
+    "timeout": "10s",
+    "retries": 3
+  },
+  "ui": {
+    "main_entry": "/",
+    "settings_entry": "/settings",
+    "dashboard_widget": {
+      "enabled": true,
+      "size": "medium",
+      "refresh_interval": 60
+    }
+  },
+  "permissions": [
+    {
+      "name": "network",
+      "description": "Access network for LLM API calls and integrations"
+    },
+    {
+      "name": "storage",
+      "description": "Store conversation history and configuration"
+    },
+    {
+      "name": "audio",
+      "description": "Voice input and output capabilities"
+    }
+  ],
+  "tags": [
+    "ai",
+    "assistant",
+    "chatbot",
+    "smart-home",
+    "voice",
+    "automation"
+  ],
+  "screenshots": [
+    {
+      "url": "/screenshots/chat.png",
+      "description": "Chat interface"
+    },
+    {
+      "url": "/screenshots/smart-home.png",
+      "description": "Smart home control"
+    },
+    {
+      "url": "/screenshots/voice.png",
+      "description": "Voice assistant"
+    }
+  ],
+  "changelog": {
+    "0.5.0": [
+      "Initial stable release",
+      "Multi-LLM provider support",
+      "Home Assistant integration",
+      "Voice assistant capabilities",
+      "Multi-channel messaging support",
+      "Browser automation features"
+    ]
+  }
+}

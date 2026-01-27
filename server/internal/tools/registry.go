@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 )
 
@@ -56,7 +57,7 @@ func (r *Registry) Get(name string) Tool {
 	return r.tools[name]
 }
 
-// List returns all registered tool names.
+// List returns all registered tool names sorted alphabetically.
 func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -64,10 +65,11 @@ func (r *Registry) List() []string {
 	for name := range r.tools {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 
-// Definitions returns all tool definitions.
+// Definitions returns all tool definitions sorted by name.
 func (r *Registry) Definitions() []ToolDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -75,6 +77,9 @@ func (r *Registry) Definitions() []ToolDefinition {
 	for _, tool := range r.tools {
 		defs = append(defs, tool.Definition())
 	}
+	sort.Slice(defs, func(i, j int) bool {
+		return defs[i].Name < defs[j].Name
+	})
 	return defs
 }
 

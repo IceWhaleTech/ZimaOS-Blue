@@ -547,3 +547,409 @@ func (c *Channel) setError(err string) {
 	c.lastErrorAt = &now
 	c.status = channel.StatusError
 }
+
+// Menu represents a WeChat Work application menu.
+type Menu struct {
+	Button []MenuButton `json:"button"`
+}
+
+// MenuButton represents a menu button.
+type MenuButton struct {
+	Type      string       `json:"type,omitempty"`
+	Name      string       `json:"name"`
+	Key       string       `json:"key,omitempty"`
+	URL       string       `json:"url,omitempty"`
+	SubButton []MenuButton `json:"sub_button,omitempty"`
+}
+
+// CreateMenu creates the application menu.
+func (c *Channel) CreateMenu(ctx context.Context, menu *Menu) error {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	jsonPayload, err := json.Marshal(menu)
+	if err != nil {
+		return fmt.Errorf("failed to marshal menu: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/menu/create?access_token=%s&agentid=%s",
+		token, c.config.AgentID)
+
+	resp, err := http.Post(url, "application/json", bytes.NewReader(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create menu: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	c.logger.Info("menu created successfully")
+	return nil
+}
+
+// GetMenu retrieves the current application menu.
+func (c *Channel) GetMenu(ctx context.Context) (*Menu, error) {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/menu/get?access_token=%s&agentid=%s",
+		token, c.config.AgentID)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get menu: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+		Button  []MenuButton `json:"button"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	return &Menu{Button: result.Button}, nil
+}
+
+// DeleteMenu deletes the application menu.
+func (c *Channel) DeleteMenu(ctx context.Context) error {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/menu/delete?access_token=%s&agentid=%s",
+		token, c.config.AgentID)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to delete menu: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	c.logger.Info("menu deleted successfully")
+	return nil
+}
+
+// TargetedMessage represents a message with specific targeting options.
+type TargetedMessage struct {
+	ToUser  string // User IDs separated by |, max 1000
+	ToParty string // Department IDs separated by |, max 100
+	ToTag   string // Tag IDs separated by |, max 100
+	ToAll   bool   // Send to all members (touser, toparty, totag must be empty)
+	Content string
+	Format  string // "text" or "markdown"
+}
+
+// SendTargeted sends a message to specific users, departments, or tags.
+func (c *Channel) SendTargeted(ctx context.Context, msg TargetedMessage) error {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	// Build message payload
+	payload := map[string]interface{}{
+		"agentid": c.config.AgentID,
+	}
+
+	// Set targeting
+	if msg.ToAll {
+		payload["touser"] = "@all"
+	} else {
+		if msg.ToUser != "" {
+			payload["touser"] = msg.ToUser
+		}
+		if msg.ToParty != "" {
+			payload["toparty"] = msg.ToParty
+		}
+		if msg.ToTag != "" {
+			payload["totag"] = msg.ToTag
+		}
+	}
+
+	// Set message type and content
+	if msg.Format == "markdown" {
+		payload["msgtype"] = "markdown"
+		payload["markdown"] = map[string]string{
+			"content": msg.Content,
+		}
+	} else {
+		payload["msgtype"] = "text"
+		payload["text"] = map[string]string{
+			"content": msg.Content,
+		}
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=%s", token)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode      int    `json:"errcode"`
+		ErrMsg       string `json:"errmsg"`
+		InvalidUser  string `json:"invaliduser"`
+		InvalidParty string `json:"invalidparty"`
+		InvalidTag   string `json:"invalidtag"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	// Log any invalid targets
+	if result.InvalidUser != "" {
+		c.logger.Warn("some users were invalid", zap.String("invalid_users", result.InvalidUser))
+	}
+	if result.InvalidParty != "" {
+		c.logger.Warn("some departments were invalid", zap.String("invalid_parties", result.InvalidParty))
+	}
+	if result.InvalidTag != "" {
+		c.logger.Warn("some tags were invalid", zap.String("invalid_tags", result.InvalidTag))
+	}
+
+	return nil
+}
+
+// Department represents a WeChat Work department.
+type Department struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	ParentID int    `json:"parentid"`
+	Order    int    `json:"order"`
+}
+
+// GetDepartmentList retrieves the department list.
+func (c *Channel) GetDepartmentList(ctx context.Context, parentID int) ([]Department, error) {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/department/list?access_token=%s", token)
+	if parentID > 0 {
+		url += fmt.Sprintf("&id=%d", parentID)
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get departments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode    int          `json:"errcode"`
+		ErrMsg     string       `json:"errmsg"`
+		Department []Department `json:"department"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	return result.Department, nil
+}
+
+// User represents a WeChat Work user.
+type User struct {
+	UserID     string `json:"userid"`
+	Name       string `json:"name"`
+	Department []int  `json:"department"`
+	Position   string `json:"position"`
+	Mobile     string `json:"mobile"`
+	Email      string `json:"email"`
+	Status     int    `json:"status"` // 1=activated, 2=disabled, 4=not activated
+}
+
+// GetUserList retrieves users in a department.
+func (c *Channel) GetUserList(ctx context.Context, departmentID int, fetchChild bool) ([]User, error) {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	fetchChildInt := 0
+	if fetchChild {
+		fetchChildInt = 1
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/user/list?access_token=%s&department_id=%d&fetch_child=%d",
+		token, departmentID, fetchChildInt)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode  int    `json:"errcode"`
+		ErrMsg   string `json:"errmsg"`
+		UserList []User `json:"userlist"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	return result.UserList, nil
+}
+
+// GetUser retrieves a specific user's information.
+func (c *Channel) GetUser(ctx context.Context, userID string) (*User, error) {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/user/get?access_token=%s&userid=%s",
+		token, userID)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+		User
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	return &result.User, nil
+}
+
+// Tag represents a WeChat Work tag.
+type Tag struct {
+	TagID   int    `json:"tagid"`
+	TagName string `json:"tagname"`
+}
+
+// GetTagList retrieves the tag list.
+func (c *Channel) GetTagList(ctx context.Context) ([]Tag, error) {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/tag/list?access_token=%s", token)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tags: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+		TagList []Tag  `json:"taglist"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	return result.TagList, nil
+}
+
+// GetTagUsers retrieves users in a tag.
+func (c *Channel) GetTagUsers(ctx context.Context, tagID int) ([]string, []int, error) {
+	token, err := c.getAccessToken()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/tag/get?access_token=%s&tagid=%d",
+		token, tagID)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get tag users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode   int    `json:"errcode"`
+		ErrMsg    string `json:"errmsg"`
+		UserList  []struct {
+			UserID string `json:"userid"`
+			Name   string `json:"name"`
+		} `json:"userlist"`
+		PartyList []int `json:"partylist"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.ErrCode != 0 {
+		return nil, nil, fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	userIDs := make([]string, len(result.UserList))
+	for i, u := range result.UserList {
+		userIDs[i] = u.UserID
+	}
+
+	return userIDs, result.PartyList, nil
+}

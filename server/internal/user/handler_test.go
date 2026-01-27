@@ -65,7 +65,7 @@ func TestHandler_Login(t *testing.T) {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
 
-	if resp.AccessToken == "" {
+	if resp.Token == "" {
 		t.Error("Login() access_token is empty")
 	}
 	if resp.RefreshToken == "" {

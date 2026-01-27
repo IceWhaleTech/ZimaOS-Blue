@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"golang.org/x/net/netutil"
 )
 
 type Server struct {
@@ -45,13 +49,26 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	logger.Info().Str("addr", addr).Msg("Starting HTTP server")
 
+	// Create listener with SO_REUSEADDR
+	lc := net.ListenConfig{
+		Control: reusePort,
+	}
+
+	ln, err := lc.Listen(context.Background(), "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to create listener: %w", err)
+	}
+
+	// Limit concurrent connections to prevent resource exhaustion
+	ln = netutil.LimitListener(ln, 10000)
+
 	server := &http.Server{
-		Addr:         addr,
 		ReadTimeout:  s.config.ReadTimeout,
 		WriteTimeout: s.config.WriteTimeout,
 		IdleTimeout:  s.config.IdleTimeout,
 	}
 
+	s.echo.Listener = ln
 	return s.echo.StartServer(server)
 }
 
@@ -65,17 +82,37 @@ func zerologMiddleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			req := c.Request()
 			res := c.Response()
+			start := time.Now()
 
 			err := next(c)
 			if err != nil {
 				c.Error(err)
 			}
 
-			logger.Info().
+			latency := time.Since(start)
+			status := res.Status
+
+			// Choose log level based on status code
+			var event *zerolog.Event
+			switch {
+			case status >= 500:
+				event = logger.Error()
+			case status >= 400:
+				event = logger.Warn()
+			default:
+				event = logger.Info()
+			}
+
+			event.
+				Str("tag", "HTTP").
 				Str("method", req.Method).
 				Str("uri", req.RequestURI).
-				Int("status", res.Status).
+				Int("status", status).
+				Dur("latency", latency).
 				Str("remote_ip", c.RealIP()).
+				Int64("bytes_in", req.ContentLength).
+				Int64("bytes_out", res.Size).
+				Str("user_agent", req.UserAgent()).
 				Str("request_id", res.Header().Get(echo.HeaderXRequestID)).
 				Msg("request")
 

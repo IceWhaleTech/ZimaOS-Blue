@@ -31,6 +31,7 @@ const (
 	StatusLoaded   PluginStatus = "loaded"
 	StatusDisabled PluginStatus = "disabled"
 	StatusError    PluginStatus = "error"
+	StatusStopped  PluginStatus = "stopped"
 )
 
 // Manifest represents the plugin manifest (clawdbot.plugin.json compatible)
@@ -39,12 +40,21 @@ type Manifest struct {
 	Name         string                 `json:"name"`
 	Description  string                 `json:"description"`
 	Version      string                 `json:"version"`
+	Author       string                 `json:"author,omitempty"`
 	Kind         PluginKind             `json:"kind,omitempty"`
 	ConfigSchema map[string]interface{} `json:"configSchema"`
 	Channels     []string               `json:"channels,omitempty"`
 	Providers    []string               `json:"providers,omitempty"`
 	Skills       []string               `json:"skills,omitempty"`
 	UIHints      map[string]UIHint      `json:"uiHints,omitempty"`
+	Dependencies []Dependency           `json:"dependencies,omitempty"`
+}
+
+// Dependency represents a plugin dependency
+type Dependency struct {
+	ID       string `json:"id"`                 // Required plugin ID
+	Version  string `json:"version,omitempty"`  // Version constraint (semver)
+	Optional bool   `json:"optional,omitempty"` // If true, plugin can work without this dependency
 }
 
 // UIHint provides UI hints for configuration fields

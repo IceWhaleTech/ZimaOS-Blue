@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
+import { createPinia, setActivePinia } from 'pinia'
+import { i18n } from '@/i18n'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,14 +15,17 @@ const router = createRouter({
 
 describe('AppSidebar', () => {
   beforeEach(async () => {
+    setActivePinia(createPinia())
     router.push('/')
     await router.isReady()
   })
 
   it('should render navigation items', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
     const wrapper = mount(AppSidebar, {
       global: {
-        plugins: [router],
+        plugins: [pinia, router, i18n],
       },
     })
 
@@ -29,20 +34,24 @@ describe('AppSidebar', () => {
   })
 
   it('should highlight active route', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
     const wrapper = mount(AppSidebar, {
       global: {
-        plugins: [router],
+        plugins: [pinia, router, i18n],
       },
     })
 
     const homeLink = wrapper.find('a[href="/"]')
-    expect(homeLink.classes()).toContain('bg-blue-50')
+    expect(homeLink.classes()).toContain('bg-accent/20')
   })
 
   it('should navigate to dashboard', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
     const wrapper = mount(AppSidebar, {
       global: {
-        plugins: [router],
+        plugins: [pinia, router, i18n],
       },
     })
 
@@ -50,6 +59,6 @@ describe('AppSidebar', () => {
     await wrapper.vm.$nextTick()
 
     const dashboardLink = wrapper.find('a[href="/dashboard"]')
-    expect(dashboardLink.classes()).toContain('bg-blue-50')
+    expect(dashboardLink.classes()).toContain('bg-accent/20')
   })
 })

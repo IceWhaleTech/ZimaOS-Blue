@@ -17,6 +17,24 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 )
 
+// CommandHandler is a function that handles bot commands.
+type CommandHandler func(ctx context.Context, cmd string, args string, msg *tgbotapi.Message) (string, *InlineKeyboard, error)
+
+// InlineKeyboard represents an inline keyboard for Telegram messages.
+type InlineKeyboard struct {
+	Rows [][]InlineButton `json:"rows"`
+}
+
+// InlineButton represents a button in an inline keyboard.
+type InlineButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data,omitempty"`
+	URL          string `json:"url,omitempty"`
+}
+
+// CallbackHandler is a function that handles callback queries from inline keyboards.
+type CallbackHandler func(ctx context.Context, query *tgbotapi.CallbackQuery) (string, error)
+
 // Channel implements the channel.Channel interface for Telegram.
 type Channel struct {
 	config   channel.TelegramConfig
@@ -31,6 +49,11 @@ type Channel struct {
 	lastErrorAt *time.Time
 	msgCount    atomic.Int64
 
+	// Command handlers
+	commandHandlers  map[string]CommandHandler
+	callbackHandlers map[string]CallbackHandler
+	commandMu        sync.RWMutex
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -38,12 +61,20 @@ type Channel struct {
 
 // New creates a new Telegram channel.
 func New(cfg channel.TelegramConfig, logger *zap.Logger) *Channel {
-	return &Channel{
-		config:   cfg,
-		logger:   logger.With(zap.String("channel", "telegram")),
-		messages: make(chan channel.Message, 100),
-		status:   channel.StatusDisconnected,
+	c := &Channel{
+		config:           cfg,
+		logger:           logger.With(zap.String("channel", "telegram")),
+		messages:         make(chan channel.Message, 100),
+		status:           channel.StatusDisconnected,
+		commandHandlers:  make(map[string]CommandHandler),
+		callbackHandlers: make(map[string]CallbackHandler),
 	}
+
+	// Register default command handlers
+	c.RegisterCommand("start", c.handleStartCommand)
+	c.RegisterCommand("help", c.handleHelpCommand)
+
+	return c
 }
 
 // Name returns the channel name.
@@ -156,6 +187,12 @@ func (c *Channel) pollUpdates() {
 
 // handleUpdate processes a single update from Telegram.
 func (c *Channel) handleUpdate(update tgbotapi.Update) {
+	// Handle callback queries from inline keyboards
+	if update.CallbackQuery != nil {
+		c.handleCallbackQuery(update.CallbackQuery)
+		return
+	}
+
 	if update.Message == nil {
 		return
 	}
@@ -178,6 +215,12 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 				zap.String("title", msg.Chat.Title))
 			return
 		}
+	}
+
+	// Handle commands
+	if msg.IsCommand() {
+		c.handleCommand(msg)
+		return
 	}
 
 	// Convert to unified message format
@@ -283,6 +326,188 @@ func (c *Channel) isGroupAllowed(chatID int64) bool {
 		}
 	}
 	return false
+}
+
+// handleCommand processes a bot command.
+func (c *Channel) handleCommand(msg *tgbotapi.Message) {
+	cmd := msg.Command()
+	args := msg.CommandArguments()
+
+	c.logger.Debug("handling command",
+		zap.String("command", cmd),
+		zap.String("args", args),
+		zap.Int64("user_id", msg.From.ID))
+
+	c.commandMu.RLock()
+	handler, exists := c.commandHandlers[cmd]
+	c.commandMu.RUnlock()
+
+	if !exists {
+		// Unknown command - send to message channel for AI handling
+		channelMsg := c.convertMessage(msg)
+		channelMsg.Metadata["is_command"] = true
+		channelMsg.Metadata["command"] = cmd
+		channelMsg.Metadata["command_args"] = args
+		c.msgCount.Add(1)
+
+		select {
+		case c.messages <- channelMsg:
+		default:
+			c.logger.Warn("message channel full, dropping command",
+				zap.String("command", cmd))
+		}
+		return
+	}
+
+	// Execute the command handler
+	text, keyboard, err := handler(c.ctx, cmd, args, msg)
+	if err != nil {
+		c.logger.Error("command handler error",
+			zap.String("command", cmd),
+			zap.Error(err))
+		text = "Sorry, an error occurred while processing your command."
+	}
+
+	if text != "" {
+		chatID := fmt.Sprintf("%d", msg.Chat.ID)
+		replyToID := fmt.Sprintf("%d", msg.MessageID)
+
+		parseMode := ""
+		if strings.Contains(text, "*") || strings.Contains(text, "_") {
+			parseMode = tgbotapi.ModeMarkdown
+		}
+
+		if err := c.SendWithKeyboard(c.ctx, chatID, text, keyboard, replyToID, parseMode); err != nil {
+			c.logger.Error("failed to send command response",
+				zap.String("command", cmd),
+				zap.Error(err))
+		}
+	}
+}
+
+// handleCallbackQuery processes a callback query from an inline keyboard.
+func (c *Channel) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
+	c.logger.Debug("handling callback query",
+		zap.String("data", query.Data),
+		zap.Int64("user_id", query.From.ID))
+
+	// Check if user is allowed
+	if !c.isUserAllowed(query.From) {
+		c.logger.Debug("ignoring callback from non-allowed user",
+			zap.Int64("user_id", query.From.ID))
+		return
+	}
+
+	// Handle built-in callbacks (cmd:xxx format)
+	if strings.HasPrefix(query.Data, "cmd:") {
+		cmdName := strings.TrimPrefix(query.Data, "cmd:")
+		c.handleBuiltinCallback(query, cmdName)
+		return
+	}
+
+	// Find matching callback handler by prefix
+	c.commandMu.RLock()
+	var matchedHandler CallbackHandler
+	var matchedPrefix string
+	for prefix, handler := range c.callbackHandlers {
+		if strings.HasPrefix(query.Data, prefix) {
+			matchedHandler = handler
+			matchedPrefix = prefix
+			break
+		}
+	}
+	c.commandMu.RUnlock()
+
+	if matchedHandler != nil {
+		response, err := matchedHandler(c.ctx, query)
+		if err != nil {
+			c.logger.Error("callback handler error",
+				zap.String("prefix", matchedPrefix),
+				zap.Error(err))
+			c.AnswerCallbackQuery(c.ctx, query.ID, "An error occurred", true)
+			return
+		}
+		c.AnswerCallbackQuery(c.ctx, query.ID, response, false)
+		return
+	}
+
+	// No handler found - send to message channel for AI handling
+	if query.Message != nil {
+		channelMsg := channel.Message{
+			ID:          fmt.Sprintf("cb_%s", query.ID),
+			ChannelName: "telegram",
+			ChatID:      fmt.Sprintf("%d", query.Message.Chat.ID),
+			UserID:      fmt.Sprintf("%d", query.From.ID),
+			Username:    query.From.UserName,
+			Type:        channel.MessageTypeText,
+			Content:     query.Data,
+			Timestamp:   time.Now(),
+			IsGroup:     query.Message.Chat.IsGroup() || query.Message.Chat.IsSuperGroup(),
+			Metadata: map[string]interface{}{
+				"is_callback":    true,
+				"callback_id":    query.ID,
+				"callback_data":  query.Data,
+				"message_id":     query.Message.MessageID,
+				"inline_message": query.InlineMessageID,
+			},
+		}
+
+		select {
+		case c.messages <- channelMsg:
+			c.AnswerCallbackQuery(c.ctx, query.ID, "", false)
+		default:
+			c.logger.Warn("message channel full, dropping callback")
+			c.AnswerCallbackQuery(c.ctx, query.ID, "System busy, please try again", true)
+		}
+	}
+}
+
+// handleBuiltinCallback handles built-in callback commands.
+func (c *Channel) handleBuiltinCallback(query *tgbotapi.CallbackQuery, cmdName string) {
+	c.commandMu.RLock()
+	handler, exists := c.commandHandlers[cmdName]
+	c.commandMu.RUnlock()
+
+	if !exists {
+		c.AnswerCallbackQuery(c.ctx, query.ID, "Unknown command", true)
+		return
+	}
+
+	// Create a synthetic message for the handler
+	var msg *tgbotapi.Message
+	if query.Message != nil {
+		msg = query.Message
+		msg.From = query.From
+	}
+
+	text, keyboard, err := handler(c.ctx, cmdName, "", msg)
+	if err != nil {
+		c.logger.Error("callback command handler error",
+			zap.String("command", cmdName),
+			zap.Error(err))
+		c.AnswerCallbackQuery(c.ctx, query.ID, "An error occurred", true)
+		return
+	}
+
+	// Answer the callback
+	c.AnswerCallbackQuery(c.ctx, query.ID, "", false)
+
+	// Edit the message with new content
+	if text != "" && query.Message != nil {
+		chatID := fmt.Sprintf("%d", query.Message.Chat.ID)
+		messageID := fmt.Sprintf("%d", query.Message.MessageID)
+
+		parseMode := ""
+		if strings.Contains(text, "*") || strings.Contains(text, "_") {
+			parseMode = tgbotapi.ModeMarkdown
+		}
+
+		if err := c.EditMessageWithKeyboard(c.ctx, chatID, messageID, text, keyboard, parseMode); err != nil {
+			c.logger.Error("failed to edit message for callback",
+				zap.String("command", cmdName),
+				zap.Error(err))
+		}
+	}
 }
 
 // Stop gracefully shuts down the channel.
@@ -484,4 +709,175 @@ func parseMessageID(s string) (int, error) {
 	var msgID int
 	_, err := fmt.Sscanf(s, "%d", &msgID)
 	return msgID, err
+}
+
+// RegisterCommand registers a command handler.
+func (c *Channel) RegisterCommand(cmd string, handler CommandHandler) {
+	c.commandMu.Lock()
+	defer c.commandMu.Unlock()
+	c.commandHandlers[cmd] = handler
+}
+
+// RegisterCallback registers a callback handler for inline keyboard buttons.
+func (c *Channel) RegisterCallback(prefix string, handler CallbackHandler) {
+	c.commandMu.Lock()
+	defer c.commandMu.Unlock()
+	c.callbackHandlers[prefix] = handler
+}
+
+// handleStartCommand handles the /start command.
+func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args string, msg *tgbotapi.Message) (string, *InlineKeyboard, error) {
+	username := msg.From.FirstName
+	if username == "" {
+		username = msg.From.UserName
+	}
+
+	text := fmt.Sprintf("👋 Hello %s! Welcome to ZimaOS Echo.\n\nI'm your AI assistant. You can:\n• Send me any message to chat\n• Use /help to see available commands\n\nHow can I help you today?", username)
+
+	keyboard := &InlineKeyboard{
+		Rows: [][]InlineButton{
+			{
+				{Text: "📚 Help", CallbackData: "cmd:help"},
+				{Text: "ℹ️ About", CallbackData: "cmd:about"},
+			},
+		},
+	}
+
+	return text, keyboard, nil
+}
+
+// handleHelpCommand handles the /help command.
+func (c *Channel) handleHelpCommand(ctx context.Context, cmd string, args string, msg *tgbotapi.Message) (string, *InlineKeyboard, error) {
+	text := `📚 *Available Commands*
+
+/start - Start the bot and see welcome message
+/help - Show this help message
+
+*How to use:*
+Simply send me any message and I'll respond using AI.
+
+*Tips:*
+• You can reply to my messages to continue a conversation
+• Send images or files for analysis
+• Use inline buttons when available for quick actions`
+
+	return text, nil, nil
+}
+
+// SendWithKeyboard sends a message with an inline keyboard.
+func (c *Channel) SendWithKeyboard(ctx context.Context, chatID string, text string, keyboard *InlineKeyboard, replyToID string, parseMode string) error {
+	if c.bot == nil {
+		return fmt.Errorf("bot not initialized")
+	}
+
+	parsedChatID, err := parseChatID(chatID)
+	if err != nil {
+		return fmt.Errorf("invalid chat ID: %w", err)
+	}
+
+	msg := tgbotapi.NewMessage(parsedChatID, text)
+
+	if parseMode != "" {
+		msg.ParseMode = parseMode
+	}
+
+	if replyToID != "" {
+		if replyID, err := parseMessageID(replyToID); err == nil {
+			msg.ReplyToMessageID = replyID
+		}
+	}
+
+	if keyboard != nil && len(keyboard.Rows) > 0 {
+		msg.ReplyMarkup = c.buildInlineKeyboard(keyboard)
+	}
+
+	_, err = c.bot.Send(msg)
+	if err != nil {
+		c.logger.Error("failed to send message with keyboard",
+			zap.String("chat_id", chatID),
+			zap.Error(err))
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	return nil
+}
+
+// buildInlineKeyboard converts InlineKeyboard to tgbotapi.InlineKeyboardMarkup.
+func (c *Channel) buildInlineKeyboard(keyboard *InlineKeyboard) tgbotapi.InlineKeyboardMarkup {
+	var rows [][]tgbotapi.InlineKeyboardButton
+
+	for _, row := range keyboard.Rows {
+		var buttons []tgbotapi.InlineKeyboardButton
+		for _, btn := range row {
+			if btn.URL != "" {
+				buttons = append(buttons, tgbotapi.NewInlineKeyboardButtonURL(btn.Text, btn.URL))
+			} else if btn.CallbackData != "" {
+				buttons = append(buttons, tgbotapi.NewInlineKeyboardButtonData(btn.Text, btn.CallbackData))
+			}
+		}
+		if len(buttons) > 0 {
+			rows = append(rows, buttons)
+		}
+	}
+
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+// EditMessageWithKeyboard edits an existing message with new text and keyboard.
+func (c *Channel) EditMessageWithKeyboard(ctx context.Context, chatID string, messageID string, text string, keyboard *InlineKeyboard, parseMode string) error {
+	if c.bot == nil {
+		return fmt.Errorf("bot not initialized")
+	}
+
+	parsedChatID, err := parseChatID(chatID)
+	if err != nil {
+		return fmt.Errorf("invalid chat ID: %w", err)
+	}
+
+	msgID, err := parseMessageID(messageID)
+	if err != nil {
+		return fmt.Errorf("invalid message ID: %w", err)
+	}
+
+	editMsg := tgbotapi.NewEditMessageText(parsedChatID, msgID, text)
+
+	if parseMode != "" {
+		editMsg.ParseMode = parseMode
+	}
+
+	if keyboard != nil && len(keyboard.Rows) > 0 {
+		markup := c.buildInlineKeyboard(keyboard)
+		editMsg.ReplyMarkup = &markup
+	}
+
+	_, err = c.bot.Send(editMsg)
+	if err != nil {
+		c.logger.Error("failed to edit message",
+			zap.String("chat_id", chatID),
+			zap.String("message_id", messageID),
+			zap.Error(err))
+		return fmt.Errorf("failed to edit message: %w", err)
+	}
+
+	return nil
+}
+
+// AnswerCallbackQuery answers a callback query from an inline keyboard button.
+func (c *Channel) AnswerCallbackQuery(ctx context.Context, queryID string, text string, showAlert bool) error {
+	if c.bot == nil {
+		return fmt.Errorf("bot not initialized")
+	}
+
+	callback := tgbotapi.NewCallback(queryID, text)
+	callback.ShowAlert = showAlert
+
+	_, err := c.bot.Request(callback)
+	if err != nil {
+		c.logger.Error("failed to answer callback query",
+			zap.String("query_id", queryID),
+			zap.Error(err))
+		return fmt.Errorf("failed to answer callback: %w", err)
+	}
+
+	return nil
 }

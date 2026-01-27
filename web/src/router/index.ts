@@ -8,6 +8,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/HomeView.vue'),
   },
   {
+    path: '/setup',
+    name: 'Setup',
+    component: () => import('@/views/SetupWizardView.vue'),
+    meta: { public: true, hideLayout: true },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/LoginView.vue'),
@@ -23,13 +29,7 @@ const routes: RouteRecordRaw[] = [
     path: '/chat',
     name: 'Chat',
     component: () => import('@/views/ChatView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: () => import('@/views/DashboardView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, noPadding: true },
   },
   {
     path: '/settings',
@@ -80,6 +80,72 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/auto-reply',
+    name: 'AutoReply',
+    component: () => import('@/views/AutoReplyView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/channels',
+    name: 'Channels',
+    component: () => import('@/views/ChannelsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/workflows',
+    name: 'Workflows',
+    component: () => import('@/views/WorkflowView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/webhooks',
+    name: 'Webhooks',
+    component: () => import('@/views/WebhookView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/cron',
+    name: 'CronJobs',
+    component: () => import('@/views/CronView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/tasks',
+    name: 'TaskCenter',
+    component: () => import('@/views/TaskCenterView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/audit',
+    name: 'AuditLogs',
+    component: () => import('@/views/AuditView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/backup',
+    name: 'Backup',
+    component: () => import('@/views/BackupView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/tools',
+    name: 'ToolStore',
+    component: () => import('@/views/ToolStoreView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/security',
+    name: 'Security',
+    component: () => import('@/views/SecurityView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/a2ui',
+    name: 'A2UI',
+    component: () => import('@/views/A2UIView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/tenants',
     name: 'Tenants',
     component: () => import('@/views/TenantsView.vue'),
@@ -103,12 +169,41 @@ const router = createRouter({
   routes,
 })
 
-// Navigation guard for authentication
-router.beforeEach((to, _from, next) => {
+// Check if setup is complete
+let setupChecked = false
+let setupComplete = true
+
+async function checkSetupStatus(): Promise<boolean> {
+  if (setupChecked) return setupComplete
+
+  try {
+    const response = await fetch('/api/setup/status')
+    const data = await response.json()
+    setupComplete = data.completed
+    setupChecked = true
+    return setupComplete
+  } catch {
+    // If API fails, assume setup is complete
+    setupChecked = true
+    return true
+  }
+}
+
+// Navigation guard for authentication and setup
+router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('token')
   const isAuthenticated = !!token
   const requiresAuth = to.meta.requiresAuth
   const isPublic = to.meta.public
+
+  // Check setup status for non-setup routes
+  if (to.name !== 'Setup') {
+    const isSetupComplete = await checkSetupStatus()
+    if (!isSetupComplete) {
+      next({ name: 'Setup' })
+      return
+    }
+  }
 
   if (requiresAuth && !isAuthenticated) {
     // Redirect to login with return URL

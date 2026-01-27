@@ -30,9 +30,9 @@ const disabled = computed(() => props.component.props?.disabled as boolean || fa
 const componentStyle = computed(() => {
   const style = props.component.style || {}
   return {
-    backgroundColor: style.backgroundColor,
-    color: style.color,
-    borderRadius: style.borderRadius,
+    backgroundColor: style.backgroundColor as string | undefined,
+    color: style.color as string | undefined,
+    borderRadius: style.borderRadius as string | undefined,
   }
 })
 

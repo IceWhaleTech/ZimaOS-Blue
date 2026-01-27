@@ -1,0 +1,13 @@
+{
+  "admin_username": "admin",
+  "enable_discord": false,
+  "enable_home_assistant": false,
+  "enable_mfa": false,
+  "enable_telegram": false,
+  "home_assistant_url": "",
+  "language": "zh_CN",
+  "llm_base_url": "https://paid.tribiosapi.top/",
+  "llm_model": "opus",
+  "llm_provider": "custom",
+  "timezone": "Asia/Shanghai"
+}

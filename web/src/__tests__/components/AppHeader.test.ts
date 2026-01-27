@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AppHeader from '@/components/AppHeader.vue'
 import { createPinia, setActivePinia } from 'pinia'
+import { i18n } from '@/i18n'
 
 describe('AppHeader', () => {
   beforeEach(() => {
@@ -9,7 +10,13 @@ describe('AppHeader', () => {
   })
 
   it('should render title', () => {
-    const wrapper = mount(AppHeader)
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const wrapper = mount(AppHeader, {
+      global: {
+        plugins: [pinia, i18n],
+      },
+    })
     expect(wrapper.text()).toContain('ZimaOS Echo')
   })
 
@@ -19,7 +26,7 @@ describe('AppHeader', () => {
 
     const wrapper = mount(AppHeader, {
       global: {
-        plugins: [pinia],
+        plugins: [pinia, i18n],
       },
     })
 

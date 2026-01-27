@@ -2,6 +2,7 @@ package skill
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -88,7 +89,7 @@ func (r *Registry) GetInfo(id string) *SkillInfo {
 	}
 }
 
-// List returns all registered skills
+// List returns all registered skills sorted by category then name
 func (r *Registry) List() []*SkillInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -102,10 +103,19 @@ func (r *Registry) List() []*SkillInfo {
 		})
 	}
 
+	// Sort by category first, then by name for stable ordering
+	sort.Slice(result, func(i, j int) bool {
+		mi, mj := result[i].Manifest, result[j].Manifest
+		if mi.Category != mj.Category {
+			return mi.Category < mj.Category
+		}
+		return mi.Name < mj.Name
+	})
+
 	return result
 }
 
-// ListEnabled returns all enabled skills
+// ListEnabled returns all enabled skills sorted by category then name
 func (r *Registry) ListEnabled() []*SkillInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -120,6 +130,15 @@ func (r *Registry) ListEnabled() []*SkillInfo {
 			})
 		}
 	}
+
+	// Sort by category first, then by name for stable ordering
+	sort.Slice(result, func(i, j int) bool {
+		mi, mj := result[i].Manifest, result[j].Manifest
+		if mi.Category != mj.Category {
+			return mi.Category < mj.Category
+		}
+		return mi.Name < mj.Name
+	})
 
 	return result
 }

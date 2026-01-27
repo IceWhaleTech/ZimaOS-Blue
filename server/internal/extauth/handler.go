@@ -3,6 +3,7 @@ package extauth
 import (
 	"net/http"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/labstack/echo/v4"
 )
 
@@ -17,14 +18,19 @@ func NewHandler(service Service) *Handler {
 }
 
 // RegisterRoutes registers the external auth routes.
+// Note: Some routes require authentication - use RegisterProtectedRoutes for those.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
+	// Public routes
 	g.GET("/providers", h.ListProviders)
 	g.GET("/oidc/:provider/authorize", h.Authorize)
 	g.GET("/oidc/:provider/callback", h.Callback)
 	g.POST("/oidc/:provider/token", h.ExchangeToken)
 	g.POST("/oidc/:provider/refresh", h.RefreshToken)
 	g.GET("/oidc/:provider/userinfo", h.GetUserInfo)
+}
 
+// RegisterProtectedRoutes registers routes that require authentication.
+func (h *Handler) RegisterProtectedRoutes(g *echo.Group) {
 	// Account linking (requires authentication)
 	g.POST("/link/:provider", h.LinkAccount)
 	g.DELETE("/link/:provider", h.UnlinkAccount)
@@ -167,9 +173,9 @@ func (h *Handler) LinkAccount(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "provider is required")
 	}
 
-	// Get user ID from context (set by auth middleware)
-	userID := c.Get("user_id")
-	if userID == nil {
+	// Get user from context (set by auth middleware)
+	user := auth.GetUserFromContext(c)
+	if user == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
 
@@ -178,7 +184,7 @@ func (h *Handler) LinkAccount(c echo.Context) error {
 		RedirectURI: c.QueryParam("redirect_uri"),
 	}
 
-	resp, err := h.service.LinkAccount(c.Request().Context(), userID.(string), req)
+	resp, err := h.service.LinkAccount(c.Request().Context(), user.UserID, req)
 	if err != nil {
 		return mapError(err)
 	}
@@ -193,13 +199,13 @@ func (h *Handler) UnlinkAccount(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "provider is required")
 	}
 
-	// Get user ID from context (set by auth middleware)
-	userID := c.Get("user_id")
-	if userID == nil {
+	// Get user from context (set by auth middleware)
+	user := auth.GetUserFromContext(c)
+	if user == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
 
-	err := h.service.UnlinkAccount(c.Request().Context(), userID.(string), providerID)
+	err := h.service.UnlinkAccount(c.Request().Context(), user.UserID, providerID)
 	if err != nil {
 		return mapError(err)
 	}
@@ -209,13 +215,13 @@ func (h *Handler) UnlinkAccount(c echo.Context) error {
 
 // GetLinkedAccounts returns all linked accounts for the current user.
 func (h *Handler) GetLinkedAccounts(c echo.Context) error {
-	// Get user ID from context (set by auth middleware)
-	userID := c.Get("user_id")
-	if userID == nil {
+	// Get user from context (set by auth middleware)
+	user := auth.GetUserFromContext(c)
+	if user == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
 
-	accounts, err := h.service.GetLinkedAccounts(c.Request().Context(), userID.(string))
+	accounts, err := h.service.GetLinkedAccounts(c.Request().Context(), user.UserID)
 	if err != nil {
 		return mapError(err)
 	}

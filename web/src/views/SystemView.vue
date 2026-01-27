@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { systemApi, backupApi } from '@/api/index'
-import type { LogEntry, SystemMetrics } from '@/api/system'
+import type { LogEntry, SystemMetrics, DetailedSystemInfo } from '@/api/system'
 import type { BackupInfo } from '@/api/index'
+import ResourceChart from '@/components/ResourceChart.vue'
+import Skeleton from '@/components/Skeleton.vue'
+import ProgressBar from '@/components/ProgressBar.vue'
+import DonutChart from '@/components/DonutChart.vue'
+import type { DataPoint } from '@/components/ResourceChart.vue'
 
+const { t } = useI18n()
 const systemStore = useSystemStore()
 
 // Tabs
@@ -14,6 +21,11 @@ const activeTab = ref<'overview' | 'logs' | 'config' | 'backup'>('overview')
 const metricsHistory = ref<SystemMetrics[]>([])
 const autoRefresh = ref(true)
 let refreshInterval: ReturnType<typeof setInterval> | null = null
+
+// Detailed system info
+const detailedInfo = ref<DetailedSystemInfo | null>(null)
+const detailedInfoLoading = ref(false)
+const showDetailedInfo = ref(false)
 
 // Logs
 const logs = ref<LogEntry[]>([])
@@ -43,9 +55,60 @@ const memoryUsagePercent = computed(() => {
   return Math.min(100, (systemStore.health.mem_alloc_bytes / (512 * 1024 * 1024)) * 100)
 })
 
-const cpuUsagePercent = computed(() => {
-  // This would need actual CPU metrics from the backend
-  return 0
+// Translate status value
+const statusText = computed(() => {
+  if (systemStore.loading) return '-'
+  const status = systemStore.health?.status
+  if (!status) return '-'
+  switch (status.toLowerCase()) {
+    case 'ok':
+      return t('system.statusOk')
+    case 'error':
+      return t('system.statusError')
+    case 'degraded':
+      return t('system.statusDegraded')
+    default:
+      return status
+  }
+})
+
+// Status color class
+const statusColorClass = computed(() => {
+  if (systemStore.loading || !systemStore.health?.status) {
+    return 'text-gray-400 dark:text-gray-500'
+  }
+  return systemStore.health.status === 'ok'
+    ? 'text-green-600 dark:text-green-400'
+    : 'text-red-600 dark:text-red-400'
+})
+
+// Chart data computed from metrics history
+const cpuChartData = computed<DataPoint[]>(() => {
+  return metricsHistory.value.map((m) => ({
+    timestamp: m.timestamp,
+    value: m.cpu_percent,
+  }))
+})
+
+const memoryChartData = computed<DataPoint[]>(() => {
+  return metricsHistory.value.map((m) => ({
+    timestamp: m.timestamp,
+    value: m.memory_used_bytes / (1024 * 1024), // Convert to MB
+  }))
+})
+
+const goroutinesChartData = computed<DataPoint[]>(() => {
+  return metricsHistory.value.map((m) => ({
+    timestamp: m.timestamp,
+    value: m.goroutines,
+  }))
+})
+
+const heapChartData = computed<DataPoint[]>(() => {
+  return metricsHistory.value.map((m) => ({
+    timestamp: m.timestamp,
+    value: m.heap_alloc_bytes / (1024 * 1024), // Convert to MB
+  }))
 })
 
 onMounted(async () => {
@@ -75,6 +138,25 @@ async function fetchMetricsHistory() {
   } catch {
     // Metrics history might not be available
     metricsHistory.value = []
+  }
+}
+
+async function fetchDetailedInfo() {
+  detailedInfoLoading.value = true
+  try {
+    const response = await systemApi.getInfo(true)
+    detailedInfo.value = response.data.system || null
+  } catch {
+    detailedInfo.value = null
+  } finally {
+    detailedInfoLoading.value = false
+  }
+}
+
+function toggleDetailedInfo() {
+  showDetailedInfo.value = !showDetailedInfo.value
+  if (showDetailedInfo.value && !detailedInfo.value) {
+    fetchDetailedInfo()
   }
 }
 
@@ -129,6 +211,10 @@ function showConfigStatus(message: string) {
   setTimeout(() => {
     configSaveStatus.value = null
   }, 3000)
+}
+
+function copyConfigToClipboard() {
+  navigator.clipboard.writeText(configJson.value)
 }
 
 async function fetchBackups() {
@@ -193,7 +279,22 @@ function formatBytes(bytes: number): string {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
+  return new Date(dateStr).toLocaleString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+function formatLogTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 function getLogLevelClass(level: string): string {
@@ -211,6 +312,77 @@ function getLogLevelClass(level: string): string {
   }
 }
 
+function isRequestLog(log: LogEntry): boolean {
+  return log.message === 'request' && log.fields?.method !== undefined
+}
+
+function getMethodColor(method: string): string {
+  switch (method?.toUpperCase()) {
+    case 'GET':
+      return 'bg-green-900/30 text-green-400'
+    case 'POST':
+      return 'bg-blue-900/30 text-blue-400'
+    case 'PUT':
+      return 'bg-yellow-900/30 text-yellow-400'
+    case 'PATCH':
+      return 'bg-orange-900/30 text-orange-400'
+    case 'DELETE':
+      return 'bg-red-900/30 text-red-400'
+    default:
+      return 'bg-gray-700 text-gray-300'
+  }
+}
+
+function getStatusColor(status: number): string {
+  if (status >= 500) {
+    return 'bg-red-900/30 text-red-400'
+  } else if (status >= 400) {
+    return 'bg-yellow-900/30 text-yellow-400'
+  } else if (status >= 300) {
+    return 'bg-blue-900/30 text-blue-400'
+  } else if (status >= 200) {
+    return 'bg-green-900/30 text-green-400'
+  }
+  return 'bg-gray-700 text-gray-300'
+}
+
+function formatLatency(latency: number): string {
+  if (typeof latency !== 'number') return ''
+  // latency is in nanoseconds from Go's time.Duration
+  if (latency >= 1_000_000_000) {
+    return `${(latency / 1_000_000_000).toFixed(2)}s`
+  } else if (latency >= 1_000_000) {
+    return `${(latency / 1_000_000).toFixed(0)}ms`
+  } else if (latency >= 1_000) {
+    return `${(latency / 1_000).toFixed(0)}µs`
+  }
+  return `${latency}ns`
+}
+
+function exportLogs() {
+  if (logs.value.length === 0) return
+
+  const content = logs.value
+    .map((log) => {
+      const time = new Date(log.timestamp).toISOString()
+      const source = log.source ? `[${log.source}]` : ''
+      return `${time} [${log.level.toUpperCase()}] ${source} ${log.message}`
+    })
+    .join('\n')
+
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `logs-${new Date().toISOString().slice(0, 10)}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function clearLogs() {
+  logs.value = []
+}
+
 // Load data when tab changes
 function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
   activeTab.value = tab
@@ -225,16 +397,16 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
 </script>
 
 <template>
-  <div class="system-view p-6 max-w-6xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">System</h1>
+  <div class="system-view max-w-6xl mx-auto">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+      <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{{ t('system.title') }}</h1>
       <label class="flex items-center space-x-2">
         <input
           v-model="autoRefresh"
           type="checkbox"
-          class="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+          class="rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-blue-600 focus:ring-blue-500"
         />
-        <span class="text-sm text-gray-400">Auto refresh (5s)</span>
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('system.autoRefresh') }}</span>
       </label>
     </div>
 
@@ -247,67 +419,109 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
     </div>
 
     <!-- Tabs -->
-    <div class="flex border-b border-gray-700 mb-6">
+    <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
         v-for="tab in ['overview', 'logs', 'config', 'backup'] as const"
         :key="tab"
-        class="px-4 py-2 text-sm font-medium transition-colors"
+        class="px-3 sm:px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
           activeTab === tab
-            ? 'text-blue-400 border-b-2 border-blue-400'
-            : 'text-gray-400 hover:text-white'
+            ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
         "
         @click="switchTab(tab)"
       >
-        {{ tab.charAt(0).toUpperCase() + tab.slice(1) }}
+        {{ t(`system.${tab}`) }}
       </button>
     </div>
 
     <!-- Overview Tab -->
-    <div v-if="activeTab === 'overview'" class="space-y-6">
+    <div v-if="activeTab === 'overview'" class="space-y-4 sm:space-y-6">
       <!-- Stats Grid -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-gray-800 rounded-lg p-4">
-          <div class="text-sm text-gray-400 mb-1">Status</div>
-          <div
-            class="text-xl font-bold"
-            :class="systemStore.health?.status === 'ok' ? 'text-green-400' : 'text-red-400'"
-          >
-            {{ systemStore.health?.status || 'Unknown' }}
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.status') }}</div>
+          <template v-if="systemStore.loading">
+            <Skeleton height="1.5rem" width="60%" rounded="md" />
+          </template>
+          <div v-else class="text-lg sm:text-xl font-bold" :class="statusColorClass">
+            {{ statusText }}
           </div>
         </div>
-        <div class="bg-gray-800 rounded-lg p-4">
-          <div class="text-sm text-gray-400 mb-1">Uptime</div>
-          <div class="text-xl font-bold text-white">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.uptime') }}</div>
+          <template v-if="systemStore.loading">
+            <Skeleton height="1.5rem" width="80%" rounded="md" />
+          </template>
+          <div v-else class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">
             {{ systemStore.health?.uptime || '-' }}
           </div>
         </div>
-        <div class="bg-gray-800 rounded-lg p-4">
-          <div class="text-sm text-gray-400 mb-1">Memory</div>
-          <div class="text-xl font-bold text-white">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.memory') }}</div>
+          <template v-if="systemStore.loading">
+            <Skeleton height="1.5rem" width="70%" rounded="md" />
+          </template>
+          <div v-else class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
             {{ systemStore.health ? formatBytes(systemStore.health.mem_alloc_bytes) : '-' }}
           </div>
         </div>
-        <div class="bg-gray-800 rounded-lg p-4">
-          <div class="text-sm text-gray-400 mb-1">Goroutines</div>
-          <div class="text-xl font-bold text-white">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
+          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.goroutines') }}</div>
+          <template v-if="systemStore.loading">
+            <Skeleton height="1.5rem" width="50%" rounded="md" />
+          </template>
+          <div v-else class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
             {{ systemStore.health?.goroutines || '-' }}
           </div>
         </div>
       </div>
 
+      <!-- Resource Usage Charts -->
+      <div class="grid sm:grid-cols-2 gap-3 sm:gap-4">
+        <ResourceChart
+          :title="t('system.cpuUsage')"
+          :data="cpuChartData"
+          unit="%"
+          color="blue"
+          :max-value="100"
+          :format-value="(v: number) => v.toFixed(1)"
+        />
+        <ResourceChart
+          :title="t('system.memoryUsage')"
+          :data="memoryChartData"
+          unit=" MB"
+          color="green"
+          :format-value="(v: number) => v.toFixed(0)"
+        />
+        <ResourceChart
+          :title="t('system.goroutines')"
+          :data="goroutinesChartData"
+          unit=""
+          color="purple"
+          :format-value="(v: number) => v.toFixed(0)"
+        />
+        <ResourceChart
+          :title="t('system.heapAllocation')"
+          :data="heapChartData"
+          unit=" MB"
+          color="orange"
+          :format-value="(v: number) => v.toFixed(1)"
+        />
+      </div>
+
       <!-- Resource Usage -->
-      <div class="grid md:grid-cols-2 gap-6">
+      <div class="grid md:grid-cols-2 gap-4 sm:gap-6">
         <!-- Memory Usage -->
-        <div class="bg-gray-800 rounded-lg p-6">
-          <h3 class="text-lg font-semibold text-white mb-4">Memory Usage</h3>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 shadow">
+          <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.memoryUsage') }}</h3>
           <div class="space-y-4">
             <div>
               <div class="flex justify-between text-sm mb-1">
-                <span class="text-gray-400">Allocated</span>
-                <span class="text-white">{{ memoryUsagePercent.toFixed(1) }}%</span>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.allocated') }}</span>
+                <span class="text-gray-900 dark:text-white">{{ memoryUsagePercent.toFixed(1) }}%</span>
               </div>
-              <div class="w-full bg-gray-700 rounded-full h-3">
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                 <div
                   class="bg-blue-600 h-3 rounded-full transition-all"
                   :style="{ width: `${memoryUsagePercent}%` }"
@@ -316,31 +530,31 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
             </div>
             <div class="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span class="text-gray-400">Alloc:</span>
-                <span class="text-white ml-2">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.alloc') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">
                   {{ systemStore.health ? formatBytes(systemStore.health.mem_alloc_bytes) : '-' }}
                 </span>
               </div>
               <div>
-                <span class="text-gray-400">CPUs:</span>
-                <span class="text-white ml-2">{{ systemStore.health?.num_cpu || '-' }}</span>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpus') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.health?.num_cpu || '-' }}</span>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Worker Pool -->
-        <div class="bg-gray-800 rounded-lg p-6">
-          <h3 class="text-lg font-semibold text-white mb-4">Worker Pool</h3>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.workerPool') }}</h3>
           <div v-if="systemStore.workerStats" class="space-y-4">
             <div>
               <div class="flex justify-between text-sm mb-1">
-                <span class="text-gray-400">Pool Usage</span>
-                <span class="text-white">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.poolUsage') }}</span>
+                <span class="text-gray-900 dark:text-white">
                   {{ systemStore.workerStats.running }}/{{ systemStore.workerStats.pool_size }}
                 </span>
               </div>
-              <div class="w-full bg-gray-700 rounded-full h-3">
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                 <div
                   class="bg-green-600 h-3 rounded-full transition-all"
                   :style="{
@@ -351,98 +565,364 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
             </div>
             <div class="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span class="text-gray-400">Running:</span>
-                <span class="text-white ml-2">{{ systemStore.workerStats.running }}</span>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.running') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.workerStats.running }}</span>
               </div>
               <div>
-                <span class="text-gray-400">Total Tasks:</span>
-                <span class="text-white ml-2">{{ systemStore.workerStats.total }}</span>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.totalTasks') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.workerStats.total }}</span>
               </div>
             </div>
           </div>
-          <div v-else class="text-gray-400">Loading...</div>
+          <div v-else class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</div>
         </div>
       </div>
 
       <!-- System Info -->
-      <div class="bg-gray-800 rounded-lg p-6">
-        <h3 class="text-lg font-semibold text-white mb-4">System Information</h3>
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('system.systemInformation') }}</h3>
+          <button
+            class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            @click="toggleDetailedInfo"
+          >
+            {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}
+          </button>
+        </div>
         <div class="grid md:grid-cols-3 gap-4 text-sm">
           <div>
-            <span class="text-gray-400">Version:</span>
-            <span class="text-white ml-2">{{ systemStore.health?.version || '-' }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('system.version') }}:</span>
+            <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.health?.version || '-' }}</span>
           </div>
           <div>
-            <span class="text-gray-400">Go Version:</span>
-            <span class="text-white ml-2">{{ systemStore.health?.go_version || '-' }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('system.goVersion') }}:</span>
+            <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.health?.go_version || '-' }}</span>
           </div>
           <div>
-            <span class="text-gray-400">Timestamp:</span>
-            <span class="text-white ml-2">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('system.timestamp') }}:</span>
+            <span class="text-gray-900 dark:text-white ml-2">
               {{ systemStore.health?.timestamp ? formatDate(systemStore.health.timestamp) : '-' }}
             </span>
           </div>
         </div>
+      </div>
+
+      <!-- Detailed System Info -->
+      <div v-if="showDetailedInfo" class="space-y-4">
+        <div v-if="detailedInfoLoading" class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow text-center text-gray-500 dark:text-gray-400">
+          {{ t('system.loadingDetailedInfo') }}
+        </div>
+        <template v-else-if="detailedInfo">
+          <!-- OS Info -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.osInfo') }}</h4>
+            <div class="grid md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.osVersion') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.version || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.kernel') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.kernel || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.architecture') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.architecture || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.hostname') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.hostname || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.uptime') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.uptime_human || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.bootTime') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.boot_time ? new Date(detailedInfo.os.boot_time * 1000).toLocaleString() : '-' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CPU Info -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.cpuInfo') }}</h4>
+            <div class="grid md:grid-cols-3 gap-4 text-sm">
+              <div class="md:col-span-2">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuModel') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.model || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuVendor') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.vendor_id || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCores') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cores || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuThreads') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.threads || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuFrequency') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.frequency ? `${detailedInfo.hardware.cpu.frequency.toFixed(0)} MHz` : '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCache') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cache_size ? `${detailedInfo.hardware.cpu.cache_size} KB` : '-' }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuUsage') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.usage ? `${detailedInfo.hardware.cpu.usage.toFixed(1)}%` : '-' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Memory Info -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.memoryInfo') }}</h4>
+            <div class="grid md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.totalMemory') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.total) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.usedMemory') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.used) }} ({{ detailedInfo.hardware.memory.used_percent?.toFixed(1) }}%)</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.availableMemory') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.available) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.swapTotal') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.swap_total) }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.swapUsed') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.swap_used) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Disk Info -->
+          <div v-if="detailedInfo.hardware.disk?.length" class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.diskInfo') }}</h4>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <th class="pb-2 pr-4">{{ t('system.device') }}</th>
+                    <th class="pb-2 pr-4">{{ t('system.mountPoint') }}</th>
+                    <th class="pb-2 pr-4">{{ t('system.fileSystem') }}</th>
+                    <th class="pb-2 pr-4">{{ t('system.totalSpace') }}</th>
+                    <th class="pb-2 pr-4">{{ t('system.usedSpace') }}</th>
+                    <th class="pb-2">{{ t('system.availableSpace') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="disk in detailedInfo.hardware.disk" :key="disk.device" class="text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700/50">
+                    <td class="py-2 pr-4 font-mono text-xs">{{ disk.device }}</td>
+                    <td class="py-2 pr-4 font-mono text-xs">{{ disk.mount_point }}</td>
+                    <td class="py-2 pr-4">{{ disk.fs_type }}</td>
+                    <td class="py-2 pr-4">{{ formatBytes(disk.total) }}</td>
+                    <td class="py-2 pr-4">{{ formatBytes(disk.used) }} ({{ disk.used_percent?.toFixed(1) }}%)</td>
+                    <td class="py-2">{{ formatBytes(disk.available) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- GPU Info -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.gpuInfo') }}</h4>
+            <div v-if="detailedInfo.hardware.gpu?.length" class="space-y-4">
+              <div v-for="(gpu, index) in detailedInfo.hardware.gpu" :key="index" class="grid md:grid-cols-3 gap-4 text-sm">
+                <div class="md:col-span-2">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuName') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.name || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuVendor') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.vendor || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuDriver') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.driver || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuMemory') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.memory_total ? formatBytes(gpu.memory_total) : '-' }}</span>
+                </div>
+                <div v-if="gpu.memory_used">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuMemoryUsed') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(gpu.memory_used) }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-gray-500 dark:text-gray-400 text-sm">{{ t('system.noGpuDetected') }}</div>
+          </div>
+
+          <!-- Network Info -->
+          <div v-if="detailedInfo.network?.interfaces?.length" class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.networkInfo') }}</h4>
+            <div class="space-y-4">
+              <div v-for="iface in detailedInfo.network.interfaces.filter(i => !i.is_loopback && i.is_up)" :key="iface.name" class="border-b border-gray-100 dark:border-gray-700/50 pb-4 last:border-0 last:pb-0">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="font-medium text-gray-900 dark:text-white">{{ iface.name }}</span>
+                  <span class="px-2 py-0.5 text-xs rounded" :class="iface.is_up ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'">
+                    {{ iface.is_up ? t('system.interfaceUp') : t('system.interfaceDown') }}
+                  </span>
+                </div>
+                <div class="grid md:grid-cols-3 gap-2 text-sm">
+                  <div v-if="iface.mac">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.macAddress') }}:</span>
+                    <span class="text-gray-900 dark:text-white ml-2 font-mono text-xs">{{ iface.mac }}</span>
+                  </div>
+                  <div v-if="iface.ipv4?.length">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.ipv4Address') }}:</span>
+                    <span class="text-gray-900 dark:text-white ml-2 font-mono text-xs">{{ iface.ipv4.join(', ') }}</span>
+                  </div>
+                  <div>
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.mtu') }}:</span>
+                    <span class="text-gray-900 dark:text-white ml-2">{{ iface.mtu }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Runtime Info -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+            <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.runtimeInfo') }}</h4>
+            <div class="grid md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.goVersion') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.go_version }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.numGoroutines') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.num_goroutine }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.goMaxProcs') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.gomaxprocs }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpus') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.num_cpu }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.heapAlloc') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.alloc_mb }} MB</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.totalAlloc') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.total_alloc_mb }} MB</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.sysMemory') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.sys_mb }} MB</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-gray-400">{{ t('system.gcCount') }}:</span>
+                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.num_gc }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
 
     <!-- Logs Tab -->
     <div v-if="activeTab === 'logs'" class="space-y-4">
       <!-- Filters -->
-      <div class="bg-gray-800 rounded-lg p-4 flex flex-wrap gap-4">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 flex flex-wrap gap-4 items-center shadow">
         <div class="flex-1 min-w-[200px]">
           <input
             v-model="logSearch"
             type="text"
-            placeholder="Search logs..."
-            class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            :placeholder="t('system.searchLogs')"
+            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
             @keyup.enter="fetchLogs"
           />
         </div>
         <select
           v-model="logLevel"
-          class="bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
           @change="fetchLogs"
         >
-          <option value="all">All Levels</option>
-          <option value="error">Error</option>
-          <option value="warn">Warning</option>
-          <option value="info">Info</option>
-          <option value="debug">Debug</option>
+          <option value="all">{{ t('system.allLevels') }}</option>
+          <option value="error">{{ t('system.error') }}</option>
+          <option value="warn">{{ t('system.warning') }}</option>
+          <option value="info">{{ t('system.info') }}</option>
+          <option value="debug">{{ t('system.debug') }}</option>
         </select>
         <select
           v-model="logLimit"
-          class="bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
           @change="fetchLogs"
         >
-          <option :value="50">50 entries</option>
-          <option :value="100">100 entries</option>
-          <option :value="200">200 entries</option>
-          <option :value="500">500 entries</option>
+          <option :value="50">50 {{ t('system.entries', { count: '' }) }}</option>
+          <option :value="100">100 {{ t('system.entries', { count: '' }) }}</option>
+          <option :value="200">200 {{ t('system.entries', { count: '' }) }}</option>
+          <option :value="500">500 {{ t('system.entries', { count: '' }) }}</option>
         </select>
-        <button
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          :disabled="logsLoading"
-          @click="fetchLogs"
-        >
-          {{ logsLoading ? 'Loading...' : 'Refresh' }}
-        </button>
+        <div class="flex gap-2">
+          <button
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            :disabled="logsLoading"
+            @click="fetchLogs"
+          >
+            {{ logsLoading ? t('common.loading') : t('system.refresh') }}
+          </button>
+          <button
+            class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+            :disabled="logs.length === 0"
+            :title="t('system.exportLogs')"
+            @click="exportLogs"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </button>
+          <button
+            class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+            :disabled="logs.length === 0"
+            :title="t('system.clearLogs')"
+            @click="clearLogs"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Log Stats -->
+      <div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <span>{{ t('system.logEntries', { count: logs.length }) }}</span>
+        <span v-if="logs.length > 0 && logs[0]?.timestamp">
+          {{ t('system.latest') }}: {{ new Date(logs[0].timestamp).toLocaleString() }}
+        </span>
       </div>
 
       <!-- Log Entries -->
-      <div class="bg-gray-800 rounded-lg overflow-hidden">
-        <div v-if="logsLoading" class="p-8 text-center text-gray-400">Loading logs...</div>
-        <div v-else-if="logs.length === 0" class="p-8 text-center text-gray-400">
-          No logs found
+      <div class="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow">
+        <div v-if="logsLoading" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.loadingLogs') }}</div>
+        <div v-else-if="logs.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
+          {{ t('system.noLogsFound') }}
         </div>
-        <div v-else class="divide-y divide-gray-700 max-h-[600px] overflow-y-auto font-mono text-sm">
+        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[600px] overflow-y-auto font-mono text-sm">
           <div
             v-for="(log, index) in logs"
             :key="index"
-            class="p-3 hover:bg-gray-700/50 flex gap-3"
+            class="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex gap-3 items-start"
           >
-            <span class="text-gray-500 flex-shrink-0 w-20">
-              {{ new Date(log.timestamp).toLocaleTimeString() }}
+            <span class="text-gray-400 dark:text-gray-500 flex-shrink-0 w-20">
+              {{ formatLogTime(log.timestamp) }}
             </span>
             <span
               :class="getLogLevelClass(log.level)"
@@ -450,8 +930,30 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
             >
               {{ log.level }}
             </span>
-            <span v-if="log.source" class="text-purple-400 flex-shrink-0">[{{ log.source }}]</span>
-            <span class="text-gray-300 break-all">{{ log.message }}</span>
+            <span v-if="log.source" class="text-purple-600 dark:text-purple-400 flex-shrink-0">[{{ log.source.split('/').pop()?.split(':')[0] }}]</span>
+            <!-- Request log with tags -->
+            <template v-if="isRequestLog(log)">
+              <span
+                class="px-2 py-0.5 rounded text-xs font-medium flex-shrink-0"
+                :class="getMethodColor(log.fields?.method as string)"
+              >
+                {{ log.fields?.method }}
+              </span>
+              <span class="text-gray-300 flex-1 truncate" :title="log.fields?.uri as string">
+                {{ log.fields?.uri }}
+              </span>
+              <span
+                class="px-2 py-0.5 rounded text-xs font-medium flex-shrink-0"
+                :class="getStatusColor(log.fields?.status as number)"
+              >
+                {{ log.fields?.status }}
+              </span>
+              <span class="text-gray-500 text-xs flex-shrink-0">
+                {{ formatLatency(log.fields?.latency as number) }}
+              </span>
+            </template>
+            <!-- Regular log message -->
+            <span v-else class="text-gray-700 dark:text-gray-300 break-all">{{ log.message }}</span>
           </div>
         </div>
       </div>
@@ -460,56 +962,93 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
     <!-- Config Tab -->
     <div v-if="activeTab === 'config'" class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-white">Configuration</h2>
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('system.configuration') }}</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ t('system.configDescription') }}</p>
+        </div>
         <div class="flex gap-2">
+          <button
+            class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
+            :title="t('system.formatJson')"
+            @click="configJson = JSON.stringify(JSON.parse(configJson), null, 2)"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+            </svg>
+          </button>
+          <button
+            class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
+            :title="t('system.copyToClipboard')"
+            @click="copyConfigToClipboard"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
           <button
             v-if="!configEditing"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
             @click="configEditing = true"
           >
-            Edit
+            {{ t('system.edit') }}
           </button>
           <template v-else>
             <button
               class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors"
               @click="saveConfig"
             >
-              Save
+              {{ t('system.save') }}
             </button>
             <button
-              class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm transition-colors"
-              @click="
-                configEditing = false
-                configJson = JSON.stringify(config, null, 2)
-                configError = null
-              "
+              class="px-4 py-2 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
+              @click="configEditing = false; configJson = JSON.stringify(config, null, 2); configError = null"
             >
-              Cancel
+              {{ t('system.cancel') }}
             </button>
           </template>
         </div>
       </div>
 
-      <div v-if="configError" class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-red-300">
-        {{ configError }}
+      <div v-if="configError" class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-700 dark:text-red-300 flex items-start gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <div class="font-medium">{{ t('system.invalidJson') }}</div>
+          <div class="text-sm mt-1">{{ configError }}</div>
+        </div>
       </div>
 
-      <div class="bg-gray-800 rounded-lg overflow-hidden">
-        <div v-if="configLoading" class="p-8 text-center text-gray-400">Loading configuration...</div>
-        <textarea
-          v-else
-          v-model="configJson"
-          :readonly="!configEditing"
-          class="w-full h-[500px] bg-gray-800 text-gray-300 p-4 font-mono text-sm focus:outline-none resize-none"
-          :class="{ 'bg-gray-700': configEditing }"
-        ></textarea>
+      <div class="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow">
+        <div v-if="configLoading" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.loadingConfig') }}</div>
+        <div v-else class="relative">
+          <!-- Line numbers -->
+          <div class="absolute left-0 top-0 bottom-0 w-12 bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden pointer-events-none">
+            <div class="p-4 font-mono text-sm text-gray-400 dark:text-gray-500 leading-6">
+              <div v-for="n in configJson.split('\n').length" :key="n">{{ n }}</div>
+            </div>
+          </div>
+          <textarea
+            v-model="configJson"
+            :readonly="!configEditing"
+            class="w-full h-[500px] bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 p-4 pl-16 font-mono text-sm focus:outline-none resize-none leading-6"
+            :class="{ 'bg-gray-50 dark:bg-gray-700': configEditing }"
+            spellcheck="false"
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- Config Info -->
+      <div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <span>{{ configJson.split('\n').length }} {{ t('system.lines', { count: '' }) }}</span>
+        <span v-if="configEditing" class="text-yellow-600 dark:text-yellow-400">{{ t('system.editingMode') }}</span>
       </div>
     </div>
 
     <!-- Backup Tab -->
     <div v-if="activeTab === 'backup'" class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-white">Backups</h2>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('system.backups') }}</h2>
         <button
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
           :disabled="backupCreating"
@@ -536,27 +1075,27 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             ></path>
           </svg>
-          {{ backupCreating ? 'Creating...' : 'Create Backup' }}
+          {{ backupCreating ? t('system.creating') : t('system.createBackup') }}
         </button>
       </div>
 
-      <div class="bg-gray-800 rounded-lg overflow-hidden">
-        <div v-if="backupsLoading" class="p-8 text-center text-gray-400">Loading backups...</div>
-        <div v-else-if="backups.length === 0" class="p-8 text-center text-gray-400">
-          No backups found. Create one to get started.
+      <div class="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow">
+        <div v-if="backupsLoading" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.loadingBackups') }}</div>
+        <div v-else-if="backups.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
+          {{ t('system.noBackupsFound') }}
         </div>
-        <div v-else class="divide-y divide-gray-700">
+        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
           <div
             v-for="backup in backups"
             :key="backup.id"
             class="p-4 flex items-center justify-between"
           >
             <div>
-              <div class="text-white font-medium">{{ backup.id }}</div>
-              <div class="text-sm text-gray-400 flex items-center gap-4 mt-1">
+              <div class="text-gray-900 dark:text-white font-medium">{{ backup.id }}</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-4 mt-1">
                 <span>{{ formatDate(backup.created_at) }}</span>
                 <span>{{ formatBytes(backup.size_bytes) }}</span>
-                <span class="text-blue-400">{{ backup.type }}</span>
+                <span class="text-blue-600 dark:text-blue-400">{{ backup.type }}</span>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -565,13 +1104,13 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
                 :disabled="backupRestoring === backup.id"
                 @click="restoreBackup(backup.id)"
               >
-                {{ backupRestoring === backup.id ? 'Restoring...' : 'Restore' }}
+                {{ backupRestoring === backup.id ? t('system.restoring') : t('system.restore') }}
               </button>
               <button
                 class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
                 @click="deleteBackup(backup.id)"
               >
-                Delete
+                {{ t('system.delete') }}
               </button>
             </div>
           </div>

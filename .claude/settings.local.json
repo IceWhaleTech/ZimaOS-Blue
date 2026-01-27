@@ -40,7 +40,26 @@
       "Bash(else)",
       "Bash(echo:*)",
       "Bash(fi)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(python scripts/search.py:*)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(gh pr list:*)",
+      "Bash(gh api:*)",
+      "Bash(git show:*)",
+      "Bash(python -X utf8 scripts/search.py:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic:*)",
+      "Bash(python:*)",
+      "Bash(copy:*)",
+      "Bash(sqlite3:*)",
+      "Bash(del \"g:\\\\GitHub\\\\ZimaOS-Echo\\\\server\\\\internal\\\\web\\\\dist\\\\.gitkeep\")",
+      "WebFetch(domain:clawd.bot)",
+      "WebFetch(domain:simpleicons.org)",
+      "WebFetch(domain:cdn.simpleicons.org)"
     ]
   }
 }

@@ -279,10 +279,16 @@ type Config struct {
 	ProxyURL string `json:"proxy_url" yaml:"proxy_url"`
 	// BrowserPath is the path to the browser executable.
 	BrowserPath string `json:"browser_path" yaml:"browser_path"`
+	// EvaluateEnabled controls whether JavaScript evaluation is allowed.
+	// When false, act:evaluate and wait --fn are disabled to prevent
+	// prompt injection attacks from executing arbitrary JavaScript.
+	// Default: true
+	EvaluateEnabled *bool `json:"evaluate_enabled" yaml:"evaluate_enabled"`
 }
 
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
+	evaluateEnabled := true
 	return &Config{
 		PoolSize:              3,
 		Headless:              true,
@@ -295,7 +301,16 @@ func DefaultConfig() *Config {
 		UserAgent:             "",
 		ProxyURL:              "",
 		BrowserPath:           "",
+		EvaluateEnabled:       &evaluateEnabled,
 	}
+}
+
+// IsEvaluateEnabled returns whether JavaScript evaluation is enabled.
+func (c *Config) IsEvaluateEnabled() bool {
+	if c.EvaluateEnabled == nil {
+		return true // Default to enabled for backwards compatibility
+	}
+	return *c.EvaluateEnabled
 }
 
 // Service defines the browser automation service interface.

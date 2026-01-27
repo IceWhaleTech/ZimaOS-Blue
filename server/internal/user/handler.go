@@ -8,16 +8,24 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 )
 
 // Handler handles HTTP requests for user management.
 type Handler struct {
-	service *Service
+	service    *Service
+	jwtService *auth.JWTService
 }
 
 // NewHandler creates a new user handler.
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
+}
+
+// SetJWTService sets the JWT service for token generation.
+func (h *Handler) SetJWTService(jwtService *auth.JWTService) {
+	h.jwtService = jwtService
 }
 
 // RegisterRoutes registers the user routes.
@@ -50,10 +58,11 @@ type LoginRequest struct {
 
 // LoginResponse represents a login response.
 type LoginResponse struct {
-	AccessToken  string `json:"access_token"`
+	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
 	User         *User  `json:"user"`
 	MFARequired  bool   `json:"mfa_required,omitempty"`
 	MFAToken     string `json:"mfa_token,omitempty"`
@@ -88,9 +97,30 @@ func (h *Handler) Login(c echo.Context) error {
 		}
 	}
 
-	// Generate tokens
-	accessToken := generateToken(32)
-	refreshToken := generateToken(64)
+	var accessToken, refreshToken string
+
+	// Use JWT service if available, otherwise fall back to random tokens
+	if h.jwtService != nil {
+		userClaims := &auth.UserClaims{
+			UserID:   user.ID.String(),
+			Username: user.Username,
+			Role:     string(user.Role),
+		}
+
+		accessToken, err = h.jwtService.GenerateAccessToken(userClaims)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate access token")
+		}
+
+		refreshToken, err = h.jwtService.GenerateRefreshToken(userClaims)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate refresh token")
+		}
+	} else {
+		// Fallback to random tokens
+		accessToken = generateToken(32)
+		refreshToken = generateToken(64)
+	}
 
 	// Create session
 	userAgent := c.Request().UserAgent()
@@ -101,10 +131,11 @@ func (h *Handler) Login(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, &LoginResponse{
-		AccessToken:  accessToken,
+		Token:        accessToken,
 		RefreshToken: refreshToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    int(session.ExpiresAt.Sub(session.CreatedAt).Seconds()),
+		ExpiresAt:    session.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
 		User:         user,
 	})
 }
@@ -371,6 +402,14 @@ func generateToken(length int) string {
 }
 
 func getUserIDFromContext(c echo.Context) uuid.UUID {
+	// Try to get from auth middleware (stored in request context)
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		if id, err := uuid.Parse(claims.UserID); err == nil {
+			return id
+		}
+	}
+
+	// Fallback: try to get from echo context directly
 	if id, ok := c.Get("user_id").(uuid.UUID); ok {
 		return id
 	}

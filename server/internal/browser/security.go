@@ -1,8 +1,14 @@
 package browser
 
 import (
+	"errors"
 	"net/url"
 	"strings"
+)
+
+var (
+	// ErrEvaluateDisabled is returned when JavaScript evaluation is disabled.
+	ErrEvaluateDisabled = errors.New("JavaScript evaluation is disabled by configuration (browser.evaluate_enabled=false)")
 )
 
 // SecurityChecker validates URLs against security rules.
@@ -71,6 +77,16 @@ func (s *SecurityChecker) isAllowed(domain string) bool {
 	return false
 }
 
+// CheckEvaluateAllowed checks if JavaScript evaluation is allowed.
+// This should be called before executing any JavaScript code via
+// act:evaluate or wait --fn to prevent prompt injection attacks.
+func (s *SecurityChecker) CheckEvaluateAllowed() error {
+	if !s.config.IsEvaluateEnabled() {
+		return ErrEvaluateDisabled
+	}
+	return nil
+}
+
 // ValidateSelector validates a CSS selector for safety.
 func (s *SecurityChecker) ValidateSelector(selector string) error {
 	if selector == "" {
@@ -96,9 +112,16 @@ func (s *SecurityChecker) ValidateSelector(selector string) error {
 
 // ValidateScript validates JavaScript code for safety.
 // Note: This is a basic check. For production, consider using a proper sandbox.
+// IMPORTANT: Even if this check passes, you should still call CheckEvaluateAllowed()
+// to ensure JavaScript evaluation is enabled in the configuration.
 func (s *SecurityChecker) ValidateScript(script string) error {
 	if script == "" {
 		return nil
+	}
+
+	// First check if evaluation is allowed at all
+	if err := s.CheckEvaluateAllowed(); err != nil {
+		return err
 	}
 
 	// Basic validation - reject obviously dangerous patterns

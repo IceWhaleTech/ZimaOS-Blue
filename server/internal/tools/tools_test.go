@@ -624,7 +624,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"calculator", "system_info", "current_time", "file_read", "file_write"}
+	expectedTools := []string{"Calculator", "System Info", "Current Time", "File Read", "File Write"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)

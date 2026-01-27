@@ -1,6 +1,51 @@
 // Wake word detection using Web Audio API and simple keyword spotting
 // This is a basic implementation that can be enhanced with more sophisticated models
 
+// Type declarations for Web Speech API
+interface SpeechRecognitionResult {
+  readonly length: number
+  item(index: number): SpeechRecognitionAlternative
+  [index: number]: SpeechRecognitionAlternative
+  readonly isFinal: boolean
+}
+
+interface SpeechRecognitionAlternative {
+  readonly transcript: string
+  readonly confidence: number
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number
+  item(index: number): SpeechRecognitionResult
+  [index: number]: SpeechRecognitionResult
+}
+
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number
+  readonly results: SpeechRecognitionResultList
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string
+  readonly message: string
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: SpeechRecognitionEvent) => void) | null
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null
+  onend: (() => void) | null
+  start(): void
+  stop(): void
+  abort(): void
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognition
+}
+
 export interface WakeWordConfig {
   wakeWord: string
   sensitivity: number // 0.0 - 1.0
@@ -24,25 +69,25 @@ export class WakeWordDetector {
     this.sensitivity = config.sensitivity || 0.7
 
     // Check for Web Speech API support
-    const SpeechRecognition =
-      (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition
+    const SpeechRecognitionCtor =
+      (window as unknown as { SpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition
 
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionCtor) {
       console.warn('Web Speech API not supported')
       return
     }
 
-    this.recognition = new SpeechRecognition()
+    this.recognition = new SpeechRecognitionCtor()
     this.recognition.continuous = true
     this.recognition.interimResults = true
     this.recognition.lang = 'en-US'
 
-    this.recognition.onresult = (event) => {
+    this.recognition.onresult = (event: SpeechRecognitionEvent) => {
       this.handleResult(event)
     }
 
-    this.recognition.onerror = (event) => {
+    this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (event.error !== 'no-speech') {
         this.onError?.(event.error)
       }
@@ -63,8 +108,11 @@ export class WakeWordDetector {
   private handleResult(event: SpeechRecognitionEvent) {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i]
-      const transcript = result[0].transcript.toLowerCase().trim()
-      const confidence = result[0].confidence
+      if (!result) continue
+      const firstAlternative = result[0]
+      if (!firstAlternative) continue
+      const transcript = firstAlternative.transcript.toLowerCase().trim()
+      const confidence = firstAlternative.confidence
 
       // Check if wake word is detected
       if (this.containsWakeWord(transcript) && confidence >= this.sensitivity) {
@@ -120,25 +168,32 @@ export class WakeWordDetector {
       matrix[i] = [i]
     }
 
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j
+    const firstRow = matrix[0]
+    if (firstRow) {
+      for (let j = 0; j <= a.length; j++) {
+        firstRow[j] = j
+      }
     }
 
     for (let i = 1; i <= b.length; i++) {
       for (let j = 1; j <= a.length; j++) {
+        const currentRow = matrix[i]
+        const prevRow = matrix[i - 1]
+        if (!currentRow || !prevRow) continue
+
         if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1]
+          currentRow[j] = prevRow[j - 1] ?? 0
         } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
+          currentRow[j] = Math.min(
+            (prevRow[j - 1] ?? 0) + 1,
+            (currentRow[j - 1] ?? 0) + 1,
+            (prevRow[j] ?? 0) + 1
           )
         }
       }
     }
 
-    return matrix[b.length][a.length]
+    return matrix[b.length]?.[a.length] ?? 0
   }
 
   setWakeWord(wakeWord: string) {

@@ -10,8 +10,8 @@
         :key="component.id"
         :component="component"
         :form-data="formData"
-        @action="handleAction"
-        @update:form-data="updateFormData"
+        @action="(payload) => handleAction(payload.actionId, payload.confirmRequired, payload.confirmDialog)"
+        @update:form-data="(payload) => updateFormData(payload.key, payload.value)"
       />
     </div>
   </div>

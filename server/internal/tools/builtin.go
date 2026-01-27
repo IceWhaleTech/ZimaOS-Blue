@@ -27,7 +27,7 @@ func NewCalculatorTool() *CalculatorTool {
 // Definition returns the tool's definition.
 func (c *CalculatorTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "calculator",
+		Name:        "Calculator",
 		Description: "Performs basic arithmetic operations. Supports +, -, *, /, and parentheses.",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -140,7 +140,7 @@ func NewSystemInfoTool() *SystemInfoTool {
 // Definition returns the tool's definition.
 func (s *SystemInfoTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "system_info",
+		Name:        "System Info",
 		Description: "Returns information about the system (OS, architecture, hostname, CPU count, Go version).",
 		Parameters: map[string]interface{}{
 			"type":       "object",
@@ -176,7 +176,7 @@ func NewCurrentTimeTool() *CurrentTimeTool {
 // Definition returns the tool's definition.
 func (t *CurrentTimeTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "current_time",
+		Name:        "Current Time",
 		Description: "Returns the current time in UTC, local time, and Unix timestamp. Optionally accepts a timezone.",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -237,7 +237,7 @@ func NewFileReadTool(allowedPaths []string, maxFileSize int64) *FileReadTool {
 // Definition returns the tool's definition.
 func (f *FileReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "file_read",
+		Name:        "File Read",
 		Description: "Reads content from a file. Returns the file content as text.",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -343,7 +343,7 @@ func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
 // Definition returns the tool's definition.
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "file_write",
+		Name:        "File Write",
 		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -462,4 +462,16 @@ func RegisterBuiltinTools(registry *Registry) {
 	// File tools with default settings (allow all paths, 1MB max)
 	registry.Register(NewFileReadTool(nil, 0))
 	registry.Register(NewFileWriteTool(nil, 0))
+	// Web search with default settings (DuckDuckGo)
+	registry.Register(NewWebSearchTool(WebSearchConfig{}))
+}
+
+// RegisterBuiltinToolsWithConfig registers all built-in tools with custom configuration.
+func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, allowedPaths []string, maxFileSize int64) {
+	registry.Register(NewCalculatorTool())
+	registry.Register(NewSystemInfoTool())
+	registry.Register(NewCurrentTimeTool())
+	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
+	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
+	registry.Register(NewWebSearchTool(webSearchConfig))
 }

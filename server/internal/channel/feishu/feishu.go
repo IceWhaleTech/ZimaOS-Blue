@@ -39,18 +39,107 @@ type Channel struct {
 	tokenExpireTime   time.Time
 	tokenMu           sync.RWMutex
 
+	// Bot commands
+	commandHandlers map[string]BotCommandHandler
+	commandMu       sync.RWMutex
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
+// BotCommandHandler handles bot commands.
+type BotCommandHandler func(ctx context.Context, cmd string, args string, event *messageEvent) (string, *InteractiveCard, error)
+
+// InteractiveCard represents a Feishu interactive card.
+type InteractiveCard struct {
+	Config   CardConfig    `json:"config,omitempty"`
+	Header   *CardHeader   `json:"header,omitempty"`
+	Elements []CardElement `json:"elements,omitempty"`
+}
+
+// CardConfig represents card configuration.
+type CardConfig struct {
+	WideScreenMode bool `json:"wide_screen_mode,omitempty"`
+	EnableForward  bool `json:"enable_forward,omitempty"`
+}
+
+// CardHeader represents card header.
+type CardHeader struct {
+	Title    *CardText `json:"title,omitempty"`
+	Template string    `json:"template,omitempty"` // blue, wathet, turquoise, green, yellow, orange, red, carmine, violet, purple, indigo, grey
+}
+
+// CardText represents text in a card.
+type CardText struct {
+	Tag     string `json:"tag"` // plain_text, lark_md
+	Content string `json:"content"`
+}
+
+// CardElement represents an element in a card.
+type CardElement interface {
+	isCardElement()
+}
+
+// DivElement represents a div element.
+type DivElement struct {
+	Tag    string    `json:"tag"` // div
+	Text   *CardText `json:"text,omitempty"`
+	Fields []struct {
+		IsShort bool      `json:"is_short"`
+		Text    *CardText `json:"text"`
+	} `json:"fields,omitempty"`
+}
+
+func (DivElement) isCardElement() {}
+
+// ActionElement represents an action element with buttons.
+type ActionElement struct {
+	Tag     string         `json:"tag"` // action
+	Actions []ActionButton `json:"actions"`
+	Layout  string         `json:"layout,omitempty"` // bisected, trisection, flow
+}
+
+func (ActionElement) isCardElement() {}
+
+// ActionButton represents a button in an action element.
+type ActionButton struct {
+	Tag   string    `json:"tag"` // button
+	Text  *CardText `json:"text"`
+	URL   string    `json:"url,omitempty"`
+	Type  string    `json:"type,omitempty"` // default, primary, danger
+	Value map[string]interface{} `json:"value,omitempty"`
+}
+
+// NoteElement represents a note element.
+type NoteElement struct {
+	Tag      string      `json:"tag"` // note
+	Elements []CardText  `json:"elements"`
+}
+
+func (NoteElement) isCardElement() {}
+
+// HrElement represents a horizontal rule element.
+type HrElement struct {
+	Tag string `json:"tag"` // hr
+}
+
+func (HrElement) isCardElement() {}
+
 // New creates a new Feishu channel.
 func New(cfg channel.FeishuConfig, logger *zap.Logger) *Channel {
-	return &Channel{
-		config:   cfg,
-		logger:   logger.With(zap.String("channel", "feishu")),
-		messages: make(chan channel.Message, 100),
-		status:   channel.StatusDisconnected,
+	c := &Channel{
+		config:          cfg,
+		logger:          logger.With(zap.String("channel", "feishu")),
+		messages:        make(chan channel.Message, 100),
+		status:          channel.StatusDisconnected,
+		commandHandlers: make(map[string]BotCommandHandler),
 	}
+
+	// Register default command handlers
+	c.RegisterCommand("/help", c.handleHelpCommand)
+	c.RegisterCommand("/start", c.handleStartCommand)
+
+	return c
 }
 
 // Name returns the channel name.
@@ -298,6 +387,11 @@ func (c *Channel) handleMessageEvent(event *feishuEvent) {
 		}
 	default:
 		content = msgEvent.Message.Content
+	}
+
+	// Check if this is a command
+	if c.processCommand(content, &msgEvent) {
+		return
 	}
 
 	// Convert to unified message format
@@ -678,4 +772,269 @@ func parseFeishuTimestamp(ts string) time.Time {
 	var msec int64
 	fmt.Sscanf(ts, "%d", &msec)
 	return time.UnixMilli(msec)
+}
+
+// RegisterCommand registers a bot command handler.
+func (c *Channel) RegisterCommand(cmd string, handler BotCommandHandler) {
+	c.commandMu.Lock()
+	defer c.commandMu.Unlock()
+	c.commandHandlers[cmd] = handler
+}
+
+// handleHelpCommand handles the /help command.
+func (c *Channel) handleHelpCommand(ctx context.Context, cmd string, args string, event *messageEvent) (string, *InteractiveCard, error) {
+	card := &InteractiveCard{
+		Config: CardConfig{
+			WideScreenMode: true,
+			EnableForward:  true,
+		},
+		Header: &CardHeader{
+			Title:    &CardText{Tag: "plain_text", Content: "📚 帮助信息"},
+			Template: "blue",
+		},
+		Elements: []CardElement{
+			DivElement{
+				Tag: "div",
+				Text: &CardText{
+					Tag:     "lark_md",
+					Content: "**可用命令：**\n\n/start - 开始使用机器人\n/help - 显示帮助信息\n\n**使用方法：**\n直接发送消息即可与 AI 对话。",
+				},
+			},
+		},
+	}
+
+	return "", card, nil
+}
+
+// handleStartCommand handles the /start command.
+func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args string, event *messageEvent) (string, *InteractiveCard, error) {
+	card := &InteractiveCard{
+		Config: CardConfig{
+			WideScreenMode: true,
+			EnableForward:  true,
+		},
+		Header: &CardHeader{
+			Title:    &CardText{Tag: "plain_text", Content: "👋 欢迎使用 ZimaOS Echo"},
+			Template: "green",
+		},
+		Elements: []CardElement{
+			DivElement{
+				Tag: "div",
+				Text: &CardText{
+					Tag:     "lark_md",
+					Content: "我是您的 AI 助手，可以帮助您：\n\n• 回答问题\n• 处理任务\n• 提供建议\n\n直接发送消息开始对话吧！",
+				},
+			},
+			ActionElement{
+				Tag:    "action",
+				Layout: "bisected",
+				Actions: []ActionButton{
+					{
+						Tag:  "button",
+						Text: &CardText{Tag: "plain_text", Content: "📚 查看帮助"},
+						Type: "default",
+						Value: map[string]interface{}{
+							"action": "help",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return "", card, nil
+}
+
+// processCommand checks if a message is a command and processes it.
+func (c *Channel) processCommand(content string, event *messageEvent) bool {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "/") {
+		return false
+	}
+
+	// Parse command and arguments
+	parts := strings.SplitN(content, " ", 2)
+	cmd := parts[0]
+	args := ""
+	if len(parts) > 1 {
+		args = parts[1]
+	}
+
+	c.commandMu.RLock()
+	handler, exists := c.commandHandlers[cmd]
+	c.commandMu.RUnlock()
+
+	if !exists {
+		return false
+	}
+
+	c.logger.Debug("processing command",
+		zap.String("command", cmd),
+		zap.String("args", args))
+
+	text, card, err := handler(c.ctx, cmd, args, event)
+	if err != nil {
+		c.logger.Error("command handler error",
+			zap.String("command", cmd),
+			zap.Error(err))
+		text = "处理命令时发生错误，请稍后重试。"
+	}
+
+	// Send response
+	if card != nil {
+		if err := c.SendCard(c.ctx, event.Message.ChatID, card); err != nil {
+			c.logger.Error("failed to send card response",
+				zap.String("command", cmd),
+				zap.Error(err))
+		}
+	} else if text != "" {
+		if err := c.Send(c.ctx, channel.OutgoingMessage{
+			ChatID:  event.Message.ChatID,
+			Content: text,
+		}); err != nil {
+			c.logger.Error("failed to send text response",
+				zap.String("command", cmd),
+				zap.Error(err))
+		}
+	}
+
+	return true
+}
+
+// SendCard sends an interactive card message.
+func (c *Channel) SendCard(ctx context.Context, chatID string, card *InteractiveCard) error {
+	token, err := c.getTenantAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get tenant access token: %w", err)
+	}
+
+	cardJSON, err := json.Marshal(card)
+	if err != nil {
+		return fmt.Errorf("failed to marshal card: %w", err)
+	}
+
+	payload := map[string]interface{}{
+		"receive_id": chatID,
+		"msg_type":   "interactive",
+		"content":    string(cardJSON),
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	receiveIDType := "chat_id"
+	if strings.HasPrefix(chatID, "ou_") {
+		receiveIDType = "open_id"
+	} else if strings.HasPrefix(chatID, "on_") {
+		receiveIDType = "union_id"
+	}
+
+	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=%s", receiveIDType)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send card: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if result.Code != 0 {
+		return fmt.Errorf("Feishu API error: %d - %s", result.Code, result.Msg)
+	}
+
+	return nil
+}
+
+// HandleCardAction handles card action callbacks.
+func (c *Channel) HandleCardAction(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		c.logger.Error("failed to read request body", zap.Error(err))
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	var action struct {
+		OpenID        string `json:"open_id"`
+		UserID        string `json:"user_id"`
+		OpenMessageID string `json:"open_message_id"`
+		TenantKey     string `json:"tenant_key"`
+		Token         string `json:"token"`
+		Action        struct {
+			Value map[string]interface{} `json:"value"`
+			Tag   string                 `json:"tag"`
+		} `json:"action"`
+	}
+
+	if err := json.Unmarshal(body, &action); err != nil {
+		c.logger.Error("failed to parse card action", zap.Error(err))
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Verify token
+	if action.Token != c.config.VerificationToken {
+		c.logger.Warn("invalid verification token in card action")
+		http.Error(w, "Invalid token", http.StatusForbidden)
+		return
+	}
+
+	c.logger.Debug("received card action",
+		zap.String("user_id", action.UserID),
+		zap.Any("value", action.Action.Value))
+
+	// Handle built-in actions
+	if actionName, ok := action.Action.Value["action"].(string); ok {
+		switch actionName {
+		case "help":
+			// Trigger help command
+			event := &messageEvent{}
+			event.Message.ChatID = action.OpenID
+			event.Sender.SenderID.OpenID = action.OpenID
+			c.processCommand("/help", event)
+		}
+	}
+
+	// Send to message channel for custom handling
+	channelMsg := channel.Message{
+		ID:          action.OpenMessageID,
+		ChannelName: "feishu",
+		ChatID:      action.OpenID,
+		UserID:      action.OpenID,
+		Type:        channel.MessageTypeText,
+		Content:     fmt.Sprintf("%v", action.Action.Value),
+		Timestamp:   time.Now(),
+		IsGroup:     false,
+		Metadata: map[string]interface{}{
+			"is_card_action": true,
+			"action_value":   action.Action.Value,
+			"action_tag":     action.Action.Tag,
+			"message_id":     action.OpenMessageID,
+		},
+	}
+
+	select {
+	case c.messages <- channelMsg:
+	default:
+		c.logger.Warn("message channel full, dropping card action")
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

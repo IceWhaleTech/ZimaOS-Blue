@@ -25,12 +25,18 @@ export class SSEClient {
     const url = `/api/v1/conversations/${conversationId}/messages/stream`
 
     try {
+      const token = localStorage.getItem('token')
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        },
+        headers,
         body: JSON.stringify(request),
         signal: this.abortController.signal,
       })

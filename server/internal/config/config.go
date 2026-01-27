@@ -18,16 +18,38 @@ type Config struct {
 	Channels    channel.Config    `mapstructure:"channels"`
 	Performance PerformanceConfig `mapstructure:"performance"`
 	Security    SecurityConfig    `mapstructure:"security"`
+	LLM         LLMConfig         `mapstructure:"llm"`
+	Session     SessionConfig     `mapstructure:"session"`
+	Embedding   EmbeddingConfig   `mapstructure:"embedding"`
+	Memory      MemoryConfig      `mapstructure:"memory"`
+	Grayscale   GrayscaleConfig   `mapstructure:"grayscale"`
 }
 
 // SecurityConfig holds security-related configuration (v0.7).
 type SecurityConfig struct {
-	OIDC     OIDCConfig     `mapstructure:"oidc"`
-	Users    UsersConfig    `mapstructure:"users"`
-	Password PasswordConfig `mapstructure:"password"`
-	MFA      MFAConfig      `mapstructure:"mfa"`
-	Audit    AuditConfig    `mapstructure:"audit"`
-	Sandbox  SandboxConfig  `mapstructure:"sandbox"`
+	JWT        JWTConfig        `mapstructure:"jwt"`
+	OIDC       OIDCConfig       `mapstructure:"oidc"`
+	Users      UsersConfig      `mapstructure:"users"`
+	Password   PasswordConfig   `mapstructure:"password"`
+	MFA        MFAConfig        `mapstructure:"mfa"`
+	Audit      AuditConfig      `mapstructure:"audit"`
+	Sandbox    SandboxConfig    `mapstructure:"sandbox"`
+	Encryption EncryptionConfig `mapstructure:"encryption"`
+}
+
+// JWTConfig holds JWT authentication configuration.
+type JWTConfig struct {
+	Secret            string        `mapstructure:"secret"`
+	Expiration        time.Duration `mapstructure:"expiration"`
+	RefreshExpiration time.Duration `mapstructure:"refresh_expiration"`
+	Issuer            string        `mapstructure:"issuer"`
+}
+
+// EncryptionConfig holds encryption configuration for sensitive data.
+type EncryptionConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	KeyPath    string `mapstructure:"key_path"`
+	Passphrase string `mapstructure:"passphrase"`
 }
 
 // OIDCConfig holds OIDC provider configuration.
@@ -369,6 +391,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("performance.profiling.benchmark_enabled", false)
 
 	// Security defaults (v0.7)
+	// JWT
+	v.SetDefault("security.jwt.secret", "change-me-in-production-use-a-strong-secret-key")
+	v.SetDefault("security.jwt.expiration", "24h")
+	v.SetDefault("security.jwt.refresh_expiration", "720h")
+	v.SetDefault("security.jwt.issuer", "zimaos-echo")
+
 	// OIDC
 	v.SetDefault("security.oidc.enabled", true)
 	v.SetDefault("security.oidc.issuer", "http://localhost:8080")
@@ -416,4 +444,69 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.sandbox.cpu_limit", 1.0)
 	v.SetDefault("security.sandbox.process_limit", 10)
 	v.SetDefault("security.sandbox.network_enabled", false)
+
+	// Encryption
+	v.SetDefault("security.encryption.enabled", false)
+	v.SetDefault("security.encryption.key_path", "./keys/encryption.key")
+	v.SetDefault("security.encryption.passphrase", "")
+
+	// LLM defaults
+	v.SetDefault("llm.health_check.enabled", true)
+	v.SetDefault("llm.health_check.interval", "30s")
+	v.SetDefault("llm.health_check.timeout", "5s")
+	v.SetDefault("llm.health_check.unhealthy_threshold", 3)
+	v.SetDefault("llm.health_check.recovery_threshold", 2)
+	v.SetDefault("llm.metrics.enabled", true)
+	v.SetDefault("llm.metrics.include_latency_histogram", true)
+	v.SetDefault("llm.metrics.include_token_counts", true)
+	v.SetDefault("llm.metrics.include_error_breakdown", true)
+
+	// Session defaults
+	v.SetDefault("session.max_tokens", 8000)
+	v.SetDefault("session.max_messages", 100)
+	v.SetDefault("session.idle_timeout", "30m")
+	v.SetDefault("session.compaction.enabled", true)
+	v.SetDefault("session.compaction.threshold", 0.8)
+	v.SetDefault("session.compaction.strategy", "summarize")
+	v.SetDefault("session.compaction.summary_max_tokens", 500)
+	v.SetDefault("session.compaction.preserve_recent", 5)
+	v.SetDefault("session.compaction.auto_compact", true)
+	v.SetDefault("session.compaction.auto_compact_interval", "5m")
+	v.SetDefault("session.persistence.enabled", true)
+	v.SetDefault("session.persistence.path", "./data/sessions.db")
+	v.SetDefault("session.persistence.interval", "1m")
+	v.SetDefault("session.persistence.on_message", true)
+	v.SetDefault("session.persistence.on_compact", true)
+	v.SetDefault("session.isolation.by_agent", true)
+	v.SetDefault("session.isolation.by_channel", true)
+	v.SetDefault("session.isolation.by_peer", true)
+	v.SetDefault("session.isolation.by_thread", false)
+	v.SetDefault("session.cleanup.enabled", true)
+	v.SetDefault("session.cleanup.archive_after", "168h")
+	v.SetDefault("session.cleanup.delete_after", "720h")
+	v.SetDefault("session.cleanup.cleanup_interval", "1h")
+
+	// Embedding defaults
+	v.SetDefault("embedding.provider", "openai")
+	v.SetDefault("embedding.model", "text-embedding-3-small")
+	v.SetDefault("embedding.dimensions", 1536)
+	v.SetDefault("embedding.batch_size", 100)
+	v.SetDefault("embedding.timeout", "30s")
+	v.SetDefault("embedding.cache.enabled", true)
+	v.SetDefault("embedding.cache.max_entries", 10000)
+	v.SetDefault("embedding.cache.ttl", "24h")
+	v.SetDefault("embedding.openai.base_url", "https://api.openai.com")
+	v.SetDefault("embedding.ollama.base_url", "http://localhost:11434")
+
+	// Memory defaults
+	v.SetDefault("memory.vector_store.enabled", true)
+	v.SetDefault("memory.vector_store.db_path", "./data/memory.db")
+	v.SetDefault("memory.vector_store.dimensions", 1536)
+	v.SetDefault("memory.search.vector_weight", 0.7)
+	v.SetDefault("memory.search.keyword_weight", 0.3)
+	v.SetDefault("memory.search.min_score", 0.5)
+	v.SetDefault("memory.search.max_results", 10)
+
+	// Grayscale/Feature flags defaults
+	v.SetDefault("grayscale.enabled", false)
 }

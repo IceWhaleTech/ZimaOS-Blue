@@ -377,7 +377,7 @@ export async function blobToBase64(blob: Blob): Promise<string> {
     reader.onloadend = () => {
       const base64 = reader.result as string
       // Remove data URL prefix
-      const base64Data = base64.split(',')[1]
+      const base64Data = base64.split(',')[1] || ''
       resolve(base64Data)
     }
     reader.onerror = reject

@@ -2,6 +2,7 @@ package homeassistant
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -34,6 +35,12 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/automations/:id/toggle", h.ToggleAutomation)
 
 	g.POST("/command", h.ProcessCommand)
+
+	// Configuration endpoints
+	g.GET("/config/filter", h.GetEntityFilter)
+	g.PUT("/config/filter", h.SetEntityFilter)
+	g.GET("/config/poll-interval", h.GetPollInterval)
+	g.PUT("/config/poll-interval", h.SetPollInterval)
 }
 
 // ConnectRequest represents the connect API request.
@@ -304,4 +311,105 @@ func (h *Handler) ProcessCommand(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, result)
+}
+
+// GetEntityFilter returns the current entity filter configuration.
+func (h *Handler) GetEntityFilter(c echo.Context) error {
+	haService, ok := h.service.(*HAService)
+	if !ok {
+		return echo.NewHTTPError(http.StatusInternalServerError, "service type assertion failed")
+	}
+
+	filter := haService.GetEntityFilter()
+	if filter == nil {
+		filter = &EntityFilter{}
+	}
+
+	return c.JSON(http.StatusOK, filter)
+}
+
+// setEntityFilterRequest represents the set entity filter API request.
+type setEntityFilterRequest struct {
+	IncludeDomains  []string `json:"include_domains"`
+	ExcludeDomains  []string `json:"exclude_domains"`
+	IncludeEntities []string `json:"include_entities"`
+	ExcludeEntities []string `json:"exclude_entities"`
+}
+
+// SetEntityFilter sets the entity filter configuration.
+func (h *Handler) SetEntityFilter(c echo.Context) error {
+	haService, ok := h.service.(*HAService)
+	if !ok {
+		return echo.NewHTTPError(http.StatusInternalServerError, "service type assertion failed")
+	}
+
+	var req setEntityFilterRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	filter := &EntityFilter{
+		IncludeDomains:  req.IncludeDomains,
+		ExcludeDomains:  req.ExcludeDomains,
+		IncludeEntities: req.IncludeEntities,
+		ExcludeEntities: req.ExcludeEntities,
+	}
+
+	haService.SetEntityFilter(filter)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":  "updated",
+		"message": "Entity filter configuration updated",
+		"filter":  filter,
+	})
+}
+
+// GetPollInterval returns the current polling interval.
+func (h *Handler) GetPollInterval(c echo.Context) error {
+	haService, ok := h.service.(*HAService)
+	if !ok {
+		return echo.NewHTTPError(http.StatusInternalServerError, "service type assertion failed")
+	}
+
+	interval := haService.GetPollInterval()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"poll_interval_seconds": int(interval.Seconds()),
+		"poll_interval":         interval.String(),
+	})
+}
+
+// setPollIntervalRequest represents the set poll interval API request.
+type setPollIntervalRequest struct {
+	IntervalSeconds int `json:"interval_seconds"`
+}
+
+// SetPollInterval sets the polling interval.
+func (h *Handler) SetPollInterval(c echo.Context) error {
+	haService, ok := h.service.(*HAService)
+	if !ok {
+		return echo.NewHTTPError(http.StatusInternalServerError, "service type assertion failed")
+	}
+
+	var req setPollIntervalRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	if req.IntervalSeconds < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "interval must be at least 1 second")
+	}
+
+	if req.IntervalSeconds > 3600 {
+		return echo.NewHTTPError(http.StatusBadRequest, "interval must not exceed 3600 seconds (1 hour)")
+	}
+
+	interval := time.Duration(req.IntervalSeconds) * time.Second
+	haService.SetPollInterval(interval)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":                "updated",
+		"message":               "Poll interval updated",
+		"poll_interval_seconds": req.IntervalSeconds,
+	})
 }

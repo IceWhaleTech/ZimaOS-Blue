@@ -133,32 +133,47 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 **Goal**: Extensible without sacrificing performance
 
 **Plugin Strategy** (Recommended):
-- [ ] Compile-time plugins (Go module)
-- [ ] Or WASM plugins (limited capabilities)
-- [ ] Plugin interface definition
-- [ ] Plugin configuration management
+- [x] Compile-time plugins (Go module)
+- [x] JavaScript plugins (goja runtime, clawdbot compatible)
+- [ ] WASM plugins (limited capabilities) - Optional
+- [x] Plugin interface definition
+- [x] Plugin configuration management
+- [x] Plugin dependency resolution
+- [x] Plugin isolation and restrictions
 
-**Plugin Restrictions**:
+**Plugin Restrictions** (Enforced):
 - Plugins CANNOT:
   - Directly access global state
   - Start goroutines
   - Bypass scheduler
+- [x] Resource usage limits per plugin
 
 **Skill Hub Strategy**:
-- [ ] NOT reusing Node Skill Hub
-- [ ] New Skill Manifest definition (YAML/JSON)
-- [ ] Skill description and execution separation
-- [ ] Built-in skills: weather, search, calculator
+- [x] NOT reusing Node Skill Hub
+- [x] New Skill Manifest definition (YAML/JSON)
+- [x] Skill description and execution separation
+- [x] Built-in skills: weather, search, calculator, system info, datetime
 
 **Security & Identity**:
-- [ ] Basic authentication (JWT)
-- [ ] Permission control (RBAC)
-- [ ] API key management
+- [x] Basic authentication (JWT)
+- [x] Permission control (RBAC)
+- [x] API key management
+- [x] API key rotation
+- [x] User-role assignment
+
+**Frontend**:
+- [x] Plugin management UI
+- [x] Authentication UI (login, token management)
+- [x] Web chat improvements (dark mode, mobile-friendly)
+- [x] System status page
+- [x] Backup/restore UI
 
 **Acceptance Criteria**:
-- [ ] Plugins can load/unload
-- [ ] Plugin exceptions don't affect main process
-- [ ] Performance regression acceptable
+- [x] Plugins can load/unload
+- [x] Plugin exceptions don't affect main process
+- [x] Performance regression acceptable
+- [x] Basic authentication working
+- [x] RBAC permissions enforced
 
 ---
 
@@ -317,7 +332,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 > The following are **intentionally NOT included in v0.5**:
 
 - Node plugin compatibility layer
-- JS runtime embedding
+- ~~JS runtime embedding~~ (Completed in v0.4 via goja)
 - Complex UI
 - Hot code updates
 - Full Skill Hub ecosystem

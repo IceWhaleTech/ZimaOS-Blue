@@ -281,3 +281,275 @@ func TestItoa(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultAuthConfig(t *testing.T) {
+	cfg := DefaultAuthConfig()
+
+	if cfg.LoginRate != 5 {
+		t.Errorf("expected LoginRate=5, got %d", cfg.LoginRate)
+	}
+	if cfg.LoginWindow != time.Minute {
+		t.Errorf("expected LoginWindow=1m, got %v", cfg.LoginWindow)
+	}
+	if cfg.PasswordResetRate != 3 {
+		t.Errorf("expected PasswordResetRate=3, got %d", cfg.PasswordResetRate)
+	}
+	if cfg.MFARate != 5 {
+		t.Errorf("expected MFARate=5, got %d", cfg.MFARate)
+	}
+	if cfg.BlockDuration != 15*time.Minute {
+		t.Errorf("expected BlockDuration=15m, got %v", cfg.BlockDuration)
+	}
+}
+
+func TestAuthLimiter_AllowLogin(t *testing.T) {
+	cfg := AuthConfig{
+		LoginRate:           3,
+		LoginWindow:         time.Second,
+		PasswordResetRate:   3,
+		PasswordResetWindow: time.Hour,
+		MFARate:             3,
+		MFAWindow:           time.Minute,
+		BlockDuration:       time.Minute,
+	}
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	key := "test-client"
+
+	// First 3 requests should be allowed
+	for i := 0; i < 3; i++ {
+		if !limiter.AllowLogin(key) {
+			t.Errorf("login request %d should be allowed", i+1)
+		}
+	}
+
+	// 4th request should be denied
+	if limiter.AllowLogin(key) {
+		t.Error("4th login request should be denied")
+	}
+}
+
+func TestAuthLimiter_AllowPasswordReset(t *testing.T) {
+	cfg := AuthConfig{
+		LoginRate:           3,
+		LoginWindow:         time.Minute,
+		PasswordResetRate:   2,
+		PasswordResetWindow: time.Second,
+		MFARate:             3,
+		MFAWindow:           time.Minute,
+		BlockDuration:       time.Minute,
+	}
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	key := "test-client"
+
+	// First 2 requests should be allowed
+	for i := 0; i < 2; i++ {
+		if !limiter.AllowPasswordReset(key) {
+			t.Errorf("password reset request %d should be allowed", i+1)
+		}
+	}
+
+	// 3rd request should be denied
+	if limiter.AllowPasswordReset(key) {
+		t.Error("3rd password reset request should be denied")
+	}
+}
+
+func TestAuthLimiter_AllowMFA(t *testing.T) {
+	cfg := AuthConfig{
+		LoginRate:           3,
+		LoginWindow:         time.Minute,
+		PasswordResetRate:   3,
+		PasswordResetWindow: time.Hour,
+		MFARate:             2,
+		MFAWindow:           time.Second,
+		BlockDuration:       time.Minute,
+	}
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	key := "test-client"
+
+	// First 2 requests should be allowed
+	for i := 0; i < 2; i++ {
+		if !limiter.AllowMFA(key) {
+			t.Errorf("MFA request %d should be allowed", i+1)
+		}
+	}
+
+	// 3rd request should be denied
+	if limiter.AllowMFA(key) {
+		t.Error("3rd MFA request should be denied")
+	}
+}
+
+func TestAuthLimiter_Block(t *testing.T) {
+	cfg := DefaultAuthConfig()
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	key := "test-client"
+
+	// Should not be blocked initially
+	if limiter.IsBlocked(key) {
+		t.Error("should not be blocked initially")
+	}
+
+	// Block the client
+	limiter.Block(key)
+
+	// Should be blocked now
+	if !limiter.IsBlocked(key) {
+		t.Error("should be blocked after Block()")
+	}
+
+	// Login should be denied
+	if limiter.AllowLogin(key) {
+		t.Error("login should be denied when blocked")
+	}
+}
+
+func TestAuthLimiter_Unblock(t *testing.T) {
+	cfg := DefaultAuthConfig()
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	key := "test-client"
+
+	// Block and then unblock
+	limiter.Block(key)
+	if !limiter.IsBlocked(key) {
+		t.Error("should be blocked")
+	}
+
+	limiter.Unblock(key)
+	if limiter.IsBlocked(key) {
+		t.Error("should not be blocked after Unblock()")
+	}
+}
+
+func TestAuthLimiter_LoginMiddleware(t *testing.T) {
+	e := echo.New()
+	cfg := AuthConfig{
+		LoginRate:           2,
+		LoginWindow:         time.Minute,
+		PasswordResetRate:   3,
+		PasswordResetWindow: time.Hour,
+		MFARate:             3,
+		MFAWindow:           time.Minute,
+		BlockDuration:       time.Minute,
+	}
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	e.POST("/login", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	}, limiter.LoginMiddleware())
+
+	// First 2 requests should succeed
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/login", nil)
+		req.Header.Set("X-Real-IP", "192.168.1.1")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	// 3rd request should be rate limited
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429, got %d", rec.Code)
+	}
+}
+
+func TestAuthLimiter_PasswordResetMiddleware(t *testing.T) {
+	e := echo.New()
+	cfg := AuthConfig{
+		LoginRate:           3,
+		LoginWindow:         time.Minute,
+		PasswordResetRate:   2,
+		PasswordResetWindow: time.Minute,
+		MFARate:             3,
+		MFAWindow:           time.Minute,
+		BlockDuration:       time.Minute,
+	}
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	e.POST("/password/reset", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	}, limiter.PasswordResetMiddleware())
+
+	// First 2 requests should succeed
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/password/reset", nil)
+		req.Header.Set("X-Real-IP", "192.168.1.1")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	// 3rd request should be rate limited
+	req := httptest.NewRequest(http.MethodPost, "/password/reset", nil)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429, got %d", rec.Code)
+	}
+}
+
+func TestAuthLimiter_MFAMiddleware(t *testing.T) {
+	e := echo.New()
+	cfg := AuthConfig{
+		LoginRate:           3,
+		LoginWindow:         time.Minute,
+		PasswordResetRate:   3,
+		PasswordResetWindow: time.Hour,
+		MFARate:             2,
+		MFAWindow:           time.Minute,
+		BlockDuration:       time.Minute,
+	}
+	limiter := NewAuthLimiter(cfg)
+	defer limiter.Stop()
+
+	e.POST("/mfa/verify", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
+	}, limiter.MFAMiddleware())
+
+	// First 2 requests should succeed
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/mfa/verify", nil)
+		req.Header.Set("X-Real-IP", "192.168.1.1")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	// 3rd request should be rate limited
+	req := httptest.NewRequest(http.MethodPost, "/mfa/verify", nil)
+	req.Header.Set("X-Real-IP", "192.168.1.1")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429, got %d", rec.Code)
+	}
+}

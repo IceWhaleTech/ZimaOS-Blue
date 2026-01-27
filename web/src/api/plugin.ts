@@ -41,6 +41,38 @@ export interface PluginLog {
   plugin_id: string
 }
 
+export interface PluginSource {
+  id: string
+  name: string
+  url: string
+  type: 'registry' | 'github' | 'custom'
+  description?: string
+  enabled: boolean
+}
+
+export interface RemotePlugin {
+  id: string
+  name: string
+  version: string
+  description: string
+  author?: string
+  type: 'native' | 'js' | 'wasm'
+  capabilities?: string[]
+  source_id: string
+  source_name: string
+  download_url?: string
+  homepage?: string
+  stars?: number
+  downloads?: number
+  installed: boolean
+}
+
+export interface BrowseParams {
+  source?: string
+  type?: string
+  search?: string
+}
+
 // Plugin API
 export const pluginApi = {
   list: () => api.get<Plugin[]>('/plugins'),
@@ -61,4 +93,25 @@ export const pluginApi = {
 
   reload: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/plugins/${id}/reload`),
+
+  // Plugin store
+  listSources: () => api.get<PluginSource[]>('/plugin-store/sources'),
+
+  addSource: (source: Omit<PluginSource, 'enabled'> & { enabled?: boolean }) =>
+    api.post<{ success: boolean; message: string }>('/plugin-store/sources', source),
+
+  removeSource: (id: string) =>
+    api.delete<{ success: boolean; message: string }>(`/plugin-store/sources/${id}`),
+
+  browse: (params?: BrowseParams) =>
+    api.get<RemotePlugin[]>('/plugin-store/browse', { params }),
+
+  install: (id: string) =>
+    api.post<{ success: boolean; message: string; plugin?: RemotePlugin }>(`/plugin-store/install/${id}`),
+
+  uninstall: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/plugin-store/uninstall/${id}`),
+
+  refresh: () =>
+    api.post<{ success: boolean; plugins_count: number; errors?: string[] }>('/plugin-store/refresh'),
 }

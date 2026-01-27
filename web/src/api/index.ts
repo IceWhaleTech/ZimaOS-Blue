@@ -1,9 +1,20 @@
 import api from './client'
 
+// Export api client as default for other modules
+export default api
+
 // Re-export from other modules
 export * from './auth'
 export * from './plugin'
 export * from './system'
+export * from './gateway'
+export * from './autoreply'
+export * from './mfa'
+export * from './workflow'
+export * from './webhook'
+export * from './cron'
+export * from './audit'
+export * from './security'
 
 export interface HealthStatus {
   status: string

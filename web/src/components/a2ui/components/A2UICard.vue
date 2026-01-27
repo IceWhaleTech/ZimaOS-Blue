@@ -49,9 +49,9 @@ const hasActions = computed(() => props.component.actions && props.component.act
 const componentStyle = computed(() => {
   const style = props.component.style || {}
   return {
-    backgroundColor: style.backgroundColor,
-    borderRadius: style.borderRadius || '0.75rem',
-    padding: style.padding || '1.25rem',
+    backgroundColor: style.backgroundColor as string | undefined,
+    borderRadius: (style.borderRadius as string) || '0.75rem',
+    padding: (style.padding as string) || '1.25rem',
   }
 })
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { pluginApi } from '@/api/plugin'
-import type { Plugin, PluginLog } from '@/api/plugin'
+import type { Plugin, PluginLog, PluginSource, RemotePlugin } from '@/api/plugin'
 
 export const usePluginStore = defineStore('plugin', () => {
   // State
@@ -10,6 +10,11 @@ export const usePluginStore = defineStore('plugin', () => {
   const pluginLogs = ref<Record<string, PluginLog[]>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  // Store state
+  const sources = ref<PluginSource[]>([])
+  const remotePlugins = ref<RemotePlugin[]>([])
+  const refreshing = ref(false)
 
   // Computed
   const selectedPlugin = computed(() =>
@@ -27,12 +32,17 @@ export const usePluginStore = defineStore('plugin', () => {
       wasm: [],
     }
     plugins.value.forEach((p) => {
-      if (grouped[p.type]) {
-        grouped[p.type].push(p)
+      const group = grouped[p.type]
+      if (group) {
+        group.push(p)
       }
     })
     return grouped
   })
+
+  const availablePlugins = computed(() =>
+    remotePlugins.value.filter((p) => !p.installed)
+  )
 
   // Actions
   async function fetchPlugins() {
@@ -158,6 +168,104 @@ export const usePluginStore = defineStore('plugin', () => {
     error.value = null
   }
 
+  // Store actions
+  async function fetchSources() {
+    try {
+      const response = await pluginApi.listSources()
+      sources.value = response.data
+    } catch (e) {
+      console.error('Failed to fetch plugin sources:', e)
+    }
+  }
+
+  async function addSource(source: Omit<PluginSource, 'enabled'> & { enabled?: boolean }) {
+    try {
+      loading.value = true
+      error.value = null
+      await pluginApi.addSource(source)
+      await fetchSources()
+      await refreshSources()
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to add source'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function removeSource(id: string) {
+    try {
+      loading.value = true
+      error.value = null
+      await pluginApi.removeSource(id)
+      sources.value = sources.value.filter((s) => s.id !== id)
+      remotePlugins.value = remotePlugins.value.filter((p) => p.source_id !== id)
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to remove source'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function refreshSources() {
+    try {
+      refreshing.value = true
+      error.value = null
+      await pluginApi.refresh()
+      const response = await pluginApi.browse()
+      remotePlugins.value = response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to refresh plugin store'
+    } finally {
+      refreshing.value = false
+    }
+  }
+
+  async function installPlugin(id: string) {
+    try {
+      loading.value = true
+      error.value = null
+      await pluginApi.install(id)
+      // Mark as installed in remote list
+      const remote = remotePlugins.value.find((p) => p.id === id)
+      if (remote) {
+        remote.installed = true
+      }
+      // Refresh local plugins
+      await fetchPlugins()
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to install plugin'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function uninstallPlugin(id: string) {
+    try {
+      loading.value = true
+      error.value = null
+      await pluginApi.uninstall(id)
+      // Mark as not installed in remote list
+      const remote = remotePlugins.value.find((p) => p.id === id)
+      if (remote) {
+        remote.installed = false
+      }
+      // Remove from local plugins
+      plugins.value = plugins.value.filter((p) => p.id !== id)
+      return true
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to uninstall plugin'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     // State
     plugins,
@@ -165,12 +273,16 @@ export const usePluginStore = defineStore('plugin', () => {
     pluginLogs,
     loading,
     error,
+    sources,
+    remotePlugins,
+    refreshing,
 
     // Computed
     selectedPlugin,
     enabledPlugins,
     disabledPlugins,
     pluginsByType,
+    availablePlugins,
 
     // Actions
     fetchPlugins,
@@ -182,5 +294,11 @@ export const usePluginStore = defineStore('plugin', () => {
     reloadPlugin,
     selectPlugin,
     clearError,
+    fetchSources,
+    addSource,
+    removeSource,
+    refreshSources,
+    installPlugin,
+    uninstallPlugin,
   }
 })

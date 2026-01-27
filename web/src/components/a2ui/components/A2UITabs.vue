@@ -12,7 +12,7 @@
       </button>
     </div>
     <div class="tabs-content">
-      <div v-for="(tab, index) in tabs" :key="index" v-show="activeTab === index" class="tab-panel">
+      <div v-for="(_tab, index) in tabs" :key="index" v-show="activeTab === index" class="tab-panel">
         <A2UIComponent
           v-for="child in getTabChildren(index)"
           :key="child.id"
@@ -61,7 +61,9 @@ function getTabChildren(tabIndex: number): Component[] {
   if (!tab || !props.component.children) return []
 
   if (tab.children && Array.isArray(tab.children)) {
-    return tab.children.map(i => props.component.children![i]).filter(Boolean)
+    return tab.children
+      .map(i => props.component.children![i])
+      .filter((c): c is Component => c !== undefined)
   }
 
   // If no specific children mapping, distribute children evenly
