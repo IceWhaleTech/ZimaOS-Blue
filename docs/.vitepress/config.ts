@@ -13,39 +13,39 @@ export default defineConfig({
       label: 'English',
       lang: 'en',
     },
-    zh: {
+    zh_CN: {
       label: '简体中文',
       lang: 'zh-CN',
       themeConfig: {
         nav: [
-          { text: '首页', link: '/zh/' },
-          { text: '指南', link: '/zh/guide/getting-started' },
-          { text: 'API', link: '/zh/api/' },
+          { text: '首页', link: '/zh_CN/' },
+          { text: '指南', link: '/zh_CN/guide/getting-started' },
+          { text: 'API', link: '/zh_CN/api/' },
         ],
         sidebar: {
-          '/zh/guide/': [
+          '/zh_CN/guide/': [
             {
               text: '入门',
               items: [
-                { text: '快速开始', link: '/zh/guide/getting-started' },
-                { text: '安装', link: '/zh/guide/installation' },
-                { text: '配置', link: '/zh/guide/configuration' },
+                { text: '快速开始', link: '/zh_CN/guide/getting-started' },
+                { text: '安装', link: '/zh_CN/guide/installation' },
+                { text: '配置', link: '/zh_CN/guide/configuration' },
               ],
             },
             {
               text: '进阶',
               items: [
-                { text: '架构', link: '/zh/guide/architecture' },
-                { text: '部署', link: '/zh/guide/deployment' },
+                { text: '架构', link: '/zh_CN/guide/architecture' },
+                { text: '部署', link: '/zh_CN/guide/deployment' },
               ],
             },
           ],
-          '/zh/api/': [
+          '/zh_CN/api/': [
             {
               text: 'API 参考',
               items: [
-                { text: '概览', link: '/zh/api/' },
-                { text: '健康检查', link: '/zh/api/health' },
+                { text: '概览', link: '/zh_CN/api/' },
+                { text: '健康检查', link: '/zh_CN/api/health' },
               ],
             },
           ],

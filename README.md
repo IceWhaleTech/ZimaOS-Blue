@@ -66,20 +66,49 @@ go build -o zimaos-echo ./cmd/server
 - 🔄 **Hot Reload**: Configuration changes without restart
 - 💾 **Backup/Restore**: Automated backup with point-in-time restore
 
+### Smart Home Integration
+
+- 🏠 **Home Assistant**: Native integration with Home Assistant API
+- 💡 **Device Control**: Lights, switches, sensors, climate, and more
+- 🤖 **AI Automation**: Natural language commands for smart home control
+- 📡 **Real-time Events**: Subscribe to device state changes via WebSocket
+
+### Voice Capabilities
+
+- 🎤 **Speech Recognition**: Whisper-based speech-to-text
+- 🔊 **Text-to-Speech**: Multiple TTS engines support
+- 👂 **Voice Wake**: Customizable wake word detection
+- 🗣️ **Voice Commands**: Hands-free AI assistant interaction
+
+### Multi-Tenant Architecture
+
+- 👥 **Tenant Isolation**: Complete data and resource isolation
+- 🔐 **Per-Tenant Auth**: Independent authentication per tenant
+- 📊 **Resource Quotas**: CPU, memory, and API rate limits per tenant
+- 🎛️ **Tenant Dashboard**: Self-service management portal
+
+### Communication Channels
+
+- 💬 **Matrix Protocol**: Decentralized, end-to-end encrypted messaging
+- 📱 **Telegram/Discord/Slack**: Popular messaging platform support
+- 📞 **Signal/WhatsApp**: Secure messaging integration
+- 🍎 **iMessage**: Native macOS iMessage support
+
+### Security & Authentication
+
+- 🔑 **WebAuthn/Passkeys**: Passwordless authentication with FIDO2
+- 🔐 **OIDC/OAuth 2.0**: Enterprise SSO (Google, GitHub, Okta, etc.)
+- 📲 **MFA/TOTP**: Multi-factor authentication support
+- 🛡️ **RBAC**: Fine-grained role-based access control
+- 📝 **Audit Logging**: Comprehensive security audit trail
+- 🔒 **Sandbox**: Isolated execution environment for tools
+
 ### Frontend
 
 - 🎨 **Vue 3 Dashboard**: Modern, responsive web interface
 - 💬 **Chat Interface**: Streaming responses with markdown support
 - 📈 **System Monitor**: Real-time resource usage charts
 - ⚙️ **Settings UI**: Easy configuration management
-
-### Performance Optimizations (v0.8.0)
-
-- 🗄️ **ECache**: High-performance LRU cache using [orca-zhang/ecache](https://github.com/orca-zhang/ecache)
-- 📦 **Zorm ORM**: Lightweight database layer using [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm)
-- 🔀 **Sharded Maps**: Lock-free concurrent data structures
-- 🌐 **HTTP/2**: Modern protocol support with compression
-- 📊 **Benchmark Suite**: Comprehensive performance testing
 
 ## Comparison with Clawdbot
 
@@ -118,6 +147,9 @@ ZimaOS Echo is inspired by clawdbot but optimized for NAS/edge deployment:
 | Voice Wake | ✅ | ✅ |
 | Browser Control | ✅ | ✅ |
 | Canvas/A2UI | ✅ | ✅ |
+| Home Assistant | ✅ | ❌ |
+| Multi-Tenant | ✅ | ❌ |
+| Matrix Protocol | ✅ | ❌ |
 | **Operations** | | |
 | Prometheus Metrics | ✅ | ❌ |
 | pprof Profiling | ✅ | ❌ |
@@ -125,6 +157,13 @@ ZimaOS Echo is inspired by clawdbot but optimized for NAS/edge deployment:
 | Circuit Breaker | ✅ | ❌ |
 | Graceful Degradation | ✅ | ❌ |
 | Backup/Restore | ✅ | ❌ |
+| **Security** | | |
+| WebAuthn/Passkeys | ✅ | ❌ |
+| OIDC/OAuth 2.0 | ✅ | ❌ |
+| MFA/TOTP | ✅ | ❌ |
+| RBAC | ✅ | ❌ |
+| Audit Logging | ✅ | ❌ |
+| Sandbox Execution | ✅ | ❌ |
 | **Deployment** | | |
 | Single Binary | ✅ | ❌ |
 | Docker | ✅ | ✅ |
@@ -149,6 +188,16 @@ Features not available in clawdbot:
 | **Sharded Maps** | Lock-free concurrent data structures |
 | **HTTP/2 Support** | Modern protocol with compression |
 | **Benchmark Suite** | Performance regression detection |
+| **Home Assistant** | Native smart home integration |
+| **Multi-Tenant** | Complete tenant isolation and quotas |
+| **Matrix Protocol** | Decentralized E2E encrypted messaging |
+| **WebAuthn/Passkeys** | Passwordless authentication |
+| **OIDC/OAuth 2.0** | Enterprise SSO integration |
+| **MFA/TOTP** | Multi-factor authentication |
+| **Audit Logging** | Comprehensive security audit trail |
+| **Sandbox Execution** | Isolated tool execution environment |
+| **Rate Limiting** | Per-tenant API rate limits |
+| **RBAC** | Role-based access control |
 
 ## Architecture
 
@@ -240,7 +289,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [clawdbot](https://github.com/clawdbot/clawdbot) - Inspiration for the project
-- [orca-zhang/ecache](https://github.com/orca-zhang/ecache) - High-performance cache
 - [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - Lightweight ORM
 
 ---

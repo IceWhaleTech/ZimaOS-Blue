@@ -1,0 +1,31 @@
+# Product Requirements Documents (PRD)
+
+This directory contains product requirement documents for ZimaOS Echo features.
+
+## Document Structure
+
+| File | Description | Status |
+|------|-------------|--------|
+| [v1.0.0-rag.md](v1.0.0-rag.md) | RAG & Knowledge Base | Draft |
+| [v1.1.0-mesh-network.md](v1.1.0-mesh-network.md) | P2P Mesh Network | Draft |
+
+## Template
+
+Each PRD should follow this structure:
+
+1. **Overview** - Brief description of the feature
+2. **Goals** - What we want to achieve
+3. **User Stories** - Who needs this and why
+4. **Requirements** - Functional and non-functional requirements
+5. **Technical Design** - High-level technical approach
+6. **Milestones** - Implementation phases
+7. **Success Metrics** - How we measure success
+8. **Open Questions** - Unresolved decisions
+
+## Status Legend
+
+- `Draft` - Initial draft, needs review
+- `In Review` - Under stakeholder review
+- `Approved` - Ready for implementation
+- `In Progress` - Currently being implemented
+- `Completed` - Feature shipped

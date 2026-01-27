@@ -73,14 +73,6 @@ go build -o zimaos-echo ./cmd/server
 - 📈 **系统监控**：实时资源使用图表
 - ⚙️ **设置界面**：便捷的配置管理
 
-### 性能优化 (v0.8.0)
-
-- 🗄️ **ECache**：使用 [orca-zhang/ecache](https://github.com/orca-zhang/ecache) 的高性能 LRU 缓存
-- 📦 **Zorm ORM**：使用 [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) 的轻量级数据库层
-- 🔀 **分片映射**：无锁并发数据结构
-- 🌐 **HTTP/2**：支持压缩的现代协议
-- 📊 **基准测试套件**：全面的性能测试
-
 ## 与 Clawdbot 对比
 
 ZimaOS Echo 受 clawdbot 启发，但针对 NAS/边缘部署进行了优化：
@@ -240,7 +232,6 @@ MIT 许可证 - 详见 [LICENSE](LICENSE)。
 ## 致谢
 
 - [clawdbot](https://github.com/clawdbot/clawdbot) - 项目灵感来源
-- [orca-zhang/ecache](https://github.com/orca-zhang/ecache) - 高性能缓存
 - [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - 轻量级 ORM
 
 ---
