@@ -270,14 +270,14 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 
 ### v0.9: Future Enhancements
 
-- [ ] Multi-user/multi-tenant
+- [x] Multi-user/multi-tenant
 - [ ] Mobile App (Native iOS/Android)
-- [ ] Browser automation (Playwright/Rod)
-- [ ] Smart home integration (Home Assistant API)
-- [ ] Voice assistant mode
+- [x] Browser automation (Playwright/Rod)
+- [x] Smart home integration (Home Assistant API)
+- [x] Voice assistant mode
 - [ ] Workflow automation (n8n-style)
 - [ ] Multi-node cluster mode
-- [ ] External OIDC provider integration
+- [x] External OIDC provider integration
 
 ---
 

@@ -270,14 +270,14 @@
 
 ### v0.9: 未来增强
 
-- [ ] 多用户/多租户
-- [ ] 移动端 App（Flutter/React Native）
-- [ ] 浏览器自动化（Playwright/Rod）
-- [ ] 智能家居集成（Home Assistant API）
-- [ ] 语音助手模式
+- [x] 多用户/多租户
+- [ ] 移动端 App（原生 iOS/Android）
+- [x] 浏览器自动化（Playwright/Rod）
+- [x] 智能家居集成（Home Assistant API）
+- [x] 语音助手模式
 - [ ] 工作流自动化（n8n 风格）
 - [ ] 多节点集群模式
-- [ ] 外部 OIDC 提供者集成
+- [x] 外部 OIDC 提供者集成
 
 ---
 
