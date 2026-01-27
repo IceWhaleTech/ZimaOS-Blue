@@ -132,7 +132,7 @@ func TestChannel_isUserAllowed(t *testing.T) {
 				AllowedUsers: tt.allowedUsers,
 			}
 			logger := zap.NewNop()
-			ch := New(cfg, logger)
+			_ = New(cfg, logger)
 
 			// We can't directly test isUserAllowed without creating a tgbotapi.User
 			// This test documents the expected behavior

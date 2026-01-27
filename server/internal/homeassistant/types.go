@@ -69,8 +69,8 @@ type Entity struct {
 	Hidden bool `json:"hidden,omitempty"`
 }
 
-// Service represents a Home Assistant service.
-type Service struct {
+// HAServiceInfo represents a Home Assistant service definition.
+type HAServiceInfo struct {
 	// Domain is the service domain.
 	Domain string `json:"domain"`
 	// Service is the service name.
@@ -206,7 +206,7 @@ type Client interface {
 	GetEntitiesByDomain(ctx context.Context, domain string) ([]*Entity, error)
 
 	// Service operations
-	GetServices(ctx context.Context) ([]*Service, error)
+	GetServices(ctx context.Context) ([]*HAServiceInfo, error)
 	CallService(ctx context.Context, req *ServiceCallRequest) error
 
 	// Scene operations
@@ -224,28 +224,28 @@ type Client interface {
 	FireEvent(ctx context.Context, eventType string, data map[string]interface{}) error
 }
 
-// Service defines the Home Assistant service interface.
+// Service defines the high-level Home Assistant service interface used by handlers.
 type Service interface {
-	// Client returns the underlying client.
-	Client() Client
+	// Connection management
+	Connect(ctx context.Context, config *Config) error
+	Disconnect() error
+	IsConnected() bool
 
-	// Entity management
-	GetEntities(ctx context.Context) ([]*Entity, error)
+	// Entity operations
+	GetAllEntities(ctx context.Context) ([]*Entity, error)
+	GetEntitiesByDomain(ctx context.Context, domain string) ([]*Entity, error)
 	GetEntity(ctx context.Context, entityID string) (*Entity, error)
-	SetEntityAlias(ctx context.Context, entityID, alias string) error
-	SetEntityHidden(ctx context.Context, entityID string, hidden bool) error
-	SearchEntities(ctx context.Context, query string) ([]*Entity, error)
-
-	// Control operations
-	TurnOn(ctx context.Context, entityID string, data map[string]interface{}) error
-	TurnOff(ctx context.Context, entityID string) error
-	Toggle(ctx context.Context, entityID string) error
-	SetValue(ctx context.Context, entityID string, value interface{}) error
+	ControlEntity(ctx context.Context, entityID string, action string, params map[string]interface{}) error
 
 	// Scene operations
 	GetScenes(ctx context.Context) ([]*Scene, error)
 	ActivateScene(ctx context.Context, sceneID string) error
 
+	// Automation operations
+	GetAutomations(ctx context.Context) ([]*Automation, error)
+	TriggerAutomation(ctx context.Context, automationID string) error
+	ToggleAutomation(ctx context.Context, automationID string, enable bool) error
+
 	// Natural language control
-	ProcessCommand(ctx context.Context, command string) (string, error)
+	ProcessCommand(ctx context.Context, command string) (*CommandResult, error)
 }

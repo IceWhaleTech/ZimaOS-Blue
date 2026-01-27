@@ -28,7 +28,19 @@
       "WebFetch(domain:docs.clawd.bot)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(ls:*)",
-      "Bash(xargs -I {} bash -c 'echo \"\"=== $\\(basename {}\\) ===\"\" && ls -1 {}.go 2>/dev/null | head -5')"
+      "Bash(xargs -I {} bash -c 'echo \"\"=== $\\(basename {}\\) ===\"\" && ls -1 {}.go 2>/dev/null | head -5')",
+      "Bash(go doc:*)",
+      "Bash(python3:*)",
+      "Bash(tree:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(for dir in /Users/orca/Documents/GitHub/ZimaOS-Echo/.agent/skills/*/)",
+      "Bash(do if [ -d \"$dir/.git\" ])",
+      "Bash(then echo \"Has .git: $dir\" git -C \"$dir\" remote -v)",
+      "Bash(else)",
+      "Bash(echo:*)",
+      "Bash(fi)",
+      "Bash(done)"
     ]
   }
 }

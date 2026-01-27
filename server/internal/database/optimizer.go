@@ -85,7 +85,9 @@ func (o *Optimizer) IsFullTableScan(ctx context.Context, query string, args ...i
 
 	for _, plan := range plans {
 		detail := strings.ToUpper(plan.Detail)
-		if strings.Contains(detail, "SCAN TABLE") && !strings.Contains(detail, "USING INDEX") {
+		// SQLite outputs "SCAN tablename" for full table scans
+		// and "SEARCH tablename USING INDEX" for indexed lookups
+		if strings.HasPrefix(detail, "SCAN ") && !strings.Contains(detail, "USING INDEX") {
 			return true, nil
 		}
 	}
@@ -99,25 +101,30 @@ func (o *Optimizer) SuggestIndexes(ctx context.Context, queries []string) ([]str
 	seen := make(map[string]bool)
 
 	for _, query := range queries {
-		plans, err := o.AnalyzeQuery(ctx, query)
+		// Count placeholders and provide dummy values
+		placeholderCount := strings.Count(query, "?")
+		args := make([]interface{}, placeholderCount)
+		for i := range args {
+			args[i] = "dummy" // Placeholder value for EXPLAIN QUERY PLAN
+		}
+
+		plans, err := o.AnalyzeQuery(ctx, query, args...)
 		if err != nil {
 			continue
 		}
 
 		for _, plan := range plans {
 			detail := strings.ToUpper(plan.Detail)
-			if strings.Contains(detail, "SCAN TABLE") && !strings.Contains(detail, "USING INDEX") {
-				// Extract table name
+			// SQLite outputs "SCAN tablename" for full table scans
+			if strings.HasPrefix(detail, "SCAN ") && !strings.Contains(detail, "USING INDEX") {
+				// Extract table name - it's the word after "SCAN"
 				parts := strings.Fields(plan.Detail)
-				for i, part := range parts {
-					if strings.ToUpper(part) == "TABLE" && i+1 < len(parts) {
-						tableName := parts[i+1]
-						suggestion := fmt.Sprintf("Consider adding index on table '%s' for query: %s", tableName, truncateQuery(query))
-						if !seen[suggestion] {
-							suggestions = append(suggestions, suggestion)
-							seen[suggestion] = true
-						}
-						break
+				if len(parts) >= 2 {
+					tableName := parts[1]
+					suggestion := fmt.Sprintf("Consider adding index on table '%s' for query: %s", tableName, truncateQuery(query))
+					if !seen[suggestion] {
+						suggestions = append(suggestions, suggestion)
+						seen[suggestion] = true
 					}
 				}
 			}

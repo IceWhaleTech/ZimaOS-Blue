@@ -2,7 +2,6 @@ package resilience
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"

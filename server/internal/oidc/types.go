@@ -10,14 +10,8 @@ import (
 var (
 	// ErrProviderNotFound is returned when a provider is not found.
 	ErrProviderNotFound = errors.New("provider not found")
-	// ErrInvalidState is returned when the state parameter is invalid.
-	ErrInvalidState = errors.New("invalid state parameter")
 	// ErrInvalidCode is returned when the authorization code is invalid.
 	ErrInvalidCode = errors.New("invalid authorization code")
-	// ErrTokenExpired is returned when the token has expired.
-	ErrTokenExpired = errors.New("token expired")
-	// ErrInvalidToken is returned when the token is invalid.
-	ErrInvalidToken = errors.New("invalid token")
 	// ErrInvalidNonce is returned when the nonce is invalid.
 	ErrInvalidNonce = errors.New("invalid nonce")
 	// ErrProviderDisabled is returned when the provider is disabled.
@@ -124,59 +118,6 @@ func DefaultClaimMapping() ClaimMapping {
 		Groups:  "groups",
 		Roles:   "roles",
 	}
-}
-
-// DiscoveryDocument represents the OIDC discovery document.
-type DiscoveryDocument struct {
-	Issuer                           string   `json:"issuer"`
-	AuthorizationEndpoint            string   `json:"authorization_endpoint"`
-	TokenEndpoint                    string   `json:"token_endpoint"`
-	UserInfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
-	JWKSURI                          string   `json:"jwks_uri"`
-	RegistrationEndpoint             string   `json:"registration_endpoint,omitempty"`
-	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported           []string `json:"response_types_supported"`
-	ResponseModesSupported           []string `json:"response_modes_supported,omitempty"`
-	GrantTypesSupported              []string `json:"grant_types_supported,omitempty"`
-	SubjectTypesSupported            []string `json:"subject_types_supported"`
-	IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
-	ClaimsSupported                  []string `json:"claims_supported,omitempty"`
-	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported,omitempty"`
-}
-
-// TokenResponse represents the token endpoint response.
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	IDToken      string `json:"id_token,omitempty"`
-	Scope        string `json:"scope,omitempty"`
-}
-
-// IDTokenClaims represents the claims in an ID token.
-type IDTokenClaims struct {
-	Issuer          string   `json:"iss"`
-	Subject         string   `json:"sub"`
-	Audience        []string `json:"aud"`
-	ExpiresAt       int64    `json:"exp"`
-	IssuedAt        int64    `json:"iat"`
-	AuthTime        int64    `json:"auth_time,omitempty"`
-	Nonce           string   `json:"nonce,omitempty"`
-	ACR             string   `json:"acr,omitempty"`
-	AMR             []string `json:"amr,omitempty"`
-	AZP             string   `json:"azp,omitempty"`
-	Email           string   `json:"email,omitempty"`
-	EmailVerified   bool     `json:"email_verified,omitempty"`
-	Name            string   `json:"name,omitempty"`
-	GivenName       string   `json:"given_name,omitempty"`
-	FamilyName      string   `json:"family_name,omitempty"`
-	PreferredName   string   `json:"preferred_username,omitempty"`
-	Picture         string   `json:"picture,omitempty"`
-	Locale          string   `json:"locale,omitempty"`
-	Groups          []string `json:"groups,omitempty"`
-	Roles           []string `json:"roles,omitempty"`
-	AdditionalClaims map[string]interface{} `json:"-"`
 }
 
 // UserInfo represents the userinfo endpoint response.

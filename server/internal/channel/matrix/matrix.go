@@ -95,7 +95,9 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	// Set up event handler
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
-	syncer.OnEventType(event.EventMessage, c.handleMessageEvent)
+	syncer.OnEventType(event.EventMessage, func(ctx context.Context, evt *event.Event) {
+		c.handleMessageEvent(evt)
+	})
 
 	// Start sync
 	c.wg.Add(1)
@@ -141,7 +143,7 @@ func (c *Channel) syncLoop() {
 }
 
 // handleMessageEvent handles incoming message events.
-func (c *Channel) handleMessageEvent(source mautrix.EventSource, evt *event.Event) {
+func (c *Channel) handleMessageEvent(evt *event.Event) {
 	// Ignore messages from ourselves
 	if evt.Sender == id.UserID(c.config.UserID) {
 		return
@@ -210,10 +212,10 @@ func (c *Channel) convertMessage(evt *event.Event, content *event.MessageEventCo
 	// Handle attachments
 	if content.URL != "" {
 		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
-			ID:       content.URL.String(),
+			ID:       string(content.URL),
 			Type:     msgType,
 			Name:     content.Body,
-			URL:      c.client.GetDownloadURL(content.URL),
+			URL:      string(content.URL),
 			Size:     int64(content.Info.Size),
 			MimeType: content.Info.MimeType,
 		})

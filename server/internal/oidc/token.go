@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-jose/go-jose/v3"
 	"github.com/go-jose/go-jose/v3/jwt"
 	"github.com/google/uuid"
 )
@@ -312,7 +311,7 @@ func (s *TokenService) generateAccessToken(userID, clientID string, scope []stri
 		ClientID: clientID,
 	}
 
-	token, err := jwt.Signed(signer).Claims(claims).Serialize()
+	token, err := jwt.Signed(signer).Claims(claims).CompactSerialize()
 	if err != nil {
 		return "", err
 	}
@@ -340,7 +339,7 @@ func (s *TokenService) generateIDToken(userID, username, clientID, nonce string,
 		PreferredUsername: username,
 	}
 
-	token, err := jwt.Signed(signer).Claims(claims).Serialize()
+	token, err := jwt.Signed(signer).Claims(claims).CompactSerialize()
 	if err != nil {
 		return "", err
 	}
@@ -350,7 +349,7 @@ func (s *TokenService) generateIDToken(userID, username, clientID, nonce string,
 
 // ValidateAccessToken validates an access token.
 func (s *TokenService) ValidateAccessToken(tokenString string) (*TokenClaims, error) {
-	token, err := jwt.ParseSigned(tokenString, []jose.SignatureAlgorithm{jose.RS256})
+	token, err := jwt.ParseSigned(tokenString)
 	if err != nil {
 		return nil, ErrInvalidToken
 	}

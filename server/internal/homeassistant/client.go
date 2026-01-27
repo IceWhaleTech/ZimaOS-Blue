@@ -496,7 +496,7 @@ func (c *client) GetEntitiesByDomain(ctx context.Context, domain string) ([]*Ent
 }
 
 // GetServices gets all available services.
-func (c *client) GetServices(ctx context.Context) ([]*Service, error) {
+func (c *client) GetServices(ctx context.Context) ([]*HAServiceInfo, error) {
 	body, err := c.doRequest(ctx, "GET", "/api/services", nil)
 	if err != nil {
 		return nil, err
@@ -507,12 +507,12 @@ func (c *client) GetServices(ctx context.Context) ([]*Service, error) {
 		return nil, err
 	}
 
-	var services []*Service
+	var services []*HAServiceInfo
 	for _, domainServices := range servicesMap {
 		domain, _ := domainServices["domain"].(string)
 		if servicesList, ok := domainServices["services"].(map[string]interface{}); ok {
 			for serviceName, serviceData := range servicesList {
-				service := &Service{
+				service := &HAServiceInfo{
 					Domain:  domain,
 					Service: serviceName,
 				}

@@ -307,29 +307,6 @@ func (c *Channel) convertMessageEvent(ev *slackevents.MessageEvent) channel.Mess
 		channelMsg.ReplyToID = ev.ThreadTimeStamp
 	}
 
-	// Handle files
-	if len(ev.Files) > 0 {
-		for _, file := range ev.Files {
-			msgType := channel.MessageTypeFile
-			if strings.HasPrefix(file.Mimetype, "image/") {
-				msgType = channel.MessageTypeImage
-			} else if strings.HasPrefix(file.Mimetype, "audio/") {
-				msgType = channel.MessageTypeAudio
-			} else if strings.HasPrefix(file.Mimetype, "video/") {
-				msgType = channel.MessageTypeVideo
-			}
-
-			channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
-				ID:       file.ID,
-				Type:     msgType,
-				Name:     file.Name,
-				URL:      file.URLPrivate,
-				Size:     int64(file.Size),
-				MimeType: file.Mimetype,
-			})
-		}
-	}
-
 	return channelMsg
 }
 

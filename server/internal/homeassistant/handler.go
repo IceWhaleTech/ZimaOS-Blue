@@ -100,7 +100,7 @@ func (h *Handler) GetEntities(c echo.Context) error {
 
 	domain := c.QueryParam("domain")
 
-	var entities []Entity
+	var entities []*Entity
 	var err error
 
 	if domain != "" {

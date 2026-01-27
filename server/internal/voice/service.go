@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"zimaos-echo/server/internal/stt"
-	"zimaos-echo/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
 )
 
 // service implements the Service interface.

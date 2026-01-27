@@ -244,3 +244,40 @@ export function formatDuration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   return `${(ms / 60000).toFixed(1)}m`
 }
+
+// Security configuration types
+export interface BrowserSecurityConfig {
+  allowed_domains: string[]
+  blocked_domains: string[]
+}
+
+// Security API functions
+export async function getSecurityConfig(): Promise<BrowserSecurityConfig> {
+  const response = await api.get('/api/v1/browser/security')
+  return response.data
+}
+
+export async function updateSecurityConfig(config: BrowserSecurityConfig): Promise<void> {
+  await api.put('/api/v1/browser/security', config)
+}
+
+export async function addAllowedDomain(domain: string): Promise<void> {
+  await api.post('/api/v1/browser/security/allowed', { domain })
+}
+
+export async function removeAllowedDomain(domain: string): Promise<void> {
+  await api.delete(`/api/v1/browser/security/allowed/${encodeURIComponent(domain)}`)
+}
+
+export async function addBlockedDomain(domain: string): Promise<void> {
+  await api.post('/api/v1/browser/security/blocked', { domain })
+}
+
+export async function removeBlockedDomain(domain: string): Promise<void> {
+  await api.delete(`/api/v1/browser/security/blocked/${encodeURIComponent(domain)}`)
+}
+
+export async function testUrl(url: string): Promise<{ allowed: boolean; reason?: string }> {
+  const response = await api.post('/api/v1/browser/security/test', { url })
+  return response.data
+}

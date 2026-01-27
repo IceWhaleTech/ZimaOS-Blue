@@ -52,6 +52,13 @@
       >
         Templates
       </button>
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'security' }"
+        @click="activeTab = 'security'"
+      >
+        Security
+      </button>
     </div>
 
     <!-- Tasks Tab -->
@@ -155,6 +162,89 @@
           <div class="template-name">{{ template.name }}</div>
           <div class="template-description">{{ template.description }}</div>
           <div class="template-category">{{ template.category }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Security Tab -->
+    <div v-if="activeTab === 'security'" class="security-section">
+      <div class="security-grid">
+        <!-- Allowed Domains -->
+        <div class="security-card">
+          <div class="security-card-header">
+            <h3>Allowed Domains</h3>
+            <p class="security-hint">Only these domains can be accessed. Leave empty to allow all (except blocked).</p>
+          </div>
+          <div class="domain-input">
+            <input
+              v-model="newAllowedDomain"
+              type="text"
+              placeholder="example.com or *.example.com"
+              @keyup.enter="addAllowedDomain"
+            />
+            <button class="btn btn-primary btn-sm" @click="addAllowedDomain" :disabled="!newAllowedDomain">
+              Add
+            </button>
+          </div>
+          <div v-if="securityConfig.allowed_domains.length === 0" class="empty-domains">
+            <p>No allowed domains configured. All domains are allowed (except blocked).</p>
+          </div>
+          <div v-else class="domain-list">
+            <div v-for="domain in securityConfig.allowed_domains" :key="domain" class="domain-item allowed">
+              <span class="domain-name">{{ domain }}</span>
+              <button class="remove-btn" @click="removeAllowedDomain(domain)">&times;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blocked Domains -->
+        <div class="security-card">
+          <div class="security-card-header">
+            <h3>Blocked Domains</h3>
+            <p class="security-hint">These domains are always blocked, even if in the allowed list.</p>
+          </div>
+          <div class="domain-input">
+            <input
+              v-model="newBlockedDomain"
+              type="text"
+              placeholder="malicious-site.com"
+              @keyup.enter="addBlockedDomain"
+            />
+            <button class="btn btn-danger btn-sm" @click="addBlockedDomain" :disabled="!newBlockedDomain">
+              Block
+            </button>
+          </div>
+          <div v-if="securityConfig.blocked_domains.length === 0" class="empty-domains">
+            <p>No blocked domains configured.</p>
+          </div>
+          <div v-else class="domain-list">
+            <div v-for="domain in securityConfig.blocked_domains" :key="domain" class="domain-item blocked">
+              <span class="domain-name">{{ domain }}</span>
+              <button class="remove-btn" @click="removeBlockedDomain(domain)">&times;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- URL Tester -->
+      <div class="url-tester">
+        <h3>Test URL</h3>
+        <p class="security-hint">Check if a URL would be allowed or blocked.</p>
+        <div class="tester-input">
+          <input
+            v-model="testUrlInput"
+            type="url"
+            placeholder="https://example.com/page"
+            @keyup.enter="testUrl"
+          />
+          <button class="btn btn-secondary" @click="testUrl" :disabled="!testUrlInput || testingUrl">
+            {{ testingUrl ? 'Testing...' : 'Test' }}
+          </button>
+        </div>
+        <div v-if="testResult" class="test-result" :class="{ allowed: testResult.allowed, blocked: !testResult.allowed }">
+          <span class="result-icon">{{ testResult.allowed ? '✓' : '✕' }}</span>
+          <span class="result-text">{{ testResult.allowed ? 'URL is allowed' : 'URL is blocked' }}</span>
+          <span v-if="testResult.reason" class="result-reason">{{ testResult.reason }}</span>
         </div>
       </div>
     </div>
@@ -315,16 +405,27 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import * as browserApi from '@/api/browser'
-import type { BrowserTask, BrowserSession, TaskTemplate, StepType } from '@/api/browser'
+import type { BrowserTask, BrowserSession, TaskTemplate, StepType, BrowserSecurityConfig } from '@/api/browser'
 
 // State
 const tasks = ref<BrowserTask[]>([])
 const sessions = ref<BrowserSession[]>([])
 const templates = ref<TaskTemplate[]>(browserApi.taskTemplates)
-const activeTab = ref<'tasks' | 'sessions' | 'templates'>('tasks')
+const activeTab = ref<'tasks' | 'sessions' | 'templates' | 'security'>('tasks')
 const selectedTask = ref<BrowserTask | null>(null)
 const showCreateModal = ref(false)
 const screenshotPreview = ref<string | null>(null)
+
+// Security state
+const securityConfig = ref<BrowserSecurityConfig>({
+  allowed_domains: [],
+  blocked_domains: [],
+})
+const newAllowedDomain = ref('')
+const newBlockedDomain = ref('')
+const testUrlInput = ref('')
+const testingUrl = ref(false)
+const testResult = ref<{ allowed: boolean; reason?: string } | null>(null)
 
 const newTask = ref({
   name: '',
@@ -483,10 +584,85 @@ function getTemplateIcon(category: string): string {
   return icons[category] || '📦'
 }
 
+// Security methods
+async function loadSecurityConfig() {
+  try {
+    securityConfig.value = await browserApi.getSecurityConfig()
+  } catch (error) {
+    console.error('Failed to load security config:', error)
+    // Use default empty config
+    securityConfig.value = { allowed_domains: [], blocked_domains: [] }
+  }
+}
+
+async function addAllowedDomain() {
+  if (!newAllowedDomain.value) return
+  const domain = newAllowedDomain.value.trim().toLowerCase()
+  if (securityConfig.value.allowed_domains.includes(domain)) {
+    newAllowedDomain.value = ''
+    return
+  }
+  try {
+    await browserApi.addAllowedDomain(domain)
+    securityConfig.value.allowed_domains.push(domain)
+    newAllowedDomain.value = ''
+  } catch (error) {
+    console.error('Failed to add allowed domain:', error)
+  }
+}
+
+async function removeAllowedDomain(domain: string) {
+  try {
+    await browserApi.removeAllowedDomain(domain)
+    securityConfig.value.allowed_domains = securityConfig.value.allowed_domains.filter(d => d !== domain)
+  } catch (error) {
+    console.error('Failed to remove allowed domain:', error)
+  }
+}
+
+async function addBlockedDomain() {
+  if (!newBlockedDomain.value) return
+  const domain = newBlockedDomain.value.trim().toLowerCase()
+  if (securityConfig.value.blocked_domains.includes(domain)) {
+    newBlockedDomain.value = ''
+    return
+  }
+  try {
+    await browserApi.addBlockedDomain(domain)
+    securityConfig.value.blocked_domains.push(domain)
+    newBlockedDomain.value = ''
+  } catch (error) {
+    console.error('Failed to add blocked domain:', error)
+  }
+}
+
+async function removeBlockedDomain(domain: string) {
+  try {
+    await browserApi.removeBlockedDomain(domain)
+    securityConfig.value.blocked_domains = securityConfig.value.blocked_domains.filter(d => d !== domain)
+  } catch (error) {
+    console.error('Failed to remove blocked domain:', error)
+  }
+}
+
+async function testUrl() {
+  if (!testUrlInput.value) return
+  testingUrl.value = true
+  testResult.value = null
+  try {
+    testResult.value = await browserApi.testUrl(testUrlInput.value)
+  } catch (error) {
+    testResult.value = { allowed: false, reason: 'Failed to test URL' }
+  } finally {
+    testingUrl.value = false
+  }
+}
+
 // Lifecycle
 onMounted(() => {
   loadTasks()
   loadSessions()
+  loadSecurityConfig()
 })
 </script>
 
@@ -922,9 +1098,179 @@ onMounted(() => {
   font-size: 0.875rem;
 }
 
+/* Security section styles */
+.security-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.security-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.security-card {
+  background: var(--color-background-soft);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.security-card-header {
+  margin-bottom: 1rem;
+}
+
+.security-card-header h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.125rem;
+}
+
+.security-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.domain-input {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.domain-input input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.empty-domains {
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  background: var(--color-background);
+  border-radius: 0.5rem;
+}
+
+.domain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.domain-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.domain-item.allowed {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.domain-item.blocked {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.domain-name {
+  font-family: monospace;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  padding: 0;
+  line-height: 1;
+}
+
+.remove-btn:hover {
+  opacity: 1;
+}
+
+.url-tester {
+  background: var(--color-background-soft);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.url-tester h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.125rem;
+}
+
+.tester-input {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.tester-input input {
+  flex: 1;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.test-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.test-result.allowed {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.test-result.blocked {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.result-icon {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.result-text {
+  font-weight: 500;
+}
+
+.result-reason {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin-left: auto;
+}
+
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .security-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

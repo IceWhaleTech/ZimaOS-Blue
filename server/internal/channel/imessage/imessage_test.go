@@ -96,9 +96,9 @@ func TestDefaultConfig(t *testing.T) {
 func TestConvertMacOSTimestamp(t *testing.T) {
 	// Test with a known timestamp
 	// 2024-01-01 00:00:00 UTC in macOS timestamp format
-	// Days from 2001-01-01 to 2024-01-01 = 8401 days
-	// 8401 * 24 * 60 * 60 * 1e9 nanoseconds
-	timestamp := int64(8401 * 24 * 60 * 60 * 1e9)
+	// Days from 2001-01-01 to 2024-01-01 = 8400 days
+	// 8400 * 24 * 60 * 60 * 1e9 nanoseconds
+	timestamp := int64(8400 * 24 * 60 * 60 * 1e9)
 	result := convertMacOSTimestamp(timestamp)
 
 	expected := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)

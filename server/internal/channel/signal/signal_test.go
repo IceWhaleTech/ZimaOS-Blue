@@ -152,7 +152,7 @@ func TestNormalizePhoneNumber(t *testing.T) {
 		want  string
 	}{
 		{"+1 234 567 890", "+1234567890"},
-		{"(123) 456-7890", "(123)4567890"}, // Note: keeps + but removes spaces and dashes
+		{"(123) 456-7890", "1234567890"}, // Removes spaces, dashes, and parentheses
 		{"+1-234-567-890", "+1234567890"},
 		{"+1234567890", "+1234567890"},
 	}

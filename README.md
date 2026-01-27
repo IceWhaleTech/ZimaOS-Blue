@@ -1,7 +1,7 @@
 # ZimaOS Echo
 
 <p align="center">
-  <img src="docs-site/public/logo.svg" alt="ZimaOS Echo" width="200">
+  <img src="docs/public/logo.png" alt="ZimaOS Echo" width="200">
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="README.zh.md">中文</a>
+  <strong>English</strong> | <a href="./i18n/zh_CN/README.md">中文</a>
 </p>
 
 <p align="center">

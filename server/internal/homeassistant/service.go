@@ -9,36 +9,6 @@ import (
 	"time"
 )
 
-// Service provides high-level Home Assistant operations.
-type Service interface {
-	// Connection management
-	Connect(ctx context.Context, config *Config) error
-	Disconnect() error
-	IsConnected() bool
-
-	// Entity operations
-	GetAllEntities(ctx context.Context) ([]Entity, error)
-	GetEntitiesByDomain(ctx context.Context, domain string) ([]Entity, error)
-	GetEntity(ctx context.Context, entityID string) (*Entity, error)
-	ControlEntity(ctx context.Context, entityID string, action string, params map[string]interface{}) error
-
-	// Scene operations
-	GetScenes(ctx context.Context) ([]Scene, error)
-	ActivateScene(ctx context.Context, sceneID string) error
-
-	// Automation operations
-	GetAutomations(ctx context.Context) ([]Automation, error)
-	TriggerAutomation(ctx context.Context, automationID string) error
-	ToggleAutomation(ctx context.Context, automationID string, enable bool) error
-
-	// Natural language control
-	ProcessCommand(ctx context.Context, command string) (*CommandResult, error)
-
-	// Event subscriptions
-	SubscribeStateChanges(callback func(entityID string, oldState, newState *EntityState))
-	UnsubscribeStateChanges()
-}
-
 // CommandResult represents the result of a natural language command.
 type CommandResult struct {
 	Success     bool                   `json:"success"`
@@ -49,28 +19,28 @@ type CommandResult struct {
 	Suggestions []string               `json:"suggestions,omitempty"`
 }
 
-// service implements the Service interface.
-type service struct {
-	client          Client
-	config          *Config
-	entityCache     map[string]*Entity
-	cacheMu         sync.RWMutex
-	cacheExpiry     time.Time
-	cacheTTL        time.Duration
-	stateCallback   func(entityID string, oldState, newState *EntityState)
-	callbackMu      sync.RWMutex
+// HAService provides high-level Home Assistant operations.
+type HAService struct {
+	client        Client
+	config        *Config
+	entityCache   map[string]*Entity
+	cacheMu       sync.RWMutex
+	cacheExpiry   time.Time
+	cacheTTL      time.Duration
+	stateCallback func(entityID string, oldState, newState *EntityState)
+	callbackMu    sync.RWMutex
 }
 
-// NewService creates a new Home Assistant service.
-func NewService() Service {
-	return &service{
+// NewHAService creates a new Home Assistant service.
+func NewHAService() *HAService {
+	return &HAService{
 		entityCache: make(map[string]*Entity),
 		cacheTTL:    5 * time.Minute,
 	}
 }
 
 // Connect connects to Home Assistant.
-func (s *service) Connect(ctx context.Context, config *Config) error {
+func (s *HAService) Connect(ctx context.Context, config *Config) error {
 	s.config = config
 	s.client = NewClient(config)
 
@@ -78,15 +48,12 @@ func (s *service) Connect(ctx context.Context, config *Config) error {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	// Set up state change callback
-	s.client.OnStateChange(func(entityID string, oldState, newState *EntityState) {
+	// Subscribe to state changes
+	if err := s.client.SubscribeStateChanges(ctx, func(entityID string, oldState, newState *EntityState) {
 		// Update cache
 		s.cacheMu.Lock()
-		if entity, ok := s.entityCache[entityID]; ok {
-			entity.State = newState.State
-			entity.Attributes = newState.Attributes
-			entity.LastChanged = newState.LastChanged
-			entity.LastUpdated = newState.LastUpdated
+		if entity, ok := s.entityCache[entityID]; ok && newState != nil {
+			entity.State = newState
 		}
 		s.cacheMu.Unlock()
 
@@ -98,10 +65,7 @@ func (s *service) Connect(ctx context.Context, config *Config) error {
 		if callback != nil {
 			callback(entityID, oldState, newState)
 		}
-	})
-
-	// Subscribe to state changes
-	if err := s.client.SubscribeEvents(ctx, "state_changed"); err != nil {
+	}); err != nil {
 		// Non-fatal, just log
 		fmt.Printf("Warning: failed to subscribe to state changes: %v\n", err)
 	}
@@ -110,7 +74,7 @@ func (s *service) Connect(ctx context.Context, config *Config) error {
 }
 
 // Disconnect disconnects from Home Assistant.
-func (s *service) Disconnect() error {
+func (s *HAService) Disconnect() error {
 	if s.client != nil {
 		return s.client.Disconnect()
 	}
@@ -118,18 +82,18 @@ func (s *service) Disconnect() error {
 }
 
 // IsConnected returns whether the service is connected.
-func (s *service) IsConnected() bool {
+func (s *HAService) IsConnected() bool {
 	return s.client != nil && s.client.IsConnected()
 }
 
 // GetAllEntities returns all entities.
-func (s *service) GetAllEntities(ctx context.Context) ([]Entity, error) {
+func (s *HAService) GetAllEntities(ctx context.Context) ([]*Entity, error) {
 	// Check cache
 	s.cacheMu.RLock()
 	if time.Now().Before(s.cacheExpiry) && len(s.entityCache) > 0 {
-		entities := make([]Entity, 0, len(s.entityCache))
+		entities := make([]*Entity, 0, len(s.entityCache))
 		for _, e := range s.entityCache {
-			entities = append(entities, *e)
+			entities = append(entities, e)
 		}
 		s.cacheMu.RUnlock()
 		return entities, nil
@@ -145,8 +109,8 @@ func (s *service) GetAllEntities(ctx context.Context) ([]Entity, error) {
 	// Update cache
 	s.cacheMu.Lock()
 	s.entityCache = make(map[string]*Entity)
-	for i := range entities {
-		s.entityCache[entities[i].EntityID] = &entities[i]
+	for _, e := range entities {
+		s.entityCache[e.EntityID] = e
 	}
 	s.cacheExpiry = time.Now().Add(s.cacheTTL)
 	s.cacheMu.Unlock()
@@ -155,13 +119,13 @@ func (s *service) GetAllEntities(ctx context.Context) ([]Entity, error) {
 }
 
 // GetEntitiesByDomain returns entities filtered by domain.
-func (s *service) GetEntitiesByDomain(ctx context.Context, domain string) ([]Entity, error) {
+func (s *HAService) GetEntitiesByDomain(ctx context.Context, domain string) ([]*Entity, error) {
 	entities, err := s.GetAllEntities(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var filtered []Entity
+	var filtered []*Entity
 	prefix := domain + "."
 	for _, e := range entities {
 		if strings.HasPrefix(e.EntityID, prefix) {
@@ -173,7 +137,7 @@ func (s *service) GetEntitiesByDomain(ctx context.Context, domain string) ([]Ent
 }
 
 // GetEntity returns a single entity.
-func (s *service) GetEntity(ctx context.Context, entityID string) (*Entity, error) {
+func (s *HAService) GetEntity(ctx context.Context, entityID string) (*Entity, error) {
 	// Check cache first
 	s.cacheMu.RLock()
 	if entity, ok := s.entityCache[entityID]; ok && time.Now().Before(s.cacheExpiry) {
@@ -183,88 +147,65 @@ func (s *service) GetEntity(ctx context.Context, entityID string) (*Entity, erro
 	s.cacheMu.RUnlock()
 
 	// Fetch from HA
-	state, err := s.client.GetEntityState(ctx, entityID)
-	if err != nil {
-		return nil, err
-	}
-
-	entity := &Entity{
-		EntityID:    entityID,
-		State:       state.State,
-		Attributes:  state.Attributes,
-		LastChanged: state.LastChanged,
-		LastUpdated: state.LastUpdated,
-	}
-
-	// Update cache
-	s.cacheMu.Lock()
-	s.entityCache[entityID] = entity
-	s.cacheMu.Unlock()
-
-	return entity, nil
+	return s.client.GetEntity(ctx, entityID)
 }
 
 // ControlEntity controls an entity with the specified action.
-func (s *service) ControlEntity(ctx context.Context, entityID string, action string, params map[string]interface{}) error {
+func (s *HAService) ControlEntity(ctx context.Context, entityID string, action string, params map[string]interface{}) error {
 	domain := strings.Split(entityID, ".")[0]
 
 	// Map common actions to services
-	service := action
+	svc := action
 	switch action {
 	case "on", "turn_on":
-		service = "turn_on"
+		svc = "turn_on"
 	case "off", "turn_off":
-		service = "turn_off"
+		svc = "turn_off"
 	case "toggle":
-		service = "toggle"
+		svc = "toggle"
 	}
 
 	// Build service data
-	serviceData := map[string]interface{}{
-		"entity_id": entityID,
-	}
+	serviceData := make(map[string]interface{})
 	for k, v := range params {
 		serviceData[k] = v
 	}
 
-	return s.client.CallService(ctx, domain, service, serviceData)
+	return s.client.CallService(ctx, &ServiceCallRequest{
+		Domain:      domain,
+		Service:     svc,
+		Target:      &ServiceTarget{EntityID: entityID},
+		ServiceData: serviceData,
+	})
 }
 
 // GetScenes returns all scenes.
-func (s *service) GetScenes(ctx context.Context) ([]Scene, error) {
+func (s *HAService) GetScenes(ctx context.Context) ([]*Scene, error) {
 	return s.client.GetScenes(ctx)
 }
 
 // ActivateScene activates a scene.
-func (s *service) ActivateScene(ctx context.Context, sceneID string) error {
+func (s *HAService) ActivateScene(ctx context.Context, sceneID string) error {
 	return s.client.ActivateScene(ctx, sceneID)
 }
 
 // GetAutomations returns all automations.
-func (s *service) GetAutomations(ctx context.Context) ([]Automation, error) {
+func (s *HAService) GetAutomations(ctx context.Context) ([]*Automation, error) {
 	return s.client.GetAutomations(ctx)
 }
 
 // TriggerAutomation triggers an automation.
-func (s *service) TriggerAutomation(ctx context.Context, automationID string) error {
-	return s.client.CallService(ctx, "automation", "trigger", map[string]interface{}{
-		"entity_id": automationID,
-	})
+func (s *HAService) TriggerAutomation(ctx context.Context, automationID string) error {
+	return s.client.TriggerAutomation(ctx, automationID)
 }
 
 // ToggleAutomation enables or disables an automation.
-func (s *service) ToggleAutomation(ctx context.Context, automationID string, enable bool) error {
-	service := "turn_off"
-	if enable {
-		service = "turn_on"
-	}
-	return s.client.CallService(ctx, "automation", service, map[string]interface{}{
-		"entity_id": automationID,
-	})
+func (s *HAService) ToggleAutomation(ctx context.Context, automationID string, enable bool) error {
+	return s.client.ToggleAutomation(ctx, automationID, enable)
 }
 
 // ProcessCommand processes a natural language command.
-func (s *service) ProcessCommand(ctx context.Context, command string) (*CommandResult, error) {
+func (s *HAService) ProcessCommand(ctx context.Context, command string) (*CommandResult, error) {
 	command = strings.ToLower(strings.TrimSpace(command))
 
 	// Parse the command
@@ -352,7 +293,7 @@ func (s *service) ProcessCommand(ctx context.Context, command string) (*CommandR
 }
 
 // handleOnOffCommand handles turn on/off commands.
-func (s *service) handleOnOffCommand(ctx context.Context, action, target string) (*CommandResult, error) {
+func (s *HAService) handleOnOffCommand(ctx context.Context, action, target string) (*CommandResult, error) {
 	entity, err := s.findEntityByName(ctx, target)
 	if err != nil {
 		return &CommandResult{
@@ -361,12 +302,12 @@ func (s *service) handleOnOffCommand(ctx context.Context, action, target string)
 		}, nil
 	}
 
-	service := "turn_on"
+	svc := "turn_on"
 	if strings.ToLower(action) == "off" {
-		service = "turn_off"
+		svc = "turn_off"
 	}
 
-	if err := s.ControlEntity(ctx, entity.EntityID, service, nil); err != nil {
+	if err := s.ControlEntity(ctx, entity.EntityID, svc, nil); err != nil {
 		return &CommandResult{
 			Success: false,
 			Message: fmt.Sprintf("Failed to %s %s: %v", action, target, err),
@@ -375,14 +316,14 @@ func (s *service) handleOnOffCommand(ctx context.Context, action, target string)
 
 	return &CommandResult{
 		Success:  true,
-		Message:  fmt.Sprintf("Turned %s %s", action, entity.FriendlyName()),
+		Message:  fmt.Sprintf("Turned %s %s", action, entity.Name),
 		EntityID: entity.EntityID,
-		Action:   service,
+		Action:   svc,
 	}, nil
 }
 
 // handleBrightnessCommand handles brightness commands.
-func (s *service) handleBrightnessCommand(ctx context.Context, target, brightness string) (*CommandResult, error) {
+func (s *HAService) handleBrightnessCommand(ctx context.Context, target, brightness string) (*CommandResult, error) {
 	entity, err := s.findEntityByName(ctx, target)
 	if err != nil {
 		return &CommandResult{
@@ -409,7 +350,7 @@ func (s *service) handleBrightnessCommand(ctx context.Context, target, brightnes
 
 	return &CommandResult{
 		Success:    true,
-		Message:    fmt.Sprintf("Set %s brightness to %s%%", entity.FriendlyName(), brightness),
+		Message:    fmt.Sprintf("Set %s brightness to %s%%", entity.Name, brightness),
 		EntityID:   entity.EntityID,
 		Action:     "turn_on",
 		Parameters: params,
@@ -417,7 +358,7 @@ func (s *service) handleBrightnessCommand(ctx context.Context, target, brightnes
 }
 
 // handleTemperatureCommand handles temperature commands.
-func (s *service) handleTemperatureCommand(ctx context.Context, temp string) (*CommandResult, error) {
+func (s *HAService) handleTemperatureCommand(ctx context.Context, temp string) (*CommandResult, error) {
 	// Find climate entities
 	entities, err := s.GetEntitiesByDomain(ctx, "climate")
 	if err != nil || len(entities) == 0 {
@@ -437,9 +378,13 @@ func (s *service) handleTemperatureCommand(ctx context.Context, temp string) (*C
 		"temperature": tempValue,
 	}
 
-	if err := s.client.CallService(ctx, "climate", "set_temperature", map[string]interface{}{
-		"entity_id":   entity.EntityID,
-		"temperature": tempValue,
+	if err := s.client.CallService(ctx, &ServiceCallRequest{
+		Domain:  "climate",
+		Service: "set_temperature",
+		Target:  &ServiceTarget{EntityID: entity.EntityID},
+		ServiceData: map[string]interface{}{
+			"temperature": tempValue,
+		},
 	}); err != nil {
 		return &CommandResult{
 			Success: false,
@@ -457,7 +402,7 @@ func (s *service) handleTemperatureCommand(ctx context.Context, temp string) (*C
 }
 
 // handleSceneCommand handles scene activation commands.
-func (s *service) handleSceneCommand(ctx context.Context, sceneName string) (*CommandResult, error) {
+func (s *HAService) handleSceneCommand(ctx context.Context, sceneName string) (*CommandResult, error) {
 	scenes, err := s.GetScenes(ctx)
 	if err != nil {
 		return &CommandResult{
@@ -493,7 +438,7 @@ func (s *service) handleSceneCommand(ctx context.Context, sceneName string) (*Co
 }
 
 // handleLockCommand handles lock/unlock commands.
-func (s *service) handleLockCommand(ctx context.Context, action, target string) (*CommandResult, error) {
+func (s *HAService) handleLockCommand(ctx context.Context, action, target string) (*CommandResult, error) {
 	entity, err := s.findEntityByName(ctx, target)
 	if err != nil {
 		// Try finding in lock domain
@@ -508,8 +453,8 @@ func (s *service) handleLockCommand(ctx context.Context, action, target string) 
 		// Find by name
 		target = strings.ToLower(target)
 		for _, e := range entities {
-			if strings.Contains(strings.ToLower(e.FriendlyName()), target) {
-				entity = &e
+			if strings.Contains(strings.ToLower(e.Name), target) {
+				entity = e
 				break
 			}
 		}
@@ -522,8 +467,10 @@ func (s *service) handleLockCommand(ctx context.Context, action, target string) 
 		}
 	}
 
-	if err := s.client.CallService(ctx, "lock", action, map[string]interface{}{
-		"entity_id": entity.EntityID,
+	if err := s.client.CallService(ctx, &ServiceCallRequest{
+		Domain:  "lock",
+		Service: action,
+		Target:  &ServiceTarget{EntityID: entity.EntityID},
 	}); err != nil {
 		return &CommandResult{
 			Success: false,
@@ -533,14 +480,14 @@ func (s *service) handleLockCommand(ctx context.Context, action, target string) 
 
 	return &CommandResult{
 		Success:  true,
-		Message:  fmt.Sprintf("%sed %s", strings.Title(action), entity.FriendlyName()),
+		Message:  fmt.Sprintf("%sed %s", strings.Title(action), entity.Name),
 		EntityID: entity.EntityID,
 		Action:   action,
 	}, nil
 }
 
 // handleCoverCommand handles open/close commands for covers.
-func (s *service) handleCoverCommand(ctx context.Context, action, target string) (*CommandResult, error) {
+func (s *HAService) handleCoverCommand(ctx context.Context, action, target string) (*CommandResult, error) {
 	entity, err := s.findEntityByName(ctx, target)
 	if err != nil {
 		return &CommandResult{
@@ -549,13 +496,15 @@ func (s *service) handleCoverCommand(ctx context.Context, action, target string)
 		}, nil
 	}
 
-	service := "open_cover"
+	svc := "open_cover"
 	if strings.ToLower(action) == "close" {
-		service = "close_cover"
+		svc = "close_cover"
 	}
 
-	if err := s.client.CallService(ctx, "cover", service, map[string]interface{}{
-		"entity_id": entity.EntityID,
+	if err := s.client.CallService(ctx, &ServiceCallRequest{
+		Domain:  "cover",
+		Service: svc,
+		Target:  &ServiceTarget{EntityID: entity.EntityID},
 	}); err != nil {
 		return &CommandResult{
 			Success: false,
@@ -565,14 +514,14 @@ func (s *service) handleCoverCommand(ctx context.Context, action, target string)
 
 	return &CommandResult{
 		Success:  true,
-		Message:  fmt.Sprintf("%sed %s", strings.Title(action), entity.FriendlyName()),
+		Message:  fmt.Sprintf("%sed %s", strings.Title(action), entity.Name),
 		EntityID: entity.EntityID,
-		Action:   service,
+		Action:   svc,
 	}, nil
 }
 
 // findEntityByName finds an entity by its friendly name or entity ID.
-func (s *service) findEntityByName(ctx context.Context, name string) (*Entity, error) {
+func (s *HAService) findEntityByName(ctx context.Context, name string) (*Entity, error) {
 	entities, err := s.GetAllEntities(ctx)
 	if err != nil {
 		return nil, err
@@ -583,15 +532,15 @@ func (s *service) findEntityByName(ctx context.Context, name string) (*Entity, e
 	// First try exact match on entity ID
 	for _, e := range entities {
 		if strings.ToLower(e.EntityID) == name {
-			return &e, nil
+			return e, nil
 		}
 	}
 
 	// Then try friendly name match
 	for _, e := range entities {
-		friendlyName := strings.ToLower(e.FriendlyName())
+		friendlyName := strings.ToLower(e.Name)
 		if friendlyName == name || strings.Contains(friendlyName, name) {
-			return &e, nil
+			return e, nil
 		}
 	}
 
@@ -599,14 +548,14 @@ func (s *service) findEntityByName(ctx context.Context, name string) (*Entity, e
 }
 
 // SubscribeStateChanges subscribes to state change events.
-func (s *service) SubscribeStateChanges(callback func(entityID string, oldState, newState *EntityState)) {
+func (s *HAService) SubscribeStateChanges(callback func(entityID string, oldState, newState *EntityState)) {
 	s.callbackMu.Lock()
 	s.stateCallback = callback
 	s.callbackMu.Unlock()
 }
 
 // UnsubscribeStateChanges unsubscribes from state change events.
-func (s *service) UnsubscribeStateChanges() {
+func (s *HAService) UnsubscribeStateChanges() {
 	s.callbackMu.Lock()
 	s.stateCallback = nil
 	s.callbackMu.Unlock()

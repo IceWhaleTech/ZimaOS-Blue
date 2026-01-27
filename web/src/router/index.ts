@@ -80,6 +80,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/tenants',
+    name: 'Tenants',
+    component: () => import('@/views/TenantsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/tenants/:id',
+    name: 'TenantDetail',
+    component: () => import('@/views/TenantDetailView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),
