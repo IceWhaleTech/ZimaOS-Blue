@@ -4,15 +4,16 @@ package resources
 
 import (
 	"fmt"
-	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // applyRlimits applies OS-specific resource limits on Unix systems.
 func (l *Limiter) applyRlimits() error {
 	// Set max open files
 	if l.config.MaxOpenFiles > 0 {
-		var rLimit syscall.Rlimit
-		if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		var rLimit unix.Rlimit
+		if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &rLimit); err != nil {
 			return fmt.Errorf("failed to get RLIMIT_NOFILE: %w", err)
 		}
 
@@ -21,7 +22,7 @@ func (l *Limiter) applyRlimits() error {
 			rLimit.Cur = rLimit.Max
 		}
 
-		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		if err := unix.Setrlimit(unix.RLIMIT_NOFILE, &rLimit); err != nil {
 			return fmt.Errorf("failed to set RLIMIT_NOFILE: %w", err)
 		}
 	}
@@ -34,20 +35,20 @@ func GetRlimits() (map[string]Rlimit, error) {
 	limits := make(map[string]Rlimit)
 
 	// RLIMIT_NOFILE
-	var nofile syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &nofile); err == nil {
+	var nofile unix.Rlimit
+	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &nofile); err == nil {
 		limits["nofile"] = Rlimit{Cur: nofile.Cur, Max: nofile.Max}
 	}
 
 	// RLIMIT_NPROC
-	var nproc syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NPROC, &nproc); err == nil {
+	var nproc unix.Rlimit
+	if err := unix.Getrlimit(unix.RLIMIT_NPROC, &nproc); err == nil {
 		limits["nproc"] = Rlimit{Cur: nproc.Cur, Max: nproc.Max}
 	}
 
 	// RLIMIT_AS (address space)
-	var as syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_AS, &as); err == nil {
+	var as unix.Rlimit
+	if err := unix.Getrlimit(unix.RLIMIT_AS, &as); err == nil {
 		limits["as"] = Rlimit{Cur: as.Cur, Max: as.Max}
 	}
 

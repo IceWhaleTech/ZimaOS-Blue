@@ -97,24 +97,9 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 		// Note: CLONE_NEWNET and CLONE_NEWNS require root privileges
 	}
 
-	// Set resource limits using rlimit
-	cmd.SysProcAttr.Rlimit = []syscall.Rlimit{
-		// Memory limit (address space)
-		{
-			Cur: uint64(req.MemoryLimit),
-			Max: uint64(req.MemoryLimit),
-		},
-		// CPU time limit
-		{
-			Cur: uint64(req.Timeout.Seconds()),
-			Max: uint64(req.Timeout.Seconds()),
-		},
-		// Process limit
-		{
-			Cur: uint64(e.config.ProcessLimit),
-			Max: uint64(e.config.ProcessLimit),
-		},
-	}
+	// Note: Resource limits (rlimit) cannot be set directly on SysProcAttr in Go.
+	// Instead, we rely on cgroup limits set below for memory, CPU, and process limits.
+	// For stricter isolation, consider using a wrapper script that calls setrlimit(2).
 
 	// Store execution state
 	result := &ExecutionResult{
