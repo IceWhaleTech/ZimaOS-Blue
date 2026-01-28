@@ -51,3 +51,6 @@ go.work
 # Config (local overrides)
 config.local.yaml
 config.local.yml
+
+# Production data
+server/data/
