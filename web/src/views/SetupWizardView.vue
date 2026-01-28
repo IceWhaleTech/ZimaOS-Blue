@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { resetSetupStatus } from '@/router'
+import { setLocale, type LocaleKey } from '@/i18n'
 
 const { t } = useI18n()
 
@@ -84,21 +85,61 @@ const languages = ref<Language[]>([])
 // Detect browser language and map to supported language code
 function detectBrowserLanguage(): string {
   const browserLang = navigator.language || navigator.languages?.[0] || 'en'
-  // Extract primary language code (e.g., 'zh-CN' -> 'zh', 'en-US' -> 'en')
-  const primaryLang = (browserLang.split('-')[0] || 'en').toLowerCase()
-  // Map common language codes to supported ones (using underscore format to match server)
-  const langMap: Record<string, string> = {
-    'zh': 'zh_CN',
-    'en': 'en',
-    'ja': 'ja',
-    'ko': 'ko',
-    'de': 'de',
-    'fr': 'fr',
-    'es': 'es',
-    'pt': 'pt',
-    'ru': 'ru',
+  // Map browser language codes to our locale keys
+  const browserLocaleMap: Record<string, string> = {
+    'ca': 'ca-ES',
+    'cs': 'cs-CZ',
+    'da': 'da-DK',
+    'de': 'de-DE',
+    'el': 'el-GR',
+    'en': 'en-US',
+    'en-GB': 'en-GB',
+    'en-US': 'en-US',
+    'es': 'es-ES',
+    'fr': 'fr-FR',
+    'ga': 'ga-IE',
+    'hr': 'hr-HR',
+    'hu': 'hu-HU',
+    'it': 'it-IT',
+    'ja': 'ja-JP',
+    'ko': 'ko-KR',
+    'ml': 'ml-IN',
+    'nb': 'nb-NO',
+    'nl': 'nl-NL',
+    'no': 'nb-NO',
+    'pl': 'pl-PL',
+    'pt': 'pt-BR',
+    'pt-BR': 'pt-BR',
+    'pt-PT': 'pt-PT',
+    'ro': 'ro-RO',
+    'ru': 'ru-RU',
+    'sk': 'sk-SK',
+    'sv': 'sv-SE',
+    'zh': 'zh-CN',
+    'zh-CN': 'zh-CN',
+    'zh-TW': 'zh-TW',
+    'zh-HK': 'zh-TW',
   }
-  return langMap[primaryLang] || 'en'
+  // Try exact match first
+  const exactMatch = browserLocaleMap[browserLang]
+  if (exactMatch) {
+    return exactMatch
+  }
+  // Try language code only
+  const langCode = browserLang.split('-')[0]
+  if (langCode) {
+    const langMatch = browserLocaleMap[langCode]
+    if (langMatch) {
+      return langMatch
+    }
+  }
+  return 'en-US'
+}
+
+// Handle language change in wizard
+async function handleLanguageChange(langCode: string) {
+  config.value.language = langCode
+  await setLocale(langCode as LocaleKey)
 }
 
 // Detect browser timezone
@@ -473,8 +514,9 @@ function getProviderDisplayName(providerId: string): string {
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('common.language') }}</label>
             <select
-              v-model="config.language"
+              :value="config.language"
               class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @change="handleLanguageChange(($event.target as HTMLSelectElement).value)"
             >
               <option v-for="lang in languages" :key="lang.code" :value="lang.code">
                 {{ lang.name }}

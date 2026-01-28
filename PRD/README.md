@@ -6,6 +6,9 @@ This directory contains product requirement documents for ZimaOS Echo features.
 
 | File | Description | Status |
 |------|-------------|--------|
+| [v0.9.1-companion.md](v0.9.1-companion.md) | Echo Companion - Real-time Agent Monitoring | Draft |
+| [v0.9.2-ota-update.md](v0.9.2-ota-update.md) | OTA Update System | Draft |
+| [v0.9.3-provider-pool.md](v0.9.3-provider-pool.md) | Provider Pool - Unified LLM Provider Management | Draft |
 | [v1.0.0-rag.md](v1.0.0-rag.md) | RAG & Knowledge Base | Draft |
 | [v1.1.0-mesh-network.md](v1.1.0-mesh-network.md) | P2P Mesh Network | Draft |
 

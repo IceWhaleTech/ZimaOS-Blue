@@ -1,7 +1,7 @@
 # ZimaOS Echo
 
 <p align="center">
-  <img src="docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
 </p>
 
 <p align="center">
