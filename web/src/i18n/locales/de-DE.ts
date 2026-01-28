@@ -66,7 +66,6 @@ export default {
   },
   nav: {
     ...enUS.nav,
-    home: 'Start',
     chat: 'Chat',
     dashboard: 'Dashboard',
     settings: 'Einstellungen',

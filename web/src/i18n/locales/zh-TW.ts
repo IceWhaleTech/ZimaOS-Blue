@@ -65,7 +65,6 @@ export default {
   },
   nav: {
     ...enUS.nav,
-    home: '首頁',
     chat: '對話',
     dashboard: '儀表板',
     settings: '設定',

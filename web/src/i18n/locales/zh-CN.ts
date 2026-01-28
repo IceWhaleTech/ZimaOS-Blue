@@ -59,9 +59,8 @@ export default {
     signInWith: '使用 {provider} 登录',
   },
   nav: {
-    home: '首页',
-    chat: '对话',
     dashboard: '仪表盘',
+    chat: '对话',
     settings: '设置',
     system: '系统',
     plugins: '插件',
@@ -72,6 +71,7 @@ export default {
     tenants: '租户管理',
     automation: '自动化',
     channels: '渠道',
+    security: '安全',
   },
   brand: {
     name: 'ZimaOS',

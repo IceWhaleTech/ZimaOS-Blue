@@ -1,16 +1,66 @@
 <script setup lang="ts">
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import { useSystemStore } from '@/stores/system'
 import { storeToRefs } from 'pinia'
 
 const { t } = useI18n()
+const route = useRoute()
+const authStore = useAuthStore()
+const themeStore = useThemeStore()
 const systemStore = useSystemStore()
 const { health } = storeToRefs(systemStore)
+
+// User menu dropdown state
+const showUserMenu = ref(false)
+const userMenuRef = ref<HTMLElement | null>(null)
+
+// Close menu when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  if (userMenuRef.value && !userMenuRef.value.contains(event.target as Node)) {
+    showUserMenu.value = false
+  }
+}
+
+onMounted(async () => {
+  document.addEventListener('click', handleClickOutside)
+  // Fetch user data if authenticated but user info not loaded
+  if (authStore.isAuthenticated && !authStore.user) {
+    await authStore.fetchUser()
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 // Emit event to toggle sidebar
 const emit = defineEmits<{
   toggleSidebar: []
 }>()
+
+const themeLabel = computed(() => {
+  if (themeStore.theme === 'dark') return t('common.dark')
+  if (themeStore.theme === 'light') return t('common.light')
+  return t('common.system')
+})
+
+function getThemeIcon(): string {
+  if (themeStore.theme === 'dark') {
+    return 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'
+  } else if (themeStore.theme === 'light') {
+    return 'M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z'
+  }
+  return 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
+}
+
+function handleLogout() {
+  showUserMenu.value = false
+  authStore.logout()
+}
 </script>
 
 <template>
@@ -26,7 +76,19 @@ const emit = defineEmits<{
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">ZimaOS Echo</h1>
+        <!-- Logo/Brand -->
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-accent to-cta flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div class="hidden sm:block">
+            <h1 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('brand.name') }}</h1>
+            <p class="text-xs text-gray-500 dark:text-slate-400">{{ t('brand.tagline') }}</p>
+          </div>
+          <h1 class="sm:hidden text-lg font-semibold text-gray-900 dark:text-white">{{ t('brand.name') }}</h1>
+        </div>
         <span
           v-if="health"
           class="hidden sm:inline-flex px-3 py-1 text-xs font-medium rounded-full transition-all duration-200"
@@ -49,10 +111,66 @@ const emit = defineEmits<{
           :class="health.status === 'ok' ? 'bg-cta' : 'bg-red-400'"
         ></span>
       </div>
-      <div class="flex items-center space-x-2 sm:space-x-4">
-        <span v-if="health" class="text-xs sm:text-sm text-gray-500 dark:text-slate-400 font-medium">
-          v{{ health.version }}
-        </span>
+      <div class="flex items-center space-x-1 sm:space-x-3">
+        <!-- Theme toggle -->
+        <button
+          class="p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors"
+          :title="themeLabel"
+          @click="themeStore.toggleTheme"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getThemeIcon()" />
+          </svg>
+        </button>
+        <!-- User menu dropdown -->
+        <div
+          v-if="authStore.isAuthenticated"
+          ref="userMenuRef"
+          class="relative"
+        >
+          <button
+            class="flex items-center space-x-2 px-2 py-1.5 rounded-lg transition-colors"
+            :class="
+              showUserMenu || route.path === '/profile'
+                ? 'bg-accent/20 text-accent'
+                : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
+            "
+            @click="showUserMenu = !showUserMenu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span class="hidden sm:inline text-sm font-medium">{{ authStore.username }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 hidden sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <!-- Dropdown menu -->
+          <div
+            v-if="showUserMenu"
+            class="absolute right-0 mt-1 w-40 rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
+          >
+            <RouterLink
+              to="/profile"
+              class="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              @click="showUserMenu = false"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span>{{ t('nav.profile') }}</span>
+            </RouterLink>
+            <button
+              class="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+              @click="handleLogout"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span>{{ t('auth.signOut') }}</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </header>

@@ -59,9 +59,8 @@ export default {
     signInWith: 'Sign in with {provider}',
   },
   nav: {
-    home: 'Home',
-    chat: 'Chat',
     dashboard: 'Dashboard',
+    chat: 'Chat',
     settings: 'Settings',
     system: 'System',
     plugins: 'Plugins',
@@ -72,6 +71,7 @@ export default {
     tenants: 'Tenants',
     automation: 'Automation',
     channels: 'Channels',
+    security: 'Security',
   },
   brand: {
     name: 'ZimaOS',

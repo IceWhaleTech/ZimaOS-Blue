@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { resetSetupStatus } from '@/router'
 
 const { t } = useI18n()
 
@@ -404,7 +405,8 @@ async function completeSetup() {
     const result = await response.json()
 
     if (result.success) {
-      router.push('/login')
+      resetSetupStatus()
+      router.push('/')
     } else {
       errors.value.submit = result.message || t('setup.validation.setupFailed')
     }

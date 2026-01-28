@@ -177,22 +177,35 @@ const router = createRouter({
 
 // Check if setup is complete
 let setupChecked = false
-let setupComplete = true
+let setupComplete = false
 
 async function checkSetupStatus(): Promise<boolean> {
   if (setupChecked) return setupComplete
 
   try {
     const response = await fetch('/api/setup/status')
+    if (!response.ok) {
+      // API error - redirect to setup for safety
+      setupChecked = true
+      setupComplete = false
+      return false
+    }
     const data = await response.json()
     setupComplete = data.completed
     setupChecked = true
     return setupComplete
   } catch {
-    // If API fails, assume setup is complete
+    // Network error - redirect to setup for safety
     setupChecked = true
-    return true
+    setupComplete = false
+    return false
   }
+}
+
+// Reset setup status (call this after setup completes)
+export function resetSetupStatus(): void {
+  setupChecked = false
+  setupComplete = false
 }
 
 // Navigation guard for authentication and setup
