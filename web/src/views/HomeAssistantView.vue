@@ -1,42 +1,42 @@
 <template>
   <div class="home-assistant-view">
     <div class="header">
-      <h1>Smart Home</h1>
+      <h1>{{ t('homeAssistant.title') }}</h1>
       <div class="connection-status" :class="{ connected: isConnected }">
         <span class="status-dot"></span>
-        {{ isConnected ? 'Connected' : 'Disconnected' }}
+        {{ isConnected ? t('homeAssistant.connected') : t('homeAssistant.disconnected') }}
       </div>
     </div>
 
     <!-- Connection Form -->
     <div v-if="!isConnected" class="connection-form card">
-      <h2>Connect to Home Assistant</h2>
+      <h2>{{ t('homeAssistant.connectTitle') }}</h2>
       <form @submit.prevent="handleConnect">
         <div class="form-group">
-          <label for="ha-url">Home Assistant URL</label>
+          <label for="ha-url">{{ t('homeAssistant.url') }}</label>
           <input
             id="ha-url"
             v-model="connectionForm.url"
             type="url"
-            placeholder="http://homeassistant.local:8123"
+            :placeholder="t('homeAssistant.urlPlaceholder')"
             required
           />
         </div>
         <div class="form-group">
-          <label for="ha-token">Long-Lived Access Token</label>
+          <label for="ha-token">{{ t('homeAssistant.token') }}</label>
           <input
             id="ha-token"
             v-model="connectionForm.token"
             type="password"
-            placeholder="Enter your access token"
+            :placeholder="t('homeAssistant.tokenPlaceholder')"
             required
           />
           <small>
-            Generate a token in Home Assistant: Profile → Long-Lived Access Tokens
+            {{ t('homeAssistant.tokenHint') }}
           </small>
         </div>
         <button type="submit" class="btn btn-primary" :disabled="connecting">
-          {{ connecting ? 'Connecting...' : 'Connect' }}
+          {{ connecting ? t('homeAssistant.connecting') : t('homeAssistant.connect') }}
         </button>
       </form>
     </div>
@@ -45,22 +45,22 @@
     <template v-else>
       <!-- Voice Command -->
       <div class="voice-command card">
-        <h2>Voice Command</h2>
+        <h2>{{ t('homeAssistant.voiceCommand') }}</h2>
         <div class="command-input">
           <input
             v-model="voiceCommand"
             type="text"
-            placeholder="Try: Turn on the living room light"
+            :placeholder="t('homeAssistant.voicePlaceholder')"
             @keyup.enter="handleVoiceCommand"
           />
           <button class="btn btn-primary" @click="handleVoiceCommand" :disabled="processingCommand">
-            {{ processingCommand ? 'Processing...' : 'Send' }}
+            {{ processingCommand ? t('homeAssistant.processing') : t('homeAssistant.send') }}
           </button>
         </div>
         <div v-if="commandResult" class="command-result" :class="{ success: commandResult.success }">
           <p>{{ commandResult.message }}</p>
           <div v-if="commandResult.suggestions" class="suggestions">
-            <p>Try:</p>
+            <p>{{ t('homeAssistant.trySuggestions') }}</p>
             <ul>
               <li v-for="suggestion in commandResult.suggestions" :key="suggestion">
                 {{ suggestion }}
@@ -72,7 +72,7 @@
 
       <!-- Quick Actions -->
       <div class="quick-actions card">
-        <h2>Scenes</h2>
+        <h2>{{ t('homeAssistant.scenes') }}</h2>
         <div class="scenes-grid">
           <button
             v-for="scene in scenes"
@@ -119,7 +119,7 @@
               :class="isEntityOn(entity) ? 'btn-danger' : 'btn-success'"
               @click="toggleEntity(entity)"
             >
-              {{ isEntityOn(entity) ? 'Turn Off' : 'Turn On' }}
+              {{ isEntityOn(entity) ? t('homeAssistant.turnOff') : t('homeAssistant.turnOn') }}
             </button>
             <input
               v-if="getEntityDomain(entity.entity_id) === 'light' && isEntityOn(entity)"
@@ -136,7 +136,7 @@
 
       <!-- Automations -->
       <div class="automations card">
-        <h2>Automations</h2>
+        <h2>{{ t('homeAssistant.automations') }}</h2>
         <div class="automations-list">
           <div
             v-for="automation in automations"
@@ -154,14 +154,14 @@
                 class="btn btn-sm btn-secondary"
                 @click="triggerAutomation(automation.entity_id)"
               >
-                Trigger
+                {{ t('homeAssistant.trigger') }}
               </button>
               <button
                 class="btn btn-sm"
                 :class="automation.state === 'on' ? 'btn-danger' : 'btn-success'"
                 @click="toggleAutomation(automation.entity_id, automation.state !== 'on')"
               >
-                {{ automation.state === 'on' ? 'Disable' : 'Enable' }}
+                {{ automation.state === 'on' ? t('homeAssistant.disable') : t('homeAssistant.enable') }}
               </button>
             </div>
           </div>
@@ -171,7 +171,7 @@
       <!-- Disconnect -->
       <div class="disconnect-section">
         <button class="btn btn-danger" @click="handleDisconnect">
-          Disconnect from Home Assistant
+          {{ t('homeAssistant.disconnect') }}
         </button>
       </div>
     </template>
@@ -180,8 +180,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as haApi from '@/api/homeassistant'
 import type { HAEntity, HAScene, HAAutomation, HACommandResult } from '@/api/homeassistant'
+
+const { t } = useI18n()
 
 // State
 const isConnected = ref(false)
@@ -238,7 +241,7 @@ async function handleConnect() {
     await loadData()
   } catch (error) {
     console.error('Failed to connect:', error)
-    alert('Failed to connect to Home Assistant. Please check your URL and token.')
+    alert(t('homeAssistant.connectionFailed'))
   } finally {
     connecting.value = false
   }
@@ -288,7 +291,7 @@ async function handleVoiceCommand() {
     console.error('Command failed:', error)
     commandResult.value = {
       success: false,
-      message: 'Failed to process command',
+      message: t('homeAssistant.commandFailed'),
     }
   } finally {
     processingCommand.value = false
@@ -376,16 +379,10 @@ function getBrightness(entity: HAEntity): number {
 }
 
 function formatDomainName(domain: string): string {
-  const names: Record<string, string> = {
-    light: 'Lights',
-    switch: 'Switches',
-    climate: 'Climate',
-    cover: 'Covers',
-    lock: 'Locks',
-    fan: 'Fans',
-    media_player: 'Media',
-  }
-  return names[domain] || domain
+  const key = `homeAssistant.domains.${domain}`
+  const translated = t(key)
+  // If translation exists, use it; otherwise fallback to domain name
+  return translated !== key ? translated : domain
 }
 
 function getEntityEmoji(entity: HAEntity): string {

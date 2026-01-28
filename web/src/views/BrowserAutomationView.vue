@@ -66,7 +66,7 @@
       <div v-if="tasks.length === 0" class="empty-state">
         <p>{{ t('browserAutomation.tasks.empty') }}</p>
         <button class="btn btn-primary" @click="showCreateModal = true">
-          {{ t('browserAutomation.createTask') }}
+          {{ t('browserAutomation.newTask') }}
         </button>
       </div>
       <div v-else class="tasks-list">
@@ -159,9 +159,9 @@
           @click="useTemplate(template)"
         >
           <div class="template-icon">{{ getTemplateIcon(template.category) }}</div>
-          <div class="template-name">{{ template.name }}</div>
-          <div class="template-description">{{ template.description }}</div>
-          <div class="template-category">{{ template.category }}</div>
+          <div class="template-name">{{ getTemplateName(template.id) }}</div>
+          <div class="template-description">{{ getTemplateDescription(template.id) }}</div>
+          <div class="template-category">{{ getTemplateCategory(template.category) }}</div>
         </div>
       </div>
     </div>
@@ -565,10 +565,6 @@ function getStepIcon(type: StepType): string {
   return browserApi.getStepIcon(type)
 }
 
-function getStepLabel(type: StepType): string {
-  return browserApi.getStepLabel(type)
-}
-
 function formatDuration(ms: number): string {
   return browserApi.formatDuration(ms)
 }
@@ -592,6 +588,58 @@ function getTemplateIcon(category: string): string {
     Testing: '🧪',
   }
   return icons[category] || '📦'
+}
+
+// Template i18n helpers
+function getTemplateName(templateId: string): string {
+  const keyMap: Record<string, string> = {
+    'web-scrape': 'browserAutomation.templates.webScraping.name',
+    'form-fill': 'browserAutomation.templates.formFilling.name',
+    'page-monitor': 'browserAutomation.templates.pageMonitor.name',
+    'login-test': 'browserAutomation.templates.loginTest.name',
+  }
+  const key = keyMap[templateId]
+  return key ? t(key) : templateId
+}
+
+function getTemplateDescription(templateId: string): string {
+  const keyMap: Record<string, string> = {
+    'web-scrape': 'browserAutomation.templates.webScraping.description',
+    'form-fill': 'browserAutomation.templates.formFilling.description',
+    'page-monitor': 'browserAutomation.templates.pageMonitor.description',
+    'login-test': 'browserAutomation.templates.loginTest.description',
+  }
+  const key = keyMap[templateId]
+  return key ? t(key) : ''
+}
+
+function getTemplateCategory(category: string): string {
+  const keyMap: Record<string, string> = {
+    'Data': 'browserAutomation.categories.data',
+    'Automation': 'browserAutomation.categories.automation',
+    'Monitoring': 'browserAutomation.categories.monitoring',
+    'Testing': 'browserAutomation.categories.testing',
+  }
+  const key = keyMap[category]
+  return key ? t(key) : category
+}
+
+function getStepLabel(type: StepType): string {
+  const keyMap: Record<StepType, string> = {
+    navigate: 'browserAutomation.stepLabels.navigate',
+    click: 'browserAutomation.stepLabels.click',
+    type: 'browserAutomation.stepLabels.type',
+    screenshot: 'browserAutomation.stepLabels.screenshot',
+    wait: 'browserAutomation.stepLabels.wait',
+    extract: 'browserAutomation.stepLabels.extract',
+    scroll: 'browserAutomation.stepLabels.scroll',
+    select: 'browserAutomation.stepLabels.select',
+    hover: 'browserAutomation.stepLabels.hover',
+    press_key: 'browserAutomation.stepLabels.pressKey',
+    evaluate: 'browserAutomation.stepLabels.evaluate',
+  }
+  const key = keyMap[type]
+  return key ? t(key) : type
 }
 
 // Security methods

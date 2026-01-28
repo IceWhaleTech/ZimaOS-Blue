@@ -377,6 +377,146 @@ export const useCompanionStore = defineStore('companion', () => {
     error.value = null
   }
 
+  // Demo mode
+  const isDemoMode = ref(false)
+  let demoInterval: ReturnType<typeof setInterval> | null = null
+
+  function generateDemoSession(): CompanionSession {
+    const platforms: Platform[] = ['telegram', 'whatsapp', 'discord', 'slack', 'web', 'api']
+    const statuses = ['active', 'idle', 'ended'] as const
+    const threats: ThreatLevel[] = ['none', 'none', 'none', 'low', 'medium']
+    const id = crypto.randomUUID()
+    const now = new Date()
+    const startedAt = new Date(now.getTime() - Math.random() * 3600000)
+
+    return {
+      id,
+      platform: platforms[Math.floor(Math.random() * platforms.length)],
+      userId: `user-${Math.floor(Math.random() * 1000)}`,
+      tenantId: 'demo-tenant',
+      status: statuses[Math.floor(Math.random() * statuses.length)],
+      startedAt: startedAt.toISOString(),
+      endedAt: Math.random() > 0.5 ? now.toISOString() : undefined,
+      duration: now.getTime() - startedAt.getTime(),
+      eventCount: Math.floor(Math.random() * 50) + 5,
+      threatLevel: threats[Math.floor(Math.random() * threats.length)],
+      threatScore: Math.floor(Math.random() * 30),
+      metadata: {
+        messageCount: Math.floor(Math.random() * 20) + 1,
+        toolCallCount: Math.floor(Math.random() * 10),
+        llmCallCount: Math.floor(Math.random() * 15) + 1,
+        totalTokens: Math.floor(Math.random() * 5000) + 500,
+      },
+    }
+  }
+
+  function generateDemoEvent(sessionId: string): SessionEvent {
+    const eventTypes = ['message_received', 'message_sent', 'tool_call', 'llm_request'] as const
+    const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)]
+    const platforms: Platform[] = ['telegram', 'whatsapp', 'discord', 'slack', 'web']
+
+    return {
+      id: crypto.randomUUID(),
+      sessionId,
+      timestamp: new Date().toISOString(),
+      eventType,
+      platform: platforms[Math.floor(Math.random() * platforms.length)],
+      userId: `user-${Math.floor(Math.random() * 1000)}`,
+      tenantId: 'demo-tenant',
+      duration: Math.floor(Math.random() * 500) + 50,
+      status: 'success',
+    }
+  }
+
+  function generateDemoAlert(): Alert {
+    const severities: AlertSeverity[] = ['info', 'warning', 'error', 'critical']
+    const titleKeys = [
+      'unusualPattern',
+      'highTokenUsage',
+      'promptInjection',
+      'rateLimitApproaching',
+      'longResponseTime',
+    ]
+    const severity = severities[Math.floor(Math.random() * severities.length)]
+    const titleKey = titleKeys[Math.floor(Math.random() * titleKeys.length)]
+
+    return {
+      id: crypto.randomUUID(),
+      sessionId: sessions.value[0]?.id || crypto.randomUUID(),
+      title: titleKey, // Use i18n key, will be translated in component
+      description: 'demoDescription', // Use i18n key
+      severity,
+      createdAt: new Date().toISOString(),
+      acknowledged: false,
+    }
+  }
+
+  function startDemo() {
+    if (isDemoMode.value) return
+
+    isDemoMode.value = true
+
+    // Generate initial demo data
+    const demoSessions = Array.from({ length: 5 }, () => generateDemoSession())
+    sessions.value = demoSessions
+    totalSessions.value = demoSessions.length
+
+    const demoAlerts = Array.from({ length: 3 }, () => generateDemoAlert())
+    alerts.value = demoAlerts
+    totalAlerts.value = demoAlerts.length
+
+    stats.value = {
+      activeSessions: demoSessions.filter(s => s.status === 'active').length,
+      totalSessions: demoSessions.length,
+      totalEvents: demoSessions.reduce((sum, s) => sum + s.eventCount, 0),
+      totalAlerts: demoAlerts.length,
+    }
+
+    // Simulate real-time events
+    demoInterval = setInterval(() => {
+      if (!isDemoMode.value) return
+
+      // Add random event
+      const randomSession = sessions.value[Math.floor(Math.random() * sessions.value.length)]
+      if (randomSession) {
+        const event = generateDemoEvent(randomSession.id)
+        addRealtimeEvent(event)
+      }
+
+      // Occasionally add new alert
+      if (Math.random() < 0.1) {
+        const alert = generateDemoAlert()
+        alerts.value.unshift(alert)
+        totalAlerts.value++
+        if (stats.value) {
+          stats.value.totalAlerts++
+        }
+      }
+
+      // Update stats
+      if (stats.value) {
+        stats.value.totalEvents++
+      }
+    }, 2000)
+  }
+
+  function stopDemo() {
+    isDemoMode.value = false
+
+    if (demoInterval) {
+      clearInterval(demoInterval)
+      demoInterval = null
+    }
+
+    // Clear demo data
+    sessions.value = []
+    alerts.value = []
+    realtimeEvents.value = []
+    stats.value = null
+    totalSessions.value = 0
+    totalAlerts.value = 0
+  }
+
   return {
     // State
     sessions,
@@ -439,6 +579,11 @@ export const useCompanionStore = defineStore('companion', () => {
     setAlertFilters,
     clearCurrentSession,
     clearError,
+
+    // Demo mode
+    isDemoMode,
+    startDemo,
+    stopDemo,
   }
 })
 

@@ -24,7 +24,7 @@ type HealthStatus struct {
 
 var (
 	startTime   = time.Now()
-	version     = "0.1.0-dev"
+	version     = "0.10.2"
 	readyStatus atomic.Bool
 )
 

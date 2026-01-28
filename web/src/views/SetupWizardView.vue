@@ -34,37 +34,6 @@ interface SetupConfig {
   enable_home_assistant: boolean
   home_assistant_url: string
   home_assistant_token: string
-  // Messaging channels
-  enable_telegram: boolean
-  telegram_token: string
-  enable_discord: boolean
-  discord_token: string
-  discord_application_id: string
-  enable_slack: boolean
-  slack_bot_token: string
-  slack_app_token: string
-  slack_signing_secret: string
-  enable_whatsapp: boolean
-  whatsapp_phone_number: string
-  enable_signal: boolean
-  signal_phone_number: string
-  enable_teams: boolean
-  teams_app_id: string
-  teams_app_password: string
-  enable_googlechat: boolean
-  googlechat_credentials_json: string
-  enable_imessage: boolean
-  enable_feishu: boolean
-  feishu_app_id: string
-  feishu_app_secret: string
-  enable_wechat: boolean
-  wechat_corp_id: string
-  wechat_agent_id: string
-  wechat_secret: string
-  enable_matrix: boolean
-  matrix_homeserver: string
-  matrix_user_id: string
-  matrix_access_token: string
 }
 
 interface ValidationErrors {
@@ -74,10 +43,13 @@ interface ValidationErrors {
 const router = useRouter()
 
 const currentStep = ref(1)
-const totalSteps = 5
+const totalSteps = 3
 const loading = ref(false)
 const testingConnection = ref(false)
 const connectionTestResult = ref<{ success: boolean; message: string } | null>(null)
+const checkingUsername = ref(false)
+const usernameAvailable = ref<boolean | null>(null)
+let usernameCheckTimeout: ReturnType<typeof setTimeout> | null = null
 
 const providers = ref<Provider[]>([])
 const languages = ref<Language[]>([])
@@ -139,6 +111,7 @@ function detectBrowserLanguage(): string {
 // Handle language change in wizard
 async function handleLanguageChange(langCode: string) {
   config.value.language = langCode
+  delete errors.value.language
   await setLocale(langCode as LocaleKey)
 }
 
@@ -159,37 +132,6 @@ const config = ref<SetupConfig>({
   enable_home_assistant: false,
   home_assistant_url: '',
   home_assistant_token: '',
-  // Messaging channels
-  enable_telegram: false,
-  telegram_token: '',
-  enable_discord: false,
-  discord_token: '',
-  discord_application_id: '',
-  enable_slack: false,
-  slack_bot_token: '',
-  slack_app_token: '',
-  slack_signing_secret: '',
-  enable_whatsapp: false,
-  whatsapp_phone_number: '',
-  enable_signal: false,
-  signal_phone_number: '',
-  enable_teams: false,
-  teams_app_id: '',
-  teams_app_password: '',
-  enable_googlechat: false,
-  googlechat_credentials_json: '',
-  enable_imessage: false,
-  enable_feishu: false,
-  feishu_app_id: '',
-  feishu_app_secret: '',
-  enable_wechat: false,
-  wechat_corp_id: '',
-  wechat_agent_id: '',
-  wechat_secret: '',
-  enable_matrix: false,
-  matrix_homeserver: '',
-  matrix_user_id: '',
-  matrix_access_token: '',
 })
 
 const errors = ref<ValidationErrors>({})
@@ -213,18 +155,14 @@ const passwordStrength = computed(() => {
 
 const stepTitles = computed(() => [
   t('setup.basicSettings'),
-  t('setup.llmConfiguration'),
   t('setup.securitySettings'),
   t('setup.integrations'),
-  t('setup.channels'),
 ])
 
 const stepDescriptions = computed(() => [
   t('setup.basicSettingsDesc'),
-  t('setup.llmConfigurationDesc'),
   t('setup.securitySettingsDesc'),
   t('setup.integrationsDesc'),
-  t('setup.channelsDesc'),
 ])
 
 const currentProvider = computed(() => {
@@ -243,6 +181,26 @@ const timezones = computed(() => {
 })
 
 onMounted(async () => {
+  // Check if setup is already complete, redirect to login or home
+  try {
+    const response = await fetch('/api/setup/status')
+    if (response.ok) {
+      const data = await response.json()
+      if (data.completed) {
+        // Setup already done, check if user is logged in
+        const token = localStorage.getItem('token')
+        if (token) {
+          router.push('/')
+        } else {
+          router.push('/login')
+        }
+        return
+      }
+    }
+  } catch (error) {
+    console.error('Failed to check setup status:', error)
+  }
+
   await loadDefaults()
 })
 
@@ -292,25 +250,12 @@ function validateCurrentStep(): boolean {
       break
 
     case 2:
-      if (!config.value.llm_provider) {
-        errors.value.llm_provider = t('setup.validation.selectProvider')
-      }
-      if (currentProvider.value?.requires_key && !config.value.llm_api_key) {
-        errors.value.llm_api_key = t('setup.validation.apiKeyRequired')
-      }
-      if (!config.value.llm_model) {
-        errors.value.llm_model = t('setup.validation.selectModel')
-      }
-      if (config.value.llm_provider === 'custom' && !config.value.llm_base_url) {
-        errors.value.llm_base_url = t('setup.validation.baseUrlRequired')
-      }
-      break
-
-    case 3:
       if (!config.value.admin_username) {
         errors.value.admin_username = t('setup.validation.usernameRequired')
       } else if (config.value.admin_username.length < 3) {
         errors.value.admin_username = t('setup.validation.usernameMinLength')
+      } else if (usernameAvailable.value === false) {
+        errors.value.admin_username = t('setup.validation.usernameExists')
       }
       if (!config.value.admin_password) {
         errors.value.admin_password = t('setup.validation.passwordRequired')
@@ -342,7 +287,7 @@ function validateCurrentStep(): boolean {
       }
       break
 
-    case 4:
+    case 3:
       if (config.value.enable_home_assistant) {
         if (!config.value.home_assistant_url) {
           errors.value.home_assistant_url = t('setup.validation.homeAssistantUrlRequired')
@@ -350,15 +295,6 @@ function validateCurrentStep(): boolean {
         if (!config.value.home_assistant_token) {
           errors.value.home_assistant_token = t('setup.validation.accessTokenRequired')
         }
-      }
-      break
-
-    case 5:
-      if (config.value.enable_telegram && !config.value.telegram_token) {
-        errors.value.telegram_token = t('setup.validation.botTokenRequired')
-      }
-      if (config.value.enable_discord && !config.value.discord_token) {
-        errors.value.discord_token = t('setup.validation.botTokenRequired')
       }
       break
   }
@@ -400,16 +336,6 @@ async function testConnection(type: string) {
       testConfig = {
         url: config.value.home_assistant_url,
         token: config.value.home_assistant_token,
-      }
-      break
-    case 'telegram':
-      testConfig = {
-        token: config.value.telegram_token,
-      }
-      break
-    case 'discord':
-      testConfig = {
-        token: config.value.discord_token,
       }
       break
   }
@@ -476,6 +402,66 @@ function getProviderDisplayName(providerId: string): string {
   }
   return translated
 }
+
+// Check username availability with debounce
+async function checkUsernameAvailability(username: string) {
+  // Clear previous timeout
+  if (usernameCheckTimeout) {
+    clearTimeout(usernameCheckTimeout)
+  }
+
+  // Reset state
+  usernameAvailable.value = null
+
+  // Don't check if username is too short
+  if (!username || username.length < 3) {
+    return
+  }
+
+  // Debounce the check
+  usernameCheckTimeout = setTimeout(async () => {
+    checkingUsername.value = true
+    try {
+      const response = await fetch('/api/setup/check-username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      })
+      const result = await response.json()
+      usernameAvailable.value = result.available
+      if (!result.available) {
+        errors.value.admin_username = result.message || t('setup.validation.usernameExists')
+      } else {
+        // Clear username error if it was about availability
+        if (errors.value.admin_username === t('setup.validation.usernameExists')) {
+          delete errors.value.admin_username
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check username:', error)
+    } finally {
+      checkingUsername.value = false
+    }
+  }, 500)
+}
+
+// Handle username input change
+function onUsernameInput(event: Event) {
+  const target = event.target as HTMLInputElement
+  config.value.admin_username = target.value
+  // Clear error on input (except for username exists which is handled by checkUsernameAvailability)
+  if (errors.value.admin_username && errors.value.admin_username !== t('setup.validation.usernameExists')) {
+    delete errors.value.admin_username
+  }
+  checkUsernameAvailability(target.value)
+}
+
+// Clear error when user starts typing
+function clearErrorOnInput(field: string) {
+  if (errors.value[field]) {
+    delete errors.value[field]
+  }
+}
 </script>
 
 <template>
@@ -530,6 +516,7 @@ function getProviderDisplayName(providerId: string): string {
             <select
               v-model="config.timezone"
               class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @change="clearErrorOnInput('timezone')"
             >
               <option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</option>
             </select>
@@ -537,90 +524,33 @@ function getProviderDisplayName(providerId: string): string {
           </div>
         </div>
 
-        <!-- Step 2: LLM Configuration -->
+        <!-- Step 2: Security Settings -->
         <div v-if="currentStep === 2" class="space-y-6">
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.llmProvider') }}</label>
-            <select
-              v-model="config.llm_provider"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              @change="onProviderChange"
-            >
-              <option v-for="provider in providers" :key="provider.id" :value="provider.id">
-                {{ getProviderDisplayName(provider.id) }}
-              </option>
-            </select>
-            <p v-if="errors.llm_provider" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.llm_provider }}</p>
-          </div>
-
-          <div v-if="currentProvider?.requires_key">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.apiKey') }}</label>
-            <input
-              v-model="config.llm_api_key"
-              type="password"
-              :placeholder="t('setup.enterApiKey')"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p v-if="errors.llm_api_key" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.llm_api_key }}</p>
-          </div>
-
-          <div v-if="config.llm_provider === 'custom'">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.baseUrl') }}</label>
-            <input
-              v-model="config.llm_base_url"
-              type="url"
-              :placeholder="t('setup.baseUrlPlaceholder')"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p v-if="errors.llm_base_url" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.llm_base_url }}</p>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.model') }}</label>
-            <select
-              v-if="availableModels.length > 0"
-              v-model="config.llm_model"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option v-for="model in availableModels" :key="model" :value="model">{{ model }}</option>
-            </select>
-            <input
-              v-else
-              v-model="config.llm_model"
-              type="text"
-              :placeholder="t('setup.enterModelName')"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p v-if="errors.llm_model" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.llm_model }}</p>
-          </div>
-
-          <div>
-            <button
-              :disabled="testingConnection"
-              class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50"
-              @click="testConnection('llm')"
-            >
-              {{ testingConnection ? t('setup.testing') : t('setup.testConnection') }}
-            </button>
-            <div v-if="connectionTestResult" class="mt-2">
-              <p :class="connectionTestResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                {{ connectionTestResult.message }}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Step 3: Security Settings -->
-        <div v-if="currentStep === 3" class="space-y-6">
-          <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.adminUsername') }}</label>
-            <input
-              v-model="config.admin_username"
-              type="text"
-              placeholder="admin"
-              autocomplete="username"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div class="relative">
+              <input
+                :value="config.admin_username"
+                type="text"
+                placeholder="admin"
+                autocomplete="username"
+                class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                @input="onUsernameInput"
+              />
+              <!-- Username check status indicator -->
+              <div class="absolute right-3 top-1/2 -translate-y-1/2">
+                <svg v-if="checkingUsername" class="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <svg v-else-if="usernameAvailable === true && config.admin_username.length >= 3" class="h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+                <svg v-else-if="usernameAvailable === false" class="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
             <p v-if="errors.admin_username" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.admin_username }}</p>
           </div>
 
@@ -632,6 +562,7 @@ function getProviderDisplayName(providerId: string): string {
               :placeholder="t('setup.strongPassword')"
               autocomplete="new-password"
               class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @input="clearErrorOnInput('admin_password')"
             />
             <!-- Password Strength Indicator -->
             <div v-if="config.admin_password" class="mt-3 space-y-2">
@@ -702,6 +633,7 @@ function getProviderDisplayName(providerId: string): string {
               :placeholder="t('setup.confirmPasswordHint')"
               autocomplete="new-password"
               class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @input="clearErrorOnInput('admin_password_confirm')"
             />
             <p v-if="errors.admin_password_confirm" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.admin_password_confirm }}</p>
           </div>
@@ -717,8 +649,8 @@ function getProviderDisplayName(providerId: string): string {
           </div>
         </div>
 
-        <!-- Step 4: Integrations -->
-        <div v-if="currentStep === 4" class="space-y-6">
+        <!-- Step 3: Integrations -->
+        <div v-if="currentStep === 3" class="space-y-6">
           <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
             <div class="flex items-center gap-3 mb-4">
               <input
@@ -727,6 +659,7 @@ function getProviderDisplayName(providerId: string): string {
                 type="checkbox"
                 class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
               />
+              <img src="/icons/channels/homeassistant.svg" alt="Home Assistant" class="w-6 h-6" />
               <label for="enable_ha" class="text-gray-900 dark:text-white font-medium">{{ t('setup.homeAssistantIntegration') }}</label>
             </div>
 
@@ -738,6 +671,7 @@ function getProviderDisplayName(providerId: string): string {
                   type="url"
                   :placeholder="t('setup.homeAssistantUrlPlaceholder')"
                   class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  @input="clearErrorOnInput('home_assistant_url')"
                 />
                 <p v-if="errors.home_assistant_url" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.home_assistant_url }}</p>
               </div>
@@ -749,6 +683,7 @@ function getProviderDisplayName(providerId: string): string {
                   type="password"
                   :placeholder="t('setup.enterAccessToken')"
                   class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  @input="clearErrorOnInput('home_assistant_token')"
                 />
                 <p v-if="errors.home_assistant_token" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.home_assistant_token }}</p>
               </div>
@@ -768,392 +703,8 @@ function getProviderDisplayName(providerId: string): string {
           </p>
         </div>
 
-        <!-- Step 5: Channels -->
-        <div v-if="currentStep === 5" class="space-y-6">
-          <!-- Telegram -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_telegram"
-                v-model="config.enable_telegram"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_telegram" class="text-gray-900 dark:text-white font-medium">{{ t('setup.telegramBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_telegram" class="space-y-4 pl-8">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.botToken') }}</label>
-                <input
-                  v-model="config.telegram_token"
-                  type="password"
-                  :placeholder="t('setup.telegramTokenPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.telegram_token" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.telegram_token }}</p>
-              </div>
-
-              <button
-                :disabled="testingConnection"
-                class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50"
-                @click="testConnection('telegram')"
-              >
-                {{ testingConnection ? t('setup.testing') : t('setup.testConnection') }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Discord -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_discord"
-                v-model="config.enable_discord"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_discord" class="text-gray-900 dark:text-white font-medium">{{ t('setup.discordBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_discord" class="space-y-4 pl-8">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.botToken') }}</label>
-                <input
-                  v-model="config.discord_token"
-                  type="password"
-                  :placeholder="t('setup.discordTokenPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.discord_token" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.discord_token }}</p>
-              </div>
-
-              <button
-                :disabled="testingConnection"
-                class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50"
-                @click="testConnection('discord')"
-              >
-                {{ testingConnection ? t('setup.testing') : t('setup.testConnection') }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Feishu -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_feishu"
-                v-model="config.enable_feishu"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_feishu" class="text-gray-900 dark:text-white font-medium">{{ t('setup.feishuBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_feishu" class="space-y-4 pl-8">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.appId') }}</label>
-                <input
-                  v-model="config.feishu_app_id"
-                  type="text"
-                  :placeholder="t('setup.feishuAppIdPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.feishu_app_id" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.feishu_app_id }}</p>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.appSecret') }}</label>
-                <input
-                  v-model="config.feishu_app_secret"
-                  type="password"
-                  :placeholder="t('setup.feishuAppSecretPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.feishu_app_secret" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.feishu_app_secret }}</p>
-              </div>
-
-              <button
-                :disabled="testingConnection"
-                class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50"
-                @click="testConnection('feishu')"
-              >
-                {{ testingConnection ? t('setup.testing') : t('setup.testConnection') }}
-              </button>
-            </div>
-          </div>
-
-          <!-- WeChat Work -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_wechat"
-                v-model="config.enable_wechat"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_wechat" class="text-gray-900 dark:text-white font-medium">{{ t('setup.wechatWorkBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_wechat" class="space-y-4 pl-8">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.corpId') }}</label>
-                <input
-                  v-model="config.wechat_corp_id"
-                  type="text"
-                  :placeholder="t('setup.wechatCorpIdPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.wechat_corp_id" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.wechat_corp_id }}</p>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.agentId') }}</label>
-                <input
-                  v-model="config.wechat_agent_id"
-                  type="text"
-                  :placeholder="t('setup.wechatAgentIdPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.wechat_agent_id" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.wechat_agent_id }}</p>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.secret') }}</label>
-                <input
-                  v-model="config.wechat_secret"
-                  type="password"
-                  :placeholder="t('setup.wechatSecretPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p v-if="errors.wechat_secret" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ errors.wechat_secret }}</p>
-              </div>
-
-              <button
-                :disabled="testingConnection"
-                class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50"
-                @click="testConnection('wechat')"
-              >
-                {{ testingConnection ? t('setup.testing') : t('setup.testConnection') }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Slack -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_slack"
-                v-model="config.enable_slack"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_slack" class="text-gray-900 dark:text-white font-medium">{{ t('setup.slackBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_slack" class="space-y-4 pl-8">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ t('setup.slackHint') }}</p>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.slackBotToken') }}</label>
-                <input
-                  v-model="config.slack_bot_token"
-                  type="password"
-                  :placeholder="t('setup.slackBotTokenPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.slackAppToken') }}</label>
-                <input
-                  v-model="config.slack_app_token"
-                  type="password"
-                  :placeholder="t('setup.slackAppTokenPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- WhatsApp -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_whatsapp"
-                v-model="config.enable_whatsapp"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_whatsapp" class="text-gray-900 dark:text-white font-medium">{{ t('setup.whatsappBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_whatsapp" class="space-y-4 pl-8">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ t('setup.whatsappHint') }}</p>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.phoneNumber') }}</label>
-                <input
-                  v-model="config.whatsapp_phone_number"
-                  type="tel"
-                  :placeholder="t('setup.phoneNumberPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Signal -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_signal"
-                v-model="config.enable_signal"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_signal" class="text-gray-900 dark:text-white font-medium">{{ t('setup.signalBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_signal" class="space-y-4 pl-8">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ t('setup.signalHint') }}</p>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.phoneNumber') }}</label>
-                <input
-                  v-model="config.signal_phone_number"
-                  type="tel"
-                  :placeholder="t('setup.phoneNumberPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Microsoft Teams -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_teams"
-                v-model="config.enable_teams"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_teams" class="text-gray-900 dark:text-white font-medium">{{ t('setup.teamsBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_teams" class="space-y-4 pl-8">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ t('setup.teamsHint') }}</p>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.appId') }}</label>
-                <input
-                  v-model="config.teams_app_id"
-                  type="text"
-                  :placeholder="t('setup.teamsAppIdPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.appPassword') }}</label>
-                <input
-                  v-model="config.teams_app_password"
-                  type="password"
-                  :placeholder="t('setup.teamsAppPasswordPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Google Chat -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_googlechat"
-                v-model="config.enable_googlechat"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_googlechat" class="text-gray-900 dark:text-white font-medium">{{ t('setup.googleChatBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_googlechat" class="space-y-4 pl-8">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">{{ t('setup.googleChatHint') }}</p>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.serviceAccountJson') }}</label>
-                <textarea
-                  v-model="config.googlechat_credentials_json"
-                  rows="4"
-                  :placeholder="t('setup.serviceAccountJsonPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- iMessage (macOS only) -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_imessage"
-                v-model="config.enable_imessage"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_imessage" class="text-gray-900 dark:text-white font-medium">{{ t('setup.imessageBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_imessage" class="pl-8">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('setup.imessageHint') }}</p>
-            </div>
-          </div>
-
-          <!-- Matrix -->
-          <div class="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-            <div class="flex items-center gap-3 mb-4">
-              <input
-                id="enable_matrix"
-                v-model="config.enable_matrix"
-                type="checkbox"
-                class="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-500 focus:ring-blue-500"
-              />
-              <label for="enable_matrix" class="text-gray-900 dark:text-white font-medium">{{ t('setup.matrixBot') }}</label>
-            </div>
-
-            <div v-if="config.enable_matrix" class="space-y-4 pl-8">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.matrixHomeserver') }}</label>
-                <input
-                  v-model="config.matrix_homeserver"
-                  type="url"
-                  :placeholder="t('setup.matrixHomeserverPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.matrixUserId') }}</label>
-                <input
-                  v-model="config.matrix_user_id"
-                  type="text"
-                  :placeholder="t('setup.matrixUserIdPlaceholder')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('setup.accessToken') }}</label>
-                <input
-                  v-model="config.matrix_access_token"
-                  type="password"
-                  :placeholder="t('setup.enterAccessToken')"
-                  class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          <p class="text-gray-500 dark:text-gray-400 text-sm">
-            {{ t('setup.enableMoreChannelsLater') }}
-          </p>
-        </div>
-
         <!-- Connection Test Result -->
-        <div v-if="connectionTestResult && currentStep !== 2" class="mt-4">
+        <div v-if="connectionTestResult" class="mt-4">
           <p :class="connectionTestResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ connectionTestResult.message }}
           </p>
@@ -1191,16 +742,6 @@ function getProviderDisplayName(providerId: string): string {
             {{ loading ? t('setup.completing') : t('setup.completeSetup') }}
           </button>
         </div>
-      </div>
-
-      <!-- Skip Setup Link -->
-      <div class="text-center mt-6">
-        <button
-          class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-sm"
-          @click="router.push('/login')"
-        >
-          {{ t('setup.skipSetup') }}
-        </button>
       </div>
     </div>
   </div>

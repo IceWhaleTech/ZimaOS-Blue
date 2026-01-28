@@ -77,6 +77,9 @@ export default {
     tenants: 'Арендаторы',
     taskCenter: 'Центр задач',
     channels: 'Каналы',
+    automation: 'Автоматизация',
+    security: 'Безопасность',
+    companion: 'Companion',
   },
   brand: {
     ...enUS.brand,

@@ -27,6 +27,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/backup/:id", h.Delete)
 	g.POST("/backup/:id/restore", h.Restore)
 	g.POST("/backup/:id/verify", h.Verify)
+	g.POST("/backup/:id/repair", h.Repair)
 }
 
 // List returns all available backups
@@ -110,6 +111,11 @@ func (h *Handler) Delete(c echo.Context) error {
 	})
 }
 
+// RestoreRequest represents a restore request
+type RestoreRequest struct {
+	Force bool `json:"force"` // Skip checksum verification
+}
+
 // Restore restores from a backup
 func (h *Handler) Restore(c echo.Context) error {
 	id := c.Param("id")
@@ -120,6 +126,10 @@ func (h *Handler) Restore(c echo.Context) error {
 		})
 	}
 
+	// Parse request body for options
+	var req RestoreRequest
+	c.Bind(&req) // Ignore error, use defaults if not provided
+
 	// Verify backup exists
 	if _, err := h.manager.Get(id); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]interface{}{
@@ -129,8 +139,11 @@ func (h *Handler) Restore(c echo.Context) error {
 		})
 	}
 
-	// Perform restore with default options
-	result, err := h.manager.Restore(context.Background(), id, DefaultRestoreOptions())
+	// Perform restore with options
+	opts := DefaultRestoreOptions()
+	opts.SkipVerify = req.Force
+
+	result, err := h.manager.Restore(context.Background(), id, opts)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -175,5 +188,29 @@ func (h *Handler) Verify(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Backup verified successfully",
+	})
+}
+
+// Repair recalculates and updates the checksum for a backup
+func (h *Handler) Repair(c echo.Context) error {
+	id := c.Param("id")
+	if id == "" {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "Backup ID is required",
+		})
+	}
+
+	if err := h.manager.RepairChecksum(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "Failed to repair backup checksum",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Backup checksum repaired successfully",
 	})
 }

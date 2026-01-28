@@ -164,30 +164,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/companion',
-    name: 'CompanionCanvas',
-    component: () => import('@/views/CompanionCanvasView.vue'),
-    meta: { requiresAuth: true, hideLayout: true },
-  },
-  {
-    path: '/companion/dashboard',
-    name: 'CompanionDashboard',
-    component: () => import('@/views/CompanionDashboardView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/companion/alerts',
-    name: 'CompanionAlerts',
-    component: () => import('@/views/CompanionAlertCenterView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/companion/replay/:id',
-    name: 'CompanionReplay',
-    component: () => import('@/views/CompanionReplayView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
     path: '/form-filler',
     name: 'FormFiller',
     component: () => import('@/views/FormFillerView.vue'),

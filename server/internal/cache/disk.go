@@ -14,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // DiskCache implements a disk-based cache.
@@ -87,7 +89,7 @@ func (c *DiskCache) Get(ctx context.Context, key string) (interface{}, error) {
 	}
 
 	// Check expiration
-	if !entry.ExpiresAt.IsZero() && time.Now().After(entry.ExpiresAt) {
+	if !entry.ExpiresAt.IsZero() && timeutil.NowTime().After(entry.ExpiresAt) {
 		c.Delete(ctx, key)
 		c.misses.Add(1)
 		return nil, ErrKeyExpired
@@ -114,9 +116,9 @@ func (c *DiskCache) Set(ctx context.Context, key string, value interface{}, ttl 
 	// Calculate expiration
 	var expiresAt time.Time
 	if ttl > 0 {
-		expiresAt = time.Now().Add(ttl)
+		expiresAt = timeutil.NowTime().Add(ttl)
 	} else if c.config.DefaultTTL > 0 {
-		expiresAt = time.Now().Add(c.config.DefaultTTL)
+		expiresAt = timeutil.NowTime().Add(c.config.DefaultTTL)
 	}
 
 	// Generate file path
@@ -140,7 +142,7 @@ func (c *DiskCache) Set(ctx context.Context, key string, value interface{}, ttl 
 		Path:      path,
 		Size:      size,
 		ExpiresAt: expiresAt,
-		CreatedAt: time.Now(),
+		CreatedAt: timeutil.NowTime(),
 	}
 	c.index[key] = entry
 	c.diskSize += size
@@ -181,7 +183,7 @@ func (c *DiskCache) Exists(ctx context.Context, key string) bool {
 		return false
 	}
 
-	if !entry.ExpiresAt.IsZero() && time.Now().After(entry.ExpiresAt) {
+	if !entry.ExpiresAt.IsZero() && timeutil.NowTime().After(entry.ExpiresAt) {
 		return false
 	}
 
@@ -395,7 +397,7 @@ func (c *DiskCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var toRemove []string
 
 	for key, entry := range c.index {

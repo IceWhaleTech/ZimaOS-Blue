@@ -9,7 +9,7 @@ set "SCRIPT_DIR=%~dp0"
 set "PROJECT_ROOT=%SCRIPT_DIR:~0,-1%"
 
 REM Version info
-if "%VERSION%"=="" set "VERSION=0.9.0"
+if "%VERSION%"=="" set "VERSION=0.10.2"
 for /f "tokens=*" %%i in ('powershell -command "Get-Date -Format 'yyyy-MM-dd_HH:mm:ss'"') do set "BUILD_TIME=%%i"
 for /f "tokens=*" %%i in ('git rev-parse --short HEAD 2^>nul') do set "GIT_COMMIT=%%i"
 if "%GIT_COMMIT%"=="" set "GIT_COMMIT=unknown"

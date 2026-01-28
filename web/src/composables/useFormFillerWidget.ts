@@ -5,6 +5,11 @@ import {
   type FillTemplate,
   type FormFillerConfig,
 } from '@/api/formfiller'
+import {
+  getUrlProbability,
+  getTokenProbability,
+  parseClipboardData,
+} from '@/utils/clipboardParser'
 
 export interface FillHistoryEntry {
   timestamp: number
@@ -59,6 +64,15 @@ const currentDomain = ref<string>('')
 let keyboardListenerAdded = false
 let focusListenerAdded = false
 
+// Routes where the form filler widget should be disabled
+const disabledRoutes = ['/chat']
+
+// Check if current route is disabled
+function isRouteDisabled(): boolean {
+  const path = window.location.pathname
+  return disabledRoutes.some(route => path.startsWith(route))
+}
+
 export function useFormFillerWidget() {
   // Computed
   const canUndo = computed(() => globalState.fillHistory.length > 0)
@@ -68,6 +82,12 @@ export function useFormFillerWidget() {
   // Load configuration and templates
   async function initialize() {
     if (globalState.isInitialized) return
+
+    // Skip initialization if user is not logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      return
+    }
 
     globalState.isLoading = true
     globalState.error = null
@@ -121,33 +141,34 @@ export function useFormFillerWidget() {
     return false
   }
 
-  // Calculate widget position near the focused element
+  // Calculate widget position near the focused element (to the left)
   function calculatePosition(element: HTMLElement): WidgetPosition {
     const rect = element.getBoundingClientRect()
     const widgetWidth = 320
     const widgetHeight = 200
     const padding = 8
 
-    let x = rect.left
-    let y = rect.bottom + padding
+    // Position to the left of the input
+    let x = rect.left - widgetWidth - padding
+    let y = rect.top
 
-    // Adjust if widget would go off-screen to the right
-    if (x + widgetWidth > window.innerWidth) {
-      x = window.innerWidth - widgetWidth - padding
+    // If widget would go off-screen to the left, show to the right instead
+    if (x < padding) {
+      x = rect.right + padding
+      // If still off-screen (no space on either side), position at left edge
+      if (x + widgetWidth > window.innerWidth) {
+        x = padding
+      }
     }
 
     // Adjust if widget would go off-screen at the bottom
     if (y + widgetHeight > window.innerHeight) {
-      // Show above the input instead
-      y = rect.top - widgetHeight - padding
-      if (y < 0) {
-        y = padding
-      }
+      y = window.innerHeight - widgetHeight - padding
     }
 
-    // Ensure x is not negative
-    if (x < 0) {
-      x = padding
+    // Ensure y is not negative
+    if (y < padding) {
+      y = padding
     }
 
     return { x, y }
@@ -190,8 +211,18 @@ export function useFormFillerWidget() {
     const target = event.target as Element
     if (!target || !isFillableField(target)) return
 
+    // Don't show widget on disabled routes (e.g., chat page)
+    if (isRouteDisabled()) return
+
     // Don't show widget for elements inside the widget itself
     if (target.closest('.formfiller-widget')) return
+
+    // Don't show widget for elements with data-form-filler-ignore attribute
+    if (target.hasAttribute('data-form-filler-ignore')) return
+
+    // Don't show widget when focusing on select/dropdown elements
+    // Select elements can still be filled via "Fill All" but shouldn't trigger the widget
+    if (target.tagName.toLowerCase() === 'select') return
 
     // Only show widget if there are 2+ fillable fields in the same container
     if (!isInFormContext(target)) return
@@ -217,60 +248,6 @@ export function useFormFillerWidget() {
       globalState.isVisible = false
       globalState.focusedElement = null
     }, 200)
-  }
-
-  // Parse clipboard data - try to extract key-value pairs
-  function parseClipboardData(data: string): Record<string, string> {
-    const result: Record<string, string> = {}
-    if (!data.trim()) return result
-
-    // First, try to parse as single-line multiple key-value pairs
-    // Format: key1 = "value1" key2 = "value2" OR key1 = value1 key2 = value2
-    const singleLineMatches = data.matchAll(/(\w+)\s*=\s*"([^"]+)"/g)
-    for (const match of singleLineMatches) {
-      const key = match[1].trim().toLowerCase()
-      const value = match[2].trim()
-      result[key] = value
-    }
-
-    // If we found matches with quoted values, return
-    if (Object.keys(result).length > 0) {
-      return result
-    }
-
-    // Try different parsing strategies line by line
-    const lines = data.split('\n').filter(line => line.trim())
-
-    for (const line of lines) {
-      // Try "key: value" format (supports Chinese colon too)
-      let match = line.match(/^([^:：]+)[：:]\s*(.+)$/)
-      if (match) {
-        const key = match[1].trim().toLowerCase()
-        const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
-        result[key] = value
-        continue
-      }
-
-      // Try "key = value" or "key=value" format
-      match = line.match(/^([^=]+)=\s*(.+)$/)
-      if (match) {
-        const key = match[1].trim().toLowerCase()
-        const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
-        result[key] = value
-        continue
-      }
-
-      // Try "key\tvalue" (tab-separated) format
-      match = line.match(/^([^\t]+)\t(.+)$/)
-      if (match) {
-        const key = match[1].trim().toLowerCase()
-        const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
-        result[key] = value
-        continue
-      }
-    }
-
-    return result
   }
 
   // Update clipboard data and parse it
@@ -648,6 +625,9 @@ export function useFormFillerWidget() {
 
   // Keyboard shortcut handler
   function handleKeyboardShortcut(event: KeyboardEvent) {
+    // Don't handle shortcuts on disabled routes
+    if (isRouteDisabled()) return
+
     const shortcut = globalState.config?.widget.keyboard_shortcut || 'Ctrl+Shift+F'
     const keys = shortcut.split('+').map(k => k.toLowerCase())
 

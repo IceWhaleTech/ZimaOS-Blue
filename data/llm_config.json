@@ -1,0 +1,6 @@
+{
+  "provider": "custom",
+  "api_key": "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE",
+  "base_url": "https://paid.tribiosapi.top",
+  "model": "claude-sonnet-4-5"
+}

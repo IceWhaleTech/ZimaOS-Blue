@@ -1,7 +1,11 @@
 package claudecode
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -66,29 +70,135 @@ type ValidateResponse struct {
 	DryRunOK    bool   `json:"dry_run_ok"`
 }
 
+// ConfigResponse is the response for GET /api/v1/claudecode/config
+type ConfigResponse struct {
+	Enabled        bool   `json:"enabled"`
+	DefaultModel   string `json:"default_model"`
+	SandboxEnabled bool   `json:"sandbox_enabled"`
+	NetworkEnabled bool   `json:"network_enabled"`
+}
+
+// ConfigRequest is the request for PUT /api/v1/claudecode/config
+type ConfigRequest struct {
+	Enabled        *bool   `json:"enabled,omitempty"`
+	DefaultModel   *string `json:"default_model,omitempty"`
+	SandboxEnabled *bool   `json:"sandbox_enabled,omitempty"`
+	NetworkEnabled *bool   `json:"network_enabled,omitempty"`
+}
+
+// ClaudeCodePersistentConfig is the configuration saved to disk
+type ClaudeCodePersistentConfig struct {
+	Enabled        bool   `json:"enabled"`
+	DefaultModel   string `json:"default_model"`
+	SandboxEnabled bool   `json:"sandbox_enabled"`
+	NetworkEnabled bool   `json:"network_enabled"`
+}
+
 // Handler handles Claude Code CLI version management API endpoints.
 type Handler struct {
-	binaryManager *BinaryManager
-	lastCheck     *time.Time
+	binaryManager  *BinaryManager
+	lastCheck      *time.Time
+	dataDir        string
+	configMu       sync.RWMutex
+	config         *ClaudeCodePersistentConfig
+	healthChecker  *HealthChecker
+	circuitBreaker *CircuitBreaker
+	cache          *MemoryCache
 }
 
 // NewHandler creates a new Handler.
 func NewHandler(binaryManager *BinaryManager) *Handler {
+	return NewHandlerWithDataDir(binaryManager, "")
+}
+
+// NewHandlerWithDataDir creates a new Handler with a data directory for persistent config.
+func NewHandlerWithDataDir(binaryManager *BinaryManager, dataDir string) *Handler {
 	if binaryManager == nil {
 		binaryManager = DefaultBinaryManager
 	}
-	return &Handler{
+	h := &Handler{
 		binaryManager: binaryManager,
+		dataDir:       dataDir,
+		config: &ClaudeCodePersistentConfig{
+			Enabled:        true, // Default to enabled
+			DefaultModel:   "sonnet",
+			SandboxEnabled: true, // Default to sandbox enabled for security
+			NetworkEnabled: true, // Default to network enabled
+		},
+		healthChecker:  NewHealthChecker(DefaultHealthCheckConfig(), binaryManager),
+		circuitBreaker: NewCircuitBreaker(DefaultCircuitBreakerConfig()),
+		cache:          NewMemoryCache(DefaultCacheConfig()),
 	}
+	// Load existing config if available
+	if dataDir != "" {
+		h.loadConfig()
+	}
+	return h
+}
+
+// loadConfig loads the configuration from disk.
+func (h *Handler) loadConfig() {
+	if h.dataDir == "" {
+		return
+	}
+	configPath := filepath.Join(h.dataDir, "claudecode_config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return // File doesn't exist or can't be read, use defaults
+	}
+	var config ClaudeCodePersistentConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return // Invalid JSON, use defaults
+	}
+	h.configMu.Lock()
+	h.config = &config
+	h.configMu.Unlock()
+}
+
+// saveConfig saves the configuration to disk.
+func (h *Handler) saveConfig() error {
+	if h.dataDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(h.dataDir, 0755); err != nil {
+		return err
+	}
+	h.configMu.RLock()
+	data, err := json.MarshalIndent(h.config, "", "  ")
+	h.configMu.RUnlock()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(h.dataDir, "claudecode_config.json")
+	return os.WriteFile(configPath, data, 0644)
+}
+
+// IsEnabled returns whether Claude Code CLI is enabled.
+func (h *Handler) IsEnabled() bool {
+	h.configMu.RLock()
+	defer h.configMu.RUnlock()
+	return h.config.Enabled
 }
 
 // RegisterRoutes registers the Claude Code CLI API routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
+	// Version management
 	g.GET("/version", h.GetVersion)
 	g.POST("/version/check", h.CheckForUpdates)
 	g.POST("/version/update", h.Update)
 	g.POST("/cache/clear", h.ClearCache)
 	g.POST("/validate", h.Validate)
+	g.GET("/config", h.GetConfig)
+	g.PUT("/config", h.SetConfig)
+
+	// Reliability features
+	g.GET("/health", h.GetHealth)
+	g.POST("/health/check", h.TriggerHealthCheck)
+	g.GET("/circuit", h.GetCircuitStatus)
+	g.POST("/circuit/reset", h.ResetCircuit)
+	g.GET("/response-cache/stats", h.GetResponseCacheStats)
+	g.POST("/response-cache/clear", h.ClearResponseCache)
+	g.GET("/reliability/metrics", h.GetReliabilityMetrics)
 }
 
 // GetVersion returns the current version information.
@@ -242,4 +352,166 @@ func (h *Handler) Validate(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+// GetConfig returns the Claude Code CLI configuration.
+// GET /api/v1/claudecode/config
+func (h *Handler) GetConfig(c echo.Context) error {
+	h.configMu.RLock()
+	resp := ConfigResponse{
+		Enabled:        h.config.Enabled,
+		DefaultModel:   h.config.DefaultModel,
+		SandboxEnabled: h.config.SandboxEnabled,
+		NetworkEnabled: h.config.NetworkEnabled,
+	}
+	h.configMu.RUnlock()
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+// SetConfig updates the Claude Code CLI configuration.
+// PUT /api/v1/claudecode/config
+func (h *Handler) SetConfig(c echo.Context) error {
+	var req ConfigRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request body",
+		})
+	}
+
+	h.configMu.Lock()
+	if req.Enabled != nil {
+		h.config.Enabled = *req.Enabled
+	}
+	if req.DefaultModel != nil && *req.DefaultModel != "" {
+		h.config.DefaultModel = *req.DefaultModel
+	}
+	if req.SandboxEnabled != nil {
+		h.config.SandboxEnabled = *req.SandboxEnabled
+	}
+	if req.NetworkEnabled != nil {
+		h.config.NetworkEnabled = *req.NetworkEnabled
+	}
+	h.configMu.Unlock()
+
+	// Save to disk
+	if err := h.saveConfig(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "failed to save configuration: " + err.Error(),
+		})
+	}
+
+	// Return updated config
+	h.configMu.RLock()
+	resp := ConfigResponse{
+		Enabled:        h.config.Enabled,
+		DefaultModel:   h.config.DefaultModel,
+		SandboxEnabled: h.config.SandboxEnabled,
+		NetworkEnabled: h.config.NetworkEnabled,
+	}
+	h.configMu.RUnlock()
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+// GetHealth returns the current health status.
+// GET /api/v1/claudecode/health
+func (h *Handler) GetHealth(c echo.Context) error {
+	if h.healthChecker == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":  "unknown",
+			"message": "Health checker not initialized",
+		})
+	}
+	status := h.healthChecker.Status()
+	return c.JSON(http.StatusOK, status)
+}
+
+// TriggerHealthCheck triggers an immediate health check.
+// POST /api/v1/claudecode/health/check
+func (h *Handler) TriggerHealthCheck(c echo.Context) error {
+	if h.healthChecker == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":  "unknown",
+			"message": "Health checker not initialized",
+		})
+	}
+	status := h.healthChecker.Check(c.Request().Context())
+	return c.JSON(http.StatusOK, status)
+}
+
+// GetCircuitStatus returns the current circuit breaker status.
+// GET /api/v1/claudecode/circuit
+func (h *Handler) GetCircuitStatus(c echo.Context) error {
+	if h.circuitBreaker == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"state":   "unknown",
+			"message": "Circuit breaker not initialized",
+		})
+	}
+	status := h.circuitBreaker.Status()
+	return c.JSON(http.StatusOK, status)
+}
+
+// ResetCircuit resets the circuit breaker to closed state.
+// POST /api/v1/claudecode/circuit/reset
+func (h *Handler) ResetCircuit(c echo.Context) error {
+	if h.circuitBreaker == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Circuit breaker not initialized",
+		})
+	}
+	h.circuitBreaker.Reset()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Circuit breaker reset to closed state",
+		"status":  h.circuitBreaker.Status(),
+	})
+}
+
+// GetResponseCacheStats returns the response cache statistics.
+// GET /api/v1/claudecode/response-cache/stats
+func (h *Handler) GetResponseCacheStats(c echo.Context) error {
+	if h.cache == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"message": "Response cache not initialized",
+		})
+	}
+	stats := h.cache.Stats()
+	return c.JSON(http.StatusOK, stats)
+}
+
+// ClearResponseCache clears the response cache.
+// POST /api/v1/claudecode/response-cache/clear
+func (h *Handler) ClearResponseCache(c echo.Context) error {
+	if h.cache == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Response cache not initialized",
+		})
+	}
+	h.cache.Clear()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Response cache cleared",
+	})
+}
+
+// GetReliabilityMetrics returns the reliability metrics.
+// GET /api/v1/claudecode/reliability/metrics
+func (h *Handler) GetReliabilityMetrics(c echo.Context) error {
+	metrics := make(map[string]interface{})
+
+	if h.cache != nil {
+		metrics["cache"] = h.cache.Stats()
+	}
+	if h.circuitBreaker != nil {
+		metrics["circuit_breaker"] = h.circuitBreaker.Status()
+	}
+	if h.healthChecker != nil {
+		metrics["health"] = h.healthChecker.Status()
+	}
+
+	return c.JSON(http.StatusOK, metrics)
 }

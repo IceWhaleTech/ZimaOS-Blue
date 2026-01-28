@@ -181,10 +181,14 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           streamingContent.value += chunk.delta
-          // Update the last message (assistant's response)
-          const lastMessage = messages.value[messages.value.length - 1]
-          if (lastMessage && lastMessage.role === 'assistant') {
-            lastMessage.content = streamingContent.value
+          // Update the last message (assistant's response) - use Vue's reactivity properly
+          const lastIndex = messages.value.length - 1
+          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+            // Create a new object to trigger Vue reactivity
+            messages.value[lastIndex] = {
+              ...messages.value[lastIndex],
+              content: streamingContent.value,
+            }
           }
         },
         onError: (err) => {
@@ -196,6 +200,8 @@ export const useChatStore = defineStore('chat', () => {
           streaming.value = false
           // Refresh messages to get the actual IDs from server
           fetchMessages(conversationId)
+          // Refresh conversations to get updated title (auto-generated after first message)
+          fetchConversations()
         },
       })
     } catch (e) {

@@ -78,7 +78,20 @@
       "Bash(uniq:*)",
       "Bash(npm view:*)",
       "Bash(npm search:*)",
-      "Bash(tar:*)"
+      "Bash(tar:*)",
+      "Bash(dir:*)",
+      "WebFetch(domain:svgicons.com)",
+      "WebFetch(domain:www.svgrepo.com)",
+      "WebFetch(domain:www.svgviewer.dev)",
+      "Bash(go vet:*)",
+      "Bash(npx vite build)",
+      "Bash(go clean:*)",
+      "Bash(set ANTHROPIC_AUTH_TOKEN=sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE)",
+      "Bash(set ANTHROPIC_BASE_URL=https://paid.tribiosapi.top/)",
+      "Bash(claude:*)",
+      "Bash(where:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ6aW1hb3MtZWNobyIsInN1YiI6IjVhYjY2NzEyLWI4ODctNDlhNi1iNGQ0LTViNzIxZTc2ZDRkOCIsImV4cCI6MTc2OTcwOTY0OCwiaWF0IjoxNzY5NjIzMjQ4LCJqdGkiOiJlNzkwNTNhNC02YWRiLTQxODYtODZmZC1lZTI5ODM2MjY1NmQiLCJ1c2VyX2lkIjoiNWFiNjY3MTItYjg4Ny00OWE2LWI0ZDQtNWI3MjFlNzZkNGQ4IiwidXNlcm5hbWUiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ._6wiY5X4IBk-8sUAogttgUS-iEPbV10dKw_JKNbGG3Y\")",
+      "Bash(__NEW_LINE_c9bad7ba3da1b439__ timeout 60 curl -s -N -X POST \"http://localhost:8080/api/v1/conversations/34b9c601-e554-404e-a266-2634839118ca/messages/stream\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TOKEN\" -d '{\"\"message\"\":\"\"Say hi\"\",\"\"provider\"\":\"\"claude-code\"\",\"\"model\"\":\"\"claude-opus-4-5-20251101\"\",\"\"temperature\"\":0.7,\"\"max_tokens\"\":2048}')"
     ]
   }
 }

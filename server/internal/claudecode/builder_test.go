@@ -275,16 +275,16 @@ func TestGetOutputFormat(t *testing.T) {
 	config := DefaultClaudeCodeBackend()
 	builder := NewCommandBuilder(&config)
 
-	// Normal run
+	// Normal run - default is now text format
 	format := builder.GetOutputFormat(false)
-	if format != OutputFormatJSON {
-		t.Errorf("expected OutputFormatJSON, got %s", format)
+	if format != OutputFormatText {
+		t.Errorf("expected OutputFormatText, got %s", format)
 	}
 
-	// Resume run
+	// Resume run - default is now text format
 	format = builder.GetOutputFormat(true)
-	if format != OutputFormatJSON {
-		t.Errorf("expected OutputFormatJSON for resume, got %s", format)
+	if format != OutputFormatText {
+		t.Errorf("expected OutputFormatText for resume, got %s", format)
 	}
 
 	// Custom resume output

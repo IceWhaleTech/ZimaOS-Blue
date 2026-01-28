@@ -1,0 +1,38 @@
+# ZimaOS-Echo Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+log:
+  level: "debug"
+  format: "console"
+
+# Enable Claude Code CLI provider
+claudecode:
+  enabled: true
+  command: "claude"
+  workspace_dir: "."
+  default_model: "sonnet"
+  timeout: "5m"
+  session_ttl: "24h"
+  api_key: "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE"
+  base_url: "https://paid.tribiosapi.top/"
+  backend:
+    args: ["-p", "--output-format", "text", "--dangerously-skip-permissions"]
+    resume_args: ["-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"]
+    output: "text"
+    resume_output: "text"
+    input: "arg"
+    max_prompt_arg_chars: 100000
+    model_arg: "--model"
+    model_aliases:
+      opus: "opus"
+      sonnet: "sonnet"
+      haiku: "haiku"
+    session_arg: "--session-id"
+    session_mode: "always"
+    system_prompt_arg: "--append-system-prompt"
+    system_prompt_mode: "append"
+    system_prompt_when: "first"
+    serialize: true

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -25,27 +24,27 @@ type SetupConfig struct {
 	Language string `json:"language"`
 	Timezone string `json:"timezone"`
 
-	// Step 2: LLM Configuration
-	LLMProvider string `json:"llm_provider"` // openai, ollama, anthropic, custom
-	LLMAPIKey   string `json:"llm_api_key,omitempty"`
-	LLMBaseURL  string `json:"llm_base_url,omitempty"`
-	LLMModel    string `json:"llm_model"`
-
-	// Step 3: Security Settings
+	// Step 2: Security Settings
 	AdminUsername string `json:"admin_username"`
 	AdminPassword string `json:"admin_password"`
 	EnableMFA     bool   `json:"enable_mfa"`
 
-	// Step 4: Integration Settings
+	// Step 3: Integration Settings
+	LLMProvider        string `json:"llm_provider"`
+	LLMAPIKey          string `json:"llm_api_key,omitempty"`
+	LLMBaseURL         string `json:"llm_base_url,omitempty"`
+	LLMModel           string `json:"llm_model,omitempty"`
 	EnableHomeAssistant bool   `json:"enable_home_assistant"`
 	HomeAssistantURL    string `json:"home_assistant_url,omitempty"`
 	HomeAssistantToken  string `json:"home_assistant_token,omitempty"`
+}
 
-	// Step 5: Channel Settings
-	EnableTelegram bool   `json:"enable_telegram"`
-	TelegramToken  string `json:"telegram_token,omitempty"`
-	EnableDiscord  bool   `json:"enable_discord"`
-	DiscordToken   string `json:"discord_token,omitempty"`
+// LLMConfig holds the LLM provider configuration.
+type LLMConfig struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"api_key,omitempty"`
+	BaseURL  string `json:"base_url,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 // ValidationResult contains validation results for a step.
@@ -58,25 +57,36 @@ type ValidationResult struct {
 // UserCreator is a function that creates a user during setup.
 type UserCreator func(username, password string, isAdmin bool) error
 
+// UserChecker is a function that checks if a username exists.
+type UserChecker func(username string) (bool, error)
+
 // Handler handles setup wizard API requests.
 type Handler struct {
-	dataDir    string
-	configPath string
-	mu         sync.RWMutex
-	status     *SetupStatus
-	createUser UserCreator
+	dataDir     string
+	configPath  string
+	mu          sync.RWMutex
+	status      *SetupStatus
+	createUser  UserCreator
+	checkUser   UserChecker
+	version     string
 }
 
 // NewHandler creates a new setup handler.
 func NewHandler(dataDir string) *Handler {
+	return NewHandlerWithVersion(dataDir, "0.0.0")
+}
+
+// NewHandlerWithVersion creates a new setup handler with a specific version.
+func NewHandlerWithVersion(dataDir string, version string) *Handler {
 	h := &Handler{
 		dataDir:    dataDir,
 		configPath: filepath.Join(dataDir, "setup_complete.json"),
+		version:    version,
 		status: &SetupStatus{
 			Completed:   false,
 			CurrentStep: 1,
-			TotalSteps:  5,
-			Version:     "0.5.0",
+			TotalSteps:  3,
+			Version:     version,
 		},
 	}
 
@@ -91,6 +101,11 @@ func (h *Handler) SetUserCreator(fn UserCreator) {
 	h.createUser = fn
 }
 
+// SetUserChecker sets the user checker function.
+func (h *Handler) SetUserChecker(fn UserChecker) {
+	h.checkUser = fn
+}
+
 // RegisterRoutes registers setup routes.
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	g := e.Group("/api/setup")
@@ -100,6 +115,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	g.POST("/reset", h.ResetSetup)
 	g.GET("/defaults", h.GetDefaults)
 	g.POST("/test-connection", h.TestConnection)
+	g.POST("/check-username", h.CheckUsername)
 }
 
 // GetStatus returns the current setup status.
@@ -201,6 +217,63 @@ func (h *Handler) ValidateStep(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+// CheckUsername checks if a username is available.
+func (h *Handler) CheckUsername(c echo.Context) error {
+	var req struct {
+		Username string `json:"username"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"available": false,
+			"message":   "Invalid request body",
+		})
+	}
+
+	if req.Username == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"available": false,
+			"message":   "Username is required",
+		})
+	}
+
+	if len(req.Username) < 3 {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"available": false,
+			"message":   "Username must be at least 3 characters",
+		})
+	}
+
+	// Check if user checker is set
+	if h.checkUser == nil {
+		// If no checker is set, assume username is available
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"available": true,
+			"message":   "Username is available",
+		})
+	}
+
+	exists, err := h.checkUser(req.Username)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"available": false,
+			"message":   "Failed to check username",
+		})
+	}
+
+	if exists {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"available": false,
+			"message":   "Username already exists",
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"available": true,
+		"message":   "Username is available",
+	})
+}
+
 // TestConnection tests a connection (LLM, Home Assistant, etc.).
 func (h *Handler) TestConnection(c echo.Context) error {
 	var req struct {
@@ -221,14 +294,6 @@ func (h *Handler) TestConnection(c echo.Context) error {
 		return h.testLLMConnection(c, req.Config)
 	case "homeassistant":
 		return h.testHomeAssistantConnection(c, req.Config)
-	case "telegram":
-		return h.testTelegramConnection(c, req.Config)
-	case "discord":
-		return h.testDiscordConnection(c, req.Config)
-	case "feishu":
-		return h.testFeishuConnection(c, req.Config)
-	case "wechat":
-		return h.testWechatConnection(c, req.Config)
 	default:
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"success": false,
@@ -248,7 +313,7 @@ func (h *Handler) CompleteSetup(c echo.Context) error {
 	}
 
 	// Validate all steps
-	for step := 1; step <= 5; step++ {
+	for step := 1; step <= 3; step++ {
 		result := h.validateStep(step, &config)
 		if !result.Valid {
 			return c.JSON(http.StatusBadRequest, map[string]interface{}{
@@ -332,21 +397,7 @@ func (h *Handler) validateStep(step int, config *SetupConfig) ValidationResult {
 			errors["timezone"] = "Timezone is required"
 		}
 
-	case 2: // LLM Configuration
-		if config.LLMProvider == "" {
-			errors["llm_provider"] = "LLM provider is required"
-		}
-		if config.LLMProvider != "ollama" && config.LLMAPIKey == "" {
-			errors["llm_api_key"] = "API key is required for this provider"
-		}
-		if config.LLMModel == "" {
-			errors["llm_model"] = "Model selection is required"
-		}
-		if config.LLMProvider == "custom" && config.LLMBaseURL == "" {
-			errors["llm_base_url"] = "Base URL is required for custom provider"
-		}
-
-	case 3: // Security Settings
+	case 2: // Security Settings
 		if config.AdminUsername == "" {
 			errors["admin_username"] = "Admin username is required"
 		} else if len(config.AdminUsername) < 3 {
@@ -358,7 +409,7 @@ func (h *Handler) validateStep(step int, config *SetupConfig) ValidationResult {
 			errors["admin_password"] = "Password must be at least 8 characters"
 		}
 
-	case 4: // Integration Settings
+	case 3: // Integration Settings
 		if config.EnableHomeAssistant {
 			if config.HomeAssistantURL == "" {
 				errors["home_assistant_url"] = "Home Assistant URL is required"
@@ -366,14 +417,6 @@ func (h *Handler) validateStep(step int, config *SetupConfig) ValidationResult {
 			if config.HomeAssistantToken == "" {
 				errors["home_assistant_token"] = "Home Assistant token is required"
 			}
-		}
-
-	case 5: // Channel Settings
-		if config.EnableTelegram && config.TelegramToken == "" {
-			errors["telegram_token"] = "Telegram bot token is required"
-		}
-		if config.EnableDiscord && config.DiscordToken == "" {
-			errors["discord_token"] = "Discord bot token is required"
 		}
 	}
 
@@ -451,164 +494,6 @@ func (h *Handler) testHomeAssistantConnection(c echo.Context, config map[string]
 	})
 }
 
-func (h *Handler) testTelegramConnection(c echo.Context, config map[string]string) error {
-	token := config["token"]
-
-	if token == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Bot token is required",
-		})
-	}
-
-	// In a real implementation, this would call the Telegram API
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Connection successful",
-	})
-}
-
-func (h *Handler) testDiscordConnection(c echo.Context, config map[string]string) error {
-	token := config["token"]
-
-	if token == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Bot token is required",
-		})
-	}
-
-	// In a real implementation, this would call the Discord API
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Connection successful",
-	})
-}
-
-func (h *Handler) testFeishuConnection(c echo.Context, config map[string]string) error {
-	appID := config["app_id"]
-	appSecret := config["app_secret"]
-	verificationToken := config["verification_token"]
-
-	if appID == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "App ID is required",
-		})
-	}
-
-	if appSecret == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "App Secret is required",
-		})
-	}
-
-	if verificationToken == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Verification Token is required",
-		})
-	}
-
-	// Test by getting tenant access token from Feishu API
-	resp, err := http.Post(
-		"https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-		"application/json",
-		strings.NewReader(`{"app_id":"`+appID+`","app_secret":"`+appSecret+`"}`),
-	)
-	if err != nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Failed to connect to Feishu API: " + err.Error(),
-		})
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Failed to parse Feishu response",
-		})
-	}
-
-	if result.Code != 0 {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Feishu API error: " + result.Msg,
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Connection successful",
-	})
-}
-
-func (h *Handler) testWechatConnection(c echo.Context, config map[string]string) error {
-	corpID := config["corp_id"]
-	agentID := config["agent_id"]
-	secret := config["secret"]
-
-	if corpID == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Corp ID is required",
-		})
-	}
-
-	if agentID == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Agent ID is required",
-		})
-	}
-
-	if secret == "" {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Secret is required",
-		})
-	}
-
-	// Test by getting access token from WeChat Work API
-	resp, err := http.Get("https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=" + corpID + "&corpsecret=" + secret)
-	if err != nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Failed to connect to WeChat Work API: " + err.Error(),
-		})
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		ErrCode int    `json:"errcode"`
-		ErrMsg  string `json:"errmsg"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Failed to parse WeChat response",
-		})
-	}
-
-	if result.ErrCode != 0 {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "WeChat API error: " + result.ErrMsg,
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Connection successful",
-	})
-}
-
 func (h *Handler) loadStatus() {
 	data, err := os.ReadFile(h.configPath)
 	if err != nil {
@@ -643,17 +528,12 @@ func (h *Handler) saveConfig(config *SetupConfig) error {
 
 	// Save the setup configuration (excluding sensitive data in plain text)
 	safeConfig := map[string]interface{}{
-		"language":               config.Language,
-		"timezone":               config.Timezone,
-		"llm_provider":           config.LLMProvider,
-		"llm_model":              config.LLMModel,
-		"llm_base_url":           config.LLMBaseURL,
-		"enable_mfa":             config.EnableMFA,
-		"enable_home_assistant":  config.EnableHomeAssistant,
-		"home_assistant_url":     config.HomeAssistantURL,
-		"enable_telegram":        config.EnableTelegram,
-		"enable_discord":         config.EnableDiscord,
-		"admin_username":         config.AdminUsername,
+		"language":              config.Language,
+		"timezone":              config.Timezone,
+		"enable_mfa":            config.EnableMFA,
+		"enable_home_assistant": config.EnableHomeAssistant,
+		"home_assistant_url":    config.HomeAssistantURL,
+		"admin_username":        config.AdminUsername,
 		// Note: Sensitive data like passwords and tokens should be stored securely
 		// This is a simplified version for the wizard
 	}
@@ -664,5 +544,42 @@ func (h *Handler) saveConfig(config *SetupConfig) error {
 	}
 
 	configPath := filepath.Join(h.dataDir, "wizard_config.json")
-	return os.WriteFile(configPath, data, 0644)
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return err
+	}
+
+	// Save LLM configuration separately
+	llmConfig := LLMConfig{
+		Provider: config.LLMProvider,
+		APIKey:   config.LLMAPIKey,
+		BaseURL:  config.LLMBaseURL,
+		Model:    config.LLMModel,
+	}
+
+	llmData, err := json.MarshalIndent(llmConfig, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	llmConfigPath := filepath.Join(h.dataDir, "llm_config.json")
+	return os.WriteFile(llmConfigPath, llmData, 0600) // More restrictive permissions for API key
+}
+
+// LoadLLMConfig loads the saved LLM configuration from disk.
+func LoadLLMConfig(dataDir string) (*LLMConfig, error) {
+	configPath := filepath.Join(dataDir, "llm_config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // No config file, return nil without error
+		}
+		return nil, err
+	}
+
+	var config LLMConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }

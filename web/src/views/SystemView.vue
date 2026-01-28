@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
+import { useMetricsStore } from '@/stores/metrics'
 import { systemApi, backupApi } from '@/api/index'
 import type { LogEntry, SystemMetrics, DetailedSystemInfo } from '@/api/system'
 import type { BackupInfo } from '@/api/index'
@@ -9,13 +10,17 @@ import ResourceChart from '@/components/ResourceChart.vue'
 import Skeleton from '@/components/Skeleton.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import DonutChart from '@/components/DonutChart.vue'
+import MetricsOverview from '@/components/metrics/MetricsOverview.vue'
+import TokenUsageChart from '@/components/metrics/TokenUsageChart.vue'
+import LatencyChart from '@/components/metrics/LatencyChart.vue'
 import type { DataPoint } from '@/components/ResourceChart.vue'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
+const metricsStore = useMetricsStore()
 
 // Tabs
-const activeTab = ref<'overview' | 'logs' | 'config' | 'backup'>('overview')
+const activeTab = ref<'overview' | 'metrics' | 'logs' | 'config' | 'backup'>('overview')
 
 // Metrics
 const metricsHistory = ref<SystemMetrics[]>([])
@@ -111,15 +116,26 @@ const heapChartData = computed<DataPoint[]>(() => {
   }))
 })
 
+async function handleResetMetrics() {
+  if (confirm(t('metrics.confirmReset'))) {
+    await metricsStore.resetMetrics()
+  }
+}
+
 onMounted(async () => {
   await systemStore.fetchAll()
   await fetchMetricsHistory()
+  // Also fetch metrics store data
+  metricsStore.fetchAll()
 
   refreshInterval = setInterval(() => {
     if (autoRefresh.value) {
       systemStore.fetchAll()
       if (activeTab.value === 'overview') {
         fetchMetricsHistory()
+      }
+      if (activeTab.value === 'metrics') {
+        metricsStore.fetchAll()
       }
     }
   }, 5000)
@@ -242,23 +258,23 @@ async function createBackup() {
 }
 
 async function restoreBackup(id: string) {
-  if (!confirm('Are you sure you want to restore this backup? Current data will be overwritten.')) {
+  if (!confirm(t('system.backup.restoreConfirm'))) {
     return
   }
 
   backupRestoring.value = id
   try {
     await backupApi.restore(id)
-    alert('Backup restored successfully. The service may restart.')
+    alert(t('system.backup.backupRestored'))
   } catch {
-    alert('Failed to restore backup')
+    alert(t('system.backup.backupRestoreFailed'))
   } finally {
     backupRestoring.value = null
   }
 }
 
 async function deleteBackup(id: string) {
-  if (!confirm('Are you sure you want to delete this backup?')) {
+  if (!confirm(t('system.backup.deleteConfirm'))) {
     return
   }
 
@@ -266,7 +282,7 @@ async function deleteBackup(id: string) {
     await backupApi.delete(id)
     backups.value = backups.value.filter((b) => b.id !== id)
   } catch {
-    alert('Failed to delete backup')
+    alert(t('system.backup.backupDeleteFailed'))
   }
 }
 
@@ -384,7 +400,7 @@ function clearLogs() {
 }
 
 // Load data when tab changes
-function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
+function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup') {
   activeTab.value = tab
   if (tab === 'logs' && logs.value.length === 0) {
     fetchLogs()
@@ -392,6 +408,8 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
     fetchConfig()
   } else if (tab === 'backup' && backups.value.length === 0) {
     fetchBackups()
+  } else if (tab === 'metrics') {
+    metricsStore.fetchAll()
   }
 }
 </script>
@@ -421,7 +439,7 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
     <!-- Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['overview', 'logs', 'config', 'backup'] as const"
+        v-for="tab in ['overview', 'metrics', 'logs', 'config', 'backup'] as const"
         :key="tab"
         class="px-3 sm:px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
@@ -947,6 +965,75 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
             </div>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- Metrics Tab -->
+    <div v-if="activeTab === 'metrics'" class="space-y-6">
+      <!-- Metrics Header -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <span v-if="metricsStore.lastUpdated" class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('metrics.lastUpdated') }}: {{ metricsStore.lastUpdated.toLocaleTimeString() }}
+          </span>
+        </div>
+        <button
+          @click="handleResetMetrics"
+          class="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+        >
+          {{ t('metrics.reset') }}
+        </button>
+      </div>
+
+      <!-- Metrics Overview Cards -->
+      <MetricsOverview />
+
+      <!-- Token Usage and Latency Charts -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TokenUsageChart />
+        <LatencyChart />
+      </div>
+
+      <!-- Model Statistics -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          {{ t('metrics.modelStats') }}
+        </h3>
+        <div v-if="metricsStore.modelStats?.models?.length" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700">
+                <th class="text-left py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.model') }}</th>
+                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.calls') }}</th>
+                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</th>
+                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.tokens') }}</th>
+                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.cost') }}</th>
+                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="model in metricsStore.modelStats.models"
+                :key="model.model"
+                class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+              >
+                <td class="py-3 px-2 font-medium text-gray-900 dark:text-white">{{ model.model }}</td>
+                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ model.calls ?? 0 }}</td>
+                <td class="py-3 px-2 text-right">
+                  <span :class="(model.success_rate ?? 0) >= 95 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'">
+                    {{ (model.success_rate ?? 0).toFixed(1) }}%
+                  </span>
+                </td>
+                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.total_tokens ?? 0).toLocaleString() }}</td>
+                <td class="py-3 px-2 text-right text-green-600 dark:text-green-400">${{ (model.estimated_cost ?? 0).toFixed(4) }}</td>
+                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.avg_latency ?? 0).toFixed(0) }}ms</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="text-center py-8 text-gray-500 dark:text-gray-400">
+          {{ t('metrics.noData') }}
+        </div>
       </div>
     </div>
 

@@ -2,21 +2,30 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 )
 
 // SystemPromptBuilder builds system prompts for Claude Code CLI.
 type SystemPromptBuilder struct {
-	config *ClaudeCodeConfig
+	config       *ClaudeCodeConfig
+	toolRegistry *tools.Registry
 }
 
 // NewSystemPromptBuilder creates a new SystemPromptBuilder.
 func NewSystemPromptBuilder(config *ClaudeCodeConfig) *SystemPromptBuilder {
 	return &SystemPromptBuilder{config: config}
+}
+
+// SetToolRegistry sets the tool registry for including tool descriptions.
+func (b *SystemPromptBuilder) SetToolRegistry(registry *tools.Registry) {
+	b.toolRegistry = registry
 }
 
 // Build builds the complete system prompt.
@@ -31,12 +40,53 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 		parts = append(parts, b.buildWorkspaceInfo())
 	}
 
+	// Add available tools information
+	if b.toolRegistry != nil {
+		toolsInfo := b.buildToolsInfo()
+		if toolsInfo != "" {
+			parts = append(parts, toolsInfo)
+		}
+	}
+
 	// Add extra system prompt
 	if extraPrompt != "" {
 		parts = append(parts, extraPrompt)
 	}
 
 	return strings.Join(parts, "\n\n")
+}
+
+// buildToolsInfo builds information about available tools.
+func (b *SystemPromptBuilder) buildToolsInfo() string {
+	if b.toolRegistry == nil {
+		return ""
+	}
+
+	defs := b.toolRegistry.Definitions()
+	if len(defs) == 0 {
+		return ""
+	}
+
+	var lines []string
+	lines = append(lines, "# Available Tools")
+	lines = append(lines, "")
+	lines = append(lines, "The following tools are available through the ZimaOS-Echo API:")
+	lines = append(lines, "")
+
+	for _, def := range defs {
+		lines = append(lines, fmt.Sprintf("## %s", def.Name))
+		lines = append(lines, def.Description)
+		if def.Parameters != nil {
+			paramsJSON, _ := json.MarshalIndent(def.Parameters, "", "  ")
+			lines = append(lines, "Parameters:")
+			lines = append(lines, "```json")
+			lines = append(lines, string(paramsJSON))
+			lines = append(lines, "```")
+		}
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // buildRuntimeInfo builds runtime information for the system prompt.

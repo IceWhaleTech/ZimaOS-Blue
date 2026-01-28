@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,6 +168,9 @@ func (s *Service) Create(name, description, schedule, handler string, payload ma
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Normalize schedule: convert 5-field to 6-field format
+	schedule = normalizeSchedule(schedule)
+
 	// Validate schedule
 	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	_, err := parser.Parse(schedule)
@@ -259,6 +263,9 @@ func (s *Service) Update(id, name, description, schedule string, payload map[str
 	if !exists {
 		return fmt.Errorf("job %s not found", id)
 	}
+
+	// Normalize schedule: convert 5-field to 6-field format
+	schedule = normalizeSchedule(schedule)
 
 	// If schedule changed, reschedule
 	if schedule != job.Schedule {
@@ -502,4 +509,17 @@ func (s *Service) GetExecutions(jobID string, limit int) ([]*JobExecution, error
 	}
 
 	return result, nil
+}
+
+// normalizeSchedule converts a 5-field cron expression to 6-field format.
+// Standard cron: minute hour day month weekday (5 fields)
+// With seconds:  second minute hour day month weekday (6 fields)
+// If 5 fields are provided, prepend "0" for seconds.
+func normalizeSchedule(schedule string) string {
+	fields := strings.Fields(schedule)
+	if len(fields) == 5 {
+		// Convert 5-field to 6-field by adding "0" for seconds
+		return "0 " + schedule
+	}
+	return schedule
 }

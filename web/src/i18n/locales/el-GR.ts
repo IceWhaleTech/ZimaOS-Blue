@@ -37,6 +37,9 @@ export default {
     ...enUS.nav,
     taskCenter: 'Κέντρο εργασιών',
     channels: 'Κανάλια',
+    automation: 'Αυτοματισμός',
+    security: 'Ασφάλεια',
+    companion: 'Companion',
   },
   extensions: {
     ...enUS.extensions,

@@ -37,6 +37,9 @@ export default {
     ...enUS.nav,
     taskCenter: 'Feladatközpont',
     channels: 'Csatornák',
+    automation: 'Automatizálás',
+    security: 'Biztonság',
+    companion: 'Companion',
   },
   extensions: {
     ...enUS.extensions,

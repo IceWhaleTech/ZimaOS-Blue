@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cronApi } from '@/api/cron'
 import type { CronJob, JobExecution } from '@/api/cron'
@@ -19,19 +19,32 @@ const jobForm = ref({
   name: '',
   description: '',
   schedule: '',
-  handler: '',
+  handler: 'command',
   payload: '{}',
+  // Command handler fields
+  command: '',
+  workdir: '',
+  timeout: 60,
+  // HTTP handler fields
+  url: '',
+  method: 'GET',
 })
 
+// Available handler types
+const handlerTypes = computed(() => [
+  { value: 'command', label: t('cron.handlers.command'), description: t('cron.handlers.commandDesc') },
+  { value: 'http', label: t('cron.handlers.http'), description: t('cron.handlers.httpDesc') },
+])
+
 // Common cron presets
-const cronPresets = [
-  { label: 'Every minute', value: '* * * * *' },
-  { label: 'Every 5 minutes', value: '*/5 * * * *' },
-  { label: 'Every hour', value: '0 * * * *' },
-  { label: 'Every day at midnight', value: '0 0 * * *' },
-  { label: 'Every Monday at 9am', value: '0 9 * * 1' },
-  { label: 'Every month', value: '0 0 1 * *' },
-]
+const cronPresets = computed(() => [
+  { label: t('cron.presets.everyMinute'), value: '* * * * *' },
+  { label: t('cron.presets.every5Minutes'), value: '*/5 * * * *' },
+  { label: t('cron.presets.everyHour'), value: '0 * * * *' },
+  { label: t('cron.presets.everyDayMidnight'), value: '0 0 * * *' },
+  { label: t('cron.presets.everyMondayMorning'), value: '0 9 * * 1' },
+  { label: t('cron.presets.everyMonth'), value: '0 0 1 * *' },
+])
 
 onMounted(async () => {
   await loadJobs()
@@ -50,33 +63,82 @@ async function loadJobs() {
 }
 
 function openCreateModal() {
-  jobForm.value = { name: '', description: '', schedule: '', handler: '', payload: '{}' }
+  jobForm.value = {
+    name: '',
+    description: '',
+    schedule: '',
+    handler: 'command',
+    payload: '{}',
+    command: '',
+    workdir: '',
+    timeout: 60,
+    url: '',
+    method: 'GET',
+  }
   showCreateModal.value = true
 }
 
 function openEditModal(job: CronJob) {
   selectedJob.value = job
+  const payload = job.payload || {}
   jobForm.value = {
     name: job.name,
     description: job.description || '',
     schedule: job.schedule,
     handler: job.handler,
     payload: job.payload ? JSON.stringify(job.payload, null, 2) : '{}',
+    // Extract command handler fields
+    command: (payload.command as string) || '',
+    workdir: (payload.workdir as string) || '',
+    timeout: (payload.timeout as number) || 60,
+    // Extract HTTP handler fields
+    url: (payload.url as string) || '',
+    method: (payload.method as string) || 'GET',
   }
   showEditModal.value = true
+}
+
+// Build payload based on handler type
+function buildPayload(): Record<string, unknown> {
+  if (jobForm.value.handler === 'command') {
+    const payload: Record<string, unknown> = {
+      command: jobForm.value.command,
+    }
+    if (jobForm.value.workdir) {
+      payload.workdir = jobForm.value.workdir
+    }
+    if (jobForm.value.timeout && jobForm.value.timeout !== 60) {
+      payload.timeout = jobForm.value.timeout
+    }
+    return payload
+  } else if (jobForm.value.handler === 'http') {
+    const payload: Record<string, unknown> = {
+      url: jobForm.value.url,
+      method: jobForm.value.method,
+    }
+    if (jobForm.value.timeout && jobForm.value.timeout !== 30) {
+      payload.timeout = jobForm.value.timeout
+    }
+    return payload
+  }
+  // Fallback to raw JSON payload
+  try {
+    return JSON.parse(jobForm.value.payload)
+  } catch {
+    return {}
+  }
 }
 
 async function createJob() {
   if (!jobForm.value.name || !jobForm.value.schedule || !jobForm.value.handler) return
 
+  // Validate handler-specific fields
+  if (jobForm.value.handler === 'command' && !jobForm.value.command) return
+  if (jobForm.value.handler === 'http' && !jobForm.value.url) return
+
   try {
     loading.value = true
-    let payload = {}
-    try {
-      payload = JSON.parse(jobForm.value.payload)
-    } catch {
-      // Invalid JSON, use empty object
-    }
+    const payload = buildPayload()
 
     await cronApi.create({
       name: jobForm.value.name,
@@ -97,14 +159,13 @@ async function createJob() {
 async function updateJob() {
   if (!selectedJob.value || !jobForm.value.name || !jobForm.value.schedule) return
 
+  // Validate handler-specific fields
+  if (jobForm.value.handler === 'command' && !jobForm.value.command) return
+  if (jobForm.value.handler === 'http' && !jobForm.value.url) return
+
   try {
     loading.value = true
-    let payload = {}
-    try {
-      payload = JSON.parse(jobForm.value.payload)
-    } catch {
-      // Invalid JSON, use empty object
-    }
+    const payload = buildPayload()
 
     await cronApi.update(selectedJob.value.id, {
       name: jobForm.value.name,
@@ -373,29 +434,99 @@ function getNextRunText(job: CronJob): string {
 
             <div v-if="showCreateModal">
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.handler') }}</label>
-              <input
-                v-model="jobForm.handler"
-                type="text"
-                required
-                :placeholder="t('cron.handlerPlaceholder')"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
-              />
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  v-for="ht in handlerTypes"
+                  :key="ht.value"
+                  type="button"
+                  :class="[
+                    'p-3 rounded-lg border-2 text-left transition-colors',
+                    jobForm.handler === ht.value
+                      ? 'border-accent bg-accent/10 dark:bg-accent/20'
+                      : 'border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500'
+                  ]"
+                  @click="jobForm.handler = ht.value"
+                >
+                  <div class="font-medium text-gray-900 dark:text-white text-sm">{{ ht.label }}</div>
+                  <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">{{ ht.description }}</div>
+                </button>
+              </div>
             </div>
 
-            <div>
-              <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.payload') }} (JSON)</label>
-              <textarea
-                v-model="jobForm.payload"
-                rows="4"
-                placeholder="{}"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm resize-none"
-              />
+            <!-- Command Handler Fields -->
+            <div v-if="jobForm.handler === 'command'" class="space-y-4 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.commandInput') }} *</label>
+                <input
+                  v-model="jobForm.command"
+                  type="text"
+                  required
+                  :placeholder="t('cron.commandPlaceholder')"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm"
+                />
+                <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">{{ t('cron.commandHint') }}</p>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.workdir') }}</label>
+                <input
+                  v-model="jobForm.workdir"
+                  type="text"
+                  :placeholder="t('cron.workdirPlaceholder')"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label>
+                <input
+                  v-model.number="jobForm.timeout"
+                  type="number"
+                  min="1"
+                  max="3600"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                />
+              </div>
+            </div>
+
+            <!-- HTTP Handler Fields -->
+            <div v-if="jobForm.handler === 'http'" class="space-y-4 p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">URL *</label>
+                <input
+                  v-model="jobForm.url"
+                  type="url"
+                  required
+                  placeholder="https://example.com/api/webhook"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.httpMethod') }}</label>
+                <select
+                  v-model="jobForm.method"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label>
+                <input
+                  v-model.number="jobForm.timeout"
+                  type="number"
+                  min="1"
+                  max="300"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                />
+              </div>
             </div>
 
             <div class="flex gap-3 pt-4">
               <button
                 type="submit"
-                :disabled="loading || !jobForm.name || !jobForm.schedule || (showCreateModal && !jobForm.handler)"
+                :disabled="loading || !jobForm.name || !jobForm.schedule || (showCreateModal && !jobForm.handler) || (jobForm.handler === 'command' && !jobForm.command) || (jobForm.handler === 'http' && !jobForm.url)"
                 class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ loading ? t('common.saving') : (showCreateModal ? t('cron.create') : t('common.save')) }}

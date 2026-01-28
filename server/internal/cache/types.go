@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // Common errors
@@ -67,7 +69,7 @@ func (e *Entry) IsExpired() bool {
 	if e.ExpiresAt.IsZero() {
 		return false
 	}
-	return time.Now().After(e.ExpiresAt)
+	return timeutil.NowTime().After(e.ExpiresAt)
 }
 
 // TTL returns the remaining time to live.

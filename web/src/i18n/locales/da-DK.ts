@@ -37,6 +37,9 @@ export default {
     ...enUS.nav,
     taskCenter: 'Opgavecenter',
     channels: 'Kanaler',
+    automation: 'Automatisering',
+    security: 'Sikkerhed',
+    companion: 'Companion',
   },
   extensions: {
     ...enUS.extensions,

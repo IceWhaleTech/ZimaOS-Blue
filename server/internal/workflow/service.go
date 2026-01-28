@@ -176,7 +176,66 @@ func (s *WorkflowService) DisableWorkflow(ctx context.Context, id string) error 
 
 // ValidateWorkflow validates a workflow definition.
 func (s *WorkflowService) ValidateWorkflow(ctx context.Context, workflow *Workflow) error {
+	// For DRAFT workflows, only validate basic fields (name, ID)
+	// Full validation (nodes, triggers) is only required for ACTIVE workflows
+	if workflow.Status == WorkflowStatusDraft {
+		return s.validateDraftWorkflow(workflow)
+	}
 	return s.engine.ValidateWorkflow(workflow)
+}
+
+// validateDraftWorkflow performs minimal validation for draft workflows.
+// It also auto-generates missing IDs for nodes and connections.
+func (s *WorkflowService) validateDraftWorkflow(workflow *Workflow) error {
+	if workflow.ID == "" {
+		return fmt.Errorf("workflow ID is required")
+	}
+	if workflow.Name == "" {
+		return fmt.Errorf("workflow name is required")
+	}
+	// Auto-generate node IDs if missing or temporary, and validate uniqueness
+	if len(workflow.Nodes) > 0 {
+		nodeIDs := make(map[string]bool)
+		oldToNewID := make(map[string]string) // Map old temp IDs to new UUIDs
+
+		for i := range workflow.Nodes {
+			oldID := workflow.Nodes[i].ID
+			// Auto-generate node ID if missing or temporary (starts with "temp_")
+			if oldID == "" || len(oldID) > 5 && oldID[:5] == "temp_" {
+				newID := uuid.New().String()
+				if oldID != "" {
+					oldToNewID[oldID] = newID
+				}
+				workflow.Nodes[i].ID = newID
+			}
+			if nodeIDs[workflow.Nodes[i].ID] {
+				return fmt.Errorf("duplicate node ID: %s", workflow.Nodes[i].ID)
+			}
+			nodeIDs[workflow.Nodes[i].ID] = true
+		}
+
+		// Auto-generate connection IDs if missing and validate/update references
+		for i := range workflow.Connections {
+			if workflow.Connections[i].ID == "" {
+				workflow.Connections[i].ID = uuid.New().String()
+			}
+			// Update source node reference if it was a temp ID
+			if newID, ok := oldToNewID[workflow.Connections[i].SourceNode]; ok {
+				workflow.Connections[i].SourceNode = newID
+			}
+			// Update target node reference if it was a temp ID
+			if newID, ok := oldToNewID[workflow.Connections[i].TargetNode]; ok {
+				workflow.Connections[i].TargetNode = newID
+			}
+			if !nodeIDs[workflow.Connections[i].SourceNode] {
+				return fmt.Errorf("connection references unknown source node: %s", workflow.Connections[i].SourceNode)
+			}
+			if !nodeIDs[workflow.Connections[i].TargetNode] {
+				return fmt.Errorf("connection references unknown target node: %s", workflow.Connections[i].TargetNode)
+			}
+		}
+	}
+	return nil
 }
 
 // ExecuteWorkflow manually executes a workflow.

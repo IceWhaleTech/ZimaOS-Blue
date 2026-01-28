@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // LFUCache implements an LFU (Least Frequently Used) cache.
@@ -101,7 +103,7 @@ func (c *LFUCache) Get(ctx context.Context, key string) (interface{}, error) {
 	}
 
 	// Check expiration
-	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+	if !entry.expiresAt.IsZero() && timeutil.NowTime().After(entry.expiresAt) {
 		c.removeEntry(entry)
 		c.misses.Add(1)
 		return nil, ErrKeyExpired
@@ -124,9 +126,9 @@ func (c *LFUCache) Set(ctx context.Context, key string, value interface{}, ttl t
 
 	var expiresAt time.Time
 	if ttl > 0 {
-		expiresAt = time.Now().Add(ttl)
+		expiresAt = timeutil.NowTime().Add(ttl)
 	} else if c.config.DefaultTTL > 0 {
-		expiresAt = time.Now().Add(c.config.DefaultTTL)
+		expiresAt = timeutil.NowTime().Add(c.config.DefaultTTL)
 	}
 
 	// Check if key already exists
@@ -179,7 +181,7 @@ func (c *LFUCache) Exists(ctx context.Context, key string) bool {
 		return false
 	}
 
-	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+	if !entry.expiresAt.IsZero() && timeutil.NowTime().After(entry.expiresAt) {
 		return false
 	}
 
@@ -291,7 +293,7 @@ func (c *LFUCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var toRemove []*lfuEntry
 
 	for _, entry := range c.items {

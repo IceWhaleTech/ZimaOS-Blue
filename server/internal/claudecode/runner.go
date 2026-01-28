@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // Runner executes Claude Code CLI commands.
@@ -40,7 +42,9 @@ type runQueueResult struct {
 
 // NewRunner creates a new Runner with the given configuration.
 func NewRunner(config *ClaudeCodeConfig) *Runner {
-	backendConfig := config.Backend.WithDefaults()
+	// Use the backend config directly - it should already have defaults applied
+	// by ClaudeCodeConfig.WithDefaults() which also sets up API key in Env
+	backendConfig := config.Backend
 	return &Runner{
 		config:        config,
 		builder:       NewCommandBuilder(&backendConfig),
@@ -115,7 +119,7 @@ func (r *Runner) processQueue() {
 
 // runDirect executes the CLI command directly.
 func (r *Runner) runDirect(ctx context.Context, params *RunParams) (*RunResult, error) {
-	startTime := time.Now()
+	startNano := timeutil.NowNano()
 
 	// Build command arguments
 	args := r.builder.BuildArgs(params)
@@ -167,7 +171,7 @@ func (r *Runner) runDirect(ctx context.Context, params *RunParams) (*RunResult, 
 
 	// Wait for command to complete
 	err := cmd.Wait()
-	duration := time.Since(startTime)
+	duration := timeutil.Since(startNano)
 
 	// Check for context cancellation (timeout)
 	if ctx.Err() == context.DeadlineExceeded {
@@ -318,14 +322,39 @@ func (r *Runner) RunStream(ctx context.Context, params *RunParams) (<-chan CliSt
 			if ctx.Err() == context.DeadlineExceeded {
 				resultCh <- CliStreamChunk{Error: ErrTimeout{Duration: params.Timeout}}
 			} else if ctx.Err() != context.Canceled {
+				// Get stderr content for error message
+				stderrContent := stderr.String()
 				if exitErr, ok := err.(*exec.ExitError); ok {
 					resultCh <- CliStreamChunk{
 						Error: ErrCliExecution{
 							Command:  params.Backend.Command,
 							ExitCode: exitErr.ExitCode(),
-							Stderr:   stderr.String(),
+							Stderr:   stderrContent,
 						},
 					}
+				} else {
+					// Handle other error types (e.g., command not found)
+					resultCh <- CliStreamChunk{
+						Error: ErrCliExecution{
+							Command:  params.Backend.Command,
+							ExitCode: -1,
+							Stderr:   stderrContent,
+							Cause:    err,
+						},
+					}
+				}
+			}
+		} else {
+			// Command succeeded but check if stderr has warnings/errors
+			stderrContent := stderr.String()
+			if stderrContent != "" && strings.Contains(strings.ToLower(stderrContent), "error") {
+				// CLI wrote error to stderr but exited with 0
+				resultCh <- CliStreamChunk{
+					Error: ErrCliExecution{
+						Command:  params.Backend.Command,
+						ExitCode: 0,
+						Stderr:   stderrContent,
+					},
 				}
 			}
 		}

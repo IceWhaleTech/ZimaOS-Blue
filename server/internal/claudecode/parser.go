@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // OutputParser parses CLI output based on the configured format.
@@ -129,47 +131,155 @@ func (p *OutputParser) ParseStream(reader io.Reader, format OutputFormat) <-chan
 }
 
 // parseStreamJSONL parses streaming JSONL output.
+// Uses buffered reading with immediate line processing for real-time streaming.
+// For CC CLI stream-json format, sends text chunks as they are read.
 func (p *OutputParser) parseStreamJSONL(reader io.Reader, ch chan<- CliStreamChunk) {
-	scanner := bufio.NewScanner(reader)
-	// Increase buffer size for large JSON lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	// Use a buffered reader for efficient byte-level reading
+	bufReader := bufio.NewReaderSize(reader, 64*1024)
+	var lineBuffer strings.Builder
+	var sessionId string
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	// Track if we're inside a text field for partial sending
+	inTextField := false
+	textFieldBuffer := strings.Builder{}
+
+	for {
+		// Read one byte at a time to detect newlines immediately
+		b, err := bufReader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				// Process any remaining data in buffer
+				if lineBuffer.Len() > 0 {
+					p.processJSONLLine(lineBuffer.String(), ch)
+				}
+				return
+			}
+			ch <- CliStreamChunk{Error: err}
+			return
 		}
 
-		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &raw); err != nil {
-			// Skip non-JSON lines
-			continue
-		}
+		if b == '\n' {
+			// Process the complete line immediately
+			line := lineBuffer.String()
+			lineBuffer.Reset()
+			inTextField = false
+			textFieldBuffer.Reset()
 
-		chunk := CliStreamChunk{
-			Text:      p.extractText(raw),
-			SessionId: p.extractSessionId(raw),
-		}
+			if line != "" {
+				p.processJSONLLine(line, ch)
+			}
+		} else {
+			lineBuffer.WriteByte(b)
 
-		// Check for usage (indicates final message)
-		if usage := p.extractUsage(raw); usage.TotalTokens > 0 {
-			chunk.Usage = &usage
-		}
+			// Try to detect and send text content incrementally
+			// Look for patterns like "text":" or "content":"
+			lineStr := lineBuffer.String()
+			if !inTextField {
+				// Check if we just entered a text field
+				if strings.HasSuffix(lineStr, `"text":"`) || strings.HasSuffix(lineStr, `"content":"`) {
+					inTextField = true
+					textFieldBuffer.Reset()
+				}
+			} else {
+				// We're in a text field, accumulate and send chunks
+				if b == '"' && !strings.HasSuffix(lineStr, `\"`) {
+					// End of text field
+					if textFieldBuffer.Len() > 0 {
+						// Send remaining text
+						text := textFieldBuffer.String()
+						// Unescape JSON string
+						text = strings.ReplaceAll(text, `\"`, `"`)
+						text = strings.ReplaceAll(text, `\\`, `\`)
+						text = strings.ReplaceAll(text, `\n`, "\n")
+						text = strings.ReplaceAll(text, `\t`, "\t")
+						if text != "" {
+							ch <- CliStreamChunk{
+								Text:      text,
+								SessionId: sessionId,
+							}
+						}
+					}
+					inTextField = false
+					textFieldBuffer.Reset()
+				} else {
+					textFieldBuffer.WriteByte(b)
+					// Send chunks immediately when we have enough characters (3-8 chars)
+					// No artificial delay - let the natural network/process latency provide pacing
+					chunkSize := 3 + int(timeutil.NowNano()%6)
+					if textFieldBuffer.Len() >= chunkSize {
+						text := textFieldBuffer.String()
+						textFieldBuffer.Reset()
+						// Unescape JSON string
+						text = strings.ReplaceAll(text, `\"`, `"`)
+						text = strings.ReplaceAll(text, `\\`, `\`)
+						text = strings.ReplaceAll(text, `\n`, "\n")
+						text = strings.ReplaceAll(text, `\t`, "\t")
+						if text != "" {
+							ch <- CliStreamChunk{
+								Text:      text,
+								SessionId: sessionId,
+							}
+						}
+					}
+				}
+			}
 
-		// Check for done/stop indicators
-		if done, ok := raw["done"].(bool); ok && done {
-			chunk.Done = true
+			// Extract session ID if present
+			if strings.Contains(lineStr, `"session_id":"`) || strings.Contains(lineStr, `"sessionId":"`) {
+				// Try to extract session ID
+				for _, pattern := range []string{`"session_id":"`, `"sessionId":"`} {
+					if idx := strings.Index(lineStr, pattern); idx >= 0 {
+						start := idx + len(pattern)
+						end := strings.Index(lineStr[start:], `"`)
+						if end > 0 {
+							sessionId = lineStr[start : start+end]
+						}
+					}
+				}
+			}
 		}
-		if stopReason, ok := raw["stop_reason"].(string); ok && stopReason != "" {
-			chunk.Done = true
-		}
+	}
+}
 
-		ch <- chunk
+// processJSONLLine processes a single JSONL line and sends final metadata.
+// Text content is already sent incrementally during byte reading.
+func (p *OutputParser) processJSONLLine(line string, ch chan<- CliStreamChunk) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
 	}
 
-	if err := scanner.Err(); err != nil {
-		ch <- CliStreamChunk{Error: err}
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		// Skip non-JSON lines
+		return
+	}
+
+	sessionId := p.extractSessionId(raw)
+
+	// Check for usage (indicates final message)
+	var usage *CliUsage
+	if u := p.extractUsage(raw); u.TotalTokens > 0 {
+		usage = &u
+	}
+
+	// Check for done/stop indicators
+	done := false
+	if d, ok := raw["done"].(bool); ok && d {
+		done = true
+	}
+	if stopReason, ok := raw["stop_reason"].(string); ok && stopReason != "" {
+		done = true
+	}
+
+	// Only send chunk if there's metadata to report (usage/done)
+	// Text was already sent incrementally
+	if done || usage != nil {
+		ch <- CliStreamChunk{
+			SessionId: sessionId,
+			Usage:     usage,
+			Done:      done,
+		}
 	}
 }
 
@@ -196,20 +306,29 @@ func (p *OutputParser) parseStreamJSON(reader io.Reader, ch chan<- CliStreamChun
 }
 
 // parseStreamText parses streaming text output.
+// Uses rune-level reading for real-time character-by-character streaming.
+// This correctly handles multi-byte UTF-8 characters (e.g., Chinese, emoji).
 func (p *OutputParser) parseStreamText(reader io.Reader, ch chan<- CliStreamChunk) {
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
+	bufReader := bufio.NewReaderSize(reader, 4096)
+
+	for {
+		// Read one rune at a time for character-level streaming
+		// ReadRune correctly handles multi-byte UTF-8 characters
+		r, _, err := bufReader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				ch <- CliStreamChunk{Done: true}
+				return
+			}
+			ch <- CliStreamChunk{Error: err}
+			return
+		}
+
+		// Send each character immediately for real-time streaming effect
 		ch <- CliStreamChunk{
-			Text: scanner.Text() + "\n",
+			Text: string(r),
 		}
 	}
-
-	if err := scanner.Err(); err != nil {
-		ch <- CliStreamChunk{Error: err}
-		return
-	}
-
-	ch <- CliStreamChunk{Done: true}
 }
 
 // extractText extracts text content from a JSON object.

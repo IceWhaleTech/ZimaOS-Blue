@@ -62,6 +62,22 @@ export interface ClearCacheResponse {
   message: string
 }
 
+// Config response from GET /api/v1/claudecode/config
+export interface ClaudeCodeConfigResponse {
+  enabled: boolean
+  default_model: string
+  sandbox_enabled: boolean
+  network_enabled: boolean
+}
+
+// Config request for PUT /api/v1/claudecode/config
+export interface ClaudeCodeConfigRequest {
+  enabled?: boolean
+  default_model?: string
+  sandbox_enabled?: boolean
+  network_enabled?: boolean
+}
+
 // Claude Code CLI API
 export const claudeCodeApi = {
   // Get current version information
@@ -80,4 +96,11 @@ export const claudeCodeApi = {
 
   // Clear downloaded cache
   clearCache: () => api.post<ClearCacheResponse>('/claudecode/cache/clear'),
+
+  // Get configuration
+  getConfig: () => api.get<ClaudeCodeConfigResponse>('/claudecode/config'),
+
+  // Update configuration
+  setConfig: (config: ClaudeCodeConfigRequest) =>
+    api.put<ClaudeCodeConfigResponse>('/claudecode/config', config),
 }

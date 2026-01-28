@@ -4,6 +4,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // SystemMetrics represents a snapshot of system metrics at a point in time
@@ -77,7 +79,7 @@ func (c *Collector) collect() {
 	runtime.ReadMemStats(&m)
 
 	metrics := SystemMetrics{
-		Timestamp:        time.Now(),
+		Timestamp:        timeutil.NowTime(),
 		CPUPercent:       c.estimateCPUPercent(),
 		MemoryUsedBytes:  m.Alloc,
 		MemoryTotalBytes: m.Sys,
@@ -105,7 +107,7 @@ func (c *Collector) estimateCPUPercent() float64 {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	// Calculate based on GC CPU fraction and goroutine count
 	gcCPU := m.GCCPUFraction * 100
@@ -137,7 +139,7 @@ func (c *Collector) GetHistory(duration time.Duration) MetricsHistory {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	cutoff := time.Now().Add(-duration)
+	cutoff := timeutil.NowTime().Add(-duration)
 
 	var filtered []SystemMetrics
 	for _, m := range c.history {

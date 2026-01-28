@@ -65,12 +65,17 @@ type ChatResponse struct {
 
 // StreamChunk represents a chunk of a streaming response.
 type StreamChunk struct {
-	ID      string `json:"id"`
-	Model   string `json:"model"`
-	Delta   string `json:"delta"`
-	Done    bool   `json:"done"`
-	Usage   *Usage `json:"usage,omitempty"`
+	ID    string `json:"id"`
+	Model string `json:"model"`
+	Delta string `json:"delta"`
+	Done  bool   `json:"done"`
+	Usage *Usage `json:"usage,omitempty"`
+	Error string `json:"error,omitempty"`
 }
+
+// StreamCallback is a function that receives stream chunks.
+// Return an error to stop the stream.
+type StreamCallback func(chunk StreamChunk) error
 
 // Provider defines the interface for LLM providers.
 type Provider interface {
@@ -85,6 +90,10 @@ type Provider interface {
 
 	// ChatStream sends a chat completion request and returns a channel of stream chunks.
 	ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error)
+
+	// ChatStreamCallback sends a chat completion request and calls the callback for each chunk.
+	// This is preferred over ChatStream as it avoids channel-related issues.
+	ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error
 }
 
 // ModelRefresher is an optional interface for providers that support refreshing models.
@@ -129,6 +138,21 @@ func (r *ProviderRegistry) List() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// Update replaces an existing provider with a new one.
+// This is useful for updating provider credentials at runtime.
+func (r *ProviderRegistry) Update(provider Provider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.providers[provider.Name()] = provider
+}
+
+// Remove removes a provider from the registry.
+func (r *ProviderRegistry) Remove(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.providers, name)
 }
 
 // MockProvider is a mock implementation of Provider for testing.

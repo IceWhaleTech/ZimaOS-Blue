@@ -2,7 +2,7 @@ import api from './client'
 
 export type WorkflowStatus = 'draft' | 'active' | 'disabled' | 'error'
 export type ExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-export type NodeType = 'trigger' | 'action' | 'condition' | 'loop' | 'delay'
+export type NodeType = 'trigger' | 'action' | 'condition' | 'loop' | 'delay' | 'switch' | 'merge' | 'subflow'
 
 export interface WorkflowNode {
   id: string

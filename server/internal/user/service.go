@@ -336,3 +336,8 @@ func (s *Service) RevokeAllSessions(ctx context.Context, userID uuid.UUID) error
 func (s *Service) GetUserSessions(ctx context.Context, userID uuid.UUID) ([]*Session, error) {
 	return s.repo.GetUserSessions(ctx, userID)
 }
+
+// ExistsByUsername checks if a username exists.
+func (s *Service) ExistsByUsername(ctx context.Context, username string) (bool, error) {
+	return s.repo.ExistsByUsername(ctx, username)
+}

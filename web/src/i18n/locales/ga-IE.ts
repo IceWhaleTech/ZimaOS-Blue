@@ -37,6 +37,9 @@ export default {
     ...enUS.nav,
     taskCenter: 'Ionad Tascanna',
     channels: 'Cainéil',
+    automation: 'Uathoibriú',
+    security: 'Slándáil',
+    companion: 'Companion',
   },
   extensions: {
     ...enUS.extensions,

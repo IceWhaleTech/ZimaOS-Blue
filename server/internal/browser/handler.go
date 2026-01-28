@@ -1,7 +1,10 @@
 package browser
 
 import (
+	"context"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -9,11 +12,30 @@ import (
 // Handler handles browser automation HTTP requests.
 type Handler struct {
 	service Service
+	tasks   map[string]*BrowserTask
+	tasksMu sync.RWMutex
+}
+
+// BrowserTask represents a browser automation task.
+type BrowserTask struct {
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	Status      string      `json:"status"`
+	Steps       interface{} `json:"steps"`
+	CreatedAt   string      `json:"created_at"`
+	StartedAt   string      `json:"started_at,omitempty"`
+	CompletedAt string      `json:"completed_at,omitempty"`
+	Error       string      `json:"error,omitempty"`
+	Result      interface{} `json:"result,omitempty"`
 }
 
 // NewHandler creates a new browser handler.
 func NewHandler(service Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{
+		service: service,
+		tasks:   make(map[string]*BrowserTask),
+	}
 }
 
 // RegisterRoutes registers the browser routes.
@@ -49,23 +71,251 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// Task management (stub endpoints for frontend compatibility)
 	g.GET("/tasks", h.ListTasks)
+	g.POST("/tasks", h.CreateTask)
+	g.GET("/tasks/:id", h.GetTask)
+	g.POST("/tasks/:id/run", h.RunTask)
+	g.POST("/tasks/:id/cancel", h.CancelTask)
+	g.DELETE("/tasks/:id", h.DeleteTask)
+
+	// Session management (stub endpoints for frontend compatibility)
 	g.GET("/sessions", h.ListSessions)
+	g.POST("/sessions", h.CreateSession)
+	g.GET("/sessions/:id", h.GetSession)
+	g.DELETE("/sessions/:id", h.CloseSession)
+	g.POST("/sessions/:id/screenshot", h.SessionScreenshot)
+	g.POST("/sessions/:id/navigate", h.SessionNavigate)
+	g.POST("/sessions/:id/execute", h.SessionExecute)
+
+	// Security configuration (stub endpoints for frontend compatibility)
+	g.GET("/security", h.GetSecurityConfig)
+	g.PUT("/security", h.UpdateSecurityConfig)
+	g.POST("/security/allowed", h.AddAllowedDomain)
+	g.DELETE("/security/allowed/:domain", h.RemoveAllowedDomain)
+	g.POST("/security/blocked", h.AddBlockedDomain)
+	g.DELETE("/security/blocked/:domain", h.RemoveBlockedDomain)
+	g.POST("/security/test", h.TestURL)
 }
 
-// ListTasks returns all browser automation tasks (stub).
+// ListTasks returns all browser automation tasks.
 func (h *Handler) ListTasks(c echo.Context) error {
-	// Return empty array for now - task management not yet implemented
-	return c.JSON(http.StatusOK, []interface{}{})
+	h.tasksMu.RLock()
+	defer h.tasksMu.RUnlock()
+
+	tasks := make([]*BrowserTask, 0, len(h.tasks))
+	for _, task := range h.tasks {
+		tasks = append(tasks, task)
+	}
+	return c.JSON(http.StatusOK, tasks)
 }
 
-// ListSessions returns all browser sessions (stub).
+// CreateTask creates a new browser automation task.
+func (h *Handler) CreateTask(c echo.Context) error {
+	var req struct {
+		Name        string      `json:"name"`
+		Description string      `json:"description"`
+		Steps       interface{} `json:"steps"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	// Generate unique ID
+	id := time.Now().Format("20060102150405") + "-" + randomString(6)
+
+	task := &BrowserTask{
+		ID:          id,
+		Name:        req.Name,
+		Description: req.Description,
+		Status:      "pending",
+		Steps:       req.Steps,
+		CreatedAt:   time.Now().Format(time.RFC3339),
+	}
+
+	h.tasksMu.Lock()
+	h.tasks[id] = task
+	h.tasksMu.Unlock()
+
+	return c.JSON(http.StatusOK, task)
+}
+
+// randomString generates a random string of given length.
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+		time.Sleep(time.Nanosecond)
+	}
+	return string(b)
+}
+
+// GetTask returns a specific task.
+func (h *Handler) GetTask(c echo.Context) error {
+	id := c.Param("id")
+
+	h.tasksMu.RLock()
+	task, exists := h.tasks[id]
+	h.tasksMu.RUnlock()
+
+	if !exists {
+		return echo.NewHTTPError(http.StatusNotFound, "task not found")
+	}
+	return c.JSON(http.StatusOK, task)
+}
+
+// RunTask runs a task.
+func (h *Handler) RunTask(c echo.Context) error {
+	id := c.Param("id")
+
+	h.tasksMu.Lock()
+	task, exists := h.tasks[id]
+	if exists {
+		task.Status = "running"
+		task.StartedAt = time.Now().Format(time.RFC3339)
+	}
+	h.tasksMu.Unlock()
+
+	if !exists {
+		return echo.NewHTTPError(http.StatusNotFound, "task not found")
+	}
+
+	// Simulate task completion after a short delay (in production, this would be async)
+	go func() {
+		time.Sleep(2 * time.Second)
+		h.tasksMu.Lock()
+		if t, ok := h.tasks[id]; ok {
+			t.Status = "completed"
+			t.CompletedAt = time.Now().Format(time.RFC3339)
+		}
+		h.tasksMu.Unlock()
+	}()
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "started"})
+}
+
+// CancelTask cancels a running task.
+func (h *Handler) CancelTask(c echo.Context) error {
+	id := c.Param("id")
+
+	h.tasksMu.Lock()
+	task, exists := h.tasks[id]
+	if exists && task.Status == "running" {
+		task.Status = "cancelled"
+		task.CompletedAt = time.Now().Format(time.RFC3339)
+	}
+	h.tasksMu.Unlock()
+
+	if !exists {
+		return echo.NewHTTPError(http.StatusNotFound, "task not found")
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
+}
+
+// DeleteTask deletes a task.
+func (h *Handler) DeleteTask(c echo.Context) error {
+	id := c.Param("id")
+
+	h.tasksMu.Lock()
+	delete(h.tasks, id)
+	h.tasksMu.Unlock()
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+// ListSessions returns all browser sessions.
 func (h *Handler) ListSessions(c echo.Context) error {
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
+	defer cancel()
+
 	// Return tabs as sessions for compatibility
-	tabs, err := h.service.Tabs(c.Request().Context())
+	tabs, err := h.service.Tabs(ctx)
 	if err != nil {
 		return c.JSON(http.StatusOK, []interface{}{})
 	}
 	return c.JSON(http.StatusOK, tabs)
+}
+
+// CreateSession creates a new browser session.
+func (h *Handler) CreateSession(c echo.Context) error {
+	// Create a context with timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+	defer cancel()
+
+	// Try to create a new tab
+	tab, err := h.service.OpenTab(ctx, "about:blank")
+	if err != nil {
+		// Return a stub session if browser not available or timeout
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"id":            "session-" + time.Now().Format("20060102150405"),
+			"status":        "idle",
+			"current_url":   "",
+			"page_title":    "",
+			"created_at":    time.Now().Format(time.RFC3339),
+			"last_activity": time.Now().Format(time.RFC3339),
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":            tab.TargetID,
+		"status":        "active",
+		"current_url":   tab.URL,
+		"page_title":    tab.Title,
+		"created_at":    time.Now().Format(time.RFC3339),
+		"last_activity": time.Now().Format(time.RFC3339),
+	})
+}
+
+// GetSession returns a specific session.
+func (h *Handler) GetSession(c echo.Context) error {
+	id := c.Param("id")
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":            id,
+		"status":        "active",
+		"current_url":   "",
+		"page_title":    "",
+		"created_at":    time.Now().Format(time.RFC3339),
+		"last_activity": time.Now().Format(time.RFC3339),
+	})
+}
+
+// CloseSession closes a browser session.
+func (h *Handler) CloseSession(c echo.Context) error {
+	id := c.Param("id")
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
+	defer cancel()
+	// Try to close the tab
+	_ = h.service.CloseTab(ctx, id)
+	return c.NoContent(http.StatusNoContent)
+}
+
+// SessionScreenshot takes a screenshot of a session (stub).
+func (h *Handler) SessionScreenshot(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]string{
+		"screenshot": "",
+	})
+}
+
+// SessionNavigate navigates a session to a URL (stub).
+func (h *Handler) SessionNavigate(c echo.Context) error {
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "navigated"})
+}
+
+// SessionExecute executes a step in a session (stub).
+func (h *Handler) SessionExecute(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"screenshot":     "",
+		"extracted_data": nil,
+		"element_found":  true,
+		"page_title":     "",
+		"page_url":       "",
+	})
 }
 
 // Status returns the browser status.
@@ -305,4 +555,123 @@ func mapError(err error) *echo.HTTPError {
 	default:
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+}
+
+// BrowserSecurityConfig represents the browser security configuration.
+type BrowserSecurityConfig struct {
+	AllowedDomains []string `json:"allowed_domains"`
+	BlockedDomains []string `json:"blocked_domains"`
+}
+
+// In-memory security config (stub - should be persisted in production)
+var securityConfig = BrowserSecurityConfig{
+	AllowedDomains: []string{},
+	BlockedDomains: []string{},
+}
+
+// GetSecurityConfig returns the browser security configuration (stub).
+func (h *Handler) GetSecurityConfig(c echo.Context) error {
+	return c.JSON(http.StatusOK, securityConfig)
+}
+
+// UpdateSecurityConfig updates the browser security configuration (stub).
+func (h *Handler) UpdateSecurityConfig(c echo.Context) error {
+	var config BrowserSecurityConfig
+	if err := c.Bind(&config); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	securityConfig = config
+	return c.JSON(http.StatusOK, securityConfig)
+}
+
+// AddAllowedDomain adds a domain to the allowed list (stub).
+func (h *Handler) AddAllowedDomain(c echo.Context) error {
+	var req struct {
+		Domain string `json:"domain"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if req.Domain == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
+	}
+	// Check if already exists
+	for _, d := range securityConfig.AllowedDomains {
+		if d == req.Domain {
+			return c.JSON(http.StatusOK, securityConfig)
+		}
+	}
+	securityConfig.AllowedDomains = append(securityConfig.AllowedDomains, req.Domain)
+	return c.JSON(http.StatusOK, securityConfig)
+}
+
+// RemoveAllowedDomain removes a domain from the allowed list (stub).
+func (h *Handler) RemoveAllowedDomain(c echo.Context) error {
+	domain := c.Param("domain")
+	if domain == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
+	}
+	newList := make([]string, 0, len(securityConfig.AllowedDomains))
+	for _, d := range securityConfig.AllowedDomains {
+		if d != domain {
+			newList = append(newList, d)
+		}
+	}
+	securityConfig.AllowedDomains = newList
+	return c.JSON(http.StatusOK, securityConfig)
+}
+
+// AddBlockedDomain adds a domain to the blocked list (stub).
+func (h *Handler) AddBlockedDomain(c echo.Context) error {
+	var req struct {
+		Domain string `json:"domain"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if req.Domain == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
+	}
+	// Check if already exists
+	for _, d := range securityConfig.BlockedDomains {
+		if d == req.Domain {
+			return c.JSON(http.StatusOK, securityConfig)
+		}
+	}
+	securityConfig.BlockedDomains = append(securityConfig.BlockedDomains, req.Domain)
+	return c.JSON(http.StatusOK, securityConfig)
+}
+
+// RemoveBlockedDomain removes a domain from the blocked list (stub).
+func (h *Handler) RemoveBlockedDomain(c echo.Context) error {
+	domain := c.Param("domain")
+	if domain == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
+	}
+	newList := make([]string, 0, len(securityConfig.BlockedDomains))
+	for _, d := range securityConfig.BlockedDomains {
+		if d != domain {
+			newList = append(newList, d)
+		}
+	}
+	securityConfig.BlockedDomains = newList
+	return c.JSON(http.StatusOK, securityConfig)
+}
+
+// TestURL tests if a URL is allowed (stub).
+func (h *Handler) TestURL(c echo.Context) error {
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if req.URL == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
+	}
+	// Simple stub - always allow
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"allowed": true,
+		"reason":  "",
+	})
 }

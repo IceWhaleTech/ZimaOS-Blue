@@ -335,34 +335,134 @@ func TestExtractUsage(t *testing.T) {
 }
 
 func TestParseStream(t *testing.T) {
+	// Test with text format (default for CC CLI)
 	config := DefaultClaudeCodeBackend()
 	parser := NewOutputParser(&config)
 
-	input := `{"text": "Hello"}
-{"text": " world", "done": true}`
+	input := "Hello world"
 
 	reader := strings.NewReader(input)
-	ch := parser.ParseStream(reader, OutputFormatJSONL)
+	ch := parser.ParseStream(reader, OutputFormatText)
 
 	var chunks []CliStreamChunk
 	for chunk := range ch {
 		chunks = append(chunks, chunk)
 	}
 
-	if len(chunks) < 2 {
-		t.Errorf("expected at least 2 chunks, got %d", len(chunks))
+	// Collect all text from chunks
+	var fullText strings.Builder
+	var hasDone bool
+	for _, chunk := range chunks {
+		if chunk.Text != "" {
+			fullText.WriteString(chunk.Text)
+		}
+		if chunk.Done {
+			hasDone = true
+		}
 	}
 
-	// First chunk should have "Hello"
-	if chunks[0].Text != "Hello" {
-		t.Errorf("first chunk text = '%s', want 'Hello'", chunks[0].Text)
+	// Verify full text matches input
+	if fullText.String() != input {
+		t.Errorf("expected text '%s', got '%s'", input, fullText.String())
 	}
 
-	// Second chunk should have " world" and be done
-	if chunks[1].Text != " world" {
-		t.Errorf("second chunk text = '%s', want ' world'", chunks[1].Text)
+	// Should have a done chunk
+	if !hasDone {
+		t.Error("expected at least one done chunk")
 	}
-	if !chunks[1].Done {
-		t.Error("expected second chunk to be done")
+}
+
+func TestParseStreamText(t *testing.T) {
+	config := DefaultClaudeCodeBackend()
+	config.Output = "text" // Set to text mode
+	parser := NewOutputParser(&config)
+
+	input := "Hello, world!"
+
+	reader := strings.NewReader(input)
+	ch := parser.ParseStream(reader, OutputFormatText)
+
+	var chunks []CliStreamChunk
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+	}
+
+	// Should have one chunk per rune plus a done chunk
+	// "Hello, world!" = 13 runes + 1 done chunk = 14 chunks
+	expectedChars := len([]rune(input))
+
+	// Count non-done chunks
+	textChunks := 0
+	var fullText strings.Builder
+	for _, chunk := range chunks {
+		if chunk.Text != "" {
+			textChunks++
+			fullText.WriteString(chunk.Text)
+		}
+	}
+
+	if textChunks != expectedChars {
+		t.Errorf("expected %d text chunks (one per rune), got %d", expectedChars, textChunks)
+	}
+
+	// Verify full text is reconstructed correctly
+	if fullText.String() != input {
+		t.Errorf("reconstructed text = '%s', want '%s'", fullText.String(), input)
+	}
+
+	// Last chunk should be done
+	lastChunk := chunks[len(chunks)-1]
+	if !lastChunk.Done {
+		t.Error("expected last chunk to be done")
+	}
+}
+
+func TestParseStreamTextUTF8(t *testing.T) {
+	config := DefaultClaudeCodeBackend()
+	config.Output = "text"
+	parser := NewOutputParser(&config)
+
+	// Test with Chinese characters (multi-byte UTF-8)
+	input := "你好世界"
+
+	reader := strings.NewReader(input)
+	ch := parser.ParseStream(reader, OutputFormatText)
+
+	var chunks []CliStreamChunk
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+	}
+
+	// Should have one chunk per rune (4 Chinese characters) plus a done chunk
+	expectedChars := len([]rune(input)) // 4 runes, not 12 bytes
+
+	// Count non-done chunks
+	textChunks := 0
+	var fullText strings.Builder
+	for _, chunk := range chunks {
+		if chunk.Text != "" {
+			textChunks++
+			fullText.WriteString(chunk.Text)
+		}
+	}
+
+	if textChunks != expectedChars {
+		t.Errorf("expected %d text chunks (one per rune), got %d", expectedChars, textChunks)
+	}
+
+	// Verify full text is reconstructed correctly
+	if fullText.String() != input {
+		t.Errorf("reconstructed text = '%s', want '%s'", fullText.String(), input)
+	}
+
+	// Verify each chunk is a complete Chinese character
+	for i, chunk := range chunks {
+		if chunk.Done {
+			continue
+		}
+		runeCount := len([]rune(chunk.Text))
+		if runeCount != 1 {
+			t.Errorf("chunk %d has %d runes, expected 1", i, runeCount)
+		}
 	}
 }

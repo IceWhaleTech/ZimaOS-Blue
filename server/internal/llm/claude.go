@@ -1,12 +1,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -33,6 +35,10 @@ func NewClaudeProvider(apiKey, baseURL string) *ClaudeProvider {
 		baseURL: baseURL,
 		client: &http.Client{
 			Timeout: claudeTimeout,
+			Transport: &http.Transport{
+				// Disable response buffering for streaming
+				DisableCompression: true,
+			},
 		},
 	}
 }
@@ -197,76 +203,362 @@ func (p *ClaudeProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		return nil, fmt.Errorf("Claude API returned status %d", resp.StatusCode)
 	}
 
-	// Create channel for streaming
-	ch := make(chan StreamChunk, 100)
+	// Create channel for streaming (unbuffered for immediate delivery)
+	ch := make(chan StreamChunk)
 
 	go func() {
 		defer close(ch)
 		defer resp.Body.Close()
 
-		decoder := json.NewDecoder(resp.Body)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			var event struct {
-				Type  string `json:"type"`
-				Index int    `json:"index"`
-				Delta struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"delta"`
-				Message struct {
-					ID    string `json:"id"`
-					Model string `json:"model"`
-					Usage struct {
-						InputTokens  int `json:"input_tokens"`
-						OutputTokens int `json:"output_tokens"`
-					} `json:"usage"`
-				} `json:"message"`
-			}
-
-			if err := decoder.Decode(&event); err != nil {
-				if err == io.EOF {
-					return
-				}
-				continue
-			}
-
-			switch event.Type {
-			case "content_block_delta":
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- StreamChunk{
-					Delta: event.Delta.Text,
-					Done:  false,
-				}:
-				}
-			case "message_stop":
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- StreamChunk{
-					ID:    event.Message.ID,
-					Model: event.Message.Model,
-					Done:  true,
-					Usage: &Usage{
-						PromptTokens:     event.Message.Usage.InputTokens,
-						CompletionTokens: event.Message.Usage.OutputTokens,
-						TotalTokens:      event.Message.Usage.InputTokens + event.Message.Usage.OutputTokens,
-					},
-				}:
-				}
-				return
-			}
-		}
+		p.parseSSEStream(ctx, resp.Body, ch, req.Model)
 	}()
 
 	return ch, nil
+}
+
+// ChatStreamCallback sends a streaming chat completion request and calls the callback for each chunk.
+func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error {
+	// Set stream flag
+	req.Stream = true
+	claudeReq := p.convertRequest(req)
+
+	// Marshal request
+	body, err := json.Marshal(claudeReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/messages", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", p.apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+	// Send request
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for HTTP error
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Claude API returned status %d", resp.StatusCode)
+	}
+
+	// Parse SSE stream directly with callback
+	return p.parseSSEStreamCallback(ctx, resp.Body, req.Model, callback)
+}
+
+// parseSSEStreamCallback parses SSE stream and calls callback for each chunk.
+func (p *ClaudeProvider) parseSSEStreamCallback(ctx context.Context, reader io.Reader, model string, callback StreamCallback) error {
+	// Read directly without buffering for immediate response
+	var messageID string
+	var inputTokens, outputTokens int
+	var lineBuffer strings.Builder
+	buf := make([]byte, 1)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read byte by byte directly from reader (no buffering)
+		n, err := reader.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			continue
+		}
+		if n == 0 {
+			continue
+		}
+
+		b := buf[0]
+		if b == '\n' {
+			line := strings.TrimSpace(lineBuffer.String())
+			lineBuffer.Reset()
+
+			if line == "" {
+				continue
+			}
+
+			done, err := p.processSSELineCallback(ctx, line, &messageID, &inputTokens, &outputTokens, model, callback)
+			if err != nil {
+				return err
+			}
+			if done {
+				return nil
+			}
+		} else if b != '\r' {
+			lineBuffer.WriteByte(b)
+		}
+	}
+}
+
+// processSSELineCallback processes a single SSE line with callback.
+func (p *ClaudeProvider) processSSELineCallback(ctx context.Context, line string, messageID *string, inputTokens, outputTokens *int, model string, callback StreamCallback) (bool, error) {
+	// Skip non-data lines
+	if len(line) < 6 || line[:6] != "data: " {
+		return false, nil
+	}
+
+	data := line[6:]
+	if data == "[DONE]" {
+		return true, nil
+	}
+
+	var event struct {
+		Type    string `json:"type"`
+		Index   int    `json:"index"`
+		Message struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+			Usage struct {
+				InputTokens  int `json:"input_tokens"`
+				OutputTokens int `json:"output_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+		Delta struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"delta"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return false, nil
+	}
+
+	switch event.Type {
+	case "message_start":
+		*messageID = event.Message.ID
+		if event.Message.Usage.InputTokens > 0 {
+			*inputTokens = event.Message.Usage.InputTokens
+		}
+
+	case "content_block_delta":
+		if event.Delta.Text != "" {
+			if err := callback(StreamChunk{
+				Delta: event.Delta.Text,
+				Done:  false,
+			}); err != nil {
+				return true, err
+			}
+		}
+
+	case "message_delta":
+		if event.Usage.OutputTokens > 0 {
+			*outputTokens = event.Usage.OutputTokens
+		}
+
+	case "message_stop":
+		if err := callback(StreamChunk{
+			ID:    *messageID,
+			Model: model,
+			Done:  true,
+			Usage: &Usage{
+				PromptTokens:     *inputTokens,
+				CompletionTokens: *outputTokens,
+				TotalTokens:      *inputTokens + *outputTokens,
+			},
+		}); err != nil {
+			return true, err
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// parseSSEStream parses SSE stream from Claude API and sends chunks.
+// Uses byte-level reading for immediate response when newlines are detected.
+func (p *ClaudeProvider) parseSSEStream(ctx context.Context, reader io.Reader, ch chan<- StreamChunk, model string) {
+	bufReader := bufio.NewReaderSize(reader, 4096)
+	var messageID string
+	var inputTokens, outputTokens int
+	var lineBuffer strings.Builder
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Read byte by byte for immediate newline detection
+		b, err := bufReader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				// Process any remaining data
+				if lineBuffer.Len() > 0 {
+					p.processSSELine(ctx, ch, lineBuffer.String(), &messageID, &inputTokens, &outputTokens, model)
+				}
+				return
+			}
+			continue
+		}
+
+		if b == '\n' {
+			// Process the complete line immediately
+			line := strings.TrimSpace(lineBuffer.String())
+			lineBuffer.Reset()
+
+			if line == "" {
+				continue
+			}
+
+			done := p.processSSELine(ctx, ch, line, &messageID, &inputTokens, &outputTokens, model)
+			if done {
+				return
+			}
+		} else if b != '\r' {
+			lineBuffer.WriteByte(b)
+		}
+	}
+}
+
+// processSSELine processes a single SSE line and returns true if stream is done.
+func (p *ClaudeProvider) processSSELine(ctx context.Context, ch chan<- StreamChunk, line string, messageID *string, inputTokens, outputTokens *int, model string) bool {
+	// Skip non-data lines
+	if len(line) < 6 || line[:6] != "data: " {
+		return false
+	}
+
+	data := line[6:]
+	if data == "[DONE]" {
+		return true
+	}
+
+	var event struct {
+		Type    string `json:"type"`
+		Index   int    `json:"index"`
+		Message struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+			Usage struct {
+				InputTokens  int `json:"input_tokens"`
+				OutputTokens int `json:"output_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+		Delta struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"delta"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return false
+	}
+
+	switch event.Type {
+	case "message_start":
+		*messageID = event.Message.ID
+		if event.Message.Usage.InputTokens > 0 {
+			*inputTokens = event.Message.Usage.InputTokens
+		}
+
+	case "content_block_delta":
+		if event.Delta.Text != "" {
+			// Send text in small chunks for typewriter effect
+			p.sendTextChunks(ctx, ch, event.Delta.Text)
+		}
+
+	case "message_delta":
+		if event.Usage.OutputTokens > 0 {
+			*outputTokens = event.Usage.OutputTokens
+		}
+
+	case "message_stop":
+		select {
+		case <-ctx.Done():
+			return true
+		case ch <- StreamChunk{
+			ID:    *messageID,
+			Model: model,
+			Done:  true,
+			Usage: &Usage{
+				PromptTokens:     *inputTokens,
+				CompletionTokens: *outputTokens,
+				TotalTokens:      *inputTokens + *outputTokens,
+			},
+		}:
+		}
+		return true
+	}
+
+	return false
+}
+
+// sendTextChunks splits text into small chunks and sends them for typewriter effect.
+func (p *ClaudeProvider) sendTextChunks(ctx context.Context, ch chan<- StreamChunk, text string) {
+	// For very short text (1-2 chars), send directly with a small delay
+	runes := []rune(text)
+	if len(runes) <= 2 {
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- StreamChunk{
+			Delta: text,
+			Done:  false,
+		}:
+		}
+		// Small delay for single character chunks (15-25ms)
+		delay := time.Duration(15+time.Now().UnixNano()%10) * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+		return
+	}
+
+	// Split into small chunks (3-6 characters for better typewriter effect)
+	pos := 0
+
+	for pos < len(runes) {
+		// Random chunk size between 3-6 characters
+		chunkSize := 3 + int(time.Now().UnixNano()%4)
+		if pos+chunkSize > len(runes) {
+			chunkSize = len(runes) - pos
+		}
+
+		chunk := string(runes[pos : pos+chunkSize])
+		pos += chunkSize
+
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- StreamChunk{
+			Delta: chunk,
+			Done:  false,
+		}:
+		}
+
+		// Add small delay between chunks for typewriter effect (10-30ms)
+		if pos < len(runes) {
+			delay := time.Duration(10+time.Now().UnixNano()%20) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+		}
+	}
 }
 
 // convertRequest converts a ChatRequest to Claude format.

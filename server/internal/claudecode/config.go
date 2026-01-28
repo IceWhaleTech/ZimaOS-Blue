@@ -74,6 +74,49 @@ type CliBackendConfig struct {
 	Serialize bool `mapstructure:"serialize" json:"serialize,omitempty"`
 }
 
+// SandboxConfig holds sandbox-specific configuration for Claude Code CLI.
+type SandboxConfig struct {
+	// Enabled indicates whether sandbox mode is enabled.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// MemoryLimit is the memory limit in bytes (default: 512MB).
+	MemoryLimit int64 `mapstructure:"memory_limit" json:"memory_limit,omitempty"`
+
+	// CPULimit is the CPU limit (1.0 = 1 core, default: 1.0).
+	CPULimit float64 `mapstructure:"cpu_limit" json:"cpu_limit,omitempty"`
+
+	// ProcessLimit is the maximum number of processes (default: 50).
+	ProcessLimit int `mapstructure:"process_limit" json:"process_limit,omitempty"`
+
+	// NetworkEnabled allows network access (default: true for API calls).
+	NetworkEnabled bool `mapstructure:"network_enabled" json:"network_enabled"`
+
+	// AllowedPaths are paths that can be accessed (in addition to WorkspaceDir).
+	AllowedPaths []string `mapstructure:"allowed_paths" json:"allowed_paths,omitempty"`
+
+	// DeniedPaths are paths that cannot be accessed.
+	DeniedPaths []string `mapstructure:"denied_paths" json:"denied_paths,omitempty"`
+}
+
+// DefaultSandboxConfig returns the default sandbox configuration.
+func DefaultSandboxConfig() SandboxConfig {
+	return SandboxConfig{
+		Enabled:        true, // Sandbox enabled by default for security
+		MemoryLimit:    512 * 1024 * 1024, // 512 MB
+		CPULimit:       1.0,
+		ProcessLimit:   50,
+		NetworkEnabled: true, // Required for API calls
+		AllowedPaths:   []string{},
+		DeniedPaths: []string{
+			"/etc/passwd",
+			"/etc/shadow",
+			"/etc/sudoers",
+			"/root",
+			"/home",
+		},
+	}
+}
+
 // ClaudeCodeConfig holds the main Claude Code CLI configuration.
 type ClaudeCodeConfig struct {
 	// Enabled indicates whether Claude Code CLI integration is enabled.
@@ -94,8 +137,17 @@ type ClaudeCodeConfig struct {
 	// SessionTTL is the time-to-live for CLI sessions.
 	SessionTTL time.Duration `mapstructure:"session_ttl" json:"session_ttl"`
 
+	// APIKey is the Anthropic API key for authentication.
+	APIKey string `mapstructure:"api_key" json:"api_key,omitempty"`
+
+	// BaseURL is the base URL for the Anthropic API (optional, for custom endpoints).
+	BaseURL string `mapstructure:"base_url" json:"base_url,omitempty"`
+
 	// Backend contains the CLI backend configuration.
 	Backend CliBackendConfig `mapstructure:"backend" json:"backend"`
+
+	// Sandbox contains sandbox configuration for secure execution.
+	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
 }
 
 // DefaultClaudeCodeBackend returns the default Claude Code CLI backend configuration.
@@ -105,28 +157,28 @@ func DefaultClaudeCodeBackend() CliBackendConfig {
 		Command: "claude",
 		Args: []string{
 			"-p",
-			"--output-format", "json",
+			"--output-format", "text",
 			"--dangerously-skip-permissions",
 		},
-		Output: "json",
+		Output: "text",
 		Input:  "arg",
 		ResumeArgs: []string{
 			"-p",
-			"--output-format", "json",
+			"--output-format", "text",
 			"--dangerously-skip-permissions",
 			"--resume", "{sessionId}",
 		},
-		ResumeOutput:     "json",
+		ResumeOutput:      "text",
 		MaxPromptArgChars: 100000,
-		ModelArg:         "--model",
+		ModelArg:          "--model",
 		ModelAliases: map[string]string{
 			"opus":   "opus",
 			"sonnet": "sonnet",
 			"haiku":  "haiku",
 			// Full model names
-			"claude-opus-4-5-20251101":   "opus",
-			"claude-sonnet-4-20250514":   "sonnet",
-			"claude-3-5-haiku-20241022":  "haiku",
+			"claude-opus-4-5-20251101":  "opus",
+			"claude-sonnet-4-20250514":  "sonnet",
+			"claude-3-5-haiku-20241022": "haiku",
 		},
 		SessionArg:  "--session-id",
 		SessionMode: "always",
@@ -140,6 +192,7 @@ func DefaultClaudeCodeBackend() CliBackendConfig {
 		ClearEnv: []string{
 			"ANTHROPIC_API_KEY",
 			"ANTHROPIC_API_KEY_OLD",
+			"ANTHROPIC_AUTH_TOKEN",
 		},
 		Serialize: true,
 	}
@@ -185,6 +238,7 @@ func DefaultClaudeCodeConfig() ClaudeCodeConfig {
 		Timeout:      5 * time.Minute,
 		SessionTTL:   24 * time.Hour,
 		Backend:      DefaultClaudeCodeBackend(),
+		Sandbox:      DefaultSandboxConfig(),
 	}
 }
 
@@ -312,6 +366,31 @@ func (c *ClaudeCodeConfig) WithDefaults() ClaudeCodeConfig {
 	}
 
 	result.Backend = result.Backend.WithDefaults()
+
+	// Add API key to environment if provided
+	// Claude Code CLI uses ANTHROPIC_AUTH_TOKEN for authentication
+	if result.APIKey != "" {
+		if result.Backend.Env == nil {
+			result.Backend.Env = make(map[string]string)
+		}
+		result.Backend.Env["ANTHROPIC_AUTH_TOKEN"] = result.APIKey
+		// Remove auth-related keys from ClearEnv since we're setting them
+		newClearEnv := make([]string, 0, len(result.Backend.ClearEnv))
+		for _, key := range result.Backend.ClearEnv {
+			if key != "ANTHROPIC_API_KEY" && key != "ANTHROPIC_AUTH_TOKEN" {
+				newClearEnv = append(newClearEnv, key)
+			}
+		}
+		result.Backend.ClearEnv = newClearEnv
+	}
+
+	// Add base URL to environment if provided
+	if result.BaseURL != "" {
+		if result.Backend.Env == nil {
+			result.Backend.Env = make(map[string]string)
+		}
+		result.Backend.Env["ANTHROPIC_BASE_URL"] = result.BaseURL
+	}
 
 	return result
 }

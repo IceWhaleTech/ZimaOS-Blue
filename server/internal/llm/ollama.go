@@ -268,8 +268,8 @@ func (p *OllamaProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		return nil, fmt.Errorf("Ollama API returned status %d", resp.StatusCode)
 	}
 
-	// Create channel for streaming
-	ch := make(chan StreamChunk, 100)
+	// Create channel for streaming (unbuffered for immediate delivery)
+	ch := make(chan StreamChunk)
 
 	go func() {
 		defer close(ch)
@@ -327,6 +327,88 @@ func (p *OllamaProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 	}()
 
 	return ch, nil
+}
+
+// ChatStreamCallback sends a streaming chat completion request and calls the callback for each chunk.
+func (p *OllamaProvider) ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error {
+	// Set stream flag
+	req.Stream = true
+	ollamaReq := p.convertRequest(req)
+
+	// Marshal request
+	body, err := json.Marshal(ollamaReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	// Send request
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for HTTP error
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Ollama API returned status %d", resp.StatusCode)
+	}
+
+	// Parse stream directly with callback
+	decoder := json.NewDecoder(resp.Body)
+	var totalPromptTokens, totalCompletionTokens int
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		var chunk ollamaResponse
+		if err := decoder.Decode(&chunk); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			continue
+		}
+
+		if chunk.Error != "" {
+			return fmt.Errorf("Ollama error: %s", chunk.Error)
+		}
+
+		totalPromptTokens = chunk.PromptEvalCount
+		totalCompletionTokens = chunk.EvalCount
+
+		streamChunk := StreamChunk{
+			Model: chunk.Model,
+			Delta: chunk.Message.Content,
+			Done:  chunk.Done,
+		}
+
+		if chunk.Done {
+			streamChunk.Usage = &Usage{
+				PromptTokens:     totalPromptTokens,
+				CompletionTokens: totalCompletionTokens,
+				TotalTokens:      totalPromptTokens + totalCompletionTokens,
+			}
+		}
+
+		if err := callback(streamChunk); err != nil {
+			return err
+		}
+
+		if chunk.Done {
+			return nil
+		}
+	}
 }
 
 // convertRequest converts a ChatRequest to Ollama format.

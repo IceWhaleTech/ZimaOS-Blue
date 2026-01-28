@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
 )
 
 // LRUCache implements an LRU (Least Recently Used) cache.
@@ -71,7 +73,7 @@ func (c *LRUCache) Get(ctx context.Context, key string) (interface{}, error) {
 	entry := elem.Value.(*lruEntry)
 
 	// Check expiration
-	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+	if !entry.expiresAt.IsZero() && timeutil.NowTime().After(entry.expiresAt) {
 		c.removeElement(elem)
 		c.misses.Add(1)
 		return nil, ErrKeyExpired
@@ -94,9 +96,9 @@ func (c *LRUCache) Set(ctx context.Context, key string, value interface{}, ttl t
 	// Calculate expiration
 	var expiresAt time.Time
 	if ttl > 0 {
-		expiresAt = time.Now().Add(ttl)
+		expiresAt = timeutil.NowTime().Add(ttl)
 	} else if c.config.DefaultTTL > 0 {
-		expiresAt = time.Now().Add(c.config.DefaultTTL)
+		expiresAt = timeutil.NowTime().Add(c.config.DefaultTTL)
 	}
 
 	// Check if key already exists
@@ -149,7 +151,7 @@ func (c *LRUCache) Exists(ctx context.Context, key string) bool {
 	}
 
 	entry := elem.Value.(*lruEntry)
-	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+	if !entry.expiresAt.IsZero() && timeutil.NowTime().After(entry.expiresAt) {
 		return false
 	}
 
@@ -266,7 +268,7 @@ func (c *LRUCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var next *list.Element
 
 	for elem := c.evictList.Back(); elem != nil; elem = next {
@@ -314,9 +316,9 @@ func (c *LRUCache) SetNX(ctx context.Context, key string, value interface{}, ttl
 
 	var expiresAt time.Time
 	if ttl > 0 {
-		expiresAt = time.Now().Add(ttl)
+		expiresAt = timeutil.NowTime().Add(ttl)
 	} else if c.config.DefaultTTL > 0 {
-		expiresAt = time.Now().Add(c.config.DefaultTTL)
+		expiresAt = timeutil.NowTime().Add(c.config.DefaultTTL)
 	}
 
 	for c.evictList.Len() >= c.config.MaxSize {
@@ -345,7 +347,7 @@ func (c *LRUCache) Touch(ctx context.Context, key string) bool {
 	}
 
 	entry := elem.Value.(*lruEntry)
-	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+	if !entry.expiresAt.IsZero() && timeutil.NowTime().After(entry.expiresAt) {
 		c.removeElement(elem)
 		return false
 	}

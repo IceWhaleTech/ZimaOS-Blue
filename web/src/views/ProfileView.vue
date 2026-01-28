@@ -255,6 +255,19 @@ function toggleScope(scope: string) {
     newKeyScopes.value = newKeyScopes.value.filter((s) => s !== scope)
   }
 }
+
+// Get translated scope label
+function getScopeLabel(scope: string): string {
+  const scopeMap: Record<string, string> = {
+    'chat': t('profile.scopeChat'),
+    'chat.read': t('profile.scopeChatRead'),
+    'skills.execute': t('profile.scopeSkillsExecute'),
+    'skills.list': t('profile.scopeSkillsList'),
+    'plugins.manage': t('profile.scopePluginsManage'),
+    'system.read': t('profile.scopeSystemRead'),
+  }
+  return scopeMap[scope] || scope
+}
 </script>
 
 <template>
@@ -549,7 +562,7 @@ function toggleScope(scope: string) {
                   :key="scope"
                   class="text-xs bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300"
                 >
-                  {{ scope }}
+                  {{ getScopeLabel(scope) }}
                 </span>
               </div>
             </div>

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AutoReplyRule, TriggerType, CreateRuleRequest } from '@/api/autoreply'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   rule?: AutoReplyRule | null
@@ -19,15 +22,15 @@ const triggerValue = ref('')
 const responses = ref<string[]>([''])
 const priority = ref(10)
 
-// Template variables
+// Template variables - descriptions will be translated in template
 const templateVariables = [
-  { name: '{{user}}', description: 'User name' },
-  { name: '{{message}}', description: 'Original message' },
-  { name: '{{time}}', description: 'Current time' },
-  { name: '{{date}}', description: 'Current date' },
-  { name: '{{channel}}', description: 'Channel name' },
-  { name: '{{$1}}', description: 'Regex capture group 1' },
-  { name: '{{$2}}', description: 'Regex capture group 2' },
+  { name: '{{user}}', descKey: 'autoReply.varUser' },
+  { name: '{{message}}', descKey: 'autoReply.varMessage' },
+  { name: '{{time}}', descKey: 'autoReply.varTime' },
+  { name: '{{date}}', descKey: 'autoReply.varDate' },
+  { name: '{{channel}}', descKey: 'autoReply.varChannel' },
+  { name: '{{$1}}', descKey: 'autoReply.varCapture1' },
+  { name: '{{$2}}', descKey: 'autoReply.varCapture2' },
 ]
 
 // Validation
@@ -68,7 +71,7 @@ watch(
         new RegExp(value)
         delete errors.value.triggerValue
       } catch {
-        errors.value.triggerValue = 'Invalid regular expression'
+        errors.value.triggerValue = t('autoReply.invalidRegex')
       }
     } else {
       delete errors.value.triggerValue
@@ -134,11 +137,11 @@ function handleSubmit(): void {
   <form @submit.prevent="handleSubmit" class="space-y-4">
     <!-- Name -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rule Name</label>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.ruleName') }}</label>
       <input
         v-model="name"
         type="text"
-        placeholder="Enter rule name"
+        :placeholder="t('autoReply.enterRuleName')"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
         required
       />
@@ -146,35 +149,31 @@ function handleSubmit(): void {
 
     <!-- Trigger Type -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Trigger Type</label>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.triggerType') }}</label>
       <select
         v-model="triggerType"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
       >
-        <option value="keyword">Keyword (exact match)</option>
-        <option value="contains">Contains</option>
-        <option value="prefix">Prefix (starts with)</option>
-        <option value="suffix">Suffix (ends with)</option>
-        <option value="regex">Regular Expression</option>
+        <option value="keyword">{{ t('autoReply.keywordExact') }}</option>
+        <option value="contains">{{ t('autoReply.contains') }}</option>
+        <option value="prefix">{{ t('autoReply.prefixStartsWith') }}</option>
+        <option value="suffix">{{ t('autoReply.suffixEndsWith') }}</option>
+        <option value="regex">{{ t('autoReply.regularExpression') }}</option>
       </select>
     </div>
 
     <!-- Trigger Value -->
     <div>
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Trigger Value
+        {{ t('autoReply.triggerValue') }}
         <span v-if="triggerType === 'regex'" class="text-gray-400 dark:text-gray-500 font-normal">
-          (regex pattern)
+          {{ t('autoReply.regexPattern') }}
         </span>
       </label>
       <input
         v-model="triggerValue"
         type="text"
-        :placeholder="
-          triggerType === 'regex'
-            ? 'e.g., hello|hi|hey'
-            : 'Enter trigger text'
-        "
+        :placeholder="t('autoReply.enterTriggerText')"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 border border-gray-300 dark:border-gray-600"
         :class="errors.triggerValue ? 'ring-2 ring-red-500' : 'focus:ring-blue-500'"
         required
@@ -187,8 +186,8 @@ function handleSubmit(): void {
     <!-- Priority -->
     <div>
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Priority
-        <span class="text-gray-400 dark:text-gray-500 font-normal">(higher = matched first)</span>
+        {{ t('autoReply.priority') }}
+        <span class="text-gray-400 dark:text-gray-500 font-normal">{{ t('autoReply.priorityHint') }}</span>
       </label>
       <input
         v-model.number="priority"
@@ -203,28 +202,28 @@ function handleSubmit(): void {
     <div>
       <div class="flex items-center justify-between mb-2">
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Responses
-          <span class="text-gray-400 dark:text-gray-500 font-normal">(random selection if multiple)</span>
+          {{ t('autoReply.responses') }}
+          <span class="text-gray-400 dark:text-gray-500 font-normal">{{ t('autoReply.responsesHint') }}</span>
         </label>
         <button
           type="button"
           class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300"
           @click="addResponse"
         >
-          + Add Response
+          {{ t('autoReply.addResponse') }}
         </button>
       </div>
 
       <!-- Template Variables -->
       <div class="mb-3 p-3 bg-gray-100 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div class="text-xs text-gray-500 dark:text-gray-500 mb-2">Available Variables (click to insert)</div>
+        <div class="text-xs text-gray-500 dark:text-gray-500 mb-2">{{ t('autoReply.availableVariables') }}</div>
         <div class="flex flex-wrap gap-2">
           <button
             v-for="variable in templateVariables"
             :key="variable.name"
             type="button"
             class="px-2 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-xs transition-colors"
-            :title="variable.description"
+            :title="t(variable.descKey)"
             @click="insertVariable(variable.name, 0)"
           >
             {{ variable.name }}
@@ -243,7 +242,7 @@ function handleSubmit(): void {
             v-model="responses[index]"
             :data-response-index="index"
             rows="2"
-            placeholder="Enter response message..."
+            :placeholder="t('autoReply.enterResponseMessage')"
             class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border border-gray-300 dark:border-gray-600"
           />
           <button
@@ -279,14 +278,14 @@ function handleSubmit(): void {
         :disabled="loading"
         @click="emit('cancel')"
       >
-        Cancel
+        {{ t('common.cancel') }}
       </button>
       <button
         type="submit"
         class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         :disabled="loading || !isValid"
       >
-        {{ loading ? 'Saving...' : rule ? 'Update Rule' : 'Create Rule' }}
+        {{ loading ? t('autoReply.saving') : rule ? t('autoReply.updateRule') : t('autoReply.createRule') }}
       </button>
     </div>
   </form>

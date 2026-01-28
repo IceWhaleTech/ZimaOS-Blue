@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { claudeCodeApi } from '@/api/claudecode'
-import type { ClaudeCodeVersionResponse, CheckUpdateResponse } from '@/api/claudecode'
+import type { ClaudeCodeVersionResponse, CheckUpdateResponse, ClaudeCodeConfigResponse } from '@/api/claudecode'
 
 const { t } = useI18n()
 
@@ -16,9 +16,13 @@ const updating = ref(false)
 const validating = ref(false)
 const clearing = ref(false)
 const downloading = ref(false)
+const togglingEnabled = ref(false)
+const togglingSandbox = ref(false)
+const togglingNetwork = ref(false)
 
 const versionInfo = ref<ClaudeCodeVersionResponse | null>(null)
 const updateInfo = ref<CheckUpdateResponse | null>(null)
+const configInfo = ref<ClaudeCodeConfigResponse | null>(null)
 const error = ref<string | null>(null)
 
 // Computed properties
@@ -55,8 +59,69 @@ const isInstalled = computed(() => {
 })
 
 onMounted(async () => {
-  await loadVersionInfo()
+  await Promise.all([loadVersionInfo(), loadConfig()])
 })
+
+async function loadConfig() {
+  try {
+    const response = await claudeCodeApi.getConfig()
+    configInfo.value = response.data
+  } catch (e) {
+    // Config load failure is not critical
+    console.error('Failed to load Claude Code config:', e)
+  }
+}
+
+async function toggleEnabled() {
+  if (!configInfo.value) return
+  try {
+    togglingEnabled.value = true
+    error.value = null
+    const newEnabled = !configInfo.value.enabled
+    const response = await claudeCodeApi.setConfig({ enabled: newEnabled })
+    configInfo.value = response.data
+    emit('status-change', newEnabled ? t('claudecode.enabled') : t('claudecode.disabled'))
+  } catch (e) {
+    error.value = t('claudecode.toggleError')
+    emit('status-change', t('claudecode.toggleError'))
+  } finally {
+    togglingEnabled.value = false
+  }
+}
+
+async function toggleSandbox() {
+  if (!configInfo.value) return
+  try {
+    togglingSandbox.value = true
+    error.value = null
+    const newSandboxEnabled = !configInfo.value.sandbox_enabled
+    const response = await claudeCodeApi.setConfig({ sandbox_enabled: newSandboxEnabled })
+    configInfo.value = response.data
+    emit('status-change', newSandboxEnabled ? t('claudecode.sandboxEnabled') : t('claudecode.sandboxDisabled'))
+  } catch (e) {
+    error.value = t('claudecode.toggleError')
+    emit('status-change', t('claudecode.toggleError'))
+  } finally {
+    togglingSandbox.value = false
+  }
+}
+
+async function toggleNetwork() {
+  if (!configInfo.value) return
+  try {
+    togglingNetwork.value = true
+    error.value = null
+    const newNetworkEnabled = !configInfo.value.network_enabled
+    const response = await claudeCodeApi.setConfig({ network_enabled: newNetworkEnabled })
+    configInfo.value = response.data
+    emit('status-change', newNetworkEnabled ? t('claudecode.networkEnabled') : t('claudecode.networkDisabled'))
+  } catch (e) {
+    error.value = t('claudecode.toggleError')
+    emit('status-change', t('claudecode.toggleError'))
+  } finally {
+    togglingNetwork.value = false
+  }
+}
 
 async function loadVersionInfo() {
   try {
@@ -208,6 +273,69 @@ function formatDate(dateStr?: string) {
 
       <!-- Version Info -->
       <div v-else-if="versionInfo">
+        <!-- Enable/Disable Toggle -->
+        <div class="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <div class="flex items-center gap-3">
+            <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.useForChat') }}</span>
+            <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.useForChatDesc') }}</span>
+          </div>
+          <button
+            :disabled="togglingEnabled || !isInstalled"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="configInfo?.enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+            role="switch"
+            :aria-checked="configInfo?.enabled"
+            @click="toggleEnabled"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="configInfo?.enabled ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+
+        <!-- Sandbox Toggle -->
+        <div class="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+          <div class="flex items-center gap-3">
+            <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.sandboxMode') }}</span>
+            <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.sandboxModeDesc') }}</span>
+          </div>
+          <button
+            :disabled="togglingSandbox || !isInstalled"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="configInfo?.sandbox_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+            role="switch"
+            :aria-checked="configInfo?.sandbox_enabled"
+            @click="toggleSandbox"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="configInfo?.sandbox_enabled ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+
+        <!-- Network Access Toggle (only shown when sandbox is enabled) -->
+        <div v-if="configInfo?.sandbox_enabled" class="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg ml-4">
+          <div class="flex items-center gap-3">
+            <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.networkAccess') }}</span>
+            <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.networkAccessDesc') }}</span>
+          </div>
+          <button
+            :disabled="togglingNetwork || !isInstalled"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="configInfo?.network_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+            role="switch"
+            :aria-checked="configInfo?.network_enabled"
+            @click="toggleNetwork"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="configInfo?.network_enabled ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+
         <!-- Status Header -->
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">

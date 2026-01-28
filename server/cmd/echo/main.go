@@ -22,6 +22,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
@@ -52,7 +53,7 @@ import (
 )
 
 var (
-	version   = "0.9.0"
+	version   = "0.10.2"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -160,11 +161,24 @@ func main() {
 	// Initialize LLM provider registry
 	llmRegistry := llm.NewProviderRegistry()
 
+	// Load saved LLM configuration from setup wizard
+	savedLLMConfig, err := setup.LoadLLMConfig(dataDir)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to load saved LLM config, falling back to environment variables")
+	}
+
 	// Register default LLM providers
-	// OpenAI provider (API key can be set via environment or config)
+	// Priority: saved config > environment variables > empty (for listing)
+
+	// OpenAI provider
 	openaiKey := os.Getenv("OPENAI_API_KEY")
+	openaiBaseURL := ""
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "openai" && savedLLMConfig.APIKey != "" {
+		openaiKey = savedLLMConfig.APIKey
+		openaiBaseURL = savedLLMConfig.BaseURL
+	}
 	if openaiKey != "" {
-		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, ""))
+		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, openaiBaseURL))
 	} else {
 		// Register with empty key - will fail on actual API calls but allows listing
 		llmRegistry.Register(llm.NewOpenAIProvider("", ""))
@@ -172,8 +186,20 @@ func main() {
 
 	// Claude provider
 	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
+	claudeBaseURL := ""
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "anthropic" && savedLLMConfig.APIKey != "" {
+		claudeKey = savedLLMConfig.APIKey
+		claudeBaseURL = savedLLMConfig.BaseURL
+	}
+	// Also check config.yaml for Claude Code CLI settings
+	if cfg.ClaudeCode.APIKey != "" {
+		claudeKey = cfg.ClaudeCode.APIKey
+	}
+	if cfg.ClaudeCode.BaseURL != "" {
+		claudeBaseURL = cfg.ClaudeCode.BaseURL
+	}
 	if claudeKey != "" {
-		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, ""))
+		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
 	} else {
 		llmRegistry.Register(llm.NewClaudeProvider("", ""))
 	}
@@ -183,17 +209,34 @@ func main() {
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "ollama" && savedLLMConfig.BaseURL != "" {
+		ollamaURL = savedLLMConfig.BaseURL
+	}
 	llmRegistry.Register(llm.NewOllamaProvider(ollamaURL))
 
 	// Custom OpenAI-compatible provider (for third-party services like DeepSeek, Together, etc.)
 	customKey := os.Getenv("CUSTOM_API_KEY")
 	customURL := os.Getenv("CUSTOM_API_URL")
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "custom" {
+		if savedLLMConfig.APIKey != "" {
+			customKey = savedLLMConfig.APIKey
+		}
+		if savedLLMConfig.BaseURL != "" {
+			customURL = savedLLMConfig.BaseURL
+		}
+	}
 	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
+
+	// Initialize tools registry and register built-in tools
+	toolRegistry := tools.NewRegistry()
+	tools.RegisterBuiltinTools(toolRegistry)
+	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
 	// Claude Code CLI provider (v0.10)
 	if cfg.ClaudeCode.Enabled {
-		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode)
+		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, claudeKey, claudeBaseURL)
 		ccProvider := claudecode.NewProvider(ccConfig)
+		ccProvider.SetToolRegistry(toolRegistry) // Set tool registry for system prompt
 		ccProvider.Start()
 		llmRegistry.Register(ccProvider)
 		logger.Info().Str("command", cfg.ClaudeCode.Command).Msg("Claude Code CLI provider registered")
@@ -203,11 +246,6 @@ func main() {
 			return ccProvider.Close()
 		})
 	}
-
-	// Initialize tools registry and register built-in tools
-	toolRegistry := tools.NewRegistry()
-	tools.RegisterBuiltinTools(toolRegistry)
-	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
 	// Initialize skill registry and register built-in skills
 	skillRegistry := skill.NewRegistry()
@@ -271,6 +309,15 @@ func main() {
 	metricsCollector.Start()
 	defer metricsCollector.Stop()
 
+	// Initialize metrics writer for detailed API metrics
+	metricsWriter := metrics.NewMetricsWriter(nil, metrics.DefaultWriterConfig())
+	metricsWriter.Start()
+	defer metricsWriter.Stop()
+	logger.Info().Msg("Metrics writer initialized")
+
+	// Set metrics recorder on chat handler for API call tracking
+	chatHandler.SetMetricsRecorder(metricsWriter)
+
 	// Initialize backup manager
 	backupManager, err := backup.NewManager(backup.Config{
 		Enabled:       true,
@@ -304,6 +351,7 @@ func main() {
 
 	// Initialize cron service and handler
 	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
+	cronService.RegisterBuiltinHandlers() // Register built-in handlers (command, http)
 	cronHandler := cron.NewHandler(cronService, zapLogger)
 	if err := cronService.Start(); err != nil {
 		logger.Warn().Err(err).Msg("Failed to start cron service")
@@ -400,13 +448,37 @@ func main() {
 		logger.Info().Msg("Form filler handler initialized")
 	}
 
+	// Initialize companion service (Echo Companion - real-time AI Agent monitoring)
+	companionConfig := companion.DefaultConfig()
+	companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+	companionStorage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+	var companionHandler *companion.Handler
+	var companionWSHandler *companion.WebSocketHandler
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
+	} else {
+		companionStreamer := companion.NewEventStreamer(companionConfig)
+		if err := companionStreamer.Start(lm.Context()); err != nil {
+			logger.Warn().Err(err).Msg("Failed to start companion streamer")
+		}
+		companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
+		companionHandler = companion.NewHandler(companionManager, companionStorage)
+		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
+		logger.Info().Msg("Companion handler initialized")
+
+		// Register shutdown hook for companion streamer
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return companionStreamer.Stop()
+		})
+	}
+
 	// Initialize HTTP server
 	srv := server.New(&cfg.Server)
 	server.SetVersion(version)
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, version, buildTime, gitCommit, dataDir)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, version, buildTime, gitCommit, dataDir)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -450,11 +522,11 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, version, buildTime, gitCommit, dataDir string) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, version, buildTime, gitCommit, dataDir string) {
 	e := srv.Echo()
 
 	// Setup wizard routes (no auth required)
-	setupHandler := setup.NewHandler("./data")
+	setupHandler := setup.NewHandlerWithVersion(dataDir, version)
 	// Set user creator for setup wizard to create admin user
 	setupHandler.SetUserCreator(func(username, password string, isAdmin bool) error {
 		role := user.RoleUser
@@ -467,6 +539,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			Role:     role,
 		})
 		return err
+	})
+	// Set user checker for setup wizard to check if username exists
+	setupHandler.SetUserChecker(func(username string) (bool, error) {
+		return userService.ExistsByUsername(context.Background(), username)
 	})
 	setupHandler.RegisterRoutes(e)
 
@@ -523,9 +599,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register health routes under /api/v1 as well
 	srv.RegisterHealthRoutesOnGroup(v1)
 
-	// Register metrics routes
+	// Register metrics routes (system metrics from collector)
 	metricsHandler := server.NewMetricsHandler(metricsCollector)
 	metricsHandler.RegisterRoutes(v1)
+
+	// Register detailed metrics routes (API call stats, token usage, latency, etc.)
+	detailedMetricsHandler := metrics.NewHandler(metricsWriter)
+	metricsGroup := v1.Group("/metrics")
+	detailedMetricsHandler.RegisterRoutes(metricsGroup)
+	logger.Info().Msg("Detailed metrics routes registered")
 
 	// Register system routes (logs, config, info)
 	systemHandler := server.NewSystemHandler(version, buildTime, gitCommit, dataDir)
@@ -601,10 +683,27 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Register Claude Code CLI version management routes (protected) - /api/v1/claudecode/*
-	claudeCodeHandler := claudecode.NewHandler(nil)
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
 	claudeCodeGroup := protected.Group("/claudecode")
 	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
+	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
 	logger.Info().Msg("Claude Code CLI routes registered")
+
+	// Register provider settings routes (protected) - /api/v1/providers/settings/*
+	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)
+	providerSettingsGroup := protected.Group("/providers/settings")
+	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
+	logger.Info().Msg("Provider settings routes registered")
+
+	// Register companion routes (Echo Companion - real-time AI Agent monitoring)
+	if companionHandler != nil {
+		companionHandler.RegisterRoutes(e)
+		logger.Info().Msg("Companion REST routes registered")
+	}
+	if companionWSHandler != nil {
+		companionWSHandler.RegisterRoutes(e)
+		logger.Info().Msg("Companion WebSocket routes registered")
+	}
 
 	// Register channel config routes (public for now, channels page needs to work without auth)
 	channelConfigStore := server.NewChannelConfigStore(dataDir)
@@ -627,7 +726,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 }
 
 // convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
-func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig) *claudecode.ClaudeCodeConfig {
+func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL string) *claudecode.ClaudeCodeConfig {
 	return &claudecode.ClaudeCodeConfig{
 		Enabled:      cfg.Enabled,
 		Command:      cfg.Command,
@@ -635,23 +734,25 @@ func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig) *claudecode.ClaudeCod
 		DefaultModel: cfg.DefaultModel,
 		Timeout:      cfg.Timeout,
 		SessionTTL:   cfg.SessionTTL,
+		APIKey:       apiKey,
+		BaseURL:      baseURL,
 		Backend: claudecode.CliBackendConfig{
-			Command:          cfg.Command,
-			Args:             cfg.Backend.Args,
-			ResumeArgs:       cfg.Backend.ResumeArgs,
-			Output:           cfg.Backend.Output,
-			Input:            cfg.Backend.Input,
+			Command:           cfg.Command,
+			Args:              cfg.Backend.Args,
+			ResumeArgs:        cfg.Backend.ResumeArgs,
+			Output:            cfg.Backend.Output,
+			Input:             cfg.Backend.Input,
 			MaxPromptArgChars: cfg.Backend.MaxPromptArgChars,
-			Env:              cfg.Backend.Env,
-			ClearEnv:         cfg.Backend.ClearEnv,
-			ModelArg:         cfg.Backend.ModelArg,
-			ModelAliases:     cfg.Backend.ModelAliases,
-			SessionArg:       cfg.Backend.SessionArg,
-			SessionMode:      cfg.Backend.SessionMode,
-			SystemPromptArg:  cfg.Backend.SystemPromptArg,
-			SystemPromptMode: cfg.Backend.SystemPromptMode,
-			SystemPromptWhen: cfg.Backend.SystemPromptWhen,
-			Serialize:        cfg.Backend.Serialize,
+			Env:               cfg.Backend.Env,
+			ClearEnv:          cfg.Backend.ClearEnv,
+			ModelArg:          cfg.Backend.ModelArg,
+			ModelAliases:      cfg.Backend.ModelAliases,
+			SessionArg:        cfg.Backend.SessionArg,
+			SessionMode:       cfg.Backend.SessionMode,
+			SystemPromptArg:   cfg.Backend.SystemPromptArg,
+			SystemPromptMode:  cfg.Backend.SystemPromptMode,
+			SystemPromptWhen:  cfg.Backend.SystemPromptWhen,
+			Serialize:         cfg.Backend.Serialize,
 		},
 	}
 }

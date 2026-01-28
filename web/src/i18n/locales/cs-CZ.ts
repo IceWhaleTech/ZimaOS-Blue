@@ -37,6 +37,9 @@ export default {
     ...enUS.nav,
     taskCenter: 'Centrum úloh',
     channels: 'Kanály',
+    automation: 'Automatizace',
+    security: 'Zabezpečení',
+    companion: 'Companion',
   },
   extensions: {
     ...enUS.extensions,

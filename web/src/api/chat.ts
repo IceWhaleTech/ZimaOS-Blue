@@ -62,7 +62,7 @@ export interface StreamChunk {
 // Conversation API
 export const conversationApi = {
   create: (title?: string) =>
-    api.post<Conversation>('/conversations', { title: title || 'New Conversation' }),
+    api.post<Conversation>('/conversations', { title: title || '' }),
 
   list: (limit = 50, offset = 0) =>
     api.get<Conversation[]>('/conversations', { params: { limit, offset } }),

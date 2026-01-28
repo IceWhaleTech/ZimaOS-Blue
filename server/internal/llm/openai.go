@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -34,6 +35,10 @@ func NewOpenAIProvider(apiKey, baseURL string) *OpenAIProvider {
 		baseURL: baseURL,
 		client: &http.Client{
 			Timeout: openAITimeout,
+			Transport: &http.Transport{
+				// Disable response buffering for streaming
+				DisableCompression: true,
+			},
 		},
 	}
 }
@@ -344,22 +349,113 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		return nil, fmt.Errorf("OpenAI API returned status %d", resp.StatusCode)
 	}
 
-	// Create channel for streaming
-	ch := make(chan StreamChunk, 100)
+	// Create channel for streaming (unbuffered for immediate delivery)
+	ch := make(chan StreamChunk)
 
 	go func() {
 		defer close(ch)
 		defer resp.Body.Close()
 
-		decoder := json.NewDecoder(resp.Body)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
+		p.parseOpenAISSEStream(ctx, resp.Body, ch, req.Model)
+	}()
+
+	return ch, nil
+}
+
+// ChatStreamCallback sends a streaming chat completion request and calls the callback for each chunk.
+func (p *OpenAIProvider) ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error {
+	// Set stream flag
+	req.Stream = true
+	openAIReq := p.convertRequest(req)
+
+	// Marshal request
+	body, err := json.Marshal(openAIReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getAPIPath("/chat/completions"), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	// Send request
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for HTTP error
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("OpenAI API returned status %d", resp.StatusCode)
+	}
+
+	// Parse SSE stream directly with callback
+	return p.parseOpenAISSEStreamCallback(ctx, resp.Body, req.Model, callback)
+}
+
+// parseOpenAISSEStreamCallback parses SSE stream and calls callback for each chunk.
+func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reader io.Reader, model string, callback StreamCallback) error {
+	// Read directly without buffering for immediate response
+	var messageID string
+	var promptTokens, completionTokens int
+	var lineBuffer strings.Builder
+	buf := make([]byte, 1)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read byte by byte directly from reader (no buffering)
+		n, err := reader.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			continue
+		}
+		if n == 0 {
+			continue
+		}
+
+		b := buf[0]
+		if b == '\n' {
+			line := strings.TrimSpace(lineBuffer.String())
+			lineBuffer.Reset()
+
+			if line == "" {
+				continue
 			}
 
-			// Read SSE data
+			// Parse data lines
+			if len(line) < 6 || line[:6] != "data: " {
+				continue
+			}
+
+			data := line[6:]
+			if data == "[DONE]" {
+				// Send final chunk
+				return callback(StreamChunk{
+					ID:    messageID,
+					Model: model,
+					Done:  true,
+					Usage: &Usage{
+						PromptTokens:     promptTokens,
+						CompletionTokens: completionTokens,
+						TotalTokens:      promptTokens + completionTokens,
+					},
+				})
+			}
+
 			var chunk struct {
 				ID      string `json:"id"`
 				Model   string `json:"model"`
@@ -376,46 +472,231 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				} `json:"usage,omitempty"`
 			}
 
-			if err := decoder.Decode(&chunk); err != nil {
-				if err == io.EOF {
-					return
-				}
-				// Skip invalid JSON (like "data: [DONE]")
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				continue
+			}
+
+			if chunk.ID != "" {
+				messageID = chunk.ID
+			}
+
+			if chunk.Usage != nil {
+				promptTokens = chunk.Usage.PromptTokens
+				completionTokens = chunk.Usage.CompletionTokens
 			}
 
 			if len(chunk.Choices) == 0 {
 				continue
 			}
 
-			streamChunk := StreamChunk{
-				ID:    chunk.ID,
-				Model: chunk.Model,
-				Delta: chunk.Choices[0].Delta.Content,
-				Done:  chunk.Choices[0].FinishReason == "stop",
-			}
-
-			if chunk.Usage != nil {
-				streamChunk.Usage = &Usage{
-					PromptTokens:     chunk.Usage.PromptTokens,
-					CompletionTokens: chunk.Usage.CompletionTokens,
-					TotalTokens:      chunk.Usage.TotalTokens,
+			content := chunk.Choices[0].Delta.Content
+			if content != "" {
+				if err := callback(StreamChunk{
+					Delta: content,
+					Done:  false,
+				}); err != nil {
+					return err
 				}
 			}
 
+			if chunk.Choices[0].FinishReason == "stop" {
+				return callback(StreamChunk{
+					ID:    messageID,
+					Model: model,
+					Done:  true,
+					Usage: &Usage{
+						PromptTokens:     promptTokens,
+						CompletionTokens: completionTokens,
+						TotalTokens:      promptTokens + completionTokens,
+					},
+				})
+			}
+		} else if b != '\r' {
+			lineBuffer.WriteByte(b)
+		}
+	}
+}
+
+// parseOpenAISSEStream parses SSE stream from OpenAI API and sends chunks.
+func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Reader, ch chan<- StreamChunk, model string) {
+	bufReader := bufio.NewReaderSize(reader, 4096)
+	var messageID string
+	var promptTokens, completionTokens int
+	var lineBuffer strings.Builder
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Read byte by byte for immediate newline detection
+		b, err := bufReader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			continue
+		}
+
+		if b == '\n' {
+			line := strings.TrimSpace(lineBuffer.String())
+			lineBuffer.Reset()
+
+			if line == "" {
+				continue
+			}
+
+			// Parse data lines
+			if len(line) < 6 || line[:6] != "data: " {
+				continue
+			}
+
+			data := line[6:]
+			if data == "[DONE]" {
+				// Send final chunk
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- StreamChunk{
+					ID:    messageID,
+					Model: model,
+					Done:  true,
+					Usage: &Usage{
+						PromptTokens:     promptTokens,
+						CompletionTokens: completionTokens,
+						TotalTokens:      promptTokens + completionTokens,
+					},
+				}:
+				}
+				return
+			}
+
+			var chunk struct {
+				ID      string `json:"id"`
+				Model   string `json:"model"`
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+					FinishReason string `json:"finish_reason"`
+				} `json:"choices"`
+				Usage *struct {
+					PromptTokens     int `json:"prompt_tokens"`
+					CompletionTokens int `json:"completion_tokens"`
+					TotalTokens      int `json:"total_tokens"`
+				} `json:"usage,omitempty"`
+			}
+
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				continue
+			}
+
+			if chunk.ID != "" {
+				messageID = chunk.ID
+			}
+
+			if chunk.Usage != nil {
+				promptTokens = chunk.Usage.PromptTokens
+				completionTokens = chunk.Usage.CompletionTokens
+			}
+
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+
+			content := chunk.Choices[0].Delta.Content
+			if content != "" {
+				// Send content directly - OpenAI API already returns token by token
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- StreamChunk{
+					Delta: content,
+					Done:  false,
+				}:
+				}
+			}
+
+			if chunk.Choices[0].FinishReason == "stop" {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- StreamChunk{
+					ID:    messageID,
+					Model: model,
+					Done:  true,
+					Usage: &Usage{
+						PromptTokens:     promptTokens,
+						CompletionTokens: completionTokens,
+						TotalTokens:      promptTokens + completionTokens,
+					},
+				}:
+				}
+				return
+			}
+		} else if b != '\r' {
+			lineBuffer.WriteByte(b)
+		}
+	}
+}
+
+// sendOpenAITextChunks splits text into small chunks and sends them for typewriter effect.
+func (p *OpenAIProvider) sendOpenAITextChunks(ctx context.Context, ch chan<- StreamChunk, text string) {
+	// For very short text (1-2 chars), send directly with a small delay
+	runes := []rune(text)
+	if len(runes) <= 2 {
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- StreamChunk{
+			Delta: text,
+			Done:  false,
+		}:
+		}
+		// Small delay for single character chunks (15-25ms)
+		delay := time.Duration(15+time.Now().UnixNano()%10) * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+		return
+	}
+
+	// Split into small chunks (3-6 characters for better typewriter effect)
+	pos := 0
+
+	for pos < len(runes) {
+		// Random chunk size between 3-6 characters
+		chunkSize := 3 + int(time.Now().UnixNano()%4)
+		if pos+chunkSize > len(runes) {
+			chunkSize = len(runes) - pos
+		}
+
+		chunk := string(runes[pos : pos+chunkSize])
+		pos += chunkSize
+
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- StreamChunk{
+			Delta: chunk,
+			Done:  false,
+		}:
+		}
+
+		// Add small delay between chunks for typewriter effect (10-30ms)
+		if pos < len(runes) {
+			delay := time.Duration(10+time.Now().UnixNano()%20) * time.Millisecond
 			select {
 			case <-ctx.Done():
 				return
-			case ch <- streamChunk:
-			}
-
-			if streamChunk.Done {
-				return
+			case <-time.After(delay):
 			}
 		}
-	}()
-
-	return ch, nil
+	}
 }
 
 // convertRequest converts a ChatRequest to OpenAI format.

@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TestRuleResponse } from '@/api/autoreply'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   loading?: boolean
@@ -16,8 +19,8 @@ const testChannel = ref('')
 const testResult = ref<TestRuleResponse | null>(null)
 const tested = ref(false)
 
-const channels = [
-  { value: '', label: 'Any Channel' },
+const channels = computed(() => [
+  { value: '', label: t('autoReply.anyChannel') },
   { value: 'telegram', label: 'Telegram' },
   { value: 'discord', label: 'Discord' },
   { value: 'slack', label: 'Slack' },
@@ -26,7 +29,7 @@ const channels = [
   { value: 'matrix', label: 'Matrix' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'signal', label: 'Signal' },
-]
+])
 
 function handleTest(): void {
   if (!testMessage.value.trim()) return
@@ -54,16 +57,16 @@ defineExpose({
 <template>
   <div class="space-y-4">
     <div class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-      Test your auto-reply rules by entering a message below.
+      {{ t('autoReply.testDescription') }}
     </div>
 
     <!-- Test Input -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Test Message</label>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.testMessage') }}</label>
       <textarea
         v-model="testMessage"
         rows="3"
-        placeholder="Enter a message to test..."
+        :placeholder="t('autoReply.enterTestMessage')"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border border-gray-300 dark:border-gray-600"
         @keydown.ctrl.enter="handleTest"
       />
@@ -71,7 +74,7 @@ defineExpose({
 
     <!-- Channel Selection -->
     <div>
-      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Channel (optional)</label>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.channelOptional') }}</label>
       <select
         v-model="testChannel"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
@@ -88,12 +91,12 @@ defineExpose({
       :disabled="loading || !testMessage.trim()"
       @click="handleTest"
     >
-      {{ loading ? 'Testing...' : 'Test Message' }}
+      {{ loading ? t('autoReply.testing') : t('autoReply.testMessageBtn') }}
     </button>
 
     <!-- Result -->
     <div v-if="tested && testResult !== null" class="mt-4">
-      <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Result</div>
+      <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('autoReply.result') }}</div>
 
       <div
         v-if="testResult.matched"
@@ -114,15 +117,15 @@ defineExpose({
               d="M5 13l4 4L19 7"
             />
           </svg>
-          <span class="text-green-700 dark:text-green-400 font-medium">Matched!</span>
+          <span class="text-green-700 dark:text-green-400 font-medium">{{ t('autoReply.matched') }}</span>
         </div>
         <div class="space-y-2 text-sm">
           <div>
-            <span class="text-gray-500 dark:text-gray-400">Rule:</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('autoReply.rule') }}:</span>
             <span class="text-gray-900 dark:text-white ml-2">{{ testResult.rule_name }}</span>
           </div>
           <div>
-            <span class="text-gray-500 dark:text-gray-400">Response:</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('autoReply.response') }}:</span>
             <div class="mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-gray-700 dark:text-gray-300">
               {{ testResult.response }}
             </div>
@@ -149,7 +152,7 @@ defineExpose({
               d="M6 18L18 6M6 6l12 12"
             />
           </svg>
-          <span class="text-gray-500 dark:text-gray-400">No matching rule found</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('autoReply.noMatchingRule') }}</span>
         </div>
       </div>
     </div>
@@ -161,14 +164,14 @@ defineExpose({
         class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
         @click="reset"
       >
-        Reset
+        {{ t('autoReply.reset') }}
       </button>
       <button
         type="button"
         class="px-4 py-2 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg transition-colors"
         @click="emit('close')"
       >
-        Close
+        {{ t('common.close') }}
       </button>
     </div>
   </div>

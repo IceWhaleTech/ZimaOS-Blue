@@ -290,34 +290,65 @@ func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]s
 			return err
 		}
 
+		// Skip symbolic links to avoid issues
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+
+		// Skip special files (devices, sockets, etc.)
+		if !info.Mode().IsRegular() && !info.IsDir() {
+			return nil
+		}
+
 		// Get relative path
 		relPath, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
 		}
 
-		// Create tar header
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-
-		header.Name = filepath.Join(prefix, relPath)
-		*files = append(*files, header.Name)
-
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-
-		// Write file content
-		if !info.IsDir() {
+		// For regular files, read content first to get accurate size
+		// This prevents "write too long" errors when file changes during backup
+		if info.Mode().IsRegular() {
 			file, err := os.Open(path)
 			if err != nil {
-				return err
+				// Skip files we can't open (permission issues, etc.)
+				return nil
 			}
 			defer file.Close()
 
-			if _, err := io.Copy(tw, file); err != nil {
+			// Read file content into memory (for small files) or get accurate size
+			content, err := io.ReadAll(file)
+			if err != nil {
+				// Skip files we can't read
+				return nil
+			}
+
+			// Create header with accurate size
+			header := &tar.Header{
+				Name:    filepath.Join(prefix, relPath),
+				Mode:    int64(info.Mode().Perm()),
+				Size:    int64(len(content)),
+				ModTime: info.ModTime(),
+			}
+			*files = append(*files, header.Name)
+
+			if err := tw.WriteHeader(header); err != nil {
+				return err
+			}
+
+			if _, err := tw.Write(content); err != nil {
+				return err
+			}
+		} else if info.IsDir() {
+			// Handle directories
+			header, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return err
+			}
+			header.Name = filepath.Join(prefix, relPath)
+			*files = append(*files, header.Name)
+
+			if err := tw.WriteHeader(header); err != nil {
 				return err
 			}
 		}
@@ -383,4 +414,36 @@ func (m *Manager) saveMetadata(info *BackupInfo) error {
 
 	metadataPath := info.Path + ".json"
 	return os.WriteFile(metadataPath, data, 0644)
+}
+
+// RepairChecksum recalculates and updates the checksum for a backup
+func (m *Manager) RepairChecksum(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	info, ok := m.backups[id]
+	if !ok {
+		return fmt.Errorf("backup not found: %s", id)
+	}
+
+	// Check file exists
+	if _, err := os.Stat(info.Path); err != nil {
+		return fmt.Errorf("backup file not found: %w", err)
+	}
+
+	// Recalculate checksum
+	newChecksum, err := m.calculateChecksum(info.Path)
+	if err != nil {
+		return fmt.Errorf("failed to calculate checksum: %w", err)
+	}
+
+	// Update checksum
+	info.Checksum = newChecksum
+
+	// Save updated metadata
+	if err := m.saveMetadata(info); err != nil {
+		return fmt.Errorf("failed to save metadata: %w", err)
+	}
+
+	return nil
 }

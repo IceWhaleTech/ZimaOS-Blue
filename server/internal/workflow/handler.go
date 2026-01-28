@@ -46,6 +46,9 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 
 // registerWorkflowRoutes registers workflow routes on a group.
 func (h *Handler) registerWorkflowRoutes(g *echo.Group) {
+	// Templates (must be before /:id to avoid conflict)
+	g.GET("/templates", h.GetTemplates)
+
 	// Workflow CRUD
 	g.POST("", h.CreateWorkflow)
 	g.GET("", h.ListWorkflows)
@@ -66,6 +69,10 @@ func (h *Handler) registerWorkflowRoutes(g *echo.Group) {
 	g.POST("/:id/executions/:executionId/retry", h.RetryExecution)
 	g.GET("/:id/executions/:executionId/logs", h.GetExecutionLogs)
 
+	// Import/Export
+	g.POST("/import", h.ImportWorkflow)
+	g.GET("/:id/export", h.ExportWorkflow)
+
 	// Stats
 	g.GET("/stats", h.GetStats)
 }
@@ -74,7 +81,7 @@ func (h *Handler) registerWorkflowRoutes(g *echo.Group) {
 type CreateWorkflowRequest struct {
 	Name        string            `json:"name" validate:"required"`
 	Description string            `json:"description,omitempty"`
-	Nodes       []Node            `json:"nodes" validate:"required,min=1"`
+	Nodes       []Node            `json:"nodes,omitempty"`
 	Connections []Connection      `json:"connections,omitempty"`
 	Variables   map[string]string `json:"variables,omitempty"`
 	Settings    *WorkflowSettings `json:"settings,omitempty"`

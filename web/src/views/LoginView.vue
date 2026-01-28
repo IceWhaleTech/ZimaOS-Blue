@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi, getProviderDisplayName } from '@/api/extauth'
+import axios from 'axios'
 import type { ProviderInfo, ProviderType } from '@/api/extauth'
 
 const { t } = useI18n()
@@ -18,6 +19,7 @@ const rememberMe = ref(false)
 const providers = ref<ProviderInfo[]>([])
 const loadingProviders = ref(false)
 const providerLoading = ref<string | null>(null)
+const serverVersion = ref<string>('0.0.0')
 
 const redirectTo = (route.query.redirect as string) || '/chat'
 
@@ -28,9 +30,19 @@ onMounted(async () => {
     return
   }
 
-  // Load external auth providers
-  await loadProviders()
+  // Load external auth providers and server version in parallel
+  await Promise.all([loadProviders(), loadServerVersion()])
 })
+
+async function loadServerVersion() {
+  try {
+    // Use health API which is public and doesn't require auth
+    const response = await axios.get<{ version: string }>('/api/v1/health')
+    serverVersion.value = response.data.version
+  } catch {
+    // Silently fail - use default version
+  }
+}
 
 async function loadProviders() {
   try {
@@ -357,7 +369,7 @@ function getProviderIconSvg(type: ProviderType): string {
 
       <!-- Footer -->
       <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-500">
-        {{ t('footer.version', { version: '0.9.0' }) }}
+        {{ t('footer.version', { version: serverVersion }) }}
       </p>
     </div>
   </div>

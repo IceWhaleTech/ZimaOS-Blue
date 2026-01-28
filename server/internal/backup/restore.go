@@ -21,6 +21,8 @@ type RestoreOptions struct {
 	RestoreData bool
 	// DryRun only validates without actually restoring
 	DryRun bool
+	// SkipVerify skips checksum verification (use with caution)
+	SkipVerify bool
 }
 
 // DefaultRestoreOptions returns default restore options
@@ -43,9 +45,11 @@ type RestoreResult struct {
 
 // Restore restores a backup
 func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (*RestoreResult, error) {
-	// Verify backup first
-	if err := m.Verify(id); err != nil {
-		return nil, fmt.Errorf("backup verification failed: %w", err)
+	// Verify backup first (unless skipped)
+	if !opts.SkipVerify {
+		if err := m.Verify(id); err != nil {
+			return nil, fmt.Errorf("backup verification failed: %w", err)
+		}
 	}
 
 	m.mu.RLock()

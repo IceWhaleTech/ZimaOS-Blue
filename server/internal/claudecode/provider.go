@@ -6,15 +6,17 @@ import (
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 )
 
 // Provider implements the llm.Provider interface using Claude Code CLI.
 type Provider struct {
-	config         *ClaudeCodeConfig
-	runner         *Runner
-	sessionManager *SessionManager
-	promptBuilder  *SystemPromptBuilder
-	bootstrap      *BootstrapHandler
+	config          *ClaudeCodeConfig
+	runner          *Runner
+	sandboxedRunner *SandboxedRunner
+	sessionManager  *SessionManager
+	promptBuilder   *SystemPromptBuilder
+	bootstrap       *BootstrapHandler
 
 	mu             sync.RWMutex
 	sessionContext map[string]*sessionContext
@@ -34,14 +36,23 @@ func NewProvider(config *ClaudeCodeConfig) *Provider {
 	sessionStore := NewInMemorySessionStore()
 	sessionManager := NewSessionManager(sessionStore, configWithDefaults.SessionTTL, 0)
 
+	// Create sandboxed runner (falls back to regular runner if sandbox not supported)
+	sandboxedRunner, _ := NewSandboxedRunner(&configWithDefaults)
+
 	return &Provider{
-		config:         &configWithDefaults,
-		runner:         NewRunner(&configWithDefaults),
-		sessionManager: sessionManager,
-		promptBuilder:  NewSystemPromptBuilder(&configWithDefaults),
-		bootstrap:      NewBootstrapHandler(&configWithDefaults),
-		sessionContext: make(map[string]*sessionContext),
+		config:          &configWithDefaults,
+		runner:          NewRunner(&configWithDefaults),
+		sandboxedRunner: sandboxedRunner,
+		sessionManager:  sessionManager,
+		promptBuilder:   NewSystemPromptBuilder(&configWithDefaults),
+		bootstrap:       NewBootstrapHandler(&configWithDefaults),
+		sessionContext:  make(map[string]*sessionContext),
 	}
+}
+
+// SetToolRegistry sets the tool registry for including tool descriptions in system prompts.
+func (p *Provider) SetToolRegistry(registry *tools.Registry) {
+	p.promptBuilder.SetToolRegistry(registry)
 }
 
 // Name returns the provider name.
@@ -69,8 +80,13 @@ func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResp
 		return nil, err
 	}
 
-	// Execute CLI
-	result, err := p.runner.Run(ctx, params)
+	// Execute CLI (use sandboxed runner if available)
+	var result *RunResult
+	if p.sandboxedRunner != nil {
+		result, err = p.sandboxedRunner.Run(ctx, params)
+	} else {
+		result, err = p.runner.Run(ctx, params)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +106,13 @@ func (p *Provider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan 
 		return nil, err
 	}
 
-	// Execute CLI with streaming
-	streamCh, err := p.runner.RunStream(ctx, params)
+	// Execute CLI with streaming (use sandboxed runner if available)
+	var streamCh <-chan CliStreamChunk
+	if p.sandboxedRunner != nil {
+		streamCh, err = p.sandboxedRunner.RunStream(ctx, params)
+	} else {
+		streamCh, err = p.runner.RunStream(ctx, params)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -105,9 +126,20 @@ func (p *Provider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan 
 		var sessionId string
 		for chunk := range streamCh {
 			if chunk.Error != nil {
-				// Send error as final chunk
+				// Send error as final chunk with error message
+				errMsg := chunk.Error.Error()
+				// Make error message more user-friendly
+				errMsgLower := strings.ToLower(errMsg)
+				if strings.Contains(errMsgLower, "invalid api key") ||
+					strings.Contains(errMsgLower, "authentication") ||
+					strings.Contains(errMsgLower, "please run /login") ||
+					strings.Contains(errMsgLower, "api key") ||
+					strings.Contains(errMsgLower, "unauthorized") {
+					errMsg = "API key is invalid or not configured. Please check your provider settings."
+				}
 				resultCh <- llm.StreamChunk{
-					Done: true,
+					Done:  true,
+					Error: errMsg,
 				}
 				return
 			}
@@ -151,6 +183,82 @@ func (p *Provider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan 
 	}()
 
 	return resultCh, nil
+}
+
+// ChatStreamCallback sends a chat completion request and calls the callback for each chunk.
+func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	// Build run parameters
+	params, err := p.buildRunParams(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	// Execute CLI with streaming (use sandboxed runner if available)
+	var streamCh <-chan CliStreamChunk
+	if p.sandboxedRunner != nil {
+		streamCh, err = p.sandboxedRunner.RunStream(ctx, params)
+	} else {
+		streamCh, err = p.runner.RunStream(ctx, params)
+	}
+	if err != nil {
+		return err
+	}
+
+	var sessionId string
+	for chunk := range streamCh {
+		if chunk.Error != nil {
+			// Make error message more user-friendly
+			errMsg := chunk.Error.Error()
+			errMsgLower := strings.ToLower(errMsg)
+			if strings.Contains(errMsgLower, "invalid api key") ||
+				strings.Contains(errMsgLower, "authentication") ||
+				strings.Contains(errMsgLower, "please run /login") ||
+				strings.Contains(errMsgLower, "api key") ||
+				strings.Contains(errMsgLower, "unauthorized") {
+				errMsg = "API key is invalid or not configured. Please check your provider settings."
+			}
+			return callback(llm.StreamChunk{
+				Done:  true,
+				Error: errMsg,
+			})
+		}
+
+		// Track session ID
+		if chunk.SessionId != "" {
+			sessionId = chunk.SessionId
+		}
+
+		// Convert to LLM stream chunk
+		llmChunk := llm.StreamChunk{
+			ID:    sessionId,
+			Model: req.Model,
+			Delta: chunk.Text,
+			Done:  chunk.Done,
+		}
+
+		if chunk.Usage != nil {
+			llmChunk.Usage = &llm.Usage{
+				PromptTokens:     chunk.Usage.InputTokens,
+				CompletionTokens: chunk.Usage.OutputTokens,
+				TotalTokens:      chunk.Usage.TotalTokens,
+			}
+		}
+
+		if err := callback(llmChunk); err != nil {
+			return err
+		}
+	}
+
+	// Update session context after stream completes
+	if sessionId != "" {
+		p.mu.Lock()
+		if sc, ok := p.sessionContext[sessionId]; ok {
+			sc.IsFirstMessage = false
+		}
+		p.mu.Unlock()
+	}
+
+	return nil
 }
 
 // buildRunParams builds CLI run parameters from an LLM request.
@@ -284,6 +392,9 @@ func (p *Provider) convertToResponse(result *RunResult, model string) *llm.ChatR
 // Close shuts down the provider and cleans up resources.
 func (p *Provider) Close() error {
 	p.sessionManager.Stop()
+	if p.sandboxedRunner != nil {
+		p.sandboxedRunner.Close()
+	}
 	return p.runner.Close()
 }
 
@@ -295,6 +406,23 @@ func (p *Provider) Start() {
 // SessionManager returns the session manager.
 func (p *Provider) SessionManager() *SessionManager {
 	return p.sessionManager
+}
+
+// IsSandboxEnabled returns whether sandbox mode is enabled.
+func (p *Provider) IsSandboxEnabled() bool {
+	return p.sandboxedRunner != nil && p.sandboxedRunner.IsSandboxEnabled()
+}
+
+// GetSandboxStatus returns the current sandbox status.
+func (p *Provider) GetSandboxStatus() map[string]interface{} {
+	if p.sandboxedRunner == nil {
+		return map[string]interface{}{
+			"enabled":   false,
+			"active":    false,
+			"supported": false,
+		}
+	}
+	return p.sandboxedRunner.GetSandboxStatus()
 }
 
 // ResetSession resets the session context for a model.
@@ -315,4 +443,25 @@ func (p *Provider) ResetAllSessions() {
 	defer p.mu.Unlock()
 
 	p.sessionContext = make(map[string]*sessionContext)
+}
+
+// UpdateCredentials updates the API key and base URL for the provider.
+func (p *Provider) UpdateCredentials(apiKey, baseURL string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.config.APIKey = apiKey
+	p.config.BaseURL = baseURL
+
+	// Recreate runner with updated config
+	configWithDefaults := p.config.WithDefaults()
+	p.runner = NewRunner(&configWithDefaults)
+}
+
+// GetAPICredentials returns the API key and base URL configured for this provider.
+// This can be used to create a direct Claude API provider for simpler tasks.
+func (p *Provider) GetAPICredentials() (apiKey, baseURL string) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.config.APIKey, p.config.BaseURL
 }

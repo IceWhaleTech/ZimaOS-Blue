@@ -12,8 +12,9 @@ func TestDefaultClaudeCodeBackend(t *testing.T) {
 		t.Errorf("expected command 'claude', got '%s'", backend.Command)
 	}
 
-	if backend.Output != "json" {
-		t.Errorf("expected output 'json', got '%s'", backend.Output)
+	// Output should be text for character-level streaming
+	if backend.Output != "text" {
+		t.Errorf("expected output 'text', got '%s'", backend.Output)
 	}
 
 	if backend.Input != "arg" {
@@ -35,6 +36,18 @@ func TestDefaultClaudeCodeBackend(t *testing.T) {
 	// Check model aliases
 	if alias, ok := backend.ModelAliases["opus"]; !ok || alias != "opus" {
 		t.Errorf("expected model alias 'opus' -> 'opus', got '%s'", alias)
+	}
+
+	// Check that Args contains text for streaming output
+	hasTextFormat := false
+	for i, arg := range backend.Args {
+		if arg == "--output-format" && i+1 < len(backend.Args) && backend.Args[i+1] == "text" {
+			hasTextFormat = true
+			break
+		}
+	}
+	if !hasTextFormat {
+		t.Error("expected Args to contain '--output-format text' for streaming")
 	}
 }
 
@@ -237,8 +250,9 @@ func TestCliBackendConfigWithDefaults(t *testing.T) {
 		t.Errorf("expected command 'claude', got '%s'", result.Command)
 	}
 
-	if result.Output != "json" {
-		t.Errorf("expected output 'json', got '%s'", result.Output)
+	// Default output is now text for character-level streaming
+	if result.Output != "text" {
+		t.Errorf("expected output 'text', got '%s'", result.Output)
 	}
 
 	if result.Input != "arg" {
@@ -264,5 +278,141 @@ func TestClaudeCodeConfigWithDefaults(t *testing.T) {
 
 	if result.Timeout != 5*time.Minute {
 		t.Errorf("expected timeout 5m, got %v", result.Timeout)
+	}
+}
+
+func TestClaudeCodeConfigWithAPIKeyAndBaseURL(t *testing.T) {
+	// Test configuration matching user's setup:
+	// ANTHROPIC_BASE_URL: https://paid.tribiosapi.top/
+	// ANTHROPIC_AUTH_TOKEN: sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE
+	config := ClaudeCodeConfig{
+		APIKey:  "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE",
+		BaseURL: "https://paid.tribiosapi.top/",
+	}
+	result := config.WithDefaults()
+
+	// Verify ANTHROPIC_AUTH_TOKEN is set correctly (not ANTHROPIC_API_KEY)
+	if result.Backend.Env == nil {
+		t.Fatal("expected Backend.Env to be initialized")
+	}
+
+	authToken, ok := result.Backend.Env["ANTHROPIC_AUTH_TOKEN"]
+	if !ok {
+		t.Error("expected ANTHROPIC_AUTH_TOKEN to be set in environment")
+	}
+	if authToken != "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE" {
+		t.Errorf("expected ANTHROPIC_AUTH_TOKEN to be 'sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE', got '%s'", authToken)
+	}
+
+	// Verify ANTHROPIC_BASE_URL is set correctly
+	baseURL, ok := result.Backend.Env["ANTHROPIC_BASE_URL"]
+	if !ok {
+		t.Error("expected ANTHROPIC_BASE_URL to be set in environment")
+	}
+	if baseURL != "https://paid.tribiosapi.top/" {
+		t.Errorf("expected ANTHROPIC_BASE_URL to be 'https://paid.tribiosapi.top/', got '%s'", baseURL)
+	}
+
+	// Verify ANTHROPIC_API_KEY is NOT set (we use AUTH_TOKEN instead)
+	if _, ok := result.Backend.Env["ANTHROPIC_API_KEY"]; ok {
+		t.Error("ANTHROPIC_API_KEY should not be set, use ANTHROPIC_AUTH_TOKEN instead")
+	}
+
+	// Verify ANTHROPIC_AUTH_TOKEN is removed from ClearEnv
+	for _, key := range result.Backend.ClearEnv {
+		if key == "ANTHROPIC_AUTH_TOKEN" {
+			t.Error("ANTHROPIC_AUTH_TOKEN should be removed from ClearEnv when API key is set")
+		}
+	}
+}
+
+func TestClaudeCodeConfigWithAPIKeyOnly(t *testing.T) {
+	config := ClaudeCodeConfig{
+		APIKey: "test-api-key",
+	}
+	result := config.WithDefaults()
+
+	// Verify ANTHROPIC_AUTH_TOKEN is set
+	if result.Backend.Env == nil {
+		t.Fatal("expected Backend.Env to be initialized")
+	}
+
+	authToken, ok := result.Backend.Env["ANTHROPIC_AUTH_TOKEN"]
+	if !ok {
+		t.Error("expected ANTHROPIC_AUTH_TOKEN to be set in environment")
+	}
+	if authToken != "test-api-key" {
+		t.Errorf("expected ANTHROPIC_AUTH_TOKEN to be 'test-api-key', got '%s'", authToken)
+	}
+
+	// Verify ANTHROPIC_BASE_URL is NOT set when not provided
+	if _, ok := result.Backend.Env["ANTHROPIC_BASE_URL"]; ok {
+		t.Error("ANTHROPIC_BASE_URL should not be set when BaseURL is empty")
+	}
+}
+
+func TestClaudeCodeConfigWithBaseURLOnly(t *testing.T) {
+	config := ClaudeCodeConfig{
+		BaseURL: "https://custom.api.com/",
+	}
+	result := config.WithDefaults()
+
+	// Verify ANTHROPIC_BASE_URL is set
+	if result.Backend.Env == nil {
+		t.Fatal("expected Backend.Env to be initialized")
+	}
+
+	baseURL, ok := result.Backend.Env["ANTHROPIC_BASE_URL"]
+	if !ok {
+		t.Error("expected ANTHROPIC_BASE_URL to be set in environment")
+	}
+	if baseURL != "https://custom.api.com/" {
+		t.Errorf("expected ANTHROPIC_BASE_URL to be 'https://custom.api.com/', got '%s'", baseURL)
+	}
+
+	// Verify ANTHROPIC_AUTH_TOKEN is NOT set when not provided
+	if _, ok := result.Backend.Env["ANTHROPIC_AUTH_TOKEN"]; ok {
+		t.Error("ANTHROPIC_AUTH_TOKEN should not be set when APIKey is empty")
+	}
+
+	// Verify ClearEnv still contains auth-related keys when no API key is set
+	hasAuthToken := false
+	for _, key := range result.Backend.ClearEnv {
+		if key == "ANTHROPIC_AUTH_TOKEN" {
+			hasAuthToken = true
+			break
+		}
+	}
+	if !hasAuthToken {
+		t.Error("ANTHROPIC_AUTH_TOKEN should remain in ClearEnv when no API key is set")
+	}
+}
+
+func TestClaudeCodeConfigClearEnvRemovesAuthKeys(t *testing.T) {
+	config := ClaudeCodeConfig{
+		APIKey: "test-key",
+	}
+	result := config.WithDefaults()
+
+	// Verify both ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from ClearEnv
+	for _, key := range result.Backend.ClearEnv {
+		if key == "ANTHROPIC_API_KEY" {
+			t.Error("ANTHROPIC_API_KEY should be removed from ClearEnv when API key is set")
+		}
+		if key == "ANTHROPIC_AUTH_TOKEN" {
+			t.Error("ANTHROPIC_AUTH_TOKEN should be removed from ClearEnv when API key is set")
+		}
+	}
+
+	// Verify ANTHROPIC_API_KEY_OLD is still in ClearEnv (we don't use it)
+	hasOldKey := false
+	for _, key := range result.Backend.ClearEnv {
+		if key == "ANTHROPIC_API_KEY_OLD" {
+			hasOldKey = true
+			break
+		}
+	}
+	if !hasOldKey {
+		t.Error("ANTHROPIC_API_KEY_OLD should remain in ClearEnv")
 	}
 }

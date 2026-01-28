@@ -77,6 +77,9 @@ export default {
     tenants: 'Inquilinos',
     taskCenter: 'Centro de tarefas',
     channels: 'Canais',
+    automation: 'Automação',
+    security: 'Segurança',
+    companion: 'Companion',
   },
   brand: {
     ...enUS.brand,

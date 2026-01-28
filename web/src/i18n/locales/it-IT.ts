@@ -77,6 +77,9 @@ export default {
     tenants: 'Tenant',
     taskCenter: 'Centro attività',
     channels: 'Canali',
+    automation: 'Automazione',
+    security: 'Sicurezza',
+    companion: 'Companion',
   },
   brand: {
     ...enUS.brand,

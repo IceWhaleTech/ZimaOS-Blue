@@ -29,7 +29,7 @@
 
 :root {
   /* Primary Colors - Dark Tech Theme */
-  --color-primary: #1E293B;
+  --color-primary: #3B82F6;
   --color-primary-light: #334155;
   --color-primary-dark: #0F172A;
 
@@ -50,7 +50,16 @@
   --color-bg-elevated: #1E293B;
   --color-bg-surface: #334155;
 
+  /* Legacy Background Colors (for component compatibility) */
+  --color-background: #0F172A;
+  --color-background-soft: #1E293B;
+  --color-background-mute: #334155;
+
+  /* Border Colors */
+  --color-border: #334155;
+
   /* Text Colors */
+  --color-text: #F8FAFC;
   --color-text-primary: #F8FAFC;
   --color-text-secondary: #94A3B8;
   --color-text-muted: #64748B;
@@ -89,9 +98,21 @@
   --color-bg-base: #F8FAFC;
   --color-bg-elevated: #FFFFFF;
   --color-bg-surface: #F1F5F9;
+
+  /* Legacy Background Colors (for component compatibility) */
+  --color-background: #F8FAFC;
+  --color-background-soft: #FFFFFF;
+  --color-background-mute: #F1F5F9;
+
+  /* Border Colors */
+  --color-border: #E2E8F0;
+
+  /* Text Colors */
+  --color-text: #0F172A;
   --color-text-primary: #0F172A;
   --color-text-secondary: #475569;
   --color-text-muted: #64748B;
+
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-bg-hover: rgba(255, 255, 255, 0.9);
   --glass-border: rgba(0, 0, 0, 0.1);

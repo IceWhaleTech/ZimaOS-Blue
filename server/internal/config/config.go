@@ -35,6 +35,8 @@ type ClaudeCodeConfig struct {
 	DefaultModel string                    `mapstructure:"default_model"`
 	Timeout      time.Duration             `mapstructure:"timeout"`
 	SessionTTL   time.Duration             `mapstructure:"session_ttl"`
+	APIKey       string                    `mapstructure:"api_key"`
+	BaseURL      string                    `mapstructure:"base_url"`
 	Backend      ClaudeCodeBackendConfig   `mapstructure:"backend"`
 }
 
