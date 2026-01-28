@@ -92,28 +92,30 @@ export interface ListCanvasesResponse {
 }
 
 // API functions
+// Note: A2UI routes are registered under /api/a2ui/* (without /v1)
+// Using absolute URL to bypass baseURL
 export async function listCanvases(): Promise<ListCanvasesResponse> {
-  const response = await api.get('/api/v1/a2ui/canvases')
+  const response = await api.get('/a2ui/canvases', { baseURL: '/api' })
   return response.data
 }
 
 export async function getCanvas(canvasId: string): Promise<Canvas> {
-  const response = await api.get(`/api/v1/a2ui/canvases/${canvasId}`)
+  const response = await api.get(`/a2ui/canvases/${canvasId}`, { baseURL: '/api' })
   return response.data
 }
 
 export async function createCanvas(canvas: Omit<Canvas, 'created_at'>): Promise<Canvas> {
-  const response = await api.post('/api/v1/a2ui/canvases', canvas)
+  const response = await api.post('/a2ui/canvases', canvas, { baseURL: '/api' })
   return response.data
 }
 
 export async function updateCanvas(canvasId: string, canvas: Partial<Canvas>): Promise<Canvas> {
-  const response = await api.put(`/api/v1/a2ui/canvases/${canvasId}`, canvas)
+  const response = await api.put(`/a2ui/canvases/${canvasId}`, canvas, { baseURL: '/api' })
   return response.data
 }
 
 export async function deleteCanvas(canvasId: string): Promise<void> {
-  await api.delete(`/api/v1/a2ui/canvases/${canvasId}`)
+  await api.delete(`/a2ui/canvases/${canvasId}`, { baseURL: '/api' })
 }
 
 export async function executeAction(
@@ -121,9 +123,9 @@ export async function executeAction(
   actionId: string,
   formData: Record<string, unknown>
 ): Promise<ActionResult> {
-  const response = await api.post(`/api/v1/a2ui/canvases/${canvasId}/actions/${actionId}`, {
+  const response = await api.post(`/a2ui/canvases/${canvasId}/actions/${actionId}`, {
     form_data: formData,
-  })
+  }, { baseURL: '/api' })
   return response.data
 }
 

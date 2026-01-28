@@ -70,12 +70,12 @@ func NewToolStoreHandler(registry *tools.Registry) *ToolStoreHandler {
 		Description: "Official ZimaOS tool marketplace",
 		Enabled:     true,
 	}
-	h.sources["community"] = &ToolSource{
-		ID:          "community",
-		Name:        "Community Tools",
-		URL:         "https://api.github.com/repos/IceWhaleTech/zimaos-tools/contents/tools",
+	h.sources["moltbot"] = &ToolSource{
+		ID:          "moltbot",
+		Name:        "MoltBot Extensions",
+		URL:         "https://api.github.com/repos/moltbot/moltbot/contents/extensions",
 		Type:        "github",
-		Description: "Community contributed tools",
+		Description: "MoltBot community extensions",
 		Enabled:     true,
 	}
 
@@ -246,7 +246,7 @@ func (h *ToolStoreHandler) RemoveSource(c echo.Context) error {
 	}
 
 	// Don't allow removing default sources
-	if id == "toolhub" || id == "community" {
+	if id == "toolhub" || id == "moltbot" {
 		return c.JSON(http.StatusForbidden, map[string]string{
 			"error": "cannot remove default source",
 		})
@@ -567,13 +567,13 @@ func (h *ToolStoreHandler) fetchFromGitHub(ctx context.Context, source *ToolSour
 	for _, item := range contents {
 		if item.Type == "dir" {
 			toolsList = append(toolsList, &RemoteTool{
-				ID:          fmt.Sprintf("community-%s", item.Name),
+				ID:          fmt.Sprintf("moltbot-%s", item.Name),
 				Name:        item.Name,
 				Version:     "1.0.0",
-				Description: fmt.Sprintf("Community tool: %s", item.Name),
-				Author:      "Community",
-				Category:    "community",
-				Tags:        []string{"community", "tool"},
+				Description: fmt.Sprintf("MoltBot extension: %s", item.Name),
+				Author:      "MoltBot Community",
+				Category:    "extension",
+				Tags:        []string{"moltbot", "extension"},
 				SourceID:    source.ID,
 				SourceName:  source.Name,
 				Homepage:    item.URL,
@@ -584,44 +584,68 @@ func (h *ToolStoreHandler) fetchFromGitHub(ctx context.Context, source *ToolSour
 	return toolsList, nil
 }
 
-// getMockGitHubTools returns mock GitHub tools for demo
+// getMockGitHubTools returns mock GitHub tools for demo (fallback)
 func (h *ToolStoreHandler) getMockGitHubTools(source *ToolSource) []*RemoteTool {
 	return []*RemoteTool{
 		{
-			ID:          "community-calculator",
-			Name:        "Calculator",
+			ID:          "moltbot-weather",
+			Name:        "Weather Extension",
 			Version:     "1.0.0",
-			Description: "Advanced mathematical calculator",
-			Author:      "Community",
-			Category:    "community",
-			Tags:        []string{"community", "math", "calculator"},
+			Description: "Get weather information from multiple providers",
+			Author:      "MoltBot Community",
+			Category:    "extension",
+			Tags:        []string{"moltbot", "weather", "extension"},
 			SourceID:    source.ID,
 			SourceName:  source.Name,
-			Homepage:    "https://github.com/IceWhaleTech/zimaos-tools/tree/main/tools/calculator",
+			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/weather",
 		},
 		{
-			ID:          "community-translator",
-			Name:        "Translator",
+			ID:          "moltbot-reminder",
+			Name:        "Reminder Extension",
 			Version:     "1.0.0",
-			Description: "Translate text between languages",
-			Author:      "Community",
-			Category:    "community",
-			Tags:        []string{"community", "translate", "language"},
+			Description: "Set and manage reminders with natural language",
+			Author:      "MoltBot Community",
+			Category:    "extension",
+			Tags:        []string{"moltbot", "reminder", "extension"},
 			SourceID:    source.ID,
 			SourceName:  source.Name,
-			Homepage:    "https://github.com/IceWhaleTech/zimaos-tools/tree/main/tools/translator",
+			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/reminder",
 		},
 		{
-			ID:          "community-json-formatter",
-			Name:        "JSON Formatter",
+			ID:          "moltbot-translator",
+			Name:        "Translator Extension",
 			Version:     "1.0.0",
-			Description: "Format and validate JSON data",
-			Author:      "Community",
-			Category:    "community",
-			Tags:        []string{"community", "json", "format"},
+			Description: "Translate text between multiple languages",
+			Author:      "MoltBot Community",
+			Category:    "extension",
+			Tags:        []string{"moltbot", "translator", "extension"},
 			SourceID:    source.ID,
 			SourceName:  source.Name,
-			Homepage:    "https://github.com/IceWhaleTech/zimaos-tools/tree/main/tools/json-formatter",
+			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/translator",
+		},
+		{
+			ID:          "moltbot-calculator",
+			Name:        "Calculator Extension",
+			Version:     "1.0.0",
+			Description: "Advanced mathematical calculator with unit conversion",
+			Author:      "MoltBot Community",
+			Category:    "extension",
+			Tags:        []string{"moltbot", "calculator", "math", "extension"},
+			SourceID:    source.ID,
+			SourceName:  source.Name,
+			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/calculator",
+		},
+		{
+			ID:          "moltbot-notes",
+			Name:        "Notes Extension",
+			Version:     "1.0.0",
+			Description: "Create and manage notes with tags and search",
+			Author:      "MoltBot Community",
+			Category:    "extension",
+			Tags:        []string{"moltbot", "notes", "productivity", "extension"},
+			SourceID:    source.ID,
+			SourceName:  source.Name,
+			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/notes",
 		},
 	}
 }

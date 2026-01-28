@@ -19,10 +19,33 @@ func NewHandler(service *WorkflowService) *Handler {
 	return &Handler{service: service}
 }
 
+// getContextString safely gets a string value from echo context with a default fallback.
+func getContextString(c echo.Context, key, defaultValue string) string {
+	if val := c.Get(key); val != nil {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return defaultValue
+}
+
 // RegisterRoutes registers the workflow routes.
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
+	// Register under /api/v1/workflows
 	g := e.Group("/api/v1/workflows")
+	h.registerWorkflowRoutes(g)
 
+	// Also register under /api/workflows for frontend compatibility
+	g2 := e.Group("/api/workflows")
+	h.registerWorkflowRoutes(g2)
+
+	// Webhooks
+	webhookGroup := e.Group("/api/v1/webhooks")
+	webhookGroup.Any("/*", h.HandleWebhook)
+}
+
+// registerWorkflowRoutes registers workflow routes on a group.
+func (h *Handler) registerWorkflowRoutes(g *echo.Group) {
 	// Workflow CRUD
 	g.POST("", h.CreateWorkflow)
 	g.GET("", h.ListWorkflows)
@@ -45,10 +68,6 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 
 	// Stats
 	g.GET("/stats", h.GetStats)
-
-	// Webhooks
-	webhookGroup := e.Group("/api/v1/webhooks")
-	webhookGroup.Any("/*", h.HandleWebhook)
 }
 
 // CreateWorkflowRequest represents a create workflow request.
@@ -69,8 +88,8 @@ func (h *Handler) CreateWorkflow(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	tenantID := c.Get("tenant_id").(string)
-	userID := c.Get("user_id").(string)
+	tenantID := getContextString(c, "tenant_id", "default")
+	userID := getContextString(c, "user_id", "anonymous")
 
 	workflow := &Workflow{
 		TenantID:    tenantID,
@@ -165,7 +184,7 @@ func (h *Handler) UpdateWorkflow(c echo.Context) error {
 		workflow.Tags = req.Tags
 	}
 
-	userID := c.Get("user_id").(string)
+	userID := getContextString(c, "user_id", "anonymous")
 	workflow.UpdatedBy = userID
 
 	updated, err := h.service.UpdateWorkflow(c.Request().Context(), workflow)
@@ -193,7 +212,7 @@ func (h *Handler) DeleteWorkflow(c echo.Context) error {
 
 // ListWorkflows lists workflows with pagination.
 func (h *Handler) ListWorkflows(c echo.Context) error {
-	tenantID := c.Get("tenant_id").(string)
+	tenantID := getContextString(c, "tenant_id", "default")
 
 	opts := &ListOptions{
 		Offset:  0,
@@ -416,7 +435,7 @@ func (h *Handler) GetExecutionLogs(c echo.Context) error {
 
 // GetStats returns workflow statistics.
 func (h *Handler) GetStats(c echo.Context) error {
-	tenantID := c.Get("tenant_id").(string)
+	tenantID := getContextString(c, "tenant_id", "default")
 
 	stats, err := h.service.GetStats(c.Request().Context(), tenantID)
 	if err != nil {
@@ -618,8 +637,8 @@ func (h *Handler) ImportWorkflow(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 	}
 
-	tenantID := c.Get("tenant_id").(string)
-	userID := c.Get("user_id").(string)
+	tenantID := getContextString(c, "tenant_id", "default")
+	userID := getContextString(c, "user_id", "anonymous")
 
 	// Reset IDs and metadata
 	workflow.ID = ""

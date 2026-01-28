@@ -110,9 +110,9 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/tasks',
-    name: 'TaskCenter',
-    component: () => import('@/views/TaskCenterView.vue'),
+    path: '/automation',
+    name: 'Automation',
+    component: () => import('@/views/AutomationView.vue'),
     meta: { requiresAuth: true },
   },
   {
@@ -137,6 +137,12 @@ const routes: RouteRecordRaw[] = [
     path: '/security',
     name: 'Security',
     component: () => import('@/views/SecurityView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/sandbox',
+    name: 'Sandbox',
+    component: () => import('@/views/SandboxView.vue'),
     meta: { requiresAuth: true },
   },
   {

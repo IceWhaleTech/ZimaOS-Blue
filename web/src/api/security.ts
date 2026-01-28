@@ -101,6 +101,29 @@ export interface ScanResponse {
   threats: ThreatEvent[]
 }
 
+// Security scan types
+export interface SecurityScanItem {
+  id: string
+  category: string
+  name: string
+  description: string
+  status: 'passed' | 'warning' | 'failed'
+  details?: string
+}
+
+export interface SecurityScanSummary {
+  total: number
+  passed: number
+  warnings: number
+  failed: number
+}
+
+export interface SecurityScanResult {
+  items: SecurityScanItem[]
+  summary: SecurityScanSummary
+  timestamp: string
+}
+
 // Security API
 export const securityApi = {
   // Sessions
@@ -142,4 +165,8 @@ export const securityApi = {
 
   scanInput: (request: ScanRequest) =>
     api.post<ScanResponse>('/security/scan', request),
+
+  // Security scan
+  runSecurityScan: () =>
+    api.get<SecurityScanResult>('/security/scan/run'),
 }

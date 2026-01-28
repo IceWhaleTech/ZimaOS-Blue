@@ -75,63 +75,64 @@ export interface TaskTemplate {
 }
 
 // API functions
+// Note: Browser routes are registered under /api/browser/* (without /v1)
 export async function getTasks(): Promise<BrowserTask[]> {
-  const response = await api.get('/api/browser/tasks')
+  const response = await api.get('/browser/tasks', { baseURL: '/api' })
   return response.data
 }
 
 export async function getTask(taskId: string): Promise<BrowserTask> {
-  const response = await api.get(`/api/browser/tasks/${taskId}`)
+  const response = await api.get(`/browser/tasks/${taskId}`, { baseURL: '/api' })
   return response.data
 }
 
 export async function createTask(request: CreateTaskRequest): Promise<BrowserTask> {
-  const response = await api.post('/api/browser/tasks', request)
+  const response = await api.post('/browser/tasks', request, { baseURL: '/api' })
   return response.data
 }
 
 export async function runTask(taskId: string): Promise<void> {
-  await api.post(`/api/browser/tasks/${taskId}/run`)
+  await api.post(`/browser/tasks/${taskId}/run`, null, { baseURL: '/api' })
 }
 
 export async function cancelTask(taskId: string): Promise<void> {
-  await api.post(`/api/browser/tasks/${taskId}/cancel`)
+  await api.post(`/browser/tasks/${taskId}/cancel`, null, { baseURL: '/api' })
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
-  await api.delete(`/api/browser/tasks/${taskId}`)
+  await api.delete(`/browser/tasks/${taskId}`, { baseURL: '/api' })
 }
 
 export async function getSessions(): Promise<BrowserSession[]> {
-  const response = await api.get('/api/browser/sessions')
+  const response = await api.get('/browser/sessions', { baseURL: '/api' })
   return response.data
 }
 
 export async function getSession(sessionId: string): Promise<BrowserSession> {
-  const response = await api.get(`/api/browser/sessions/${sessionId}`)
+  const response = await api.get(`/browser/sessions/${sessionId}`, { baseURL: '/api' })
   return response.data
 }
 
 export async function createSession(): Promise<BrowserSession> {
-  const response = await api.post('/api/browser/sessions')
+  const response = await api.post('/browser/sessions', null, { baseURL: '/api' })
   return response.data
 }
 
 export async function closeSession(sessionId: string): Promise<void> {
-  await api.delete(`/api/browser/sessions/${sessionId}`)
+  await api.delete(`/browser/sessions/${sessionId}`, { baseURL: '/api' })
 }
 
 export async function takeScreenshot(sessionId: string): Promise<string> {
-  const response = await api.post(`/api/browser/sessions/${sessionId}/screenshot`)
+  const response = await api.post(`/browser/sessions/${sessionId}/screenshot`, null, { baseURL: '/api' })
   return response.data.screenshot
 }
 
 export async function navigateTo(sessionId: string, url: string): Promise<void> {
-  await api.post(`/api/browser/sessions/${sessionId}/navigate`, { url })
+  await api.post(`/browser/sessions/${sessionId}/navigate`, { url }, { baseURL: '/api' })
 }
 
 export async function executeStep(sessionId: string, step: Omit<TaskStep, 'id' | 'status'>): Promise<StepResult> {
-  const response = await api.post(`/api/browser/sessions/${sessionId}/execute`, step)
+  const response = await api.post(`/browser/sessions/${sessionId}/execute`, step, { baseURL: '/api' })
   return response.data
 }
 
@@ -252,32 +253,33 @@ export interface BrowserSecurityConfig {
 }
 
 // Security API functions
+// Note: Browser security routes are also under /api/browser/* (without /v1)
 export async function getSecurityConfig(): Promise<BrowserSecurityConfig> {
-  const response = await api.get('/api/v1/browser/security')
+  const response = await api.get('/browser/security', { baseURL: '/api' })
   return response.data
 }
 
 export async function updateSecurityConfig(config: BrowserSecurityConfig): Promise<void> {
-  await api.put('/api/v1/browser/security', config)
+  await api.put('/browser/security', config, { baseURL: '/api' })
 }
 
 export async function addAllowedDomain(domain: string): Promise<void> {
-  await api.post('/api/v1/browser/security/allowed', { domain })
+  await api.post('/browser/security/allowed', { domain }, { baseURL: '/api' })
 }
 
 export async function removeAllowedDomain(domain: string): Promise<void> {
-  await api.delete(`/api/v1/browser/security/allowed/${encodeURIComponent(domain)}`)
+  await api.delete(`/browser/security/allowed/${encodeURIComponent(domain)}`, { baseURL: '/api' })
 }
 
 export async function addBlockedDomain(domain: string): Promise<void> {
-  await api.post('/api/v1/browser/security/blocked', { domain })
+  await api.post('/browser/security/blocked', { domain }, { baseURL: '/api' })
 }
 
 export async function removeBlockedDomain(domain: string): Promise<void> {
-  await api.delete(`/api/v1/browser/security/blocked/${encodeURIComponent(domain)}`)
+  await api.delete(`/browser/security/blocked/${encodeURIComponent(domain)}`, { baseURL: '/api' })
 }
 
 export async function testUrl(url: string): Promise<{ allowed: boolean; reason?: string }> {
-  const response = await api.post('/api/v1/browser/security/test', { url })
+  const response = await api.post('/browser/security/test', { url }, { baseURL: '/api' })
   return response.data
 }

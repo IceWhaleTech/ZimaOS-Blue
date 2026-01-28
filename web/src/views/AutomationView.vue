@@ -2,6 +2,13 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import api from '@/api/client'
+import { cronApi } from '@/api/cron'
+import { autoReplyApi } from '@/api/autoreply'
+import { workflowApi } from '@/api/workflow'
+import { sandboxApi } from '@/api/sandbox'
+import * as browserApi from '@/api/browser'
+import * as haApi from '@/api/homeassistant'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -19,6 +26,7 @@ const stats = ref({
   browser: { tasks: 0, running: 0, sessions: 0 },
   workflow: { total: 0, active: 0, executions: 0 },
   a2ui: { components: 0, canvases: 0 },
+  sandbox: { supported: false, running: 0 },
 })
 
 // Loading state
@@ -30,88 +38,75 @@ async function fetchStats() {
   try {
     // Fetch Home Assistant stats
     try {
-      const haResponse = await fetch('/api/homeassistant/entities')
-      if (haResponse.ok) {
-        const entities = await haResponse.json()
-        stats.value.smartHome.entities = entities?.length || 0
-      }
-      const haAutoResponse = await fetch('/api/homeassistant/automations')
-      if (haAutoResponse.ok) {
-        const automations = await haAutoResponse.json()
-        stats.value.smartHome.automations = automations?.length || 0
-      }
-      const haScenesResponse = await fetch('/api/homeassistant/scenes')
-      if (haScenesResponse.ok) {
-        const scenes = await haScenesResponse.json()
-        stats.value.smartHome.scenes = scenes?.length || 0
-      }
+      const entities = await haApi.getEntities()
+      stats.value.smartHome.entities = entities?.length || 0
+      const automations = await haApi.getAutomations()
+      stats.value.smartHome.automations = automations?.length || 0
+      const scenes = await haApi.getScenes()
+      stats.value.smartHome.scenes = scenes?.length || 0
     } catch {
       // HA not configured
     }
 
     // Fetch Cron stats
     try {
-      const cronResponse = await fetch('/api/cron/jobs')
-      if (cronResponse.ok) {
-        const jobs = await cronResponse.json()
-        stats.value.cron.total = jobs?.length || 0
-        stats.value.cron.active = jobs?.filter((j: { enabled: boolean }) => j.enabled)?.length || 0
-      }
+      const response = await cronApi.list()
+      const jobs = response.data
+      stats.value.cron.total = jobs?.length || 0
+      stats.value.cron.active = jobs?.filter((j) => j.enabled)?.length || 0
     } catch {
       // Cron API error
     }
 
     // Fetch Auto-Reply stats
     try {
-      const autoReplyResponse = await fetch('/api/autoreply/rules')
-      if (autoReplyResponse.ok) {
-        const rules = await autoReplyResponse.json()
-        stats.value.autoReply.rules = rules?.length || 0
-        stats.value.autoReply.enabled = rules?.filter((r: { enabled: boolean }) => r.enabled)?.length || 0
-        stats.value.autoReply.matches = rules?.reduce((sum: number, r: { match_count?: number }) => sum + (r.match_count || 0), 0) || 0
-      }
+      const response = await autoReplyApi.list()
+      const rules = response.data
+      stats.value.autoReply.rules = rules?.length || 0
+      stats.value.autoReply.enabled = rules?.filter((r) => r.enabled)?.length || 0
+      stats.value.autoReply.matches = rules?.reduce((sum, r) => sum + (r.match_count || 0), 0) || 0
     } catch {
       // Auto-reply API error
     }
 
     // Fetch Browser Automation stats
     try {
-      const browserResponse = await fetch('/api/browser/tasks')
-      if (browserResponse.ok) {
-        const tasks = await browserResponse.json()
-        stats.value.browser.tasks = tasks?.length || 0
-        stats.value.browser.running = tasks?.filter((t: { status: string }) => t.status === 'running')?.length || 0
-      }
-      const sessionsResponse = await fetch('/api/browser/sessions')
-      if (sessionsResponse.ok) {
-        const sessions = await sessionsResponse.json()
-        stats.value.browser.sessions = sessions?.length || 0
-      }
+      const tasks = await browserApi.getTasks()
+      stats.value.browser.tasks = tasks?.length || 0
+      stats.value.browser.running = tasks?.filter((t) => t.status === 'running')?.length || 0
+      const sessions = await browserApi.getSessions()
+      stats.value.browser.sessions = sessions?.length || 0
     } catch {
       // Browser API error
     }
 
     // Fetch Workflow stats
     try {
-      const workflowResponse = await fetch('/api/workflows')
-      if (workflowResponse.ok) {
-        const workflows = await workflowResponse.json()
-        stats.value.workflow.total = workflows?.length || 0
-        stats.value.workflow.active = workflows?.filter((w: { enabled: boolean }) => w.enabled)?.length || 0
-      }
+      const response = await workflowApi.list()
+      const workflows = response.data.workflows
+      stats.value.workflow.total = workflows?.length || 0
+      stats.value.workflow.active = workflows?.filter((w) => w.status === 'active')?.length || 0
     } catch {
       // Workflow API error
     }
 
     // Fetch A2UI stats
     try {
-      const a2uiResponse = await fetch('/api/a2ui/canvases')
-      if (a2uiResponse.ok) {
-        const canvases = await a2uiResponse.json()
-        stats.value.a2ui.canvases = canvases?.length || 0
-      }
+      const response = await api.get('/a2ui/canvases', { baseURL: '/api' })
+      const data = response.data
+      stats.value.a2ui.canvases = data?.canvases?.length || data?.count || 0
     } catch {
       // A2UI API error
+    }
+
+    // Fetch Sandbox stats
+    try {
+      const response = await sandboxApi.getInfo()
+      console.log('Sandbox info response:', response.data)
+      stats.value.sandbox.supported = response.data?.supported ?? false
+    } catch (e) {
+      console.warn('Failed to fetch sandbox info:', e)
+      // Sandbox API error - keep default false
     }
   } finally {
     loading.value = false
@@ -138,10 +133,10 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-        {{ t('taskCenter.title') }}
+        {{ t('automation.title') }}
       </h1>
       <p class="mt-1 text-gray-500 dark:text-slate-400">
-        {{ t('taskCenter.subtitle') }}
+        {{ t('automation.subtitle') }}
       </p>
     </div>
 
@@ -161,10 +156,10 @@ onUnmounted(() => {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-orange-500 transition-colors">
-                {{ t('taskCenter.tabs.smartHome') }}
+                {{ t('automation.tabs.smartHome') }}
               </h3>
               <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('taskCenter.tabs.smartHomeDesc') }}
+                {{ t('automation.tabs.smartHomeDesc') }}
               </p>
             </div>
           </div>
@@ -177,15 +172,15 @@ onUnmounted(() => {
         <div class="mt-6 grid grid-cols-3 gap-4">
           <div class="text-center">
             <div class="text-2xl font-bold text-orange-500">{{ stats.smartHome.entities }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.entities') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.entities') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-orange-500">{{ stats.smartHome.automations }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.automations') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.automations') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-orange-500">{{ stats.smartHome.scenes }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.scenes') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.scenes') }}</div>
           </div>
         </div>
       </div>
@@ -204,10 +199,10 @@ onUnmounted(() => {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-500 transition-colors">
-                {{ t('taskCenter.tabs.cron') }}
+                {{ t('automation.tabs.cron') }}
               </h3>
               <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('taskCenter.tabs.cronDesc') }}
+                {{ t('automation.tabs.cronDesc') }}
               </p>
             </div>
           </div>
@@ -220,11 +215,11 @@ onUnmounted(() => {
         <div class="mt-6 grid grid-cols-2 gap-4">
           <div class="text-center">
             <div class="text-2xl font-bold text-blue-500">{{ stats.cron.total }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.totalJobs') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.totalJobs') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-blue-500">{{ stats.cron.active }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.activeJobs') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.activeJobs') }}</div>
           </div>
         </div>
       </div>
@@ -243,10 +238,10 @@ onUnmounted(() => {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">
-                {{ t('taskCenter.tabs.workflow') }}
+                {{ t('automation.tabs.workflow') }}
               </h3>
               <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('taskCenter.tabs.workflowDesc') }}
+                {{ t('automation.tabs.workflowDesc') }}
               </p>
             </div>
           </div>
@@ -259,11 +254,11 @@ onUnmounted(() => {
         <div class="mt-6 grid grid-cols-2 gap-4">
           <div class="text-center">
             <div class="text-2xl font-bold text-indigo-500">{{ stats.workflow.total }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.workflows') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.workflows') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-indigo-500">{{ stats.workflow.active }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.active') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.active') }}</div>
           </div>
         </div>
       </div>
@@ -282,10 +277,10 @@ onUnmounted(() => {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-purple-500 transition-colors">
-                {{ t('taskCenter.tabs.autoReply') }}
+                {{ t('automation.tabs.autoReply') }}
               </h3>
               <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('taskCenter.tabs.autoReplyDesc') }}
+                {{ t('automation.tabs.autoReplyDesc') }}
               </p>
             </div>
           </div>
@@ -298,15 +293,15 @@ onUnmounted(() => {
         <div class="mt-6 grid grid-cols-3 gap-4">
           <div class="text-center">
             <div class="text-2xl font-bold text-purple-500">{{ stats.autoReply.rules }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.rules') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.rules') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-purple-500">{{ stats.autoReply.enabled }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.enabled') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.enabled') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-purple-500">{{ stats.autoReply.matches }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.matches') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.matches') }}</div>
           </div>
         </div>
       </div>
@@ -325,10 +320,10 @@ onUnmounted(() => {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-green-500 transition-colors">
-                {{ t('taskCenter.tabs.browser') }}
+                {{ t('automation.tabs.browser') }}
               </h3>
               <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('taskCenter.tabs.browserDesc') }}
+                {{ t('automation.tabs.browserDesc') }}
               </p>
             </div>
           </div>
@@ -341,15 +336,15 @@ onUnmounted(() => {
         <div class="mt-6 grid grid-cols-3 gap-4">
           <div class="text-center">
             <div class="text-2xl font-bold text-green-500">{{ stats.browser.tasks }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.tasks') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.tasks') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-green-500">{{ stats.browser.running }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.running') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.running') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-green-500">{{ stats.browser.sessions }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.sessions') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.sessions') }}</div>
           </div>
         </div>
       </div>
@@ -368,10 +363,10 @@ onUnmounted(() => {
             </div>
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-rose-500 transition-colors">
-                {{ t('taskCenter.tabs.a2ui') }}
+                {{ t('automation.tabs.a2ui') }}
               </h3>
               <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('taskCenter.tabs.a2uiDesc') }}
+                {{ t('automation.tabs.a2uiDesc') }}
               </p>
             </div>
           </div>
@@ -384,11 +379,52 @@ onUnmounted(() => {
         <div class="mt-6 grid grid-cols-2 gap-4">
           <div class="text-center">
             <div class="text-2xl font-bold text-rose-500">{{ stats.a2ui.canvases }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.canvases') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.canvases') }}</div>
           </div>
           <div class="text-center">
             <div class="text-2xl font-bold text-rose-500">{{ stats.a2ui.components }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('taskCenter.stats.components') }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.components') }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sandbox Card -->
+      <div
+        class="glass-card p-6 cursor-pointer hover:scale-[1.02] transition-all duration-200 group"
+        @click="navigateToPage('/sandbox')"
+      >
+        <div class="flex items-start justify-between">
+          <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-teal-500 transition-colors">
+                {{ t('automation.tabs.sandbox') }}
+              </h3>
+              <p class="text-sm text-gray-500 dark:text-slate-400">
+                {{ t('automation.tabs.sandboxDesc') }}
+              </p>
+            </div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 group-hover:text-teal-500 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+
+        <!-- Stats -->
+        <div class="mt-6 grid grid-cols-2 gap-4">
+          <div class="text-center">
+            <div class="text-2xl font-bold" :class="stats.sandbox.supported ? 'text-green-500' : 'text-gray-400'">
+              {{ stats.sandbox.supported ? t('common.enabled') : t('common.disabled') }}
+            </div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.status') }}</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-teal-500">{{ stats.sandbox.running }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.running') }}</div>
           </div>
         </div>
       </div>
@@ -397,7 +433,7 @@ onUnmounted(() => {
     <!-- Quick Actions -->
     <div class="mt-8">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        {{ t('taskCenter.quickActions') }}
+        {{ t('automation.quickActions') }}
       </h2>
       <div class="flex flex-wrap gap-3">
         <button
@@ -407,7 +443,7 @@ onUnmounted(() => {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
-          <span>{{ t('taskCenter.actions.controlLights') }}</span>
+          <span>{{ t('automation.actions.controlLights') }}</span>
         </button>
         <button
           class="px-4 py-2 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-colors flex items-center space-x-2"
@@ -416,7 +452,7 @@ onUnmounted(() => {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
-          <span>{{ t('taskCenter.actions.createJob') }}</span>
+          <span>{{ t('automation.actions.createJob') }}</span>
         </button>
         <button
           class="px-4 py-2 rounded-lg bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 transition-colors flex items-center space-x-2"
@@ -425,7 +461,7 @@ onUnmounted(() => {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
-          <span>{{ t('taskCenter.actions.createWorkflow') }}</span>
+          <span>{{ t('automation.actions.createWorkflow') }}</span>
         </button>
         <button
           class="px-4 py-2 rounded-lg bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors flex items-center space-x-2"
@@ -434,7 +470,7 @@ onUnmounted(() => {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
-          <span>{{ t('taskCenter.actions.createRule') }}</span>
+          <span>{{ t('automation.actions.createRule') }}</span>
         </button>
         <button
           class="px-4 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors flex items-center space-x-2"
@@ -443,7 +479,7 @@ onUnmounted(() => {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
-          <span>{{ t('taskCenter.actions.createTask') }}</span>
+          <span>{{ t('automation.actions.createTask') }}</span>
         </button>
         <button
           class="px-4 py-2 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors flex items-center space-x-2"
@@ -452,7 +488,7 @@ onUnmounted(() => {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
-          <span>{{ t('taskCenter.actions.createCanvas') }}</span>
+          <span>{{ t('automation.actions.createCanvas') }}</span>
         </button>
       </div>
     </div>

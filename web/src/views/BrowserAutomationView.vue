@@ -1,10 +1,10 @@
 <template>
   <div class="browser-automation-view">
     <div class="header">
-      <h1>Browser Automation</h1>
+      <h1>{{ t('browserAutomation.title') }}</h1>
       <div class="header-actions">
         <button class="btn btn-primary" @click="showCreateModal = true">
-          + New Task
+          + {{ t('browserAutomation.newTask') }}
         </button>
       </div>
     </div>
@@ -13,19 +13,19 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-value">{{ tasks.length }}</div>
-        <div class="stat-label">Total Tasks</div>
+        <div class="stat-label">{{ t('browserAutomation.stats.totalTasks') }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ runningTasks }}</div>
-        <div class="stat-label">Running</div>
+        <div class="stat-label">{{ t('browserAutomation.stats.running') }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ completedTasks }}</div>
-        <div class="stat-label">Completed</div>
+        <div class="stat-label">{{ t('browserAutomation.stats.completed') }}</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ sessions.length }}</div>
-        <div class="stat-label">Active Sessions</div>
+        <div class="stat-label">{{ t('browserAutomation.stats.activeSessions') }}</div>
       </div>
     </div>
 
@@ -36,37 +36,37 @@
         :class="{ active: activeTab === 'tasks' }"
         @click="activeTab = 'tasks'"
       >
-        Tasks
+        {{ t('browserAutomation.tabs.tasks') }}
       </button>
       <button
         class="tab-btn"
         :class="{ active: activeTab === 'sessions' }"
         @click="activeTab = 'sessions'"
       >
-        Sessions
+        {{ t('browserAutomation.tabs.sessions') }}
       </button>
       <button
         class="tab-btn"
         :class="{ active: activeTab === 'templates' }"
         @click="activeTab = 'templates'"
       >
-        Templates
+        {{ t('browserAutomation.tabs.templates') }}
       </button>
       <button
         class="tab-btn"
         :class="{ active: activeTab === 'security' }"
         @click="activeTab = 'security'"
       >
-        Security
+        {{ t('browserAutomation.tabs.security') }}
       </button>
     </div>
 
     <!-- Tasks Tab -->
     <div v-if="activeTab === 'tasks'" class="tasks-section">
       <div v-if="tasks.length === 0" class="empty-state">
-        <p>No tasks yet. Create your first automation task!</p>
+        <p>{{ t('browserAutomation.tasks.empty') }}</p>
         <button class="btn btn-primary" @click="showCreateModal = true">
-          Create Task
+          {{ t('browserAutomation.createTask') }}
         </button>
       </div>
       <div v-else class="tasks-list">
@@ -82,9 +82,9 @@
               {{ task.status }}
             </span>
           </div>
-          <div class="task-description">{{ task.description || 'No description' }}</div>
+          <div class="task-description">{{ task.description || t('browserAutomation.tasks.noDescription') }}</div>
           <div class="task-meta">
-            <span>{{ task.steps.length }} steps</span>
+            <span>{{ task.steps.length }} {{ t('browserAutomation.tasks.steps') }}</span>
             <span>{{ formatDate(task.created_at) }}</span>
           </div>
           <div class="task-actions" @click.stop>
@@ -93,17 +93,17 @@
               class="btn btn-sm btn-success"
               @click="runTask(task.id)"
             >
-              Run
+              {{ t('browserAutomation.tasks.run') }}
             </button>
             <button
               v-if="task.status === 'running'"
               class="btn btn-sm btn-warning"
               @click="cancelTask(task.id)"
             >
-              Cancel
+              {{ t('browserAutomation.tasks.cancel') }}
             </button>
             <button class="btn btn-sm btn-danger" @click="deleteTask(task.id)">
-              Delete
+              {{ t('browserAutomation.tasks.delete') }}
             </button>
           </div>
         </div>
@@ -114,11 +114,11 @@
     <div v-if="activeTab === 'sessions'" class="sessions-section">
       <div class="sessions-header">
         <button class="btn btn-primary" @click="createSession">
-          + New Session
+          + {{ t('browserAutomation.sessions.newSession') }}
         </button>
       </div>
       <div v-if="sessions.length === 0" class="empty-state">
-        <p>No active browser sessions.</p>
+        <p>{{ t('browserAutomation.sessions.empty') }}</p>
       </div>
       <div v-else class="sessions-list">
         <div
@@ -128,21 +128,21 @@
           @click="selectSession(session)"
         >
           <div class="session-header">
-            <span class="session-id">Session {{ session.id.slice(0, 8) }}</span>
+            <span class="session-id">{{ t('browserAutomation.sessions.session') }} {{ session.id.slice(0, 8) }}</span>
             <span class="session-status" :style="{ color: getStatusColor(session.status) }">
               {{ session.status }}
             </span>
           </div>
-          <div class="session-url">{{ session.current_url || 'No page loaded' }}</div>
+          <div class="session-url">{{ session.current_url || t('browserAutomation.sessions.noPageLoaded') }}</div>
           <div class="session-meta">
             <span>{{ formatDate(session.last_activity) }}</span>
           </div>
           <div class="session-actions" @click.stop>
             <button class="btn btn-sm btn-secondary" @click="takeScreenshot(session.id)">
-              Screenshot
+              {{ t('browserAutomation.sessions.screenshot') }}
             </button>
             <button class="btn btn-sm btn-danger" @click="closeSession(session.id)">
-              Close
+              {{ t('browserAutomation.sessions.close') }}
             </button>
           </div>
         </div>
@@ -172,22 +172,22 @@
         <!-- Allowed Domains -->
         <div class="security-card">
           <div class="security-card-header">
-            <h3>Allowed Domains</h3>
-            <p class="security-hint">Only these domains can be accessed. Leave empty to allow all (except blocked).</p>
+            <h3>{{ t('browserAutomation.security.allowedDomains') }}</h3>
+            <p class="security-hint">{{ t('browserAutomation.security.allowedDomainsHint') }}</p>
           </div>
           <div class="domain-input">
             <input
               v-model="newAllowedDomain"
               type="text"
-              placeholder="example.com or *.example.com"
+              :placeholder="t('browserAutomation.security.allowedDomainsPlaceholder')"
               @keyup.enter="addAllowedDomain"
             />
             <button class="btn btn-primary btn-sm" @click="addAllowedDomain" :disabled="!newAllowedDomain">
-              Add
+              {{ t('browserAutomation.security.add') }}
             </button>
           </div>
           <div v-if="securityConfig.allowed_domains.length === 0" class="empty-domains">
-            <p>No allowed domains configured. All domains are allowed (except blocked).</p>
+            <p>{{ t('browserAutomation.security.noAllowedDomains') }}</p>
           </div>
           <div v-else class="domain-list">
             <div v-for="domain in securityConfig.allowed_domains" :key="domain" class="domain-item allowed">
@@ -200,22 +200,22 @@
         <!-- Blocked Domains -->
         <div class="security-card">
           <div class="security-card-header">
-            <h3>Blocked Domains</h3>
-            <p class="security-hint">These domains are always blocked, even if in the allowed list.</p>
+            <h3>{{ t('browserAutomation.security.blockedDomains') }}</h3>
+            <p class="security-hint">{{ t('browserAutomation.security.blockedDomainsHint') }}</p>
           </div>
           <div class="domain-input">
             <input
               v-model="newBlockedDomain"
               type="text"
-              placeholder="malicious-site.com"
+              :placeholder="t('browserAutomation.security.blockedDomainsPlaceholder')"
               @keyup.enter="addBlockedDomain"
             />
             <button class="btn btn-danger btn-sm" @click="addBlockedDomain" :disabled="!newBlockedDomain">
-              Block
+              {{ t('browserAutomation.security.block') }}
             </button>
           </div>
           <div v-if="securityConfig.blocked_domains.length === 0" class="empty-domains">
-            <p>No blocked domains configured.</p>
+            <p>{{ t('browserAutomation.security.noBlockedDomains') }}</p>
           </div>
           <div v-else class="domain-list">
             <div v-for="domain in securityConfig.blocked_domains" :key="domain" class="domain-item blocked">
@@ -228,22 +228,22 @@
 
       <!-- URL Tester -->
       <div class="url-tester">
-        <h3>Test URL</h3>
-        <p class="security-hint">Check if a URL would be allowed or blocked.</p>
+        <h3>{{ t('browserAutomation.security.testUrl') }}</h3>
+        <p class="security-hint">{{ t('browserAutomation.security.testUrlHint') }}</p>
         <div class="tester-input">
           <input
             v-model="testUrlInput"
             type="url"
-            placeholder="https://example.com/page"
+            :placeholder="t('browserAutomation.security.testUrlPlaceholder')"
             @keyup.enter="testUrl"
           />
           <button class="btn btn-secondary" @click="testUrl" :disabled="!testUrlInput || testingUrl">
-            {{ testingUrl ? 'Testing...' : 'Test' }}
+            {{ testingUrl ? t('browserAutomation.security.testing') : t('browserAutomation.security.test') }}
           </button>
         </div>
         <div v-if="testResult" class="test-result" :class="{ allowed: testResult.allowed, blocked: !testResult.allowed }">
           <span class="result-icon">{{ testResult.allowed ? '✓' : '✕' }}</span>
-          <span class="result-text">{{ testResult.allowed ? 'URL is allowed' : 'URL is blocked' }}</span>
+          <span class="result-text">{{ testResult.allowed ? t('browserAutomation.security.urlAllowed') : t('browserAutomation.security.urlBlocked') }}</span>
           <span v-if="testResult.reason" class="result-reason">{{ testResult.reason }}</span>
         </div>
       </div>
@@ -258,15 +258,15 @@
         </div>
         <div class="modal-body">
           <div class="task-detail-status">
-            <span>Status:</span>
+            <span>{{ t('browserAutomation.taskDetail.status') }}</span>
             <span :style="{ color: getStatusColor(selectedTask.status) }">
               {{ selectedTask.status }}
             </span>
           </div>
           <div v-if="selectedTask.error" class="task-error">
-            Error: {{ selectedTask.error }}
+            {{ t('browserAutomation.taskDetail.error') }} {{ selectedTask.error }}
           </div>
-          <h3>Steps</h3>
+          <h3>{{ t('browserAutomation.taskDetail.steps') }}</h3>
           <div class="steps-list">
             <div
               v-for="(step, index) in selectedTask.steps"
@@ -281,17 +281,17 @@
             </div>
           </div>
           <div v-if="selectedTask.result" class="task-result">
-            <h3>Result</h3>
-            <p>Duration: {{ formatDuration(selectedTask.result.duration_ms) }}</p>
-            <p>Final URL: {{ selectedTask.result.final_url }}</p>
+            <h3>{{ t('browserAutomation.taskDetail.result') }}</h3>
+            <p>{{ t('browserAutomation.taskDetail.duration') }} {{ formatDuration(selectedTask.result.duration_ms) }}</p>
+            <p>{{ t('browserAutomation.taskDetail.finalUrl') }} {{ selectedTask.result.final_url }}</p>
             <div v-if="selectedTask.result.screenshots.length" class="screenshots">
-              <h4>Screenshots</h4>
+              <h4>{{ t('browserAutomation.taskDetail.screenshots') }}</h4>
               <div class="screenshots-grid">
                 <img
                   v-for="(screenshot, i) in selectedTask.result.screenshots"
                   :key="i"
                   :src="'data:image/png;base64,' + screenshot"
-                  alt="Screenshot"
+                  :alt="t('browserAutomation.screenshot.title')"
                   class="screenshot-thumb"
                 />
               </div>
@@ -305,83 +305,83 @@
     <div v-if="showCreateModal" class="modal-overlay" @click="showCreateModal = false">
       <div class="modal modal-large" @click.stop>
         <div class="modal-header">
-          <h2>Create New Task</h2>
+          <h2>{{ t('browserAutomation.createTask.title') }}</h2>
           <button class="close-btn" @click="showCreateModal = false">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label>Task Name</label>
-            <input v-model="newTask.name" type="text" placeholder="My Automation Task" />
+            <label>{{ t('browserAutomation.createTask.taskName') }}</label>
+            <input v-model="newTask.name" type="text" :placeholder="t('browserAutomation.createTask.taskNamePlaceholder')" />
           </div>
           <div class="form-group">
-            <label>Description</label>
+            <label>{{ t('browserAutomation.createTask.description') }}</label>
             <textarea
               v-model="newTask.description"
-              placeholder="What does this task do?"
+              :placeholder="t('browserAutomation.createTask.descriptionPlaceholder')"
             ></textarea>
           </div>
           <div class="steps-builder">
-            <h3>Steps</h3>
+            <h3>{{ t('browserAutomation.createTask.steps') }}</h3>
             <div
               v-for="(step, index) in newTask.steps"
               :key="index"
               class="step-builder-item"
             >
               <div class="step-builder-header">
-                <span>Step {{ index + 1 }}</span>
+                <span>{{ t('browserAutomation.createTask.step', { index: index + 1 }) }}</span>
                 <button class="btn btn-sm btn-danger" @click="removeStep(index)">
-                  Remove
+                  {{ t('browserAutomation.createTask.remove') }}
                 </button>
               </div>
               <div class="step-builder-content">
                 <select v-model="step.type">
-                  <option value="navigate">Navigate to URL</option>
-                  <option value="click">Click Element</option>
-                  <option value="type">Type Text</option>
-                  <option value="screenshot">Take Screenshot</option>
-                  <option value="wait">Wait</option>
-                  <option value="extract">Extract Data</option>
-                  <option value="scroll">Scroll</option>
+                  <option value="navigate">{{ t('browserAutomation.createTask.stepTypes.navigate') }}</option>
+                  <option value="click">{{ t('browserAutomation.createTask.stepTypes.click') }}</option>
+                  <option value="type">{{ t('browserAutomation.createTask.stepTypes.type') }}</option>
+                  <option value="screenshot">{{ t('browserAutomation.createTask.stepTypes.screenshot') }}</option>
+                  <option value="wait">{{ t('browserAutomation.createTask.stepTypes.wait') }}</option>
+                  <option value="extract">{{ t('browserAutomation.createTask.stepTypes.extract') }}</option>
+                  <option value="scroll">{{ t('browserAutomation.createTask.stepTypes.scroll') }}</option>
                 </select>
                 <div v-if="step.type === 'navigate'" class="step-params">
                   <input
                     v-model="step.params.url"
                     type="url"
-                    placeholder="https://example.com"
+                    :placeholder="t('browserAutomation.createTask.params.urlPlaceholder')"
                   />
                 </div>
                 <div v-if="step.type === 'click' || step.type === 'type' || step.type === 'extract'" class="step-params">
                   <input
                     v-model="step.params.selector"
                     type="text"
-                    placeholder="CSS Selector (e.g., #button, .class)"
+                    :placeholder="t('browserAutomation.createTask.params.selectorPlaceholder')"
                   />
                 </div>
                 <div v-if="step.type === 'type'" class="step-params">
                   <input
                     v-model="step.params.text"
                     type="text"
-                    placeholder="Text to type"
+                    :placeholder="t('browserAutomation.createTask.params.textPlaceholder')"
                   />
                 </div>
                 <div v-if="step.type === 'wait'" class="step-params">
                   <input
                     v-model.number="step.params.timeout"
                     type="number"
-                    placeholder="Timeout (ms)"
+                    :placeholder="t('browserAutomation.createTask.params.timeoutPlaceholder')"
                   />
                 </div>
               </div>
             </div>
-            <button class="btn btn-secondary" @click="addStep">+ Add Step</button>
+            <button class="btn btn-secondary" @click="addStep">{{ t('browserAutomation.createTask.addStep') }}</button>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" @click="showCreateModal = false">
-            Cancel
+            {{ t('browserAutomation.createTask.cancel') }}
           </button>
           <button class="btn btn-primary" @click="createTask" :disabled="!canCreateTask">
-            Create Task
+            {{ t('browserAutomation.createTask.create') }}
           </button>
         </div>
       </div>
@@ -391,11 +391,11 @@
     <div v-if="screenshotPreview" class="modal-overlay" @click="screenshotPreview = null">
       <div class="modal modal-large" @click.stop>
         <div class="modal-header">
-          <h2>Screenshot</h2>
+          <h2>{{ t('browserAutomation.screenshot.title') }}</h2>
           <button class="close-btn" @click="screenshotPreview = null">&times;</button>
         </div>
         <div class="modal-body screenshot-preview">
-          <img :src="'data:image/png;base64,' + screenshotPreview" alt="Screenshot" />
+          <img :src="'data:image/png;base64,' + screenshotPreview" :alt="t('browserAutomation.screenshot.title')" />
         </div>
       </div>
     </div>
@@ -404,8 +404,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as browserApi from '@/api/browser'
 import type { BrowserTask, BrowserSession, TaskTemplate, StepType, BrowserSecurityConfig } from '@/api/browser'
+
+const { t } = useI18n()
 
 // State
 const tasks = ref<BrowserTask[]>([])
@@ -489,7 +492,7 @@ async function cancelTask(taskId: string) {
 }
 
 async function deleteTask(taskId: string) {
-  if (!confirm('Are you sure you want to delete this task?')) return
+  if (!confirm(t('browserAutomation.tasks.deleteConfirm'))) return
   try {
     await browserApi.deleteTask(taskId)
     await loadTasks()

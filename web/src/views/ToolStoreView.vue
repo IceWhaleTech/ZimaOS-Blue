@@ -32,8 +32,25 @@ const filteredStoreTools = computed(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadInstalledTools(), loadStoreTools()])
+  await loadInstalledTools()
+  await loadStoreTools()
+  // Auto refresh store on first load if empty
+  if (storeTools.value.length === 0) {
+    await refreshStore()
+  }
 })
+
+async function refreshStore() {
+  try {
+    loading.value = true
+    await toolApi.refresh()
+    await loadStoreTools()
+  } catch {
+    // Handle error
+  } finally {
+    loading.value = false
+  }
+}
 
 async function loadInstalledTools() {
   try {

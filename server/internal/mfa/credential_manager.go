@@ -250,6 +250,12 @@ func (m *CredentialManager) DeleteCredential(ctx context.Context, userID uuid.UU
 	return m.store.Delete(ctx, userID, credIDBytes)
 }
 
+// GetRawCredentials returns all raw WebAuthn credentials for a user.
+// This is used internally for WebAuthn ceremonies.
+func (m *CredentialManager) GetRawCredentials(ctx context.Context, userID uuid.UUID) ([]WebAuthnCredential, error) {
+	return m.store.GetByUser(ctx, userID)
+}
+
 // UpdateLastUsed updates the last used time of a credential.
 func (m *CredentialManager) UpdateLastUsed(ctx context.Context, userID uuid.UUID, credID []byte) error {
 	cred, err := m.store.GetByID(ctx, userID, credID)

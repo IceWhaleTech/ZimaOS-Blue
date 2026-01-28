@@ -16,18 +16,25 @@ import (
 	_ "modernc.org/sqlite"
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/a2ui"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/metrics"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/setup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
@@ -36,6 +43,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/workflow"
 )
 
 var (
@@ -255,13 +263,76 @@ func main() {
 	}
 	backupHandler := backup.NewHandler(backupManager)
 
+	// Initialize security threat detector and handler
+	threatDetector := security.NewThreatDetector()
+	securityHandler := security.NewHandler(threatDetector)
+	logger.Info().Msg("Security handler initialized")
+
+	// Initialize MFA handler
+	mfaHandler := mfa.NewHandler(nil, nil)
+	logger.Info().Msg("MFA handler initialized")
+
+	// Initialize sandbox manager and handler
+	sandboxManager, err := sandbox.NewManager(nil)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
+	}
+	var sandboxHandler *sandbox.Handler
+	if sandboxManager != nil {
+		sandboxHandler = sandbox.NewHandler(sandboxManager)
+		logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
+	}
+
+	// Initialize cron service and handler
+	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
+	cronHandler := cron.NewHandler(cronService, zapLogger)
+	if err := cronService.Start(); err != nil {
+		logger.Warn().Err(err).Msg("Failed to start cron service")
+	}
+	logger.Info().Msg("Cron service initialized")
+
+	// Initialize Home Assistant service and handler
+	haService := homeassistant.NewHAService()
+	haHandler := homeassistant.NewHandler(haService)
+	logger.Info().Msg("Home Assistant handler initialized")
+
+	// Initialize browser automation service and handler
+	browserService, err := browser.NewService(nil)
+	var browserHandler *browser.Handler
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize browser service, browser automation will be disabled")
+	} else {
+		browserHandler = browser.NewHandler(browserService)
+		logger.Info().Msg("Browser automation handler initialized")
+	}
+
+	// Initialize A2UI manager and handler
+	a2uiManager := a2ui.NewManager(zapLogger)
+	a2uiHandler := a2ui.NewHandler(a2uiManager)
+	logger.Info().Msg("A2UI handler initialized")
+
+	// Initialize workflow service and handler
+	workflowRepo, err := workflow.NewRepository(db)
+	var workflowHandler *workflow.Handler
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize workflow repository, workflow features will be disabled")
+	} else {
+		workflowService, err := workflow.NewService(nil, workflowRepo)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize workflow service, workflow features will be disabled")
+		} else {
+			workflowHandler = workflow.NewHandler(workflowService)
+			logger.Info().Msg("Workflow handler initialized")
+		}
+	}
+
 	// Initialize HTTP server
 	srv := server.New(&cfg.Server)
 	server.SetVersion(version)
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, version, buildTime, gitCommit, dataDir)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, version, buildTime, gitCommit, dataDir)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -305,7 +376,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, version, buildTime, gitCommit, dataDir string) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, version, buildTime, gitCommit, dataDir string) {
 	e := srv.Echo()
 
 	// Setup wizard routes (no auth required)
@@ -328,6 +399,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// API v1 group
 	v1 := e.Group("/api/v1")
 
+	// API group (for routes that don't use /api/v1 prefix)
+	api := e.Group("/api")
+
 	// Public auth routes (login, logout, providers list)
 	v1.POST("/auth/login", userHandler.Login)
 	v1.POST("/auth/logout", userHandler.Logout)
@@ -343,6 +417,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register protected external auth routes (account linking)
 	protectedAuthGroup := protected.Group("/auth")
 	extauthHandler.RegisterProtectedRoutes(protectedAuthGroup)
+
+	// Register MFA routes (protected) - /api/v1/auth/mfa/*
+	mfaHandler.RegisterRoutes(protected)
 
 	// User routes (protected)
 	usersGroup := protected.Group("/users")
@@ -398,6 +475,42 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register tool store routes (tools and tool store)
 	toolStoreHandler := server.NewToolStoreHandler(toolRegistry)
 	toolStoreHandler.RegisterRoutes(v1)
+
+	// Register security routes (protected)
+	securityGroup := protected.Group("/security")
+	securityHandler.RegisterRoutes(securityGroup)
+
+	// Register sandbox routes (protected)
+	if sandboxHandler != nil {
+		sandboxGroup := protected.Group("/sandbox")
+		sandboxHandler.RegisterRoutes(sandboxGroup)
+	}
+
+	// Register cron routes under /api (protected via middleware on api group)
+	apiProtected := api.Group("")
+	apiProtected.Use(authMiddleware.Authenticate())
+
+	// Register cron routes (protected) - /api/cron/*
+	cronHandler.RegisterRoutes(apiProtected)
+
+	// Register Home Assistant routes (protected) - /api/homeassistant/*
+	haGroup := apiProtected.Group("/homeassistant")
+	haHandler.RegisterRoutes(haGroup)
+
+	// Register browser automation routes (protected) - /api/browser/*
+	if browserHandler != nil {
+		browserGroup := apiProtected.Group("/browser")
+		browserHandler.RegisterRoutes(browserGroup)
+	}
+
+	// Register A2UI routes (protected) - /api/a2ui/*
+	a2uiGroup := apiProtected.Group("/a2ui")
+	a2uiHandler.RegisterRoutes(a2uiGroup)
+
+	// Register workflow routes - /api/v1/workflows/*
+	if workflowHandler != nil {
+		workflowHandler.RegisterRoutes(e)
+	}
 
 	// Worker stats endpoint
 	v1.GET("/workers/stats", func(c echo.Context) error {

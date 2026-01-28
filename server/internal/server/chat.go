@@ -251,6 +251,31 @@ func (h *ChatHandler) ListProviders(c echo.Context) error {
 	return c.JSON(http.StatusOK, providers)
 }
 
+// RefreshProviderModels refreshes the model list for providers that support it.
+func (h *ChatHandler) RefreshProviderModels(c echo.Context) error {
+	providerName := c.Param("provider")
+
+	provider := h.providers.Get(providerName)
+	if provider == nil {
+		return echo.NewHTTPError(http.StatusNotFound, "provider not found: "+providerName)
+	}
+
+	// Check if provider supports model refresh
+	if refresher, ok := provider.(llm.ModelRefresher); ok {
+		models := refresher.RefreshModels()
+		return c.JSON(http.StatusOK, ProviderInfo{
+			Name:   providerName,
+			Models: models,
+		})
+	}
+
+	// Provider doesn't support refresh, just return current models
+	return c.JSON(http.StatusOK, ProviderInfo{
+		Name:   providerName,
+		Models: provider.Models(),
+	})
+}
+
 // ListTools lists available tools.
 func (h *ChatHandler) ListTools(c echo.Context) error {
 	defs := h.toolRegistry.Definitions()
@@ -265,7 +290,9 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/conversations/:id", h.DeleteConversation)
 	g.GET("/conversations/:id/messages", h.GetMessages)
 	g.POST("/conversations/:id/messages", h.SendMessage)
+	g.POST("/conversations/:id/messages/stream", h.StreamMessage)
 	g.GET("/providers", h.ListProviders)
+	g.POST("/providers/:provider/refresh", h.RefreshProviderModels)
 	g.GET("/tools", h.ListTools)
 }
 
@@ -289,7 +316,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Get provider
 	provider := h.providers.Get(req.Provider)
 	if provider == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider not found")
+		return echo.NewHTTPError(http.StatusBadRequest, "provider not found: "+req.Provider)
 	}
 
 	// Store user message
@@ -298,13 +325,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		Content: req.Message,
 	})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message: "+err.Error())
 	}
 
 	// Get conversation history
 	messages, err := h.store.GetMessages(c.Request().Context(), convID, 50, 0)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages")
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages: "+err.Error())
 	}
 
 	// Convert to LLM messages
@@ -328,7 +355,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Start streaming
 	chunks, err := provider.ChatStream(c.Request().Context(), chatReq)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to start streaming")
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to start streaming: "+err.Error())
 	}
 
 	// Set SSE headers

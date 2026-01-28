@@ -59,7 +59,8 @@
       "Bash(del \"g:\\\\GitHub\\\\ZimaOS-Echo\\\\server\\\\internal\\\\web\\\\dist\\\\.gitkeep\")",
       "WebFetch(domain:clawd.bot)",
       "WebFetch(domain:simpleicons.org)",
-      "WebFetch(domain:cdn.simpleicons.org)"
+      "WebFetch(domain:cdn.simpleicons.org)",
+      "Bash(npm run type-check:*)"
     ]
   }
 }

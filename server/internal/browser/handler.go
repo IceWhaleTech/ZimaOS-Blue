@@ -46,6 +46,26 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// Console
 	g.GET("/console", h.Console)
+
+	// Task management (stub endpoints for frontend compatibility)
+	g.GET("/tasks", h.ListTasks)
+	g.GET("/sessions", h.ListSessions)
+}
+
+// ListTasks returns all browser automation tasks (stub).
+func (h *Handler) ListTasks(c echo.Context) error {
+	// Return empty array for now - task management not yet implemented
+	return c.JSON(http.StatusOK, []interface{}{})
+}
+
+// ListSessions returns all browser sessions (stub).
+func (h *Handler) ListSessions(c echo.Context) error {
+	// Return tabs as sessions for compatibility
+	tabs, err := h.service.Tabs(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusOK, []interface{}{})
+	}
+	return c.JSON(http.StatusOK, tabs)
 }
 
 // Status returns the browser status.

@@ -151,6 +151,15 @@ function getProviderDisplayName(providerName: string): string {
   return translated === key ? providerName : translated
 }
 
+// Refresh models for current provider
+async function handleRefreshModels() {
+  try {
+    await settingsStore.refreshProviderModels()
+  } catch {
+    // Error is handled in the store
+  }
+}
+
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -274,7 +283,25 @@ onUnmounted(() => {
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.model') }}</label>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs text-gray-500 dark:text-slate-400 font-medium">{{ t('chat.model') }}</label>
+                  <button
+                    class="text-xs text-accent hover:text-accent-light transition-colors cursor-pointer flex items-center gap-1"
+                    :disabled="settingsStore.refreshing"
+                    @click="handleRefreshModels"
+                  >
+                    <svg
+                      class="w-3 h-3"
+                      :class="{ 'animate-spin': settingsStore.refreshing }"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {{ t('chat.refreshModels') }}
+                  </button>
+                </div>
                 <select
                   :value="settingsStore.selectedModel"
                   class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
@@ -324,6 +351,24 @@ onUnmounted(() => {
                 {{ model }}
               </option>
             </select>
+
+            <!-- Refresh button for desktop -->
+            <button
+              class="p-1.5 text-gray-500 dark:text-slate-400 hover:text-accent transition-colors cursor-pointer"
+              :disabled="settingsStore.refreshing"
+              :title="t('chat.refreshModels')"
+              @click="handleRefreshModels"
+            >
+              <svg
+                class="w-4 h-4"
+                :class="{ 'animate-spin': settingsStore.refreshing }"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
           </div>
         </div>
       </header>

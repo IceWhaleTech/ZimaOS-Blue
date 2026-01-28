@@ -12,6 +12,8 @@ interface StoredSettings {
   maxTokens: number
   apiKeys: Record<string, string>
   baseUrls: Record<string, string>
+  // Store last used model per provider
+  lastModelPerProvider: Record<string, string>
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -36,13 +38,15 @@ export const useSettingsStore = defineStore('settings', () => {
   // State
   const providers = ref<ProviderInfo[]>([])
   const tools = ref<ToolDefinition[]>([])
-  const selectedProvider = ref(stored.selectedProvider || 'openai')
-  const selectedModel = ref(stored.selectedModel || 'gpt-4o-mini')
+  const selectedProvider = ref(stored.selectedProvider || 'claude')
+  const selectedModel = ref(stored.selectedModel || 'claude-opus-4-5-20251101')
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? 2048)
   const apiKeys = ref<Record<string, string>>(stored.apiKeys || {})
   const baseUrls = ref<Record<string, string>>(stored.baseUrls || {})
+  const lastModelPerProvider = ref<Record<string, string>>(stored.lastModelPerProvider || {})
   const loading = ref(false)
+  const refreshing = ref(false)
   const error = ref<string | null>(null)
 
   // Computed
@@ -61,7 +65,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProvider, selectedModel, temperature, maxTokens, apiKeys, baseUrls],
+    [selectedProvider, selectedModel, temperature, maxTokens, apiKeys, baseUrls, lastModelPerProvider],
     () => {
       saveSettings({
         selectedProvider: selectedProvider.value,
@@ -70,10 +74,21 @@ export const useSettingsStore = defineStore('settings', () => {
         maxTokens: maxTokens.value,
         apiKeys: apiKeys.value,
         baseUrls: baseUrls.value,
+        lastModelPerProvider: lastModelPerProvider.value,
       })
     },
     { deep: true }
   )
+
+  // Update lastModelPerProvider when model changes
+  watch(selectedModel, (newModel) => {
+    if (newModel && selectedProvider.value) {
+      lastModelPerProvider.value = {
+        ...lastModelPerProvider.value,
+        [selectedProvider.value]: newModel,
+      }
+    }
+  })
 
   // Actions
   async function fetchProviders() {
@@ -87,18 +102,31 @@ export const useSettingsStore = defineStore('settings', () => {
       if (providers.value.length > 0) {
         const providerNames = providers.value.map((p) => p.name)
         if (!providerNames.includes(selectedProvider.value)) {
-          const firstProvider = providers.value[0]
-          if (firstProvider) {
-            selectedProvider.value = firstProvider.name
+          // Prefer claude if available, otherwise use first provider
+          const claudeProvider = providers.value.find((p) => p.name === 'claude')
+          if (claudeProvider) {
+            selectedProvider.value = 'claude'
+          } else {
+            const firstProvider = providers.value[0]
+            if (firstProvider) {
+              selectedProvider.value = firstProvider.name
+            }
           }
         }
 
-        // Set default model if current one is not available
+        // Set default model - prefer last used model for this provider
         const currentModels = currentProvider.value?.models || []
-        if (currentModels.length > 0 && !currentModels.includes(selectedModel.value)) {
-          const firstModel = currentModels[0]
-          if (firstModel) {
-            selectedModel.value = firstModel
+        if (currentModels.length > 0) {
+          const lastUsedModel = lastModelPerProvider.value[selectedProvider.value]
+          if (lastUsedModel && currentModels.includes(lastUsedModel)) {
+            // Use last used model for this provider
+            selectedModel.value = lastUsedModel
+          } else if (!currentModels.includes(selectedModel.value)) {
+            // Current model not available, use first model
+            const firstModel = currentModels[0]
+            if (firstModel) {
+              selectedModel.value = firstModel
+            }
           }
         }
       }
@@ -106,6 +134,46 @@ export const useSettingsStore = defineStore('settings', () => {
       error.value = e instanceof Error ? e.message : 'Failed to fetch providers'
     } finally {
       loading.value = false
+    }
+  }
+
+  // Refresh models for a specific provider (useful for Ollama)
+  async function refreshProviderModels(providerName?: string) {
+    const targetProvider = providerName || selectedProvider.value
+    try {
+      refreshing.value = true
+      error.value = null
+      const response = await providerApi.refresh(targetProvider)
+
+      // Update the provider's models in the list
+      const index = providers.value.findIndex((p) => p.name === targetProvider)
+      if (index !== -1) {
+        providers.value[index] = response.data
+      }
+
+      // If refreshing current provider, check if selected model is still valid
+      if (targetProvider === selectedProvider.value) {
+        const currentModels = response.data.models || []
+        if (currentModels.length > 0 && !currentModels.includes(selectedModel.value)) {
+          // Try to use last used model, otherwise use first
+          const lastUsedModel = lastModelPerProvider.value[targetProvider]
+          if (lastUsedModel && currentModels.includes(lastUsedModel)) {
+            selectedModel.value = lastUsedModel
+          } else {
+            const firstModel = currentModels[0]
+            if (firstModel) {
+              selectedModel.value = firstModel
+            }
+          }
+        }
+      }
+
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to refresh models'
+      throw e
+    } finally {
+      refreshing.value = false
     }
   }
 
@@ -120,12 +188,17 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function setProvider(provider: string) {
     selectedProvider.value = provider
-    // Reset model when provider changes
+    // When changing provider, try to use last used model for that provider
     const models = providers.value.find((p) => p.name === provider)?.models || []
     if (models.length > 0) {
-      const firstModel = models[0]
-      if (firstModel) {
-        selectedModel.value = firstModel
+      const lastUsedModel = lastModelPerProvider.value[provider]
+      if (lastUsedModel && models.includes(lastUsedModel)) {
+        selectedModel.value = lastUsedModel
+      } else {
+        const firstModel = models[0]
+        if (firstModel) {
+          selectedModel.value = firstModel
+        }
       }
     }
   }
@@ -176,7 +249,9 @@ export const useSettingsStore = defineStore('settings', () => {
     maxTokens,
     apiKeys,
     baseUrls,
+    lastModelPerProvider,
     loading,
+    refreshing,
     error,
 
     // Computed
@@ -186,6 +261,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Actions
     fetchProviders,
+    refreshProviderModels,
     fetchTools,
     setProvider,
     setModel,

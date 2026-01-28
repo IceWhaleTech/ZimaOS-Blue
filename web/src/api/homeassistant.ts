@@ -36,27 +36,28 @@ export interface HAConnectionStatus {
 }
 
 // API functions
+// Note: Home Assistant routes are registered under /api/homeassistant/* (without /v1)
 export async function connect(url: string, token: string): Promise<void> {
-  await api.post('/api/homeassistant/connect', { url, token })
+  await api.post('/homeassistant/connect', { url, token }, { baseURL: '/api' })
 }
 
 export async function disconnect(): Promise<void> {
-  await api.post('/api/homeassistant/disconnect')
+  await api.post('/homeassistant/disconnect', null, { baseURL: '/api' })
 }
 
 export async function getStatus(): Promise<HAConnectionStatus> {
-  const response = await api.get('/api/homeassistant/status')
+  const response = await api.get('/homeassistant/status', { baseURL: '/api' })
   return response.data
 }
 
 export async function getEntities(domain?: string): Promise<HAEntity[]> {
   const params = domain ? { domain } : {}
-  const response = await api.get('/api/homeassistant/entities', { params })
+  const response = await api.get('/homeassistant/entities', { params, baseURL: '/api' })
   return response.data
 }
 
 export async function getEntity(entityId: string): Promise<HAEntity> {
-  const response = await api.get(`/api/homeassistant/entities/${encodeURIComponent(entityId)}`)
+  const response = await api.get(`/homeassistant/entities/${encodeURIComponent(entityId)}`, { baseURL: '/api' })
   return response.data
 }
 
@@ -65,38 +66,38 @@ export async function controlEntity(
   action: string,
   parameters?: Record<string, unknown>
 ): Promise<void> {
-  await api.post(`/api/homeassistant/entities/${encodeURIComponent(entityId)}/control`, {
+  await api.post(`/homeassistant/entities/${encodeURIComponent(entityId)}/control`, {
     action,
     parameters,
-  })
+  }, { baseURL: '/api' })
 }
 
 export async function getScenes(): Promise<HAScene[]> {
-  const response = await api.get('/api/homeassistant/scenes')
+  const response = await api.get('/homeassistant/scenes', { baseURL: '/api' })
   return response.data
 }
 
 export async function activateScene(sceneId: string): Promise<void> {
-  await api.post(`/api/homeassistant/scenes/${encodeURIComponent(sceneId)}/activate`)
+  await api.post(`/homeassistant/scenes/${encodeURIComponent(sceneId)}/activate`, null, { baseURL: '/api' })
 }
 
 export async function getAutomations(): Promise<HAAutomation[]> {
-  const response = await api.get('/api/homeassistant/automations')
+  const response = await api.get('/homeassistant/automations', { baseURL: '/api' })
   return response.data
 }
 
 export async function triggerAutomation(automationId: string): Promise<void> {
-  await api.post(`/api/homeassistant/automations/${encodeURIComponent(automationId)}/trigger`)
+  await api.post(`/homeassistant/automations/${encodeURIComponent(automationId)}/trigger`, null, { baseURL: '/api' })
 }
 
 export async function toggleAutomation(automationId: string, enable: boolean): Promise<void> {
-  await api.post(`/api/homeassistant/automations/${encodeURIComponent(automationId)}/toggle`, {
+  await api.post(`/homeassistant/automations/${encodeURIComponent(automationId)}/toggle`, {
     enable,
-  })
+  }, { baseURL: '/api' })
 }
 
 export async function processCommand(command: string): Promise<HACommandResult> {
-  const response = await api.post('/api/homeassistant/command', { command })
+  const response = await api.post('/homeassistant/command', { command }, { baseURL: '/api' })
   return response.data
 }
 

@@ -42,31 +42,32 @@ export interface UpdateCronJobRequest {
 
 export const cronApi = {
   // List cron jobs
-  list: () => api.get<CronJob[]>('/cron'),
+  // Note: Cron routes are registered under /api/cron/* (without /v1)
+  list: () => api.get<CronJob[]>('/cron', { baseURL: '/api' }),
 
   // Get cron job by ID
-  get: (id: string) => api.get<CronJob>(`/cron/${id}`),
+  get: (id: string) => api.get<CronJob>(`/cron/${id}`, { baseURL: '/api' }),
 
   // Create cron job
-  create: (data: CreateCronJobRequest) => api.post<CronJob>('/cron', data),
+  create: (data: CreateCronJobRequest) => api.post<CronJob>('/cron', data, { baseURL: '/api' }),
 
   // Update cron job
   update: (id: string, data: UpdateCronJobRequest) =>
-    api.put<{ status: string }>(`/cron/${id}`, data),
+    api.put<{ status: string }>(`/cron/${id}`, data, { baseURL: '/api' }),
 
   // Delete cron job
-  delete: (id: string) => api.delete<{ status: string }>(`/cron/${id}`),
+  delete: (id: string) => api.delete<{ status: string }>(`/cron/${id}`, { baseURL: '/api' }),
 
   // Enable cron job
-  enable: (id: string) => api.post<{ status: string }>(`/cron/${id}/enable`),
+  enable: (id: string) => api.post<{ status: string }>(`/cron/${id}/enable`, null, { baseURL: '/api' }),
 
   // Disable cron job
-  disable: (id: string) => api.post<{ status: string }>(`/cron/${id}/disable`),
+  disable: (id: string) => api.post<{ status: string }>(`/cron/${id}/disable`, null, { baseURL: '/api' }),
 
   // Trigger cron job manually
-  trigger: (id: string) => api.post<{ status: string }>(`/cron/${id}/trigger`),
+  trigger: (id: string) => api.post<{ status: string }>(`/cron/${id}/trigger`, null, { baseURL: '/api' }),
 
   // Get job executions
   getExecutions: (id: string, limit = 20) =>
-    api.get<JobExecution[]>(`/cron/${id}/executions`, { params: { limit } }),
+    api.get<JobExecution[]>(`/cron/${id}/executions`, { params: { limit }, baseURL: '/api' }),
 }

@@ -139,6 +139,11 @@ func (m *AuthMiddleware) authenticateAPIKey(c echo.Context) (*UserClaims, *APIKe
 func setUserInContext(c echo.Context, claims *UserClaims) {
 	ctx := context.WithValue(c.Request().Context(), UserContextKey, claims)
 	c.SetRequest(c.Request().WithContext(ctx))
+
+	// Also set in echo context for handlers that use c.Get()
+	c.Set("user_id", claims.UserID)
+	c.Set("username", claims.Username)
+	c.Set("role", claims.Role)
 }
 
 // setAPIKeyInContext stores API key info in the echo context

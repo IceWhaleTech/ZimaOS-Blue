@@ -647,34 +647,39 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
           <!-- CPU Info -->
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
             <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.cpuInfo') }}</h4>
-            <div class="grid md:grid-cols-3 gap-4 text-sm">
-              <div class="md:col-span-2">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuModel') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.model || '-' }}</span>
+            <div class="flex flex-col md:flex-row gap-6">
+              <!-- CPU Usage Donut Chart -->
+              <div class="flex-shrink-0 flex justify-center">
+                <DonutChart
+                  :value="detailedInfo.hardware.cpu.usage || 0"
+                  :max="100"
+                  :label="t('system.cpuUsage')"
+                  color="auto"
+                  :size="140"
+                />
               </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuVendor') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.vendor_id || '-' }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCores') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cores || '-' }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuThreads') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.threads || '-' }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuFrequency') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.frequency ? `${detailedInfo.hardware.cpu.frequency.toFixed(0)} MHz` : '-' }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCache') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cache_size ? `${detailedInfo.hardware.cpu.cache_size} KB` : '-' }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuUsage') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.usage ? `${detailedInfo.hardware.cpu.usage.toFixed(1)}%` : '-' }}</span>
+              <!-- CPU Details -->
+              <div class="flex-1 grid sm:grid-cols-2 gap-4 text-sm">
+                <div class="sm:col-span-2">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuModel') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.model || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuVendor') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.vendor_id || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCores') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cores || '-' }} {{ t('system.cores') }} / {{ detailedInfo.hardware.cpu.threads || '-' }} {{ t('system.threads') }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuFrequency') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.frequency ? `${detailedInfo.hardware.cpu.frequency.toFixed(0)} MHz` : '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCache') }}:</span>
+                  <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cache_size ? `${detailedInfo.hardware.cpu.cache_size} KB` : '-' }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -682,26 +687,65 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
           <!-- Memory Info -->
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
             <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.memoryInfo') }}</h4>
-            <div class="grid md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.totalMemory') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.total) }}</span>
+            <div class="flex flex-col md:flex-row gap-6">
+              <!-- Memory Usage Donut Charts -->
+              <div class="flex-shrink-0 flex gap-6 justify-center">
+                <DonutChart
+                  :value="detailedInfo.hardware.memory.used"
+                  :max="detailedInfo.hardware.memory.total"
+                  :label="t('system.ram')"
+                  :value-label="formatBytes(detailedInfo.hardware.memory.used)"
+                  color="auto"
+                  :size="120"
+                />
+                <DonutChart
+                  v-if="detailedInfo.hardware.memory.swap_total > 0"
+                  :value="detailedInfo.hardware.memory.swap_used"
+                  :max="detailedInfo.hardware.memory.swap_total"
+                  :label="t('system.swap')"
+                  :value-label="formatBytes(detailedInfo.hardware.memory.swap_used)"
+                  color="purple"
+                  :size="120"
+                />
               </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.usedMemory') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.used) }} ({{ detailedInfo.hardware.memory.used_percent?.toFixed(1) }}%)</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.availableMemory') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.available) }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.swapTotal') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.swap_total) }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.swapUsed') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.swap_used) }}</span>
+              <!-- Memory Details -->
+              <div class="flex-1 space-y-4">
+                <div>
+                  <div class="flex justify-between text-sm mb-1">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.ram') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.used) }} / {{ formatBytes(detailedInfo.hardware.memory.total) }}</span>
+                  </div>
+                  <ProgressBar
+                    :value="detailedInfo.hardware.memory.used"
+                    :max="detailedInfo.hardware.memory.total"
+                    :show-percent="false"
+                    color="auto"
+                    size="md"
+                  />
+                </div>
+                <div v-if="detailedInfo.hardware.memory.swap_total > 0">
+                  <div class="flex justify-between text-sm mb-1">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.swap') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.swap_used) }} / {{ formatBytes(detailedInfo.hardware.memory.swap_total) }}</span>
+                  </div>
+                  <ProgressBar
+                    :value="detailedInfo.hardware.memory.swap_used"
+                    :max="detailedInfo.hardware.memory.swap_total"
+                    :show-percent="false"
+                    color="purple"
+                    size="md"
+                  />
+                </div>
+                <div class="grid grid-cols-2 gap-4 text-sm pt-2">
+                  <div>
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.availableMemory') }}:</span>
+                    <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.available) }}</span>
+                  </div>
+                  <div>
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('system.cached') }}:</span>
+                    <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.cached || 0) }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -709,6 +753,31 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
           <!-- Disk Info -->
           <div v-if="detailedInfo.hardware.disk?.length" class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
             <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.diskInfo') }}</h4>
+            <!-- Disk Usage Visual Cards -->
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              <div
+                v-for="disk in detailedInfo.hardware.disk.slice(0, 6)"
+                :key="disk.device"
+                class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-medium text-gray-900 dark:text-white text-sm truncate" :title="disk.mount_point">{{ disk.mount_point }}</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{ disk.fs_type }}</span>
+                </div>
+                <ProgressBar
+                  :value="disk.used"
+                  :max="disk.total"
+                  :show-percent="false"
+                  color="auto"
+                  size="lg"
+                />
+                <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  <span>{{ formatBytes(disk.used) }} {{ t('system.used') }}</span>
+                  <span>{{ formatBytes(disk.available) }} {{ t('system.free') }}</span>
+                </div>
+              </div>
+            </div>
+            <!-- Disk Table -->
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
                 <thead>
@@ -718,6 +787,7 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
                     <th class="pb-2 pr-4">{{ t('system.fileSystem') }}</th>
                     <th class="pb-2 pr-4">{{ t('system.totalSpace') }}</th>
                     <th class="pb-2 pr-4">{{ t('system.usedSpace') }}</th>
+                    <th class="pb-2 pr-4">{{ t('system.usage') }}</th>
                     <th class="pb-2">{{ t('system.availableSpace') }}</th>
                   </tr>
                 </thead>
@@ -727,7 +797,16 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
                     <td class="py-2 pr-4 font-mono text-xs">{{ disk.mount_point }}</td>
                     <td class="py-2 pr-4">{{ disk.fs_type }}</td>
                     <td class="py-2 pr-4">{{ formatBytes(disk.total) }}</td>
-                    <td class="py-2 pr-4">{{ formatBytes(disk.used) }} ({{ disk.used_percent?.toFixed(1) }}%)</td>
+                    <td class="py-2 pr-4">{{ formatBytes(disk.used) }}</td>
+                    <td class="py-2 pr-4 w-32">
+                      <ProgressBar
+                        :value="disk.used"
+                        :max="disk.total"
+                        :show-percent="true"
+                        color="auto"
+                        size="sm"
+                      />
+                    </td>
                     <td class="py-2">{{ formatBytes(disk.available) }}</td>
                   </tr>
                 </tbody>
@@ -738,31 +817,66 @@ function switchTab(tab: 'overview' | 'logs' | 'config' | 'backup') {
           <!-- GPU Info -->
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
             <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.gpuInfo') }}</h4>
-            <div v-if="detailedInfo.hardware.gpu?.length" class="space-y-4">
-              <div v-for="(gpu, index) in detailedInfo.hardware.gpu" :key="index" class="grid md:grid-cols-3 gap-4 text-sm">
-                <div class="md:col-span-2">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuName') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.name || '-' }}</span>
+            <div v-if="detailedInfo.hardware.gpu?.length" class="space-y-6">
+              <div v-for="(gpu, index) in detailedInfo.hardware.gpu" :key="index" class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <div class="flex flex-col md:flex-row gap-4">
+                  <!-- GPU Memory Donut (if available) -->
+                  <div v-if="gpu.memory_total" class="flex-shrink-0 flex justify-center">
+                    <DonutChart
+                      :value="gpu.memory_used || 0"
+                      :max="gpu.memory_total"
+                      :label="t('system.vram')"
+                      :value-label="formatBytes(gpu.memory_used || 0)"
+                      color="green"
+                      :size="100"
+                    />
+                  </div>
+                  <!-- GPU Details -->
+                  <div class="flex-1 grid sm:grid-cols-2 gap-3 text-sm">
+                    <div class="sm:col-span-2">
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuName') }}:</span>
+                      <span class="text-gray-900 dark:text-white ml-2 font-medium">{{ gpu.name || '-' }}</span>
+                    </div>
+                    <div>
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuVendor') }}:</span>
+                      <span class="text-gray-900 dark:text-white ml-2">{{ gpu.vendor || '-' }}</span>
+                    </div>
+                    <div>
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuDriver') }}:</span>
+                      <span class="text-gray-900 dark:text-white ml-2">{{ gpu.driver || '-' }}</span>
+                    </div>
+                    <div v-if="gpu.memory_total">
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuMemory') }}:</span>
+                      <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(gpu.memory_total) }}</span>
+                    </div>
+                    <div v-if="gpu.temperature">
+                      <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuTemperature') }}:</span>
+                      <span class="text-gray-900 dark:text-white ml-2">{{ gpu.temperature }}°C</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuVendor') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.vendor || '-' }}</span>
-                </div>
-                <div>
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuDriver') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.driver || '-' }}</span>
-                </div>
-                <div>
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuMemory') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2">{{ gpu.memory_total ? formatBytes(gpu.memory_total) : '-' }}</span>
-                </div>
-                <div v-if="gpu.memory_used">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuMemoryUsed') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(gpu.memory_used) }}</span>
+                <!-- GPU Memory Bar -->
+                <div v-if="gpu.memory_total" class="mt-4">
+                  <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    <span>{{ t('system.vramUsage') }}</span>
+                    <span>{{ formatBytes(gpu.memory_used || 0) }} / {{ formatBytes(gpu.memory_total) }}</span>
+                  </div>
+                  <ProgressBar
+                    :value="gpu.memory_used || 0"
+                    :max="gpu.memory_total"
+                    :show-percent="false"
+                    color="green"
+                    size="sm"
+                  />
                 </div>
               </div>
             </div>
-            <div v-else class="text-gray-500 dark:text-gray-400 text-sm">{{ t('system.noGpuDetected') }}</div>
+            <div v-else class="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              {{ t('system.noGpuDetected') }}
+            </div>
           </div>
 
           <!-- Network Info -->

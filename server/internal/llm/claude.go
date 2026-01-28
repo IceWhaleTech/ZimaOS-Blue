@@ -45,8 +45,13 @@ func (p *ClaudeProvider) Name() string {
 // Models returns the list of available models.
 func (p *ClaudeProvider) Models() []string {
 	return []string{
+		// Claude 4 series (latest)
+		"claude-opus-4-5-20251101",
+		"claude-sonnet-4-20250514",
+		// Claude 3.5 series
 		"claude-3-5-sonnet-20241022",
 		"claude-3-5-haiku-20241022",
+		// Claude 3 series
 		"claude-3-opus-20240229",
 		"claude-3-sonnet-20240229",
 		"claude-3-haiku-20240307",

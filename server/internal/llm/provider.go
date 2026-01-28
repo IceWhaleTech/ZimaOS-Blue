@@ -87,6 +87,12 @@ type Provider interface {
 	ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error)
 }
 
+// ModelRefresher is an optional interface for providers that support refreshing models.
+type ModelRefresher interface {
+	// RefreshModels clears cached models and fetches fresh list from the API.
+	RefreshModels() []string
+}
+
 // ProviderRegistry manages registered LLM providers.
 type ProviderRegistry struct {
 	mu        sync.RWMutex

@@ -17,8 +17,9 @@ const (
 
 // OllamaProvider implements the Provider interface for Ollama.
 type OllamaProvider struct {
-	baseURL string
-	client  *http.Client
+	baseURL      string
+	client       *http.Client
+	cachedModels []string
 }
 
 // NewOllamaProvider creates a new Ollama provider.
@@ -42,6 +43,12 @@ func (p *OllamaProvider) Name() string {
 // Models returns the list of commonly available models.
 // In production, this could query /api/tags for installed models.
 func (p *OllamaProvider) Models() []string {
+	// Try to fetch models from Ollama API
+	models := p.fetchModels()
+	if len(models) > 0 {
+		return models
+	}
+	// Fallback to default list if API is not available
 	return []string{
 		"llama3.2",
 		"llama3.1",
@@ -53,6 +60,57 @@ func (p *OllamaProvider) Models() []string {
 		"gemma2",
 		"qwen2.5",
 	}
+}
+
+// fetchModels fetches the list of installed models from Ollama API.
+func (p *OllamaProvider) fetchModels() []string {
+	// Use cached models if available
+	if len(p.cachedModels) > 0 {
+		return p.cachedModels
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", p.baseURL+"/api/tags", nil)
+	if err != nil {
+		return nil
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var result struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+
+	models := make([]string, len(result.Models))
+	for i, m := range result.Models {
+		models[i] = m.Name
+	}
+
+	// Cache the models
+	p.cachedModels = models
+	return models
+}
+
+// RefreshModels clears the cached models and fetches fresh list.
+func (p *OllamaProvider) RefreshModels() []string {
+	p.cachedModels = nil
+	return p.fetchModels()
 }
 
 // ollamaRequest represents the Ollama API request format.

@@ -6,6 +6,7 @@ import { extauthApi, getProviderDisplayName } from '@/api/extauth'
 import type { CreateApiKeyRequest } from '@/api/auth'
 import type { ProviderInfo, LinkedAccount, ProviderType } from '@/api/extauth'
 import MFASettings from '@/components/MFASettings.vue'
+import WebAuthnSettings from '@/components/WebAuthnSettings.vue'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -391,6 +392,9 @@ function toggleScope(scope: string) {
 
     <!-- MFA Settings Section -->
     <MFASettings @status-change="handleMFAStatusChange" />
+
+    <!-- WebAuthn Settings Section -->
+    <WebAuthnSettings @status-change="handleMFAStatusChange" />
 
     <!-- Linked Accounts Section -->
     <section v-if="availableProviders.length > 0" class="mb-6 sm:mb-8">

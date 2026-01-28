@@ -93,6 +93,7 @@ export const messageApi = {
 // Provider API
 export const providerApi = {
   list: () => api.get<ProviderInfo[]>('/providers'),
+  refresh: (provider: string) => api.post<ProviderInfo>(`/providers/${provider}/refresh`),
 }
 
 // Tool API

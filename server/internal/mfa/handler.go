@@ -1,18 +1,24 @@
 package mfa
 
 import (
+	"encoding/base64"
 	"net/http"
+	"sync"
+	"time"
 
+	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 // Handler handles HTTP requests for MFA operations.
 type Handler struct {
-	totp     *TOTP
-	recovery *Recovery
-	// userRepo is used to get/update user MFA settings
-	// This would be injected from the user package
+	totp              *TOTP
+	recovery          *Recovery
+	webauthn          *WebAuthn
+	credentialManager *CredentialManager
+	// Session storage for WebAuthn ceremonies (in production, use Redis or similar)
+	registrationSessions sync.Map // map[string]*RegistrationSession
 }
 
 // NewHandler creates a new MFA handler.
@@ -23,9 +29,43 @@ func NewHandler(totp *TOTP, recovery *Recovery) *Handler {
 	if recovery == nil {
 		recovery = NewRecovery(nil)
 	}
+
+	// Initialize WebAuthn with default config
+	webauthn, _ := NewWebAuthn(nil)
+
+	// Initialize credential manager with in-memory store
+	credStore := NewInMemoryCredentialStore()
+	credManager := NewCredentialManager(credStore, nil)
+
 	return &Handler{
-		totp:     totp,
-		recovery: recovery,
+		totp:              totp,
+		recovery:          recovery,
+		webauthn:          webauthn,
+		credentialManager: credManager,
+	}
+}
+
+// NewHandlerWithWebAuthn creates a new MFA handler with custom WebAuthn configuration.
+func NewHandlerWithWebAuthn(totp *TOTP, recovery *Recovery, webauthnConfig *WebAuthnConfig, credStore CredentialStore) *Handler {
+	if totp == nil {
+		totp = NewTOTP(nil)
+	}
+	if recovery == nil {
+		recovery = NewRecovery(nil)
+	}
+
+	webauthn, _ := NewWebAuthn(webauthnConfig)
+
+	if credStore == nil {
+		credStore = NewInMemoryCredentialStore()
+	}
+	credManager := NewCredentialManager(credStore, nil)
+
+	return &Handler{
+		totp:              totp,
+		recovery:          recovery,
+		webauthn:          webauthn,
+		credentialManager: credManager,
 	}
 }
 
@@ -38,6 +78,13 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	mfa.GET("/status", h.Status)
 	mfa.GET("/recovery", h.GetRecoveryCodes)
 	mfa.POST("/recovery/regenerate", h.RegenerateRecoveryCodes)
+
+	// WebAuthn routes
+	webauthn := g.Group("/auth/webauthn")
+	webauthn.GET("/status", h.WebAuthnStatus)
+	webauthn.POST("/register/begin", h.WebAuthnRegisterBegin)
+	webauthn.POST("/register/finish", h.WebAuthnRegisterFinish)
+	webauthn.DELETE("/credentials/:id", h.WebAuthnDeleteCredential)
 }
 
 // SetupRequest represents a request to start MFA setup.
@@ -287,4 +334,243 @@ func getUsernameFromContext(c echo.Context) string {
 		return username
 	}
 	return ""
+}
+
+// WebAuthn Handler Methods
+
+// WebAuthnStatusResponse represents the WebAuthn status response.
+type WebAuthnStatusResponse struct {
+	Enabled     bool                    `json:"enabled"`
+	Credentials []WebAuthnCredentialDTO `json:"credentials"`
+}
+
+// WebAuthnCredentialDTO represents a WebAuthn credential for API responses.
+type WebAuthnCredentialDTO struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	CreatedAt  string `json:"created_at"`
+	LastUsedAt string `json:"last_used_at"`
+}
+
+// WebAuthnStatus returns the WebAuthn status for the current user.
+func (h *Handler) WebAuthnStatus(c echo.Context) error {
+	userID := getUserIDFromContext(c)
+	if userID == uuid.Nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")
+	}
+
+	// Check if WebAuthn is configured
+	if h.webauthn == nil {
+		return c.JSON(http.StatusOK, &WebAuthnStatusResponse{
+			Enabled:     false,
+			Credentials: []WebAuthnCredentialDTO{},
+		})
+	}
+
+	// Get credentials from the credential manager
+	creds, err := h.credentialManager.ListCredentials(c.Request().Context(), userID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get credentials")
+	}
+
+	// Convert to DTOs
+	credDTOs := make([]WebAuthnCredentialDTO, len(creds))
+	for i, cred := range creds {
+		credDTOs[i] = WebAuthnCredentialDTO{
+			ID:         cred.ID,
+			Name:       cred.Name,
+			CreatedAt:  cred.CreatedAt.Format(time.RFC3339),
+			LastUsedAt: cred.LastUsedAt.Format(time.RFC3339),
+		}
+	}
+
+	return c.JSON(http.StatusOK, &WebAuthnStatusResponse{
+		Enabled:     len(credDTOs) > 0,
+		Credentials: credDTOs,
+	})
+}
+
+// WebAuthnRegisterBeginRequest represents a request to begin WebAuthn registration.
+type WebAuthnRegisterBeginRequest struct {
+	Name string `json:"name" validate:"required"`
+}
+
+// WebAuthnRegisterBegin starts the WebAuthn registration ceremony.
+func (h *Handler) WebAuthnRegisterBegin(c echo.Context) error {
+	userID := getUserIDFromContext(c)
+	if userID == uuid.Nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")
+	}
+
+	if h.webauthn == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "WebAuthn not configured")
+	}
+
+	var req WebAuthnRegisterBeginRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if req.Name == "" {
+		req.Name = "Security Key"
+	}
+
+	// Get username from context
+	username := getUsernameFromContext(c)
+	if username == "" {
+		username = userID.String()
+	}
+
+	// Get existing credentials for the user
+	existingCreds, err := h.credentialManager.GetRawCredentials(c.Request().Context(), userID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get existing credentials")
+	}
+
+	// Create WebAuthn user
+	webauthnUser := &WebAuthnUser{
+		ID:          userID,
+		Name:        username,
+		DisplayName: username,
+		Credentials: existingCreds,
+	}
+
+	// Begin registration ceremony
+	options, session, err := h.webauthn.BeginRegistration(webauthnUser)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin registration: "+err.Error())
+	}
+
+	// Store session with credential name
+	sessionKey := base64.URLEncoding.EncodeToString([]byte(session.Challenge))
+	h.registrationSessions.Store(sessionKey, &registrationSessionWithName{
+		Session: session,
+		Name:    req.Name,
+	})
+
+	// Clean up old sessions after timeout
+	go func() {
+		time.Sleep(time.Duration(h.webauthn.config.Timeout) * time.Millisecond)
+		h.registrationSessions.Delete(sessionKey)
+	}()
+
+	return c.JSON(http.StatusOK, options)
+}
+
+// registrationSessionWithName wraps RegistrationSession with credential name.
+type registrationSessionWithName struct {
+	Session *RegistrationSession
+	Name    string
+}
+
+// WebAuthnRegisterFinish completes the WebAuthn registration ceremony.
+func (h *Handler) WebAuthnRegisterFinish(c echo.Context) error {
+	userID := getUserIDFromContext(c)
+	if userID == uuid.Nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")
+	}
+
+	if h.webauthn == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "WebAuthn not configured")
+	}
+
+	// Parse the credential creation response from request body
+	parsedResponse, err := protocol.ParseCredentialCreationResponseBody(c.Request().Body)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to parse credential response: "+err.Error())
+	}
+
+	// Find the session by challenge (challenge is already a string in CollectedClientData)
+	sessionKey := base64.URLEncoding.EncodeToString([]byte(parsedResponse.Response.CollectedClientData.Challenge))
+	sessionData, ok := h.registrationSessions.Load(sessionKey)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "registration session not found or expired")
+	}
+
+	sessionWithName := sessionData.(*registrationSessionWithName)
+	session := sessionWithName.Session
+
+	// Verify the session belongs to this user
+	if session.UserID != userID {
+		return echo.NewHTTPError(http.StatusBadRequest, "session user mismatch")
+	}
+
+	// Check if session is expired
+	if time.Now().After(session.ExpiresAt) {
+		h.registrationSessions.Delete(sessionKey)
+		return echo.NewHTTPError(http.StatusBadRequest, "registration session expired")
+	}
+
+	// Get username from context
+	username := getUsernameFromContext(c)
+	if username == "" {
+		username = userID.String()
+	}
+
+	// Get existing credentials for the user
+	existingCreds, err := h.credentialManager.GetRawCredentials(c.Request().Context(), userID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get existing credentials")
+	}
+
+	// Create WebAuthn user
+	webauthnUser := &WebAuthnUser{
+		ID:          userID,
+		Name:        username,
+		DisplayName: username,
+		Credentials: existingCreds,
+	}
+
+	// Finish registration
+	credential, err := h.webauthn.FinishRegistration(webauthnUser, session, parsedResponse)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to verify registration: "+err.Error())
+	}
+
+	// Set the credential name
+	credential.Name = sessionWithName.Name
+
+	// Store the credential
+	if err := h.credentialManager.AddCredential(c.Request().Context(), userID, credential); err != nil {
+		if err == ErrMaxCredentialsReached {
+			return echo.NewHTTPError(http.StatusBadRequest, "maximum number of security keys reached")
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store credential")
+	}
+
+	// Clean up session
+	h.registrationSessions.Delete(sessionKey)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"credential": WebAuthnCredentialDTO{
+			ID:         base64.URLEncoding.EncodeToString(credential.ID),
+			Name:       credential.Name,
+			CreatedAt:  credential.CreatedAt.Format(time.RFC3339),
+			LastUsedAt: credential.LastUsedAt.Format(time.RFC3339),
+		},
+	})
+}
+
+// WebAuthnDeleteCredential deletes a WebAuthn credential.
+func (h *Handler) WebAuthnDeleteCredential(c echo.Context) error {
+	userID := getUserIDFromContext(c)
+	if userID == uuid.Nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")
+	}
+
+	credentialID := c.Param("id")
+	if credentialID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "credential ID required")
+	}
+
+	// Delete the credential using the credential manager
+	if err := h.credentialManager.DeleteCredential(c.Request().Context(), userID, credentialID); err != nil {
+		if err == ErrCredentialNotFound {
+			return echo.NewHTTPError(http.StatusNotFound, "credential not found")
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete credential")
+	}
+
+	return c.JSON(http.StatusOK, map[string]bool{"success": true})
 }

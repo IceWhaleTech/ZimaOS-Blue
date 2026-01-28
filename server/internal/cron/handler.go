@@ -43,6 +43,7 @@ type UpdateRequest struct {
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	cron := g.Group("/cron")
 	cron.GET("", h.List)
+	cron.GET("/jobs", h.List) // Alias for frontend compatibility
 	cron.POST("", h.Create)
 	cron.GET("/:id", h.Get)
 	cron.PUT("/:id", h.Update)
