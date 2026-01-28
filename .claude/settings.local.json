@@ -60,7 +60,13 @@
       "WebFetch(domain:clawd.bot)",
       "WebFetch(domain:simpleicons.org)",
       "WebFetch(domain:cdn.simpleicons.org)",
-      "Bash(npm run type-check:*)"
+      "Bash(npm run type-check:*)",
+      "Bash(node:*)",
+      "Bash(npm --version:*)",
+      "Bash(brew upgrade:*)",
+      "Bash(brew install:*)",
+      "Bash(./dev.sh:*)",
+      "Bash(chmod:*)"
     ]
   }
 }
