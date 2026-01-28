@@ -143,8 +143,8 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Worker Pool Section -->
-    <div class="worker-section">
+    <!-- Worker Pool Section (only show when worker stats are available) -->
+    <div v-if="workerStats" class="worker-section">
       <div class="worker-header">
         <div class="worker-icon">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -55,6 +55,15 @@ check_prereqs() {
     success "All prerequisites found"
 }
 
+# Install air for hot reload
+install_air() {
+    if ! command_exists air; then
+        info "Installing air for hot reload..."
+        go install github.com/air-verse/air@latest
+        success "Air installed"
+    fi
+}
+
 # Install dependencies
 install_deps() {
     info "Installing dependencies..."
@@ -76,17 +85,26 @@ install_deps() {
     success "Node dependencies installed"
 }
 
-# Start the Go server
+# Start the Go server with hot reload
 start_server() {
-    info "Starting Go server..."
+    info "Starting Go server with hot reload..."
     cd "$PROJECT_ROOT/server"
 
-    # Build first
-    go build -o echo ./cmd/echo
-    success "Server built successfully"
+    # Check if air is available
+    if command_exists air; then
+        info "Starting server with air (hot reload enabled)"
+        info "Server will auto-restart when Go files change"
+        air
+    else
+        warn "Air not installed, running without hot reload"
+        warn "Run 'go install github.com/air-verse/air@latest' to enable hot reload"
+        # Build first
+        go build -o echo ./cmd/echo
+        success "Server built successfully"
 
-    info "Starting server on http://localhost:8080"
-    ./echo
+        info "Starting server on http://localhost:8080"
+        ./echo
+    fi
 }
 
 # Start the web dev server
@@ -107,6 +125,7 @@ start_web() {
 start_all() {
     check_prereqs
     install_deps
+    install_air
 
     echo ""
     echo -e "${CYAN}========================================${NC}"
@@ -116,16 +135,23 @@ start_all() {
     echo -e "  Backend:  ${YELLOW}http://localhost:8080${NC}"
     echo -e "  Frontend: ${YELLOW}http://localhost:3000${NC}"
     echo ""
+    if command_exists air; then
+        echo -e "  ${GREEN}Hot reload enabled for backend${NC}"
+    fi
     echo -e "  Press ${YELLOW}Ctrl+C${NC} to stop all services"
     echo ""
 
     # Trap to cleanup background processes
     trap cleanup EXIT INT TERM
 
-    # Start server in background
+    # Start server in background with hot reload
     cd "$PROJECT_ROOT/server"
-    go build -o echo ./cmd/echo
-    ./echo &
+    if command_exists air; then
+        air &
+    else
+        go build -o echo ./cmd/echo
+        ./echo &
+    fi
     SERVER_PID=$!
 
     # Give server time to start
@@ -147,6 +173,9 @@ cleanup() {
 
     # Kill any remaining echo processes
     pkill -f "echo" 2>/dev/null || true
+
+    # Kill air if running
+    pkill -f "air" 2>/dev/null || true
 
     success "Services stopped"
 }
@@ -182,6 +211,7 @@ clean_all() {
     # Clean server
     rm -f "$PROJECT_ROOT/server/echo"
     rm -rf "$PROJECT_ROOT/server/data"
+    rm -rf "$PROJECT_ROOT/server/tmp"
 
     # Clean web
     rm -rf "$PROJECT_ROOT/web/dist"
@@ -197,6 +227,7 @@ case "$COMMAND" in
         ;;
     server)
         check_prereqs
+        install_air
         start_server
         ;;
     web)

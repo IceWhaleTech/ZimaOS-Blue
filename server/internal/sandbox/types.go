@@ -42,20 +42,36 @@ type Config struct {
 	AllowedPaths []string
 	// DeniedPaths are paths that cannot be accessed.
 	DeniedPaths []string
+
+	// macOS Hypervisor.framework specific options
+	// DarwinExecutorMode specifies which executor to use on macOS.
+	// Valid values: "auto", "hypervisor", "sandbox-exec"
+	// Default: "auto" (automatically selects the best available option)
+	DarwinExecutorMode string
+	// HypervisorVMImagePath is the path to the VM disk image for Hypervisor mode.
+	HypervisorVMImagePath string
+	// HypervisorMemoryMB is the VM memory in megabytes for Hypervisor mode.
+	HypervisorMemoryMB int
+	// HypervisorCPUCount is the number of virtual CPUs for Hypervisor mode.
+	HypervisorCPUCount int
 }
 
 // DefaultConfig returns the default sandbox configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		DefaultTimeout: 30 * time.Second,
-		MaxTimeout:     5 * time.Minute,
-		MemoryLimit:    256 * 1024 * 1024, // 256 MB
-		CPULimit:       1.0,
-		ProcessLimit:   10,
-		NetworkEnabled: false,
-		WorkDir:        "/tmp/sandbox",
-		AllowedPaths:   []string{"/tmp/sandbox"},
-		DeniedPaths:    []string{"/etc", "/var", "/home", "/root"},
+		DefaultTimeout:        30 * time.Second,
+		MaxTimeout:            5 * time.Minute,
+		MemoryLimit:           256 * 1024 * 1024, // 256 MB
+		CPULimit:              1.0,
+		ProcessLimit:          10,
+		NetworkEnabled:        false,
+		WorkDir:               "/tmp/sandbox",
+		AllowedPaths:          []string{"/tmp/sandbox"},
+		DeniedPaths:           []string{"/etc", "/var", "/home", "/root"},
+		DarwinExecutorMode:    "auto",
+		HypervisorVMImagePath: "/var/lib/echo/sandbox/vm.img",
+		HypervisorMemoryMB:    512,
+		HypervisorCPUCount:    1,
 	}
 }
 

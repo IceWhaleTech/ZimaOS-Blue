@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
+import FormFillerWidget from '@/components/formfiller/FormFillerWidget.vue'
+import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 
 const route = useRoute()
 const noPadding = computed(() => route.meta.noPadding === true)
@@ -14,12 +16,25 @@ const sidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null)
 function toggleSidebar() {
   sidebarRef.value?.toggle()
 }
+
+// Form filler widget - now shows on input focus, no need for route watching
+const { setup, cleanup } = useFormFillerWidget()
+
+onMounted(() => {
+  setup()
+})
+
+onUnmounted(() => {
+  cleanup()
+})
 </script>
 
 <template>
   <!-- Full-screen layout without navigation for setup/login pages -->
   <div v-if="hideLayout" class="h-screen bg-surface-base overflow-auto">
     <RouterView />
+    <!-- Form filler widget available on all pages -->
+    <FormFillerWidget />
   </div>
   <!-- Default layout with header and sidebar -->
   <div v-else class="h-screen flex flex-col bg-surface-base overflow-hidden">
@@ -30,5 +45,7 @@ function toggleSidebar() {
         <RouterView />
       </main>
     </div>
+    <!-- Form filler widget available on all pages -->
+    <FormFillerWidget />
   </div>
 </template>

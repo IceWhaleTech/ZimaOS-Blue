@@ -5,9 +5,22 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
+)
+
+// DarwinExecutorMode specifies which executor to use on macOS.
+type DarwinExecutorMode string
+
+const (
+	// DarwinExecutorModeSandboxExec uses the traditional sandbox-exec approach
+	DarwinExecutorModeSandboxExec DarwinExecutorMode = "sandbox-exec"
+	// DarwinExecutorModeHypervisor uses Hypervisor.framework for stronger isolation
+	DarwinExecutorModeHypervisor DarwinExecutorMode = "hypervisor"
+	// DarwinExecutorModeAuto automatically selects the best available executor
+	DarwinExecutorModeAuto DarwinExecutorMode = "auto"
 )
 
 // DarwinExecutor provides sandboxed execution on macOS using sandbox-exec.
@@ -16,12 +29,39 @@ type DarwinExecutor struct {
 }
 
 // newPlatformExecutor creates a new Darwin executor.
+// It checks the ECHO_SANDBOX_MODE environment variable to determine which executor to use:
+// - "hypervisor": Use HypervisorExecutor for VM-based isolation
+// - "sandbox-exec": Use traditional DarwinExecutor with sandbox-exec
+// - "auto" or unset: Automatically select the best available option
 func newPlatformExecutor(config *Config) (Executor, error) {
-	base := NewBaseExecutor(config)
+	mode := DarwinExecutorMode(os.Getenv("ECHO_SANDBOX_MODE"))
 
-	return &DarwinExecutor{
-		BaseExecutor: base,
-	}, nil
+	switch mode {
+	case DarwinExecutorModeHypervisor:
+		// Force Hypervisor mode
+		return NewHypervisorExecutor(config, nil)
+
+	case DarwinExecutorModeSandboxExec:
+		// Force sandbox-exec mode
+		base := NewBaseExecutor(config)
+		return &DarwinExecutor{BaseExecutor: base}, nil
+
+	case DarwinExecutorModeAuto, "":
+		// Auto-detect: try Hypervisor first, fall back to sandbox-exec
+		hvExecutor, err := NewHypervisorExecutor(config, nil)
+		if err == nil && hvExecutor.IsSupported() {
+			return hvExecutor, nil
+		}
+
+		// Fall back to sandbox-exec
+		base := NewBaseExecutor(config)
+		return &DarwinExecutor{BaseExecutor: base}, nil
+
+	default:
+		// Unknown mode, use sandbox-exec
+		base := NewBaseExecutor(config)
+		return &DarwinExecutor{BaseExecutor: base}, nil
+	}
 }
 
 // Execute executes a command with macOS-specific isolation.

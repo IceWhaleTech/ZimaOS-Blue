@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -224,6 +225,10 @@ func (h *Handler) TestConnection(c echo.Context) error {
 		return h.testTelegramConnection(c, req.Config)
 	case "discord":
 		return h.testDiscordConnection(c, req.Config)
+	case "feishu":
+		return h.testFeishuConnection(c, req.Config)
+	case "wechat":
+		return h.testWechatConnection(c, req.Config)
 	default:
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"success": false,
@@ -474,6 +479,130 @@ func (h *Handler) testDiscordConnection(c echo.Context, config map[string]string
 	}
 
 	// In a real implementation, this would call the Discord API
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Connection successful",
+	})
+}
+
+func (h *Handler) testFeishuConnection(c echo.Context, config map[string]string) error {
+	appID := config["app_id"]
+	appSecret := config["app_secret"]
+	verificationToken := config["verification_token"]
+
+	if appID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "App ID is required",
+		})
+	}
+
+	if appSecret == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "App Secret is required",
+		})
+	}
+
+	if verificationToken == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Verification Token is required",
+		})
+	}
+
+	// Test by getting tenant access token from Feishu API
+	resp, err := http.Post(
+		"https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+		"application/json",
+		strings.NewReader(`{"app_id":"`+appID+`","app_secret":"`+appSecret+`"}`),
+	)
+	if err != nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Failed to connect to Feishu API: " + err.Error(),
+		})
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Failed to parse Feishu response",
+		})
+	}
+
+	if result.Code != 0 {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Feishu API error: " + result.Msg,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Connection successful",
+	})
+}
+
+func (h *Handler) testWechatConnection(c echo.Context, config map[string]string) error {
+	corpID := config["corp_id"]
+	agentID := config["agent_id"]
+	secret := config["secret"]
+
+	if corpID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Corp ID is required",
+		})
+	}
+
+	if agentID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Agent ID is required",
+		})
+	}
+
+	if secret == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Secret is required",
+		})
+	}
+
+	// Test by getting access token from WeChat Work API
+	resp, err := http.Get("https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=" + corpID + "&corpsecret=" + secret)
+	if err != nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Failed to connect to WeChat Work API: " + err.Error(),
+		})
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "Failed to parse WeChat response",
+		})
+	}
+
+	if result.ErrCode != 0 {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "WeChat API error: " + result.ErrMsg,
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Connection successful",

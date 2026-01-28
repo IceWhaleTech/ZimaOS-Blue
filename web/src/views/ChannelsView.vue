@@ -2,45 +2,48 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getChannelIconOrDefault } from '@/utils/channelIcons'
+import PasswordInput from '@/components/ui/PasswordInput.vue'
 
 const { t } = useI18n()
 
-interface ChannelConfig {
-  id: string
-  name: string
-  icon: string
-  enabled: boolean
-  status: 'connected' | 'disconnected' | 'error' | 'connecting'
-  description: string
-  fields: ChannelField[]
-  hint?: string
-}
-
-interface ChannelField {
+interface ChannelFieldDef {
   key: string
-  label: string
+  labelKey: string
   type: 'text' | 'password' | 'tel' | 'url' | 'textarea'
   placeholder: string
   value: string
   required?: boolean
 }
 
+interface ChannelDef {
+  id: string
+  nameKey?: string
+  name?: string
+  icon: string
+  enabled: boolean
+  status: 'connected' | 'disconnected' | 'error' | 'connecting'
+  descriptionKey: string
+  hintKey?: string
+  fields: ChannelFieldDef[]
+}
+
 const loading = ref(false)
 const saving = ref<string | null>(null)
+const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
 
-const channels = ref<ChannelConfig[]>([
+const channelDefs = ref<ChannelDef[]>([
   {
     id: 'telegram',
     name: 'Telegram',
     icon: getChannelIconOrDefault('telegram'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.telegramDesc'),
-    hint: t('channels.telegramHint'),
+    descriptionKey: 'channels.telegramDesc',
+    hintKey: 'channels.telegramHint',
     fields: [
-      { key: 'bot_token', label: t('setup.botToken'), type: 'password', placeholder: '123456789:ABCdefGHIjklMNOpqrsTUVwxyz', value: '', required: true },
+      { key: 'bot_token', labelKey: 'setup.botToken', type: 'password', placeholder: '123456789:ABCdefGHIjklMNOpqrsTUVwxyz', value: '', required: true },
     ],
   },
   {
@@ -49,11 +52,11 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('discord'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.discordDesc'),
-    hint: t('channels.discordHint'),
+    descriptionKey: 'channels.discordDesc',
+    hintKey: 'channels.discordHint',
     fields: [
-      { key: 'bot_token', label: t('setup.botToken'), type: 'password', placeholder: 'Enter your Discord bot token', value: '', required: true },
-      { key: 'application_id', label: t('channels.applicationId'), type: 'text', placeholder: 'Application ID', value: '' },
+      { key: 'bot_token', labelKey: 'setup.botToken', type: 'password', placeholder: 'Enter your Discord bot token', value: '', required: true },
+      { key: 'application_id', labelKey: 'channels.applicationId', type: 'text', placeholder: 'Application ID', value: '' },
     ],
   },
   {
@@ -62,12 +65,12 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('slack'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.slackDesc'),
-    hint: t('setup.slackHint'),
+    descriptionKey: 'channels.slackDesc',
+    hintKey: 'setup.slackHint',
     fields: [
-      { key: 'bot_token', label: t('setup.slackBotToken'), type: 'password', placeholder: 'xoxb-xxxx-xxxx-xxxx', value: '', required: true },
-      { key: 'app_token', label: t('setup.slackAppToken'), type: 'password', placeholder: 'xapp-xxxx-xxxx-xxxx', value: '', required: true },
-      { key: 'signing_secret', label: t('channels.signingSecret'), type: 'password', placeholder: 'Signing secret', value: '' },
+      { key: 'bot_token', labelKey: 'setup.slackBotToken', type: 'password', placeholder: 'xoxb-xxxx-xxxx-xxxx', value: '', required: true },
+      { key: 'app_token', labelKey: 'setup.slackAppToken', type: 'password', placeholder: 'xapp-xxxx-xxxx-xxxx', value: '', required: true },
+      { key: 'signing_secret', labelKey: 'channels.signingSecret', type: 'password', placeholder: 'Signing secret', value: '' },
     ],
   },
   {
@@ -76,10 +79,10 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('whatsapp'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.whatsappDesc'),
-    hint: t('setup.whatsappHint'),
+    descriptionKey: 'channels.whatsappDesc',
+    hintKey: 'setup.whatsappHint',
     fields: [
-      { key: 'phone_number', label: t('setup.phoneNumber'), type: 'tel', placeholder: '+1234567890', value: '', required: true },
+      { key: 'phone_number', labelKey: 'setup.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
     ],
   },
   {
@@ -88,10 +91,10 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('signal'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.signalDesc'),
-    hint: t('setup.signalHint'),
+    descriptionKey: 'channels.signalDesc',
+    hintKey: 'setup.signalHint',
     fields: [
-      { key: 'phone_number', label: t('setup.phoneNumber'), type: 'tel', placeholder: '+1234567890', value: '', required: true },
+      { key: 'phone_number', labelKey: 'setup.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
     ],
   },
   {
@@ -100,11 +103,11 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('teams'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.teamsDesc'),
-    hint: t('setup.teamsHint'),
+    descriptionKey: 'channels.teamsDesc',
+    hintKey: 'setup.teamsHint',
     fields: [
-      { key: 'app_id', label: t('setup.appId'), type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', value: '', required: true },
-      { key: 'app_password', label: t('setup.appPassword'), type: 'password', placeholder: 'App password', value: '', required: true },
+      { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', value: '', required: true },
+      { key: 'app_password', labelKey: 'setup.appPassword', type: 'password', placeholder: 'App password', value: '', required: true },
     ],
   },
   {
@@ -113,35 +116,39 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('google'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.googleChatDesc'),
-    hint: t('setup.googleChatHint'),
+    descriptionKey: 'channels.googleChatDesc',
+    hintKey: 'setup.googleChatHint',
     fields: [
-      { key: 'credentials_json', label: t('setup.serviceAccountJson'), type: 'textarea', placeholder: '{"type": "service_account", ...}', value: '', required: true },
+      { key: 'credentials_json', labelKey: 'setup.serviceAccountJson', type: 'textarea', placeholder: '{"type": "service_account", ...}', value: '', required: true },
     ],
   },
   {
     id: 'feishu',
-    name: t('setup.feishuBot'),
+    nameKey: 'setup.feishuBot',
     icon: getChannelIconOrDefault('feishu'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.feishuDesc'),
+    descriptionKey: 'channels.feishuDesc',
+    hintKey: 'channels.feishuHint',
     fields: [
-      { key: 'app_id', label: t('setup.appId'), type: 'text', placeholder: 'cli_xxxxxxxxxx', value: '', required: true },
-      { key: 'app_secret', label: t('setup.appSecret'), type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: 'cli_xxxxxxxxxx', value: '', required: true },
+      { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholder: 'Verification token', value: '', required: true },
+      { key: 'encrypt_key', labelKey: 'channels.encryptKey', type: 'password', placeholder: '', value: '' },
+      { key: 'webhook_url', labelKey: 'channels.webhookUrl', type: 'url', placeholder: 'https://your-server.com/api/v1/channels/feishu/callback', value: '' },
     ],
   },
   {
     id: 'wechat',
-    name: t('setup.wechatWorkBot'),
+    nameKey: 'setup.wechatWorkBot',
     icon: getChannelIconOrDefault('wechat'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.wechatDesc'),
+    descriptionKey: 'channels.wechatDesc',
     fields: [
-      { key: 'corp_id', label: t('setup.corpId'), type: 'text', placeholder: 'ww1234567890abcdef', value: '', required: true },
-      { key: 'agent_id', label: t('setup.agentId'), type: 'text', placeholder: '1000001', value: '', required: true },
-      { key: 'secret', label: t('setup.secret'), type: 'password', placeholder: 'Secret', value: '', required: true },
+      { key: 'corp_id', labelKey: 'setup.corpId', type: 'text', placeholder: 'ww1234567890abcdef', value: '', required: true },
+      { key: 'agent_id', labelKey: 'setup.agentId', type: 'text', placeholder: '1000001', value: '', required: true },
+      { key: 'secret', labelKey: 'setup.secret', type: 'password', placeholder: 'Secret', value: '', required: true },
     ],
   },
   {
@@ -150,11 +157,11 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('matrix'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.matrixDesc'),
+    descriptionKey: 'channels.matrixDesc',
     fields: [
-      { key: 'homeserver', label: t('setup.matrixHomeserver'), type: 'url', placeholder: 'https://matrix.org', value: '', required: true },
-      { key: 'user_id', label: t('setup.matrixUserId'), type: 'text', placeholder: '@bot:matrix.org', value: '', required: true },
-      { key: 'access_token', label: t('setup.accessToken'), type: 'password', placeholder: 'Access token', value: '', required: true },
+      { key: 'homeserver', labelKey: 'setup.matrixHomeserver', type: 'url', placeholder: 'https://matrix.org', value: '', required: true },
+      { key: 'user_id', labelKey: 'setup.matrixUserId', type: 'text', placeholder: '@bot:matrix.org', value: '', required: true },
+      { key: 'access_token', labelKey: 'setup.accessToken', type: 'password', placeholder: 'Access token', value: '', required: true },
     ],
   },
   {
@@ -163,11 +170,24 @@ const channels = ref<ChannelConfig[]>([
     icon: getChannelIconOrDefault('imessage'),
     enabled: false,
     status: 'disconnected',
-    description: t('channels.imessageDesc'),
-    hint: t('setup.imessageHint'),
+    descriptionKey: 'channels.imessageDesc',
+    hintKey: 'setup.imessageHint',
     fields: [],
   },
 ])
+
+// Computed channels with translated strings
+const channels = computed(() => channelDefs.value.map(ch => ({
+  ...ch,
+  name: ch.nameKey ? t(ch.nameKey) : ch.name!,
+  description: t(ch.descriptionKey),
+  hint: ch.hintKey ? t(ch.hintKey) : undefined,
+  fields: ch.fields.map(f => ({
+    ...f,
+    label: t(f.labelKey),
+    placeholder: f.key === 'encrypt_key' ? t('channels.encryptKeyPlaceholder') : f.placeholder,
+  })),
+})))
 
 const expandedChannel = ref<string | null>(null)
 
@@ -176,6 +196,48 @@ const connectedCount = computed(() => channels.value.filter(c => c.status === 'c
 
 function toggleChannel(channelId: string) {
   expandedChannel.value = expandedChannel.value === channelId ? null : channelId
+}
+
+async function toggleChannelEnabled(channelId: string, enabled: boolean) {
+  toggling.value = channelId
+  const channelDef = channelDefs.value.find(c => c.id === channelId)
+  if (!channelDef) return
+
+  // Optimistically update the UI
+  channelDef.enabled = enabled
+  // Set status to connecting when enabling, disconnected when disabling
+  if (enabled) {
+    channelDef.status = 'connecting'
+  } else {
+    channelDef.status = 'disconnected'
+  }
+
+  try {
+    const response = await fetch(`/api/channels/${channelId}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      // Update status from server response
+      channelDef.status = data.status || (enabled ? 'connected' : 'disconnected')
+    } else {
+      // Revert on error
+      channelDef.enabled = !enabled
+      channelDef.status = 'error'
+      const data = await response.json()
+      testResult.value = { channelId, success: false, message: data.message || t('channels.toggleFailed') }
+    }
+  } catch (error) {
+    // Revert on error
+    channelDef.enabled = !enabled
+    channelDef.status = 'error'
+    testResult.value = { channelId, success: false, message: t('channels.toggleFailed') }
+  } finally {
+    toggling.value = null
+  }
 }
 
 function getStatusColor(status: string): string {
@@ -204,7 +266,7 @@ async function loadChannelConfigs() {
       const data = await response.json()
       // Merge server data with local channel definitions
       for (const serverChannel of data.channels || []) {
-        const localChannel = channels.value.find(c => c.id === serverChannel.id)
+        const localChannel = channelDefs.value.find(c => c.id === serverChannel.id)
         if (localChannel) {
           localChannel.enabled = serverChannel.enabled
           localChannel.status = serverChannel.status
@@ -224,61 +286,66 @@ async function loadChannelConfigs() {
   }
 }
 
-async function saveChannel(channel: ChannelConfig) {
-  saving.value = channel.id
+async function saveChannel(channelId: string) {
+  saving.value = channelId
+  const channelDef = channelDefs.value.find(c => c.id === channelId)
+  if (!channelDef) return
+
   try {
     const config: Record<string, string> = {}
-    for (const field of channel.fields) {
+    for (const field of channelDef.fields) {
       config[field.key] = field.value
     }
 
-    const response = await fetch(`/api/channels/${channel.id}`, {
+    const response = await fetch(`/api/channels/${channelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        enabled: channel.enabled,
+        enabled: channelDef.enabled,
         config,
       }),
     })
 
     if (response.ok) {
-      testResult.value = { channelId: channel.id, success: true, message: t('channels.savedSuccessfully') }
+      testResult.value = { channelId, success: true, message: t('channels.savedSuccessfully') }
     } else {
       const data = await response.json()
-      testResult.value = { channelId: channel.id, success: false, message: data.message || t('channels.saveFailed') }
+      testResult.value = { channelId, success: false, message: data.message || t('channels.saveFailed') }
     }
   } catch (error) {
-    testResult.value = { channelId: channel.id, success: false, message: t('channels.saveFailed') }
+    testResult.value = { channelId, success: false, message: t('channels.saveFailed') }
   } finally {
     saving.value = null
     setTimeout(() => {
-      if (testResult.value?.channelId === channel.id) {
+      if (testResult.value?.channelId === channelId) {
         testResult.value = null
       }
     }, 3000)
   }
 }
 
-async function testConnection(channel: ChannelConfig) {
-  testingConnection.value = channel.id
+async function testConnection(channelId: string) {
+  testingConnection.value = channelId
   testResult.value = null
+  const channelDef = channelDefs.value.find(c => c.id === channelId)
+  if (!channelDef) return
 
   try {
     const config: Record<string, string> = {}
-    for (const field of channel.fields) {
+    for (const field of channelDef.fields) {
       config[field.key] = field.value
     }
 
-    const response = await fetch(`/api/channels/${channel.id}/test`, {
+    const response = await fetch('/api/setup/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config }),
+      body: JSON.stringify({ type: channelId, config }),
     })
 
     const data = await response.json()
-    testResult.value = { channelId: channel.id, success: data.success, message: data.message }
+    testResult.value = { channelId, success: data.success, message: data.message }
   } catch (error) {
-    testResult.value = { channelId: channel.id, success: false, message: t('channels.testFailed') }
+    testResult.value = { channelId, success: false, message: t('channels.testFailed') }
   } finally {
     testingConnection.value = null
   }
@@ -341,11 +408,13 @@ onMounted(() => {
           <div class="flex items-center gap-3">
             <label class="relative inline-flex items-center cursor-pointer" @click.stop>
               <input
-                v-model="channel.enabled"
+                :checked="channelDefs.find(c => c.id === channel.id)!.enabled"
                 type="checkbox"
                 class="sr-only peer"
+                :disabled="toggling === channel.id"
+                @change="toggleChannelEnabled(channel.id, ($event.target as HTMLInputElement).checked)"
               />
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
             </label>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -375,21 +444,30 @@ onMounted(() => {
 
           <!-- Fields -->
           <div v-if="channel.fields.length > 0" class="space-y-4">
-            <div v-for="field in channel.fields" :key="field.key">
+            <div v-for="(field, fieldIndex) in channel.fields" :key="field.key">
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 {{ field.label }}
                 <span v-if="field.required" class="text-red-500">*</span>
               </label>
               <textarea
                 v-if="field.type === 'textarea'"
-                v-model="field.value"
+                v-model="channelDefs.find(c => c.id === channel.id)!.fields[fieldIndex].value"
+                :name="field.key"
                 :placeholder="field.placeholder"
                 rows="4"
                 class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
               />
+              <PasswordInput
+                v-else-if="field.type === 'password'"
+                v-model="channelDefs.find(c => c.id === channel.id)!.fields[fieldIndex].value"
+                :name="field.key"
+                :placeholder="field.placeholder"
+                class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
               <input
                 v-else
-                v-model="field.value"
+                v-model="channelDefs.find(c => c.id === channel.id)!.fields[fieldIndex].value"
+                :name="field.key"
                 :type="field.type"
                 :placeholder="field.placeholder"
                 class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -416,14 +494,14 @@ onMounted(() => {
               v-if="channel.fields.length > 0"
               :disabled="testingConnection === channel.id"
               class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
-              @click="testConnection(channel)"
+              @click="testConnection(channel.id)"
             >
               {{ testingConnection === channel.id ? t('setup.testing') : t('setup.testConnection') }}
             </button>
             <button
               :disabled="saving === channel.id"
               class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
-              @click="saveChannel(channel)"
+              @click="saveChannel(channel.id)"
             >
               {{ saving === channel.id ? t('channels.saving') : t('common.save') }}
             </button>

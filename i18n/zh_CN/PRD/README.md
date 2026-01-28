@@ -11,6 +11,7 @@
 | [v0.9.1-companion.md](v0.9.1-companion.md) | Echo Companion - 实时 Agent 监控 | Draft |
 | [v0.9.2-ota-update.md](v0.9.2-ota-update.md) | OTA 更新系统 | Draft |
 | [v0.9.3-provider-pool.md](v0.9.3-provider-pool.md) | Provider 池化 - 统一 LLM 提供商管理 | Draft |
+| [v0.9.4-form-filler.md](v0.9.4-form-filler.md) | 智能表单填写助手 - 悬浮插件智能表单填充 | Draft |
 | [v1.0.0-rag.md](v1.0.0-rag.md) | RAG 与知识库 | Draft |
 | [v1.1.0-mesh-network.md](v1.1.0-mesh-network.md) | P2P Mesh 网络 | Draft |
 

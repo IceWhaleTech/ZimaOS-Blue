@@ -108,9 +108,25 @@ func (p *OllamaProvider) fetchModels() []string {
 }
 
 // RefreshModels clears the cached models and fetches fresh list.
+// Falls back to default models if API fetch fails.
 func (p *OllamaProvider) RefreshModels() []string {
 	p.cachedModels = nil
-	return p.fetchModels()
+	models := p.fetchModels()
+	if len(models) > 0 {
+		return models
+	}
+	// Fallback to default list if API is not available
+	return []string{
+		"llama3.2",
+		"llama3.1",
+		"llama3",
+		"mistral",
+		"mixtral",
+		"codellama",
+		"phi3",
+		"gemma2",
+		"qwen2.5",
+	}
 }
 
 // ollamaRequest represents the Ollama API request format.

@@ -1,0 +1,735 @@
+import { ref, reactive, computed } from 'vue'
+import {
+  templateApi,
+  configApi,
+  type FillTemplate,
+  type FormFillerConfig,
+} from '@/api/formfiller'
+
+export interface FillHistoryEntry {
+  timestamp: number
+  fields: Array<{
+    element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    oldValue: string
+    newValue: string
+  }>
+}
+
+export interface WidgetPosition {
+  x: number
+  y: number
+}
+
+export interface WidgetState {
+  isVisible: boolean
+  isMinimized: boolean
+  position: WidgetPosition
+  focusedElement: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null
+  selectedTemplate: FillTemplate | null
+  templates: FillTemplate[]
+  config: FormFillerConfig | null
+  fillHistory: FillHistoryEntry[]
+  isLoading: boolean
+  error: string | null
+  isInitialized: boolean
+  clipboardData: string
+  parsedClipboardFields: Record<string, string>
+  revealedPasswordFields: Set<HTMLInputElement>
+}
+
+// Singleton state to share across components
+const globalState = reactive<WidgetState>({
+  isVisible: false,
+  isMinimized: false,
+  position: { x: 0, y: 0 },
+  focusedElement: null,
+  selectedTemplate: null,
+  templates: [],
+  config: null,
+  fillHistory: [],
+  isLoading: false,
+  error: null,
+  isInitialized: false,
+  clipboardData: '',
+  parsedClipboardFields: {},
+  revealedPasswordFields: new Set(),
+})
+
+const currentDomain = ref<string>('')
+let keyboardListenerAdded = false
+let focusListenerAdded = false
+
+export function useFormFillerWidget() {
+  // Computed
+  const canUndo = computed(() => globalState.fillHistory.length > 0)
+  const hasClipboardData = computed(() => globalState.clipboardData.trim().length > 0)
+  const parsedFieldCount = computed(() => Object.keys(globalState.parsedClipboardFields).length)
+
+  // Load configuration and templates
+  async function initialize() {
+    if (globalState.isInitialized) return
+
+    globalState.isLoading = true
+    globalState.error = null
+    try {
+      const [configRes, templatesRes] = await Promise.all([
+        configApi.get(),
+        templateApi.list(),
+      ])
+      globalState.config = configRes.data
+      globalState.templates = templatesRes.data
+
+      // Select default template
+      const defaultTemplate = globalState.templates.find(t => t.is_default)
+      if (defaultTemplate) {
+        globalState.selectedTemplate = defaultTemplate
+      } else if (globalState.templates.length > 0) {
+        globalState.selectedTemplate = globalState.templates[0]
+      }
+
+      globalState.isInitialized = true
+    } catch (e) {
+      globalState.error = 'Failed to initialize form filler'
+      console.error(e)
+    } finally {
+      globalState.isLoading = false
+    }
+  }
+
+  // Check if element is a fillable form field
+  function isFillableField(el: Element): el is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+    const tagName = el.tagName.toLowerCase()
+    if (tagName === 'select' || tagName === 'textarea') return true
+    if (tagName === 'input') {
+      const type = (el as HTMLInputElement).type?.toLowerCase()
+      // Exclude non-fillable input types
+      const excludedTypes = ['hidden', 'submit', 'button', 'file', 'image', 'reset', 'checkbox', 'radio']
+      return !excludedTypes.includes(type)
+    }
+    return false
+  }
+
+  // Check if element should count toward form context (excludes select/dropdown)
+  function isTextInputField(el: Element): boolean {
+    const tagName = el.tagName.toLowerCase()
+    if (tagName === 'textarea') return true
+    if (tagName === 'input') {
+      const type = (el as HTMLInputElement).type?.toLowerCase()
+      const excludedTypes = ['hidden', 'submit', 'button', 'file', 'image', 'reset', 'checkbox', 'radio']
+      return !excludedTypes.includes(type)
+    }
+    return false
+  }
+
+  // Calculate widget position near the focused element
+  function calculatePosition(element: HTMLElement): WidgetPosition {
+    const rect = element.getBoundingClientRect()
+    const widgetWidth = 320
+    const widgetHeight = 200
+    const padding = 8
+
+    let x = rect.left
+    let y = rect.bottom + padding
+
+    // Adjust if widget would go off-screen to the right
+    if (x + widgetWidth > window.innerWidth) {
+      x = window.innerWidth - widgetWidth - padding
+    }
+
+    // Adjust if widget would go off-screen at the bottom
+    if (y + widgetHeight > window.innerHeight) {
+      // Show above the input instead
+      y = rect.top - widgetHeight - padding
+      if (y < 0) {
+        y = padding
+      }
+    }
+
+    // Ensure x is not negative
+    if (x < 0) {
+      x = padding
+    }
+
+    return { x, y }
+  }
+
+  // Find the nearest form container (form, div, section, etc.) that contains the element
+  function findFormContainer(element: Element): Element | null {
+    // First try to find a form element
+    const form = element.closest('form')
+    if (form) return form
+
+    // Otherwise, find the nearest container with multiple text inputs (not select/dropdown)
+    let current: Element | null = element.parentElement
+    while (current) {
+      // Check common container elements
+      if (['div', 'section', 'article', 'fieldset', 'p'].includes(current.tagName.toLowerCase())) {
+        const inputs = current.querySelectorAll('input, textarea')
+        const textInputs = Array.from(inputs).filter(el => isTextInputField(el))
+        if (textInputs.length >= 2) {
+          return current
+        }
+      }
+      current = current.parentElement
+    }
+    return null
+  }
+
+  // Check if the focused element is in a form-like context (2+ text input fields, not counting select)
+  function isInFormContext(element: Element): boolean {
+    const container = findFormContainer(element)
+    if (!container) return false
+
+    const inputs = container.querySelectorAll('input, textarea')
+    const textInputs = Array.from(inputs).filter(el => isTextInputField(el))
+    return textInputs.length >= 2
+  }
+
+  // Handle focus on form fields
+  function handleFocus(event: FocusEvent) {
+    const target = event.target as Element
+    if (!target || !isFillableField(target)) return
+
+    // Don't show widget for elements inside the widget itself
+    if (target.closest('.formfiller-widget')) return
+
+    // Only show widget if there are 2+ fillable fields in the same container
+    if (!isInFormContext(target)) return
+
+    globalState.focusedElement = target
+    globalState.position = calculatePosition(target)
+    globalState.isVisible = true
+  }
+
+  // Handle blur - hide widget after a delay (to allow clicking on widget)
+  function handleBlur(event: FocusEvent) {
+    // Use setTimeout to allow click events on widget to fire first
+    setTimeout(() => {
+      const activeElement = document.activeElement
+      // Don't hide if focus moved to another form field or to the widget
+      if (activeElement && (isFillableField(activeElement) || activeElement.closest('.formfiller-widget'))) {
+        return
+      }
+      // Don't hide if there's clipboard data being edited
+      if (globalState.clipboardData.trim()) {
+        return
+      }
+      globalState.isVisible = false
+      globalState.focusedElement = null
+    }, 200)
+  }
+
+  // Parse clipboard data - try to extract key-value pairs
+  function parseClipboardData(data: string): Record<string, string> {
+    const result: Record<string, string> = {}
+    if (!data.trim()) return result
+
+    // First, try to parse as single-line multiple key-value pairs
+    // Format: key1 = "value1" key2 = "value2" OR key1 = value1 key2 = value2
+    const singleLineMatches = data.matchAll(/(\w+)\s*=\s*"([^"]+)"/g)
+    for (const match of singleLineMatches) {
+      const key = match[1].trim().toLowerCase()
+      const value = match[2].trim()
+      result[key] = value
+    }
+
+    // If we found matches with quoted values, return
+    if (Object.keys(result).length > 0) {
+      return result
+    }
+
+    // Try different parsing strategies line by line
+    const lines = data.split('\n').filter(line => line.trim())
+
+    for (const line of lines) {
+      // Try "key: value" format (supports Chinese colon too)
+      let match = line.match(/^([^:：]+)[：:]\s*(.+)$/)
+      if (match) {
+        const key = match[1].trim().toLowerCase()
+        const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
+        result[key] = value
+        continue
+      }
+
+      // Try "key = value" or "key=value" format
+      match = line.match(/^([^=]+)=\s*(.+)$/)
+      if (match) {
+        const key = match[1].trim().toLowerCase()
+        const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
+        result[key] = value
+        continue
+      }
+
+      // Try "key\tvalue" (tab-separated) format
+      match = line.match(/^([^\t]+)\t(.+)$/)
+      if (match) {
+        const key = match[1].trim().toLowerCase()
+        const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
+        result[key] = value
+        continue
+      }
+    }
+
+    return result
+  }
+
+  // Update clipboard data and parse it
+  function setClipboardData(data: string) {
+    globalState.clipboardData = data
+    globalState.parsedClipboardFields = parseClipboardData(data)
+  }
+
+  // Read from system clipboard
+  async function readFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText()
+      setClipboardData(text)
+    } catch (e) {
+      console.error('Failed to read clipboard:', e)
+      globalState.error = 'Failed to read clipboard. Please paste manually.'
+    }
+  }
+
+  // Clear clipboard data
+  function clearClipboardData() {
+    globalState.clipboardData = ''
+    globalState.parsedClipboardFields = {}
+  }
+
+  // Reveal password field (change type to text)
+  function revealPassword(element: HTMLInputElement) {
+    if (element.type === 'password') {
+      element.type = 'text'
+      globalState.revealedPasswordFields.add(element)
+    }
+  }
+
+  // Hide password field (change type back to password)
+  function hidePassword(element: HTMLInputElement) {
+    if (globalState.revealedPasswordFields.has(element)) {
+      element.type = 'password'
+      globalState.revealedPasswordFields.delete(element)
+    }
+  }
+
+  // Toggle password visibility
+  function togglePasswordVisibility(element: HTMLInputElement) {
+    if (globalState.revealedPasswordFields.has(element)) {
+      hidePassword(element)
+    } else {
+      revealPassword(element)
+    }
+  }
+
+  // Check if a password field is revealed
+  function isPasswordRevealed(element: HTMLInputElement): boolean {
+    return globalState.revealedPasswordFields.has(element)
+  }
+
+  // Extract meaningful parts from a key (split by _ or -)
+  function extractKeyParts(key: string): string[] {
+    return key.toLowerCase().split(/[_\-\s]+/).filter(p => p.length > 0)
+  }
+
+  // Calculate match score between a clipboard key and field identifiers
+  // More strict matching: the last part of the key should match the last part of the identifier
+  function calculateMatchScore(clipboardKey: string, fieldIdentifiers: string[]): number {
+    const keyParts = extractKeyParts(clipboardKey)
+    if (keyParts.length === 0) return 0
+
+    // The last part is the most important (e.g., "id" in "app_id", "secret" in "app_secret")
+    const keyLastPart = keyParts[keyParts.length - 1]
+    // Second to last part is also important for context (e.g., "app" in "app_id")
+    const keySecondLastPart = keyParts.length > 1 ? keyParts[keyParts.length - 2] : null
+
+    let bestScore = 0
+
+    for (const identifier of fieldIdentifiers) {
+      if (!identifier) continue
+
+      const idParts = extractKeyParts(identifier)
+      if (idParts.length === 0) continue
+
+      const idLastPart = idParts[idParts.length - 1]
+
+      // Exact full match (highest priority)
+      if (keyParts.join('') === idParts.join('')) {
+        return 100
+      }
+
+      // Last part exact match (e.g., "app_id" matches field "id" or "user_id")
+      if (keyLastPart === idLastPart) {
+        let score = 80
+
+        // Bonus if second-to-last parts also match (e.g., "app_id" matches "app_id" better than "user_id")
+        if (keySecondLastPart && idParts.length > 1) {
+          const idSecondLastPart = idParts[idParts.length - 2]
+          if (keySecondLastPart === idSecondLastPart) {
+            score += 15
+          }
+        }
+
+        bestScore = Math.max(bestScore, score)
+        continue
+      }
+
+      // Check if key's last part is contained in identifier's last part or vice versa
+      // e.g., "webhook_url" matches "url" or "webhook"
+      if (keyLastPart.includes(idLastPart) || idLastPart.includes(keyLastPart)) {
+        const matchLength = Math.min(keyLastPart.length, idLastPart.length)
+        if (matchLength >= 2) {
+          bestScore = Math.max(bestScore, 50 + matchLength * 3)
+          continue
+        }
+      }
+
+      // Check if any key part matches any identifier part exactly
+      for (const kp of keyParts) {
+        for (const ip of idParts) {
+          if (kp === ip && kp.length >= 3) {
+            bestScore = Math.max(bestScore, 40 + kp.length * 2)
+          }
+        }
+      }
+    }
+
+    return bestScore
+  }
+
+  // Find the best matching clipboard key for a field
+  function findBestMatchForField(
+    element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+    usedKeys: Set<string>
+  ): { key: string; value: string } | null {
+    const name = element.name || ''
+    const id = element.id || ''
+    const placeholder = element.placeholder || ''
+    const autocomplete = element.autocomplete || ''
+
+    // Get label text
+    let labelText = ''
+    if (element.id) {
+      const label = document.querySelector(`label[for="${element.id}"]`)
+      if (label) {
+        labelText = label.textContent?.trim() || ''
+      }
+    }
+    if (!labelText) {
+      const parentLabel = element.closest('label')
+      if (parentLabel) {
+        // Get only direct text, not nested input values
+        const clone = parentLabel.cloneNode(true) as HTMLElement
+        clone.querySelectorAll('input, select, textarea').forEach(el => el.remove())
+        labelText = clone.textContent?.trim() || ''
+      }
+    }
+
+    const fieldIdentifiers = [name, id, placeholder, autocomplete, labelText].filter(Boolean)
+
+    if (fieldIdentifiers.length === 0) {
+      return null
+    }
+
+    const clipboardFields = globalState.parsedClipboardFields
+    let bestMatch: { key: string; value: string; score: number } | null = null
+
+    for (const [key, value] of Object.entries(clipboardFields)) {
+      // Skip already used keys (case-insensitive comparison)
+      if (usedKeys.has(key.toLowerCase())) continue
+
+      const score = calculateMatchScore(key, fieldIdentifiers)
+
+      if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+        bestMatch = { key, value, score }
+      }
+    }
+
+    return bestMatch ? { key: bestMatch.key, value: bestMatch.value } : null
+  }
+
+  // Find matching value for a field from parsed clipboard data or template
+  function findValueForField(
+    element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+    usedKeys?: Set<string>
+  ): string | null {
+    // First, try to match from parsed clipboard data
+    if (Object.keys(globalState.parsedClipboardFields).length > 0) {
+      const match = findBestMatchForField(element, usedKeys || new Set())
+      if (match) {
+        // Add lowercase key to usedKeys for case-insensitive tracking
+        usedKeys?.add(match.key.toLowerCase())
+        return match.value
+      }
+    }
+
+    // Fall back to template matching
+    const name = element.name?.toLowerCase() || ''
+    const id = element.id?.toLowerCase() || ''
+    const placeholder = element.placeholder?.toLowerCase() || ''
+    const type = element.type?.toLowerCase() || ''
+    const autocomplete = element.autocomplete?.toLowerCase() || ''
+
+    // Get label text
+    let labelText = ''
+    if (element.id) {
+      const label = document.querySelector(`label[for="${element.id}"]`)
+      if (label) {
+        labelText = label.textContent?.trim().toLowerCase() || ''
+      }
+    }
+    if (!labelText) {
+      const parentLabel = element.closest('label')
+      if (parentLabel) {
+        labelText = parentLabel.textContent?.trim().toLowerCase() || ''
+      }
+    }
+
+    // Common field name mappings
+    const fieldMappings: Record<string, string[]> = {
+      email: ['email', 'mail', 'e-mail', '邮箱', '电子邮件', 'メール'],
+      name: ['name', 'fullname', 'full_name', 'full-name', '姓名', '名前', 'username', 'user_name'],
+      firstName: ['firstname', 'first_name', 'first-name', 'fname', '名', '名字'],
+      lastName: ['lastname', 'last_name', 'last-name', 'lname', '姓', '姓氏'],
+      phone: ['phone', 'tel', 'telephone', 'mobile', 'cell', '电话', '手机', '電話'],
+      address: ['address', 'addr', 'street', '地址', '住所'],
+      city: ['city', '城市', '市'],
+      state: ['state', 'province', '省', '州'],
+      zip: ['zip', 'zipcode', 'postal', 'postcode', '邮编', '郵便番号'],
+      country: ['country', '国家', '国'],
+      company: ['company', 'organization', 'org', '公司', '组织', '会社'],
+      password: ['password', 'pass', 'pwd', '密码', 'パスワード'],
+    }
+
+    // Try to match field type and get value from template
+    if (globalState.selectedTemplate) {
+      for (const [fieldType, patterns] of Object.entries(fieldMappings)) {
+        const allPatterns = [...patterns, fieldType]
+        for (const pattern of allPatterns) {
+          if (
+            name.includes(pattern) || pattern.includes(name) ||
+            id.includes(pattern) || pattern.includes(id) ||
+            placeholder.includes(pattern) ||
+            labelText.includes(pattern) ||
+            autocomplete.includes(pattern) ||
+            type === pattern
+          ) {
+            const templateValue = globalState.selectedTemplate.fields[fieldType]
+            if (templateValue) {
+              return templateValue
+            }
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
+  // Fill the currently focused field
+  function fillCurrentField() {
+    if (!globalState.focusedElement) return
+
+    const value = findValueForField(globalState.focusedElement)
+    if (!value) {
+      globalState.error = 'No matching value found for this field'
+      setTimeout(() => { globalState.error = null }, 2000)
+      return
+    }
+
+    const oldValue = globalState.focusedElement.value
+    globalState.focusedElement.value = value
+
+    // Trigger events
+    globalState.focusedElement.dispatchEvent(new Event('input', { bubbles: true }))
+    globalState.focusedElement.dispatchEvent(new Event('change', { bubbles: true }))
+
+    // Auto-reveal password fields after filling
+    if (globalState.focusedElement instanceof HTMLInputElement &&
+        globalState.focusedElement.type === 'password') {
+      revealPassword(globalState.focusedElement)
+    }
+
+    // Save to history
+    globalState.fillHistory.push({
+      timestamp: Date.now(),
+      fields: [{
+        element: globalState.focusedElement,
+        oldValue,
+        newValue: value,
+      }],
+    })
+
+    // Keep only last 20 history entries
+    if (globalState.fillHistory.length > 20) {
+      globalState.fillHistory.shift()
+    }
+  }
+
+  // Fill all form fields on the page
+  function fillAllFields() {
+    const inputs = document.querySelectorAll('input, select, textarea')
+    const historyEntry: FillHistoryEntry = {
+      timestamp: Date.now(),
+      fields: [],
+    }
+
+    // Track used clipboard keys to prevent duplicate fills
+    const usedKeys = new Set<string>()
+
+    inputs.forEach((element) => {
+      if (!isFillableField(element)) return
+      // Skip if already has value
+      if (element.value.trim()) return
+
+      const value = findValueForField(element, usedKeys)
+      if (!value) return
+
+      // Remember if this was a password field before filling
+      const wasPasswordField = element instanceof HTMLInputElement && element.type === 'password'
+
+      const oldValue = element.value
+      element.value = value
+
+      // Trigger events
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+      element.dispatchEvent(new Event('change', { bubbles: true }))
+
+      // Auto-reveal password fields after filling
+      if (wasPasswordField && element instanceof HTMLInputElement) {
+        revealPassword(element)
+      }
+
+      historyEntry.fields.push({
+        element,
+        oldValue,
+        newValue: value,
+      })
+    })
+
+    if (historyEntry.fields.length > 0) {
+      globalState.fillHistory.push(historyEntry)
+      if (globalState.fillHistory.length > 20) {
+        globalState.fillHistory.shift()
+      }
+    }
+
+    return historyEntry.fields.length
+  }
+
+  // Undo last fill operation
+  function undoLastFill() {
+    const lastEntry = globalState.fillHistory.pop()
+    if (!lastEntry) return
+
+    for (const field of lastEntry.fields) {
+      if (field.element && document.contains(field.element)) {
+        field.element.value = field.oldValue
+        field.element.dispatchEvent(new Event('input', { bubbles: true }))
+        field.element.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+  }
+
+  // Toggle widget visibility
+  function toggleWidget() {
+    globalState.isVisible = !globalState.isVisible
+  }
+
+  // Hide widget
+  function hideWidget() {
+    globalState.isVisible = false
+    globalState.focusedElement = null
+  }
+
+  // Select template
+  function selectTemplate(template: FillTemplate) {
+    globalState.selectedTemplate = template
+  }
+
+  // Keyboard shortcut handler
+  function handleKeyboardShortcut(event: KeyboardEvent) {
+    const shortcut = globalState.config?.widget.keyboard_shortcut || 'Ctrl+Shift+F'
+    const keys = shortcut.split('+').map(k => k.toLowerCase())
+
+    const ctrlRequired = keys.includes('ctrl')
+    const shiftRequired = keys.includes('shift')
+    const altRequired = keys.includes('alt')
+    const keyRequired = keys.find(k => !['ctrl', 'shift', 'alt'].includes(k))
+
+    if (
+      event.ctrlKey === ctrlRequired &&
+      event.shiftKey === shiftRequired &&
+      event.altKey === altRequired &&
+      event.key.toLowerCase() === keyRequired
+    ) {
+      event.preventDefault()
+      toggleWidget()
+    }
+  }
+
+  // Setup focus/blur listeners
+  function setupFocusListeners() {
+    if (focusListenerAdded) return
+
+    document.addEventListener('focusin', handleFocus, true)
+    document.addEventListener('focusout', handleBlur, true)
+    focusListenerAdded = true
+  }
+
+  // Setup and cleanup
+  function setup() {
+    currentDomain.value = window.location.hostname
+
+    // Initialize
+    initialize().then(() => {
+      // Setup keyboard shortcut listener (only once)
+      if (!keyboardListenerAdded) {
+        document.addEventListener('keydown', handleKeyboardShortcut)
+        keyboardListenerAdded = true
+      }
+
+      // Setup focus listeners for auto-show
+      setupFocusListeners()
+    })
+  }
+
+  function cleanup() {
+    if (keyboardListenerAdded) {
+      document.removeEventListener('keydown', handleKeyboardShortcut)
+      keyboardListenerAdded = false
+    }
+
+    if (focusListenerAdded) {
+      document.removeEventListener('focusin', handleFocus, true)
+      document.removeEventListener('focusout', handleBlur, true)
+      focusListenerAdded = false
+    }
+  }
+
+  // For SPA navigation - no longer needed but keep for compatibility
+  function autoScanAndShow() {
+    // No-op - widget now shows on focus
+  }
+
+  return {
+    state: globalState,
+    canUndo,
+    hasClipboardData,
+    parsedFieldCount,
+    initialize,
+    setClipboardData,
+    readFromClipboard,
+    clearClipboardData,
+    fillCurrentField,
+    fillAllFields,
+    undoLastFill,
+    toggleWidget,
+    hideWidget,
+    selectTemplate,
+    togglePasswordVisibility,
+    isPasswordRevealed,
+    setup,
+    cleanup,
+    autoScanAndShow,
+  }
+}

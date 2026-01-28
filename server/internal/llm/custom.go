@@ -23,8 +23,41 @@ func (p *CustomProvider) Name() string {
 }
 
 // Models returns the list of available models.
-// For custom providers, we return common model names that users might use.
+// For custom providers, we try to fetch from the API first,
+// then fall back to a common model list.
 func (p *CustomProvider) Models() []string {
+	// Try to fetch models from API (inherited from OpenAIProvider)
+	models := p.OpenAIProvider.fetchModels()
+	if len(models) > 0 {
+		return models
+	}
+	// Fallback to default list for custom providers
+	return []string{
+		"default",
+		"gpt-4o",
+		"gpt-4o-mini",
+		"gpt-4-turbo",
+		"gpt-4",
+		"gpt-3.5-turbo",
+		"llama3",
+		"llama3.1",
+		"llama3.2",
+		"mistral",
+		"mixtral",
+		"qwen2.5",
+		"deepseek-chat",
+		"deepseek-coder",
+	}
+}
+
+// RefreshModels clears the cached models and fetches fresh list.
+// Falls back to default models if API fetch fails.
+func (p *CustomProvider) RefreshModels() []string {
+	models := p.OpenAIProvider.RefreshModels()
+	if len(models) > 0 {
+		return models
+	}
+	// Fallback to default list for custom providers
 	return []string{
 		"default",
 		"gpt-4o",

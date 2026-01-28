@@ -21,9 +21,11 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
@@ -39,8 +41,11 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/setup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/workflow"
@@ -185,6 +190,20 @@ func main() {
 	customURL := os.Getenv("CUSTOM_API_URL")
 	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
 
+	// Claude Code CLI provider (v0.10)
+	if cfg.ClaudeCode.Enabled {
+		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode)
+		ccProvider := claudecode.NewProvider(ccConfig)
+		ccProvider.Start()
+		llmRegistry.Register(ccProvider)
+		logger.Info().Str("command", cfg.ClaudeCode.Command).Msg("Claude Code CLI provider registered")
+
+		// Register shutdown hook for Claude Code provider
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return ccProvider.Close()
+		})
+	}
+
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
 	tools.RegisterBuiltinTools(toolRegistry)
@@ -311,6 +330,51 @@ func main() {
 	a2uiHandler := a2ui.NewHandler(a2uiManager)
 	logger.Info().Msg("A2UI handler initialized")
 
+	// Initialize STT service (Speech-to-Text)
+	sttService, err := stt.NewService(&stt.ServiceConfig{
+		DefaultProvider: stt.ProviderWhisperAPI,
+		Providers: []stt.ProviderConfig{
+			{
+				Type:    stt.ProviderWhisperAPI,
+				Enabled: true,
+				APIKey:  os.Getenv("OPENAI_API_KEY"),
+			},
+		},
+	})
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize STT service, voice transcription will be disabled")
+	}
+
+	// Initialize TTS service (Text-to-Speech)
+	ttsService, err := tts.NewService(&tts.ServiceConfig{
+		DefaultProvider: tts.ProviderEdge,
+		Providers: []tts.ProviderConfig{
+			{
+				Type:    tts.ProviderEdge,
+				Enabled: true,
+			},
+			{
+				Type:    tts.ProviderOpenAI,
+				Enabled: os.Getenv("OPENAI_API_KEY") != "",
+				APIKey:  os.Getenv("OPENAI_API_KEY"),
+			},
+		},
+	})
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize TTS service, voice synthesis will be disabled")
+	}
+
+	// Initialize voice service and handler
+	var voiceHandler *voice.Handler
+	if sttService != nil && ttsService != nil {
+		voiceService := voice.NewService(&voice.ServiceConfig{
+			STTService: sttService,
+			TTSService: ttsService,
+		})
+		voiceHandler = voice.NewHandler(voiceService)
+		logger.Info().Msg("Voice handler initialized")
+	}
+
 	// Initialize workflow service and handler
 	workflowRepo, err := workflow.NewRepository(db)
 	var workflowHandler *workflow.Handler
@@ -326,13 +390,23 @@ func main() {
 		}
 	}
 
+	// Initialize form filler service and handler
+	formfillerStore, err := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
+	var formfillerHandler *formfiller.Handler
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize form filler store, form filler features will be disabled")
+	} else {
+		formfillerHandler = formfiller.NewHandler(formfillerStore)
+		logger.Info().Msg("Form filler handler initialized")
+	}
+
 	// Initialize HTTP server
 	srv := server.New(&cfg.Server)
 	server.SetVersion(version)
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, version, buildTime, gitCommit, dataDir)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, version, buildTime, gitCommit, dataDir)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -376,7 +450,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, version, buildTime, gitCommit, dataDir string) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, version, buildTime, gitCommit, dataDir string) {
 	e := srv.Echo()
 
 	// Setup wizard routes (no auth required)
@@ -512,6 +586,32 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		workflowHandler.RegisterRoutes(e)
 	}
 
+	// Register voice routes (public for transcribe/synthesize) - /api/v1/voice/*
+	if voiceHandler != nil {
+		voiceGroup := v1.Group("/voice")
+		voiceHandler.RegisterRoutes(voiceGroup)
+		logger.Info().Msg("Voice routes registered")
+	}
+
+	// Register form filler routes (protected) - /api/v1/formfiller/*
+	if formfillerHandler != nil {
+		formfillerGroup := protected.Group("/formfiller")
+		formfillerHandler.RegisterRoutes(formfillerGroup)
+		logger.Info().Msg("Form filler routes registered")
+	}
+
+	// Register Claude Code CLI version management routes (protected) - /api/v1/claudecode/*
+	claudeCodeHandler := claudecode.NewHandler(nil)
+	claudeCodeGroup := protected.Group("/claudecode")
+	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
+	logger.Info().Msg("Claude Code CLI routes registered")
+
+	// Register channel config routes (public for now, channels page needs to work without auth)
+	channelConfigStore := server.NewChannelConfigStore(dataDir)
+	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
+	channelConfigHandler.RegisterRoutes(api)
+	logger.Info().Msg("Channel config routes registered")
+
 	// Worker stats endpoint
 	v1.GET("/workers/stats", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, pool.Stats())
@@ -524,4 +624,34 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Info().Msg("Development mode: proxying to Vite dev server")
 	}
 	web.RegisterStaticRoutes(e)
+}
+
+// convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
+func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig) *claudecode.ClaudeCodeConfig {
+	return &claudecode.ClaudeCodeConfig{
+		Enabled:      cfg.Enabled,
+		Command:      cfg.Command,
+		WorkspaceDir: cfg.WorkspaceDir,
+		DefaultModel: cfg.DefaultModel,
+		Timeout:      cfg.Timeout,
+		SessionTTL:   cfg.SessionTTL,
+		Backend: claudecode.CliBackendConfig{
+			Command:          cfg.Command,
+			Args:             cfg.Backend.Args,
+			ResumeArgs:       cfg.Backend.ResumeArgs,
+			Output:           cfg.Backend.Output,
+			Input:            cfg.Backend.Input,
+			MaxPromptArgChars: cfg.Backend.MaxPromptArgChars,
+			Env:              cfg.Backend.Env,
+			ClearEnv:         cfg.Backend.ClearEnv,
+			ModelArg:         cfg.Backend.ModelArg,
+			ModelAliases:     cfg.Backend.ModelAliases,
+			SessionArg:       cfg.Backend.SessionArg,
+			SessionMode:      cfg.Backend.SessionMode,
+			SystemPromptArg:  cfg.Backend.SystemPromptArg,
+			SystemPromptMode: cfg.Backend.SystemPromptMode,
+			SystemPromptWhen: cfg.Backend.SystemPromptWhen,
+			Serialize:        cfg.Backend.Serialize,
+		},
+	}
 }

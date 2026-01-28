@@ -66,7 +66,19 @@
       "Bash(brew upgrade:*)",
       "Bash(brew install:*)",
       "Bash(./dev.sh:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(grep:*)",
+      "Bash(npm run:*)",
+      "Bash(claude --version:*)",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(./scripts/download-claude-code.sh:*)",
+      "Bash(/Users/orca/Documents/GitHub/ZimaOS-Echo/server/internal/claudecode/bin/claude-darwin-arm64:*)",
+      "Bash(npx tsc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(npm view:*)",
+      "Bash(npm search:*)",
+      "Bash(tar:*)"
     ]
   }
 }

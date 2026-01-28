@@ -1,0 +1,219 @@
+import api from './client'
+
+// Types matching backend companion/types.go
+
+export type Platform = 'whatsapp' | 'telegram' | 'discord' | 'slack' | 'matrix' | 'feishu' | 'web' | 'api'
+export type SessionStatus = 'active' | 'idle' | 'ended' | 'error'
+export type ThreatLevel = 'none' | 'low' | 'medium' | 'high' | 'critical'
+export type AlertSeverity = 'info' | 'warning' | 'error' | 'critical'
+
+export type SessionEventType =
+  | 'session_start'
+  | 'session_end'
+  | 'message_received'
+  | 'message_sent'
+  | 'tool_call'
+  | 'llm_request'
+  | 'security_threat'
+  | 'error'
+  | 'custom'
+
+export interface SessionMetadata {
+  messageCount: number
+  toolCallCount: number
+  llmCallCount: number
+  totalTokens: number
+  customData?: Record<string, unknown>
+}
+
+export interface CompanionSession {
+  id: string
+  platform: Platform
+  userId: string
+  tenantId: string
+  status: SessionStatus
+  startedAt: string
+  endedAt?: string
+  duration: number
+  eventCount: number
+  threatLevel: ThreatLevel
+  threatScore: number
+  metadata: SessionMetadata
+}
+
+export interface MessageData {
+  direction: 'inbound' | 'outbound'
+  contentType: string
+  length: number
+  content: string
+  truncated: boolean
+}
+
+export interface ToolCallData {
+  toolId: string
+  toolName: string
+  status: string
+  duration: number
+  sandboxUsed: boolean
+  inputPreview: string
+  outputPreview: string
+}
+
+export interface LLMRequestData {
+  provider: string
+  model: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  duration: number
+  status: string
+}
+
+export interface SecurityData {
+  threatLevel: ThreatLevel
+  threatScore: number
+  threatTypes: string[]
+  action: string
+  details: string
+}
+
+export interface SessionEvent {
+  id: string
+  sessionId: string
+  timestamp: string
+  eventType: SessionEventType
+  platform: Platform
+  userId: string
+  tenantId: string
+  duration: number
+  status: string
+  message?: MessageData
+  toolCall?: ToolCallData
+  llmRequest?: LLMRequestData
+  security?: SecurityData
+  error?: string
+  customData?: Record<string, unknown>
+}
+
+export interface Alert {
+  id: string
+  sessionId: string
+  eventId: string
+  severity: AlertSeverity
+  title: string
+  description: string
+  createdAt: string
+  acknowledged: boolean
+  ackedAt?: string
+  ackedBy?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface FlowNode {
+  id: string
+  type: string
+  label: string
+  timestamp: string
+  duration: number
+  status: string
+  data?: Record<string, unknown>
+  position?: { x: number; y: number }
+}
+
+export interface FlowEdge {
+  id: string
+  source: string
+  target: string
+  label?: string
+}
+
+export interface FlowGraph {
+  sessionId: string
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
+
+export interface Stats {
+  activeSessions: number
+  totalSessions: number
+  totalEvents: number
+  totalAlerts: number
+  unackedAlerts: number
+  avgSessionDuration: number
+  sessionsByPlatform: Record<Platform, number>
+  threatsByLevel: Record<ThreatLevel, number>
+  eventsByType: Record<SessionEventType, number>
+  lastUpdated: string
+}
+
+export interface ListOptions {
+  offset?: number
+  limit?: number
+  sort?: string
+  order?: 'asc' | 'desc'
+  platform?: Platform
+  userId?: string
+  status?: SessionStatus
+  from?: string
+  to?: string
+}
+
+export interface ListResponse<T> {
+  sessions?: T[]
+  events?: T[]
+  alerts?: T[]
+  total: number
+  offset: number
+  limit: number
+}
+
+// API endpoints
+
+export const companionApi = {
+  // Sessions
+  listSessions: (opts?: ListOptions) =>
+    api.get<ListResponse<CompanionSession>>('/companion/sessions', { params: opts }),
+
+  getSession: (id: string) =>
+    api.get<CompanionSession>(`/companion/sessions/${id}`),
+
+  getSessionEvents: (id: string, opts?: ListOptions) =>
+    api.get<ListResponse<SessionEvent>>(`/companion/sessions/${id}/events`, { params: opts }),
+
+  getSessionFlow: (id: string) =>
+    api.get<FlowGraph>(`/companion/sessions/${id}/flow`),
+
+  // Alerts
+  listAlerts: (opts?: ListOptions & { severity?: AlertSeverity; acknowledged?: boolean }) =>
+    api.get<ListResponse<Alert>>('/companion/alerts', { params: opts }),
+
+  acknowledgeAlert: (id: string) =>
+    api.put<Alert>(`/companion/alerts/${id}/ack`),
+
+  bulkAcknowledgeAlerts: (ids: string[]) =>
+    api.put<{ acknowledged: number }>('/companion/alerts/bulk-ack', { alert_ids: ids }),
+
+  // Stats
+  getStats: () =>
+    api.get<Stats>('/companion/stats'),
+
+  // Export
+  exportData: (opts?: { format?: 'json' | 'csv'; sessionIds?: string[]; from?: string; to?: string }) => {
+    const params = new URLSearchParams()
+    if (opts?.format) params.append('format', opts.format)
+    if (opts?.from) params.append('from', opts.from)
+    if (opts?.to) params.append('to', opts.to)
+    opts?.sessionIds?.forEach(id => params.append('session_id', id))
+    return api.get(`/companion/export?${params.toString()}`, { responseType: 'blob' })
+  },
+}
+
+// WebSocket URL helper
+export function getCompanionStreamUrl(sessionId?: string): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const path = sessionId
+    ? `/api/v1/companion/session/${sessionId}`
+    : '/api/v1/companion/stream'
+  return `${protocol}//${host}${path}`
+}

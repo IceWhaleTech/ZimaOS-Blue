@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
+import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import type { LocaleKey } from '@/i18n'
 
 const { t } = useI18n()
@@ -671,6 +672,9 @@ onMounted(async () => {
         </div>
       </div>
     </section>
+
+    <!-- Claude Code CLI Settings -->
+    <ClaudeCodeSettings @status-change="showSaveStatus" />
   </div>
 </template>
 

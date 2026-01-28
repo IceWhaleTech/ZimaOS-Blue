@@ -23,6 +23,99 @@ type Config struct {
 	Embedding   EmbeddingConfig   `mapstructure:"embedding"`
 	Memory      MemoryConfig      `mapstructure:"memory"`
 	Grayscale   GrayscaleConfig   `mapstructure:"grayscale"`
+	Companion   CompanionConfig   `mapstructure:"companion"`
+	ClaudeCode  ClaudeCodeConfig  `mapstructure:"claudecode"`
+}
+
+// ClaudeCodeConfig holds Claude Code CLI integration configuration (v0.10).
+type ClaudeCodeConfig struct {
+	Enabled      bool                      `mapstructure:"enabled"`
+	Command      string                    `mapstructure:"command"`
+	WorkspaceDir string                    `mapstructure:"workspace_dir"`
+	DefaultModel string                    `mapstructure:"default_model"`
+	Timeout      time.Duration             `mapstructure:"timeout"`
+	SessionTTL   time.Duration             `mapstructure:"session_ttl"`
+	Backend      ClaudeCodeBackendConfig   `mapstructure:"backend"`
+}
+
+// ClaudeCodeBackendConfig holds CLI backend configuration.
+type ClaudeCodeBackendConfig struct {
+	Args             []string          `mapstructure:"args"`
+	ResumeArgs       []string          `mapstructure:"resume_args"`
+	Output           string            `mapstructure:"output"`
+	Input            string            `mapstructure:"input"`
+	MaxPromptArgChars int              `mapstructure:"max_prompt_arg_chars"`
+	Env              map[string]string `mapstructure:"env"`
+	ClearEnv         []string          `mapstructure:"clear_env"`
+	ModelArg         string            `mapstructure:"model_arg"`
+	ModelAliases     map[string]string `mapstructure:"model_aliases"`
+	SessionArg       string            `mapstructure:"session_arg"`
+	SessionMode      string            `mapstructure:"session_mode"`
+	SystemPromptArg  string            `mapstructure:"system_prompt_arg"`
+	SystemPromptMode string            `mapstructure:"system_prompt_mode"`
+	SystemPromptWhen string            `mapstructure:"system_prompt_when"`
+	Serialize        bool              `mapstructure:"serialize"`
+}
+
+// CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
+type CompanionConfig struct {
+	Enabled     bool                         `mapstructure:"enabled"`
+	Storage     CompanionStorageConfig       `mapstructure:"storage"`
+	WebSocket   CompanionWebSocketConfig     `mapstructure:"websocket"`
+	Retention   CompanionRetentionConfig     `mapstructure:"retention"`
+	Alerts      CompanionAlertConfig         `mapstructure:"alerts"`
+	Security    CompanionSecurityConfig      `mapstructure:"security"`
+	Performance CompanionPerformanceConfig   `mapstructure:"performance"`
+}
+
+// CompanionStorageConfig holds companion storage configuration.
+type CompanionStorageConfig struct {
+	BasePath string `mapstructure:"base_path"`
+	Format   string `mapstructure:"format"`
+}
+
+// CompanionWebSocketConfig holds companion WebSocket configuration.
+type CompanionWebSocketConfig struct {
+	PingInterval    time.Duration `mapstructure:"ping_interval"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+	ReadBufferSize  int           `mapstructure:"read_buffer_size"`
+	WriteBufferSize int           `mapstructure:"write_buffer_size"`
+}
+
+// CompanionRetentionConfig holds companion data retention configuration.
+type CompanionRetentionConfig struct {
+	EventsDays   int `mapstructure:"events_days"`
+	SessionsDays int `mapstructure:"sessions_days"`
+	AlertsDays   int `mapstructure:"alerts_days"`
+}
+
+// CompanionAlertConfig holds companion alert configuration.
+type CompanionAlertConfig struct {
+	Enabled         bool                    `mapstructure:"enabled"`
+	ThreatThreshold string                  `mapstructure:"threat_threshold"`
+	Channels        []CompanionAlertChannel `mapstructure:"channels"`
+}
+
+// CompanionAlertChannel represents an alert notification channel.
+type CompanionAlertChannel struct {
+	Type       string            `mapstructure:"type"`
+	URL        string            `mapstructure:"url,omitempty"`
+	Recipients []string          `mapstructure:"recipients,omitempty"`
+	Headers    map[string]string `mapstructure:"headers,omitempty"`
+}
+
+// CompanionSecurityConfig holds companion security integration configuration.
+type CompanionSecurityConfig struct {
+	PromptGuardIntegration bool `mapstructure:"prompt_guard_integration"`
+	AuditLogIntegration    bool `mapstructure:"audit_log_integration"`
+	SandboxMonitor         bool `mapstructure:"sandbox_monitor"`
+}
+
+// CompanionPerformanceConfig holds companion performance configuration.
+type CompanionPerformanceConfig struct {
+	MaxConcurrentSessions int           `mapstructure:"max_concurrent_sessions"`
+	EventBufferSize       int           `mapstructure:"event_buffer_size"`
+	BatchWriteInterval    time.Duration `mapstructure:"batch_write_interval"`
 }
 
 // SecurityConfig holds security-related configuration (v0.7).
@@ -509,4 +602,50 @@ func setDefaults(v *viper.Viper) {
 
 	// Grayscale/Feature flags defaults
 	v.SetDefault("grayscale.enabled", false)
+
+	// Companion defaults (v0.9.1)
+	v.SetDefault("companion.enabled", true)
+	v.SetDefault("companion.storage.base_path", "./data/companion")
+	v.SetDefault("companion.storage.format", "jsonl")
+	v.SetDefault("companion.websocket.ping_interval", "30s")
+	v.SetDefault("companion.websocket.write_timeout", "10s")
+	v.SetDefault("companion.websocket.read_buffer_size", 1024)
+	v.SetDefault("companion.websocket.write_buffer_size", 1024)
+	v.SetDefault("companion.retention.events_days", 7)
+	v.SetDefault("companion.retention.sessions_days", 30)
+	v.SetDefault("companion.retention.alerts_days", 90)
+	v.SetDefault("companion.alerts.enabled", true)
+	v.SetDefault("companion.alerts.threat_threshold", "medium")
+	v.SetDefault("companion.security.prompt_guard_integration", true)
+	v.SetDefault("companion.security.audit_log_integration", true)
+	v.SetDefault("companion.security.sandbox_monitor", true)
+	v.SetDefault("companion.performance.max_concurrent_sessions", 1000)
+	v.SetDefault("companion.performance.event_buffer_size", 10000)
+	v.SetDefault("companion.performance.batch_write_interval", "1s")
+
+	// Claude Code CLI defaults (v0.10)
+	v.SetDefault("claudecode.enabled", false)
+	v.SetDefault("claudecode.command", "claude")
+	v.SetDefault("claudecode.workspace_dir", ".")
+	v.SetDefault("claudecode.default_model", "sonnet")
+	v.SetDefault("claudecode.timeout", "5m")
+	v.SetDefault("claudecode.session_ttl", "24h")
+	v.SetDefault("claudecode.backend.args", []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"})
+	v.SetDefault("claudecode.backend.resume_args", []string{"-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}"})
+	v.SetDefault("claudecode.backend.output", "json")
+	v.SetDefault("claudecode.backend.input", "arg")
+	v.SetDefault("claudecode.backend.max_prompt_arg_chars", 100000)
+	v.SetDefault("claudecode.backend.model_arg", "--model")
+	v.SetDefault("claudecode.backend.model_aliases", map[string]string{
+		"opus":   "opus",
+		"sonnet": "sonnet",
+		"haiku":  "haiku",
+	})
+	v.SetDefault("claudecode.backend.session_arg", "--session-id")
+	v.SetDefault("claudecode.backend.session_mode", "always")
+	v.SetDefault("claudecode.backend.system_prompt_arg", "--append-system-prompt")
+	v.SetDefault("claudecode.backend.system_prompt_mode", "append")
+	v.SetDefault("claudecode.backend.system_prompt_when", "first")
+	v.SetDefault("claudecode.backend.clear_env", []string{"ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_OLD"})
+	v.SetDefault("claudecode.backend.serialize", true)
 }

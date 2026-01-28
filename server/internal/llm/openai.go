@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -17,9 +18,10 @@ const (
 
 // OpenAIProvider implements the Provider interface for OpenAI.
 type OpenAIProvider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	apiKey       string
+	baseURL      string
+	client       *http.Client
+	cachedModels []string
 }
 
 // NewOpenAIProvider creates a new OpenAI provider.
@@ -43,6 +45,148 @@ func (p *OpenAIProvider) Name() string {
 
 // Models returns the list of available models.
 func (p *OpenAIProvider) Models() []string {
+	// Try to fetch models from API
+	models := p.fetchModels()
+	if len(models) > 0 {
+		return models
+	}
+	// Fallback to default list if API is not available
+	return []string{
+		"gpt-4o",
+		"gpt-4o-mini",
+		"gpt-4-turbo",
+		"gpt-4",
+		"gpt-3.5-turbo",
+	}
+}
+
+// normalizeBaseURL ensures the base URL is properly formatted.
+// It handles cases where the URL may or may not include /v1.
+func (p *OpenAIProvider) normalizeBaseURL() string {
+	baseURL := strings.TrimSuffix(p.baseURL, "/")
+	return baseURL
+}
+
+// getAPIPath returns the full API path, handling /v1 compatibility.
+// It tries with /v1 first, and if that fails, tries without.
+func (p *OpenAIProvider) getAPIPath(endpoint string) string {
+	baseURL := p.normalizeBaseURL()
+	// If baseURL already ends with /v1, don't add it again
+	if strings.HasSuffix(baseURL, "/v1") {
+		return baseURL + endpoint
+	}
+	return baseURL + "/v1" + endpoint
+}
+
+// fetchModels fetches the list of available models from the API.
+func (p *OpenAIProvider) fetchModels() []string {
+	// Use cached models if available
+	if len(p.cachedModels) > 0 {
+		return p.cachedModels
+	}
+
+	// Don't fetch if no API key
+	if p.apiKey == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Try to fetch models, handling /v1 compatibility
+	models := p.tryFetchModels(ctx, p.getAPIPath("/models"))
+	if models == nil {
+		// If failed, try without /v1 (for endpoints that don't use it)
+		baseURL := p.normalizeBaseURL()
+		if !strings.HasSuffix(baseURL, "/v1") {
+			models = p.tryFetchModels(ctx, baseURL+"/models")
+		}
+	}
+
+	if len(models) > 0 {
+		p.cachedModels = models
+	}
+	return models
+}
+
+// tryFetchModels attempts to fetch models from a specific URL.
+func (p *OpenAIProvider) tryFetchModels(ctx context.Context, url string) []string {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil
+	}
+
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+
+	models := make([]string, 0, len(result.Data))
+	for _, m := range result.Data {
+		// Filter to only include chat models (exclude embeddings, etc.)
+		if p.isChatModel(m.ID) {
+			models = append(models, m.ID)
+		}
+	}
+
+	return models
+}
+
+// isChatModel checks if a model ID is likely a chat model.
+func (p *OpenAIProvider) isChatModel(modelID string) bool {
+	// Include common chat model patterns
+	chatPatterns := []string{
+		"gpt-", "chatgpt-", "o1-", "o3-",
+		"claude-", "llama", "mistral", "mixtral",
+		"qwen", "deepseek", "gemma", "phi",
+	}
+	modelLower := strings.ToLower(modelID)
+	for _, pattern := range chatPatterns {
+		if strings.Contains(modelLower, pattern) {
+			return true
+		}
+	}
+	// Exclude known non-chat models
+	excludePatterns := []string{
+		"embedding", "embed-", "whisper", "tts-",
+		"dall-e", "davinci", "babbage", "ada",
+		"moderation", "text-",
+	}
+	for _, pattern := range excludePatterns {
+		if strings.Contains(modelLower, pattern) {
+			return false
+		}
+	}
+	// Default to including unknown models
+	return true
+}
+
+// RefreshModels clears the cached models and fetches fresh list.
+// Falls back to default models if API fetch fails.
+func (p *OpenAIProvider) RefreshModels() []string {
+	p.cachedModels = nil
+	models := p.fetchModels()
+	if len(models) > 0 {
+		return models
+	}
+	// Fallback to default list if API is not available
 	return []string{
 		"gpt-4o",
 		"gpt-4o-mini",
@@ -125,7 +269,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	}
 
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getAPIPath("/chat/completions"), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -179,7 +323,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 	}
 
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getAPIPath("/chat/completions"), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

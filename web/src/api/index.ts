@@ -15,6 +15,8 @@ export * from './webhook'
 export * from './cron'
 export * from './audit'
 export * from './security'
+export * from './companion'
+export * from './claudecode'
 
 export interface HealthStatus {
   status: string
