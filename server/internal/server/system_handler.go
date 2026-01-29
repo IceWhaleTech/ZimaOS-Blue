@@ -7,16 +7,18 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sysinfo"
 )
 
 // SystemHandler handles system-related API endpoints
 type SystemHandler struct {
-	version   string
-	buildTime string
-	gitCommit string
-	dataDir   string
+	version      string
+	buildTime    string
+	gitCommit    string
+	dataDir      string
+	serverConfig *config.ServerConfig
 }
 
 // NewSystemHandler creates a new system handler
@@ -26,6 +28,17 @@ func NewSystemHandler(version, buildTime, gitCommit, dataDir string) *SystemHand
 		buildTime: buildTime,
 		gitCommit: gitCommit,
 		dataDir:   dataDir,
+	}
+}
+
+// NewSystemHandlerWithConfig creates a new system handler with server config
+func NewSystemHandlerWithConfig(version, buildTime, gitCommit, dataDir string, serverConfig *config.ServerConfig) *SystemHandler {
+	return &SystemHandler{
+		version:      version,
+		buildTime:    buildTime,
+		gitCommit:    gitCommit,
+		dataDir:      dataDir,
+		serverConfig: serverConfig,
 	}
 }
 
@@ -163,8 +176,10 @@ type ConfigResponse struct {
 
 // ServerConfigResponse represents server config
 type ServerConfigResponse struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
+	Host             string `json:"host"`
+	Port             int    `json:"port"`
+	ActualPort       int    `json:"actual_port"`
+	PortAutoFallback bool   `json:"port_auto_fallback"`
 }
 
 // LogConfigResponse represents log config
@@ -180,12 +195,23 @@ type SecurityConfigResponse struct {
 
 // GetConfig returns the current configuration (safe fields only)
 func (h *SystemHandler) GetConfig(c echo.Context) error {
-	// Return a safe subset of configuration
-	// In a real implementation, this would read from the config service
+	// Get configured values or defaults
+	host := "0.0.0.0"
+	port := 8080
+	portAutoFallback := true
+
+	if h.serverConfig != nil {
+		host = h.serverConfig.Host
+		port = h.serverConfig.Port
+		portAutoFallback = h.serverConfig.PortAutoFallback
+	}
+
 	return c.JSON(http.StatusOK, ConfigResponse{
 		Server: ServerConfigResponse{
-			Host: "0.0.0.0",
-			Port: 8080,
+			Host:             host,
+			Port:             port,
+			ActualPort:       GetActualPort(),
+			PortAutoFallback: portAutoFallback,
 		},
 		Log: LogConfigResponse{
 			Level:  "info",

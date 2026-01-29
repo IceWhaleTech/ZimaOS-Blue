@@ -133,14 +133,14 @@ function formatDuration(ms: number): string {
           </span>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.threatLevel') }}</div>
-          <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getThreatColor(session.threatLevel)]">
-            {{ t(`companion.threat.${session.threatLevel}`) }}
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.threat_level') }}</div>
+          <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getThreatColor(session.threat_level)]">
+            {{ t(`companion.threat.${session.threat_level}`) }}
           </span>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.threatScore') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.threatScore }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.threat_score') }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ session.threat_score }}</div>
         </div>
       </div>
 
@@ -148,26 +148,26 @@ function formatDuration(ms: number): string {
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.events') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.eventCount }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ session.event_count }}</div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.messages') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.messageCount || 0 }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.message_count || 0 }}</div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.toolCalls') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.toolCallCount || 0 }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.tool_call_count || 0 }}</div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.tokens') }}</div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.totalTokens || 0 }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ session.metadata?.total_tokens || 0 }}</div>
         </div>
       </div>
 
       <!-- Time Info -->
       <div class="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-slate-400 mb-6">
-        <span>{{ t('companion.started') }}: {{ formatDate(session.startedAt) }}</span>
-        <span v-if="session.endedAt">{{ t('companion.ended') }}: {{ formatDate(session.endedAt) }}</span>
+        <span>{{ t('companion.started') }}: {{ formatDate(session.started_at) }}</span>
+        <span v-if="session.ended_at">{{ t('companion.ended') }}: {{ formatDate(session.ended_at) }}</span>
         <span v-if="session.duration">{{ t('companion.duration') }}: {{ formatDuration(session.duration) }}</span>
       </div>
 

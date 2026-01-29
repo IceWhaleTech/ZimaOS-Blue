@@ -48,12 +48,14 @@ build-frontend:
 	@echo "Building frontend..."
 	@cd $(WEB_DIR) && npm install && npm run build
 
-# Copy frontend to embed directory
+# Copy frontend to embed directory (exclude source maps)
 copy-frontend:
 	@echo "Copying frontend to embed directory..."
 	@rm -rf $(EMBED_DIR)
 	@mkdir -p $(EMBED_DIR)
-	@cp -r $(WEB_DIR)/dist/* $(EMBED_DIR)/
+	@cd $(WEB_DIR)/dist && find . -type f ! -name '*.map' -exec cp --parents {} $(EMBED_DIR)/ \; 2>/dev/null || \
+		cd $(WEB_DIR)/dist && rsync -av --exclude='*.map' . $(EMBED_DIR)/ 2>/dev/null || \
+		(cd $(WEB_DIR)/dist && for f in $$(find . -type f ! -name '*.map'); do mkdir -p $(EMBED_DIR)/$$(dirname $$f) && cp $$f $(EMBED_DIR)/$$f; done)
 
 # Prepare Claude Code CLI directory (create .gitkeep for go:embed)
 prepare-claude-code-dir:
@@ -203,7 +205,19 @@ tauri-dev: tauri-sidecar
 # Build Tauri app for production
 tauri-build: tauri-sidecar
 	@echo "Building Tauri app..."
+	@rm -rf $(TAURI_DIR)/src-tauri/data
+	@mkdir -p $(TAURI_DIR)/src-tauri/data
 	@cd $(TAURI_DIR) && npm install && npm run build
+ifeq ($(shell uname -s),Darwin)
+	@echo "Setting DMG file icon..."
+	@DMG_FILE=$$(find $(TAURI_DIR)/src-tauri/target/release/bundle/dmg -name "*.dmg" -type f 2>/dev/null | head -1); \
+	if [ -n "$$DMG_FILE" ] && command -v fileicon >/dev/null 2>&1; then \
+		fileicon set "$$DMG_FILE" "$(TAURI_DIR)/src-tauri/icons/icon.icns"; \
+		echo "DMG file icon set successfully"; \
+	elif [ -n "$$DMG_FILE" ]; then \
+		echo "Warning: fileicon not found. Install with: brew install fileicon"; \
+	fi
+endif
 
 # Build Tauri app in debug mode
 tauri-build-debug: tauri-sidecar
@@ -215,7 +229,14 @@ tauri-clean:
 	@echo "Cleaning Tauri build artifacts..."
 	@rm -rf $(TAURI_DIR)/src-tauri/target
 	@rm -rf $(TAURI_BIN_DIR)/echo-server-*
+	@rm -rf $(TAURI_DIR)/src-tauri/data
 	@echo "Tauri clean complete!"
+
+# Build Tauri app using the full build script (recommended)
+tauri-package: build-frontend copy-frontend
+	@echo "Building Tauri package..."
+	@chmod +x $(TAURI_DIR)/build.sh
+	@$(TAURI_DIR)/build.sh
 
 # Show help
 help:
@@ -243,6 +264,7 @@ help:
 	@echo "  tauri-sidecar      Build Go sidecar for Tauri"
 	@echo "  tauri-dev          Run Tauri in development mode"
 	@echo "  tauri-build        Build Tauri app for production"
+	@echo "  tauri-package      Build Tauri package with full script (recommended)"
 	@echo "  tauri-build-debug  Build Tauri app in debug mode"
 	@echo "  tauri-clean        Clean Tauri build artifacts"
 	@echo ""
@@ -263,3 +285,4 @@ help:
 	@echo "  make build-embedded                  # Build with embedded CLI for current platform"
 	@echo "  make tauri-dev                       # Run Tauri desktop app in dev mode"
 	@echo "  make tauri-build                     # Build Tauri desktop app"
+	@echo "  make tauri-package                   # Build Tauri package with full script"

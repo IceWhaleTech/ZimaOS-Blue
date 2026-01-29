@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default capabilities for ZimaOS Echo","local":true,"windows":["main"],"permissions":["core:default","shell:allow-execute","shell:allow-spawn","shell:allow-stdin-write","shell:allow-kill","process:allow-exit","process:allow-restart","os:allow-locale","os:allow-platform","os:allow-version","os:allow-os-type","opener:default"]}}

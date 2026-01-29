@@ -174,16 +174,16 @@ onMounted(() => {
         <div class="grid md:grid-cols-2 gap-6">
           <UsageChart
             :title="t('stats.callsByProvider')"
-            :data="stats.calls_by_provider"
+            :data="stats.calls_by_provider || {}"
           />
           <UsageChart
             :title="t('stats.callsByModel')"
-            :data="stats.calls_by_model"
+            :data="stats.calls_by_model || {}"
           />
         </div>
 
         <!-- Cost Estimate -->
-        <CostEstimate :cost="stats.estimated_cost_usd" />
+        <CostEstimate :cost="stats.estimated_cost_usd ?? 0" />
 
         <!-- Clear Stats -->
         <div class="pt-4 border-t border-gray-200 dark:border-gray-700">

@@ -233,10 +233,10 @@ function toggleSelectAll() {
                   />
                   <div class="flex-1 min-w-0">
                     <div class="text-sm text-gray-900 dark:text-white truncate">
-                      {{ session.userId || t('companion.anonymous') }}
+                      {{ session.user_id || t('companion.anonymous') }}
                     </div>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ session.platform }} · {{ session.eventCount }} {{ t('companion.events') }}
+                      {{ session.platform }} · {{ session.event_count }} {{ t('companion.events') }}
                     </div>
                   </div>
                 </label>

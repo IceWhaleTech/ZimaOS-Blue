@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { storeToRefs } from 'pinia'
 import Skeleton from '@/components/Skeleton.vue'
-import NetworkAddressCard from '@/components/network/NetworkAddressCard.vue'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
@@ -143,9 +142,6 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-
-    <!-- Network Address Card (only in Tauri desktop app) -->
-    <NetworkAddressCard class="mb-6" />
 
     <!-- Worker Pool Section (only show when worker stats are available) -->
     <div v-if="workerStats" class="worker-section">

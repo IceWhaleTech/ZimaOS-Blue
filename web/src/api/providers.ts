@@ -21,6 +21,7 @@ export interface ProviderConfigRequest {
 export interface TestConnectionResponse {
   success: boolean
   message: string
+  messageKey?: string
 }
 
 // Provider settings API

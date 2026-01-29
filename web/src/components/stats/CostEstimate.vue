@@ -14,12 +14,13 @@ const formattedCost = computed(() => {
     currency: 'USD',
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
-  }).format(props.cost)
+  }).format(props.cost ?? 0)
 })
 
 const costLevel = computed(() => {
-  if (props.cost < 1) return 'low'
-  if (props.cost < 10) return 'medium'
+  const cost = props.cost ?? 0
+  if (cost < 1) return 'low'
+  if (cost < 10) return 'medium'
   return 'high'
 })
 </script>

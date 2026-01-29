@@ -6,6 +6,7 @@ mod tray;
 
 use log::{error, info};
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent,
@@ -56,6 +57,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             get_server_url,
@@ -77,8 +79,11 @@ pub fn run() {
 
             let menu = Menu::with_items(app, &[&show, &hide, &separator, &quit])?;
 
-            // Build tray icon
+            // Build tray icon with embedded image
+            let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
+                .expect("Failed to load tray icon");
             let _tray = TrayIconBuilder::new()
+                .icon(icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -115,11 +120,38 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Open devtools in debug builds (must be done in setup, before async tasks)
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+
             // Start the Echo server as sidecar
             let app_handle = app.handle().clone();
+            let app_handle_for_window = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = server::start_sidecar_server(&app_handle).await {
                     error!("Failed to start server: {}", e);
+                    return;
+                }
+
+                // Get the server port
+                let port = if let Some(state) = app_handle.try_state::<AppState>() {
+                    *state.server_port.lock().unwrap()
+                } else {
+                    8080
+                };
+
+                // Navigate the main window to the Go server URL and show it
+                if let Some(window) = app_handle_for_window.get_webview_window("main") {
+                    let url = format!("http://localhost:{}", port);
+                    info!("Navigating to Go server at {}", url);
+                    if let Err(e) = window.navigate(url.parse().unwrap()) {
+                        error!("Failed to navigate to server: {}", e);
+                    }
+                    // Show the window after navigation
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             });
 

@@ -7,6 +7,7 @@ const props = defineProps<{
 }>()
 
 const chartData = computed(() => {
+  if (!props.data) return []
   const entries = Object.entries(props.data)
   const total = entries.reduce((sum, [, value]) => sum + value, 0)
 

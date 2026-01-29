@@ -19,25 +19,26 @@ export type SessionEventType =
   | 'custom'
 
 export interface SessionMetadata {
-  messageCount: number
-  toolCallCount: number
-  llmCallCount: number
-  totalTokens: number
-  customData?: Record<string, unknown>
+  message_count: number
+  tool_call_count: number
+  llm_call_count: number
+  total_tokens: number
+  client_ip?: string
+  custom_data?: Record<string, unknown>
 }
 
 export interface CompanionSession {
   id: string
   platform: Platform
-  userId: string
-  tenantId: string
+  user_id: string
+  tenant_id?: string
   status: SessionStatus
-  startedAt: string
-  endedAt?: string
+  started_at: string
+  ended_at?: string
   duration: number
-  eventCount: number
-  threatLevel: ThreatLevel
-  threatScore: number
+  event_count: number
+  threat_level: ThreatLevel
+  threat_score: number
   metadata: SessionMetadata
 }
 
@@ -182,6 +183,9 @@ export const companionApi = {
 
   getSessionFlow: (id: string) =>
     api.get<FlowGraph>(`/companion/sessions/${id}/flow`),
+
+  deleteSession: (id: string) =>
+    api.delete<{ message: string }>(`/companion/sessions/${id}`),
 
   // Alerts
   listAlerts: (opts?: ListOptions & { severity?: AlertSeverity; acknowledged?: boolean }) =>

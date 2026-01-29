@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/a2ui"
+	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
@@ -629,6 +630,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Register health routes under /api/v1 as well
 	srv.RegisterHealthRoutesOnGroup(v1)
+
+	// Register network routes (public - for desktop app to get LAN addresses)
+	networkHandler := networkapi.NewNetworkHandler(server.GetActualPort())
+	networkHandler.RegisterRoutes(e)
+	logger.Info().Msg("Network routes registered")
 
 	// Register metrics routes (system metrics from collector)
 	metricsHandler := server.NewMetricsHandler(metricsCollector)

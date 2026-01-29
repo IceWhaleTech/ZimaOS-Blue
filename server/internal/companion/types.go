@@ -429,6 +429,7 @@ type Storage interface {
 	GetSession(ctx context.Context, id string) (*Session, error)
 	ListSessions(ctx context.Context, opts *ListOptions) ([]*Session, int, error)
 	UpdateSession(ctx context.Context, session *Session) error
+	DeleteSession(ctx context.Context, id string) error
 
 	// Event storage
 	AppendEvent(ctx context.Context, event *SessionEvent) error

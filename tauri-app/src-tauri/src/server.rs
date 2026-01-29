@@ -60,15 +60,16 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
         *state.server_port.lock().unwrap() = port;
     }
 
-    // Get the sidecar command
+    // Get the sidecar command with port environment variable
+    // ECHO_SERVER_PORT maps to server.port via viper (ECHO prefix + underscore replacement)
     let shell = app.shell();
     let sidecar = shell
         .sidecar("echo-server")
-        .map_err(|e| format!("Failed to create sidecar command: {}", e))?;
+        .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+        .env("ECHO_SERVER_PORT", port.to_string());
 
-    // Start the server with port argument
+    // Start the server with the specified port
     let (mut rx, child) = sidecar
-        .args(["--port", &port.to_string()])
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 

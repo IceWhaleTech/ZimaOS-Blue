@@ -6,7 +6,7 @@ const THEME_KEY = 'zimaos-echo-theme'
 export type Theme = 'light' | 'dark' | 'system'
 
 export const useThemeStore = defineStore('theme', () => {
-  const theme = ref<Theme>((localStorage.getItem(THEME_KEY) as Theme) || 'dark')
+  const theme = ref<Theme>((localStorage.getItem(THEME_KEY) as Theme) || 'system')
   const systemPrefersDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   // Listen for system theme changes

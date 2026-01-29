@@ -52,6 +52,7 @@ func (h *Handler) registerCompanionRoutes(g *echo.Group) {
 	g.GET("/sessions/:id", h.GetSession)
 	g.GET("/sessions/:id/events", h.GetSessionEvents)
 	g.GET("/sessions/:id/flow", h.GetSessionFlow)
+	g.DELETE("/sessions/:id", h.DeleteSession)
 
 	// Alerts
 	g.GET("/alerts", h.ListAlerts)
@@ -131,6 +132,21 @@ func (h *Handler) GetSessionFlow(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, flow)
+}
+
+// DeleteSession handles DELETE /api/v1/companion/sessions/:id
+func (h *Handler) DeleteSession(c echo.Context) error {
+	id := c.Param("id")
+
+	err := h.storage.DeleteSession(c.Request().Context(), id)
+	if err != nil {
+		if err == ErrSessionNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "session deleted"})
 }
 
 // ListAlerts handles GET /api/v1/companion/alerts

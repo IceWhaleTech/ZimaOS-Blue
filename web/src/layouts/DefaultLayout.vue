@@ -33,8 +33,6 @@ onUnmounted(() => {
   <!-- Full-screen layout without navigation for setup/login pages -->
   <div v-if="hideLayout" class="h-screen bg-surface-base overflow-auto">
     <RouterView />
-    <!-- Form filler widget available on all pages -->
-    <FormFillerWidget />
   </div>
   <!-- Default layout with header and sidebar -->
   <div v-else class="h-screen flex flex-col bg-surface-base overflow-hidden">

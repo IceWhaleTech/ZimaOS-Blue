@@ -3,6 +3,7 @@
 server:
   host: "0.0.0.0"
   port: 8080
+  port_auto_fallback: true  # Auto fallback to random port if configured port is in use
 
 log:
   level: "debug"

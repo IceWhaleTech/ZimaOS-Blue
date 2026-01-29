@@ -4,10 +4,7 @@
   "identifier": "com.zimaos.echo",
   "version": "0.10.4",
   "build": {
-    "beforeBuildCommand": "cd ../web && npm run build",
-    "beforeDevCommand": "cd ../web && npm run dev",
-    "frontendDist": "../../web/dist",
-    "devUrl": "http://localhost:5173"
+    "beforeBuildCommand": ""
   },
   "bundle": {
     "active": true,
@@ -48,7 +45,12 @@
       "exceptionDomain": "",
       "frameworks": [],
       "minimumSystemVersion": "10.15",
-      "signingIdentity": null
+      "signingIdentity": null,
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      }
     },
     "linux": {
       "appimage": {
@@ -63,12 +65,12 @@
     }
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "ZimaOS Echo",
-        "width": 1200,
-        "height": 800,
+        "width": 1400,
+        "height": 900,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
@@ -76,12 +78,12 @@
         "center": true,
         "decorations": true,
         "transparent": false,
-        "visible": true
+        "visible": false,
+        "url": "about:blank"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
-      "dangerousDisableAssetCspModification": false
+      "csp": null
     },
     "trayIcon": {
       "iconPath": "icons/tray.png",
@@ -91,15 +93,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "scope": [
-        {
-          "name": "echo-server",
-          "cmd": "bin/echo-server",
-          "args": true,
-          "sidecar": true
-        }
-      ]
+      "open": true
     }
   }
 }

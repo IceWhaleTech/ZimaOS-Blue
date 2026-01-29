@@ -552,7 +552,7 @@ function clearErrorOnInput(field: string) {
                     {{ passwordChecks.special ? '✓' : '○' }}
                   </span>
                   <span :class="passwordChecks.special ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-                    {{ t('setup.passwordCheck.special') }}
+                    {{ t('setup.passwordCheck.special') }} (!@#$%...)
                   </span>
                 </div>
               </div>

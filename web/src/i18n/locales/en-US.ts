@@ -229,7 +229,7 @@ export default {
       uppercase: 'Uppercase (A-Z)',
       lowercase: 'Lowercase (a-z)',
       number: 'Number (0-9)',
-      special: 'Special character (!@#$%...)',
+      special: 'Special character ',
     },
   },
   chat: {
@@ -644,6 +644,21 @@ export default {
   },
   service: {
     title: 'Service Management',
+    // Port configuration
+    port: 'Service Port',
+    portDescription: 'Network port the service listens on',
+    configuredPort: 'Configured port',
+    portAutoFallbackInfo: 'The configured port was in use, so the service started on a random port.',
+    portEditHint: 'Press Enter to save, Escape to cancel.',
+    portSaved: 'Port configuration saved',
+    portSaveFailed: 'Failed to save port configuration',
+    invalidPort: 'Invalid port number (must be 1-65535)',
+    portChangeConfirmTitle: 'Confirm Port Change',
+    portChangeConfirmDesc: 'Service is restarting on new port. Click "Keep" to confirm, or it will revert in {seconds} seconds.',
+    portChangeConfirmed: 'Port change confirmed',
+    portRevertFailed: 'Failed to revert port',
+    confirmKeep: 'Keep',
+    revertNow: 'Revert',
     // Status
     running: 'Running',
     stopped: 'Stopped',
@@ -1702,7 +1717,7 @@ export default {
     viewDocs: 'View Documentation',
     // Channel descriptions
     telegramDesc: 'Connect with Telegram Bot API',
-    telegramHint: 'Create a bot via @BotFather and get your bot token',
+    telegramHint: 'Create a bot via BotFather and get your bot token',
     telegramOpenChat: 'Open Bot Chat',
     botUsername: 'Bot Username',
     discordDesc: 'Connect with Discord Bot',
@@ -1810,6 +1825,14 @@ export default {
     tokens: 'Tokens',
     eventHistory: 'Event History',
     noEvents: 'No events',
+    userId: 'User ID',
+    startedAt: 'Started At',
+    metadata: 'Metadata',
+    messageCount: 'Messages',
+    toolCallCount: 'Tool Calls',
+    llmCallCount: 'LLM Calls',
+    totalTokens: 'Total Tokens',
+    deleteSessionConfirm: 'Are you sure you want to delete this session? This action cannot be undone.',
     // Alerts
     noAlerts: 'No alerts',
     acknowledge: 'Acknowledge',
@@ -2433,6 +2456,8 @@ export default {
     sameNetworkTip: 'Make sure devices are connected to the same network',
     copied: 'Address copied!',
     copyFailed: 'Failed to copy address',
+    openInBrowser: 'Open in Browser',
+    openIn: 'Open in {browser}',
   },
   // CLI Download & Status (v0.10.3)
   cli: {

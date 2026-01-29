@@ -184,6 +184,16 @@ function closeSessionDetail() {
   companionStore.clearCurrentSession()
 }
 
+async function deleteSession(sessionId: string) {
+  if (!confirm(t('companion.deleteSessionConfirm'))) return
+  try {
+    await companionStore.deleteSession(sessionId)
+    closeSessionDetail()
+  } catch (e) {
+    console.error('Failed to delete session:', e)
+  }
+}
+
 async function acknowledgeAlert(alertId: string) {
   await companionStore.acknowledgeAlert(alertId)
 }
@@ -607,10 +617,10 @@ function getAlertDescription(description: string): string {
                 </div>
                 <div class="flex items-center gap-1">
                   <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getStatusColor(session.status)]">{{ session.status }}</span>
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(session.threatLevel)]">{{ session.threatLevel }}</span>
+                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(session.threat_level)]">{{ session.threat_level }}</span>
                 </div>
               </div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ session.eventCount }} {{ t('companion.events') }} · {{ formatDate(session.startedAt) }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ session.event_count }} {{ t('companion.events') }} · {{ formatDate(session.started_at) }}</div>
             </div>
           </div>
         </div>
@@ -733,13 +743,22 @@ function getAlertDescription(description: string): string {
         <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
           <div>
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ t('companion.sessionDetail') }}</h2>
-            <p class="text-sm text-gray-500 dark:text-slate-400">{{ selectedSession.id }}</p>
+            <p class="text-sm text-gray-500 dark:text-slate-400 font-mono">{{ selectedSession.id }}</p>
           </div>
-          <button class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors" @click="closeSessionDetail">
-            <span class="text-xl">&times;</span>
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 rounded-lg transition-colors"
+              @click="deleteSession(selectedSession.id)"
+            >
+              {{ t('common.delete') }}
+            </button>
+            <button class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors" @click="closeSessionDetail">
+              <span class="text-xl">&times;</span>
+            </button>
+          </div>
         </div>
         <div class="flex-1 overflow-y-auto p-4">
+          <!-- Basic Info -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
             <div>
               <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.platform') }}</div>
@@ -751,21 +770,88 @@ function getAlertDescription(description: string): string {
             </div>
             <div>
               <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.threatLevel') }}</div>
-              <span :class="['px-2 py-0.5 rounded text-xs font-medium', getThreatColor(selectedSession.threatLevel)]">{{ selectedSession.threatLevel }}</span>
+              <span :class="['px-2 py-0.5 rounded text-xs font-medium', getThreatColor(selectedSession.threat_level)]">{{ selectedSession.threat_level }}</span>
             </div>
             <div>
               <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.events') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.eventCount }}</div>
+              <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.event_count }}</div>
             </div>
           </div>
+
+          <!-- Extended Info -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 dark:bg-slate-700/30 rounded-lg">
+            <div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.threatScore') }}</div>
+              <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.threat_score }}/100</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.userId') }}</div>
+              <div class="font-medium text-gray-900 dark:text-white truncate" :title="selectedSession.user_id">{{ selectedSession.user_id }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.startedAt') }}</div>
+              <div class="font-medium text-gray-900 dark:text-white">{{ formatDate(selectedSession.started_at) }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.duration') }}</div>
+              <div class="font-medium text-gray-900 dark:text-white">{{ formatDuration(selectedSession.duration) }}</div>
+            </div>
+          </div>
+
+          <!-- Metadata -->
+          <div v-if="selectedSession.metadata" class="mb-4 p-3 bg-gray-50 dark:bg-slate-700/30 rounded-lg">
+            <h4 class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">{{ t('companion.metadata') }}</h4>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div>
+                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.messageCount') }}:</span>
+                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.message_count || 0 }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.toolCallCount') }}:</span>
+                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.tool_call_count || 0 }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.llmCallCount') }}:</span>
+                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.llm_call_count || 0 }}</span>
+              </div>
+              <div>
+                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.totalTokens') }}:</span>
+                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.total_tokens || 0 }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Event History -->
           <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('companion.eventHistory') }}</h3>
           <div v-if="companionStore.loadingEvents" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('common.loading') }}</div>
+          <div v-else-if="companionStore.sessionEvents.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('companion.noEvents') }}</div>
           <div v-else class="space-y-2 max-h-64 overflow-y-auto">
             <div v-for="event in companionStore.sessionEvents" :key="event.id" class="p-2 bg-gray-50 dark:bg-slate-700/50 rounded text-sm">
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 mb-1">
                 <span>{{ getEventTypeIcon(event.eventType) }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType.replace(/_/g, ' ') }}</span>
+                <span v-if="event.status" :class="['px-1.5 py-0.5 rounded text-xs', event.status === 'success' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300']">{{ event.status }}</span>
                 <span class="ml-auto text-xs text-gray-400 dark:text-slate-500">{{ formatDate(event.timestamp) }}</span>
+              </div>
+              <!-- Event Details -->
+              <div v-if="event.message" class="pl-6 text-xs text-gray-600 dark:text-slate-300">
+                <span :class="event.message.direction === 'inbound' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'">
+                  {{ event.message.direction === 'inbound' ? '←' : '→' }}
+                </span>
+                {{ event.message.contentType }} ({{ event.message.length }} chars)
+              </div>
+              <div v-if="event.toolCall" class="pl-6 text-xs text-gray-600 dark:text-slate-300">
+                {{ event.toolCall.toolName }} - {{ event.toolCall.status }} ({{ event.toolCall.duration }}ms)
+              </div>
+              <div v-if="event.llmRequest" class="pl-6 text-xs text-gray-600 dark:text-slate-300">
+                {{ event.llmRequest.provider }}/{{ event.llmRequest.model }} - {{ event.llmRequest.totalTokens }} tokens
+              </div>
+              <div v-if="event.security" class="pl-6 text-xs">
+                <span :class="getThreatColor(event.security.threatLevel)">{{ event.security.threatLevel }}</span>
+                <span class="text-gray-500 dark:text-slate-400 ml-2">{{ event.security.action }}</span>
+              </div>
+              <div v-if="event.error" class="pl-6 text-xs text-red-600 dark:text-red-400">
+                {{ event.error }}
               </div>
             </div>
           </div>

@@ -263,6 +263,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
 
   // Optimistically update the UI
   channelDef.enabled = enabled
+  channelDef.lastError = undefined
   // Set status to connecting when enabling, disconnected when disabling
   if (enabled) {
     channelDef.status = 'connecting'
@@ -277,15 +278,20 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       body: JSON.stringify({ enabled }),
     })
 
+    const data = await response.json()
     if (response.ok) {
-      const data = await response.json()
       // Update status from server response
       channelDef.status = data.status || (enabled ? 'connected' : 'disconnected')
+      channelDef.lastError = data.channel?.last_error
+      // Show error message if status is error
+      if (channelDef.status === 'error' && channelDef.lastError) {
+        testResult.value = { channelId, success: false, message: channelDef.lastError }
+      }
     } else {
       // Revert on error
       channelDef.enabled = !enabled
       channelDef.status = 'error'
-      const data = await response.json()
+      channelDef.lastError = data.message
       testResult.value = { channelId, success: false, message: data.message || t('channels.toggleFailed') }
     }
   } catch (error) {
@@ -365,10 +371,19 @@ async function saveChannel(channelId: string) {
       }),
     })
 
+    const data = await response.json()
     if (response.ok) {
-      testResult.value = { channelId, success: true, message: t('channels.savedSuccessfully') }
+      // Update status from server response
+      if (data.channel) {
+        channelDef.status = data.channel.status || channelDef.status
+        channelDef.lastError = data.channel.last_error
+      }
+      if (channelDef.status === 'error' && channelDef.lastError) {
+        testResult.value = { channelId, success: false, message: channelDef.lastError }
+      } else {
+        testResult.value = { channelId, success: true, message: t('channels.savedSuccessfully') }
+      }
     } else {
-      const data = await response.json()
       testResult.value = { channelId, success: false, message: data.message || t('channels.saveFailed') }
     }
   } catch (error) {
@@ -475,10 +490,17 @@ onMounted(() => {
               <span
                 class="w-2 h-2 rounded-full"
                 :class="getStatusColor(channel.status)"
-                :title="getStatusText(channel.status)"
+                :title="getStatusText(channel.status) + (channelDefs.find(c => c.id === channel.id)?.lastError ? ': ' + channelDefs.find(c => c.id === channel.id)?.lastError : '')"
               ></span>
             </div>
-            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">{{ channel.description }}</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
+              <template v-if="channelDefs.find(c => c.id === channel.id)?.status === 'error' && channelDefs.find(c => c.id === channel.id)?.lastError">
+                <span class="text-red-500">{{ channelDefs.find(c => c.id === channel.id)?.lastError }}</span>
+              </template>
+              <template v-else>
+                {{ channel.description }}
+              </template>
+            </p>
           </div>
           <div class="flex items-center gap-3">
             <label class="relative inline-flex items-center cursor-pointer" @click.stop>

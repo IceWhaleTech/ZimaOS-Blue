@@ -12,6 +12,7 @@ import (
 
 type HealthStatus struct {
 	Status        string    `json:"status"`
+	Service       string    `json:"service"`
 	Timestamp     time.Time `json:"timestamp"`
 	Uptime        string    `json:"uptime"`
 	UptimeSeconds float64   `json:"uptime_seconds"`
@@ -60,6 +61,7 @@ func healthHandler(c echo.Context) error {
 	uptime := time.Since(startTime)
 	status := HealthStatus{
 		Status:        "ok",
+		Service:       "zimaos-echo",
 		Timestamp:     time.Now(),
 		Uptime:        formatUptime(uptime),
 		UptimeSeconds: uptime.Seconds(),

@@ -62,7 +62,7 @@ export const useCompanionStore = defineStore('companion', () => {
 
   const sortedSessions = computed(() =>
     [...sessions.value].sort(
-      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
     )
   )
 
@@ -79,7 +79,7 @@ export const useCompanionStore = defineStore('companion', () => {
       critical: 0,
     }
     sessions.value.forEach((s) => {
-      dist[s.threatLevel]++
+      dist[s.threat_level]++
     })
     return dist
   })
@@ -295,6 +295,22 @@ export const useCompanionStore = defineStore('companion', () => {
     }
   }
 
+  async function deleteSession(id: string) {
+    try {
+      await companionApi.deleteSession(id)
+      // Remove from local state
+      sessions.value = sessions.value.filter((s) => s.id !== id)
+      totalSessions.value = Math.max(0, totalSessions.value - 1)
+      // Clear current session if it was deleted
+      if (currentSessionId.value === id) {
+        clearCurrentSession()
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to delete session'
+      throw e
+    }
+  }
+
   async function exportData(opts?: { format?: 'json' | 'csv'; sessionIds?: string[]; from?: string; to?: string }) {
     try {
       const response = await companionApi.exportData(opts)
@@ -329,11 +345,11 @@ export const useCompanionStore = defineStore('companion', () => {
     if (sessionIndex !== -1) {
       const session = sessions.value[sessionIndex]
       if (session) {
-        session.eventCount++
+        session.event_count++
         if (event.security && event.security.threatLevel !== 'none') {
-          const currentLevel = session.threatLevel
+          const currentLevel = session.threat_level
           if (threatPriority(event.security.threatLevel) > threatPriority(currentLevel)) {
-            session.threatLevel = event.security.threatLevel
+            session.threat_level = event.security.threatLevel
           }
         }
       }
@@ -392,20 +408,20 @@ export const useCompanionStore = defineStore('companion', () => {
     return {
       id,
       platform: platforms[Math.floor(Math.random() * platforms.length)],
-      userId: `user-${Math.floor(Math.random() * 1000)}`,
-      tenantId: 'demo-tenant',
+      user_id: `user-${Math.floor(Math.random() * 1000)}`,
+      tenant_id: 'demo-tenant',
       status: statuses[Math.floor(Math.random() * statuses.length)],
-      startedAt: startedAt.toISOString(),
-      endedAt: Math.random() > 0.5 ? now.toISOString() : undefined,
+      started_at: startedAt.toISOString(),
+      ended_at: Math.random() > 0.5 ? now.toISOString() : undefined,
       duration: now.getTime() - startedAt.getTime(),
-      eventCount: Math.floor(Math.random() * 50) + 5,
-      threatLevel: threats[Math.floor(Math.random() * threats.length)],
-      threatScore: Math.floor(Math.random() * 30),
+      event_count: Math.floor(Math.random() * 50) + 5,
+      threat_level: threats[Math.floor(Math.random() * threats.length)],
+      threat_score: Math.floor(Math.random() * 30),
       metadata: {
-        messageCount: Math.floor(Math.random() * 20) + 1,
-        toolCallCount: Math.floor(Math.random() * 10),
-        llmCallCount: Math.floor(Math.random() * 15) + 1,
-        totalTokens: Math.floor(Math.random() * 5000) + 500,
+        message_count: Math.floor(Math.random() * 20) + 1,
+        tool_call_count: Math.floor(Math.random() * 10),
+        llm_call_count: Math.floor(Math.random() * 15) + 1,
+        total_tokens: Math.floor(Math.random() * 5000) + 500,
       },
     }
   }
@@ -468,7 +484,7 @@ export const useCompanionStore = defineStore('companion', () => {
     stats.value = {
       activeSessions: demoSessions.filter(s => s.status === 'active').length,
       totalSessions: demoSessions.length,
-      totalEvents: demoSessions.reduce((sum, s) => sum + s.eventCount, 0),
+      totalEvents: demoSessions.reduce((sum, s) => sum + s.event_count, 0),
       totalAlerts: demoAlerts.length,
     }
 
@@ -571,6 +587,7 @@ export const useCompanionStore = defineStore('companion', () => {
     acknowledgeAlert,
     bulkAcknowledgeAlerts,
     fetchStats,
+    deleteSession,
     exportData,
     addRealtimeEvent,
     setStreaming,

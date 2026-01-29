@@ -25,7 +25,21 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
+    // Put all assets in root directory instead of assets/
+    assetsDir: '',
+    rollupOptions: {
+      output: {
+        // Use flat file names without hash for easier debugging
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+        assetFileNames: '[name].[ext]',
+        // Optimize chunk splitting
+        manualChunks: {
+          'vendor': ['vue', 'vue-router', 'pinia'],
+        },
+      },
+    },
   },
   test: {
     globals: true,

@@ -111,10 +111,10 @@ function handleLogout() {
           class="sm:hidden w-2.5 h-2.5 rounded-full animate-pulse"
           :class="health.status === 'ok' ? 'bg-cta' : 'bg-red-400'"
         ></span>
-        <!-- Network address bar (only in Tauri desktop app) -->
-        <NetworkAddressBar class="hidden sm:flex" />
       </div>
       <div class="flex items-center space-x-1 sm:space-x-3">
+        <!-- Network address bar (only in Tauri desktop app) -->
+        <NetworkAddressBar class="hidden sm:flex" />
         <!-- Theme toggle -->
         <button
           class="p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors"

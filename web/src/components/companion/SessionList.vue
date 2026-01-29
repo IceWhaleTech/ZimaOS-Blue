@@ -133,7 +133,7 @@ function formatDuration(ms: number): string {
             </span>
             <div>
               <div class="font-medium text-gray-900 dark:text-white">
-                {{ session.userId || t('companion.anonymous') }}
+                {{ session.user_id || t('companion.anonymous') }}
               </div>
               <div class="text-xs text-gray-500 dark:text-slate-400 font-mono">
                 {{ session.id.slice(0, 8) }}...
@@ -147,10 +147,10 @@ function formatDuration(ms: number): string {
               {{ t(`companion.status.${session.status}`) }}
             </span>
             <span
-              v-if="session.threatLevel !== 'none'"
-              :class="['px-2 py-0.5 rounded-full text-xs font-medium', getThreatColor(session.threatLevel)]"
+              v-if="session.threat_level !== 'none'"
+              :class="['px-2 py-0.5 rounded-full text-xs font-medium', getThreatColor(session.threat_level)]"
             >
-              {{ t(`companion.threat.${session.threatLevel}`) }}
+              {{ t(`companion.threat.${session.threat_level}`) }}
             </span>
           </div>
         </div>
@@ -161,13 +161,13 @@ function formatDuration(ms: number): string {
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            {{ session.eventCount }} {{ t('companion.events') }}
+            {{ session.event_count }} {{ t('companion.events') }}
           </span>
           <span class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            {{ formatDate(session.startedAt) }}
+            {{ formatDate(session.started_at) }}
           </span>
           <span v-if="session.duration" class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,11 +175,11 @@ function formatDuration(ms: number): string {
             </svg>
             {{ formatDuration(session.duration) }}
           </span>
-          <span v-if="session.metadata?.messageCount" class="flex items-center gap-1">
+          <span v-if="session.metadata?.message_count" class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            {{ session.metadata.messageCount }} {{ t('companion.messages') }}
+            {{ session.metadata.message_count }} {{ t('companion.messages') }}
           </span>
         </div>
 

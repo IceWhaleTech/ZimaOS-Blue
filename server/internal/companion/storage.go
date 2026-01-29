@@ -218,6 +218,29 @@ func (s *JSONLStorage) UpdateSession(ctx context.Context, session *Session) erro
 	return nil
 }
 
+// DeleteSession deletes a session and its events.
+func (s *JSONLStorage) DeleteSession(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return ErrSessionNotFound
+	}
+
+	// Delete the session file
+	filePath := s.sessionFile(session)
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete session file: %w", err)
+	}
+
+	// Remove from in-memory cache
+	delete(s.sessions, id)
+	s.updateSessionIndex()
+
+	return nil
+}
+
 // AppendEvent appends an event to a session file.
 func (s *JSONLStorage) AppendEvent(ctx context.Context, event *SessionEvent) error {
 	s.mu.Lock()
