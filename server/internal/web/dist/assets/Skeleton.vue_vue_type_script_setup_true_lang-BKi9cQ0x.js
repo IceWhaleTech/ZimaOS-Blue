@@ -1,0 +1,2 @@
+import{d as n,e as a,m as l,n as o,o as r}from"./index-D7c3v6F5.js";const s=n({__name:"Skeleton",props:{width:{},height:{},rounded:{},class:{}},setup(e){return(d,t)=>(r(),a("div",{class:o(["animate-pulse bg-gray-200 dark:bg-gray-700",[e.rounded==="none"?"":e.rounded==="sm"?"rounded-sm":e.rounded==="md"?"rounded-md":e.rounded==="lg"?"rounded-lg":e.rounded==="full"?"rounded-full":"rounded",d.$props.class]]),style:l({width:e.width||"100%",height:e.height||"1rem"})},null,6))}});export{s as _};
+//# sourceMappingURL=Skeleton.vue_vue_type_script_setup_true_lang-BKi9cQ0x.js.map

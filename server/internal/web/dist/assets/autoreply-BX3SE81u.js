@@ -1,0 +1,2 @@
+import{M as t}from"./index-D7c3v6F5.js";const a={list:()=>t.get("/autoreply/rules"),get:e=>t.get(`/autoreply/rules/${e}`),create:e=>t.post("/autoreply/rules",e),update:(e,l)=>t.put(`/autoreply/rules/${e}`,l),delete:e=>t.delete(`/autoreply/rules/${e}`),enable:e=>t.post(`/autoreply/rules/${e}/enable`),disable:e=>t.post(`/autoreply/rules/${e}/disable`),setChannels:(e,l)=>t.put(`/autoreply/rules/${e}/channels`,{channels:l}),test:e=>t.post("/autoreply/test",e)};export{a};
+//# sourceMappingURL=autoreply-BX3SE81u.js.map

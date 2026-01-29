@@ -13,6 +13,7 @@ import DonutChart from '@/components/DonutChart.vue'
 import MetricsOverview from '@/components/metrics/MetricsOverview.vue'
 import TokenUsageChart from '@/components/metrics/TokenUsageChart.vue'
 import LatencyChart from '@/components/metrics/LatencyChart.vue'
+import ServiceManagement from '@/components/ServiceManagement.vue'
 import type { DataPoint } from '@/components/ResourceChart.vue'
 
 const { t } = useI18n()
@@ -20,7 +21,7 @@ const systemStore = useSystemStore()
 const metricsStore = useMetricsStore()
 
 // Tabs
-const activeTab = ref<'overview' | 'metrics' | 'logs' | 'config' | 'backup'>('overview')
+const activeTab = ref<'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 'service'>('overview')
 
 // Metrics
 const metricsHistory = ref<SystemMetrics[]>([])
@@ -400,7 +401,7 @@ function clearLogs() {
 }
 
 // Load data when tab changes
-function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup') {
+function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 'service') {
   activeTab.value = tab
   if (tab === 'logs' && logs.value.length === 0) {
     fetchLogs()
@@ -439,7 +440,7 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup') {
     <!-- Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['overview', 'metrics', 'logs', 'config', 'backup'] as const"
+        v-for="tab in ['overview', 'metrics', 'logs', 'config', 'backup', 'service'] as const"
         :key="tab"
         class="px-3 sm:px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
@@ -449,7 +450,7 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup') {
         "
         @click="switchTab(tab)"
       >
-        {{ t(`system.${tab}`) }}
+        {{ tab === 'service' ? t('service.title') : t(`system.${tab}`) }}
       </button>
     </div>
 
@@ -1316,6 +1317,13 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup') {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Service Tab -->
+    <div v-if="activeTab === 'service'" class="space-y-4">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+        <ServiceManagement />
       </div>
     </div>
   </div>

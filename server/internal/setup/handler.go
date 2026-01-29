@@ -30,10 +30,6 @@ type SetupConfig struct {
 	EnableMFA     bool   `json:"enable_mfa"`
 
 	// Step 3: Integration Settings
-	LLMProvider        string `json:"llm_provider"`
-	LLMAPIKey          string `json:"llm_api_key,omitempty"`
-	LLMBaseURL         string `json:"llm_base_url,omitempty"`
-	LLMModel           string `json:"llm_model,omitempty"`
 	EnableHomeAssistant bool   `json:"enable_home_assistant"`
 	HomeAssistantURL    string `json:"home_assistant_url,omitempty"`
 	HomeAssistantToken  string `json:"home_assistant_token,omitempty"`
@@ -294,6 +290,32 @@ func (h *Handler) TestConnection(c echo.Context) error {
 		return h.testLLMConnection(c, req.Config)
 	case "homeassistant":
 		return h.testHomeAssistantConnection(c, req.Config)
+	case "telegram":
+		return h.testTelegramConnection(c, req.Config)
+	case "discord":
+		return h.testDiscordConnection(c, req.Config)
+	case "slack":
+		return h.testSlackConnection(c, req.Config)
+	case "whatsapp":
+		return h.testWhatsAppConnection(c, req.Config)
+	case "signal":
+		return h.testSignalConnection(c, req.Config)
+	case "teams":
+		return h.testTeamsConnection(c, req.Config)
+	case "googlechat":
+		return h.testGoogleChatConnection(c, req.Config)
+	case "feishu":
+		return h.testFeishuConnection(c, req.Config)
+	case "dingtalk":
+		return h.testDingTalkConnection(c, req.Config)
+	case "qq":
+		return h.testQQConnection(c, req.Config)
+	case "wechat":
+		return h.testWeChatConnection(c, req.Config)
+	case "matrix":
+		return h.testMatrixConnection(c, req.Config)
+	case "imessage":
+		return h.testIMessageConnection(c, req.Config)
 	default:
 		return c.JSON(http.StatusBadRequest, map[string]interface{}{
 			"success": false,
@@ -443,29 +465,29 @@ func (h *Handler) testLLMConnection(c echo.Context, config map[string]string) er
 
 	if provider == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Provider is required",
+			"success":    false,
+			"messageKey": "providerRequired",
 		})
 	}
 
 	if provider != "ollama" && apiKey == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "API key is required",
+			"success":    false,
+			"messageKey": "apiKeyRequired",
 		})
 	}
 
 	if provider == "custom" && baseURL == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Base URL is required for custom provider",
+			"success":    false,
+			"messageKey": "baseUrlRequired",
 		})
 	}
 
 	// Simulate successful connection test
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Connection successful",
+		"success":    true,
+		"messageKey": "testSuccess",
 	})
 }
 
@@ -475,22 +497,330 @@ func (h *Handler) testHomeAssistantConnection(c echo.Context, config map[string]
 
 	if url == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Home Assistant URL is required",
+			"success":    false,
+			"messageKey": "homeAssistantUrlRequired",
 		})
 	}
 
 	if token == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Access token is required",
+			"success":    false,
+			"messageKey": "accessTokenRequired",
 		})
 	}
 
 	// In a real implementation, this would make an API call to Home Assistant
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Connection successful",
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testFeishuConnection(c echo.Context, config map[string]string) error {
+	appID := config["app_id"]
+	appSecret := config["app_secret"]
+
+	if appID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appIdRequired",
+		})
+	}
+
+	if appSecret == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appSecretRequired",
+		})
+	}
+
+	// In a real implementation, this would make an API call to Feishu to get tenant_access_token
+	// POST https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testTelegramConnection(c echo.Context, config map[string]string) error {
+	botToken := config["bot_token"]
+
+	if botToken == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "botTokenRequired",
+		})
+	}
+
+	// In a real implementation, this would call Telegram's getMe API
+	// GET https://api.telegram.org/bot<token>/getMe
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testDiscordConnection(c echo.Context, config map[string]string) error {
+	botToken := config["bot_token"]
+
+	if botToken == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "botTokenRequired",
+		})
+	}
+
+	// In a real implementation, this would call Discord's /users/@me API
+	// GET https://discord.com/api/v10/users/@me
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testSlackConnection(c echo.Context, config map[string]string) error {
+	botToken := config["bot_token"]
+	appToken := config["app_token"]
+
+	if botToken == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "botTokenRequired",
+		})
+	}
+
+	if appToken == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appTokenRequired",
+		})
+	}
+
+	// In a real implementation, this would call Slack's auth.test API
+	// POST https://slack.com/api/auth.test
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testWhatsAppConnection(c echo.Context, config map[string]string) error {
+	phoneNumber := config["phone_number"]
+
+	if phoneNumber == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "phoneNumberRequired",
+		})
+	}
+
+	// WhatsApp Business API requires additional setup
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "configValidated",
+	})
+}
+
+func (h *Handler) testSignalConnection(c echo.Context, config map[string]string) error {
+	phoneNumber := config["phone_number"]
+
+	if phoneNumber == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "phoneNumberRequired",
+		})
+	}
+
+	// Signal requires signal-cli or similar setup
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "configValidated",
+	})
+}
+
+func (h *Handler) testTeamsConnection(c echo.Context, config map[string]string) error {
+	appID := config["app_id"]
+	appPassword := config["app_password"]
+
+	if appID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appIdRequired",
+		})
+	}
+
+	if appPassword == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appPasswordRequired",
+		})
+	}
+
+	// In a real implementation, this would authenticate with Microsoft Bot Framework
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testGoogleChatConnection(c echo.Context, config map[string]string) error {
+	credentialsJSON := config["credentials_json"]
+
+	if credentialsJSON == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "serviceAccountJsonRequired",
+		})
+	}
+
+	// In a real implementation, this would validate the service account credentials
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testWeChatConnection(c echo.Context, config map[string]string) error {
+	corpID := config["corp_id"]
+	agentID := config["agent_id"]
+	secret := config["secret"]
+
+	if corpID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "corpIdRequired",
+		})
+	}
+
+	if agentID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "agentIdRequired",
+		})
+	}
+
+	if secret == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "secretRequired",
+		})
+	}
+
+	// In a real implementation, this would call WeChat Work's gettoken API
+	// GET https://qyapi.weixin.qq.com/cgi-bin/gettoken
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testMatrixConnection(c echo.Context, config map[string]string) error {
+	homeserver := config["homeserver"]
+	userID := config["user_id"]
+	accessToken := config["access_token"]
+
+	if homeserver == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "homeserverUrlRequired",
+		})
+	}
+
+	if userID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "userIdRequired",
+		})
+	}
+
+	if accessToken == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "accessTokenRequired",
+		})
+	}
+
+	// In a real implementation, this would call Matrix's whoami API
+	// GET /_matrix/client/v3/account/whoami
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testIMessageConnection(c echo.Context, config map[string]string) error {
+	// iMessage doesn't require configuration fields, it uses system integration
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "iMessageReady",
+	})
+}
+
+func (h *Handler) testDingTalkConnection(c echo.Context, config map[string]string) error {
+	appKey := config["app_key"]
+	appSecret := config["app_secret"]
+	robotCode := config["robot_code"]
+
+	if appKey == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appKeyRequired",
+		})
+	}
+
+	if appSecret == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appSecretRequired",
+		})
+	}
+
+	if robotCode == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "robotCodeRequired",
+		})
+	}
+
+	// In a real implementation, this would call DingTalk's gettoken API
+	// POST https://api.dingtalk.com/v1.0/oauth2/accessToken
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
+	})
+}
+
+func (h *Handler) testQQConnection(c echo.Context, config map[string]string) error {
+	appID := config["app_id"]
+	appSecret := config["app_secret"]
+	token := config["token"]
+
+	if appID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appIdRequired",
+		})
+	}
+
+	if appSecret == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "appSecretRequired",
+		})
+	}
+
+	if token == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "botTokenRequired",
+		})
+	}
+
+	// In a real implementation, this would call QQ Bot's API to verify credentials
+	// GET https://api.sgroup.qq.com/users/@me
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"messageKey": "testSuccess",
 	})
 }
 
@@ -544,25 +874,7 @@ func (h *Handler) saveConfig(config *SetupConfig) error {
 	}
 
 	configPath := filepath.Join(h.dataDir, "wizard_config.json")
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return err
-	}
-
-	// Save LLM configuration separately
-	llmConfig := LLMConfig{
-		Provider: config.LLMProvider,
-		APIKey:   config.LLMAPIKey,
-		BaseURL:  config.LLMBaseURL,
-		Model:    config.LLMModel,
-	}
-
-	llmData, err := json.MarshalIndent(llmConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	llmConfigPath := filepath.Join(h.dataDir, "llm_config.json")
-	return os.WriteFile(llmConfigPath, llmData, 0600) // More restrictive permissions for API key
+	return os.WriteFile(configPath, data, 0644)
 }
 
 // LoadLLMConfig loads the saved LLM configuration from disk.

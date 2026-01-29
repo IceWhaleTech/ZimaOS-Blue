@@ -4,6 +4,7 @@ export interface SSEClientOptions {
   onMessage: (chunk: StreamChunk) => void
   onError?: (error: Error) => void
   onComplete?: () => void
+  onBlocked?: (message: string, threatLevel: string) => void
 }
 
 export class SSEClient {
@@ -42,6 +43,18 @@ export class SSEClient {
       })
 
       if (!response.ok) {
+        // Handle security block (403)
+        if (response.status === 403) {
+          try {
+            const data = await response.json()
+            if (data.blocked) {
+              options.onBlocked?.(data.message || 'Message blocked', data.threat_level || 'unknown')
+              return
+            }
+          } catch {
+            // Fall through to generic error
+          }
+        }
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 

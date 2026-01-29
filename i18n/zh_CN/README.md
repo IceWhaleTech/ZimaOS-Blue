@@ -5,256 +5,245 @@
 </p>
 
 <p align="center">
-  <strong>NAS 原生智能体运行时</strong>
+  <strong>安全、可观测、本地优先的 AI 智能体运行时</strong>
 </p>
 
 <p align="center">
-  <a href="../README.md">English</a> |
+  <a href="../../README.md">English</a> |
   <strong>简体中文</strong> |
-  <a href="../en_GB/README.md">English (UK)</a> |
-  <a href="../es_ES/README.md">Español (ES)</a> |
-  <a href="../fr_FR/README.md">Français</a> |
-  <a href="../de_DE/README.md">Deutsch</a> |
-  <a href="../it_IT/README.md">Italiano</a> |
-  <a href="../pt_PT/README.md">Português (PT)</a> |
-  <a href="../pt_BR/README.md">Português (BR)</a> |
-  <a href="../ru_RU/README.md">Русский</a> |
+  <a href="../zh_TW/README.md">繁體中文</a> |
   <a href="../ja_JP/README.md">日本語</a> |
   <a href="../ko_KR/README.md">한국어</a> |
-  <a href="../nl_NL/README.md">Nederlands</a> |
-  <a href="../sv_SE/README.md">Svenska</a> |
-  <a href="../da_DK/README.md">Dansk</a> |
-  <a href="../fi_FI/README.md">Suomi</a> |
-  <a href="../no_NO/README.md">Norsk</a> |
-  <a href="../pl_PL/README.md">Polski</a> |
-  <a href="../tr_TR/README.md">Türkçe</a> |
-  <a href="../cs_CZ/README.md">Čeština</a> |
-  <a href="../el_GR/README.md">Ελληνικά</a> |
-  <a href="../ca_ES/README.md">Català</a> |
-  <a href="../ga_IE/README.md">Gaeilge</a> |
+  <a href="../de_DE/README.md">Deutsch</a> |
+  <a href="../fr_FR/README.md">Français</a> |
+  <a href="../es_ES/README.md">Español</a> |
+  <a href="../it_IT/README.md">Italiano</a> |
+  <a href="../pt_BR/README.md">Português</a> |
+  <a href="../ru_RU/README.md">Русский</a> |
   <a href="../ar_SA/README.md">العربية</a> |
   <a href="../hi_IN/README.md">हिन्दी</a> |
   <a href="../th_TH/README.md">ไทย</a> |
+  <a href="../vi_VN/README.md">Tiếng Việt</a> |
   <a href="../id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="../vi_VN/README.md">Tiếng Việt</a>
+  <a href="../tr_TR/README.md">Türkçe</a> |
+  <a href="../pl_PL/README.md">Polski</a> |
+  <a href="../nl_NL/README.md">Nederlands</a> |
+  <a href="../sv_SE/README.md">Svenska</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
   <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** 是一个专为 NAS 和边缘设备设计的轻量级、高性能 AI 智能体运行时。使用 Go 构建，为在低功耗硬件上运行 AI 助手提供了生产就绪的平台。
+**ZimaOS Echo** 是面向 NAS 与边缘设备的加固型 AI 智能体运行时。数据留存于你的硬件，行为可审计，AI 运行于隔离沙箱。
 
-[文档](https://echo.zimaos.com) · [快速开始](#快速开始) · [功能特性](#功能特性) · [对比](#与-clawdbot-对比)
+[文档](https://echo.zimaos.com) · [快速开始](#快速开始) · [功能特性](#核心原则) · [对比](#与-clawdbot-对比)
 
 ## 为什么选择 ZimaOS Echo？
 
-ZimaOS Echo 受 [clawdbot](https://github.com/clawdbot/clawdbot) 启发，但使用 Go 从头重建，具有以下优势：
+ZimaOS Echo 受 [clawdbot](https://github.com/clawdbot/clawdbot) 启发，使用 Go 重建，具备：
 
 - **更低资源占用**：可在仅 256MB RAM 的设备上运行
-- **更好性能**：原生 Go 二进制文件，基于高效的 goroutine 并发
-- **更易部署**：单一二进制文件，无需 Node.js 运行时
-- **NAS 优化**：专为低功耗设备 24/7 运行而设计
+- **更好性能**：原生 Go 二进制，基于 goroutine 并发
+- **更易部署**：单一二进制，无需 Node.js
+- **NAS 优化**：为低功耗设备 24/7 运行设计
+
+## 核心原则
+
+### 本地优先
+
+- **数据主权**：所有数据本地存储在 NAS，无云依赖
+- **Ollama 集成**：LLM 完全本机运行，零外部 API 调用
+- **离线可用**：核心功能无需联网
+- **单一二进制**：约 15MB 原生 Go 二进制，无运行时依赖
+
+### 可观测与可审计
+
+- **审计日志**：每次 AI 操作带完整上下文与时间戳记录
+- **Prometheus 指标**：系统操作实时监控
+- **pprof 分析**：CPU、内存、goroutine 深度可见性
+- **结构化日志**：JSON 日志便于解析与告警
+
+### 安全加固
+
+- **沙箱执行**：所有工具调用在隔离环境中运行
+- **RBAC**：细粒度基于角色的访问控制
+- **WebAuthn/Passkeys**：无密码 FIDO2 认证
+- **MFA/TOTP**：多因素认证
+- **OIDC/OAuth 2.0**：企业 SSO 集成
+- **熔断器**：自动故障隔离，防止级联失败
 
 ## 快速开始
 
-### Linux / macOS
-
 ```bash
+# Linux / macOS
 curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
 
-### Windows (PowerShell 管理员权限)
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
-
-### 从源码构建
-
-```bash
+# 从源码
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server
 go build -o zimaos-echo ./cmd/server
 ./zimaos-echo server
 ```
 
-## 功能特性
+## 安全加固
 
-### 核心功能
+### 认证体系
 
-- 🚀 **轻量级**：单一二进制文件 < 15MB，内存 < 80MB
-- ⚡ **高性能**：基于 Go 和 goroutine 并发
-- 🔌 **多提供商**：OpenAI、Anthropic、Ollama 等
-- 🛡️ **生产就绪**：熔断器、优雅降级、自动恢复
-- 📊 **可观测性**：Prometheus 指标、pprof 性能分析、结构化日志
-- 🔄 **热重载**：无需重启即可更改配置
-- 💾 **备份/恢复**：自动备份，支持时间点恢复
+| 层级 | 技术 | 用途 |
+|------|------|------|
+| 主要 | WebAuthn/Passkeys | 防钓鱼无密码认证 |
+| 次要 | TOTP/MFA | 基于时间的一次性密码 |
+| 企业 | OIDC/OAuth 2.0 | 与 Google、GitHub、Okta 等 SSO |
+| 授权 | RBAC | 按资源的权限控制 |
 
-### 前端
+### 运行时保护
 
-- 🎨 **Vue 3 仪表板**：现代化、响应式 Web 界面
-- 💬 **聊天界面**：支持 Markdown 的流式响应
-- 📈 **系统监控**：实时资源使用图表
-- ⚙️ **设置界面**：便捷的配置管理
+- **沙箱隔离**：工具在受限环境中执行
+- **限流**：按租户的 API 节流
+- **租户隔离**：数据与资源完全分离
+- **审计链**：所有特权操作不可变日志
 
-## 与 Clawdbot 对比
+### 韧性
 
-ZimaOS Echo 受 clawdbot 启发，但针对 NAS/边缘部署进行了优化：
+- **熔断器**：故障时自动隔离服务
+- **优雅降级**：提供商不可用时的回退策略
+- **LLM 回退链**：自动切换提供商
+- **热重载**：配置变更无需重启
 
-| 特性 | ZimaOS Echo | Clawdbot |
-|------|-------------|----------|
-| **语言** | Go | TypeScript/Node.js |
-| **二进制大小** | ~15MB | ~200MB+ (包含 node_modules) |
-| **内存使用** | ~80MB 空闲 | ~200MB+ 空闲 |
-| **启动时间** | < 1s | 3-5s |
-| **运行时** | 原生二进制 | 需要 Node.js |
-| **目标平台** | NAS/边缘设备 | 桌面/服务器 |
-
-### 功能对比
-
-| 功能 | ZimaOS Echo | Clawdbot |
-|------|:-----------:|:--------:|
-| **LLM 提供商** | | |
-| OpenAI | ✅ | ✅ |
-| Anthropic | ✅ | ✅ |
-| Ollama (本地) | ✅ | ✅ |
-| AWS Bedrock | ✅ | ✅ |
-| **渠道** | | |
-| Web 聊天 | ✅ | ✅ |
-| Telegram | ✅ | ✅ |
-| Discord | ✅ | ✅ |
-| Slack | ✅ | ✅ |
-| WhatsApp | ✅ | ✅ |
-| Signal | ✅ | ✅ |
-| iMessage | ✅ | ✅ |
-| **功能** | | |
-| 流式响应 | ✅ | ✅ |
-| 工具调用 | ✅ | ✅ |
-| 记忆/上下文 | ✅ | ✅ |
-| 语音唤醒 | ✅ | ✅ |
-| 浏览器控制 | ✅ | ✅ |
-| Canvas/A2UI | ✅ | ✅ |
-| **运维** | | |
-| Prometheus 指标 | ✅ | ❌ |
-| pprof 性能分析 | ✅ | ❌ |
-| 热重载配置 | ✅ | ❌ |
-| 熔断器 | ✅ | ❌ |
-| 优雅降级 | ✅ | ❌ |
-| 备份/恢复 | ✅ | ❌ |
-| **部署** | | |
-| 单一二进制 | ✅ | ❌ |
-| Docker | ✅ | ✅ |
-| systemd 服务 | ✅ | ✅ |
-| ZimaOS 应用商店 | 🔜 | ❌ |
-
-### ZimaOS Echo 的新功能
-
-clawdbot 中不可用的功能：
-
-| 功能 | 描述 |
-|------|------|
-| **Prometheus 指标** | 内置监控指标端点 |
-| **pprof 性能分析** | CPU、内存、goroutine 性能分析 |
-| **热重载** | 无需重启即可更改配置 |
-| **熔断器** | 自动故障隔离 |
-| **优雅降级** | 服务失败时的回退策略 |
-| **LLM 回退链** | 自动提供商故障转移 |
-| **备份/恢复** | 计划备份和时间点恢复 |
-| **ECache** | 高性能 LRU 缓存 |
-| **Zorm ORM** | 轻量级 SQLite ORM |
-| **分片映射** | 无锁并发数据结构 |
-| **HTTP/2 支持** | 支持压缩的现代协议 |
-| **基准测试套件** | 性能回归检测 |
-
-## 架构
-
-```
-┌─────────────────────────────────────────────────┐
-│                  ZimaOS-Echo                     │
-├─────────────────────────────────────────────────┤
-│  Vue 3 前端  │  REST API  │  WebSocket          │
-├─────────────────────────────────────────────────┤
-│              核心运行时 (Go)                      │
-│  事件循环 │ 工作池 │ 配置 │ 日志                 │
-├─────────────────────────────────────────────────┤
-│              智能体运行时                         │
-│  LLM 提供商 │ 工具 │ 记忆 │ 上下文              │
-├─────────────────────────────────────────────────┤
-│              数据层                              │
-│  SQLite (Zorm) │ ECache │ 文件                  │
-└─────────────────────────────────────────────────┘
-```
-
-## 配置
+## 可观测性
 
 ```yaml
-# config.yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-
-llm:
-  provider: "openai"
-  model: "gpt-4"
-  api_key: "${OPENAI_API_KEY}"
-
-cache:
-  max_size: 1000
-  default_ttl: 5m
-
-resilience:
-  circuit_breaker:
-    enabled: true
-    threshold: 5
-    timeout_seconds: 30
-
+# 启用完整可观测性栈
 metrics:
   enabled: true
   endpoint: "/metrics"
 
 profiling:
-  enabled: false
+  enabled: true
   endpoint_prefix: "/debug/pprof"
+
+audit:
+  enabled: true
+  retention_days: 90
 ```
 
-## 路线图
+### 暴露的指标
 
-- [x] **v0.1.0** - 核心运行时（事件循环、工作池、配置、日志）
-- [x] **v0.2.0** - 智能体运行时（LLM 提供商包括 AWS Bedrock、工具、记忆）
-- [x] **v0.3.0** - API 层（REST、WebSocket、流式传输）
-- [x] **v0.4.0** - 插件系统（Go 模块、WASM 支持）
-- [x] **v0.5.0** - 生产就绪（指标、性能分析、备份）
-- [x] **v0.6.0** - 消息渠道（Telegram、Discord、Slack、WhatsApp、Signal、iMessage）
-- [x] **v0.7.0** - 安全性（OIDC、MFA、WebAuthn、审计日志、沙箱）
-- [x] **v0.8.0** - 性能（ECache、Zorm、HTTP/2）
-- [x] **v0.9.0** - 未来增强（A2UI、浏览器自动化）
-- [ ] **v1.0.0** - RAG 和知识库
+- 请求延迟（p50、p95、p99）
+- 各提供商 LLM 的 token 使用量
+- 工具执行成功/失败率
+- 内存与 goroutine 计数
+- 熔断器状态转换
 
-## 贡献
+## 架构
 
-欢迎贡献！请阅读我们的[贡献指南](CONTRIBUTING.md)了解详情。
+```
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
+```
+
+## 本地 LLM 配置（Ollama）
+
+完全离线运行 AI，无需外部 API 调用：
 
 ```bash
-# 克隆仓库
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
+# 安装 Ollama
+curl -fsSL https://ollama.com/install.sh | sh
 
-# 安装依赖
-cd server && go mod download
+# 拉取模型
+ollama pull llama3.2
 
-# 运行测试
-go test ./...
-
-# 构建
-go build -o zimaos-echo ./cmd/server
+# 配置 Echo 使用本地 LLM
+cat >> config.yaml << EOF
+llm:
+  provider: "ollama"
+  model: "llama3.2"
+  base_url: "http://localhost:11434"
+EOF
 ```
 
-## 许可证
+## 开发环境
 
-MIT 许可证 - 详见 [LICENSE](LICENSE)。
+### 前置条件
+
+| 工具 | 版本 | 安装 |
+|------|------|------|
+| Go | 1.21+ | [golang.org](https://golang.org/dl/) |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
+| Make | - | macOS/Linux 通常已预装 |
+
+### 一键启动
+
+```bash
+# 克隆并启动
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo
+```
+
+在 `http://localhost:3000` 访问控制台。
+
+### 开发模式（热重载）
+
+```bash
+# Linux / macOS
+./dev.sh
+
+# Windows
+dev.bat
+```
+
+- 前端：`http://localhost:5173`（API 代理到后端）
+- 后端：`http://localhost:8080`
+
+### 构建命令
+
+```bash
+make build              # 构建单一二进制（前端内嵌）
+make build-embedded     # 构建并内嵌 Claude Code CLI
+make build-all          # 全平台交叉编译
+make clean              # 清理构建产物
+```
+
+### 项目结构
+
+```
+ZimaOS-Echo/
+├── server/             # Go 后端
+│   ├── cmd/echo/       # 入口
+│   └── internal/       # 核心模块
+├── web/                # Vue 3 前端
+│   └── src/
+└── dist/               # 构建输出
+```
+
+## 与 Clawdbot 对比
+
+ZimaOS Echo 受 clawdbot 启发，针对 NAS/边缘部署优化：
+
+| 特性 | ZimaOS Echo | Clawdbot |
+|------|-------------|----------|
+| **语言** | Go | TypeScript/Node.js |
+| **二进制大小** | ~15MB | ~200MB+（含 node_modules）|
+| **内存占用** | ~80MB 空闲 | ~200MB+ 空闲 |
+| **启动时间** | < 1s | 3–5s |
+| **运行时** | 原生二进制 | 需 Node.js |
+| **目标平台** | NAS/边缘设备 | 桌面/服务器 |
 
 ## 致谢
 
@@ -264,5 +253,5 @@ MIT 许可证 - 详见 [LICENSE](LICENSE)。
 ---
 
 <p align="center">
-  由 <a href="https://github.com/IceWhaleTech">IceWhaleTech</a> 用 ❤️ 制作
+  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
 </p>

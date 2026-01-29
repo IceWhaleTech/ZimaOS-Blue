@@ -17,6 +17,7 @@ export * from './audit'
 export * from './security'
 export * from './companion'
 export * from './claudecode'
+export * from './service'
 
 export interface HealthStatus {
   status: string

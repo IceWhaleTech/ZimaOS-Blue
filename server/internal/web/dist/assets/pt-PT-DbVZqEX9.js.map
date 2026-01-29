@@ -1,0 +1,1 @@
+{"version":3,"file":"pt-PT-DbVZqEX9.js","sources":["../../src/i18n/locales/pt-PT.ts"],"sourcesContent":["// Portuguese - Portugal (Português)\nimport ptBR from './pt-BR'\n\nexport default {\n  ...ptBR,\n}\n"],"names":["ptPT","ptBR"],"mappings":"+DAGA,MAAAA,EAAe,CACb,GAAGC,CACL"}

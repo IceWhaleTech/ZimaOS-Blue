@@ -1,7 +1,5 @@
 # Version Plan
 
-[中文版本](./i18n/zh_CN/docs/zh/VERSION.md)
-
 This document describes the version planning and release strategy for the ZimaOS-Echo project.
 
 ## Versioning Standard

@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
+import { claudeCodeApi } from '@/api/claudecode'
+import type { ClaudeCodeConfigResponse } from '@/api/claudecode'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
@@ -17,6 +19,10 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
 const showModelSelector = ref(false)
+const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
+
+// Check if Claude Code CLI is enabled
+const isClaudeCodeEnabled = computed(() => claudeCodeConfig.value?.enabled ?? false)
 
 // Check if mobile on mount and resize
 function checkMobile() {
@@ -160,6 +166,17 @@ async function handleRefreshModels() {
   }
 }
 
+// Fetch Claude Code CLI config
+async function fetchClaudeCodeConfig() {
+  try {
+    const response = await claudeCodeApi.getConfig()
+    claudeCodeConfig.value = response.data
+  } catch {
+    // Silently fail - CLI might not be available
+    claudeCodeConfig.value = null
+  }
+}
+
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -169,7 +186,13 @@ onMounted(async () => {
     chatStore.fetchConversations(),
     settingsStore.fetchProviders(),
     settingsStore.fetchTools(),
+    fetchClaudeCodeConfig(),
   ])
+
+  // Auto-select first conversation if available and none selected
+  if (!chatStore.currentConversationId && chatStore.sortedConversations.length > 0) {
+    await chatStore.selectConversation(chatStore.sortedConversations[0].id)
+  }
 })
 
 onUnmounted(() => {
@@ -237,6 +260,29 @@ onUnmounted(() => {
           <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
             {{ chatStore.currentConversation?.title || t('chat.newChat') }}
           </h2>
+          <!-- Powered by Claude Code CLI badge -->
+          <span
+            v-if="isClaudeCodeEnabled"
+            class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0"
+            :title="t('chat.poweredByClaudeCodeDesc')"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            {{ t('chat.poweredByClaudeCode') }}
+          </span>
+          <!-- Enable Claude Code CLI prompt -->
+          <router-link
+            v-else
+            to="/settings?tab=claudecode"
+            class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
+            :title="t('chat.enableClaudeCodeDesc')"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            {{ t('chat.enableClaudeCode') }}
+          </router-link>
         </div>
 
         <!-- Model selector -->
@@ -463,6 +509,26 @@ onUnmounted(() => {
           @click="chatStore.clearError"
         >
           {{ t('chat.dismiss') }}
+        </button>
+      </div>
+
+      <!-- Security blocked warning -->
+      <div
+        v-if="chatStore.securityBlocked"
+        class="px-3 sm:px-4 py-3 bg-yellow-500/10 border-t border-yellow-500/30 text-yellow-400 text-xs sm:text-sm flex items-center justify-between gap-2"
+      >
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="truncate">{{ chatStore.securityBlocked.message }}</span>
+          <span class="text-yellow-500/70 text-xs">({{ t('chat.threatLevel') }}: {{ chatStore.securityBlocked.threatLevel }})</span>
+        </div>
+        <button
+          class="text-yellow-400 hover:text-yellow-300 flex-shrink-0 px-3 py-1 rounded hover:bg-yellow-500/10 transition-colors cursor-pointer"
+          @click="chatStore.clearSecurityBlocked"
+        >
+          {{ t('chat.dismissWarning') }}
         </button>
       </div>
 

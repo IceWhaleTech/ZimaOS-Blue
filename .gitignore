@@ -7,6 +7,11 @@ web/dist/
 docs-site/.vitepress/dist/
 docs-site/.vitepress/cache/
 
+# Tauri build outputs
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/bin/
+tauri-app/src-tauri/icons/
+
 # IDE
 .idea/
 .vscode/

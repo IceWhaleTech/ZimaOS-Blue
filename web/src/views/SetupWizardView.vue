@@ -7,14 +7,6 @@ import { setLocale, type LocaleKey } from '@/i18n'
 
 const { t } = useI18n()
 
-interface Provider {
-  id: string
-  name: string
-  requires_key: boolean
-  models: string[]
-  base_url: string
-}
-
 interface Language {
   code: string
   name: string
@@ -23,10 +15,6 @@ interface Language {
 interface SetupConfig {
   language: string
   timezone: string
-  llm_provider: string
-  llm_api_key: string
-  llm_base_url: string
-  llm_model: string
   admin_username: string
   admin_password: string
   admin_password_confirm: string
@@ -51,7 +39,6 @@ const checkingUsername = ref(false)
 const usernameAvailable = ref<boolean | null>(null)
 let usernameCheckTimeout: ReturnType<typeof setTimeout> | null = null
 
-const providers = ref<Provider[]>([])
 const languages = ref<Language[]>([])
 
 // Detect browser language and map to supported language code
@@ -121,10 +108,6 @@ const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UT
 const config = ref<SetupConfig>({
   language: detectBrowserLanguage(),
   timezone: detectedTimezone,
-  llm_provider: 'openai',
-  llm_api_key: '',
-  llm_base_url: '',
-  llm_model: '',
   admin_username: '',
   admin_password: '',
   admin_password_confirm: '',
@@ -165,14 +148,6 @@ const stepDescriptions = computed(() => [
   t('setup.integrationsDesc'),
 ])
 
-const currentProvider = computed(() => {
-  return providers.value.find(p => p.id === config.value.llm_provider)
-})
-
-const availableModels = computed(() => {
-  return currentProvider.value?.models || []
-})
-
 const timezones = computed(() => {
   const allTimezones = (Intl as unknown as { supportedValuesOf: (key: string) => string[] }).supportedValuesOf('timeZone')
   // Put detected timezone at the top of the list
@@ -209,7 +184,6 @@ async function loadDefaults() {
     const response = await fetch('/api/setup/defaults')
     const data = await response.json()
 
-    providers.value = data.providers || []
     languages.value = data.languages || []
 
     // Validate browser-detected language against supported languages
@@ -222,14 +196,6 @@ async function loadDefaults() {
       }
     } else if (data.language) {
       config.value.language = data.language
-    }
-
-    if (data.llm_provider) config.value.llm_provider = data.llm_provider
-    if (data.llm_model) config.value.llm_model = data.llm_model
-
-    // Set default model for selected provider
-    if (currentProvider.value && !config.value.llm_model) {
-      config.value.llm_model = currentProvider.value.models[0] || ''
     }
   } catch (error) {
     console.error('Failed to load defaults:', error)
@@ -324,20 +290,11 @@ async function testConnection(type: string) {
 
   let testConfig: Record<string, string> = {}
 
-  switch (type) {
-    case 'llm':
-      testConfig = {
-        provider: config.value.llm_provider,
-        api_key: config.value.llm_api_key,
-        base_url: config.value.llm_base_url || currentProvider.value?.base_url || '',
-      }
-      break
-    case 'homeassistant':
-      testConfig = {
-        url: config.value.home_assistant_url,
-        token: config.value.home_assistant_token,
-      }
-      break
+  if (type === 'homeassistant') {
+    testConfig = {
+      url: config.value.home_assistant_url,
+      token: config.value.home_assistant_token,
+    }
   }
 
   try {
@@ -382,25 +339,6 @@ async function completeSetup() {
   } finally {
     loading.value = false
   }
-}
-
-function onProviderChange() {
-  // Reset model when provider changes
-  config.value.llm_model = currentProvider.value?.models[0] || ''
-  config.value.llm_base_url = currentProvider.value?.base_url || ''
-  connectionTestResult.value = null
-}
-
-// Get translated provider name
-function getProviderDisplayName(providerId: string): string {
-  const key = `settings.providers.${providerId.toLowerCase()}`
-  const translated = t(key)
-  // If translation key doesn't exist, return original name from provider data
-  if (translated === key) {
-    const provider = providers.value.find(p => p.id === providerId)
-    return provider?.name || providerId
-  }
-  return translated
 }
 
 // Check username availability with debounce

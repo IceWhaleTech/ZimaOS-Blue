@@ -229,14 +229,15 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 	}
 
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/messages", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", p.apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
+	httpReq.Header.Set("Accept", "text/event-stream")
 
 	// Send request
 	resp, err := p.client.Do(httpReq)
@@ -247,7 +248,9 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 
 	// Check for HTTP error
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Claude API returned status %d", resp.StatusCode)
+		// Read error body for more details
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Claude API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	// Parse SSE stream directly with callback
@@ -349,10 +352,8 @@ func (p *ClaudeProvider) processSSELineCallback(ctx context.Context, line string
 
 	case "content_block_delta":
 		if event.Delta.Text != "" {
-			if err := callback(StreamChunk{
-				Delta: event.Delta.Text,
-				Done:  false,
-			}); err != nil {
+			// Split text into small chunks for typewriter effect
+			if err := p.sendTextChunksCallback(ctx, event.Delta.Text, callback); err != nil {
 				return true, err
 			}
 		}
@@ -559,6 +560,60 @@ func (p *ClaudeProvider) sendTextChunks(ctx context.Context, ch chan<- StreamChu
 			}
 		}
 	}
+}
+
+// sendTextChunksCallback splits text into small chunks and calls callback for typewriter effect.
+func (p *ClaudeProvider) sendTextChunksCallback(ctx context.Context, text string, callback StreamCallback) error {
+	// For very short text (1-2 chars), send directly with a small delay
+	runes := []rune(text)
+	if len(runes) <= 2 {
+		if err := callback(StreamChunk{
+			Delta: text,
+			Done:  false,
+		}); err != nil {
+			return err
+		}
+		// Small delay for single character chunks (15-25ms)
+		delay := time.Duration(15+time.Now().UnixNano()%10) * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		return nil
+	}
+
+	// Split into small chunks (3-6 characters for better typewriter effect)
+	pos := 0
+
+	for pos < len(runes) {
+		// Random chunk size between 3-6 characters
+		chunkSize := 3 + int(time.Now().UnixNano()%4)
+		if pos+chunkSize > len(runes) {
+			chunkSize = len(runes) - pos
+		}
+
+		chunk := string(runes[pos : pos+chunkSize])
+		pos += chunkSize
+
+		if err := callback(StreamChunk{
+			Delta: chunk,
+			Done:  false,
+		}); err != nil {
+			return err
+		}
+
+		// Add small delay between chunks for typewriter effect (10-30ms)
+		if pos < len(runes) {
+			delay := time.Duration(10+time.Now().UnixNano()%20) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+	}
+	return nil
 }
 
 // convertRequest converts a ChatRequest to Claude format.

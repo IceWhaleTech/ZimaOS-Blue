@@ -17,6 +17,7 @@ export const useChatStore = defineStore('chat', () => {
   const streaming = ref(false)
   const streamingContent = ref('')
   const error = ref<string | null>(null)
+  const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
 
   // Pagination state
   const hasMoreMessages = ref(false)
@@ -167,6 +168,7 @@ export const useChatStore = defineStore('chat', () => {
       streaming.value = true
       streamingContent.value = ''
       error.value = null
+      securityBlocked.value = null
 
       // Add placeholder for assistant message
       const assistantMessage: Message = {
@@ -195,6 +197,13 @@ export const useChatStore = defineStore('chat', () => {
           error.value = err.message
           // Remove the placeholder message on error
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+        },
+        onBlocked: (message, threatLevel) => {
+          securityBlocked.value = { message, threatLevel }
+          // Remove placeholder messages
+          messages.value = messages.value.filter(
+            (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+          )
         },
         onComplete: () => {
           streaming.value = false
@@ -237,6 +246,10 @@ export const useChatStore = defineStore('chat', () => {
     error.value = null
   }
 
+  function clearSecurityBlocked() {
+    securityBlocked.value = null
+  }
+
   return {
     // State
     conversations,
@@ -247,6 +260,7 @@ export const useChatStore = defineStore('chat', () => {
     streaming,
     streamingContent,
     error,
+    securityBlocked,
     hasMoreMessages,
     loadingMore,
 
@@ -265,5 +279,6 @@ export const useChatStore = defineStore('chat', () => {
     cancelStreaming,
     searchConversations,
     clearError,
+    clearSecurityBlocked,
   }
 })

@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 )
 
@@ -150,7 +149,7 @@ func (h *ProviderSettingsHandler) getProviderConfigResponse(name string) Provide
 
 	// Set default URLs based on provider
 	switch name {
-	case "claude", "claude-code":
+	case "claude":
 		resp.DefaultURL = "https://api.anthropic.com"
 	case "openai":
 		resp.DefaultURL = "https://api.openai.com"
@@ -257,14 +256,14 @@ func (h *ProviderSettingsHandler) updateProviderInRegistry(name string, config P
 		}
 		provider := llm.NewOllamaProvider(baseURL)
 		h.registry.Update(provider)
-	case "claude-code":
-		// Update Claude Code CLI provider credentials
-		provider := h.registry.Get("claude-code")
-		if provider != nil {
-			if ccProvider, ok := provider.(*claudecode.Provider); ok {
-				ccProvider.UpdateCredentials(config.APIKey, config.BaseURL)
-			}
+	case "custom":
+		// Update custom OpenAI-compatible provider
+		baseURL := config.BaseURL
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
 		}
+		provider := llm.NewCustomProvider(config.APIKey, baseURL)
+		h.registry.Update(provider)
 	}
 }
 
@@ -278,8 +277,8 @@ func (h *ProviderSettingsHandler) TestProviderConnection(c echo.Context) error {
 
 	if !ok {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "Provider not configured",
+			"success":    false,
+			"messageKey": "providerNotConfigured",
 		})
 	}
 
@@ -288,16 +287,16 @@ func (h *ProviderSettingsHandler) TestProviderConnection(c echo.Context) error {
 	case "claude", "openai":
 		if config.APIKey == "" {
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"success": false,
-				"message": "API key is required",
+				"success":    false,
+				"messageKey": "apiKeyRequired",
 			})
 		}
 	}
 
 	// TODO: Actually test the connection by making a simple API call
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Configuration valid",
+		"success":    true,
+		"messageKey": "testSuccess",
 	})
 }
 

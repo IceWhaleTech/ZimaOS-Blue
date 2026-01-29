@@ -24,6 +24,7 @@ interface ChannelDef {
   status: 'connected' | 'disconnected' | 'error' | 'connecting'
   descriptionKey: string
   hintKey?: string
+  docUrl?: string
   fields: ChannelFieldDef[]
 }
 
@@ -42,8 +43,10 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.telegramDesc',
     hintKey: 'channels.telegramHint',
+    docUrl: 'https://core.telegram.org/bots#how-do-i-create-a-bot',
     fields: [
       { key: 'bot_token', labelKey: 'setup.botToken', type: 'password', placeholder: '123456789:ABCdefGHIjklMNOpqrsTUVwxyz', value: '', required: true },
+      { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholder: 'my_bot', value: '' },
     ],
   },
   {
@@ -54,6 +57,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.discordDesc',
     hintKey: 'channels.discordHint',
+    docUrl: 'https://discord.com/developers/docs/getting-started',
     fields: [
       { key: 'bot_token', labelKey: 'setup.botToken', type: 'password', placeholder: 'Enter your Discord bot token', value: '', required: true },
       { key: 'application_id', labelKey: 'channels.applicationId', type: 'text', placeholder: 'Application ID', value: '' },
@@ -67,6 +71,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.slackDesc',
     hintKey: 'setup.slackHint',
+    docUrl: 'https://api.slack.com/start/quickstart',
     fields: [
       { key: 'bot_token', labelKey: 'setup.slackBotToken', type: 'password', placeholder: 'xoxb-xxxx-xxxx-xxxx', value: '', required: true },
       { key: 'app_token', labelKey: 'setup.slackAppToken', type: 'password', placeholder: 'xapp-xxxx-xxxx-xxxx', value: '', required: true },
@@ -81,6 +86,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.whatsappDesc',
     hintKey: 'setup.whatsappHint',
+    docUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
     fields: [
       { key: 'phone_number', labelKey: 'setup.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
     ],
@@ -93,6 +99,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.signalDesc',
     hintKey: 'setup.signalHint',
+    docUrl: 'https://github.com/AsamK/signal-cli',
     fields: [
       { key: 'phone_number', labelKey: 'setup.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
     ],
@@ -105,6 +112,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.teamsDesc',
     hintKey: 'setup.teamsHint',
+    docUrl: 'https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/create-a-bot-for-teams',
     fields: [
       { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', value: '', required: true },
       { key: 'app_password', labelKey: 'setup.appPassword', type: 'password', placeholder: 'App password', value: '', required: true },
@@ -118,6 +126,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.googleChatDesc',
     hintKey: 'setup.googleChatHint',
+    docUrl: 'https://developers.google.com/workspace/chat/quickstart/gcf-app',
     fields: [
       { key: 'credentials_json', labelKey: 'setup.serviceAccountJson', type: 'textarea', placeholder: '{"type": "service_account", ...}', value: '', required: true },
     ],
@@ -130,6 +139,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.feishuDesc',
     hintKey: 'channels.feishuHint',
+    docUrl: 'https://open.feishu.cn/document/develop-an-echo-bot/introduction',
     fields: [
       { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: 'cli_xxxxxxxxxx', value: '', required: true },
       { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
@@ -139,12 +149,44 @@ const channelDefs = ref<ChannelDef[]>([
     ],
   },
   {
+    id: 'dingtalk',
+    nameKey: 'setup.dingtalkBot',
+    icon: getChannelIconOrDefault('dingtalk'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.dingtalkDesc',
+    hintKey: 'channels.dingtalkHint',
+    docUrl: 'https://open.dingtalk.com/document/orgapp/create-an-enterprise-chatbot',
+    fields: [
+      { key: 'app_key', labelKey: 'channels.appKey', type: 'text', placeholder: 'dingxxxxxxxxxx', value: '', required: true },
+      { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'robot_code', labelKey: 'channels.robotCode', type: 'text', placeholder: 'dingxxxxxxxxxx', value: '', required: true },
+    ],
+  },
+  {
+    id: 'qq',
+    name: 'QQ Bot',
+    icon: getChannelIconOrDefault('qq'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.qqDesc',
+    hintKey: 'channels.qqHint',
+    docUrl: 'https://q.qq.com/wiki/develop/api-231017/dev-prepare/interface-framework/api-use.html',
+    fields: [
+      { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: '102xxxxxx', value: '', required: true },
+      { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'token', labelKey: 'setup.botToken', type: 'password', placeholder: 'Bot token', value: '', required: true },
+    ],
+  },
+  {
     id: 'wechat',
     nameKey: 'setup.wechatWorkBot',
     icon: getChannelIconOrDefault('wechat'),
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.wechatDesc',
+    hintKey: 'channels.wechatHint',
+    docUrl: 'https://developer.work.weixin.qq.com/document/path/90664',
     fields: [
       { key: 'corp_id', labelKey: 'setup.corpId', type: 'text', placeholder: 'ww1234567890abcdef', value: '', required: true },
       { key: 'agent_id', labelKey: 'setup.agentId', type: 'text', placeholder: '1000001', value: '', required: true },
@@ -158,6 +200,8 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.matrixDesc',
+    hintKey: 'channels.matrixHint',
+    docUrl: 'https://spec.matrix.org/latest/client-server-api/',
     fields: [
       { key: 'homeserver', labelKey: 'setup.matrixHomeserver', type: 'url', placeholder: 'https://matrix.org', value: '', required: true },
       { key: 'user_id', labelKey: 'setup.matrixUserId', type: 'text', placeholder: '@bot:matrix.org', value: '', required: true },
@@ -172,6 +216,7 @@ const channelDefs = ref<ChannelDef[]>([
     status: 'disconnected',
     descriptionKey: 'channels.imessageDesc',
     hintKey: 'setup.imessageHint',
+    docUrl: 'https://github.com/mautrix/imessage',
     fields: [],
   },
 ])
@@ -202,6 +247,18 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
   toggling.value = channelId
   const channelDef = channelDefs.value.find(c => c.id === channelId)
   if (!channelDef) return
+
+  // Check if required fields are filled when enabling
+  if (enabled) {
+    const missingFields = channelDef.fields.filter(f => f.required && !f.value)
+    if (missingFields.length > 0) {
+      // Expand the channel to show config
+      expandedChannel.value = channelId
+      testResult.value = { channelId, success: false, message: t('channels.fillRequiredFields') }
+      toggling.value = null
+      return
+    }
+  }
 
   // Optimistically update the UI
   channelDef.enabled = enabled
@@ -344,8 +401,24 @@ async function testConnection(channelId: string) {
 
     const data = await response.json()
     testResult.value = { channelId, success: data.success, message: data.message }
+
+    // Update status based on test result
+    if (data.success) {
+      // If enabled, set to connected; otherwise keep disconnected but mark as valid config
+      if (channelDef.enabled) {
+        channelDef.status = 'connected'
+      }
+    } else {
+      // Test failed - if enabled, show error
+      if (channelDef.enabled) {
+        channelDef.status = 'error'
+      }
+    }
   } catch (error) {
     testResult.value = { channelId, success: false, message: t('channels.testFailed') }
+    if (channelDef.enabled) {
+      channelDef.status = 'error'
+    }
   } finally {
     testingConnection.value = null
   }
@@ -489,7 +562,7 @@ onMounted(() => {
           </div>
 
           <!-- Actions -->
-          <div class="flex gap-3 mt-4">
+          <div class="flex flex-wrap items-center gap-3 mt-4">
             <button
               v-if="channel.fields.length > 0"
               :disabled="testingConnection === channel.id"
@@ -505,6 +578,70 @@ onMounted(() => {
             >
               {{ saving === channel.id ? t('channels.saving') : t('common.save') }}
             </button>
+            <a
+              v-if="channel.docUrl"
+              :href="channel.docUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              {{ t('channels.viewDocs') }}
+            </a>
+            <!-- Feishu Open Bot Chat Link -->
+            <a
+              v-if="channel.id === 'feishu' && channelDefs.find(c => c.id === 'feishu')?.fields.find(f => f.key === 'app_id')?.value"
+              :href="`https://applink.feishu.cn/client/bot/open?appId=${channelDefs.find(c => c.id === 'feishu')?.fields.find(f => f.key === 'app_id')?.value}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              {{ t('channels.feishuOpenChat') }}
+            </a>
+            <!-- Telegram Open Bot Chat Link -->
+            <a
+              v-if="channel.id === 'telegram' && channelDefs.find(c => c.id === 'telegram')?.fields.find(f => f.key === 'bot_username')?.value"
+              :href="`https://t.me/${channelDefs.find(c => c.id === 'telegram')?.fields.find(f => f.key === 'bot_username')?.value}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              {{ t('channels.telegramOpenChat') }}
+            </a>
+            <!-- DingTalk Open Bot Chat Link -->
+            <a
+              v-if="channel.id === 'dingtalk' && channelDefs.find(c => c.id === 'dingtalk')?.fields.find(f => f.key === 'robot_code')?.value"
+              :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${channelDefs.find(c => c.id === 'dingtalk')?.fields.find(f => f.key === 'robot_code')?.value}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              {{ t('channels.dingtalkOpenChat') }}
+            </a>
+            <!-- WhatsApp Open Chat Link -->
+            <a
+              v-if="channel.id === 'whatsapp' && channelDefs.find(c => c.id === 'whatsapp')?.fields.find(f => f.key === 'phone_number')?.value"
+              :href="`https://wa.me/${channelDefs.find(c => c.id === 'whatsapp')?.fields.find(f => f.key === 'phone_number')?.value?.replace(/[^0-9]/g, '')}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              {{ t('channels.whatsappOpenChat') }}
+            </a>
           </div>
         </div>
       </div>

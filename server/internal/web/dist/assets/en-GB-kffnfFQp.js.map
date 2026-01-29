@@ -1,0 +1,1 @@
+{"version":3,"file":"en-GB-kffnfFQp.js","sources":["../../src/i18n/locales/en-GB.ts"],"sourcesContent":["// English (UK)\nimport enUS from './en-US'\n\nexport default {\n  ...enUS,\n}\n"],"names":["enGB","enUS"],"mappings":"yCAGA,MAAAA,EAAe,CACb,GAAGC,CACL"}

@@ -12,6 +12,8 @@ export const channelIcons: Record<string, string> = {
   matrix: '/icons/channels/matrix.svg',
   imessage: '/icons/channels/imessage.svg',
   feishu: '/icons/channels/feishu.svg',
+  dingtalk: '/icons/channels/dingtalk.svg',
+  qq: '/icons/channels/qq.svg',
   teams: '/icons/channels/teams.svg',
   'microsoft-teams': '/icons/channels/teams.svg',
   msteams: '/icons/channels/teams.svg',

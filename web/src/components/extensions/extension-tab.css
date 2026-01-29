@@ -296,7 +296,7 @@
 .item-icon-img {
   width: 36px;
   height: 36px;
-  padding: 8px;
+  padding: 4px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--border);
   border-radius: var(--radius-md, 8px);

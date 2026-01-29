@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useSystemStore } from '@/stores/system'
 import { storeToRefs } from 'pinia'
+import NetworkAddressBar from '@/components/network/NetworkAddressBar.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -110,6 +111,8 @@ function handleLogout() {
           class="sm:hidden w-2.5 h-2.5 rounded-full animate-pulse"
           :class="health.status === 'ok' ? 'bg-cta' : 'bg-red-400'"
         ></span>
+        <!-- Network address bar (only in Tauri desktop app) -->
+        <NetworkAddressBar class="hidden sm:flex" />
       </div>
       <div class="flex items-center space-x-1 sm:space-x-3">
         <!-- Theme toggle -->

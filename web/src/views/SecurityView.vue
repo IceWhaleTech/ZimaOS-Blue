@@ -236,6 +236,25 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(1)}m`
 }
 
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+
+  if (diffSec < 60) {
+    return t('companion.justNow')
+  } else if (diffMin < 60) {
+    return t('companion.minutesAgo', { n: diffMin })
+  } else if (diffHour < 24) {
+    return t('companion.hoursAgo', { n: diffHour })
+  } else {
+    return formatDate(dateStr)
+  }
+}
+
 // Get alert title with i18n support for demo mode
 function getAlertTitle(title: string): string {
   if (companionStore.isDemoMode) {
@@ -629,15 +648,80 @@ function getAlertDescription(description: string): string {
           <span v-if="isConnected()" class="ml-2 w-2 h-2 bg-green-500 rounded-full inline-block animate-pulse" />
         </h3>
         <div v-if="realtimeEvents.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('companion.waitingForEvents') }}</div>
-        <div v-else class="space-y-2 max-h-64 overflow-y-auto">
-          <div v-for="event in realtimeEvents" :key="event.id" class="p-2 bg-gray-50 dark:bg-slate-700/50 rounded text-sm">
-            <div class="flex items-center gap-2">
+        <div v-else class="space-y-2 max-h-96 overflow-y-auto">
+          <div v-for="event in realtimeEvents" :key="event.id" class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg text-sm">
+            <!-- Header: Event type, session, time -->
+            <div class="flex items-center gap-2 mb-2">
               <span class="text-base">{{ getEventTypeIcon(event.eventType) }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType.replace(/_/g, ' ') }}</span>
+              <span v-if="event.security" :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(event.security.threatLevel)]">
+                {{ event.security.threatLevel }}
+              </span>
               <span class="text-xs text-gray-400 dark:text-slate-500">{{ event.sessionId.slice(0, 8) }}...</span>
-              <span class="ml-auto text-xs text-gray-400 dark:text-slate-500">{{ formatDate(event.timestamp) }}</span>
+              <span class="ml-auto text-xs text-gray-400 dark:text-slate-500 whitespace-nowrap">{{ formatRelativeTime(event.timestamp) }}</span>
             </div>
-            <div v-if="event.security" :class="['text-xs mt-1', getThreatColor(event.security.threatLevel)]">{{ event.security.threatLevel }}: {{ event.security.threatTypes.join(', ') }}</div>
+            <!-- Event Content -->
+            <div class="pl-6 space-y-1">
+              <!-- Security Event Details -->
+              <div v-if="event.security" class="text-xs">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-gray-500 dark:text-slate-400">{{ t('companion.security.score') }}:</span>
+                  <span class="font-medium" :class="event.security.threatScore >= 75 ? 'text-red-600 dark:text-red-400' : event.security.threatScore >= 50 ? 'text-orange-600 dark:text-orange-400' : event.security.threatScore >= 25 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'">{{ event.security.threatScore }}/100</span>
+                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.security.action === 'blocked' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : event.security.action === 'filtered' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' : 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300']">{{ event.security.action }}</span>
+                </div>
+                <div v-if="event.security.threatTypes?.length" class="text-gray-600 dark:text-slate-300">
+                  <span class="text-gray-500 dark:text-slate-400">{{ t('companion.security.threatTypes') }}:</span>
+                  {{ event.security.threatTypes.map(type => type.replace(/_/g, ' ')).join(', ') }}
+                </div>
+                <div v-if="event.security.details" class="text-gray-500 dark:text-slate-400 mt-1 truncate" :title="event.security.details">
+                  {{ event.security.details }}
+                </div>
+              </div>
+              <!-- Message Event Details -->
+              <div v-else-if="event.message" class="text-xs">
+                <div class="flex items-center gap-2">
+                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.message.direction === 'inbound' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300']">
+                    {{ event.message.direction === 'inbound' ? '← ' + t('companion.eventDetails.received') : '→ ' + t('companion.eventDetails.sent') }}
+                  </span>
+                  <span class="text-gray-500 dark:text-slate-400">{{ event.message.contentType }}</span>
+                  <span class="text-gray-400 dark:text-slate-500">{{ event.message.length }} chars</span>
+                </div>
+                <div v-if="event.message.content" class="text-gray-600 dark:text-slate-300 mt-1 truncate" :title="event.message.content">
+                  {{ event.message.content }}
+                </div>
+              </div>
+              <!-- Tool Call Event Details -->
+              <div v-else-if="event.toolCall" class="text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ event.toolCall.toolName }}</span>
+                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.toolCall.status === 'success' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' : event.toolCall.status === 'error' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300']">{{ event.toolCall.status }}</span>
+                  <span v-if="event.toolCall.sandboxUsed" class="px-1.5 py-0.5 rounded text-xs font-medium bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-300">sandbox</span>
+                  <span class="text-gray-400 dark:text-slate-500">{{ formatDuration(event.toolCall.duration) }}</span>
+                </div>
+                <div v-if="event.toolCall.inputPreview" class="text-gray-500 dark:text-slate-400 mt-1 truncate" :title="event.toolCall.inputPreview">
+                  {{ t('companion.eventDetails.input') }}: {{ event.toolCall.inputPreview }}
+                </div>
+              </div>
+              <!-- LLM Request Event Details -->
+              <div v-else-if="event.llmRequest" class="text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ event.llmRequest.provider }}/{{ event.llmRequest.model }}</span>
+                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.llmRequest.status === 'success' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300']">{{ event.llmRequest.status }}</span>
+                  <span class="text-gray-400 dark:text-slate-500">{{ formatDuration(event.llmRequest.duration) }}</span>
+                </div>
+                <div class="text-gray-500 dark:text-slate-400 mt-1">
+                  {{ t('companion.eventDetails.tokens') }}: {{ event.llmRequest.promptTokens }} → {{ event.llmRequest.completionTokens }} ({{ event.llmRequest.totalTokens }} total)
+                </div>
+              </div>
+              <!-- Error Event Details -->
+              <div v-else-if="event.error" class="text-xs text-red-600 dark:text-red-400">
+                {{ event.error }}
+              </div>
+              <!-- Generic Event (session_start, session_end, etc.) -->
+              <div v-else class="text-xs text-gray-500 dark:text-slate-400">
+                {{ event.platform }} · {{ event.userId.slice(0, 8) }}...
+              </div>
+            </div>
           </div>
         </div>
       </div>

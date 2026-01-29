@@ -24,8 +24,8 @@ func TestNewHandler(t *testing.T) {
 		t.Error("Expected setup not completed initially")
 	}
 
-	if h.status.TotalSteps != 5 {
-		t.Errorf("Expected 5 total steps, got %d", h.status.TotalSteps)
+	if h.status.TotalSteps != 3 {
+		t.Errorf("Expected 3 total steps, got %d", h.status.TotalSteps)
 	}
 }
 
@@ -55,8 +55,8 @@ func TestHandler_GetStatus(t *testing.T) {
 		t.Error("Expected setup not completed")
 	}
 
-	if status.TotalSteps != 5 {
-		t.Errorf("Expected 5 total steps, got %d", status.TotalSteps)
+	if status.TotalSteps != 3 {
+		t.Errorf("Expected 3 total steps, got %d", status.TotalSteps)
 	}
 }
 
@@ -97,9 +97,9 @@ func TestHandler_ValidateStep_BasicSettings(t *testing.T) {
 	h := NewHandler(tempDir)
 
 	tests := []struct {
-		name      string
-		step      int
-		config    SetupConfig
+		name        string
+		step        int
+		config      SetupConfig
 		expectValid bool
 	}{
 		{
@@ -158,90 +158,6 @@ func TestHandler_ValidateStep_BasicSettings(t *testing.T) {
 	}
 }
 
-func TestHandler_ValidateStep_LLMConfig(t *testing.T) {
-	tempDir := t.TempDir()
-	h := NewHandler(tempDir)
-
-	tests := []struct {
-		name        string
-		config      SetupConfig
-		expectValid bool
-	}{
-		{
-			name: "valid_openai",
-			config: SetupConfig{
-				LLMProvider: "openai",
-				LLMAPIKey:   "sk-test-key",
-				LLMModel:    "gpt-4o-mini",
-			},
-			expectValid: true,
-		},
-		{
-			name: "valid_ollama_no_key",
-			config: SetupConfig{
-				LLMProvider: "ollama",
-				LLMModel:    "llama3.2",
-			},
-			expectValid: true,
-		},
-		{
-			name: "missing_api_key_for_openai",
-			config: SetupConfig{
-				LLMProvider: "openai",
-				LLMModel:    "gpt-4o-mini",
-			},
-			expectValid: false,
-		},
-		{
-			name: "custom_missing_base_url",
-			config: SetupConfig{
-				LLMProvider: "custom",
-				LLMAPIKey:   "test-key",
-				LLMModel:    "custom-model",
-			},
-			expectValid: false,
-		},
-		{
-			name: "valid_custom",
-			config: SetupConfig{
-				LLMProvider: "custom",
-				LLMAPIKey:   "test-key",
-				LLMModel:    "custom-model",
-				LLMBaseURL:  "https://custom.api.com",
-			},
-			expectValid: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body, _ := json.Marshal(map[string]interface{}{
-				"step":   2,
-				"config": tt.config,
-			})
-
-			e := echo.New()
-			req := httptest.NewRequest(http.MethodPost, "/api/setup/validate", bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-
-			if err := h.ValidateStep(c); err != nil {
-				t.Fatalf("ValidateStep failed: %v", err)
-			}
-
-			var result ValidationResult
-			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
-
-			if result.Valid != tt.expectValid {
-				t.Errorf("Expected valid=%v, got %v (errors: %v)", tt.expectValid, result.Valid, result.Errors)
-			}
-		})
-	}
-}
-
 func TestHandler_ValidateStep_Security(t *testing.T) {
 	tempDir := t.TempDir()
 	h := NewHandler(tempDir)
@@ -280,7 +196,7 @@ func TestHandler_ValidateStep_Security(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(map[string]interface{}{
-				"step":   3,
+				"step":   2, // Security is now step 2
 				"config": tt.config,
 			})
 
@@ -306,6 +222,158 @@ func TestHandler_ValidateStep_Security(t *testing.T) {
 	}
 }
 
+func TestHandler_ValidateStep_Integration(t *testing.T) {
+	tempDir := t.TempDir()
+	h := NewHandler(tempDir)
+
+	tests := []struct {
+		name        string
+		config      SetupConfig
+		expectValid bool
+	}{
+		{
+			name: "valid_no_integration",
+			config: SetupConfig{
+				EnableHomeAssistant: false,
+			},
+			expectValid: true,
+		},
+		{
+			name: "valid_with_home_assistant",
+			config: SetupConfig{
+				EnableHomeAssistant: true,
+				HomeAssistantURL:    "http://localhost:8123",
+				HomeAssistantToken:  "test-token",
+			},
+			expectValid: true,
+		},
+		{
+			name: "missing_home_assistant_url",
+			config: SetupConfig{
+				EnableHomeAssistant: true,
+				HomeAssistantToken:  "test-token",
+			},
+			expectValid: false,
+		},
+		{
+			name: "missing_home_assistant_token",
+			config: SetupConfig{
+				EnableHomeAssistant: true,
+				HomeAssistantURL:    "http://localhost:8123",
+			},
+			expectValid: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]interface{}{
+				"step":   3, // Integration is step 3
+				"config": tt.config,
+			})
+
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodPost, "/api/setup/validate", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			if err := h.ValidateStep(c); err != nil {
+				t.Fatalf("ValidateStep failed: %v", err)
+			}
+
+			var result ValidationResult
+			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			if result.Valid != tt.expectValid {
+				t.Errorf("Expected valid=%v, got %v (errors: %v)", tt.expectValid, result.Valid, result.Errors)
+			}
+		})
+	}
+}
+
+func TestHandler_TestConnection_LLM(t *testing.T) {
+	tempDir := t.TempDir()
+	h := NewHandler(tempDir)
+
+	tests := []struct {
+		name          string
+		config        map[string]string
+		expectSuccess bool
+	}{
+		{
+			name: "valid_openai",
+			config: map[string]string{
+				"provider": "openai",
+				"api_key":  "sk-test-key",
+			},
+			expectSuccess: true,
+		},
+		{
+			name: "valid_ollama_no_key",
+			config: map[string]string{
+				"provider": "ollama",
+			},
+			expectSuccess: true,
+		},
+		{
+			name: "missing_api_key_for_openai",
+			config: map[string]string{
+				"provider": "openai",
+			},
+			expectSuccess: false,
+		},
+		{
+			name: "custom_missing_base_url",
+			config: map[string]string{
+				"provider": "custom",
+				"api_key":  "test-key",
+			},
+			expectSuccess: false,
+		},
+		{
+			name: "valid_custom",
+			config: map[string]string{
+				"provider": "custom",
+				"api_key":  "test-key",
+				"base_url": "https://custom.api.com",
+			},
+			expectSuccess: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]interface{}{
+				"type":   "llm",
+				"config": tt.config,
+			})
+
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodPost, "/api/setup/test-connection", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			if err := h.TestConnection(c); err != nil {
+				t.Fatalf("TestConnection failed: %v", err)
+			}
+
+			var result map[string]interface{}
+			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+
+			success, _ := result["success"].(bool)
+			if success != tt.expectSuccess {
+				t.Errorf("Expected success=%v, got %v (message: %v)", tt.expectSuccess, success, result["message"])
+			}
+		})
+	}
+}
+
 func TestHandler_CompleteSetup(t *testing.T) {
 	tempDir := t.TempDir()
 	h := NewHandler(tempDir)
@@ -313,8 +381,6 @@ func TestHandler_CompleteSetup(t *testing.T) {
 	config := SetupConfig{
 		Language:      "en",
 		Timezone:      "UTC",
-		LLMProvider:   "ollama",
-		LLMModel:      "llama3.2",
 		AdminUsername: "admin",
 		AdminPassword: "securepassword123",
 	}
@@ -364,8 +430,6 @@ func TestHandler_ResetSetup(t *testing.T) {
 	config := SetupConfig{
 		Language:      "en",
 		Timezone:      "UTC",
-		LLMProvider:   "ollama",
-		LLMModel:      "llama3.2",
 		AdminUsername: "admin",
 		AdminPassword: "securepassword123",
 	}
@@ -432,7 +496,7 @@ func TestHandler_TestConnection(t *testing.T) {
 			name:     "telegram_valid",
 			connType: "telegram",
 			config: map[string]string{
-				"token": "123456:ABC-DEF",
+				"bot_token": "123456:ABC-DEF",
 			},
 			expectSuccess: true,
 		},
@@ -482,8 +546,6 @@ func TestHandler_StatusPersistence(t *testing.T) {
 	config := SetupConfig{
 		Language:      "en",
 		Timezone:      "UTC",
-		LLMProvider:   "ollama",
-		LLMModel:      "llama3.2",
 		AdminUsername: "admin",
 		AdminPassword: "securepassword123",
 	}

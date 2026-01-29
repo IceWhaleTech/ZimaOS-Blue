@@ -70,14 +70,6 @@ func NewToolStoreHandler(registry *tools.Registry) *ToolStoreHandler {
 		Description: "Official ZimaOS tool marketplace",
 		Enabled:     true,
 	}
-	h.sources["moltbot"] = &ToolSource{
-		ID:          "moltbot",
-		Name:        "MoltBot Extensions",
-		URL:         "https://api.github.com/repos/moltbot/moltbot/contents/extensions",
-		Type:        "github",
-		Description: "MoltBot community extensions",
-		Enabled:     true,
-	}
 
 	return h
 }

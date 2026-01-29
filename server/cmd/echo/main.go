@@ -21,6 +21,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
@@ -36,6 +37,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
@@ -59,10 +61,29 @@ var (
 )
 
 func main() {
+	// Handle Windows service commands (install, uninstall, start, stop, status)
+	if HandleServiceCommand(os.Args) {
+		return
+	}
+
 	// Parse flags
 	configPath := flag.String("config", "", "Path to config file")
 	showVersion := flag.Bool("version", false, "Show version information")
+	showHelp := flag.Bool("help", false, "Show help information")
 	flag.Parse()
+
+	if *showHelp {
+		fmt.Printf("ZimaOS-Echo %s - NAS-Native Agent Runtime\n\n", version)
+		fmt.Println("Usage: echo [options] [command]")
+		fmt.Println("")
+		fmt.Println("Options:")
+		fmt.Println("  --config <path>  Path to config file")
+		fmt.Println("  --version        Show version information")
+		fmt.Println("  --help           Show this help message")
+		fmt.Println("")
+		PrintServiceHelp()
+		os.Exit(0)
+	}
 
 	if *showVersion {
 		fmt.Printf("ZimaOS-Echo %s\n", version)
@@ -454,6 +475,7 @@ func main() {
 	companionStorage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
 	var companionHandler *companion.Handler
 	var companionWSHandler *companion.WebSocketHandler
+	var companionManager *companion.Manager
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
 	} else {
@@ -461,7 +483,7 @@ func main() {
 		if err := companionStreamer.Start(lm.Context()); err != nil {
 			logger.Warn().Err(err).Msg("Failed to start companion streamer")
 		}
-		companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
+		companionManager = companion.NewManager(companionStorage, companionStreamer, companionConfig)
 		companionHandler = companion.NewHandler(companionManager, companionStorage)
 		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
 		logger.Info().Msg("Companion handler initialized")
@@ -478,7 +500,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, version, buildTime, gitCommit, dataDir)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, zapLogger, version, buildTime, gitCommit, dataDir)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -522,7 +544,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, version, buildTime, gitCommit, dataDir string) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string) {
 	e := srv.Echo()
 
 	// Setup wizard routes (no auth required)
@@ -590,6 +612,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	apiKeysGroup := protected.Group("/apikeys")
 	apiKeyHandler.RegisterRoutes(apiKeysGroup)
 
+	// Set up companion manager and prompt guard for chat handler
+	if companionManager != nil {
+		chatHandler.SetCompanionManager(companionManager)
+		logger.Info().Msg("Companion manager set on chat handler")
+	}
+	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
+	chatHandler.SetPromptGuard(promptGuard)
+	logger.Info().Msg("Prompt guard set on chat handler")
+
 	// Register chat routes (conversations, providers, tools)
 	chatHandler.RegisterRoutes(v1)
 
@@ -612,6 +643,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register system routes (logs, config, info)
 	systemHandler := server.NewSystemHandler(version, buildTime, gitCommit, dataDir)
 	systemHandler.RegisterRoutes(v1)
+
+	// Register service management routes
+	serviceHandler := server.NewServiceHandler()
+	serviceHandler.RegisterRoutes(v1)
 
 	// Register backup routes
 	backupHandler.RegisterRoutes(v1)
@@ -708,6 +743,44 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register channel config routes (public for now, channels page needs to work without auth)
 	channelConfigStore := server.NewChannelConfigStore(dataDir)
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
+
+	// Initialize channel manager for connection lifecycle management
+	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)
+	channelFactory := server.NewChannelFactory(zapLogger)
+
+	// Register channels from saved configurations and start enabled ones
+	for _, cfg := range channelConfigStore.GetEnabled() {
+		ch, err := channelFactory.CreateChannel(cfg)
+		if err != nil {
+			logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to create channel")
+			continue
+		}
+		if ch == nil {
+			continue // Unknown channel type
+		}
+		if err := channelManager.Register(ch); err != nil {
+			logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to register channel")
+			continue
+		}
+		// Start the channel
+		if err := channelManager.StartChannel(context.Background(), cfg.ID); err != nil {
+			logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to start channel")
+			// Update config status to error
+			cfg.Status = "error"
+			cfg.LastError = err.Error()
+			_ = channelConfigStore.Set(cfg.ID, cfg)
+		} else {
+			// Update config status to connected
+			cfg.Status = "connected"
+			cfg.LastError = ""
+			_ = channelConfigStore.Set(cfg.ID, cfg)
+			logger.Info().Str("channel", cfg.ID).Msg("Channel started successfully")
+		}
+	}
+
+	// Set manager on handler for runtime connection management
+	channelConfigHandler.SetManager(channelManager)
+	channelConfigHandler.SetFactory(channelFactory)
 	channelConfigHandler.RegisterRoutes(api)
 	logger.Info().Msg("Channel config routes registered")
 

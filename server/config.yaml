@@ -8,15 +8,54 @@ log:
   level: "debug"
   format: "console"
 
-# Enable Claude Code CLI provider
-claudecode:
-  enabled: true
-  command: "claude"
-  workspace_dir: "."
-  default_model: "sonnet"
-  timeout: "5m"
-  session_ttl: "24h"
+# =============================================================================
+# Claude Code CLI Configuration
+# =============================================================================
+# IMPORTANT: This is NOT an LLM provider. Claude Code CLI is a separate tool
+# that enables advanced features like Skills, Tool Calling, File Operations, etc.
+#
+# In the Settings UI, this should appear as a separate section from LLM Providers.
+# =============================================================================
+claude_code_cli:
+  # Master switch - strongly recommended to keep enabled
+  # When disabled, the following features will be unavailable:
+  # - Skills
+  # - Tool Calling (via CLI adapter)
+  # - File Operations
+  # - Terminal Commands
+  # - MCP Integration
+  # - Agent Mode
+  # - Project Context
+  enabled: true  # Default: true (strongly recommended)
+
+  # Installation settings
+  install:
+    path: ""  # Empty = auto-detect or ~/.local/share/zimaos-echo/claude-code
+    auto_update: false
+    verify_checksum: true
+
+  # Download settings
+  download:
+    base_url: "https://storage.googleapis.com/anthropic-public/claude-code"
+    cache_dir: ""  # Empty = ~/.local/share/zimaos-echo/cache
+
+  # Feature toggles (only effective when enabled=true)
+  features:
+    skills: true
+    tool_calling: true
+    file_operations: true
+    terminal_commands: true
+    mcp_integration: true
+    agent_mode: true
+    project_context: true
+
+  # CLI backend settings (for advanced users)
   backend:
+    command: "claude"
+    workspace_dir: "."
+    default_model: "sonnet"
+    timeout: "5m"
+    session_ttl: "24h"
     args: ["-p", "--output-format", "text", "--dangerously-skip-permissions"]
     resume_args: ["-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"]
     output: "text"
@@ -34,3 +73,85 @@ claudecode:
     system_prompt_mode: "append"
     system_prompt_when: "first"
     serialize: true
+
+# =============================================================================
+# LLM Provider Configuration
+# =============================================================================
+# These are the actual LLM providers for chat functionality.
+# NOTE: Claude Code CLI is NOT listed here - it's a separate tool, not a provider.
+# =============================================================================
+llm:
+  providers:
+    # Anthropic Claude API (direct API access, not via CLI)
+    anthropic:
+      enabled: true
+      api_key: ""  # Or from ANTHROPIC_API_KEY env
+      model: "claude-3-5-sonnet-20241022"
+      base_url: ""  # Optional custom endpoint
+
+    openai:
+      enabled: true
+      api_key: ""  # Or from OPENAI_API_KEY env
+      base_url: ""  # Optional custom endpoint
+      model: "gpt-4o"
+
+    ollama:
+      enabled: true
+      endpoints:
+        - "http://localhost:11434"
+        - "http://127.0.0.1:11434"
+      auto_detect: true
+      default_model: "llama3.2"
+
+  # Default provider selection
+  default_provider: "anthropic"
+
+  # Fallback chain
+  fallback:
+    enabled: true
+    chain:
+      - "anthropic"
+      - "openai"
+      - "ollama"
+
+# First-run wizard
+first_run:
+  enabled: true
+  show_provider_detection: true
+  show_cli_download: true
+  allow_skip: true
+  recommend_cli: true  # Show "strongly recommended" message
+
+# cc-switch integration
+cc_switch:
+  enabled: true
+  config_path: ""  # Empty = ~/.claude-code-switch/config.json
+  sync_profiles: true
+
+# Statistics collection
+statistics:
+  enabled: true
+  opt_in_required: true
+  storage_path: ""  # Empty = ~/.local/share/zimaos-echo/stats
+  retention_days: 90
+
+# Tool calling adapters
+tool_calling:
+  auto_detect: true
+  detection_timeout: "5s"
+
+  adapters:
+    cli_proxy:
+      enabled: true  # Only works when claude_code_cli.enabled=true
+      prompt_template: "default"
+
+    cc_nexus:
+      enabled: true
+      schema_mapping: "auto"
+
+  provider_overrides:
+    ollama:
+      tool_calling: "adapter"
+    custom:
+      tool_calling: "auto"
+

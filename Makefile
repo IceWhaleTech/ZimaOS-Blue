@@ -4,6 +4,7 @@
 .PHONY: all build build-frontend build-backend dev clean help
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: download-claude-code prepare-claude-code-dir
+.PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar
 
 # Version info
 VERSION ?= 0.9.0
@@ -155,13 +156,74 @@ clean:
 	@rm -f $(CLAUDE_CODE_DIR)/VERSION
 	@echo "Clean complete!"
 
+# GoReleaser targets
+.PHONY: release release-snapshot release-check
+
+# Check GoReleaser configuration
+release-check:
+	@echo "Checking GoReleaser configuration..."
+	@goreleaser check
+
+# Build snapshot release (for testing, no publish)
+release-snapshot: build-frontend copy-frontend prepare-claude-code-dir
+	@echo "Building snapshot release..."
+	@goreleaser release --snapshot --clean
+
+# Build and publish release (requires GITHUB_TOKEN)
+release: build-frontend copy-frontend prepare-claude-code-dir
+	@echo "Building and publishing release..."
+	@goreleaser release --clean
+
+# Tauri Desktop App targets
+TAURI_DIR := $(PROJECT_ROOT)/tauri-app
+TAURI_BIN_DIR := $(TAURI_DIR)/src-tauri/bin
+
+# Build Go sidecar for Tauri (current platform)
+tauri-sidecar: build-frontend copy-frontend
+	@echo "Building Go sidecar for Tauri..."
+	@mkdir -p $(TAURI_BIN_DIR)
+ifeq ($(shell uname -s),Darwin)
+ifeq ($(shell uname -m),arm64)
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-aarch64-apple-darwin ./cmd/echo
+else
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-x86_64-apple-darwin ./cmd/echo
+endif
+else ifeq ($(shell uname -s),Linux)
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-x86_64-unknown-linux-gnu ./cmd/echo
+else
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-x86_64-pc-windows-msvc.exe ./cmd/echo
+endif
+	@echo "Sidecar built successfully"
+
+# Run Tauri in development mode
+tauri-dev: tauri-sidecar
+	@echo "Starting Tauri development mode..."
+	@cd $(TAURI_DIR) && npm install && npm run dev
+
+# Build Tauri app for production
+tauri-build: tauri-sidecar
+	@echo "Building Tauri app..."
+	@cd $(TAURI_DIR) && npm install && npm run build
+
+# Build Tauri app in debug mode
+tauri-build-debug: tauri-sidecar
+	@echo "Building Tauri app (debug)..."
+	@cd $(TAURI_DIR) && npm install && npm run build:debug
+
+# Clean Tauri build artifacts
+tauri-clean:
+	@echo "Cleaning Tauri build artifacts..."
+	@rm -rf $(TAURI_DIR)/src-tauri/target
+	@rm -rf $(TAURI_BIN_DIR)/echo-server-*
+	@echo "Tauri clean complete!"
+
 # Show help
 help:
 	@echo "ZimaOS-Echo Build System"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@echo "Targets:"
+	@echo "Go Binary Targets:"
 	@echo "  build              Build binary (Claude Code CLI downloaded on first use)"
 	@echo "  build-embedded     Build binary with embedded Claude Code CLI"
 	@echo "  build-frontend     Build frontend only"
@@ -176,6 +238,18 @@ help:
 	@echo "  build-all          Build for all platforms"
 	@echo "  build-all-embedded Build for all platforms with embedded Claude Code CLI"
 	@echo "  clean              Remove build artifacts"
+	@echo ""
+	@echo "Tauri Desktop App Targets:"
+	@echo "  tauri-sidecar      Build Go sidecar for Tauri"
+	@echo "  tauri-dev          Run Tauri in development mode"
+	@echo "  tauri-build        Build Tauri app for production"
+	@echo "  tauri-build-debug  Build Tauri app in debug mode"
+	@echo "  tauri-clean        Clean Tauri build artifacts"
+	@echo ""
+	@echo "Release Targets:"
+	@echo "  release-check      Check GoReleaser configuration"
+	@echo "  release-snapshot   Build snapshot release (for testing)"
+	@echo "  release            Build and publish release (requires GITHUB_TOKEN)"
 	@echo "  help               Show this help message"
 	@echo ""
 	@echo "Environment variables:"
@@ -187,5 +261,5 @@ help:
 	@echo "Examples:"
 	@echo "  make build                           # Build without embedded CLI"
 	@echo "  make build-embedded                  # Build with embedded CLI for current platform"
-	@echo "  EMBED_CLAUDE_CODE=true make build    # Same as build-embedded"
-	@echo "  EMBED_ALL_PLATFORMS=true make build-embedded  # Embed all platforms"
+	@echo "  make tauri-dev                       # Run Tauri desktop app in dev mode"
+	@echo "  make tauri-build                     # Build Tauri desktop app"

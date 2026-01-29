@@ -72,10 +72,10 @@ func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 	}
 	h.sources["moltbot"] = &SkillSource{
 		ID:          "moltbot",
-		Name:        "MoltBot Extensions",
+		Name:        "Community Extensions",
 		URL:         "https://api.github.com/repos/moltbot/moltbot/contents/extensions",
 		Type:        "github",
-		Description: "MoltBot community extensions",
+		Description: "Community extensions",
 		Enabled:     true,
 	}
 

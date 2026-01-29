@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -156,31 +155,47 @@ func (a *CLIProxyAdapter) Chat(ctx context.Context, messages []Message, options 
 
 // ParseToolCall parses a tool call from the response.
 func (a *CLIProxyAdapter) ParseToolCall(response string) (*ToolCall, error) {
-	// Try to find JSON in the response
-	jsonPattern := regexp.MustCompile(`\{[\s\S]*?"tool"[\s\S]*?\}`)
-	match := jsonPattern.FindString(response)
+	// Try to find JSON object with "tool" key in the response
+	// Look for balanced braces
+	start := -1
+	braceCount := 0
 
-	if match == "" {
-		return nil, nil // No tool call found
+	for i, c := range response {
+		if c == '{' {
+			if braceCount == 0 {
+				start = i
+			}
+			braceCount++
+		} else if c == '}' {
+			braceCount--
+			if braceCount == 0 && start >= 0 {
+				// Found a complete JSON object
+				jsonStr := response[start : i+1]
+
+				var toolCall struct {
+					Tool  string                 `json:"tool"`
+					Input map[string]interface{} `json:"input"`
+				}
+
+				if err := json.Unmarshal([]byte(jsonStr), &toolCall); err != nil {
+					// Not valid JSON, continue searching
+					start = -1
+					continue
+				}
+
+				if toolCall.Tool != "" {
+					return &ToolCall{
+						Name:  toolCall.Tool,
+						Input: toolCall.Input,
+					}, nil
+				}
+
+				start = -1
+			}
+		}
 	}
 
-	var toolCall struct {
-		Tool  string                 `json:"tool"`
-		Input map[string]interface{} `json:"input"`
-	}
-
-	if err := json.Unmarshal([]byte(match), &toolCall); err != nil {
-		return nil, fmt.Errorf("failed to parse tool call: %w", err)
-	}
-
-	if toolCall.Tool == "" {
-		return nil, nil // Not a valid tool call
-	}
-
-	return &ToolCall{
-		Name:  toolCall.Tool,
-		Input: toolCall.Input,
-	}, nil
+	return nil, nil // No tool call found
 }
 
 // ExecuteToolCall executes a tool call and returns the result.

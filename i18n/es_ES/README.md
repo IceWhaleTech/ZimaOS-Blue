@@ -5,228 +5,253 @@
 </p>
 
 <p align="center">
-  <a href="../README.md">English</a> |
+  <strong>Runtime de agentes IA seguro, observable y local-first</strong>
+</p>
+
+<p align="center">
+  <a href="../../README.md">English</a> |
   <a href="../zh_CN/README.md">简体中文</a> |
-  <a href="../en_GB/README.md">English (UK)</a> |
-  <strong>Español (ES)</strong> |
-  <a href="../fr_FR/README.md">Français</a> |
-  <a href="../de_DE/README.md">Deutsch</a> |
-  <a href="../it_IT/README.md">Italiano</a> |
-  <a href="../pt_PT/README.md">Português (PT)</a> |
-  <a href="../pt_BR/README.md">Português (BR)</a> |
-  <a href="../ru_RU/README.md">Русский</a> |
+  <a href="../zh_TW/README.md">繁體中文</a> |
   <a href="../ja_JP/README.md">日本語</a> |
   <a href="../ko_KR/README.md">한국어</a> |
-  <a href="../nl_NL/README.md">Nederlands</a> |
-  <a href="../sv_SE/README.md">Svenska</a> |
-  <a href="../da_DK/README.md">Dansk</a> |
-  <a href="../fi_FI/README.md">Suomi</a> |
-  <a href="../no_NO/README.md">Norsk</a> |
-  <a href="../pl_PL/README.md">Polski</a> |
-  <a href="../tr_TR/README.md">Türkçe</a> |
-  <a href="../cs_CZ/README.md">Čeština</a> |
-  <a href="../el_GR/README.md">Ελληνικά</a> |
-  <a href="../ca_ES/README.md">Català</a> |
-  <a href="../ga_IE/README.md">Gaeilge</a> |
+  <a href="../de_DE/README.md">Deutsch</a> |
+  <a href="../fr_FR/README.md">Français</a> |
+  <strong>Español</strong> |
+  <a href="../it_IT/README.md">Italiano</a> |
+  <a href="../pt_BR/README.md">Português</a> |
+  <a href="../ru_RU/README.md">Русский</a> |
   <a href="../ar_SA/README.md">العربية</a> |
   <a href="../hi_IN/README.md">हिन्दी</a> |
   <a href="../th_TH/README.md">ไทย</a> |
+  <a href="../vi_VN/README.md">Tiếng Việt</a> |
   <a href="../id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="../vi_VN/README.md">Tiếng Việt</a>
-</p>
-
-> Esta es la versión en español (España) del README de ZimaOS Echo.
-
-Para la documentación completa, visita: https://echo.zimaos.com  
-El resto de este documento sigue la estructura del README principal en inglés. Consulta `../README.md` para la información más actualizada y detallada.
-
-# ZimaOS Echo
-
-<p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <a href="../tr_TR/README.md">Türkçe</a> |
+  <a href="../pl_PL/README.md">Polski</a> |
+  <a href="../nl_NL/README.md">Nederlands</a> |
+  <a href="../sv_SE/README.md">Svenska</a>
 </p>
 
 <p align="center">
-  <strong>Entorno de Ejecución de Agentes Nativo para NAS</strong>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-<p align="center">
-  <a href="../../README.md">English</a> | <a href="../zh_CN/README.md">中文</a> | <strong>Español</strong>
-</p>
+**ZimaOS Echo** es un runtime de agentes IA endurecido para NAS y dispositivos edge. Tus datos se quedan en tu hardware, cada acción es auditable y la IA se ejecuta en sandboxes aisladas.
 
-<p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="Estado CI"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="Versión GitHub"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="Licencia MIT"></a>
-</p>
-
-**ZimaOS Echo** es un entorno de ejecución de agentes de IA ligero y de alto rendimiento diseñado específicamente para dispositivos NAS y edge. Construido con Go, proporciona una plataforma lista para producción para ejecutar asistentes de IA en hardware de bajo consumo.
-
-[Documentación](https://echo.zimaos.com) · [Inicio Rápido](#inicio-rápido) · [Características](#características) · [Comparación](#comparación-con-clawdbot)
+[Documentación](https://echo.zimaos.com) · [Inicio rápido](#inicio-rápido) · [Funciones](#principios-clave) · [Comparación](#comparación-con-clawdbot)
 
 ## ¿Por qué ZimaOS Echo?
 
-ZimaOS Echo está inspirado en [clawdbot](https://github.com/clawdbot/clawdbot) pero reconstruido desde cero en Go para:
+ZimaOS Echo se inspira en [clawdbot](https://github.com/clawdbot/clawdbot) y se reconstruye en Go para:
 
-- **Menor Uso de Recursos**: Funciona en dispositivos con solo 256MB de RAM
-- **Mejor Rendimiento**: Binario nativo de Go con concurrencia eficiente basada en goroutines
-- **Despliegue Más Fácil**: Un solo binario, no requiere Node.js
-- **Optimización para NAS**: Diseñado para operación 24/7 en dispositivos de bajo consumo
+- **Menor uso de recursos**: corre en dispositivos con solo 256MB RAM
+- **Mejor rendimiento**: binario Go nativo, concurrencia con gorutinas
+- **Despliegue más fácil**: binario único, sin Node.js
+- **Optimizado para NAS**: pensado para 24/7 en dispositivos de bajo consumo
 
-## Inicio Rápido
+## Principios clave
 
-### Linux / macOS
+### Local-first
+
+- **Soberanía de datos**: todo almacenado localmente en tu NAS, sin dependencia de la nube
+- **Integración Ollama**: LLMs completamente en dispositivo, cero llamadas API externas
+- **Funciona offline**: las funciones principales sin conexión
+- **Binario único**: ~15 MB en Go nativo, sin dependencias de runtime
+
+### Observable y auditable
+
+- **Audit logging**: cada acción de IA registrada con contexto y marcas de tiempo
+- **Métricas Prometheus**: supervisión en tiempo real de las operaciones
+- **Perfilado pprof**: visibilidad de CPU, memoria y gorutinas
+- **Logs estructurados**: JSON para parseo y alertas
+
+### Endurecimiento de seguridad
+
+- **Ejecución en sandbox**: todas las llamadas a herramientas en entornos aislados
+- **RBAC**: control de acceso fino por roles
+- **WebAuthn/Passkeys**: autenticación sin contraseña FIDO2
+- **MFA/TOTP**: autenticación multifactor
+- **OIDC/OAuth 2.0**: SSO empresarial
+- **Circuit breaker**: aislamiento automático ante fallos, evita cascadas
+
+## Inicio rápido
 
 ```bash
+# Linux / macOS
 curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
 
-### Windows (PowerShell como Administrador)
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
-
-### Desde el Código Fuente
-
-```bash
+# Desde fuentes
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server
 go build -o zimaos-echo ./cmd/server
 ./zimaos-echo server
 ```
 
-## Características
+## Endurecimiento de seguridad
 
-### Características Principales
+### Stack de autenticación
 
-- 🚀 **Ligero**: Un solo binario < 15MB, memoria < 80MB
-- ⚡ **Alto Rendimiento**: Basado en Go con concurrencia de goroutines
-- 🔌 **Multi-Proveedor**: OpenAI, Anthropic, Ollama y más
-- 🛡️ **Listo para Producción**: Circuit breaker, degradación elegante, recuperación automática
-- 📊 **Observable**: Métricas Prometheus, perfilado pprof, registro estructurado
-- 🔄 **Recarga en Caliente**: Cambios de configuración sin reiniciar
-- 💾 **Copia de Seguridad/Restauración**: Copia de seguridad automatizada con restauración a un punto en el tiempo
+| Capa | Tecnología | Propósito |
+|------|------------|-----------|
+| Primaria | WebAuthn/Passkeys | Auth sin contraseña resistente al phishing |
+| Secundaria | TOTP/MFA | Contraseñas de un solo uso temporales |
+| Empresa | OIDC/OAuth 2.0 | SSO con Google, GitHub, Okta |
+| Autorización | RBAC | Control de permisos por recurso |
 
-### Integración de Hogar Inteligente
+### Protección en runtime
 
-- 🏠 **Home Assistant**: Integración nativa con la API de Home Assistant
-- 💡 **Control de Dispositivos**: Luces, interruptores, sensores, clima y más
-- 🤖 **Automatización IA**: Comandos en lenguaje natural para control del hogar inteligente
-- 📡 **Eventos en Tiempo Real**: Suscripción a cambios de estado de dispositivos vía WebSocket
+- **Aislamiento sandbox**: herramientas en entorno restringido
+- **Rate limiting**: limitación de API por tenant
+- **Aislamiento de tenants**: datos y recursos totalmente separados
+- **Audit trail**: logs inmutables de operaciones privilegiadas
 
-### Capacidades de Voz
+### Resiliencia
 
-- 🎤 **Reconocimiento de Voz**: Conversión de voz a texto basada en Whisper
-- 🔊 **Texto a Voz**: Soporte para múltiples motores TTS
-- 👂 **Activación por Voz**: Detección de palabra de activación personalizable
-- 🗣️ **Comandos de Voz**: Interacción con el asistente de IA sin manos
+- **Circuit breaker**: aislamiento automático del servicio ante fallos
+- **Degradación elegante**: estrategias de respaldo si falla un proveedor
+- **Cadena de fallback LLM**: cambio automático de proveedor
+- **Hot reload**: cambios de configuración sin reiniciar
 
-### Arquitectura Multi-Inquilino
+## Observabilidad
 
-- 👥 **Aislamiento de Inquilinos**: Aislamiento completo de datos y recursos
-- 🔐 **Autenticación por Inquilino**: Autenticación independiente por inquilino
-- 📊 **Cuotas de Recursos**: Límites de CPU, memoria y tasa de API por inquilino
-- 🎛️ **Panel de Inquilino**: Portal de gestión de autoservicio
+```yaml
+# Activar stack completo de observabilidad
+metrics:
+  enabled: true
+  endpoint: "/metrics"
 
-### Canales de Comunicación
+profiling:
+  enabled: true
+  endpoint_prefix: "/debug/pprof"
 
-- 💬 **Protocolo Matrix**: Mensajería descentralizada y cifrada de extremo a extremo
-- 📱 **Telegram/Discord/Slack**: Soporte para plataformas de mensajería populares
-- 📞 **Signal/WhatsApp**: Integración de mensajería segura
-- 🍎 **iMessage**: Soporte nativo de iMessage para macOS
+audit:
+  enabled: true
+  retention_days: 90
+```
 
-### Seguridad y Autenticación
+### Métricas expuestas
 
-- 🔑 **WebAuthn/Passkeys**: Autenticación sin contraseña con FIDO2
-- 🔐 **OIDC/OAuth 2.0**: SSO empresarial (Google, GitHub, Okta, etc.)
-- 📲 **MFA/TOTP**: Soporte para autenticación multifactor
-- 🛡️ **RBAC**: Control de acceso basado en roles detallado
-- 📝 **Registro de Auditoría**: Rastro de auditoría de seguridad completo
-- 🔒 **Sandbox**: Entorno de ejecución aislado para herramientas
-
-### Frontend
-
-- 🎨 **Panel Vue 3**: Interfaz web moderna y responsiva
-- 💬 **Interfaz de Chat**: Respuestas en streaming con soporte Markdown
-- 📈 **Monitor del Sistema**: Gráficos de uso de recursos en tiempo real
-- ⚙️ **UI de Configuración**: Gestión de configuración fácil
-
-## Comparación con Clawdbot
-
-ZimaOS Echo está inspirado en clawdbot pero optimizado para despliegue NAS/edge:
-
-| Característica | ZimaOS Echo | Clawdbot |
-|----------------|-------------|----------|
-| **Lenguaje** | Go | TypeScript/Node.js |
-| **Tamaño del Binario** | ~15MB | ~200MB+ (con node_modules) |
-| **Uso de Memoria** | ~80MB inactivo | ~200MB+ inactivo |
-| **Tiempo de Inicio** | < 1s | 3-5s |
-| **Entorno de Ejecución** | Binario nativo | Requiere Node.js |
-| **Plataforma Objetivo** | Dispositivos NAS/Edge | Escritorio/Servidor |
+- Latencia de peticiones (p50, p95, p99)
+- Uso de tokens LLM por proveedor
+- Tasas de éxito/fallo de ejecución de herramientas
+- Conteos de memoria y gorutinas
+- Transiciones de estado del circuit breaker
 
 ## Arquitectura
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  ZimaOS-Echo                     │
-├─────────────────────────────────────────────────┤
-│  Frontend Vue 3  │  REST API  │  WebSocket      │
-├─────────────────────────────────────────────────┤
-│              Entorno de Ejecución Principal (Go) │
-│  Bucle de Eventos │ Pool de Trabajadores │ Config │ Logger │
-├─────────────────────────────────────────────────┤
-│              Entorno de Ejecución de Agentes     │
-│  Proveedor LLM │ Herramientas │ Memoria │ Contexto │
-├─────────────────────────────────────────────────┤
-│              Capa de Datos                       │
-│  SQLite (Zorm) │ ECache │ Archivos              │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
 ```
 
-## Hoja de Ruta
+## Configuración de LLM local (Ollama)
 
-- [x] **v0.1.0** - Entorno de Ejecución Principal (Bucle de eventos, Pool de trabajadores, Config, Logger)
-- [x] **v0.2.0** - Entorno de Ejecución de Agentes (Proveedores LLM incl. AWS Bedrock, Herramientas, Memoria)
-- [x] **v0.3.0** - Capa API (REST, WebSocket, Streaming)
-- [x] **v0.4.0** - Sistema de Plugins (Módulos Go, soporte WASM)
-- [x] **v0.5.0** - Listo para Producción (Métricas, Perfilado, Copia de seguridad)
-- [x] **v0.6.0** - Canales de Mensajería (Telegram, Discord, Slack, WhatsApp, Signal, iMessage)
-- [x] **v0.7.0** - Seguridad (OIDC, MFA, WebAuthn, Registro de auditoría, Sandbox)
-- [x] **v0.8.0** - Rendimiento (ECache, Zorm, HTTP/2)
-- [x] **v0.9.0** - Mejoras Futuras (A2UI, Automatización del Navegador)
-- [ ] **v1.0.0** - RAG y Base de Conocimiento
-
-## Contribuir
-
-¡Las contribuciones son bienvenidas! Por favor, lee nuestra [Guía de Contribución](CONTRIBUTING.md) para más detalles.
+Ejecutar IA totalmente offline, sin llamadas API externas:
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
+# Instalar Ollama
+curl -fsSL https://ollama.com/install.sh | sh
 
-# Instalar dependencias
-cd server && go mod download
+# Descargar modelo
+ollama pull llama3.2
 
-# Ejecutar pruebas
-go test ./...
-
-# Compilar
-go build -o zimaos-echo ./cmd/server
+# Configurar Echo para LLM local
+cat >> config.yaml << EOF
+llm:
+  provider: "ollama"
+  model: "llama3.2"
+  base_url: "http://localhost:11434"
+EOF
 ```
 
-## Licencia
+## Entorno de desarrollo
 
-Licencia MIT - ver [LICENSE](LICENSE) para más detalles.
+### Requisitos
+
+| Herramienta | Versión | Instalación |
+|-------------|---------|-------------|
+| Go | 1.21+ | [golang.org](https://golang.org/dl/) |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
+| Make | - | Incluido en macOS/Linux |
+
+### Arranque en un comando
+
+```bash
+# Clonar y arrancar
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo
+```
+
+Dashboard en `http://localhost:3000`
+
+### Modo desarrollo (hot reload)
+
+```bash
+# Linux / macOS
+./dev.sh
+
+# Windows
+dev.bat
+```
+
+- Frontend: `http://localhost:5173` (API proxy al backend)
+- Backend: `http://localhost:8080`
+
+### Comandos de build
+
+```bash
+make build              # Binario único (frontend embebido)
+make build-embedded     # Build con Claude Code CLI embebido
+make build-all          # Cross-compilar para todas las plataformas
+make clean              # Limpiar artefactos de build
+```
+
+### Estructura del proyecto
+
+```
+ZimaOS-Echo/
+├── server/             # Backend Go
+│   ├── cmd/echo/       # Punto de entrada
+│   └── internal/       # Módulos núcleo
+├── web/                # Frontend Vue 3
+│   └── src/
+└── dist/               # Salida de build
+```
+
+## Comparación con Clawdbot
+
+ZimaOS Echo está inspirado en clawdbot pero optimizado para NAS/edge:
+
+| Concepto | ZimaOS Echo | Clawdbot |
+|----------|-------------|----------|
+| **Lenguaje** | Go | TypeScript/Node.js |
+| **Tamaño binario** | ~15 MB | ~200 MB+ (con node_modules) |
+| **Memoria** | ~80 MB inactivo | ~200 MB+ inactivo |
+| **Arranque** | < 1 s | 3–5 s |
+| **Runtime** | Binario nativo | Node.js requerido |
+| **Plataforma** | NAS/Edge | Escritorio/Servidor |
 
 ## Agradecimientos
 
-- [clawdbot](https://github.com/clawdbot/clawdbot) - Inspiración para el proyecto
+- [clawdbot](https://github.com/clawdbot/clawdbot) - Inspiración del proyecto
 - [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - ORM ligero
 
 ---
 
 <p align="center">
-  Hecho con ❤️ por <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
+  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
 </p>

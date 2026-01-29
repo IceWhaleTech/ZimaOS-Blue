@@ -55,13 +55,23 @@ func (p *OpenAIProvider) Models() []string {
 	if len(models) > 0 {
 		return models
 	}
-	// Fallback to default list if API is not available
+	// Return default fallback list for official OpenAI API
+	// For third-party APIs, CustomProvider overrides this with its own fallback
+	return p.getDefaultModels()
+}
+
+// getDefaultModels returns the default model list for OpenAI.
+// This can be overridden by embedded providers.
+func (p *OpenAIProvider) getDefaultModels() []string {
 	return []string{
 		"gpt-4o",
 		"gpt-4o-mini",
 		"gpt-4-turbo",
 		"gpt-4",
 		"gpt-3.5-turbo",
+		"o1",
+		"o1-mini",
+		"o1-preview",
 	}
 }
 
@@ -99,7 +109,8 @@ func (p *OpenAIProvider) fetchModels() []string {
 	defer cancel()
 
 	// Try to fetch models, handling /v1 compatibility
-	models := p.tryFetchModels(ctx, p.getAPIPath("/models"))
+	url := p.getAPIPath("/models")
+	models := p.tryFetchModels(ctx, url)
 	if models == nil {
 		// If failed, try without /v1 (for endpoints that don't use it)
 		baseURL := p.normalizeBaseURL()
@@ -155,31 +166,34 @@ func (p *OpenAIProvider) tryFetchModels(ctx context.Context, url string) []strin
 }
 
 // isChatModel checks if a model ID is likely a chat model.
+// For third-party OpenAI-compatible APIs, we use a permissive approach:
+// exclude known non-chat models rather than requiring known chat patterns.
 func (p *OpenAIProvider) isChatModel(modelID string) bool {
-	// Include common chat model patterns
-	chatPatterns := []string{
-		"gpt-", "chatgpt-", "o1-", "o3-",
-		"claude-", "llama", "mistral", "mixtral",
-		"qwen", "deepseek", "gemma", "phi",
-	}
 	modelLower := strings.ToLower(modelID)
-	for _, pattern := range chatPatterns {
-		if strings.Contains(modelLower, pattern) {
-			return true
-		}
-	}
-	// Exclude known non-chat models
+
+	// Exclude known non-chat models (embeddings, audio, image, moderation)
 	excludePatterns := []string{
-		"embedding", "embed-", "whisper", "tts-",
-		"dall-e", "davinci", "babbage", "ada",
-		"moderation", "text-",
+		// Embedding models
+		"embedding", "embed-", "text-embedding",
+		// Audio models
+		"whisper", "tts-", "audio",
+		// Image models
+		"dall-e", "stable-diffusion", "midjourney", "image",
+		// Legacy completion models (not chat)
+		"davinci", "babbage", "ada", "curie",
+		// Moderation and other utility models
+		"moderation", "content-filter",
+		// Rerank models
+		"rerank",
 	}
 	for _, pattern := range excludePatterns {
 		if strings.Contains(modelLower, pattern) {
 			return false
 		}
 	}
-	// Default to including unknown models
+
+	// Include all other models by default
+	// This is more permissive for third-party APIs that may have custom model names
 	return true
 }
 
@@ -192,13 +206,7 @@ func (p *OpenAIProvider) RefreshModels() []string {
 		return models
 	}
 	// Fallback to default list if API is not available
-	return []string{
-		"gpt-4o",
-		"gpt-4o-mini",
-		"gpt-4-turbo",
-		"gpt-4",
-		"gpt-3.5-turbo",
-	}
+	return p.getDefaultModels()
 }
 
 // openAIRequest represents the OpenAI API request format.

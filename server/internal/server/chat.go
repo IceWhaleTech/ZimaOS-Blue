@@ -7,13 +7,16 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 )
 
@@ -26,6 +29,10 @@ type ChatHandler struct {
 	compactionConfig claudecode.CompactionConfig
 	claudeCodeHandler *claudecode.Handler
 	metricsRecorder  MetricsRecorder
+	companionManager *companion.Manager
+	promptGuard      *promptguard.Detector
+	convToSession    map[string]string
+	convMu           sync.RWMutex
 }
 
 // MetricsRecorder is an interface for recording API call metrics.
@@ -42,6 +49,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		toolRegistry:     toolRegistry,
 		streamController: claudecode.NewStreamController(),
 		compactionConfig: claudecode.DefaultCompactionConfig(),
+		convToSession:    make(map[string]string),
 	}
 }
 
@@ -53,6 +61,23 @@ func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 // SetClaudeCodeHandler sets the Claude Code handler for checking enabled status.
 func (h *ChatHandler) SetClaudeCodeHandler(handler *claudecode.Handler) {
 	h.claudeCodeHandler = handler
+}
+
+// SetCompanionManager sets the companion manager for session tracking.
+func (h *ChatHandler) SetCompanionManager(manager *companion.Manager) {
+	h.companionManager = manager
+}
+
+// SetPromptGuard sets the prompt guard detector for security checks.
+func (h *ChatHandler) SetPromptGuard(detector *promptguard.Detector) {
+	h.promptGuard = detector
+}
+
+// getCompanionSessionID returns the companion session ID for a conversation.
+func (h *ChatHandler) getCompanionSessionID(convID string) string {
+	h.convMu.RLock()
+	defer h.convMu.RUnlock()
+	return h.convToSession[convID]
 }
 
 // GetProviderRegistry returns the provider registry.
@@ -79,6 +104,23 @@ func (h *ChatHandler) CreateConversation(c echo.Context) error {
 	conv, err := h.store.CreateConversation(c.Request().Context(), req.Title)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create conversation")
+	}
+
+	// Create companion session for web chat
+	if h.companionManager != nil {
+		session := &companion.Session{
+			Platform: companion.PlatformWeb,
+			UserID:   "web-user",
+			Metadata: companion.SessionMeta{
+				ClientIP: c.RealIP(),
+			},
+		}
+		created, err := h.companionManager.CreateSession(c.Request().Context(), session)
+		if err == nil && created != nil {
+			h.convMu.Lock()
+			h.convToSession[conv.ID] = created.ID
+			h.convMu.Unlock()
+		}
 	}
 
 	return c.JSON(http.StatusCreated, conv)
@@ -188,6 +230,27 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "provider is required")
 	}
 
+	// Check for prompt injection
+	if h.promptGuard != nil {
+		result := h.promptGuard.Detect(req.Message)
+		if result.IsThreat {
+			// Record security event to companion
+			if h.companionManager != nil {
+				sessionID := h.getCompanionSessionID(convID)
+				if sessionID != "" {
+					h.emitSecurityEvent(c.Request().Context(), sessionID, result)
+				}
+			}
+			// Return error to user
+			return c.JSON(http.StatusForbidden, map[string]interface{}{
+				"success":      false,
+				"blocked":      true,
+				"message":      "Message blocked due to security policy",
+				"threat_level": result.ThreatLevel.String(),
+			})
+		}
+	}
+
 	// Get provider
 	provider := h.providers.Get(req.Provider)
 	if provider == nil {
@@ -201,6 +264,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
+	}
+
+	// Emit message event to companion
+	if h.companionManager != nil {
+		sessionID := h.getCompanionSessionID(convID)
+		if sessionID != "" {
+			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound")
+		}
 	}
 
 	// Get conversation history
@@ -293,10 +364,6 @@ func (h *ChatHandler) ListProviders(c echo.Context) error {
 	providers := make([]ProviderInfo, 0, len(names))
 
 	for _, name := range names {
-		// Filter out claude-code provider if it's disabled
-		if name == "claude-code" && h.claudeCodeHandler != nil && !h.claudeCodeHandler.IsEnabled() {
-			continue
-		}
 		provider := h.providers.Get(name)
 		providers = append(providers, ProviderInfo{
 			Name:   name,
@@ -372,6 +439,27 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "provider is required")
 	}
 
+	// Check for prompt injection
+	if h.promptGuard != nil {
+		result := h.promptGuard.Detect(req.Message)
+		if result.IsThreat {
+			// Record security event to companion
+			if h.companionManager != nil {
+				sessionID := h.getCompanionSessionID(convID)
+				if sessionID != "" {
+					h.emitSecurityEvent(c.Request().Context(), sessionID, result)
+				}
+			}
+			// Return error to user
+			return c.JSON(http.StatusForbidden, map[string]interface{}{
+				"success":      false,
+				"blocked":      true,
+				"message":      "Message blocked due to security policy",
+				"threat_level": result.ThreatLevel.String(),
+			})
+		}
+	}
+
 	// Get provider
 	provider := h.providers.Get(req.Provider)
 	if provider == nil {
@@ -389,6 +477,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message: "+err.Error())
+	}
+
+	// Emit message event to companion
+	if h.companionManager != nil {
+		sessionID := h.getCompanionSessionID(convID)
+		if sessionID != "" {
+			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound")
+		}
 	}
 
 	// Get conversation history
@@ -616,31 +712,16 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, targetLang 
 // generateTitleWithLLM uses an LLM to generate a concise conversation title.
 // targetLang specifies the language for the generated title (e.g., "en", "zh", "ja").
 // It iterates through available providers and uses the first suitable one.
-// For claude-code provider, it extracts API credentials and uses Claude API directly.
 func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) string {
 	// Find a suitable provider for title generation
 	// Prefer direct API providers over CLI-based ones for speed
 	var provider llm.Provider
 
 	// Try providers in order of preference
-	providerNames := []string{"claude", "openai", "ollama", "claude-code"}
+	providerNames := []string{"claude", "openai", "ollama"}
 	for _, name := range providerNames {
 		p := h.providers.Get(name)
 		if p == nil {
-			continue
-		}
-
-		// For claude-code, try to extract API credentials and use Claude API directly
-		if name == "claude-code" {
-			if ccProvider, ok := p.(*claudecode.Provider); ok {
-				apiKey, baseURL := ccProvider.GetAPICredentials()
-				if apiKey != "" {
-					// Create a temporary Claude provider with the same credentials
-					provider = llm.NewClaudeProvider(apiKey, baseURL)
-					break
-				}
-			}
-			// No API key configured for claude-code, skip it
 			continue
 		}
 
@@ -863,4 +944,66 @@ func (h *ChatHandler) CancelAllStreams(c echo.Context) error {
 func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, provider llm.Provider) ([]llm.Message, string, error) {
 	compactor := claudecode.NewCompactor(h.compactionConfig, provider)
 	return compactor.CompactMessages(ctx, messages)
+}
+
+// emitMessageEvent emits a message event to the companion system.
+func (h *ChatHandler) emitMessageEvent(ctx context.Context, sessionID, content, direction string) {
+	if h.companionManager == nil {
+		return
+	}
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventMessageReceived,
+		Platform:  companion.PlatformWeb,
+		Message: &companion.MessageEvent{
+			Direction: direction,
+			Content:   content,
+		},
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// emitSecurityEvent emits a security threat event to the companion system.
+func (h *ChatHandler) emitSecurityEvent(ctx context.Context, sessionID string, result *promptguard.DetectionResult) {
+	if h.companionManager == nil {
+		return
+	}
+
+	threatTypes := make([]string, 0, len(result.Detections))
+	patterns := make([]string, 0, len(result.Detections))
+	for _, d := range result.Detections {
+		threatTypes = append(threatTypes, d.Type)
+		patterns = append(patterns, d.Pattern)
+	}
+
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventSecurityThreat,
+		Platform:  companion.PlatformWeb,
+		Security: &companion.SecurityEvent{
+			ThreatLevel:      mapPromptGuardThreatLevel(result.ThreatLevel),
+			ThreatScore:      result.Score,
+			ThreatTypes:      threatTypes,
+			DetectedPatterns: patterns,
+			Action:           "blocked",
+			Source:           "prompt_guard",
+		},
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// mapPromptGuardThreatLevel maps promptguard.ThreatLevel to companion.ThreatLevel.
+func mapPromptGuardThreatLevel(level promptguard.ThreatLevel) companion.ThreatLevel {
+	switch level {
+	case promptguard.ThreatLow:
+		return companion.ThreatLevelLow
+	case promptguard.ThreatMedium:
+		return companion.ThreatLevelMedium
+	case promptguard.ThreatHigh:
+		return companion.ThreatLevelHigh
+	case promptguard.ThreatCritical:
+		return companion.ThreatLevelCritical
+	default:
+		return companion.ThreatLevelNone
+	}
 }

@@ -23,57 +23,29 @@ func (p *CustomProvider) Name() string {
 }
 
 // Models returns the list of available models.
-// For custom providers, we try to fetch from the API first,
-// then fall back to a common model list.
+// For custom providers, we try to fetch from the API.
+// Returns empty list if API is not configured or fetch fails.
 func (p *CustomProvider) Models() []string {
 	// Try to fetch models from API (inherited from OpenAIProvider)
 	models := p.OpenAIProvider.fetchModels()
 	if len(models) > 0 {
 		return models
 	}
-	// Fallback to default list for custom providers
-	return []string{
-		"default",
-		"gpt-4o",
-		"gpt-4o-mini",
-		"gpt-4-turbo",
-		"gpt-4",
-		"gpt-3.5-turbo",
-		"llama3",
-		"llama3.1",
-		"llama3.2",
-		"mistral",
-		"mixtral",
-		"qwen2.5",
-		"deepseek-chat",
-		"deepseek-coder",
-	}
+	// Return empty list - user needs to configure API key and URL first
+	return []string{}
 }
 
 // RefreshModels clears the cached models and fetches fresh list.
-// Falls back to default models if API fetch fails.
+// Returns empty list if API fetch fails.
 func (p *CustomProvider) RefreshModels() []string {
-	models := p.OpenAIProvider.RefreshModels()
+	// Clear cache and fetch directly, bypassing OpenAIProvider's fallback
+	p.cachedModels = nil
+	models := p.fetchModels()
 	if len(models) > 0 {
 		return models
 	}
-	// Fallback to default list for custom providers
-	return []string{
-		"default",
-		"gpt-4o",
-		"gpt-4o-mini",
-		"gpt-4-turbo",
-		"gpt-4",
-		"gpt-3.5-turbo",
-		"llama3",
-		"llama3.1",
-		"llama3.2",
-		"mistral",
-		"mixtral",
-		"qwen2.5",
-		"deepseek-chat",
-		"deepseek-coder",
-	}
+	// Return empty list - API fetch failed
+	return []string{}
 }
 
 // Chat sends a chat completion request.

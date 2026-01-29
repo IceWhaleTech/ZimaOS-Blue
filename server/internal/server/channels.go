@@ -156,10 +156,11 @@ type ChannelConfigStore struct {
 
 // ChannelConfig represents a channel's configuration.
 type ChannelConfig struct {
-	ID      string            `json:"id"`
-	Enabled bool              `json:"enabled"`
-	Status  string            `json:"status"`
-	Config  map[string]string `json:"config"`
+	ID        string            `json:"id"`
+	Enabled   bool              `json:"enabled"`
+	Status    string            `json:"status"`
+	Config    map[string]string `json:"config"`
+	LastError string            `json:"last_error,omitempty"`
 }
 
 // NewChannelConfigStore creates a new channel config store.
@@ -225,14 +226,39 @@ func (s *ChannelConfigStore) save() error {
 	return os.WriteFile(configPath, data, 0644)
 }
 
+// GetEnabled returns all enabled channel configurations.
+func (s *ChannelConfigStore) GetEnabled() []*ChannelConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]*ChannelConfig, 0)
+	for _, cfg := range s.configs {
+		if cfg.Enabled {
+			result = append(result, cfg)
+		}
+	}
+	return result
+}
+
 // ChannelConfigHandler handles channel configuration API endpoints.
 type ChannelConfigHandler struct {
-	store *ChannelConfigStore
+	store   *ChannelConfigStore
+	manager *channel.Manager
+	factory *ChannelFactory
 }
 
 // NewChannelConfigHandler creates a new channel config handler.
 func NewChannelConfigHandler(store *ChannelConfigStore) *ChannelConfigHandler {
 	return &ChannelConfigHandler{store: store}
+}
+
+// SetManager sets the channel manager for connection lifecycle management.
+func (h *ChannelConfigHandler) SetManager(manager *channel.Manager) {
+	h.manager = manager
+}
+
+// SetFactory sets the channel factory for creating channel instances.
+func (h *ChannelConfigHandler) SetFactory(factory *ChannelFactory) {
+	h.factory = factory
 }
 
 // ListChannelConfigs lists all channel configurations.
@@ -274,6 +300,10 @@ func (h *ChannelConfigHandler) UpdateChannelConfig(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
+	// Get existing config to check previous enabled state
+	oldCfg, _ := h.store.Get(id)
+	wasEnabled := oldCfg != nil && oldCfg.Enabled
+
 	cfg := &ChannelConfig{
 		ID:      id,
 		Enabled: req.Enabled,
@@ -281,8 +311,79 @@ func (h *ChannelConfigHandler) UpdateChannelConfig(c echo.Context) error {
 		Config:  req.Config,
 	}
 
+	// Save configuration first
 	if err := h.store.Set(id, cfg); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save configuration")
+	}
+
+	// Handle connection lifecycle if manager is available
+	if h.manager != nil {
+		ctx := c.Request().Context()
+
+		// If was enabled, stop and unregister the old connection first
+		if wasEnabled {
+			if ch, exists := h.manager.Get(id); exists {
+				if ch.IsConnected() {
+					_ = h.manager.StopChannel(ctx, id)
+				}
+				_ = h.manager.Unregister(id)
+			}
+		}
+
+		// If now enabled, create, register and start the connection
+		if req.Enabled {
+			cfg.Status = "connecting"
+
+			// Create and register channel if factory is available
+			if h.factory != nil {
+				ch, err := h.factory.CreateChannel(cfg)
+				if err != nil {
+					cfg.Status = "error"
+					cfg.LastError = err.Error()
+					_ = h.store.Set(id, cfg)
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": true,
+						"message": "Configuration saved but failed to create channel",
+						"channel": cfg,
+					})
+				}
+				if ch == nil {
+					// Unknown channel type
+					cfg.Status = "error"
+					cfg.LastError = "unsupported channel type: " + id
+					_ = h.store.Set(id, cfg)
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": true,
+						"message": "Configuration saved but channel type not supported",
+						"channel": cfg,
+					})
+				}
+				if err := h.manager.Register(ch); err != nil {
+					cfg.Status = "error"
+					cfg.LastError = err.Error()
+					_ = h.store.Set(id, cfg)
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": true,
+						"message": "Configuration saved but failed to register channel",
+						"channel": cfg,
+					})
+				}
+			}
+
+			// Start the channel
+			if err := h.manager.StartChannel(ctx, id); err != nil {
+				cfg.Status = "error"
+				cfg.LastError = err.Error()
+			} else {
+				// Get actual status from manager
+				if ch, exists := h.manager.Get(id); exists {
+					info := ch.Info()
+					cfg.Status = string(info.Status)
+				}
+			}
+			// Update stored config with new status
+			_ = h.store.Set(id, cfg)
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -316,12 +417,86 @@ func (h *ChannelConfigHandler) ToggleChannel(c echo.Context) error {
 		}
 	}
 
+	wasEnabled := cfg.Enabled
 	cfg.Enabled = req.Enabled
-	// Update status based on enabled state
-	if req.Enabled {
-		cfg.Status = "connecting"
+	cfg.LastError = "" // Clear previous error
+
+	// Handle connection lifecycle if manager is available
+	if h.manager != nil {
+		ctx := c.Request().Context()
+
+		if req.Enabled && !wasEnabled {
+			// Enabling: create, register and start the connection
+			cfg.Status = "connecting"
+
+			// Check if channel is already registered
+			_, exists := h.manager.Get(id)
+			if !exists && h.factory != nil {
+				// Create and register channel
+				ch, err := h.factory.CreateChannel(cfg)
+				if err != nil {
+					cfg.Status = "error"
+					cfg.LastError = err.Error()
+					_ = h.store.Set(id, cfg)
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": false,
+						"enabled": cfg.Enabled,
+						"status":  cfg.Status,
+						"channel": cfg,
+					})
+				}
+				if ch == nil {
+					// Unknown channel type
+					cfg.Status = "error"
+					cfg.LastError = "unsupported channel type: " + id
+					_ = h.store.Set(id, cfg)
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": false,
+						"enabled": cfg.Enabled,
+						"status":  cfg.Status,
+						"channel": cfg,
+					})
+				}
+				if err := h.manager.Register(ch); err != nil {
+					cfg.Status = "error"
+					cfg.LastError = err.Error()
+					_ = h.store.Set(id, cfg)
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"success": false,
+						"enabled": cfg.Enabled,
+						"status":  cfg.Status,
+						"channel": cfg,
+					})
+				}
+			}
+
+			// Start the channel
+			if err := h.manager.StartChannel(ctx, id); err != nil {
+				cfg.Status = "error"
+				cfg.LastError = err.Error()
+			} else {
+				// Get actual status from manager
+				if ch, exists := h.manager.Get(id); exists {
+					info := ch.Info()
+					cfg.Status = string(info.Status)
+				}
+			}
+		} else if !req.Enabled && wasEnabled {
+			// Disabling: stop the connection
+			if ch, exists := h.manager.Get(id); exists && ch.IsConnected() {
+				if err := h.manager.StopChannel(ctx, id); err != nil {
+					cfg.LastError = err.Error()
+				}
+			}
+			cfg.Status = "disconnected"
+		}
 	} else {
-		cfg.Status = "disconnected"
+		// No manager, just update status based on enabled state
+		if req.Enabled {
+			cfg.Status = "connecting"
+		} else {
+			cfg.Status = "disconnected"
+		}
 	}
 
 	if err := h.store.Set(id, cfg); err != nil {

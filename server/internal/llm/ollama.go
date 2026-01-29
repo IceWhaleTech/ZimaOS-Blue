@@ -41,25 +41,15 @@ func (p *OllamaProvider) Name() string {
 }
 
 // Models returns the list of commonly available models.
-// In production, this could query /api/tags for installed models.
+// Returns empty list if Ollama is not running or API fetch fails.
 func (p *OllamaProvider) Models() []string {
 	// Try to fetch models from Ollama API
 	models := p.fetchModels()
 	if len(models) > 0 {
 		return models
 	}
-	// Fallback to default list if API is not available
-	return []string{
-		"llama3.2",
-		"llama3.1",
-		"llama3",
-		"mistral",
-		"mixtral",
-		"codellama",
-		"phi3",
-		"gemma2",
-		"qwen2.5",
-	}
+	// Return empty list - Ollama is not running or not configured
+	return []string{}
 }
 
 // fetchModels fetches the list of installed models from Ollama API.
@@ -108,25 +98,15 @@ func (p *OllamaProvider) fetchModels() []string {
 }
 
 // RefreshModels clears the cached models and fetches fresh list.
-// Falls back to default models if API fetch fails.
+// Returns empty list if API fetch fails.
 func (p *OllamaProvider) RefreshModels() []string {
 	p.cachedModels = nil
 	models := p.fetchModels()
 	if len(models) > 0 {
 		return models
 	}
-	// Fallback to default list if API is not available
-	return []string{
-		"llama3.2",
-		"llama3.1",
-		"llama3",
-		"mistral",
-		"mixtral",
-		"codellama",
-		"phi3",
-		"gemma2",
-		"qwen2.5",
-	}
+	// Return empty list - Ollama is not running
+	return []string{}
 }
 
 // ollamaRequest represents the Ollama API request format.

@@ -10,24 +10,32 @@ import (
 )
 
 type Config struct {
-	Server      ServerConfig      `mapstructure:"server"`
-	Log         LogConfig         `mapstructure:"log"`
-	Worker      WorkerConfig      `mapstructure:"worker"`
-	Resources   ResourcesConfig   `mapstructure:"resources"`
-	Cgroup      CgroupConfig      `mapstructure:"cgroup"`
-	Channels    channel.Config    `mapstructure:"channels"`
-	Performance PerformanceConfig `mapstructure:"performance"`
-	Security    SecurityConfig    `mapstructure:"security"`
-	LLM         LLMConfig         `mapstructure:"llm"`
-	Session     SessionConfig     `mapstructure:"session"`
-	Embedding   EmbeddingConfig   `mapstructure:"embedding"`
-	Memory      MemoryConfig      `mapstructure:"memory"`
-	Grayscale   GrayscaleConfig   `mapstructure:"grayscale"`
-	Companion   CompanionConfig   `mapstructure:"companion"`
-	ClaudeCode  ClaudeCodeConfig  `mapstructure:"claudecode"`
+	Server        ServerConfig        `mapstructure:"server"`
+	Log           LogConfig           `mapstructure:"log"`
+	Worker        WorkerConfig        `mapstructure:"worker"`
+	Resources     ResourcesConfig     `mapstructure:"resources"`
+	Cgroup        CgroupConfig        `mapstructure:"cgroup"`
+	Channels      channel.Config      `mapstructure:"channels"`
+	Performance   PerformanceConfig   `mapstructure:"performance"`
+	Security      SecurityConfig      `mapstructure:"security"`
+	LLM           LLMConfig           `mapstructure:"llm"`
+	Session       SessionConfig       `mapstructure:"session"`
+	Embedding     EmbeddingConfig     `mapstructure:"embedding"`
+	Memory        MemoryConfig        `mapstructure:"memory"`
+	Grayscale     GrayscaleConfig     `mapstructure:"grayscale"`
+	Companion     CompanionConfig     `mapstructure:"companion"`
+	ClaudeCodeCLI ClaudeCodeCLIConfig `mapstructure:"claude_code_cli"` // v0.10.3: Separated from LLM
+	FirstRun      FirstRunConfig      `mapstructure:"first_run"`       // v0.10.3
+	CCSwitch      CCSwitchConfig      `mapstructure:"cc_switch"`       // v0.10.3
+	Statistics    StatisticsConfig    `mapstructure:"statistics"`      // v0.10.3
+	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
+
+	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
+	ClaudeCode ClaudeCodeConfig `mapstructure:"claudecode"`
 }
 
 // ClaudeCodeConfig holds Claude Code CLI integration configuration (v0.10).
+// Deprecated: Use ClaudeCodeCLIConfig instead.
 type ClaudeCodeConfig struct {
 	Enabled      bool                      `mapstructure:"enabled"`
 	Command      string                    `mapstructure:"command"`
@@ -625,7 +633,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("companion.performance.event_buffer_size", 10000)
 	v.SetDefault("companion.performance.batch_write_interval", "1s")
 
-	// Claude Code CLI defaults (v0.10)
+	// Claude Code CLI defaults (v0.10) - Deprecated
 	v.SetDefault("claudecode.enabled", false)
 	v.SetDefault("claudecode.command", "claude")
 	v.SetDefault("claudecode.workspace_dir", ".")
@@ -650,4 +658,75 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("claudecode.backend.system_prompt_when", "first")
 	v.SetDefault("claudecode.backend.clear_env", []string{"ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_OLD"})
 	v.SetDefault("claudecode.backend.serialize", true)
+
+	// Claude Code CLI defaults (v0.10.3) - New separated configuration
+	// Master switch - strongly recommended to keep enabled
+	v.SetDefault("claude_code_cli.enabled", true)
+	// Installation settings
+	v.SetDefault("claude_code_cli.install.path", "")
+	v.SetDefault("claude_code_cli.install.auto_update", false)
+	v.SetDefault("claude_code_cli.install.verify_checksum", true)
+	// Download settings
+	v.SetDefault("claude_code_cli.download.base_url", "https://storage.googleapis.com/anthropic-public/claude-code")
+	v.SetDefault("claude_code_cli.download.cache_dir", "")
+	// Feature toggles (only effective when enabled=true)
+	v.SetDefault("claude_code_cli.features.skills", true)
+	v.SetDefault("claude_code_cli.features.tool_calling", true)
+	v.SetDefault("claude_code_cli.features.file_operations", true)
+	v.SetDefault("claude_code_cli.features.terminal_commands", true)
+	v.SetDefault("claude_code_cli.features.mcp_integration", true)
+	v.SetDefault("claude_code_cli.features.agent_mode", true)
+	v.SetDefault("claude_code_cli.features.project_context", true)
+	// Backend settings (for advanced users)
+	v.SetDefault("claude_code_cli.backend.command", "claude")
+	v.SetDefault("claude_code_cli.backend.workspace_dir", ".")
+	v.SetDefault("claude_code_cli.backend.default_model", "sonnet")
+	v.SetDefault("claude_code_cli.backend.timeout", "5m")
+	v.SetDefault("claude_code_cli.backend.session_ttl", "24h")
+	v.SetDefault("claude_code_cli.backend.args", []string{"-p", "--output-format", "text", "--dangerously-skip-permissions"})
+	v.SetDefault("claude_code_cli.backend.resume_args", []string{"-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"})
+	v.SetDefault("claude_code_cli.backend.output", "text")
+	v.SetDefault("claude_code_cli.backend.resume_output", "text")
+	v.SetDefault("claude_code_cli.backend.input", "arg")
+	v.SetDefault("claude_code_cli.backend.max_prompt_arg_chars", 100000)
+	v.SetDefault("claude_code_cli.backend.model_arg", "--model")
+	v.SetDefault("claude_code_cli.backend.model_aliases", map[string]string{
+		"opus":   "opus",
+		"sonnet": "sonnet",
+		"haiku":  "haiku",
+	})
+	v.SetDefault("claude_code_cli.backend.session_arg", "--session-id")
+	v.SetDefault("claude_code_cli.backend.session_mode", "always")
+	v.SetDefault("claude_code_cli.backend.system_prompt_arg", "--append-system-prompt")
+	v.SetDefault("claude_code_cli.backend.system_prompt_mode", "append")
+	v.SetDefault("claude_code_cli.backend.system_prompt_when", "first")
+	v.SetDefault("claude_code_cli.backend.serialize", true)
+
+	// First-run wizard defaults (v0.10.3)
+	v.SetDefault("first_run.enabled", true)
+	v.SetDefault("first_run.show_provider_detection", true)
+	v.SetDefault("first_run.show_cli_download", true)
+	v.SetDefault("first_run.allow_skip", true)
+	v.SetDefault("first_run.recommend_cli", true)
+
+	// cc-switch integration defaults (v0.10.3)
+	v.SetDefault("cc_switch.enabled", true)
+	v.SetDefault("cc_switch.config_path", "")
+	v.SetDefault("cc_switch.sync_profiles", true)
+
+	// Statistics collection defaults (v0.10.3)
+	v.SetDefault("statistics.enabled", true)
+	v.SetDefault("statistics.opt_in_required", true)
+	v.SetDefault("statistics.storage_path", "")
+	v.SetDefault("statistics.retention_days", 90)
+
+	// Tool calling adapter defaults (v0.10.3)
+	v.SetDefault("tool_calling.auto_detect", true)
+	v.SetDefault("tool_calling.detection_timeout", "5s")
+	v.SetDefault("tool_calling.adapters.cli_proxy.enabled", true)
+	v.SetDefault("tool_calling.adapters.cli_proxy.prompt_template", "default")
+	v.SetDefault("tool_calling.adapters.cc_nexus.enabled", true)
+	v.SetDefault("tool_calling.adapters.cc_nexus.schema_mapping", "auto")
+	v.SetDefault("tool_calling.provider_overrides.ollama.tool_calling", "adapter")
+	v.SetDefault("tool_calling.provider_overrides.custom.tool_calling", "auto")
 }

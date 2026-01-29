@@ -555,8 +555,6 @@ export function useFormFillerWidget() {
 
     inputs.forEach((element) => {
       if (!isFillableField(element)) return
-      // Skip if already has value
-      if (element.value.trim()) return
 
       const value = findValueForField(element, usedKeys)
       if (!value) return

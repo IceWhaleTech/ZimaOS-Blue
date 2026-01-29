@@ -1,0 +1,140 @@
+# GoReleaser configuration for ZimaOS-Echo
+# Documentation: https://goreleaser.com
+
+version: 2
+
+project_name: zimaos-echo
+
+before:
+  hooks:
+    # Build frontend before Go build
+    - cmd: npm ci
+      dir: web
+    - cmd: npm run build
+      dir: web
+    # Copy frontend dist to embed directory
+    - cmd: rm -rf server/internal/web/dist
+    - cmd: mkdir -p server/internal/web/dist
+    - cmd: cp -r web/dist/* server/internal/web/dist/
+    # Prepare Claude Code CLI directory
+    - cmd: mkdir -p server/internal/claudecode/bin
+    - cmd: touch server/internal/claudecode/bin/.gitkeep
+
+builds:
+  - id: zimaos-echo
+    main: ./cmd/echo
+    dir: server
+    binary: zimaos-echo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.gitCommit={{.ShortCommit}}
+      - -X main.buildTime={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - config.example.yaml
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Refactor
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: IceWhaleTech
+    name: ZimaOS-Echo
+  draft: true
+  prerelease: auto
+  mode: replace
+  name_template: "ZimaOS Echo v{{.Version}}"
+  header: |
+    ## ZimaOS Echo v{{.Version}}
+
+    This release includes the following changes:
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/IceWhaleTech/ZimaOS-Echo/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ### Installation
+
+    Download the appropriate binary for your platform:
+    - **Linux x64**: `zimaos-echo_{{.Version}}_linux_x64.tar.gz`
+    - **Linux ARM64**: `zimaos-echo_{{.Version}}_linux_arm64.tar.gz`
+    - **macOS x64**: `zimaos-echo_{{.Version}}_darwin_x64.tar.gz`
+    - **macOS ARM64**: `zimaos-echo_{{.Version}}_darwin_arm64.tar.gz`
+    - **Windows x64**: `zimaos-echo_{{.Version}}_windows_x64.zip`
+
+    ### Quick Start
+
+    ```bash
+    # Extract and run
+    tar -xzf zimaos-echo_{{.Version}}_<platform>.tar.gz
+    ./zimaos-echo
+    ```
+
+    Then open http://localhost:8080 in your browser.
+
+# Announce release (optional, can be enabled later)
+# announce:
+#   discord:
+#     enabled: true
+#     message_template: 'ZimaOS Echo {{.Tag}} is out! Check it out at {{ .ReleaseURL }}'

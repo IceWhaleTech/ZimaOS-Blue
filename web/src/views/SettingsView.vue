@@ -6,8 +6,8 @@ import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
 import { providerSettingsApi } from '@/api/providers'
 import type { ProviderConfigResponse } from '@/api/providers'
-import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import type { LocaleKey } from '@/i18n'
+import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -32,11 +32,6 @@ const providerMeta: Record<string, { requiresApiKey: boolean; defaultUrl: string
     requiresApiKey: true,
     defaultUrl: 'https://api.anthropic.com',
     description: 'providerSettings.claudeDesc',
-  },
-  'claude-code': {
-    requiresApiKey: true,
-    defaultUrl: 'https://api.anthropic.com',
-    description: 'providerSettings.claudeCodeDesc',
   },
   openai: {
     requiresApiKey: true,
@@ -73,7 +68,8 @@ const timezones = computed(() => {
 const temperatureDisplay = computed(() => settingsStore.temperature.toFixed(1))
 
 // Computed
-const isClaudeCodeProvider = computed(() => settingsStore.selectedProvider === 'claude-code')
+const isCustomProvider = computed(() => settingsStore.selectedProvider === 'custom')
+
 const currentProviderConfig = computed(() => {
   return providerConfigs.value.find(p => p.name === settingsStore.selectedProvider)
 })
@@ -138,6 +134,16 @@ function handleTimezoneChange(timezone: string) {
   showSaveStatus(t('settings.timezoneSaved'))
 }
 
+// Refresh models for current provider
+async function handleRefreshModels() {
+  try {
+    await settingsStore.refreshProviderModels()
+    showSaveStatus(t('settings.modelsRefreshed'))
+  } catch {
+    // Error is handled in the store
+  }
+}
+
 // Provider settings functions
 async function loadProviderConfigs() {
   try {
@@ -192,6 +198,13 @@ async function saveProviderConfig() {
     // Clear API key input after save
     apiKey.value = ''
     showSaveStatus(t('providerSettings.saved'))
+
+    // Auto-refresh models after saving config (especially for custom providers)
+    try {
+      await settingsStore.refreshProviderModels()
+    } catch {
+      // Ignore refresh errors, config was saved successfully
+    }
   } catch (e) {
     providerError.value = t('providerSettings.saveError')
     showSaveStatus(t('providerSettings.saveError'))
@@ -209,10 +222,17 @@ async function testProviderConnection() {
     providerError.value = null
 
     const response = await providerSettingsApi.test(settingsStore.selectedProvider)
+    console.log('Test response:', response.data)
     if (response.data.success) {
-      showSaveStatus(t('providerSettings.testSuccess'))
+      const messageKey = response.data.messageKey || 'testSuccess'
+      const message = t(`providerSettings.${messageKey}`)
+      console.log('Success message:', messageKey, '->', message)
+      showSaveStatus(message)
     } else {
-      showSaveStatus(response.data.message || t('providerSettings.testFailed'))
+      const messageKey = response.data.messageKey
+      const message = messageKey ? t(`providerSettings.${messageKey}`) : t('providerSettings.testFailed')
+      console.log('Failed message:', messageKey, '->', message)
+      showSaveStatus(message)
     }
   } catch (e) {
     providerError.value = t('providerSettings.testError')
@@ -247,12 +267,14 @@ onMounted(async () => {
     <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ t('settings.title') }}</h1>
 
     <!-- Save status notification -->
-    <div
-      v-if="saveStatus"
-      class="fixed top-20 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50"
-    >
-      {{ saveStatus }}
-    </div>
+    <Transition name="notification">
+      <div
+        v-if="saveStatus"
+        class="fixed top-20 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-xl z-[9999]"
+      >
+        {{ saveStatus }}
+      </div>
+    </Transition>
 
     <!-- General Settings -->
     <section class="mb-6 sm:mb-8">
@@ -399,10 +421,29 @@ onMounted(async () => {
           </select>
         </div>
 
-        <!-- Model selection -->
-        <div>
-          <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.model') }}</label>
+        <!-- Model selection (for non-custom providers, show before config) -->
+        <div v-if="!isCustomProvider">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm text-gray-500 dark:text-slate-400">{{ t('settings.model') }}</label>
+            <button
+              class="text-xs text-accent hover:text-accent-light transition-colors cursor-pointer flex items-center gap-1"
+              :disabled="settingsStore.refreshing"
+              @click="handleRefreshModels"
+            >
+              <svg
+                class="w-3 h-3"
+                :class="{ 'animate-spin': settingsStore.refreshing }"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {{ t('chat.refreshModels') }}
+            </button>
+          </div>
           <select
+            v-if="settingsStore.availableModels.length > 0"
             :value="settingsStore.selectedModel"
             data-form-filler-ignore="true"
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
@@ -416,6 +457,9 @@ onMounted(async () => {
               {{ model }}
             </option>
           </select>
+          <p v-else class="text-sm text-yellow-600 dark:text-yellow-400 italic">
+            {{ t('providerSettings.noModelsAvailable') }}
+          </p>
         </div>
 
         <!-- Provider status -->
@@ -435,7 +479,7 @@ onMounted(async () => {
         </div>
 
         <!-- Provider description -->
-        <p v-if="currentMeta.description && !isClaudeCodeProvider" class="text-sm text-gray-500 dark:text-slate-400">
+        <p v-if="currentMeta.description" class="text-sm text-gray-500 dark:text-slate-400">
           {{ t(currentMeta.description) }}
         </p>
 
@@ -542,10 +586,59 @@ onMounted(async () => {
             </button>
           </div>
 
-          <!-- Claude Code CLI Settings (shown when claude-code provider is selected) -->
-          <ClaudeCodeSettings v-if="isClaudeCodeProvider" @status-change="showSaveStatus" />
+          <!-- Model selection (for custom provider, show after config is saved) -->
+          <div v-if="isCustomProvider && currentProviderConfig.has_api_key" class="pt-4 border-t border-gray-200 dark:border-slate-600">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm text-gray-500 dark:text-slate-400">{{ t('settings.model') }}</label>
+              <button
+                class="text-xs text-accent hover:text-accent-light transition-colors cursor-pointer flex items-center gap-1"
+                :disabled="settingsStore.refreshing"
+                @click="handleRefreshModels"
+              >
+                <svg
+                  class="w-3 h-3"
+                  :class="{ 'animate-spin': settingsStore.refreshing }"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {{ t('chat.refreshModels') }}
+              </button>
+            </div>
+            <select
+              :value="settingsStore.selectedModel"
+              data-form-filler-ignore="true"
+              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+              @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="model in settingsStore.availableModels"
+                :key="model"
+                :value="model"
+              >
+                {{ model }}
+              </option>
+            </select>
+            <p v-if="settingsStore.availableModels.length === 1 && settingsStore.availableModels[0] === 'default'" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+              {{ t('providerSettings.clickRefreshToLoadModels') }}
+            </p>
+          </div>
+
+          <!-- Hint for custom provider without API key -->
+          <div v-if="isCustomProvider && !currentProviderConfig.has_api_key" class="pt-4 border-t border-gray-200 dark:border-slate-600">
+            <p class="text-sm text-gray-500 dark:text-slate-400 italic">
+              {{ t('providerSettings.saveConfigToSelectModel') }}
+            </p>
+          </div>
         </div>
       </div>
+    </section>
+
+    <!-- Claude Code CLI Settings -->
+    <section class="mb-6 sm:mb-8">
+      <ClaudeCodeSettings @status-change="showSaveStatus" />
     </section>
 
     <!-- Model Parameters -->
@@ -636,5 +729,21 @@ input[type='range']::-moz-range-thumb {
   border-radius: 50%;
   cursor: pointer;
   border: none;
+}
+
+/* Notification transition */
+.notification-enter-active,
+.notification-leave-active {
+  transition: all 0.3s ease;
+}
+
+.notification-enter-from {
+  opacity: 0;
+  transform: translateX(100px);
+}
+
+.notification-leave-to {
+  opacity: 0;
+  transform: translateX(100px);
 }
 </style>

@@ -763,4 +763,3 @@ onMounted(() => {
   color: var(--text-primary);
 }
 </style>
-</template>

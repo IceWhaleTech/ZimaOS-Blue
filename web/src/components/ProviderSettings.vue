@@ -80,8 +80,8 @@ async function loadProviders() {
     error.value = null
     const response = await providerSettingsApi.list()
     providers.value = response.data
-    // Select first provider by default, excluding claude-code
-    const firstProvider = providers.value.find(p => p.name !== 'claude-code')
+    // Select first provider by default
+    const firstProvider = providers.value[0]
     if (firstProvider) {
       selectedProvider.value = firstProvider.name
     }
@@ -146,9 +146,12 @@ async function testConnection() {
 
     const response = await providerSettingsApi.test(selectedProvider.value)
     if (response.data.success) {
-      emit('status-change', t('providerSettings.testSuccess'))
+      const messageKey = response.data.messageKey || 'testSuccess'
+      emit('status-change', t(`providerSettings.${messageKey}`))
     } else {
-      emit('status-change', response.data.message || t('providerSettings.testFailed'))
+      const messageKey = response.data.messageKey
+      const message = messageKey ? t(`providerSettings.${messageKey}`) : t('providerSettings.testFailed')
+      emit('status-change', message)
     }
   } catch (e) {
     error.value = t('providerSettings.testError')
@@ -232,7 +235,7 @@ function clearApiKey() {
             class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
           >
             <option
-              v-for="provider in providers.filter(p => p.name !== 'claude-code')"
+              v-for="provider in providers"
               :key="provider.name"
               :value="provider.name"
             >

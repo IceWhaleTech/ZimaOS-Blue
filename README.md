@@ -5,38 +5,30 @@
 </p>
 
 <p align="center">
-  <strong>NAS-Native Agent Runtime</strong>
+  <strong>Secure, Observable, Local-First AI Agent Runtime</strong>
 </p>
 
 <p align="center">
   <strong>English</strong> |
   <a href="./i18n/zh_CN/README.md">简体中文</a> |
-  <a href="./i18n/en_GB/README.md">English (UK)</a> |
-  <a href="./i18n/es_ES/README.md">Español (ES)</a> |
-  <a href="./i18n/fr_FR/README.md">Français</a> |
-  <a href="./i18n/de_DE/README.md">Deutsch</a> |
-  <a href="./i18n/it_IT/README.md">Italiano</a> |
-  <a href="./i18n/pt_PT/README.md">Português (PT)</a> |
-  <a href="./i18n/pt_BR/README.md">Português (BR)</a> |
-  <a href="./i18n/ru_RU/README.md">Русский</a> |
+  <a href="./i18n/zh_TW/README.md">繁體中文</a> |
   <a href="./i18n/ja_JP/README.md">日本語</a> |
   <a href="./i18n/ko_KR/README.md">한국어</a> |
-  <a href="./i18n/nl_NL/README.md">Nederlands</a> |
-  <a href="./i18n/sv_SE/README.md">Svenska</a> |
-  <a href="./i18n/da_DK/README.md">Dansk</a> |
-  <a href="./i18n/fi_FI/README.md">Suomi</a> |
-  <a href="./i18n/no_NO/README.md">Norsk</a> |
-  <a href="./i18n/pl_PL/README.md">Polski</a> |
-  <a href="./i18n/tr_TR/README.md">Türkçe</a> |
-  <a href="./i18n/cs_CZ/README.md">Čeština</a> |
-  <a href="./i18n/el_GR/README.md">Ελληνικά</a> |
-  <a href="./i18n/ca_ES/README.md">Català</a> |
-  <a href="./i18n/ga_IE/README.md">Gaeilge</a> |
+  <a href="./i18n/de_DE/README.md">Deutsch</a> |
+  <a href="./i18n/fr_FR/README.md">Français</a> |
+  <a href="./i18n/es_ES/README.md">Español</a> |
+  <a href="./i18n/it_IT/README.md">Italiano</a> |
+  <a href="./i18n/pt_BR/README.md">Português</a> |
+  <a href="./i18n/ru_RU/README.md">Русский</a> |
   <a href="./i18n/ar_SA/README.md">العربية</a> |
   <a href="./i18n/hi_IN/README.md">हिन्दी</a> |
   <a href="./i18n/th_TH/README.md">ไทย</a> |
+  <a href="./i18n/vi_VN/README.md">Tiếng Việt</a> |
   <a href="./i18n/id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="./i18n/vi_VN/README.md">Tiếng Việt</a>
+  <a href="./i18n/tr_TR/README.md">Türkçe</a> |
+  <a href="./i18n/pl_PL/README.md">Polski</a> |
+  <a href="./i18n/nl_NL/README.md">Nederlands</a> |
+  <a href="./i18n/sv_SE/README.md">Svenska</a>
 </p>
 
 <p align="center">
@@ -47,7 +39,7 @@
 
 **ZimaOS Echo** is a lightweight, high-performance AI agent runtime designed specifically for NAS and edge devices. Built with Go, it provides a production-ready platform for running AI assistants on low-power hardware.
 
-[Documentation](https://echo.zimaos.com) · [Getting Started](#quick-start) · [Features](#features) · [Comparison](#comparison-with-clawdbot)
+[Documentation](https://echo.zimaos.com) · [Quick Start](#quick-start) · [Features](#core-principles) · [Comparison](#comparison-with-clawdbot)
 
 ## Why ZimaOS Echo?
 
@@ -58,84 +50,187 @@ ZimaOS Echo is inspired by [clawdbot](https://github.com/clawdbot/clawdbot) but 
 - **Easier Deployment**: Single binary, no Node.js runtime required
 - **NAS Optimization**: Designed for 24/7 operation on low-power devices
 
+## Core Principles
+
+### Local-First
+
+- **Data Sovereignty**: All data stored locally on your NAS - no cloud dependency
+- **Ollama Integration**: Run LLMs entirely on-device with zero external API calls
+- **Offline Capable**: Core functionality works without internet connectivity
+- **Single Binary**: ~15MB native Go binary, no runtime dependencies
+
+### Observable & Auditable
+
+- **Audit Logging**: Every AI action logged with full context and timestamps
+- **Prometheus Metrics**: Real-time monitoring of all system operations
+- **pprof Profiling**: Deep visibility into CPU, memory, and goroutine behavior
+- **Structured Logging**: JSON logs for easy parsing and alerting
+
+### Security Hardening
+
+- **Sandbox Execution**: All tool calls run in isolated environments
+- **RBAC**: Fine-grained role-based access control
+- **WebAuthn/Passkeys**: Passwordless FIDO2 authentication
+- **MFA/TOTP**: Multi-factor authentication support
+- **OIDC/OAuth 2.0**: Enterprise SSO integration
+- **Circuit Breaker**: Automatic failure isolation prevents cascade failures
+
 ## Quick Start
 
-### Linux / macOS
-
 ```bash
+# Linux / macOS
 curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
 
-### Windows (PowerShell as Admin)
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
-
-### From Source
-
-```bash
+# From Source
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server
 go build -o zimaos-echo ./cmd/server
 ./zimaos-echo server
 ```
 
-## Features
+## Security Hardening
 
-### Core Features
+### Authentication Stack
 
-- 🚀 **Lightweight**: Single binary < 15MB, memory < 80MB
-- ⚡ **High Performance**: Go-based with goroutine concurrency
-- 🔌 **Multi-Provider**: OpenAI, Anthropic, Ollama, and more
-- 🛡️ **Production Ready**: Circuit breaker, graceful degradation, auto-recovery
-- 📊 **Observable**: Prometheus metrics, pprof profiling, structured logging
-- 🔄 **Hot Reload**: Configuration changes without restart
-- 💾 **Backup/Restore**: Automated backup with point-in-time restore
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Primary | WebAuthn/Passkeys | Phishing-resistant passwordless auth |
+| Secondary | TOTP/MFA | Time-based one-time passwords |
+| Enterprise | OIDC/OAuth 2.0 | SSO with Google, GitHub, Okta |
+| Authorization | RBAC | Per-resource permission control |
 
-### Smart Home Integration
+### Runtime Protection
 
-- 🏠 **Home Assistant**: Native integration with Home Assistant API
-- 💡 **Device Control**: Lights, switches, sensors, climate, and more
-- 🤖 **AI Automation**: Natural language commands for smart home control
-- 📡 **Real-time Events**: Subscribe to device state changes via WebSocket
+- **Sandbox Isolation**: Tool execution in restricted environments
+- **Rate Limiting**: Per-tenant API throttling
+- **Tenant Isolation**: Complete data and resource separation
+- **Audit Trail**: Immutable logs of all privileged operations
 
-### Voice Capabilities
+### Resilience
 
-- 🎤 **Speech Recognition**: Whisper-based speech-to-text
-- 🔊 **Text-to-Speech**: Multiple TTS engines support
-- 👂 **Voice Wake**: Customizable wake word detection
-- 🗣️ **Voice Commands**: Hands-free AI assistant interaction
+- **Circuit Breaker**: Automatic service isolation on failure
+- **Graceful Degradation**: Fallback strategies when providers fail
+- **LLM Fallback Chain**: Automatic provider failover
+- **Hot Reload**: Configuration changes without restart
 
-### Multi-Tenant Architecture
+## Observability
 
-- 👥 **Tenant Isolation**: Complete data and resource isolation
-- 🔐 **Per-Tenant Auth**: Independent authentication per tenant
-- 📊 **Resource Quotas**: CPU, memory, and API rate limits per tenant
-- 🎛️ **Tenant Dashboard**: Self-service management portal
+```yaml
+# Enable full observability stack
+metrics:
+  enabled: true
+  endpoint: "/metrics"
 
-### Communication Channels
+profiling:
+  enabled: true
+  endpoint_prefix: "/debug/pprof"
 
-- 💬 **Matrix Protocol**: Decentralized, end-to-end encrypted messaging
-- 📱 **Telegram/Discord/Slack**: Popular messaging platform support
-- 📞 **Signal/WhatsApp**: Secure messaging integration
-- 🍎 **iMessage**: Native macOS iMessage support
+audit:
+  enabled: true
+  retention_days: 90
+```
 
-### Security & Authentication
+### Metrics Exposed
 
-- 🔑 **WebAuthn/Passkeys**: Passwordless authentication with FIDO2
-- 🔐 **OIDC/OAuth 2.0**: Enterprise SSO (Google, GitHub, Okta, etc.)
-- 📲 **MFA/TOTP**: Multi-factor authentication support
-- 🛡️ **RBAC**: Fine-grained role-based access control
-- 📝 **Audit Logging**: Comprehensive security audit trail
-- 🔒 **Sandbox**: Isolated execution environment for tools
+- Request latency (p50, p95, p99)
+- LLM token usage per provider
+- Tool execution success/failure rates
+- Memory and goroutine counts
+- Circuit breaker state transitions
 
-### Frontend
+## Architecture
 
-- 🎨 **Vue 3 Dashboard**: Modern, responsive web interface
-- 💬 **Chat Interface**: Streaming responses with markdown support
-- 📈 **System Monitor**: Real-time resource usage charts
-- ⚙️ **Settings UI**: Easy configuration management
+```
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
+```
+
+## Local LLM Setup (Ollama)
+
+Run AI completely offline with no external API calls:
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model
+ollama pull llama3.2
+
+# Configure Echo to use local LLM
+cat >> config.yaml << EOF
+llm:
+  provider: "ollama"
+  model: "llama3.2"
+  base_url: "http://localhost:11434"
+EOF
+```
+
+## Development Setup
+
+### Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Go | 1.21+ | [golang.org](https://golang.org/dl/) |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
+| Make | - | Pre-installed on macOS/Linux |
+
+### One-Command Start
+
+```bash
+# Clone and start everything
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo
+```
+
+Access the dashboard at `http://localhost:3000`
+
+### Development Mode (Hot Reload)
+
+```bash
+# Linux / macOS
+./dev.sh
+
+# Windows
+dev.bat
+```
+
+- Frontend: `http://localhost:5173` (proxies API to backend)
+- Backend: `http://localhost:8080`
+
+### Build Commands
+
+```bash
+make build              # Build single binary (frontend embedded)
+make build-embedded     # Build with Claude Code CLI embedded
+make build-all          # Cross-compile for all platforms
+make clean              # Clean build artifacts
+```
+
+### Project Structure
+
+```
+ZimaOS-Echo/
+├── server/             # Go backend
+│   ├── cmd/echo/       # Entry point
+│   └── internal/       # Core modules
+├── web/                # Vue 3 frontend
+│   └── src/
+└── dist/               # Build output
+```
 
 ## Comparison with Clawdbot
 
@@ -149,169 +244,6 @@ ZimaOS Echo is inspired by clawdbot but optimized for NAS/edge deployment:
 | **Startup Time** | < 1s | 3-5s |
 | **Runtime** | Native binary | Node.js required |
 | **Target Platform** | NAS/Edge devices | Desktop/Server |
-
-### Feature Comparison
-
-| Feature | ZimaOS Echo | Clawdbot |
-|---------|:-----------:|:--------:|
-| **LLM Providers** | | |
-| OpenAI | ✅ | ✅ |
-| Anthropic | ✅ | ✅ |
-| Ollama (Local) | ✅ | ✅ |
-| AWS Bedrock | ✅ | ✅ |
-| **Channels** | | |
-| Web Chat | ✅ | ✅ |
-| Telegram | ✅ | ✅ |
-| Discord | ✅ | ✅ |
-| Slack | ✅ | ✅ |
-| WhatsApp | ✅ | ✅ |
-| Signal | ✅ | ✅ |
-| iMessage | ✅ | ✅ |
-| **Features** | | |
-| Streaming Responses | ✅ | ✅ |
-| Tool Calling | ✅ | ✅ |
-| Memory/Context | ✅ | ✅ |
-| Voice Wake | ✅ | ✅ |
-| Browser Control | ✅ | ✅ |
-| Canvas/A2UI | ✅ | ✅ |
-| Home Assistant | ✅ | ❌ |
-| Multi-Tenant | ✅ | ❌ |
-| Matrix Protocol | ✅ | ❌ |
-| **Operations** | | |
-| Prometheus Metrics | ✅ | ❌ |
-| pprof Profiling | ✅ | ❌ |
-| Hot Reload Config | ✅ | ❌ |
-| Circuit Breaker | ✅ | ❌ |
-| Graceful Degradation | ✅ | ❌ |
-| Backup/Restore | ✅ | ❌ |
-| **Security** | | |
-| WebAuthn/Passkeys | ✅ | ❌ |
-| OIDC/OAuth 2.0 | ✅ | ❌ |
-| MFA/TOTP | ✅ | ❌ |
-| RBAC | ✅ | ❌ |
-| Audit Logging | ✅ | ❌ |
-| Sandbox Execution | ✅ | ❌ |
-| **Deployment** | | |
-| Single Binary | ✅ | ❌ |
-| Docker | ✅ | ✅ |
-| systemd Service | ✅ | ✅ |
-| ZimaOS App Store | 🔜 | ❌ |
-
-### New Features in ZimaOS Echo
-
-Features not available in clawdbot:
-
-| Feature | Description |
-|---------|-------------|
-| **Prometheus Metrics** | Built-in metrics endpoint for monitoring |
-| **pprof Profiling** | CPU, memory, goroutine profiling |
-| **Hot Reload** | Change config without restart |
-| **Circuit Breaker** | Automatic failure isolation |
-| **Graceful Degradation** | Fallback strategies when services fail |
-| **LLM Fallback Chain** | Automatic provider failover |
-| **Backup/Restore** | Scheduled backups with point-in-time restore |
-| **ECache** | High-performance LRU cache |
-| **Zorm ORM** | Lightweight SQLite ORM |
-| **Sharded Maps** | Lock-free concurrent data structures |
-| **HTTP/2 Support** | Modern protocol with compression |
-| **Benchmark Suite** | Performance regression detection |
-| **Home Assistant** | Native smart home integration |
-| **Multi-Tenant** | Complete tenant isolation and quotas |
-| **Matrix Protocol** | Decentralized E2E encrypted messaging |
-| **WebAuthn/Passkeys** | Passwordless authentication |
-| **OIDC/OAuth 2.0** | Enterprise SSO integration |
-| **MFA/TOTP** | Multi-factor authentication |
-| **Audit Logging** | Comprehensive security audit trail |
-| **Sandbox Execution** | Isolated tool execution environment |
-| **Rate Limiting** | Per-tenant API rate limits |
-| **RBAC** | Role-based access control |
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                  ZimaOS-Echo                     │
-├─────────────────────────────────────────────────┤
-│  Vue 3 Frontend  │  REST API  │  WebSocket      │
-├─────────────────────────────────────────────────┤
-│              Core Runtime (Go)                   │
-│  Event Loop │ Worker Pool │ Config │ Logger     │
-├─────────────────────────────────────────────────┤
-│              Agent Runtime                       │
-│  LLM Provider │ Tools │ Memory │ Context        │
-├─────────────────────────────────────────────────┤
-│              Data Layer                          │
-│  SQLite (Zorm) │ ECache │ Files                 │
-└─────────────────────────────────────────────────┘
-```
-
-## Configuration
-
-```yaml
-# config.yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-
-llm:
-  provider: "openai"
-  model: "gpt-4"
-  api_key: "${OPENAI_API_KEY}"
-
-cache:
-  max_size: 1000
-  default_ttl: 5m
-
-resilience:
-  circuit_breaker:
-    enabled: true
-    threshold: 5
-    timeout_seconds: 30
-
-metrics:
-  enabled: true
-  endpoint: "/metrics"
-
-profiling:
-  enabled: false
-  endpoint_prefix: "/debug/pprof"
-```
-
-## Roadmap
-
-- [x] **v0.1.0** - Core Runtime (Event loop, Worker pool, Config, Logger)
-- [x] **v0.2.0** - Agent Runtime (LLM providers incl. AWS Bedrock, Tools, Memory)
-- [x] **v0.3.0** - API Layer (REST, WebSocket, Streaming)
-- [x] **v0.4.0** - Plugin System (Go modules, WASM support)
-- [x] **v0.5.0** - Production Ready (Metrics, Profiling, Backup)
-- [x] **v0.6.0** - Message Channels (Telegram, Discord, Slack, WhatsApp, Signal, iMessage)
-- [x] **v0.7.0** - Security (OIDC, MFA, WebAuthn, Audit logging, Sandbox)
-- [x] **v0.8.0** - Performance (ECache, Zorm, HTTP/2)
-- [x] **v0.9.0** - Future Enhancements (A2UI, Browser Automation)
-- [ ] **v1.0.0** - RAG & Knowledge Base
-
-## Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
-
-```bash
-# Clone the repository
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-
-# Install dependencies
-cd server && go mod download
-
-# Run tests
-go test ./...
-
-# Build
-go build -o zimaos-echo ./cmd/server
-```
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 

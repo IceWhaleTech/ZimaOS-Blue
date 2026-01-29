@@ -1,6 +1,6 @@
 <template>
   <component
-    :is="componentMap[component.type] || 'A2UIUnknown'"
+    :is="componentMap[component.type] ?? A2UIUnknown"
     :component="component"
     :form-data="formData"
     @action="(payload: { actionId: string; confirmRequired: boolean; confirmDialog?: { title: string; message: string; confirm_text: string; cancel_text: string } }) => $emit('action', payload)"
