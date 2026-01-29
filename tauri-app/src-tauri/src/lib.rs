@@ -130,9 +130,15 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = server::start_sidecar_server(&app_handle).await {
-                    error!("Failed to start server: {}", e);
-                    return;
+                info!("Attempting to start sidecar server...");
+                match server::start_sidecar_server(&app_handle).await {
+                    Ok(_) => info!("Sidecar server started successfully"),
+                    Err(e) => {
+                        error!("Failed to start server: {}", e);
+                        // Try to show error in a dialog or log more details
+                        error!("Sidecar startup failed - check if echo-server binary exists in app bundle");
+                        return;
+                    }
                 }
 
                 // Get the server port

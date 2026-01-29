@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -56,7 +57,7 @@ import (
 )
 
 var (
-	version   = "0.10.2"
+	version   = "0.10.4"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -326,160 +327,240 @@ func main() {
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
 	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
 
-	// Initialize metrics collector (collect every 5 seconds, keep 10 minutes of history)
-	metricsCollector := metrics.NewCollector(5*time.Second, 120)
-	metricsCollector.Start()
-	defer metricsCollector.Stop()
+	// Initialize independent services in parallel for faster startup
+	var (
+		metricsCollector   *metrics.Collector
+		metricsWriter      *metrics.MetricsWriter
+		backupManager      *backup.Manager
+		backupHandler      *backup.Handler
+		threatDetector     *security.ThreatDetector
+		securityHandler    *security.Handler
+		mfaHandler         *mfa.Handler
+		sandboxManager     *sandbox.Manager
+		sandboxHandler     *sandbox.Handler
+		cronService        *cron.Service
+		cronHandler        *cron.Handler
+		haService          *homeassistant.HAService
+		haHandler          *homeassistant.Handler
+		browserService     *browser.RodService
+		browserHandler     *browser.Handler
+		a2uiManager        *a2ui.Manager
+		a2uiHandler        *a2ui.Handler
+		sttService         stt.Service
+		ttsService         tts.Service
+		voiceHandler       *voice.Handler
+		workflowRepo       *workflow.Repository
+		workflowHandler    *workflow.Handler
+		formfillerStore    *formfiller.Store
+		formfillerHandler  *formfiller.Handler
+		companionStorage   *companion.JSONLStorage
+		companionHandler   *companion.Handler
+		companionWSHandler *companion.WebSocketHandler
+		companionManager   *companion.Manager
+	)
 
-	// Initialize metrics writer for detailed API metrics
-	metricsWriter := metrics.NewMetricsWriter(nil, metrics.DefaultWriterConfig())
-	metricsWriter.Start()
-	defer metricsWriter.Stop()
-	logger.Info().Msg("Metrics writer initialized")
+	var initWg sync.WaitGroup
+	var initMu sync.Mutex
+	initErrors := make([]error, 0)
 
-	// Set metrics recorder on chat handler for API call tracking
-	chatHandler.SetMetricsRecorder(metricsWriter)
+	// Group 1: Independent services (no dependencies on each other)
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Metrics collector (collect every 5 seconds, keep 10 minutes of history)
+		metricsCollector = metrics.NewCollector(5*time.Second, 120)
+		metricsCollector.Start()
+		// Metrics writer for detailed API metrics
+		metricsWriter = metrics.NewMetricsWriter(nil, metrics.DefaultWriterConfig())
+		metricsWriter.Start()
+		logger.Info().Msg("Metrics services initialized")
+	}()
 
-	// Initialize backup manager
-	backupManager, err := backup.NewManager(backup.Config{
-		Enabled:       true,
-		RetentionDays: 7,
-		Path:          filepath.Join(dataDir, "backups"),
-	}, dataDir, dataDir)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to initialize backup manager")
-	}
-	backupHandler := backup.NewHandler(backupManager)
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Backup manager
+		var err error
+		backupManager, err = backup.NewManager(backup.Config{
+			Enabled:       true,
+			RetentionDays: 7,
+			Path:          filepath.Join(dataDir, "backups"),
+		}, dataDir, dataDir)
+		if err != nil {
+			initMu.Lock()
+			initErrors = append(initErrors, fmt.Errorf("backup manager: %w", err))
+			initMu.Unlock()
+			return
+		}
+		backupHandler = backup.NewHandler(backupManager)
+		logger.Info().Msg("Backup manager initialized")
+	}()
 
-	// Initialize security threat detector and handler
-	threatDetector := security.NewThreatDetector()
-	securityHandler := security.NewHandler(threatDetector)
-	logger.Info().Msg("Security handler initialized")
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Security threat detector
+		threatDetector = security.NewThreatDetector()
+		securityHandler = security.NewHandler(threatDetector)
+		logger.Info().Msg("Security handler initialized")
+	}()
 
-	// Initialize MFA handler
-	mfaHandler := mfa.NewHandler(nil, nil)
-	logger.Info().Msg("MFA handler initialized")
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// MFA handler
+		mfaHandler = mfa.NewHandler(nil, nil)
+		logger.Info().Msg("MFA handler initialized")
+	}()
 
-	// Initialize sandbox manager and handler
-	sandboxManager, err := sandbox.NewManager(nil)
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
-	}
-	var sandboxHandler *sandbox.Handler
-	if sandboxManager != nil {
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Sandbox manager
+		var err error
+		sandboxManager, err = sandbox.NewManager(nil)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
+			return
+		}
 		sandboxHandler = sandbox.NewHandler(sandboxManager)
 		logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
-	}
+	}()
 
-	// Initialize cron service and handler
-	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
-	cronService.RegisterBuiltinHandlers() // Register built-in handlers (command, http)
-	cronHandler := cron.NewHandler(cronService, zapLogger)
-	if err := cronService.Start(); err != nil {
-		logger.Warn().Err(err).Msg("Failed to start cron service")
-	}
-	logger.Info().Msg("Cron service initialized")
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Cron service
+		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
+		cronService.RegisterBuiltinHandlers()
+		cronHandler = cron.NewHandler(cronService, zapLogger)
+		if err := cronService.Start(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to start cron service")
+		}
+		logger.Info().Msg("Cron service initialized")
+	}()
 
-	// Initialize Home Assistant service and handler
-	haService := homeassistant.NewHAService()
-	haHandler := homeassistant.NewHandler(haService)
-	logger.Info().Msg("Home Assistant handler initialized")
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Home Assistant service
+		haService = homeassistant.NewHAService()
+		haHandler = homeassistant.NewHandler(haService)
+		logger.Info().Msg("Home Assistant handler initialized")
+	}()
 
-	// Initialize browser automation service and handler
-	browserService, err := browser.NewService(nil)
-	var browserHandler *browser.Handler
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize browser service, browser automation will be disabled")
-	} else {
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Browser automation service
+		var err error
+		browserService, err = browser.NewService(nil)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize browser service, browser automation will be disabled")
+			return
+		}
 		browserHandler = browser.NewHandler(browserService)
 		logger.Info().Msg("Browser automation handler initialized")
-	}
+	}()
 
-	// Initialize A2UI manager and handler
-	a2uiManager := a2ui.NewManager(zapLogger)
-	a2uiHandler := a2ui.NewHandler(a2uiManager)
-	logger.Info().Msg("A2UI handler initialized")
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// A2UI manager
+		a2uiManager = a2ui.NewManager(zapLogger)
+		a2uiHandler = a2ui.NewHandler(a2uiManager)
+		logger.Info().Msg("A2UI handler initialized")
+	}()
 
-	// Initialize STT service (Speech-to-Text)
-	sttService, err := stt.NewService(&stt.ServiceConfig{
-		DefaultProvider: stt.ProviderWhisperAPI,
-		Providers: []stt.ProviderConfig{
-			{
-				Type:    stt.ProviderWhisperAPI,
-				Enabled: true,
-				APIKey:  os.Getenv("OPENAI_API_KEY"),
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// STT service (Speech-to-Text)
+		var err error
+		sttService, err = stt.NewService(&stt.ServiceConfig{
+			DefaultProvider: stt.ProviderWhisperAPI,
+			Providers: []stt.ProviderConfig{
+				{
+					Type:    stt.ProviderWhisperAPI,
+					Enabled: true,
+					APIKey:  os.Getenv("OPENAI_API_KEY"),
+				},
 			},
-		},
-	})
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize STT service, voice transcription will be disabled")
-	}
-
-	// Initialize TTS service (Text-to-Speech)
-	ttsService, err := tts.NewService(&tts.ServiceConfig{
-		DefaultProvider: tts.ProviderEdge,
-		Providers: []tts.ProviderConfig{
-			{
-				Type:    tts.ProviderEdge,
-				Enabled: true,
-			},
-			{
-				Type:    tts.ProviderOpenAI,
-				Enabled: os.Getenv("OPENAI_API_KEY") != "",
-				APIKey:  os.Getenv("OPENAI_API_KEY"),
-			},
-		},
-	})
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize TTS service, voice synthesis will be disabled")
-	}
-
-	// Initialize voice service and handler
-	var voiceHandler *voice.Handler
-	if sttService != nil && ttsService != nil {
-		voiceService := voice.NewService(&voice.ServiceConfig{
-			STTService: sttService,
-			TTSService: ttsService,
 		})
-		voiceHandler = voice.NewHandler(voiceService)
-		logger.Info().Msg("Voice handler initialized")
-	}
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize STT service, voice transcription will be disabled")
+		}
+	}()
 
-	// Initialize workflow service and handler
-	workflowRepo, err := workflow.NewRepository(db)
-	var workflowHandler *workflow.Handler
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize workflow repository, workflow features will be disabled")
-	} else {
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// TTS service (Text-to-Speech)
+		var err error
+		ttsService, err = tts.NewService(&tts.ServiceConfig{
+			DefaultProvider: tts.ProviderEdge,
+			Providers: []tts.ProviderConfig{
+				{
+					Type:    tts.ProviderEdge,
+					Enabled: true,
+				},
+				{
+					Type:    tts.ProviderOpenAI,
+					Enabled: os.Getenv("OPENAI_API_KEY") != "",
+					APIKey:  os.Getenv("OPENAI_API_KEY"),
+				},
+			},
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize TTS service, voice synthesis will be disabled")
+		}
+	}()
+
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Workflow repository (depends on db)
+		var err error
+		workflowRepo, err = workflow.NewRepository(db)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize workflow repository, workflow features will be disabled")
+			return
+		}
 		workflowService, err := workflow.NewService(nil, workflowRepo)
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize workflow service, workflow features will be disabled")
-		} else {
-			workflowHandler = workflow.NewHandler(workflowService)
-			logger.Info().Msg("Workflow handler initialized")
+			return
 		}
-	}
+		workflowHandler = workflow.NewHandler(workflowService)
+		logger.Info().Msg("Workflow handler initialized")
+	}()
 
-	// Initialize form filler service and handler
-	formfillerStore, err := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
-	var formfillerHandler *formfiller.Handler
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize form filler store, form filler features will be disabled")
-	} else {
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Form filler store
+		var err error
+		formfillerStore, err = formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize form filler store, form filler features will be disabled")
+			return
+		}
 		formfillerHandler = formfiller.NewHandler(formfillerStore)
 		logger.Info().Msg("Form filler handler initialized")
-	}
+	}()
 
-	// Initialize companion service (Echo Companion - real-time AI Agent monitoring)
-	companionConfig := companion.DefaultConfig()
-	companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
-	companionStorage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
-	var companionHandler *companion.Handler
-	var companionWSHandler *companion.WebSocketHandler
-	var companionManager *companion.Manager
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
-	} else {
+	initWg.Add(1)
+	go func() {
+		defer initWg.Done()
+		// Companion service (Echo Companion - real-time AI Agent monitoring)
+		companionConfig := companion.DefaultConfig()
+		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+		var err error
+		companionStorage, err = companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
+			return
+		}
 		companionStreamer := companion.NewEventStreamer(companionConfig)
 		if err := companionStreamer.Start(lm.Context()); err != nil {
 			logger.Warn().Err(err).Msg("Failed to start companion streamer")
@@ -493,7 +574,39 @@ func main() {
 		lm.RegisterShutdownHook(func(ctx context.Context) error {
 			return companionStreamer.Stop()
 		})
+	}()
+
+	// Wait for all parallel initializations to complete
+	initWg.Wait()
+
+	// Register deferred cleanup for metrics services
+	if metricsCollector != nil {
+		defer metricsCollector.Stop()
 	}
+	if metricsWriter != nil {
+		defer metricsWriter.Stop()
+	}
+
+	// Check for fatal errors
+	if len(initErrors) > 0 {
+		for _, err := range initErrors {
+			logger.Error().Err(err).Msg("Initialization error")
+		}
+		logger.Fatal().Msg("Failed to initialize required services")
+	}
+
+	// Initialize voice service (depends on STT and TTS)
+	if sttService != nil && ttsService != nil {
+		voiceService := voice.NewService(&voice.ServiceConfig{
+			STTService: sttService,
+			TTSService: ttsService,
+		})
+		voiceHandler = voice.NewHandler(voiceService)
+		logger.Info().Msg("Voice handler initialized")
+	}
+
+	// Set metrics recorder on chat handler for API call tracking
+	chatHandler.SetMetricsRecorder(metricsWriter)
 
 	// Initialize HTTP server
 	srv := server.New(&cfg.Server)
@@ -754,33 +867,62 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)
 	channelFactory := server.NewChannelFactory(zapLogger)
 
-	// Register channels from saved configurations and start enabled ones
-	for _, cfg := range channelConfigStore.GetEnabled() {
-		ch, err := channelFactory.CreateChannel(cfg)
-		if err != nil {
-			logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to create channel")
-			continue
+	// Register channels from saved configurations and start enabled ones in parallel
+	enabledChannels := channelConfigStore.GetEnabled()
+	if len(enabledChannels) > 0 {
+		var wg sync.WaitGroup
+		var mu sync.Mutex // Protect channelConfigStore writes
+
+		for _, cfg := range enabledChannels {
+			wg.Add(1)
+			go func(cfg *server.ChannelConfig) {
+				defer wg.Done()
+
+				ch, err := channelFactory.CreateChannel(cfg)
+				if err != nil {
+					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to create channel")
+					return
+				}
+				if ch == nil {
+					return // Unknown channel type
+				}
+				if err := channelManager.Register(ch); err != nil {
+					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to register channel")
+					return
+				}
+				// Start the channel
+				if err := channelManager.StartChannel(context.Background(), cfg.ID); err != nil {
+					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to start channel")
+					// Update config status to error
+					mu.Lock()
+					cfg.Status = "error"
+					cfg.LastError = err.Error()
+					_ = channelConfigStore.Set(cfg.ID, cfg)
+					mu.Unlock()
+				} else {
+					// Update config status to connected
+					mu.Lock()
+					cfg.Status = "connected"
+					cfg.LastError = ""
+					_ = channelConfigStore.Set(cfg.ID, cfg)
+					mu.Unlock()
+					logger.Info().Str("channel", cfg.ID).Msg("Channel started successfully")
+				}
+			}(cfg)
 		}
-		if ch == nil {
-			continue // Unknown channel type
-		}
-		if err := channelManager.Register(ch); err != nil {
-			logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to register channel")
-			continue
-		}
-		// Start the channel
-		if err := channelManager.StartChannel(context.Background(), cfg.ID); err != nil {
-			logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to start channel")
-			// Update config status to error
-			cfg.Status = "error"
-			cfg.LastError = err.Error()
-			_ = channelConfigStore.Set(cfg.ID, cfg)
-		} else {
-			// Update config status to connected
-			cfg.Status = "connected"
-			cfg.LastError = ""
-			_ = channelConfigStore.Set(cfg.ID, cfg)
-			logger.Info().Str("channel", cfg.ID).Msg("Channel started successfully")
+
+		// Wait for all channels to start (with timeout)
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			logger.Info().Int("count", len(enabledChannels)).Msg("All channels started")
+		case <-time.After(10 * time.Second):
+			logger.Warn().Msg("Channel startup timed out, some channels may still be starting")
 		}
 	}
 
