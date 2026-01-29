@@ -40,6 +40,48 @@ async fn find_available_port(start_port: u16) -> u16 {
     start_port
 }
 
+/// Check if an existing Echo server is healthy on the given port
+async fn check_existing_server(port: u16) -> bool {
+    let url = format!("http://localhost:{}/api/v1/health", port);
+    match reqwest::Client::new()
+        .get(&url)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+    {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+/// Kill any existing echo-server processes
+fn kill_existing_echo_servers() {
+    info!("Checking for existing echo-server processes");
+
+    #[cfg(unix)]
+    {
+        use std::process::Command;
+        // Use pkill to kill any existing echo-server processes
+        let _ = Command::new("pkill")
+            .args(["-f", "echo-server"])
+            .output();
+
+        // Give processes time to terminate
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        // Use taskkill on Windows
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "echo-server.exe"])
+            .output();
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 /// Start the Echo server as a sidecar process
 pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
     info!("Starting Echo server sidecar");

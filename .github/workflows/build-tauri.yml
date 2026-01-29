@@ -60,8 +60,7 @@ jobs:
       - name: Build Go sidecar
         working-directory: server
         run: |
-          go build -ldflags="-s -w" -o ../tauri-app/src-tauri/binaries/echo-server-x86_64-pc-windows-msvc.exe ./cmd/echo/
-          Copy-Item -Path ../tauri-app/src-tauri/binaries/echo-server-x86_64-pc-windows-msvc.exe -Destination ../tauri-app/src-tauri/bin/
+          go build -ldflags="-s -w" -o ../tauri-app/src-tauri/bin/echo-server-x86_64-pc-windows-msvc.exe ./cmd/echo/
 
       - name: Install Tauri dependencies
         working-directory: tauri-app
@@ -115,15 +114,12 @@ jobs:
       - name: Build Go sidecar (arm64)
         working-directory: server
         run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../tauri-app/src-tauri/binaries/echo-server-aarch64-apple-darwin ./cmd/echo/
-          mkdir -p ../tauri-app/src-tauri/bin
-          cp ../tauri-app/src-tauri/binaries/echo-server-aarch64-apple-darwin ../tauri-app/src-tauri/bin/
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../tauri-app/src-tauri/bin/echo-server-aarch64-apple-darwin ./cmd/echo/
 
       - name: Build Go sidecar (x64)
         working-directory: server
         run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../tauri-app/src-tauri/binaries/echo-server-x86_64-apple-darwin ./cmd/echo/
-          cp ../tauri-app/src-tauri/binaries/echo-server-x86_64-apple-darwin ../tauri-app/src-tauri/bin/
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../tauri-app/src-tauri/bin/echo-server-x86_64-apple-darwin ./cmd/echo/
 
       - name: Install Tauri dependencies
         working-directory: tauri-app
@@ -197,9 +193,7 @@ jobs:
       - name: Build Go sidecar
         working-directory: server
         run: |
-          CGO_ENABLED=0 go build -ldflags="-s -w" -o ../tauri-app/src-tauri/binaries/echo-server-x86_64-unknown-linux-gnu ./cmd/echo/
-          mkdir -p ../tauri-app/src-tauri/bin
-          cp ../tauri-app/src-tauri/binaries/echo-server-x86_64-unknown-linux-gnu ../tauri-app/src-tauri/bin/
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o ../tauri-app/src-tauri/bin/echo-server-x86_64-unknown-linux-gnu ./cmd/echo/
 
       - name: Install Tauri dependencies
         working-directory: tauri-app
