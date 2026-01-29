@@ -22,6 +22,7 @@ interface ChannelDef {
   icon: string
   enabled: boolean
   status: 'connected' | 'disconnected' | 'error' | 'connecting'
+  lastError?: string
   descriptionKey: string
   hintKey?: string
   docUrl?: string
