@@ -328,6 +328,7 @@ async function loadChannelConfigs() {
         if (localChannel) {
           localChannel.enabled = serverChannel.enabled
           localChannel.status = serverChannel.status
+          localChannel.lastError = serverChannel.last_error
           // Update field values
           for (const field of localChannel.fields) {
             if (serverChannel.config && serverChannel.config[field.key]) {
