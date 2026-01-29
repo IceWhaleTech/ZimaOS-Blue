@@ -16,8 +16,6 @@ claudecode:
   default_model: "sonnet"
   timeout: "5m"
   session_ttl: "24h"
-  api_key: "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE"
-  base_url: "https://paid.tribiosapi.top/"
   backend:
     args: ["-p", "--output-format", "text", "--dangerously-skip-permissions"]
     resume_args: ["-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"]

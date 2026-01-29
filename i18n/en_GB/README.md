@@ -1,7 +1,50 @@
 # ZimaOS Echo
 
 <p align="center">
-  <img src="docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+</p>
+
+<p align="center">
+  <a href="../README.md"><strong>English</strong></a> |
+  <a href="../zh_CN/README.md">简体中文</a> |
+  <strong>English (UK)</strong> |
+  <a href="../es_ES/README.md">Español (ES)</a> |
+  <a href="../fr_FR/README.md">Français</a> |
+  <a href="../de_DE/README.md">Deutsch</a> |
+  <a href="../it_IT/README.md">Italiano</a> |
+  <a href="../pt_PT/README.md">Português (PT)</a> |
+  <a href="../pt_BR/README.md">Português (BR)</a> |
+  <a href="../ru_RU/README.md">Русский</a> |
+  <a href="../ja_JP/README.md">日本語</a> |
+  <a href="../ko_KR/README.md">한국어</a> |
+  <a href="../nl_NL/README.md">Nederlands</a> |
+  <a href="../sv_SE/README.md">Svenska</a> |
+  <a href="../da_DK/README.md">Dansk</a> |
+  <a href="../fi_FI/README.md">Suomi</a> |
+  <a href="../no_NO/README.md">Norsk</a> |
+  <a href="../pl_PL/README.md">Polski</a> |
+  <a href="../tr_TR/README.md">Türkçe</a> |
+  <a href="../cs_CZ/README.md">Čeština</a> |
+  <a href="../el_GR/README.md">Ελληνικά</a> |
+  <a href="../ca_ES/README.md">Català</a> |
+  <a href="../ga_IE/README.md">Gaeilge</a> |
+  <a href="../ar_SA/README.md">العربية</a> |
+  <a href="../hi_IN/README.md">हिन्दी</a> |
+  <a href="../th_TH/README.md">ไทย</a> |
+  <a href="../id_ID/README.md">Bahasa Indonesia</a> |
+  <a href="../vi_VN/README.md">Tiếng Việt</a>
+</p>
+
+> This is the UK English version of the README for ZimaOS Echo.
+
+For full documentation, please visit: https://echo.zimaos.com
+
+The rest of this document follows the main English README. Please refer to `../README.md` for the latest and most complete information.
+
+# ZimaOS Echo
+
+<p align="center">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
 </p>
 
 <p align="center">
@@ -9,45 +52,18 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> |
-  <a href="./i18n/zh_CN/README.md">简体中文</a> |
-  <a href="./i18n/en_GB/README.md">English (UK)</a> |
-  <a href="./i18n/es_ES/README.md">Español (ES)</a> |
-  <a href="./i18n/fr_FR/README.md">Français</a> |
-  <a href="./i18n/de_DE/README.md">Deutsch</a> |
-  <a href="./i18n/it_IT/README.md">Italiano</a> |
-  <a href="./i18n/pt_PT/README.md">Português (PT)</a> |
-  <a href="./i18n/pt_BR/README.md">Português (BR)</a> |
-  <a href="./i18n/ru_RU/README.md">Русский</a> |
-  <a href="./i18n/ja_JP/README.md">日本語</a> |
-  <a href="./i18n/ko_KR/README.md">한국어</a> |
-  <a href="./i18n/nl_NL/README.md">Nederlands</a> |
-  <a href="./i18n/sv_SE/README.md">Svenska</a> |
-  <a href="./i18n/da_DK/README.md">Dansk</a> |
-  <a href="./i18n/fi_FI/README.md">Suomi</a> |
-  <a href="./i18n/no_NO/README.md">Norsk</a> |
-  <a href="./i18n/pl_PL/README.md">Polski</a> |
-  <a href="./i18n/tr_TR/README.md">Türkçe</a> |
-  <a href="./i18n/cs_CZ/README.md">Čeština</a> |
-  <a href="./i18n/el_GR/README.md">Ελληνικά</a> |
-  <a href="./i18n/ca_ES/README.md">Català</a> |
-  <a href="./i18n/ga_IE/README.md">Gaeilge</a> |
-  <a href="./i18n/ar_SA/README.md">العربية</a> |
-  <a href="./i18n/hi_IN/README.md">हिन्दी</a> |
-  <a href="./i18n/th_TH/README.md">ไทย</a> |
-  <a href="./i18n/id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="./i18n/vi_VN/README.md">Tiếng Việt</a>
+  <a href="../../README.md">English (US)</a> | <a href="../zh_CN/README.md">中文</a> | <strong>English (UK)</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
   <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-blue.svg?style=for-the-badge" alt="MIT Licence"></a>
 </p>
 
 **ZimaOS Echo** is a lightweight, high-performance AI agent runtime designed specifically for NAS and edge devices. Built with Go, it provides a production-ready platform for running AI assistants on low-power hardware.
 
-[Documentation](https://echo.zimaos.com) · [Getting Started](#quick-start) · [Features](#features) · [Comparison](#comparison-with-clawdbot)
+[Documentation](https://echo.zimaos.com) · [Quick Start](#quick-start) · [Features](#features) · [Comparison](#comparison-with-clawdbot)
 
 ## Why ZimaOS Echo?
 
@@ -56,7 +72,7 @@ ZimaOS Echo is inspired by [clawdbot](https://github.com/clawdbot/clawdbot) but 
 - **Lower Resource Usage**: Runs on devices with as little as 256MB RAM
 - **Better Performance**: Native Go binary with efficient goroutine-based concurrency
 - **Easier Deployment**: Single binary, no Node.js runtime required
-- **NAS Optimization**: Designed for 24/7 operation on low-power devices
+- **NAS Optimisation**: Designed for 24/7 operation on low-power devices
 
 ## Quick Start
 
@@ -104,7 +120,7 @@ go build -o zimaos-echo ./cmd/server
 
 - 🎤 **Speech Recognition**: Whisper-based speech-to-text
 - 🔊 **Text-to-Speech**: Multiple TTS engines support
-- 👂 **Voice Wake**: Customizable wake word detection
+- 👂 **Voice Wake**: Customisable wake word detection
 - 🗣️ **Voice Commands**: Hands-free AI assistant interaction
 
 ### Multi-Tenant Architecture
@@ -116,7 +132,7 @@ go build -o zimaos-echo ./cmd/server
 
 ### Communication Channels
 
-- 💬 **Matrix Protocol**: Decentralized, end-to-end encrypted messaging
+- 💬 **Matrix Protocol**: Decentralised, end-to-end encrypted messaging
 - 📱 **Telegram/Discord/Slack**: Popular messaging platform support
 - 📞 **Signal/WhatsApp**: Secure messaging integration
 - 🍎 **iMessage**: Native macOS iMessage support
@@ -139,7 +155,7 @@ go build -o zimaos-echo ./cmd/server
 
 ## Comparison with Clawdbot
 
-ZimaOS Echo is inspired by clawdbot but optimized for NAS/edge deployment:
+ZimaOS Echo is inspired by clawdbot but optimised for NAS/edge deployment:
 
 | Feature | ZimaOS Echo | Clawdbot |
 |---------|-------------|----------|
@@ -149,82 +165,6 @@ ZimaOS Echo is inspired by clawdbot but optimized for NAS/edge deployment:
 | **Startup Time** | < 1s | 3-5s |
 | **Runtime** | Native binary | Node.js required |
 | **Target Platform** | NAS/Edge devices | Desktop/Server |
-
-### Feature Comparison
-
-| Feature | ZimaOS Echo | Clawdbot |
-|---------|:-----------:|:--------:|
-| **LLM Providers** | | |
-| OpenAI | ✅ | ✅ |
-| Anthropic | ✅ | ✅ |
-| Ollama (Local) | ✅ | ✅ |
-| AWS Bedrock | ✅ | ✅ |
-| **Channels** | | |
-| Web Chat | ✅ | ✅ |
-| Telegram | ✅ | ✅ |
-| Discord | ✅ | ✅ |
-| Slack | ✅ | ✅ |
-| WhatsApp | ✅ | ✅ |
-| Signal | ✅ | ✅ |
-| iMessage | ✅ | ✅ |
-| **Features** | | |
-| Streaming Responses | ✅ | ✅ |
-| Tool Calling | ✅ | ✅ |
-| Memory/Context | ✅ | ✅ |
-| Voice Wake | ✅ | ✅ |
-| Browser Control | ✅ | ✅ |
-| Canvas/A2UI | ✅ | ✅ |
-| Home Assistant | ✅ | ❌ |
-| Multi-Tenant | ✅ | ❌ |
-| Matrix Protocol | ✅ | ❌ |
-| **Operations** | | |
-| Prometheus Metrics | ✅ | ❌ |
-| pprof Profiling | ✅ | ❌ |
-| Hot Reload Config | ✅ | ❌ |
-| Circuit Breaker | ✅ | ❌ |
-| Graceful Degradation | ✅ | ❌ |
-| Backup/Restore | ✅ | ❌ |
-| **Security** | | |
-| WebAuthn/Passkeys | ✅ | ❌ |
-| OIDC/OAuth 2.0 | ✅ | ❌ |
-| MFA/TOTP | ✅ | ❌ |
-| RBAC | ✅ | ❌ |
-| Audit Logging | ✅ | ❌ |
-| Sandbox Execution | ✅ | ❌ |
-| **Deployment** | | |
-| Single Binary | ✅ | ❌ |
-| Docker | ✅ | ✅ |
-| systemd Service | ✅ | ✅ |
-| ZimaOS App Store | 🔜 | ❌ |
-
-### New Features in ZimaOS Echo
-
-Features not available in clawdbot:
-
-| Feature | Description |
-|---------|-------------|
-| **Prometheus Metrics** | Built-in metrics endpoint for monitoring |
-| **pprof Profiling** | CPU, memory, goroutine profiling |
-| **Hot Reload** | Change config without restart |
-| **Circuit Breaker** | Automatic failure isolation |
-| **Graceful Degradation** | Fallback strategies when services fail |
-| **LLM Fallback Chain** | Automatic provider failover |
-| **Backup/Restore** | Scheduled backups with point-in-time restore |
-| **ECache** | High-performance LRU cache |
-| **Zorm ORM** | Lightweight SQLite ORM |
-| **Sharded Maps** | Lock-free concurrent data structures |
-| **HTTP/2 Support** | Modern protocol with compression |
-| **Benchmark Suite** | Performance regression detection |
-| **Home Assistant** | Native smart home integration |
-| **Multi-Tenant** | Complete tenant isolation and quotas |
-| **Matrix Protocol** | Decentralized E2E encrypted messaging |
-| **WebAuthn/Passkeys** | Passwordless authentication |
-| **OIDC/OAuth 2.0** | Enterprise SSO integration |
-| **MFA/TOTP** | Multi-factor authentication |
-| **Audit Logging** | Comprehensive security audit trail |
-| **Sandbox Execution** | Isolated tool execution environment |
-| **Rate Limiting** | Per-tenant API rate limits |
-| **RBAC** | Role-based access control |
 
 ## Architecture
 
@@ -243,38 +183,6 @@ Features not available in clawdbot:
 │              Data Layer                          │
 │  SQLite (Zorm) │ ECache │ Files                 │
 └─────────────────────────────────────────────────┘
-```
-
-## Configuration
-
-```yaml
-# config.yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-
-llm:
-  provider: "openai"
-  model: "gpt-4"
-  api_key: "${OPENAI_API_KEY}"
-
-cache:
-  max_size: 1000
-  default_ttl: 5m
-
-resilience:
-  circuit_breaker:
-    enabled: true
-    threshold: 5
-    timeout_seconds: 30
-
-metrics:
-  enabled: true
-  endpoint: "/metrics"
-
-profiling:
-  enabled: false
-  endpoint_prefix: "/debug/pprof"
 ```
 
 ## Roadmap
@@ -309,11 +217,11 @@ go test ./...
 go build -o zimaos-echo ./cmd/server
 ```
 
-## License
+## Licence
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT Licence - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
+## Acknowledgements
 
 - [clawdbot](https://github.com/clawdbot/clawdbot) - Inspiration for the project
 - [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - Lightweight ORM

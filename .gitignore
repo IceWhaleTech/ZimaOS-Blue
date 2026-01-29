@@ -53,5 +53,7 @@ echo
 config.local.yaml
 config.local.yml
 
+config.yaml
+
 # Production data
 server/data/
