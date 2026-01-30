@@ -366,21 +366,18 @@ func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
 	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
 
 	registry := llm.NewProviderRegistry()
-	mockProvider := llm.NewMockProvider()
-	mockProvider.SetResponse(llm.ChatResponse{
-		ID:      "resp-123",
-		Model:   "mock-model",
-		Message: llm.Message{Role: llm.RoleAssistant, Content: "Hello! How can I help?"},
-	})
-	// Register with "custom" name since Provider Pool IDs map to "custom"
-	registry.Register(mockProvider)
+	// Use CustomProvider which has Name() = "custom"
+	// Provider Pool IDs that don't match known mappings will map to "custom"
+	customProvider := llm.NewCustomProvider("test-key", "http://localhost:8080")
+	registry.Register(customProvider)
 
 	toolRegistry := tools.NewRegistry()
 	handler := NewChatHandler(store, registry, toolRegistry)
 
 	e := echo.New()
 	// Use a Provider Pool ID format (prov_<hex>)
-	reqBody := `{"message": "Hello!", "provider": "prov_992ef6e8c8ad938a", "model": "mock-model"}`
+	// This should be mapped to "custom" by mapProviderID()
+	reqBody := `{"message": "Hello!", "provider": "prov_992ef6e8c8ad938a", "model": "test-model"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -389,7 +386,9 @@ func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
 	c.SetParamValues(conv.ID)
 
 	err := handler.StreamMessage(c)
-	// Should not return an error - the Provider Pool ID should be mapped to "custom"
+	// The provider should be found (mapped to "custom")
+	// We expect an error from the actual API call (since we're using a fake endpoint),
+	// but NOT a "provider not found" error
 	if err != nil {
 		httpErr, ok := err.(*echo.HTTPError)
 		if ok && httpErr.Code == http.StatusBadRequest {
@@ -398,6 +397,7 @@ func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
 				t.Fatalf("StreamMessage should map Provider Pool ID to LLM provider name, but got error: %v", err)
 			}
 		}
-		// Other errors might be acceptable (e.g., streaming setup issues in test)
+		// Other errors are acceptable (e.g., API call failures, streaming setup issues)
+		// The important thing is that the provider was found
 	}
 }

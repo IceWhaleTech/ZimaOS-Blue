@@ -54,6 +54,7 @@ temp/
 *.out
 go.work
 echo
+echolib
 
 # Config (local overrides)
 config.local.yaml
