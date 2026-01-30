@@ -96,7 +96,9 @@ export const useSettingsStore = defineStore('settings', () => {
       loading.value = true
       error.value = null
       const response = await providerApi.list()
-      providers.value = response.data
+      // Handle both array response and object response with providers key
+      const data = response.data
+      providers.value = Array.isArray(data) ? data : (data?.providers || [])
 
       // Set default provider if current one is not available
       if (providers.value.length > 0) {

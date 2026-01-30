@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>安全、可觀測、本地優先的 AI 代理運行時</strong>
+  <strong>安全、可觀測的 AI 智能體執行環境</strong>
 </p>
 
 <p align="center">
@@ -37,86 +37,108 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** 是專為 NAS 和邊緣設備設計的強化 AI 代理運行時。您的資料保存在您的硬體上，每個操作都可審計，AI 操作在隔離的沙箱中運行。
+**ZimaOS Echo** 是專為 NAS 與邊緣裝置設計的輕量、高效能 AI 智能體執行環境。以 Go 建構，提供零設定部署、會話監控與完整使用分析的生產就緒平台。
 
-[文件](https://echo.zimaos.com) · [快速開始](#快速開始) · [功能特性](#核心原則) · [對比](#與-clawdbot-對比)
+[快速開始](#快速開始) · [功能](#核心功能)
 
-## 為什麼選擇 ZimaOS Echo？
+## 亮點
 
-ZimaOS Echo 受 [clawdbot](https://github.com/clawdbot/clawdbot) 啟發，使用 Go 重建，具備：
+| 規格 | 數值 |
+|------|------|
+| **二進位大小** | ~40MB（單一執行檔） |
+| **記憶體（閒置）** | ~4MB |
+| **啟動時間** | < 1s |
+| **依賴** | 無（零設定部署） |
 
-- **更低資源佔用**：可在僅 256MB RAM 的裝置上運行
-- **更好效能**：原生 Go 二進位檔，基於 goroutine 並行
-- **更易部署**：單一二進位檔，無需 Node.js
-- **NAS 優化**：為低功耗裝置 24/7 運行設計
+## 核心功能
 
-## 核心原則
+### 零設定部署
 
-### 本地優先
+- **單一二進位**：下載即用，無需執行時依賴
+- **按需設定**：開箱可用，需要時再自訂
+- **跨平台**：Windows、macOS、Linux 同一二進位、同一體驗
+- **常駐程式**：可作為背景服務持續執行
 
-- **資料主權**：所有資料儲存在您的 NAS 上 - 無雲端依賴
-- **Ollama 整合**：完全在設備上運行 LLM，零外部 API 呼叫
-- **離線能力**：核心功能無需網路連線即可運作
-- **單一二進位檔**：約 15MB 原生 Go 二進位檔，無運行時依賴
+### 會話監控
 
-### 可觀測與可審計
+- **即時會話追蹤**：監控所有活躍 AI 會話與即時狀態
+- **對話歷史**：完整互動審計記錄
+- **會話重播**：檢視與分析過往對話
+- **多租戶隔離**：使用者間會話完全分離
 
-- **審計日誌**：每個 AI 操作都記錄完整上下文和時間戳
-- **Prometheus 指標**：即時監控所有系統操作
-- **pprof 效能分析**：深入了解 CPU、記憶體和 goroutine 行為
-- **結構化日誌**：JSON 日誌便於解析和告警
+### 呼叫鏈優化
 
-### 安全強化
+- **請求追蹤**：每次 API 呼叫的端到端可見性
+- **延遲分析**：找出請求管線中的瓶頸
+- **提供商路由**：智慧路由至最佳 LLM 提供商
+- **熔斷器**：提供商故障時自動切換
 
-- **沙箱執行**：所有工具呼叫在隔離環境中運行
-- **RBAC**：細粒度的角色存取控制
+### 使用分析
+
+- **Token 消耗**：按使用者、會話、提供商統計使用量
+- **成本歸屬**：依操作詳細成本拆分
+- **限流**：按租戶的配額管理
+- **匯出報告**：多種格式產生使用報告
+
+### 安全加固
+
+- **沙箱執行**：所有工具呼叫在隔離環境中執行
+- **RBAC**：細粒度角色型存取控制
 - **WebAuthn/Passkeys**：無密碼 FIDO2 認證
-- **MFA/TOTP**：多因素認證支援
-- **OIDC/OAuth 2.0**：企業 SSO 整合
-- **熔斷器**：自動故障隔離防止級聯故障
+- **MFA/TOTP**：多因素認證
+- **審計鏈**：所有特權操作不可變日誌
 
 ## 快速開始
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # 從原始碼
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
-./zimaos-echo server
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-## 安全強化
+於 `http://localhost:3000` 存取儀表板。
 
-### 認證堆疊
+## LLM 提供商設定
 
-| 層級 | 技術 | 用途 |
-|------|------|------|
-| 主要 | WebAuthn/Passkeys | 防釣魚無密碼認證 |
-| 次要 | TOTP/MFA | 基於時間的一次性密碼 |
-| 企業 | OIDC/OAuth 2.0 | Google、GitHub、Okta SSO |
-| 授權 | RBAC | 每資源權限控制 |
+ZimaOS Echo 支援多種 LLM 提供商，包含本地 LLM 服務：
 
-### 運行時保護
+```yaml
+llm:
+  # 雲端提供商
+  provider: "openai"  # 或 "anthropic", "azure" 等
+  api_key: "your-api-key"
 
-- **沙箱隔離**：工具在受限環境中執行
-- **速率限制**：每租戶 API 節流
-- **租戶隔離**：完整的資料和資源分離
-- **審計追蹤**：所有特權操作的不可變日誌
+  # 本地 LLM（可選）
+  # provider: "ollama"
+  # base_url: "http://localhost:11434"
+```
 
-### 韌性
+## 架構
 
-- **熔斷器**：故障時自動服務隔離
-- **優雅降級**：提供者失敗時的回退策略
-- **LLM 回退鏈**：自動提供者故障轉移
-- **熱重載**：無需重啟即可更改配置
+```
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Session Monitor │ Usage Analytics │ Call Tracing  │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
+```
 
 ## 可觀測性
 
 ```yaml
-# 啟用完整可觀測性堆疊
+# 啟用完整可觀測性棧
 metrics:
   enabled: true
   endpoint: "/metrics"
@@ -133,70 +155,20 @@ audit:
 ### 暴露的指標
 
 - 請求延遲（p50、p95、p99）
-- 每提供者 LLM 令牌使用量
+- 各提供商 LLM 的 token 使用量
 - 工具執行成功/失敗率
-- 記憶體和 goroutine 計數
+- 記憶體與 goroutine 計數
 - 熔斷器狀態轉換
 
-## 架構
+## 開發環境
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
-
-## 本地 LLM 設定（Ollama）
-
-完全離線運行 AI，無外部 API 呼叫：
-
-```bash
-# 安裝 Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# 拉取模型
-ollama pull llama3.2
-
-# 配置 Echo 使用本地 LLM
-cat >> config.yaml << EOF
-llm:
-  provider: "ollama"
-  model: "llama3.2"
-  base_url: "http://localhost:11434"
-EOF
-```
-
-## 開發設定
-
-### 先決條件
+### 前置條件
 
 | 工具 | 版本 | 安裝 |
 |------|------|------|
 | Go | 1.21+ | [golang.org](https://golang.org/dl/) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
-| Make | - | macOS/Linux 預裝 |
-
-### 一鍵啟動
-
-```bash
-# 克隆並啟動所有服務
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo
-```
-
-在 `http://localhost:3000` 存取儀表板。
+| Make | - | macOS/Linux 通常已預裝 |
 
 ### 開發模式（熱重載）
 
@@ -208,13 +180,13 @@ make build && ./dist/zimaos-echo
 dev.bat
 ```
 
-- 前端：`http://localhost:5173`（API 代理到後端）
+- 前端：`http://localhost:3000`
 - 後端：`http://localhost:8080`
 
 ### 建置指令
 
 ```bash
-make build              # 建置單一二進位檔（前端內嵌）
+make build              # 建置單一二進位（前端內嵌）
 make build-embedded     # 建置並內嵌 Claude Code CLI
 make build-all          # 全平台交叉編譯
 make clean              # 清理建置產物
@@ -225,30 +197,17 @@ make clean              # 清理建置產物
 ```
 ZimaOS-Echo/
 ├── server/             # Go 後端
-│   ├── cmd/echo/       # 入口
+│   ├── cmd/echo/       # 進入點
 │   └── internal/       # 核心模組
 ├── web/                # Vue 3 前端
 │   └── src/
 └── dist/               # 建置輸出
 ```
 
-## 與 Clawdbot 對比
-
-ZimaOS Echo 受 clawdbot 啟發，針對 NAS/邊緣部署優化：
-
-| 項目 | ZimaOS Echo | Clawdbot |
-|------|-------------|----------|
-| **語言** | Go | TypeScript/Node.js |
-| **二進位大小** | ~15MB | ~200MB+（含 node_modules）|
-| **記憶體佔用** | ~80MB 閒置 | ~200MB+ 閒置 |
-| **啟動時間** | < 1s | 3–5s |
-| **運行時** | 原生二進位檔 | 需 Node.js |
-| **目標平台** | NAS/邊緣裝置 | 桌面/伺服器 |
-
 ## 致謝
 
 - [clawdbot](https://github.com/clawdbot/clawdbot) - 專案靈感來源
-- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - 輕量 ORM
+- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - 輕量級 ORM
 
 ---
 

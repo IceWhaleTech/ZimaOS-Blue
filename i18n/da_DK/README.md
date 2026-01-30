@@ -35,4 +35,4 @@
 
 > Dansk oversættelse er ufuldstændig.
 >
-> Fuld indhold: [README (English)](../../README.md) · [Dokumentation](https://echo.zimaos.com)
+> Fuld indhold: [README (English)](../../README.md)

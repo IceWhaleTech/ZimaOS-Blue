@@ -25,7 +25,7 @@
 
 **ZimaOS Echo** egy megerősített AI ügynök futtatókörnyezet NAS és peremeszközök számára. Az adatai a saját hardverén maradnak, minden művelet auditálható, és az AI műveletek izolált sandbox környezetekben futnak.
 
-[Dokumentáció](https://echo.zimaos.com) · [Gyors kezdés](#gyors-kezdés) · [Biztonság](#biztonsági-megerősítés)
+[Gyors kezdés](#gyors-kezdés) · [Biztonság](#biztonsági-megerősítés)
 
 ## Alapelvek
 
@@ -55,9 +55,6 @@
 ## Gyors kezdés
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # Forrásból
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server

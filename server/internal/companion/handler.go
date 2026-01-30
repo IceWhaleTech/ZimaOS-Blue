@@ -64,6 +64,11 @@ func (h *Handler) registerCompanionRoutes(g *echo.Group) {
 
 	// Export
 	g.GET("/export", h.Export)
+
+	// Settings
+	g.GET("/settings", h.GetSettings)
+	g.PUT("/settings", h.UpdateSettings)
+	g.POST("/cleanup", h.TriggerCleanup)
 }
 
 // ListSessions handles GET /api/v1/companion/sessions
@@ -444,4 +449,104 @@ func (h *Handler) parseListOptions(c echo.Context) *ListOptions {
 	}
 
 	return opts
+}
+
+// SettingsResponse represents the companion settings response.
+type SettingsResponse struct {
+	Retention   RetentionConfig `json:"retention"`
+	StorageInfo StorageInfo     `json:"storage_info"`
+}
+
+// StorageInfo contains storage statistics.
+type StorageInfo struct {
+	SessionCount int `json:"session_count"`
+	AlertCount   int `json:"alert_count"`
+	EventCount   int `json:"event_count"`
+}
+
+// GetSettings handles GET /api/v1/companion/settings
+func (h *Handler) GetSettings(c echo.Context) error {
+	config := h.manager.GetRetentionConfig()
+
+	// Get storage stats
+	sessions, sessionTotal, _ := h.storage.ListSessions(c.Request().Context(), nil)
+	_, alertTotal, _ := h.storage.ListAlerts(c.Request().Context(), nil)
+
+	eventCount := 0
+	for _, s := range sessions {
+		eventCount += s.EventCount
+	}
+
+	return c.JSON(http.StatusOK, SettingsResponse{
+		Retention: *config,
+		StorageInfo: StorageInfo{
+			SessionCount: sessionTotal,
+			AlertCount:   alertTotal,
+			EventCount:   eventCount,
+		},
+	})
+}
+
+// UpdateSettingsRequest represents the update settings request.
+type UpdateSettingsRequest struct {
+	Retention RetentionConfig `json:"retention"`
+}
+
+// UpdateSettings handles PUT /api/v1/companion/settings
+func (h *Handler) UpdateSettings(c echo.Context) error {
+	var req UpdateSettingsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	// Validate retention values
+	if req.Retention.EventsDays < 1 {
+		req.Retention.EventsDays = 1
+	}
+	if req.Retention.SessionsDays < 1 {
+		req.Retention.SessionsDays = 1
+	}
+	if req.Retention.AlertsDays < 1 {
+		req.Retention.AlertsDays = 1
+	}
+
+	// Cap maximum values
+	if req.Retention.EventsDays > 365 {
+		req.Retention.EventsDays = 365
+	}
+	if req.Retention.SessionsDays > 365 {
+		req.Retention.SessionsDays = 365
+	}
+	if req.Retention.AlertsDays > 365 {
+		req.Retention.AlertsDays = 365
+	}
+
+	h.manager.UpdateRetentionConfig(&req.Retention)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":   "settings updated",
+		"retention": req.Retention,
+	})
+}
+
+// CleanupResponse represents the cleanup response.
+type CleanupResponse struct {
+	Message string `json:"message"`
+	Success bool   `json:"success"`
+}
+
+// TriggerCleanup handles POST /api/v1/companion/cleanup
+func (h *Handler) TriggerCleanup(c echo.Context) error {
+	err := h.manager.CleanupExpired(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, CleanupResponse{
+			Message: "cleanup failed: " + err.Error(),
+			Success: false,
+		})
+	}
+
+	return c.JSON(http.StatusOK, CleanupResponse{
+		Message: "cleanup completed successfully",
+		Success: true,
+	})
 }

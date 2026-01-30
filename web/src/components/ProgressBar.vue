@@ -22,8 +22,10 @@ const props = withDefaults(
 )
 
 const percent = computed(() => {
-  if (props.max === 0) return 0
-  return Math.min(100, (props.value / props.max) * 100)
+  const val = props.value ?? 0
+  const maxVal = props.max ?? 0
+  if (maxVal === 0) return 0
+  return Math.min(100, (val / maxVal) * 100)
 })
 
 const colorClass = computed(() => {

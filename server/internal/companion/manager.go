@@ -425,3 +425,24 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
+
+// GetRetentionConfig returns the current retention configuration.
+func (m *Manager) GetRetentionConfig() *RetentionConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return &m.config.Retention
+}
+
+// UpdateRetentionConfig updates the retention configuration.
+func (m *Manager) UpdateRetentionConfig(config *RetentionConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.config.Retention = *config
+}
+
+// GetConfig returns the full companion configuration.
+func (m *Manager) GetConfig() *Config {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.config
+}

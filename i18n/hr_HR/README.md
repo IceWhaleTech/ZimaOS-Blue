@@ -25,7 +25,7 @@
 
 **ZimaOS Echo** je ojačano AI agent runtime okruženje za NAS i rubne uređaje. Vaši podaci ostaju na vašem hardveru, svaka radnja je revizijska, a AI operacije se izvode u izoliranim sandbox okruženjima.
 
-[Dokumentacija](https://echo.zimaos.com) · [Brzi početak](#brzi-početak) · [Sigurnost](#sigurnosno-ojačanje)
+[Brzi početak](#brzi-početak) · [Sigurnost](#sigurnosno-ojačanje)
 
 ## Temeljna načela
 
@@ -55,9 +55,6 @@
 ## Brzi početak
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # Iz izvora
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server

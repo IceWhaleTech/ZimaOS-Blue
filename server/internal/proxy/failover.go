@@ -1,0 +1,202 @@
+package proxy
+
+import (
+	"context"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/resilience"
+)
+
+// FailoverHandler handles request failover
+type FailoverHandler struct {
+	config   *FailoverConfig
+	router   *Router
+	breakers map[string]*resilience.CircuitBreaker
+	mu       sync.RWMutex
+}
+
+// NewFailoverHandler creates a new failover handler
+func NewFailoverHandler(config *FailoverConfig, router *Router) *FailoverHandler {
+	return &FailoverHandler{
+		config:   config,
+		router:   router,
+		breakers: make(map[string]*resilience.CircuitBreaker),
+	}
+}
+
+// getBreaker returns or creates a circuit breaker for a provider
+func (fh *FailoverHandler) getBreaker(name string) *resilience.CircuitBreaker {
+	fh.mu.RLock()
+	breaker, ok := fh.breakers[name]
+	fh.mu.RUnlock()
+
+	if ok {
+		return breaker
+	}
+
+	fh.mu.Lock()
+	defer fh.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if breaker, ok = fh.breakers[name]; ok {
+		return breaker
+	}
+
+	breaker = resilience.NewCircuitBreaker(resilience.CircuitBreakerConfig{
+		Name:                name,
+		MaxFailures:         fh.config.FailureThreshold,
+		Timeout:             fh.config.RecoveryTimeout,
+		MaxHalfOpenRequests: 1,
+	})
+	fh.breakers[name] = breaker
+	return breaker
+}
+
+// Execute executes request with failover support
+func (fh *FailoverHandler) Execute(
+	ctx context.Context,
+	provider *Provider,
+	fn func(*Provider) (*http.Response, error),
+) (*http.Response, error) {
+	if !fh.config.Enabled {
+		return fn(provider)
+	}
+
+	// Get circuit breaker for provider
+	breaker := fh.getBreaker(provider.Config.Name)
+
+	// Check circuit breaker
+	if fh.config.CircuitBreaker && breaker.State() == resilience.StateOpen {
+		// Try next provider
+		return fh.tryNextProvider(ctx, provider, fn)
+	}
+
+	// Execute with retries
+	var lastErr error
+	var lastResp *http.Response
+
+	for attempt := 0; attempt <= fh.config.MaxRetries; attempt++ {
+		if attempt > 0 {
+			// Wait before retry with exponential backoff
+			delay := fh.config.RetryDelay * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		resp, err := fn(provider)
+		if err == nil && resp.StatusCode < 500 {
+			if fh.config.CircuitBreaker {
+				breaker.Execute(func() error { return nil }) // Record success
+			}
+			return resp, nil
+		}
+
+		lastErr = err
+		lastResp = resp
+		if err == nil {
+			lastErr = ErrUpstreamError
+		}
+	}
+
+	// All retries failed
+	if fh.config.CircuitBreaker {
+		breaker.Execute(func() error { return lastErr }) // Record failure
+	}
+
+	// Try next provider
+	nextResp, nextErr := fh.tryNextProvider(ctx, provider, fn)
+	if nextErr == nil {
+		return nextResp, nil
+	}
+
+	// Return original error if all providers failed
+	if lastResp != nil {
+		return lastResp, lastErr
+	}
+	return nil, ErrAllProvidersFailed
+}
+
+// tryNextProvider attempts to use the next available provider
+func (fh *FailoverHandler) tryNextProvider(
+	ctx context.Context,
+	failed *Provider,
+	fn func(*Provider) (*http.Response, error),
+) (*http.Response, error) {
+	providers := fh.router.GetAvailableProviders()
+
+	for _, p := range providers {
+		if p.Config.Name == failed.Config.Name {
+			continue
+		}
+
+		breaker := fh.getBreaker(p.Config.Name)
+		if fh.config.CircuitBreaker && breaker.State() == resilience.StateOpen {
+			continue
+		}
+
+		resp, err := fn(p)
+		if err == nil && resp.StatusCode < 500 {
+			if fh.config.CircuitBreaker {
+				breaker.Execute(func() error { return nil }) // Record success
+			}
+			return resp, nil
+		}
+
+		if fh.config.CircuitBreaker {
+			breaker.Execute(func() error { return err }) // Record failure
+		}
+	}
+
+	return nil, ErrAllProvidersFailed
+}
+
+// GetBreakerState returns the circuit breaker state for a provider
+func (fh *FailoverHandler) GetBreakerState(name string) string {
+	fh.mu.RLock()
+	breaker, ok := fh.breakers[name]
+	fh.mu.RUnlock()
+
+	if !ok {
+		return "closed"
+	}
+
+	return breaker.State().String()
+}
+
+// GetBreakerStats returns circuit breaker statistics
+func (fh *FailoverHandler) GetBreakerStats() map[string]interface{} {
+	fh.mu.RLock()
+	defer fh.mu.RUnlock()
+
+	stats := make(map[string]interface{})
+	for name, breaker := range fh.breakers {
+		stats[name] = breaker.Stats()
+	}
+	return stats
+}
+
+// ResetBreaker resets a circuit breaker
+func (fh *FailoverHandler) ResetBreaker(name string) {
+	fh.mu.RLock()
+	breaker, ok := fh.breakers[name]
+	fh.mu.RUnlock()
+
+	if ok {
+		breaker.Reset()
+	}
+}
+
+// ResetAllBreakers resets all circuit breakers
+func (fh *FailoverHandler) ResetAllBreakers() {
+	fh.mu.RLock()
+	defer fh.mu.RUnlock()
+
+	for _, breaker := range fh.breakers {
+		breaker.Reset()
+	}
+}

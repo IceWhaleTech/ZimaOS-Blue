@@ -25,7 +25,7 @@
 
 **ZimaOS Echo** je posilnený AI agent runtime pre NAS a edge zariadenia. Vaše dáta zostávajú na vašom hardvéri, každá akcia je auditovateľná a AI operácie bežia v izolovaných sandboxoch.
 
-[Dokumentácia](https://echo.zimaos.com) · [Rýchly štart](#rýchly-štart) · [Bezpečnosť](#bezpečnostné-posilnenie)
+[Rýchly štart](#rýchly-štart) · [Bezpečnosť](#bezpečnostné-posilnenie)
 
 ## Základné princípy
 
@@ -55,9 +55,6 @@
 ## Rýchly štart
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # Zo zdrojového kódu
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server

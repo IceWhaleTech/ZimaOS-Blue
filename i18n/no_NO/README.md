@@ -35,4 +35,4 @@
 
 > Norsk oversettelse er ufullstendig.
 >
-> Fullstendig innhold: [README (English)](../../README.md) · [Dokumentasjon](https://echo.zimaos.com)
+> Fullstendig innhold: [README (English)](../../README.md)

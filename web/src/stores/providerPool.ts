@@ -1,0 +1,463 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams } from '@/api/providerPool'
+
+export const useProviderPoolStore = defineStore('providerPool', () => {
+  // State
+  const providers = ref<Provider[]>([])
+  const models = ref<Model[]>([])
+  const usageStats = ref<Record<string, UsageSummary>>({})
+  const ides = ref<IDEInfo[]>([])
+  const pricingConfig = ref<PricingConfig | null>(null)
+  const customPricing = ref<ModelPricing[]>([])
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+  const selectedProviderId = ref<string | null>(null)
+
+  // Computed
+  const enabledProviders = computed(() =>
+    providers.value.filter(p => p.enabled)
+  )
+
+  const activeProviders = computed(() =>
+    providers.value.filter(p => p.enabled && p.status === 'active')
+  )
+
+  const builtinProviders = computed(() =>
+    providers.value.filter(p => p.type === 'builtin')
+  )
+
+  const customProviders = computed(() =>
+    providers.value.filter(p => p.type === 'custom')
+  )
+
+  const ideProviders = computed(() =>
+    providers.value.filter(p => p.type === 'ide')
+  )
+
+  const selectedProvider = computed(() =>
+    providers.value.find(p => p.id === selectedProviderId.value)
+  )
+
+  const providerModels = computed(() => {
+    if (!selectedProviderId.value) return []
+    return models.value.filter(m => m.provider_id === selectedProviderId.value)
+  })
+
+  // Actions
+  async function fetchProviders() {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await providerPoolApi.listProviders()
+      providers.value = response.data.providers || []
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch providers'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchModels(providerId?: string) {
+    loading.value = true
+    error.value = null
+    try {
+      if (providerId) {
+        const response = await providerPoolApi.listProviderModels(providerId)
+        // Update models for this provider
+        models.value = models.value.filter(m => m.provider_id !== providerId)
+        models.value.push(...(response.data.models || []))
+      } else {
+        const response = await providerPoolApi.listAllModels()
+        models.value = response.data.models || []
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch models'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function refreshModels(providerId: string) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await providerPoolApi.fetchProviderModels(providerId)
+      // Update models for this provider
+      models.value = models.value.filter(m => m.provider_id !== providerId)
+      models.value.push(...(response.data.models || []))
+      return response.data.models || []
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to refresh models'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function addProvider(provider: Partial<Provider>) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await providerPoolApi.addProvider(provider)
+      providers.value.push(response.data)
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to add provider'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateProvider(id: string, updates: Partial<Provider>) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await providerPoolApi.updateProvider(id, updates)
+      const index = providers.value.findIndex(p => p.id === id)
+      if (index !== -1) {
+        providers.value[index] = response.data
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update provider'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function deleteProvider(id: string) {
+    loading.value = true
+    error.value = null
+    try {
+      await providerPoolApi.deleteProvider(id)
+      providers.value = providers.value.filter(p => p.id !== id)
+      if (selectedProviderId.value === id) {
+        selectedProviderId.value = null
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to delete provider'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function enableProvider(id: string) {
+    try {
+      await providerPoolApi.enableProvider(id)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.enabled = true
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to enable provider'
+      throw e
+    }
+  }
+
+  async function disableProvider(id: string) {
+    try {
+      await providerPoolApi.disableProvider(id)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.enabled = false
+        provider.status = 'inactive'
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to disable provider'
+      throw e
+    }
+  }
+
+  async function testProvider(id: string) {
+    try {
+      const response = await providerPoolApi.testProvider(id)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.status = response.data.healthy ? 'active' : 'error'
+        provider.last_health_check = response.data.checked_at
+        if (response.data.error) {
+          provider.last_error = response.data.error
+        }
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to test provider'
+      throw e
+    }
+  }
+
+  async function updateModelParams(id: string, params: ModelParams) {
+    try {
+      const response = await providerPoolApi.updateModelParams(id, params)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.model_params = response.data.model_params
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update model params'
+      throw e
+    }
+  }
+
+  async function detectCapabilities(id: string) {
+    try {
+      const response = await providerPoolApi.detectCapabilities(id)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        if (!provider.model_params) {
+          provider.model_params = {}
+        }
+        provider.model_params.detected_max_tokens = response.data.detected_max_tokens
+        provider.model_params.detected_at = response.data.detected_at
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to detect capabilities'
+      throw e
+    }
+  }
+
+  async function updateProviderIcon(id: string, icon: string) {
+    try {
+      const response = await providerPoolApi.updateProviderIcon(id, icon)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.custom_icon = response.data.custom_icon
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update provider icon'
+      throw e
+    }
+  }
+
+  async function deleteProviderIcon(id: string) {
+    try {
+      await providerPoolApi.deleteProviderIcon(id)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.custom_icon = undefined
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to delete provider icon'
+      throw e
+    }
+  }
+
+  async function addAPIKey(providerId: string, key: string, label?: string) {
+    try {
+      const response = await providerPoolApi.addAPIKey(providerId, key, label)
+      const provider = providers.value.find(p => p.id === providerId)
+      if (provider) {
+        if (!provider.api_keys) {
+          provider.api_keys = []
+        }
+        provider.api_keys.push(response.data)
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to add API key'
+      throw e
+    }
+  }
+
+  async function removeAPIKey(providerId: string, keyId: string) {
+    try {
+      await providerPoolApi.removeAPIKey(providerId, keyId)
+      const provider = providers.value.find(p => p.id === providerId)
+      if (provider && provider.api_keys) {
+        provider.api_keys = provider.api_keys.filter(k => k.id !== keyId)
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to remove API key'
+      throw e
+    }
+  }
+
+  async function fetchUsageStats(period?: string) {
+    try {
+      const response = await providerPoolApi.getUsageStats(period)
+      usageStats.value = response.data.providers
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch usage stats'
+      throw e
+    }
+  }
+
+  async function scanIDEs() {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await providerPoolApi.scanIDEs()
+      ides.value = response.data.ides
+      return response.data.ides
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to scan IDEs'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function connectIDE(ideType: string) {
+    try {
+      const response = await providerPoolApi.connectIDE(ideType)
+      const index = ides.value.findIndex(i => i.type === ideType)
+      if (index !== -1) {
+        ides.value[index] = response.data
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to connect IDE'
+      throw e
+    }
+  }
+
+  function selectProvider(id: string | null) {
+    selectedProviderId.value = id
+  }
+
+  function clearError() {
+    error.value = null
+  }
+
+  // Pricing actions
+  async function fetchPricingConfig() {
+    try {
+      const response = await providerPoolApi.getPricingConfig()
+      pricingConfig.value = response.data
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch pricing config'
+      throw e
+    }
+  }
+
+  async function setDefaultPricing(inputPrice: number, outputPrice: number, cachePrice: number) {
+    try {
+      const response = await providerPoolApi.setDefaultPricing(inputPrice, outputPrice, cachePrice)
+      if (pricingConfig.value) {
+        pricingConfig.value.default_input_price = inputPrice
+        pricingConfig.value.default_output_price = outputPrice
+        pricingConfig.value.default_cache_price = cachePrice
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to set default pricing'
+      throw e
+    }
+  }
+
+  async function fetchCustomPricing() {
+    try {
+      const response = await providerPoolApi.listModelPricing()
+      customPricing.value = response.data.pricing || []
+      return response.data.pricing
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch custom pricing'
+      throw e
+    }
+  }
+
+  async function setModelPricing(modelId: string, pricing: { provider_id?: string; input_price: number; output_price: number; cache_price?: number }) {
+    try {
+      const response = await providerPoolApi.setModelPricing(modelId, pricing)
+      // Update local state
+      const key = pricing.provider_id ? `${pricing.provider_id}:${modelId}` : modelId
+      const index = customPricing.value.findIndex(p =>
+        (p.provider_id ? `${p.provider_id}:${p.model_id}` : p.model_id) === key
+      )
+      if (index !== -1) {
+        customPricing.value[index] = response.data
+      } else {
+        customPricing.value.push(response.data)
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to set model pricing'
+      throw e
+    }
+  }
+
+  async function removeModelPricing(modelId: string, providerId?: string) {
+    try {
+      await providerPoolApi.removeModelPricing(modelId, providerId)
+      // Update local state
+      const key = providerId ? `${providerId}:${modelId}` : modelId
+      customPricing.value = customPricing.value.filter(p =>
+        (p.provider_id ? `${p.provider_id}:${p.model_id}` : p.model_id) !== key
+      )
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to remove model pricing'
+      throw e
+    }
+  }
+
+  async function recalculateCosts(period?: string) {
+    try {
+      const response = await providerPoolApi.recalculateCosts(period)
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to recalculate costs'
+      throw e
+    }
+  }
+
+  return {
+    // State
+    providers,
+    models,
+    usageStats,
+    ides,
+    pricingConfig,
+    customPricing,
+    loading,
+    error,
+    selectedProviderId,
+
+    // Computed
+    enabledProviders,
+    activeProviders,
+    builtinProviders,
+    customProviders,
+    ideProviders,
+    selectedProvider,
+    providerModels,
+
+    // Actions
+    fetchProviders,
+    fetchModels,
+    refreshModels,
+    addProvider,
+    updateProvider,
+    deleteProvider,
+    enableProvider,
+    disableProvider,
+    testProvider,
+    updateModelParams,
+    detectCapabilities,
+    updateProviderIcon,
+    deleteProviderIcon,
+    addAPIKey,
+    removeAPIKey,
+    fetchUsageStats,
+    scanIDEs,
+    connectIDE,
+    selectProvider,
+    clearError,
+    fetchPricingConfig,
+    setDefaultPricing,
+    fetchCustomPricing,
+    setModelPricing,
+    removeModelPricing,
+    recalculateCosts,
+  }
+})

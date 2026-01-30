@@ -34,19 +34,15 @@ features:
     details: 支持 Web、Telegram、Discord、Slack 等（即将推出）
 ---
 
-## 快速安装
-
-### Linux / macOS
+## 从源码安装
 
 ```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-### Windows (以管理员身份运行 PowerShell)
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
+更多方式见 [安装指南](guide/installation.md)。
 
 ## 什么是 ZimaOS Echo？
 

@@ -10,19 +10,15 @@
 
 ## 快速安装
 
-### Linux / macOS
+从源码构建并运行：
 
 ```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-### Windows
-
-以管理员身份打开 PowerShell 并运行：
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
+更多方式见 [安装](installation.md)。
 
 ## 验证安装
 

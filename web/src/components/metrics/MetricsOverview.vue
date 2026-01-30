@@ -21,17 +21,20 @@ const stats = computed(() => {
   }
 })
 
-function formatNumber(num: number): string {
+function formatNumber(num: number | undefined | null): string {
+  if (num == null) return '0'
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
   return num.toFixed(0)
 }
 
-function formatCost(cost: number): string {
+function formatCost(cost: number | undefined | null): string {
+  if (cost == null) return '$0.0000'
   return '$' + cost.toFixed(4)
 }
 
-function formatLatency(ms: number): string {
+function formatLatency(ms: number | undefined | null): string {
+  if (ms == null) return '0ms'
   if (ms >= 1000) return (ms / 1000).toFixed(2) + 's'
   return ms.toFixed(0) + 'ms'
 }
@@ -55,8 +58,8 @@ function formatLatency(ms: number): string {
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm">
-        <span :class="stats && stats.successRate >= 95 ? 'text-green-500' : 'text-orange-500'">
-          {{ stats ? stats.successRate.toFixed(1) : '-' }}%
+        <span :class="stats && (stats.successRate ?? 0) >= 95 ? 'text-green-500' : 'text-orange-500'">
+          {{ stats ? (stats.successRate ?? 0).toFixed(1) : '-' }}%
         </span>
         <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</span>
       </div>
@@ -111,7 +114,7 @@ function formatLatency(ms: number): string {
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.speed') }}</p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats ? stats.tokensPerSecond.toFixed(1) : '-' }}
+            {{ stats ? (stats.tokensPerSecond ?? 0).toFixed(1) : '-' }}
           </p>
         </div>
         <div class="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">

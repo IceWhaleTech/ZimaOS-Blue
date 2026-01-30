@@ -3,6 +3,7 @@ import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
+import { useProviderPoolStore } from '@/stores/providerPool'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import { claudeCodeApi } from '@/api/claudecode'
 import type { ClaudeCodeConfigResponse } from '@/api/claudecode'
@@ -13,6 +14,7 @@ import ChatInput from '@/components/ChatInput.vue'
 const { t } = useI18n()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+const providerPoolStore = useProviderPoolStore()
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
@@ -20,9 +22,38 @@ const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
 const showModelSelector = ref(false)
 const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
+const autoSwitchEnabled = ref(localStorage.getItem('autoSwitchProvider') === 'true')
 
 // Check if Claude Code CLI is enabled
 const isClaudeCodeEnabled = computed(() => claudeCodeConfig.value?.enabled ?? false)
+
+// Configured providers - use Provider Pool's enabled providers
+const configuredProviders = computed(() => {
+  // First check Provider Pool for enabled providers
+  if (providerPoolStore.enabledProviders.length > 0) {
+    return providerPoolStore.enabledProviders.map(p => ({
+      name: p.id,
+      displayName: p.name,
+      models: [] // Models are fetched separately
+    }))
+  }
+  // Fallback to legacy settings store
+  return settingsStore.providers.filter(p => {
+    // Ollama doesn't need API key
+    if (p.name === 'ollama') return true
+    // Check if API key is configured in settings
+    return !!settingsStore.apiKeys[p.name]
+  })
+})
+
+// Check if any providers are configured
+const hasConfiguredProviders = computed(() => configuredProviders.value.length > 0)
+
+// Toggle auto-switch
+function toggleAutoSwitch() {
+  autoSwitchEnabled.value = !autoSwitchEnabled.value
+  localStorage.setItem('autoSwitchProvider', String(autoSwitchEnabled.value))
+}
 
 // Check if mobile on mount and resize
 function checkMobile() {
@@ -150,7 +181,14 @@ const currentModelDisplay = computed(() => {
 })
 
 // Get translated provider name
-function getProviderDisplayName(providerName: string): string {
+function getProviderDisplayName(providerName: string | undefined): string {
+  if (!providerName) return ''
+  // First check if it's a Provider Pool provider with a display name
+  const poolProvider = providerPoolStore.providers.find(p => p.id === providerName)
+  if (poolProvider) {
+    return poolProvider.name
+  }
+  // Fallback to i18n translation
   const key = `settings.providers.${providerName.toLowerCase()}`
   const translated = t(key)
   // If translation key doesn't exist, return original name
@@ -186,8 +224,21 @@ onMounted(async () => {
     chatStore.fetchConversations(),
     settingsStore.fetchProviders(),
     settingsStore.fetchTools(),
+    providerPoolStore.fetchProviders(),
     fetchClaudeCodeConfig(),
   ])
+
+  // Auto-select first enabled provider if current provider is not in the enabled list
+  if (providerPoolStore.enabledProviders.length > 0) {
+    const enabledIds = providerPoolStore.enabledProviders.map(p => p.id)
+    if (!enabledIds.includes(settingsStore.selectedProvider)) {
+      // Select the first enabled provider
+      const firstEnabled = providerPoolStore.enabledProviders[0]
+      if (firstEnabled) {
+        settingsStore.setProvider(firstEnabled.id)
+      }
+    }
+  }
 
   // Auto-select first conversation if available and none selected
   if (!chatStore.currentConversationId && chatStore.sortedConversations.length > 0) {
@@ -287,101 +338,139 @@ onUnmounted(() => {
 
         <!-- Model selector -->
         <div class="model-selector-container relative flex-shrink-0">
-          <!-- Mobile: Compact button -->
-          <button
-            v-if="isMobile"
-            class="flex items-center gap-1 px-3 py-1.5 glass-card text-gray-900 dark:text-white text-sm transition-all duration-200 cursor-pointer"
-            @click.stop="toggleModelSelector"
+          <!-- No configured providers: Show add provider prompt -->
+          <router-link
+            v-if="!hasConfiguredProviders"
+            to="/settings"
+            class="flex items-center gap-2 px-3 py-1.5 glass-card text-amber-600 dark:text-amber-400 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all duration-200"
           >
-            <span class="truncate max-w-[100px]">{{ currentModelDisplay }}</span>
-            <svg
-              class="w-4 h-4 flex-shrink-0 transition-transform duration-200"
-              :class="{ 'rotate-180': showModelSelector }"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-          </button>
+            {{ t('chat.addProvider') }}
+          </router-link>
 
-          <!-- Mobile: Dropdown -->
-          <div
-            v-if="isMobile && showModelSelector"
-            class="absolute right-0 top-full mt-2 w-64 glass-card shadow-xl z-50 p-4"
-          >
-            <div class="space-y-4">
-              <div>
-                <label class="block text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.provider') }}</label>
-                <select
-                  :value="settingsStore.selectedProvider"
-                  class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
-                  @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
-                >
-                  <option
-                    v-for="provider in settingsStore.providers"
-                    :key="provider.name"
-                    :value="provider.name"
-                    class="bg-white dark:bg-surface-elevated"
+          <!-- Has configured providers -->
+          <template v-else>
+            <!-- Mobile: Compact button -->
+            <button
+              v-if="isMobile"
+              class="flex items-center gap-1 px-3 py-1.5 glass-card text-gray-900 dark:text-white text-sm transition-all duration-200 cursor-pointer"
+              @click.stop="toggleModelSelector"
+            >
+              <span class="truncate max-w-[100px]">{{ currentModelDisplay }}</span>
+              <svg
+                class="w-4 h-4 flex-shrink-0 transition-transform duration-200"
+                :class="{ 'rotate-180': showModelSelector }"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <!-- Mobile: Dropdown -->
+            <div
+              v-if="isMobile && showModelSelector"
+              class="absolute right-0 top-full mt-2 w-64 glass-card shadow-xl z-50 p-4"
+            >
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.provider') }}</label>
+                  <select
+                    :value="settingsStore.selectedProvider"
+                    class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
+                    @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
                   >
-                    {{ getProviderDisplayName(provider.name) }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <label class="text-xs text-gray-500 dark:text-slate-400 font-medium">{{ t('chat.model') }}</label>
-                  <button
-                    class="text-xs text-accent hover:text-accent-light transition-colors cursor-pointer flex items-center gap-1"
-                    :disabled="settingsStore.refreshing"
-                    @click="handleRefreshModels"
-                  >
-                    <svg
-                      class="w-3 h-3"
-                      :class="{ 'animate-spin': settingsStore.refreshing }"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                    <option
+                      v-for="provider in configuredProviders"
+                      :key="provider.name"
+                      :value="provider.name"
+                      class="bg-white dark:bg-surface-elevated"
                     >
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {{ t('chat.refreshModels') }}
-                  </button>
+                      {{ getProviderDisplayName(provider.name) }}
+                    </option>
+                  </select>
                 </div>
-                <select
-                  :value="settingsStore.selectedModel"
-                  class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
-                  @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
-                >
-                  <option
-                    v-for="model in settingsStore.availableModels"
-                    :key="model"
-                    :value="model"
-                    class="bg-white dark:bg-surface-elevated"
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="text-xs text-gray-500 dark:text-slate-400 font-medium">{{ t('chat.model') }}</label>
+                    <button
+                      class="text-xs text-accent hover:text-accent-light transition-colors cursor-pointer flex items-center gap-1"
+                      :disabled="settingsStore.refreshing"
+                      @click="handleRefreshModels"
+                    >
+                      <svg
+                        class="w-3 h-3"
+                        :class="{ 'animate-spin': settingsStore.refreshing }"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {{ t('chat.refreshModels') }}
+                    </button>
+                  </div>
+                  <select
+                    :value="settingsStore.selectedModel"
+                    class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
+                    @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
                   >
-                    {{ model }}
-                  </option>
-                </select>
+                    <option
+                      v-for="model in settingsStore.availableModels"
+                      :key="model"
+                      :value="model"
+                      class="bg-white dark:bg-surface-elevated"
+                    >
+                      {{ model }}
+                    </option>
+                  </select>
+                </div>
+                <!-- Auto-switch checkbox (mobile) -->
+                <div class="flex items-center gap-2 pt-2 border-t border-glass-border">
+                  <input
+                    type="checkbox"
+                    :checked="autoSwitchEnabled"
+                    class="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-accent focus:ring-accent cursor-pointer"
+                    @change="toggleAutoSwitch"
+                  />
+                  <label class="text-xs text-gray-500 dark:text-slate-400 font-medium cursor-pointer" @click="toggleAutoSwitch">{{ t('chat.autoSwitch') }}</label>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Desktop: Inline selectors -->
-          <div v-else-if="!isMobile" class="flex items-center gap-2 text-sm">
-            <select
-              :value="settingsStore.selectedProvider"
-              class="glass-input text-gray-900 dark:text-white px-3 py-1.5 cursor-pointer"
-              @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
-            >
-              <option
-                v-for="provider in settingsStore.providers"
-                :key="provider.name"
-                :value="provider.name"
-                class="bg-white dark:bg-surface-elevated"
+            <!-- Desktop: Inline selectors -->
+            <div v-else-if="!isMobile" class="flex items-center gap-2 text-sm">
+              <!-- Auto-switch checkbox at front -->
+              <label
+                class="flex items-center gap-1.5 cursor-pointer"
+                :title="t('chat.autoSwitchDesc')"
               >
-                {{ getProviderDisplayName(provider.name) }}
-              </option>
-            </select>
+                <input
+                  type="checkbox"
+                  :checked="autoSwitchEnabled"
+                  class="w-3.5 h-3.5 rounded border-gray-300 dark:border-slate-600 text-accent focus:ring-accent cursor-pointer"
+                  @change="toggleAutoSwitch"
+                />
+                <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('chat.auto') }}</span>
+              </label>
+
+              <select
+                :value="settingsStore.selectedProvider"
+                class="glass-input text-gray-900 dark:text-white px-3 py-1.5 cursor-pointer"
+                @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
+              >
+                <option
+                  v-for="provider in configuredProviders"
+                  :key="provider.name"
+                  :value="provider.name"
+                  class="bg-white dark:bg-surface-elevated"
+                >
+                  {{ getProviderDisplayName(provider.name) }}
+                </option>
+              </select>
 
             <select
               :value="settingsStore.selectedModel"
@@ -416,6 +505,7 @@ onUnmounted(() => {
               </svg>
             </button>
           </div>
+          </template>
         </div>
       </header>
 

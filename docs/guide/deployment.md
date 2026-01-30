@@ -24,21 +24,7 @@ This guide covers deploying ZimaOS Echo in various environments.
 
 ## Deployment Options
 
-### 1. One-Click Installation (Recommended)
-
-#### Linux / macOS
-
-```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
-
-#### Windows (PowerShell as Admin)
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
-
-### 2. Manual Installation
+### 1. Manual Installation
 
 #### Download Binary
 
@@ -272,12 +258,6 @@ curl -X POST http://localhost:8080/api/v1/backup/{id}/restore
 3. Test connectivity: `curl -v http://localhost:8080/api/v1/health`
 
 ## Upgrading
-
-### Automatic Upgrade
-
-```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
 
 ### Manual Upgrade
 
