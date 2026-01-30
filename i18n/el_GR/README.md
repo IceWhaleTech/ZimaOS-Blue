@@ -35,4 +35,4 @@
 
 > Η ελληνική μετάφραση είναι ανολοκλήρωτη.
 >
-> Πλήρες περιεχόμενο: [README (English)](../../README.md) · [Τεκμηρίωση](https://echo.zimaos.com)
+> Πλήρες περιεχόμενο: [README (English)](../../README.md)

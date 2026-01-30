@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>セキュア・可観測・ローカルファーストの AI エージェントランタイム</strong>
+  <strong>セキュア・可観測な AI エージェントランタイム</strong>
 </p>
 
 <p align="center">
@@ -37,81 +37,103 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** は NAS およびエッジ向けの堅牢な AI エージェントランタイムです。データは自前ハードウェアに保存され、操作はすべて監査可能、AI は隔離サンドボックスで動作します。
+**ZimaOS Echo** は NAS およびエッジデバイス向けの軽量・高性能 AI エージェントランタイムです。Go で構築され、ゼロ設定デプロイ、セッション監視、包括的な利用分析を備えた本番用プラットフォームを提供します。
 
-[ドキュメント](https://echo.zimaos.com) · [クイックスタート](#クイックスタート) · [機能](#コア原則) · [比較](#clawdbot-との比較)
+[クイックスタート](#クイックスタート) · [機能](#コア機能)
 
-## なぜ ZimaOS Echo？
+## ハイライト
 
-ZimaOS Echo は [clawdbot](https://github.com/clawdbot/clawdbot) に触発され、Go で一から構築：
+| 項目 | 値 |
+|------|------|
+| **バイナリサイズ** | ~40MB（単一実行ファイル） |
+| **メモリ（アイドル）** | ~4MB |
+| **起動時間** | < 1s |
+| **依存関係** | なし（ゼロ設定デプロイ） |
 
-- **低リソース**: 256MB RAM のデバイスで動作
-- **高性能**: ネイティブ Go バイナリ、goroutine 並行
-- **簡単デプロイ**: 単一バイナリ、Node.js 不要
-- **NAS 最適化**: 低消費電力デバイス 24/7 運転向け
+## コア機能
 
-## コア原則
+### ゼロ設定デプロイ
 
-### ローカルファースト
+- **単一バイナリ**：ダウンロードして実行、ランタイム依存不要
+- **必要に応じて設定**：そのまま動作、必要時にカスタマイズ
+- **クロスプラットフォーム**：Windows、macOS、Linux 同一バイナリ・同一体験
+- **デーモン対応**：常駐バックグラウンドサービスとして実行可能
 
-- **データ主権**: 全データは NAS にローカル保存、クラウド非依存
-- **Ollama 連携**: LLM を完全オンデバイスで実行、外部 API 不要
-- **オフライン対応**: コア機能はインターネット不要
-- **単一バイナリ**: 約 15MB のネイティブ Go バイナリ、ランタイム依存なし
+### セッション監視
 
-### 可観測性と監査
+- **リアルタイムセッション追跡**：全アクティブ AI セッションをライブ状態で監視
+- **会話履歴**：全インタラクションの完全な監査証跡
+- **セッションリプレイ**：過去の会話のレビューと分析
+- **マルチテナント分離**：ユーザー間の完全なセッション分離
 
-- **監査ログ**: 全 AI 操作をコンテキスト・タイムスタンプ付きで記録
-- **Prometheus メトリクス**: システム操作のリアルタイム監視
-- **pprof プロファイリング**: CPU・メモリ・goroutine の詳細可視化
-- **構造化ログ**: JSON ログで解析・アラートが容易
+### コールチェーン最適化
+
+- **リクエストトレース**：全 API コールのエンドツーエンド可視性
+- **レイテンシ分析**：リクエストパイプラインのボトルネック特定
+- **プロバイダールーティング**：最適 LLM プロバイダーへのインテリジェントルーティング
+- **サーキットブレーカー**：プロバイダー障害時の自動フェイルオーバー
+
+### 利用分析
+
+- **トークン消費**：ユーザー・セッション・プロバイダー別の利用追跡
+- **コスト帰属**：操作別の詳細コスト内訳
+- **レート制限**：テナント別クォータ管理
+- **レポートエクスポート**：複数形式で利用レポート生成
 
 ### セキュリティ強化
 
-- **サンドボックス実行**: 全ツール呼び出しを隔離環境で実行
-- **RBAC**: きめ細かいロールベースアクセス制御
-- **WebAuthn/Passkeys**: パスワードレス FIDO2 認証
-- **MFA/TOTP**: 多要素認証
-- **OIDC/OAuth 2.0**: エンタープライズ SSO 連携
-- **サーキットブレーカー**: 自動障害隔離で連鎖故障を防止
+- **サンドボックス実行**：全ツール呼び出しを隔離環境で実行
+- **RBAC**：きめ細かいロールベースアクセス制御
+- **WebAuthn/Passkeys**：パスワードレス FIDO2 認証
+- **MFA/TOTP**：多要素認証
+- **監査証跡**：特権操作の不変ログ
 
 ## クイックスタート
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # ソースから
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
-./zimaos-echo server
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-## セキュリティ強化
+ダッシュボードは `http://localhost:3000` でアクセスできます。
 
-### 認証スタック
+## LLM プロバイダー設定
 
-| 層 | 技術 | 用途 |
-|----|------|------|
-| プライマリ | WebAuthn/Passkeys | フィッシング耐性のパスワードレス認証 |
-| セカンダリ | TOTP/MFA | 時間ベースワンタイムパスワード |
-| エンタープライズ | OIDC/OAuth 2.0 | Google、GitHub、Okta 等との SSO |
-| 認可 | RBAC | リソース単位の権限制御 |
+ZimaOS Echo はローカル LLM サービスを含む複数の LLM プロバイダーをサポートします：
 
-### ランタイム保護
+```yaml
+llm:
+  # クラウドプロバイダー
+  provider: "openai"  # または "anthropic", "azure" など
+  api_key: "your-api-key"
 
-- **サンドボックス隔離**: ツールは制限環境で実行
-- **レート制限**: テナントごとの API スロットリング
-- **テナント分離**: データ・リソースの完全分離
-- **監査トレイル**: 特権操作の不変ログ
+  # ローカル LLM（オプション）
+  # provider: "ollama"
+  # base_url: "http://localhost:11434"
+```
 
-### レジリエンス
+## アーキテクチャ
 
-- **サーキットブレーカー**: 障害時のサービス自動隔離
-- **Graceful Degradation**: プロバイダ障害時のフォールバック
-- **LLM フォールバックチェーン**: プロバイダの自動切替
-- **ホットリロード**: 設定変更を再起動なしで反映
+```
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Session Monitor │ Usage Analytics │ Call Tracing  │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
+```
 
 ## 可観測性
 
@@ -133,70 +155,20 @@ audit:
 ### 公開メトリクス
 
 - リクエストレイテンシ（p50、p95、p99）
-- プロバイダ別 LLM トークン使用量
-- ツール実行成功率・失敗率
+- プロバイダー別 LLM トークン使用量
+- ツール実行成功/失敗率
 - メモリ・goroutine 数
 - サーキットブレーカー状態遷移
 
-## アーキテクチャ
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
-
-## ローカル LLM セットアップ（Ollama）
-
-外部 API なしで完全オフライン AI 実行：
-
-```bash
-# Ollama インストール
-curl -fsSL https://ollama.com/install.sh | sh
-
-# モデル取得
-ollama pull llama3.2
-
-# Echo でローカル LLM を使用するよう設定
-cat >> config.yaml << EOF
-llm:
-  provider: "ollama"
-  model: "llama3.2"
-  base_url: "http://localhost:11434"
-EOF
-```
-
 ## 開発環境
 
-### 前提
+### 前提条件
 
 | ツール | バージョン | インストール |
-|--------|------------|--------------|
+|------|---------|---------|
 | Go | 1.21+ | [golang.org](https://golang.org/dl/) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
-| Make | - | macOS/Linux に標準同梱 |
-
-### ワンコマンド起動
-
-```bash
-# クローンして起動
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo
-```
-
-ダッシュボードは `http://localhost:3000` でアクセス。
+| Make | - | macOS/Linux にプリインストール |
 
 ### 開発モード（ホットリロード）
 
@@ -208,16 +180,16 @@ make build && ./dist/zimaos-echo
 dev.bat
 ```
 
-- フロントエンド: `http://localhost:5173`（API はバックエンドにプロキシ）
-- バックエンド: `http://localhost:8080`
+- フロントエンド：`http://localhost:3000`
+- バックエンド：`http://localhost:8080`
 
 ### ビルドコマンド
 
 ```bash
 make build              # 単一バイナリビルド（フロントエンド埋め込み）
-make build-embedded     # Claude Code CLI 埋め込みビルド
-make build-all          # 全プラットフォーム向けクロスビルド
-make clean              # ビルド成果物削除
+make build-embedded     # Claude Code CLI 埋め込みでビルド
+make build-all          # 全プラットフォーム向けクロスコンパイル
+make clean              # ビルド成果物のクリーン
 ```
 
 ### プロジェクト構造
@@ -225,25 +197,12 @@ make clean              # ビルド成果物削除
 ```
 ZimaOS-Echo/
 ├── server/             # Go バックエンド
-│   ├── cmd/echo/       # エントリポイント
+│   ├── cmd/echo/       # エントリーポイント
 │   └── internal/       # コアモジュール
 ├── web/                # Vue 3 フロントエンド
 │   └── src/
 └── dist/               # ビルド出力
 ```
-
-## Clawdbot との比較
-
-ZimaOS Echo は clawdbot に触発され、NAS/エッジ向けに最適化：
-
-| 項目 | ZimaOS Echo | Clawdbot |
-|------|-------------|----------|
-| **言語** | Go | TypeScript/Node.js |
-| **バイナリサイズ** | ~15MB | ~200MB+（node_modules 含む）|
-| **メモリ** | ~80MB アイドル | ~200MB+ アイドル |
-| **起動時間** | < 1s | 3–5s |
-| **ランタイム** | ネイティブバイナリ | Node.js 必須 |
-| **対象** | NAS/エッジ | デスクトップ/サーバー |
 
 ## 謝辞
 

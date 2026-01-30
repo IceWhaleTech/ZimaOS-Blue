@@ -296,34 +296,50 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 
 ---
 
-### v1.0: RAG & Knowledge Base
+### v0.10: Claude Code CLI Integration
 
-**Goal**: Local RAG capabilities
+**Goal**: Seamless Claude Code CLI integration with enterprise-grade features
 
-- [ ] Vector database integration (SQLite-vec / Manticore Search)
-- [ ] Document ingestion pipeline
-- [ ] Text chunking and embedding generation
-- [ ] Local embedding models support (via Ollama)
-- [ ] Semantic search API
-- [ ] RAG-enhanced chat
-- [ ] Knowledge base management UI
+**v0.10.0 - CLI Bundling**
+- [ ] Claude Code CLI bundling and version management
+- [ ] Download on demand / embedded modes
+- [ ] System CLI detection and validation
+- [ ] Auto-update support
 
----
+**v0.10.1 - Metrics Monitoring**
+- [ ] API call statistics (by model, by provider)
+- [ ] Token usage tracking and cost estimation
+- [ ] Performance metrics (TTFT, latency, throughput)
+- [ ] System resource monitoring
 
-### v1.1: Mesh Network
+**v0.10.2 - CLI Reliability**
+- [ ] Process lifecycle management
+- [ ] Error recovery and retry logic
+- [ ] Health monitoring
 
-**Goal**: Distributed mesh network for remote access
+**v0.10.3 - CLI Integration**
+- [ ] First-run setup wizard
+- [ ] Provider auto-detection (Ollama, etc.)
+- [ ] cc-switch integration
+- [ ] Limited mode support
 
-- [ ] Tailscale integration
-  - [ ] Tailscale client embedding
-  - [ ] MagicDNS support
-  - [ ] ACL-based access control
-- [ ] EasyTier integration (alternative)
-  - [ ] P2P mesh networking
-  - [ ] NAT traversal
-- [ ] Network abstraction layer
-- [ ] Automatic peer discovery
-- [ ] End-to-end encryption
+**v0.10.4 - Tauri Packaging**
+- [ ] Cross-platform desktop app (Windows, macOS)
+- [ ] Network access feature
+- [ ] System tray integration
+
+**v0.10.5 - API Proxy Sidecar** ★ Major Enhancement
+- [ ] Local API proxy for all CC CLI requests
+- [ ] Route selection and high availability
+- [ ] Session monitoring
+- [ ] Prompt injection interception
+- [ ] Usage statistics (tokens, latency, TTFT)
+- [ ] Dynamic configuration hot-reload
+- [ ] Simple authentication
+- [ ] Connection pooling and keep-alive
+- [ ] Model compatibility layer (tool calling fallback)
+- [ ] Mock endpoints for development
+- [ ] CLI daemon mode (if feasible)
 
 ---
 
@@ -344,62 +360,74 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                          ZimaOS-Echo                                 │
-├──────────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐  │
-│  │    Vue 3     │  │   REST API   │  │       WebSocket            │  │
-│  │   Frontend   │  │   Endpoints  │  │       Gateway              │  │
-│  │   (v0.5+)    │  │              │  │                            │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────────┬───────────────┘  │
-│         │                 │                       │                  │
-│  ┌──────┴─────────────────┴───────────────────────┴───────────────┐  │
-│  │                     Core Runtime (v0.1)                        │  │
-│  │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌─────────┐ ┌─────────┐  │  │
-│  │  │ Event   │ │ Worker  │ │ Context  │ │ Config  │ │ Logger  │  │  │
-│  │  │  Loop   │ │  Pool   │ │ Manager  │ │         │ │         │  │  │
-│  │  └─────────┘ └─────────┘ └──────────┘ └─────────┘ └─────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                               │                                      │
-│  ┌────────────────────────────┴───────────────────────────────────┐  │
-│  │                    Agent Runtime (v0.2)                        │  │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐  │  │
-│  │  │   LLM    │ │  Tools   │ │  Memory  │ │ Context │ │  RAG  │  │  │
-│  │  │ Provider │ │ Executor │ │  Store   │ │ Manager │ │(v1.0) │  │  │
-│  │  └──────────┘ └──────────┘ └──────────┘ └─────────┘ └───────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                               │                                      │
-│  ┌────────────────────────────┴───────────────────────────────────┐  │
-│  │                  Channel Adapters (v0.6)                       │  │
-│  │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐ ┌────────────┐  │  │
-│  │  │  Web   │ │ Telegram │ │ Discord │ │ Slack │ │ WeChat/... │  │  │
-│  │  │(v0.3)  │ │          │ │         │ │       │ │            │  │  │
-│  │  └────────┘ └──────────┘ └─────────┘ └───────┘ └────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                               │                                      │
-│  ┌────────────────────────────┴───────────────────────────────────┐  │
-│  │                   Plugin System (v0.4)                         │  │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────────┐  │  │
-│  │  │ Skills │ │  Cron  │ │ Media  │ │Webhook │ │Custom Plugins│  │  │
-│  │  └────────┘ └────────┘ └────────┘ └────────┘ └──────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                               │                                      │
-│  ┌────────────────────────────┴───────────────────────────────────┐  │
-│  │                      Data Layer                                │  │
-│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌─────────────┐  │  │
-│  │  │  SQLite    │ │  BoltDB    │ │ SQLite-vec │ │    Files    │  │  │
-│  │  │ (Primary)  │ │ (KV Cache) │ │  (v1.0)    │ │   (Media)   │  │  │
-│  │  └────────────┘ └────────────┘ └────────────┘ └─────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                               │                                      │
-│  ┌────────────────────────────┴───────────────────────────────────┐  │
-│  │                  Mesh Network Layer (v1.1)                     │  │
-│  │  ┌─────────────────────┐  ┌─────────────────────────────────┐  │  │
-│  │  │     Tailscale       │  │          EasyTier               │  │  │
-│  │  │  (WireGuard mesh)   │  │    (P2P mesh alternative)       │  │  │
-│  │  └─────────────────────┘  └─────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                              ZimaOS-Echo                                          │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐              │
+│  │    Vue 3     │  │   REST API   │  │       WebSocket            │              │
+│  │   Frontend   │  │   Endpoints  │  │       Gateway              │              │
+│  │   (v0.5+)    │  │              │  │                            │              │
+│  └──────┬───────┘  └──────┬───────┘  └────────────┬───────────────┘              │
+│         │                 │                       │                              │
+│  ┌──────┴─────────────────┴───────────────────────┴───────────────┐              │
+│  │                     Core Runtime (v0.1)                        │              │
+│  │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌─────────┐ ┌─────────┐  │              │
+│  │  │ Event   │ │ Worker  │ │ Context  │ │ Config  │ │ Logger  │  │              │
+│  │  │  Loop   │ │  Pool   │ │ Manager  │ │         │ │         │  │              │
+│  │  └─────────┘ └─────────┘ └──────────┘ └─────────┘ └─────────┘  │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+│                               │                                                  │
+│  ┌────────────────────────────┴───────────────────────────────────┐              │
+│  │                    Agent Runtime (v0.2)                        │              │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────┐            │              │
+│  │  │   LLM    │ │  Tools   │ │  Memory  │ │ Context │            │              │
+│  │  │ Provider │ │ Executor │ │  Store   │ │ Manager │            │              │
+│  │  └──────────┘ └──────────┘ └──────────┘ └─────────┘            │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+│                               │                                                  │
+│  ┌────────────────────────────┴───────────────────────────────────┐              │
+│  │              ★ API Proxy Sidecar (v0.10.5) ★                   │              │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │              │
+│  │  │  Route   │ │  Session │ │  Prompt  │ │  Usage   │           │              │
+│  │  │  Select  │ │  Monitor │ │  Guard   │ │  Stats   │           │              │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │              │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │              │
+│  │  │  Config  │ │  Conn    │ │  Model   │ │  Auth    │           │              │
+│  │  │  Watch   │ │  Pool    │ │  Compat  │ │  Gate    │           │              │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+│                               │                                                  │
+│  ┌────────────────────────────┴───────────────────────────────────┐              │
+│  │              Claude Code CLI (Daemon Mode) (v0.10.5)           │              │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │              │
+│  │  │  Daemon  │ │  Session │ │  Tool    │ │  MCP     │           │              │
+│  │  │  Process │ │  Reuse   │ │  Execute │ │  Server  │           │              │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+│                               │                                                  │
+│  ┌────────────────────────────┴───────────────────────────────────┐              │
+│  │                  Channel Adapters (v0.6)                       │              │
+│  │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐ ┌────────────┐  │              │
+│  │  │  Web   │ │ Telegram │ │ Discord │ │ Slack │ │ WeChat/... │  │              │
+│  │  │(v0.3)  │ │          │ │         │ │       │ │            │  │              │
+│  │  └────────┘ └──────────┘ └─────────┘ └───────┘ └────────────┘  │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+│                               │                                                  │
+│  ┌────────────────────────────┴───────────────────────────────────┐              │
+│  │                   Plugin System (v0.4)                         │              │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────────┐  │              │
+│  │  │ Skills │ │  Cron  │ │ Media  │ │Webhook │ │Custom Plugins│  │              │
+│  │  └────────┘ └────────┘ └────────┘ └────────┘ └──────────────┘  │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+│                               │                                                  │
+│  ┌────────────────────────────┴───────────────────────────────────┐              │
+│  │                      Data Layer                                │              │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌─────────────┐  │              │
+│  │  │  SQLite    │ │  BoltDB    │ │ SQLite-vec │ │    Files    │  │              │
+│  │  │ (Primary)  │ │ (KV Cache) │ │ (Future)   │ │   (Media)   │  │              │
+│  │  └────────────┘ └────────────┘ └────────────┘ └─────────────┘  │              │
+│  └────────────────────────────────────────────────────────────────┘              │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -417,8 +445,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | v0.7 | Security | OIDC, MFA, audit |
 | v0.8 | Performance | Optimization, caching, benchmarks |
 | v0.9 | Ecosystem | Multi-tenant, mobile, automation |
-| v1.0 | RAG | Knowledge base, semantic search |
-| v1.1 | Mesh Network | Remote access, P2P |
+| v0.10 | CC CLI Integration | API Proxy, metrics, desktop app |
 
 ---
 
@@ -430,7 +457,6 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
   - [Gorilla WebSocket](https://github.com/gorilla/websocket)
   - [Vue 3](https://vuejs.org/)
   - [Vite](https://vitejs.dev/)
-  - [Tailscale](https://tailscale.com/)
-  - [EasyTier](https://github.com/EasyTier/EasyTier)
   - [SQLite-vec](https://github.com/asg017/sqlite-vec)
   - [sourcegraph/conc](https://github.com/sourcegraph/conc)
+

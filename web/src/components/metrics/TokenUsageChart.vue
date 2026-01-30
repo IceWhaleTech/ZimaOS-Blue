@@ -11,17 +11,22 @@ const tokenData = computed(() => {
   if (!usage) return null
 
   const total = usage.total_tokens || 1
+  const input = usage.input_tokens ?? 0
+  const output = usage.output_tokens ?? 0
+  const cacheRead = usage.cache_read_tokens ?? 0
+  const cacheWrite = usage.cache_write_tokens ?? 0
+
   return {
-    input: usage.input_tokens,
-    output: usage.output_tokens,
-    cacheRead: usage.cache_read_tokens,
-    cacheWrite: usage.cache_write_tokens,
-    total: usage.total_tokens,
-    cost: usage.estimated_cost,
-    inputPercent: (usage.input_tokens / total) * 100,
-    outputPercent: (usage.output_tokens / total) * 100,
-    cacheReadPercent: (usage.cache_read_tokens / total) * 100,
-    cacheWritePercent: (usage.cache_write_tokens / total) * 100,
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    total: usage.total_tokens ?? 0,
+    cost: usage.estimated_cost ?? 0,
+    inputPercent: (input / total) * 100,
+    outputPercent: (output / total) * 100,
+    cacheReadPercent: (cacheRead / total) * 100,
+    cacheWritePercent: (cacheWrite / total) * 100,
   }
 })
 
@@ -29,13 +34,15 @@ const modelUsage = computed(() => {
   return metricsStore.tokenUsage?.by_model ?? []
 })
 
-function formatNumber(num: number): string {
+function formatNumber(num: number | undefined | null): string {
+  if (num == null) return '0'
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
   return num.toFixed(0)
 }
 
-function formatCost(cost: number): string {
+function formatCost(cost: number | undefined | null): string {
+  if (cost == null) return '$0.0000'
   return '$' + cost.toFixed(4)
 }
 

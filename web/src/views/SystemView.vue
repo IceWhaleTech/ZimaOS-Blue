@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { useMetricsStore } from '@/stores/metrics'
 import { systemApi, backupApi } from '@/api/index'
 import type { LogEntry, SystemMetrics, DetailedSystemInfo } from '@/api/system'
 import type { BackupInfo } from '@/api/index'
-import ResourceChart from '@/components/ResourceChart.vue'
 import Skeleton from '@/components/Skeleton.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import DonutChart from '@/components/DonutChart.vue'
@@ -14,7 +13,7 @@ import MetricsOverview from '@/components/metrics/MetricsOverview.vue'
 import TokenUsageChart from '@/components/metrics/TokenUsageChart.vue'
 import LatencyChart from '@/components/metrics/LatencyChart.vue'
 import ServiceManagement from '@/components/ServiceManagement.vue'
-import type { DataPoint } from '@/components/ResourceChart.vue'
+import { ConfigurableDashboard } from '@/components/dashboard'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
@@ -53,69 +52,6 @@ const backups = ref<BackupInfo[]>([])
 const backupsLoading = ref(false)
 const backupCreating = ref(false)
 const backupRestoring = ref<string | null>(null)
-
-// Computed
-const memoryUsagePercent = computed(() => {
-  if (!systemStore.health) return 0
-  // Approximate based on typical system memory
-  return Math.min(100, (systemStore.health.mem_alloc_bytes / (512 * 1024 * 1024)) * 100)
-})
-
-// Translate status value
-const statusText = computed(() => {
-  if (systemStore.loading) return '-'
-  const status = systemStore.health?.status
-  if (!status) return '-'
-  switch (status.toLowerCase()) {
-    case 'ok':
-      return t('system.statusOk')
-    case 'error':
-      return t('system.statusError')
-    case 'degraded':
-      return t('system.statusDegraded')
-    default:
-      return status
-  }
-})
-
-// Status color class
-const statusColorClass = computed(() => {
-  if (systemStore.loading || !systemStore.health?.status) {
-    return 'text-gray-400 dark:text-gray-500'
-  }
-  return systemStore.health.status === 'ok'
-    ? 'text-green-600 dark:text-green-400'
-    : 'text-red-600 dark:text-red-400'
-})
-
-// Chart data computed from metrics history
-const cpuChartData = computed<DataPoint[]>(() => {
-  return metricsHistory.value.map((m) => ({
-    timestamp: m.timestamp,
-    value: m.cpu_percent,
-  }))
-})
-
-const memoryChartData = computed<DataPoint[]>(() => {
-  return metricsHistory.value.map((m) => ({
-    timestamp: m.timestamp,
-    value: m.memory_used_bytes / (1024 * 1024), // Convert to MB
-  }))
-})
-
-const goroutinesChartData = computed<DataPoint[]>(() => {
-  return metricsHistory.value.map((m) => ({
-    timestamp: m.timestamp,
-    value: m.goroutines,
-  }))
-})
-
-const heapChartData = computed<DataPoint[]>(() => {
-  return metricsHistory.value.map((m) => ({
-    timestamp: m.timestamp,
-    value: m.heap_alloc_bytes / (1024 * 1024), // Convert to MB
-  }))
-})
 
 async function handleResetMetrics() {
   if (confirm(t('metrics.confirmReset'))) {
@@ -456,173 +392,19 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 
 
     <!-- Overview Tab -->
     <div v-if="activeTab === 'overview'" class="space-y-4 sm:space-y-6">
-      <!-- Stats Grid -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
-          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.status') }}</div>
-          <template v-if="systemStore.loading">
-            <Skeleton height="1.5rem" width="60%" rounded="md" />
-          </template>
-          <div v-else class="text-lg sm:text-xl font-bold" :class="statusColorClass">
-            {{ statusText }}
-          </div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
-          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.uptime') }}</div>
-          <template v-if="systemStore.loading">
-            <Skeleton height="1.5rem" width="80%" rounded="md" />
-          </template>
-          <div v-else class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">
-            {{ systemStore.health?.uptime || '-' }}
-          </div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
-          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.memory') }}</div>
-          <template v-if="systemStore.loading">
-            <Skeleton height="1.5rem" width="70%" rounded="md" />
-          </template>
-          <div v-else class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-            {{ systemStore.health ? formatBytes(systemStore.health.mem_alloc_bytes) : '-' }}
-          </div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-3 sm:p-4 shadow">
-          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('system.goroutines') }}</div>
-          <template v-if="systemStore.loading">
-            <Skeleton height="1.5rem" width="50%" rounded="md" />
-          </template>
-          <div v-else class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
-            {{ systemStore.health?.goroutines || '-' }}
-          </div>
-        </div>
-      </div>
+      <!-- Configurable Dashboard -->
+      <ConfigurableDashboard :metrics-history="metricsHistory" />
 
-      <!-- Resource Usage Charts -->
-      <div class="grid sm:grid-cols-2 gap-3 sm:gap-4">
-        <ResourceChart
-          :title="t('system.cpuUsage')"
-          :data="cpuChartData"
-          unit="%"
-          color="blue"
-          :max-value="100"
-          :format-value="(v: number) => v.toFixed(1)"
-        />
-        <ResourceChart
-          :title="t('system.memoryUsage')"
-          :data="memoryChartData"
-          unit=" MB"
-          color="green"
-          :format-value="(v: number) => v.toFixed(0)"
-        />
-        <ResourceChart
-          :title="t('system.goroutines')"
-          :data="goroutinesChartData"
-          unit=""
-          color="purple"
-          :format-value="(v: number) => v.toFixed(0)"
-        />
-        <ResourceChart
-          :title="t('system.heapAllocation')"
-          :data="heapChartData"
-          unit=" MB"
-          color="orange"
-          :format-value="(v: number) => v.toFixed(1)"
-        />
-      </div>
-
-      <!-- Resource Usage -->
-      <div class="grid md:grid-cols-2 gap-4 sm:gap-6">
-        <!-- Memory Usage -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-4 sm:p-6 shadow">
-          <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.memoryUsage') }}</h3>
-          <div class="space-y-4">
-            <div>
-              <div class="flex justify-between text-sm mb-1">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.allocated') }}</span>
-                <span class="text-gray-900 dark:text-white">{{ memoryUsagePercent.toFixed(1) }}%</span>
-              </div>
-              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                <div
-                  class="bg-blue-600 h-3 rounded-full transition-all"
-                  :style="{ width: `${memoryUsagePercent}%` }"
-                ></div>
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.alloc') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">
-                  {{ systemStore.health ? formatBytes(systemStore.health.mem_alloc_bytes) : '-' }}
-                </span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpus') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.health?.num_cpu || '-' }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Worker Pool -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.workerPool') }}</h3>
-          <div v-if="systemStore.workerStats" class="space-y-4">
-            <div>
-              <div class="flex justify-between text-sm mb-1">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.poolUsage') }}</span>
-                <span class="text-gray-900 dark:text-white">
-                  {{ systemStore.workerStats.running }}/{{ systemStore.workerStats.pool_size }}
-                </span>
-              </div>
-              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                <div
-                  class="bg-green-600 h-3 rounded-full transition-all"
-                  :style="{
-                    width: `${(systemStore.workerStats.running / systemStore.workerStats.pool_size) * 100}%`,
-                  }"
-                ></div>
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.running') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.workerStats.running }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('system.totalTasks') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.workerStats.total }}</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</div>
-        </div>
-      </div>
-
-      <!-- System Info -->
+      <!-- Detailed System Info Toggle -->
       <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('system.systemInformation') }}</h3>
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('system.detailedSystemInfo') }}</h3>
           <button
             class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             @click="toggleDetailedInfo"
           >
             {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}
           </button>
-        </div>
-        <div class="grid md:grid-cols-3 gap-4 text-sm">
-          <div>
-            <span class="text-gray-500 dark:text-gray-400">{{ t('system.version') }}:</span>
-            <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.health?.version || '-' }}</span>
-          </div>
-          <div>
-            <span class="text-gray-500 dark:text-gray-400">{{ t('system.goVersion') }}:</span>
-            <span class="text-gray-900 dark:text-white ml-2">{{ systemStore.health?.go_version || '-' }}</span>
-          </div>
-          <div>
-            <span class="text-gray-500 dark:text-gray-400">{{ t('system.timestamp') }}:</span>
-            <span class="text-gray-900 dark:text-white ml-2">
-              {{ systemStore.health?.timestamp ? formatDate(systemStore.health.timestamp) : '-' }}
-            </span>
-          </div>
         </div>
       </div>
 

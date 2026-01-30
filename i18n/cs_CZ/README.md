@@ -35,4 +35,4 @@
 
 > Český překlad je neúplný.
 >
-> Plný obsah: [README (English)](../../README.md) · [Dokumentace](https://echo.zimaos.com)
+> Plný obsah: [README (English)](../../README.md)

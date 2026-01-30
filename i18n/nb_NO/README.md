@@ -25,7 +25,7 @@
 
 **ZimaOS Echo** er en herdet AI-agent runtime for NAS og edge-enheter. Dataene dine forblir på din maskinvare, hver handling er reviderbar, og AI-operasjoner kjører i isolerte sandkasser.
 
-[Dokumentasjon](https://echo.zimaos.com) · [Hurtigstart](#hurtigstart) · [Sikkerhet](#sikkerhetsherding)
+[Hurtigstart](#hurtigstart) · [Sikkerhet](#sikkerhetsherding)
 
 ## Kjerneprinsipper
 
@@ -55,9 +55,6 @@
 ## Hurtigstart
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # Fra kilde
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server

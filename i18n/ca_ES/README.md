@@ -35,4 +35,4 @@
 
 > Traducció al català incompleta.
 >
-> Contingut complet: [README (English)](../../README.md) · [Documentació](https://echo.zimaos.com)
+> Contingut complet: [README (English)](../../README.md)

@@ -10,19 +10,15 @@ This guide will help you get ZimaOS Echo up and running quickly.
 
 ## Quick Installation
 
-### Linux / macOS
+Build and run from source:
 
 ```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-### Windows
-
-Open PowerShell as Administrator and run:
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
+See [Installation](installation.md) for binary download and other options.
 
 ## Verify Installation
 

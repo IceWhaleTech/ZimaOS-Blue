@@ -24,21 +24,7 @@
 
 ## 部署方式
 
-### 1. 一键安装（推荐）
-
-#### Linux / macOS
-
-```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
-
-#### Windows（以管理员身份运行 PowerShell）
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
-
-### 2. 手动安装
+### 1. 手动安装
 
 #### 下载二进制文件
 
@@ -272,12 +258,6 @@ curl -X POST http://localhost:8080/api/v1/backup/{id}/restore
 3. 测试连接：`curl -v http://localhost:8080/api/v1/health`
 
 ## 升级
-
-### 自动升级
-
-```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-```
 
 ### 手动升级
 

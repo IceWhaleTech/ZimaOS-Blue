@@ -221,3 +221,35 @@ export function getCompanionStreamUrl(sessionId?: string): string {
     : '/api/v1/companion/stream'
   return `${protocol}//${host}${path}`
 }
+
+// Retention configuration
+export interface RetentionConfig {
+  events_days: number
+  sessions_days: number
+  alerts_days: number
+}
+
+// Storage info
+export interface StorageInfo {
+  session_count: number
+  alert_count: number
+  event_count: number
+}
+
+// Settings response
+export interface CompanionSettings {
+  retention: RetentionConfig
+  storage_info: StorageInfo
+}
+
+// Settings API
+export const companionSettingsApi = {
+  getSettings: () =>
+    api.get<CompanionSettings>('/companion/settings'),
+
+  updateSettings: (retention: RetentionConfig) =>
+    api.put<{ message: string; retention: RetentionConfig }>('/companion/settings', { retention }),
+
+  triggerCleanup: () =>
+    api.post<{ message: string; success: boolean }>('/companion/cleanup'),
+}

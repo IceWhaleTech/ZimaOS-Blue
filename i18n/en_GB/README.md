@@ -35,4 +35,4 @@
 
 > English (UK) translation is incomplete.
 >
-> Full content: [README (English)](../../README.md) · [Documentation](https://echo.zimaos.com)
+> Full content: [README (English)](../../README.md)

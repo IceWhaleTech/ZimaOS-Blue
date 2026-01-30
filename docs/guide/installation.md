@@ -1,33 +1,5 @@
 # Installation
 
-## One-Click Installation
-
-### Linux / macOS
-
-```bash
-# Default installation
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
-# Specify version
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash -s -- --version v0.1.0
-
-# Custom installation directory
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash -s -- --dir /custom/path
-```
-
-### Windows
-
-```powershell
-# Default installation
-irm https://echo.zimaos.com/install.ps1 | iex
-
-# Specify version
-.\install.ps1 -Version v0.1.0
-
-# Custom installation directory
-.\install.ps1 -InstallDir "D:\ZimaOS-Echo"
-```
-
 ## Manual Installation
 
 ### Download Binary

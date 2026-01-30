@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Runtime de agentes IA seguro, observable y local-first</strong>
+  <strong>Runtime de agente IA seguro y observable</strong>
 </p>
 
 <p align="center">
@@ -37,86 +37,108 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** es un runtime de agentes IA endurecido para NAS y dispositivos edge. Tus datos se quedan en tu hardware, cada acción es auditable y la IA se ejecuta en sandboxes aisladas.
+**ZimaOS Echo** es un runtime de agente IA ligero y de alto rendimiento diseñado para NAS y dispositivos edge. Desarrollado en Go, ofrece una plataforma lista para producción con despliegue sin configuración, supervisión de sesiones y análisis de uso.
 
-[Documentación](https://echo.zimaos.com) · [Inicio rápido](#inicio-rápido) · [Funciones](#principios-clave) · [Comparación](#comparación-con-clawdbot)
+[Inicio rápido](#inicio-rápido) · [Funciones](#funciones-principales)
 
-## ¿Por qué ZimaOS Echo?
+## Destacados
 
-ZimaOS Echo se inspira en [clawdbot](https://github.com/clawdbot/clawdbot) y se reconstruye en Go para:
+| Especificación | Valor |
+|------|------|
+| **Tamaño del binario** | ~40 MB (ejecutable único) |
+| **Memoria (inactivo)** | ~4 MB |
+| **Tiempo de arranque** | < 1 s |
+| **Dependencias** | Ninguna (despliegue sin configuración) |
 
-- **Menor uso de recursos**: corre en dispositivos con solo 256MB RAM
-- **Mejor rendimiento**: binario Go nativo, concurrencia con gorutinas
-- **Despliegue más fácil**: binario único, sin Node.js
-- **Optimizado para NAS**: pensado para 24/7 en dispositivos de bajo consumo
+## Funciones principales
 
-## Principios clave
+### Despliegue sin configuración
 
-### Local-first
+- **Binario único**: descargar y ejecutar, sin dependencias de tiempo de ejecución
+- **Configuración bajo demanda**: funciona de inmediato, personalizable cuando haga falta
+- **Multiplataforma**: Windows, macOS, Linux – mismo binario, misma experiencia
+- **Soporte demonio**: ejecución como servicio en segundo plano
 
-- **Soberanía de datos**: todo almacenado localmente en tu NAS, sin dependencia de la nube
-- **Integración Ollama**: LLMs completamente en dispositivo, cero llamadas API externas
-- **Funciona offline**: las funciones principales sin conexión
-- **Binario único**: ~15 MB en Go nativo, sin dependencias de runtime
+### Supervisión de sesiones
 
-### Observable y auditable
+- **Seguimiento en tiempo real**: supervisar todas las sesiones IA activas y su estado
+- **Historial de conversaciones**: trazabilidad completa de todas las interacciones
+- **Reproducción de sesiones**: revisar y analizar conversaciones pasadas
+- **Aislamiento multi-tenant**: separación completa de sesiones entre usuarios
 
-- **Audit logging**: cada acción de IA registrada con contexto y marcas de tiempo
-- **Métricas Prometheus**: supervisión en tiempo real de las operaciones
-- **Perfilado pprof**: visibilidad de CPU, memoria y gorutinas
-- **Logs estructurados**: JSON para parseo y alertas
+### Optimización de la cadena de llamadas
 
-### Endurecimiento de seguridad
+- **Trazado de peticiones**: visibilidad de extremo a extremo de cada llamada API
+- **Análisis de latencia**: identificar cuellos de botella en el flujo de peticiones
+- **Enrutado de proveedores**: enrutado inteligente a los proveedores LLM óptimos
+- **Circuit breaker**: conmutación automática ante fallos de proveedor
 
-- **Ejecución en sandbox**: todas las llamadas a herramientas en entornos aislados
-- **RBAC**: control de acceso fino por roles
-- **WebAuthn/Passkeys**: autenticación sin contraseña FIDO2
+### Análisis de uso
+
+- **Consumo de tokens**: seguimiento por usuario, sesión y proveedor
+- **Atribución de costes**: desglose detallado de costes por operación
+- **Límite de tasa**: gestión de cuotas por tenant
+- **Exportar informes**: generar informes de uso en varios formatos
+
+### Refuerzo de seguridad
+
+- **Ejecución en sandbox**: todas las llamadas a herramientas se ejecutan en entornos aislados
+- **RBAC**: control de acceso basado en roles de grano fino
+- **WebAuthn/Passkeys**: autenticación FIDO2 sin contraseña
 - **MFA/TOTP**: autenticación multifactor
-- **OIDC/OAuth 2.0**: SSO empresarial
-- **Circuit breaker**: aislamiento automático ante fallos, evita cascadas
+- **Registro de auditoría**: registros inmutables de todas las operaciones privilegiadas
 
 ## Inicio rápido
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # Desde fuentes
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
-./zimaos-echo server
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-## Endurecimiento de seguridad
+Accede al panel en `http://localhost:3000`.
 
-### Stack de autenticación
+## Configuración de proveedores LLM
 
-| Capa | Tecnología | Propósito |
-|------|------------|-----------|
-| Primaria | WebAuthn/Passkeys | Auth sin contraseña resistente al phishing |
-| Secundaria | TOTP/MFA | Contraseñas de un solo uso temporales |
-| Empresa | OIDC/OAuth 2.0 | SSO con Google, GitHub, Okta |
-| Autorización | RBAC | Control de permisos por recurso |
+ZimaOS Echo admite varios proveedores LLM, incluidos servicios LLM locales:
 
-### Protección en runtime
+```yaml
+llm:
+  # Proveedores en la nube
+  provider: "openai"  # o "anthropic", "azure", etc.
+  api_key: "your-api-key"
 
-- **Aislamiento sandbox**: herramientas en entorno restringido
-- **Rate limiting**: limitación de API por tenant
-- **Aislamiento de tenants**: datos y recursos totalmente separados
-- **Audit trail**: logs inmutables de operaciones privilegiadas
+  # LLM local (opcional)
+  # provider: "ollama"
+  # base_url: "http://localhost:11434"
+```
 
-### Resiliencia
+## Arquitectura
 
-- **Circuit breaker**: aislamiento automático del servicio ante fallos
-- **Degradación elegante**: estrategias de respaldo si falla un proveedor
-- **Cadena de fallback LLM**: cambio automático de proveedor
-- **Hot reload**: cambios de configuración sin reiniciar
+```
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Session Monitor │ Usage Analytics │ Call Tracing  │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
+```
 
 ## Observabilidad
 
 ```yaml
-# Activar stack completo de observabilidad
+# Habilitar la pila de observabilidad completa
 metrics:
   enabled: true
   endpoint: "/metrics"
@@ -138,67 +160,17 @@ audit:
 - Conteos de memoria y gorutinas
 - Transiciones de estado del circuit breaker
 
-## Arquitectura
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
-
-## Configuración de LLM local (Ollama)
-
-Ejecutar IA totalmente offline, sin llamadas API externas:
-
-```bash
-# Instalar Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Descargar modelo
-ollama pull llama3.2
-
-# Configurar Echo para LLM local
-cat >> config.yaml << EOF
-llm:
-  provider: "ollama"
-  model: "llama3.2"
-  base_url: "http://localhost:11434"
-EOF
-```
-
 ## Entorno de desarrollo
 
-### Requisitos
+### Requisitos previos
 
 | Herramienta | Versión | Instalación |
-|-------------|---------|-------------|
+|------|---------|---------|
 | Go | 1.21+ | [golang.org](https://golang.org/dl/) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
-| Make | - | Incluido en macOS/Linux |
+| Make | - | Preinstalado en macOS/Linux |
 
-### Arranque en un comando
-
-```bash
-# Clonar y arrancar
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo
-```
-
-Dashboard en `http://localhost:3000`
-
-### Modo desarrollo (hot reload)
+### Modo desarrollo (recarga en caliente)
 
 ```bash
 # Linux / macOS
@@ -208,7 +180,7 @@ Dashboard en `http://localhost:3000`
 dev.bat
 ```
 
-- Frontend: `http://localhost:5173` (API proxy al backend)
+- Frontend: `http://localhost:3000`
 - Backend: `http://localhost:8080`
 
 ### Comandos de build
@@ -216,7 +188,7 @@ dev.bat
 ```bash
 make build              # Binario único (frontend embebido)
 make build-embedded     # Build con Claude Code CLI embebido
-make build-all          # Cross-compilar para todas las plataformas
+make build-all          # Compilación cruzada para todas las plataformas
 make clean              # Limpiar artefactos de build
 ```
 
@@ -226,29 +198,16 @@ make clean              # Limpiar artefactos de build
 ZimaOS-Echo/
 ├── server/             # Backend Go
 │   ├── cmd/echo/       # Punto de entrada
-│   └── internal/       # Módulos núcleo
+│   └── internal/       # Módulos principales
 ├── web/                # Frontend Vue 3
 │   └── src/
 └── dist/               # Salida de build
 ```
 
-## Comparación con Clawdbot
-
-ZimaOS Echo está inspirado en clawdbot pero optimizado para NAS/edge:
-
-| Concepto | ZimaOS Echo | Clawdbot |
-|----------|-------------|----------|
-| **Lenguaje** | Go | TypeScript/Node.js |
-| **Tamaño binario** | ~15 MB | ~200 MB+ (con node_modules) |
-| **Memoria** | ~80 MB inactivo | ~200 MB+ inactivo |
-| **Arranque** | < 1 s | 3–5 s |
-| **Runtime** | Binario nativo | Node.js requerido |
-| **Plataforma** | NAS/Edge | Escritorio/Servidor |
-
 ## Agradecimientos
 
-- [clawdbot](https://github.com/clawdbot/clawdbot) - Inspiración del proyecto
-- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - ORM ligero
+- [clawdbot](https://github.com/clawdbot/clawdbot) – Inspiración del proyecto
+- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) – ORM ligero
 
 ---
 

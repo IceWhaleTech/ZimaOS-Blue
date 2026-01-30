@@ -35,4 +35,4 @@
 
 > Suomenkielinen käännös on keskeneräinen.
 >
-> Täysi sisältö: [README (English)](../../README.md) · [Dokumentaatio](https://echo.zimaos.com)
+> Täysi sisältö: [README (English)](../../README.md)

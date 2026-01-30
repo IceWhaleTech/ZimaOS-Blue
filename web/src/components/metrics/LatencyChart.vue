@@ -11,14 +11,14 @@ const latencyData = computed(() => {
   if (!stats) return null
 
   return {
-    avg: stats.avg_ms,
-    min: stats.min_ms,
-    max: stats.max_ms,
-    p50: stats.p50_ms,
-    p90: stats.p90_ms,
-    p95: stats.p95_ms,
-    p99: stats.p99_ms,
-    samples: stats.samples,
+    avg: stats.avg_ms ?? 0,
+    min: stats.min_ms ?? 0,
+    max: stats.max_ms ?? 0,
+    p50: stats.p50_ms ?? 0,
+    p90: stats.p90_ms ?? 0,
+    p95: stats.p95_ms ?? 0,
+    p99: stats.p99_ms ?? 0,
+    samples: stats.samples ?? 0,
   }
 })
 
@@ -33,7 +33,8 @@ const speedData = computed(() => {
   }
 })
 
-function formatLatency(ms: number): string {
+function formatLatency(ms: number | undefined | null): string {
+  if (ms == null) return '0ms'
   if (ms >= 1000) return (ms / 1000).toFixed(2) + 's'
   return ms.toFixed(0) + 'ms'
 }

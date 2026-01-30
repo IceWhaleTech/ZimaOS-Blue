@@ -35,4 +35,4 @@
 
 > Tá an aistriúchán Gaeilge neamhiomlán.
 >
-> Ábhar iomlán: [README (English)](../../README.md) · [Doiciméadúchán](https://echo.zimaos.com)
+> Ábhar iomlán: [README (English)](../../README.md)

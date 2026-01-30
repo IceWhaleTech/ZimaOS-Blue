@@ -7,7 +7,7 @@ import Skeleton from '@/components/Skeleton.vue'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
-const { health, workerStats, loading } = storeToRefs(systemStore)
+const { health, loading } = storeToRefs(systemStore)
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 const autoRefresh = ref(true)
@@ -139,54 +139,6 @@ onUnmounted(() => {
           <span class="stat-label">{{ t('dashboard.cpus') }}</span>
           <Skeleton v-if="loading && !health" height="1.75rem" width="2rem" rounded="md" />
           <span v-else class="stat-value">{{ health?.num_cpu || '-' }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Worker Pool Section (only show when worker stats are available) -->
-    <div v-if="workerStats" class="worker-section">
-      <div class="worker-header">
-        <div class="worker-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-        </div>
-        <h2 class="worker-title">{{ t('dashboard.workerPool') }}</h2>
-      </div>
-
-      <div class="worker-stats">
-        <div class="worker-stat">
-          <span class="worker-stat-label">{{ t('dashboard.poolSize') }}</span>
-          <Skeleton v-if="loading && !workerStats" height="1.5rem" width="3rem" rounded="md" />
-          <span v-else class="worker-stat-value">{{ workerStats?.pool_size || '-' }}</span>
-        </div>
-        <div class="worker-stat">
-          <span class="worker-stat-label">{{ t('dashboard.running') }}</span>
-          <Skeleton v-if="loading && !workerStats" height="1.5rem" width="2rem" rounded="md" />
-          <span v-else class="worker-stat-value">{{ workerStats?.running || '-' }}</span>
-        </div>
-        <div class="worker-stat">
-          <span class="worker-stat-label">{{ t('dashboard.totalTasks') }}</span>
-          <Skeleton v-if="loading && !workerStats" height="1.5rem" width="4rem" rounded="md" />
-          <span v-else class="worker-stat-value">{{ workerStats?.total || '-' }}</span>
-        </div>
-      </div>
-
-      <!-- Progress bar -->
-      <div class="worker-progress">
-        <div class="progress-header">
-          <span class="progress-label">{{ t('dashboard.poolUsage') }}</span>
-          <Skeleton v-if="loading && !workerStats" height="1rem" width="3rem" rounded="md" />
-          <span v-else class="progress-value">
-            {{ workerStats ? `${workerStats.running}/${workerStats.pool_size}` : '-' }}
-          </span>
-        </div>
-        <div class="progress-bar">
-          <div
-            v-if="workerStats"
-            class="progress-fill"
-            :style="{ width: `${(workerStats.running / workerStats.pool_size) * 100}%` }"
-          ></div>
         </div>
       </div>
     </div>
@@ -330,102 +282,8 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
-/* Worker Section */
-.worker-section {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.worker-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.worker-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: rgba(59, 130, 246, 0.15);
-  color: #3B82F6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.worker-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.worker-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.worker-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.worker-stat-label {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.worker-stat-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.worker-progress {
-  margin-top: 16px;
-}
-
-.progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.progress-label {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-
-.progress-value {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.progress-bar {
-  height: 6px;
-  background: var(--glass-border);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--color-accent, #3B82F6), var(--color-cta, #10B981));
-  border-radius: 3px;
-  transition: width 0.5s ease;
-}
-
 /* Dark mode adjustments */
-:root.light .stat-card,
-:root.light .worker-section {
+:root.light .stat-card {
   background: rgba(255, 255, 255, 0.8);
   border-color: rgba(0, 0, 0, 0.08);
 }

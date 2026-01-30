@@ -35,4 +35,4 @@
 
 > Tradução em português (Portugal) incompleta.
 >
-> Conteúdo completo: [README (English)](../../README.md) · [Documentação](https://echo.zimaos.com)
+> Conteúdo completo: [README (English)](../../README.md)

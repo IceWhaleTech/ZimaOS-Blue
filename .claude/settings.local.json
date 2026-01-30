@@ -114,7 +114,8 @@
       "Bash(cargo build:*)",
       "Bash(./zimaos-echo:*)",
       "Bash(\"/Applications/ZimaOS Echo.app/Contents/MacOS/echo-server\" --version)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebFetch(domain:cdn.jsdelivr.net)"
     ]
   }
 }

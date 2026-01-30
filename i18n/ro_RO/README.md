@@ -25,7 +25,7 @@
 
 **ZimaOS Echo** este un runtime AI agent întărit pentru NAS și dispozitive edge. Datele tale rămân pe hardware-ul tău, fiecare acțiune este auditabilă, iar operațiunile AI rulează în sandbox-uri izolate.
 
-[Documentație](https://echo.zimaos.com) · [Start rapid](#start-rapid) · [Securitate](#întărire-securitate)
+[Start rapid](#start-rapid) · [Securitate](#întărire-securitate)
 
 ## Principii fundamentale
 
@@ -55,9 +55,6 @@
 ## Start rapid
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # Din sursă
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
 cd ZimaOS-Echo/server

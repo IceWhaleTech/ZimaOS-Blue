@@ -40,6 +40,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
@@ -848,6 +850,52 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	providerSettingsGroup := protected.Group("/providers/settings")
 	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
 	logger.Info().Msg("Provider settings routes registered")
+
+	// Register provider pool routes (protected) - /api/v1/providers/*
+	providerPoolPath := filepath.Join(dataDir, "providerpool")
+	providerPool, err := providerpool.NewPool(providerPoolPath, "")
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize provider pool, provider pool features will be disabled")
+	} else {
+		providerPool.Start(context.Background())
+
+		// Auto-migrate from legacy provider settings
+		if providerpool.CheckMigrationNeeded(dataDir) {
+			logger.Info().Msg("Legacy provider settings detected, starting migration...")
+			result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to migrate legacy provider settings")
+			} else if result.Migrated > 0 {
+				logger.Info().
+					Int("migrated", result.Migrated).
+					Int("skipped", result.Skipped).
+					Strs("migrated_names", result.MigratedNames).
+					Str("backup_path", result.BackupPath).
+					Msg("Legacy provider settings migrated successfully")
+			}
+		}
+
+		providerPoolHandler := providerpool.NewHandler(providerPool)
+		providersGroup := protected.Group("/providers")
+		providerPoolHandler.RegisterRoutes(providersGroup)
+		// Register model routes
+		modelsGroup := v1.Group("/models")
+		providerPoolHandler.RegisterModelRoutes(modelsGroup)
+		// Register IDE routes
+		ideGroup := protected.Group("/ide")
+		providerPoolHandler.RegisterIDERoutes(ideGroup)
+		// Register pricing routes
+		pricingGroup := protected.Group("/pricing")
+		providerPoolHandler.RegisterPricingRoutes(pricingGroup)
+		logger.Info().Msg("Provider pool routes registered")
+
+		// Register proxy failover routes
+		failoverConfig := proxy.DefaultProxyConfig().Routing.Failover
+		failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
+		failoverGroup := protected.Group("/proxy/failover")
+		failoverHandler.RegisterRoutes(failoverGroup)
+		logger.Info().Msg("Proxy failover routes registered")
+	}
 
 	// Register companion routes (Echo Companion - real-time AI Agent monitoring)
 	if companionHandler != nil {

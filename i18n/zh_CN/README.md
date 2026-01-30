@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>安全、可观测、本地优先的 AI 智能体运行时</strong>
+  <strong>安全、可观测的 AI 智能体运行时</strong>
 </p>
 
 <p align="center">
@@ -37,34 +37,48 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** 是面向 NAS 与边缘设备的加固型 AI 智能体运行时。数据留存于你的硬件，行为可审计，AI 运行于隔离沙箱。
+**ZimaOS Echo** 是面向 NAS 与边缘设备的轻量、高性能 AI 智能体运行时。使用 Go 构建，提供零配置部署、会话监控与全面使用分析的生产级平台。
 
-[文档](https://echo.zimaos.com) · [快速开始](#快速开始) · [功能特性](#核心原则) · [对比](#与-clawdbot-对比)
+[快速开始](#快速开始) · [功能特性](#核心功能)
 
-## 为什么选择 ZimaOS Echo？
+## 亮点
 
-ZimaOS Echo 受 [clawdbot](https://github.com/clawdbot/clawdbot) 启发，使用 Go 重建，具备：
+| 规格 | 数值 |
+|------|------|
+| **二进制大小** | ~40MB（单可执行文件） |
+| **内存（空闲）** | ~4MB |
+| **启动时间** | < 1s |
+| **依赖** | 无（零配置部署） |
 
-- **更低资源占用**：可在仅 256MB RAM 的设备上运行
-- **更好性能**：原生 Go 二进制，基于 goroutine 并发
-- **更易部署**：单一二进制，无需 Node.js
-- **NAS 优化**：为低功耗设备 24/7 运行设计
+## 核心功能
 
-## 核心原则
+### 零配置部署
 
-### 本地优先
+- **单一二进制**：下载即用，无需运行时依赖
+- **按需配置**：开箱可用，需要时再自定义
+- **跨平台**：Windows、macOS、Linux 同一二进制、同一体验
+- **守护进程**：可作为常驻后台服务运行
 
-- **数据主权**：所有数据本地存储在 NAS，无云依赖
-- **Ollama 集成**：LLM 完全本机运行，零外部 API 调用
-- **离线可用**：核心功能无需联网
-- **单一二进制**：约 15MB 原生 Go 二进制，无运行时依赖
+### 会话监控
 
-### 可观测与可审计
+- **实时会话追踪**：监控所有活跃 AI 会话及实时状态
+- **对话历史**：完整交互审计记录
+- **会话回放**：回顾与分析历史对话
+- **多租户隔离**：用户间会话完全分离
 
-- **审计日志**：每次 AI 操作带完整上下文与时间戳记录
-- **Prometheus 指标**：系统操作实时监控
-- **pprof 分析**：CPU、内存、goroutine 深度可见性
-- **结构化日志**：JSON 日志便于解析与告警
+### 调用链优化
+
+- **请求追踪**：每次 API 调用的端到端可见性
+- **延迟分析**：定位请求链路中的瓶颈
+- **提供商路由**：智能路由至最优 LLM 提供商
+- **熔断器**：提供商故障时自动切换
+
+### 使用分析
+
+- **Token 消耗**：按用户、会话、提供商统计使用量
+- **成本归属**：按操作详细成本拆分
+- **限流**：按租户的配额管理
+- **导出报告**：多种格式生成使用报告
 
 ### 安全加固
 
@@ -72,46 +86,54 @@ ZimaOS Echo 受 [clawdbot](https://github.com/clawdbot/clawdbot) 启发，使用
 - **RBAC**：细粒度基于角色的访问控制
 - **WebAuthn/Passkeys**：无密码 FIDO2 认证
 - **MFA/TOTP**：多因素认证
-- **OIDC/OAuth 2.0**：企业 SSO 集成
-- **熔断器**：自动故障隔离，防止级联失败
+- **审计链**：所有特权操作不可变日志
 
 ## 快速开始
 
 ```bash
-# Linux / macOS
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
-
 # 从源码
 git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
-./zimaos-echo server
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-## 安全加固
+在 `http://localhost:3000` 访问控制台。
 
-### 认证体系
+## LLM 提供商配置
 
-| 层级 | 技术 | 用途 |
-|------|------|------|
-| 主要 | WebAuthn/Passkeys | 防钓鱼无密码认证 |
-| 次要 | TOTP/MFA | 基于时间的一次性密码 |
-| 企业 | OIDC/OAuth 2.0 | 与 Google、GitHub、Okta 等 SSO |
-| 授权 | RBAC | 按资源的权限控制 |
+ZimaOS Echo 支持多种 LLM 提供商，包括本地 LLM 服务：
 
-### 运行时保护
+```yaml
+llm:
+  # 云提供商
+  provider: "openai"  # 或 "anthropic", "azure" 等
+  api_key: "your-api-key"
 
-- **沙箱隔离**：工具在受限环境中执行
-- **限流**：按租户的 API 节流
-- **租户隔离**：数据与资源完全分离
-- **审计链**：所有特权操作不可变日志
+  # 本地 LLM（可选）
+  # provider: "ollama"
+  # base_url: "http://localhost:11434"
+```
 
-### 韧性
+## 架构
 
-- **熔断器**：故障时自动隔离服务
-- **优雅降级**：提供商不可用时的回退策略
-- **LLM 回退链**：自动切换提供商
-- **热重载**：配置变更无需重启
+```
+┌─────────────────────────────────────────────────────┐
+│                    ZimaOS Echo                       │
+├─────────────────────────────────────────────────────┤
+│  Session Monitor │ Usage Analytics │ Call Tracing  │
+├─────────────────────────────────────────────────────┤
+│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
+├─────────────────────────────────────────────────────┤
+│              Sandbox Execution Layer                 │
+│         Tool Isolation │ Resource Limits            │
+├─────────────────────────────────────────────────────┤
+│              Agent Runtime (Go)                      │
+│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
+├─────────────────────────────────────────────────────┤
+│              Local Data Layer                        │
+│  SQLite │ ECache │ Encrypted Storage                │
+└─────────────────────────────────────────────────────┘
+```
 
 ## 可观测性
 
@@ -138,45 +160,6 @@ audit:
 - 内存与 goroutine 计数
 - 熔断器状态转换
 
-## 架构
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
-
-## 本地 LLM 配置（Ollama）
-
-完全离线运行 AI，无需外部 API 调用：
-
-```bash
-# 安装 Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# 拉取模型
-ollama pull llama3.2
-
-# 配置 Echo 使用本地 LLM
-cat >> config.yaml << EOF
-llm:
-  provider: "ollama"
-  model: "llama3.2"
-  base_url: "http://localhost:11434"
-EOF
-```
-
 ## 开发环境
 
 ### 前置条件
@@ -186,17 +169,6 @@ EOF
 | Go | 1.21+ | [golang.org](https://golang.org/dl/) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
 | Make | - | macOS/Linux 通常已预装 |
-
-### 一键启动
-
-```bash
-# 克隆并启动
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo
-```
-
-在 `http://localhost:3000` 访问控制台。
 
 ### 开发模式（热重载）
 
@@ -208,7 +180,7 @@ make build && ./dist/zimaos-echo
 dev.bat
 ```
 
-- 前端：`http://localhost:5173`（API 代理到后端）
+- 前端：`http://localhost:3000`
 - 后端：`http://localhost:8080`
 
 ### 构建命令
@@ -231,19 +203,6 @@ ZimaOS-Echo/
 │   └── src/
 └── dist/               # 构建输出
 ```
-
-## 与 Clawdbot 对比
-
-ZimaOS Echo 受 clawdbot 启发，针对 NAS/边缘部署优化：
-
-| 特性 | ZimaOS Echo | Clawdbot |
-|------|-------------|----------|
-| **语言** | Go | TypeScript/Node.js |
-| **二进制大小** | ~15MB | ~200MB+（含 node_modules）|
-| **内存占用** | ~80MB 空闲 | ~200MB+ 空闲 |
-| **启动时间** | < 1s | 3–5s |
-| **运行时** | 原生二进制 | 需 Node.js |
-| **目标平台** | NAS/边缘设备 | 桌面/服务器 |
 
 ## 致谢
 

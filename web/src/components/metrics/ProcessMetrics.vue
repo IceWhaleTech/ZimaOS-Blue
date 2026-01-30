@@ -31,14 +31,16 @@ async function fetchProcessMetrics() {
   }
 }
 
-function formatBytes(bytes: number): string {
+function formatBytes(bytes: number | undefined | null): string {
+  if (bytes == null) return '0 B'
   if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB'
   if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
   if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return bytes + ' B'
 }
 
-function formatUptime(nanoseconds: number): string {
+function formatUptime(nanoseconds: number | undefined | null): string {
+  if (nanoseconds == null) return '0m'
   const seconds = nanoseconds / 1e9
   const days = Math.floor(seconds / 86400)
   const hours = Math.floor((seconds % 86400) / 3600)
@@ -53,12 +55,12 @@ const echoStats = computed(() => {
   if (!echoProcess.value) return null
   return {
     name: t('metrics.echoServer'),
-    pid: echoProcess.value.pid,
-    cpu: echoProcess.value.cpu_percent,
-    memory: echoProcess.value.memory_rss_bytes,
-    memoryPercent: echoProcess.value.memory_percent,
-    threads: echoProcess.value.num_threads,
-    uptime: echoProcess.value.uptime,
+    pid: echoProcess.value.pid ?? 0,
+    cpu: echoProcess.value.cpu_percent ?? 0,
+    memory: echoProcess.value.memory_rss_bytes ?? 0,
+    memoryPercent: echoProcess.value.memory_percent ?? 0,
+    threads: echoProcess.value.num_threads ?? 0,
+    uptime: echoProcess.value.uptime ?? 0,
   }
 })
 
@@ -66,12 +68,12 @@ const ccCliStats = computed(() => {
   if (!ccCliProcess.value) return null
   return {
     name: t('metrics.claudeCodeCli'),
-    pid: ccCliProcess.value.pid,
-    cpu: ccCliProcess.value.cpu_percent,
-    memory: ccCliProcess.value.memory_rss_bytes,
-    memoryPercent: ccCliProcess.value.memory_percent,
-    threads: ccCliProcess.value.num_threads,
-    uptime: ccCliProcess.value.uptime,
+    pid: ccCliProcess.value.pid ?? 0,
+    cpu: ccCliProcess.value.cpu_percent ?? 0,
+    memory: ccCliProcess.value.memory_rss_bytes ?? 0,
+    memoryPercent: ccCliProcess.value.memory_percent ?? 0,
+    threads: ccCliProcess.value.num_threads ?? 0,
+    uptime: ccCliProcess.value.uptime ?? 0,
   }
 })
 

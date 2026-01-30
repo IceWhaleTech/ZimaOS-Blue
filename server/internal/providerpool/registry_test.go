@@ -1,0 +1,363 @@
+package providerpool
+
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestRegistry(t *testing.T) {
+	// Create temp directory
+	tmpDir, err := os.MkdirTemp("", "registry-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	enc, _ := NewEncryptor("test-key")
+	storage, err := NewFileStorage(tmpDir, enc)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	t.Run("Register", func(t *testing.T) {
+		provider := &Provider{
+			ID:       "test-provider",
+			Name:     "Test Provider",
+			Type:     ProviderTypeCustom,
+			Enabled:  true,
+			BaseURL:  "https://api.test.com/v1",
+			Priority: 10,
+		}
+
+		if err := registry.Register(provider); err != nil {
+			t.Fatalf("Register failed: %v", err)
+		}
+
+		// Try to register again - should fail
+		if err := registry.Register(provider); err != ErrProviderExists {
+			t.Errorf("Expected ErrProviderExists, got %v", err)
+		}
+	})
+
+	t.Run("Get", func(t *testing.T) {
+		provider, err := registry.Get("test-provider")
+		if err != nil {
+			t.Fatalf("Get failed: %v", err)
+		}
+
+		if provider.Name != "Test Provider" {
+			t.Errorf("Name mismatch: got %s, want Test Provider", provider.Name)
+		}
+
+		// Get non-existent
+		_, err = registry.Get("non-existent")
+		if err != ErrProviderNotFound {
+			t.Errorf("Expected ErrProviderNotFound, got %v", err)
+		}
+	})
+
+	t.Run("List", func(t *testing.T) {
+		providers := registry.List()
+		if len(providers) != 1 {
+			t.Errorf("Expected 1 provider, got %d", len(providers))
+		}
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		provider, _ := registry.Get("test-provider")
+		provider.Name = "Updated Provider"
+
+		if err := registry.Update(provider); err != nil {
+			t.Fatalf("Update failed: %v", err)
+		}
+
+		updated, _ := registry.Get("test-provider")
+		if updated.Name != "Updated Provider" {
+			t.Errorf("Name not updated: got %s", updated.Name)
+		}
+	})
+
+	t.Run("EnableDisable", func(t *testing.T) {
+		if err := registry.Disable("test-provider"); err != nil {
+			t.Fatalf("Disable failed: %v", err)
+		}
+
+		provider, _ := registry.Get("test-provider")
+		if provider.Enabled {
+			t.Error("Provider should be disabled")
+		}
+
+		if err := registry.Enable("test-provider"); err != nil {
+			t.Fatalf("Enable failed: %v", err)
+		}
+
+		provider, _ = registry.Get("test-provider")
+		if !provider.Enabled {
+			t.Error("Provider should be enabled")
+		}
+	})
+
+	t.Run("ListEnabled", func(t *testing.T) {
+		// Add a disabled provider
+		disabled := &Provider{
+			ID:      "disabled-provider",
+			Name:    "Disabled Provider",
+			Type:    ProviderTypeCustom,
+			Enabled: false,
+		}
+		registry.Register(disabled)
+
+		enabled := registry.ListEnabled()
+		if len(enabled) != 1 {
+			t.Errorf("Expected 1 enabled provider, got %d", len(enabled))
+		}
+	})
+
+	t.Run("APIKeyManagement", func(t *testing.T) {
+		key := &APIKey{
+			Key:     "sk-test-key-12345",
+			Label:   "Test Key",
+			Enabled: true,
+		}
+
+		if err := registry.AddAPIKey("test-provider", key); err != nil {
+			t.Fatalf("AddAPIKey failed: %v", err)
+		}
+
+		provider, _ := registry.Get("test-provider")
+		if len(provider.APIKeys) != 1 {
+			t.Fatalf("Expected 1 API key, got %d", len(provider.APIKeys))
+		}
+
+		// Get API key
+		apiKey, err := registry.GetAPIKey("test-provider")
+		if err != nil {
+			t.Fatalf("GetAPIKey failed: %v", err)
+		}
+		if apiKey.Key != "sk-test-key-12345" {
+			t.Errorf("API key mismatch: got %s", apiKey.Key)
+		}
+
+		// Remove API key
+		if err := registry.RemoveAPIKey("test-provider", provider.APIKeys[0].ID); err != nil {
+			t.Fatalf("RemoveAPIKey failed: %v", err)
+		}
+
+		provider, _ = registry.Get("test-provider")
+		if len(provider.APIKeys) != 0 {
+			t.Errorf("Expected 0 API keys, got %d", len(provider.APIKeys))
+		}
+	})
+
+	t.Run("Unregister", func(t *testing.T) {
+		if err := registry.Unregister("test-provider"); err != nil {
+			t.Fatalf("Unregister failed: %v", err)
+		}
+
+		_, err := registry.Get("test-provider")
+		if err != ErrProviderNotFound {
+			t.Errorf("Expected ErrProviderNotFound, got %v", err)
+		}
+	})
+}
+
+func TestRegistryWithCallback(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "registry-callback-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir, nil)
+
+	var actions []string
+	callback := func(provider *Provider, action string) {
+		actions = append(actions, action)
+	}
+
+	registry, _ := NewRegistry(storage, WithProviderChangeCallback(callback))
+
+	provider := &Provider{
+		ID:   "test",
+		Name: "Test",
+		Type: ProviderTypeCustom,
+	}
+
+	registry.Register(provider)
+	registry.Enable("test")
+	registry.Disable("test")
+	registry.Update(provider)
+	registry.Unregister("test")
+
+	expected := []string{"register", "enable", "disable", "update", "unregister"}
+	if len(actions) != len(expected) {
+		t.Fatalf("Expected %d actions, got %d", len(expected), len(actions))
+	}
+
+	for i, action := range expected {
+		if actions[i] != action {
+			t.Errorf("Action %d: expected %s, got %s", i, action, actions[i])
+		}
+	}
+}
+
+func TestDefaultHealthChecker(t *testing.T) {
+	checker := &DefaultHealthChecker{}
+
+	t.Run("NoCredentials", func(t *testing.T) {
+		provider := &Provider{
+			ID:      "test",
+			BaseURL: "https://api.test.com",
+		}
+
+		result := checker.Check(context.Background(), provider)
+		if result.Healthy {
+			t.Error("Expected unhealthy for provider without credentials")
+		}
+	})
+
+	t.Run("WithCredentials", func(t *testing.T) {
+		provider := &Provider{
+			ID:      "test",
+			BaseURL: "https://api.test.com",
+			APIKeys: []APIKey{
+				{Key: "sk-test"},
+			},
+		}
+
+		result := checker.Check(context.Background(), provider)
+		if !result.Healthy {
+			t.Error("Expected healthy for provider with credentials")
+		}
+	})
+}
+
+func TestBuiltinProviders(t *testing.T) {
+	providers := BuiltinProviders()
+
+	if len(providers) == 0 {
+		t.Error("Expected at least one built-in provider")
+	}
+
+	// Check required providers exist
+	required := []string{"openai", "anthropic", "google", "deepseek", "ollama"}
+	for _, id := range required {
+		found := false
+		for _, p := range providers {
+			if p.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Required provider %s not found", id)
+		}
+	}
+}
+
+func TestBuiltinModels(t *testing.T) {
+	models := BuiltinModels()
+
+	// Check OpenAI models
+	openaiModels := models["openai"]
+	if len(openaiModels) == 0 {
+		t.Error("Expected OpenAI models")
+	}
+
+	// Check Anthropic models
+	anthropicModels := models["anthropic"]
+	if len(anthropicModels) == 0 {
+		t.Error("Expected Anthropic models")
+	}
+
+	// Verify model capabilities
+	for providerID, providerModels := range models {
+		for _, model := range providerModels {
+			if model.ProviderID != providerID {
+				t.Errorf("Model %s has wrong provider ID: %s", model.ID, model.ProviderID)
+			}
+			if model.ContextWindow <= 0 {
+				t.Errorf("Model %s has invalid context window: %d", model.ID, model.ContextWindow)
+			}
+		}
+	}
+}
+
+func TestGetHealthCheckURL(t *testing.T) {
+	tests := []struct {
+		provider *Provider
+		expected string
+	}{
+		{
+			provider: &Provider{ID: "openai", BaseURL: "https://api.openai.com/v1"},
+			expected: "https://api.openai.com/v1/models",
+		},
+		{
+			provider: &Provider{ID: "anthropic", BaseURL: "https://api.anthropic.com"},
+			expected: "https://api.anthropic.com/v1/messages",
+		},
+		{
+			provider: &Provider{ID: "ollama", BaseURL: "http://localhost:11434"},
+			expected: "http://localhost:11434/api/tags",
+		},
+		{
+			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com"},
+			expected: "https://custom.api.com/models",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.provider.ID, func(t *testing.T) {
+			url := getHealthCheckURL(tt.provider)
+			if url != tt.expected {
+				t.Errorf("Expected %s, got %s", tt.expected, url)
+			}
+		})
+	}
+}
+
+func TestRegistryHealthCheck(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "registry-health-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir, nil)
+	registry, _ := NewRegistry(storage, WithHealthCheck(100*time.Millisecond, 5*time.Second))
+
+	// Register a provider
+	provider := &Provider{
+		ID:      "test",
+		Name:    "Test",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		APIKeys: []APIKey{{Key: "test-key"}},
+	}
+	registry.Register(provider)
+
+	// Start health check
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	checker := &DefaultHealthChecker{}
+	registry.StartHealthCheck(ctx, checker)
+
+	// Wait for health check to run
+	time.Sleep(200 * time.Millisecond)
+
+	// Check health status
+	result, exists := registry.GetHealth("test")
+	if !exists {
+		t.Error("Expected health result to exist")
+	}
+	if result == nil {
+		t.Fatal("Health result is nil")
+	}
+	if !result.Healthy {
+		t.Error("Expected provider to be healthy")
+	}
+
+	registry.StopHealthCheck()
+}

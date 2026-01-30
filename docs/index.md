@@ -37,19 +37,15 @@ features:
     details: Support for Web, Telegram, Discord, Slack, and more (coming soon)
 ---
 
-## Quick Install
-
-### Linux / macOS
+## Install from Source
 
 ```bash
-curl -fsSL https://echo.zimaos.com/install.sh | sudo bash
+git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
+cd ZimaOS-Echo
+make build && ./dist/zimaos-echo server
 ```
 
-### Windows (PowerShell as Admin)
-
-```powershell
-irm https://echo.zimaos.com/install.ps1 | iex
-```
+See [Installation](guide/installation.md) for more options.
 
 ## What is ZimaOS Echo?
 
