@@ -406,7 +406,7 @@ func BenchmarkOpenAIThroughServer(b *testing.B) {
 	e := echo.New()
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
-		t.Fatalf("Failed to create memory store: %v", err)
+		b.Fatalf("Failed to create memory store: %v", err)
 	}
 	registry := llm.NewProviderRegistry()
 	toolRegistry := tools.NewRegistry()

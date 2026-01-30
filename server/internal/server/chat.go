@@ -482,10 +482,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 	}
 
-	// Get provider
-	provider := h.providers.Get(req.Provider)
+	// Get provider (map Provider Pool ID to LLM provider name)
+	llmProviderName := mapProviderID(req.Provider)
+	provider := h.providers.Get(llmProviderName)
 	if provider == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider not found: "+req.Provider)
+		return echo.NewHTTPError(http.StatusBadRequest, "provider not found: "+req.Provider+" (mapped to: "+llmProviderName+")")
 	}
 
 	// Get user's preferred language from Accept-Language header (for future use)

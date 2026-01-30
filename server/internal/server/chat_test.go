@@ -357,3 +357,47 @@ func TestChatHandlerListTools(t *testing.T) {
 		t.Errorf("expected at least 3 tools, got %d", len(resp))
 	}
 }
+
+// Test StreamMessage with Provider Pool ID mapping
+func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
+
+	registry := llm.NewProviderRegistry()
+	mockProvider := llm.NewMockProvider()
+	mockProvider.SetResponse(llm.ChatResponse{
+		ID:      "resp-123",
+		Model:   "mock-model",
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "Hello! How can I help?"},
+	})
+	// Register with "custom" name since Provider Pool IDs map to "custom"
+	registry.Register(mockProvider)
+
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+
+	e := echo.New()
+	// Use a Provider Pool ID format (prov_<hex>)
+	reqBody := `{"message": "Hello!", "provider": "prov_992ef6e8c8ad938a", "model": "mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	err := handler.StreamMessage(c)
+	// Should not return an error - the Provider Pool ID should be mapped to "custom"
+	if err != nil {
+		httpErr, ok := err.(*echo.HTTPError)
+		if ok && httpErr.Code == http.StatusBadRequest {
+			// Check if it's the "provider not found" error
+			if msg, ok := httpErr.Message.(string); ok && bytes.Contains([]byte(msg), []byte("provider not found")) {
+				t.Fatalf("StreamMessage should map Provider Pool ID to LLM provider name, but got error: %v", err)
+			}
+		}
+		// Other errors might be acceptable (e.g., streaming setup issues in test)
+	}
+}
