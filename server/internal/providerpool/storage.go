@@ -32,6 +32,10 @@ type Storage interface {
 	// Pricing configuration
 	SavePricingConfig(config *PricingConfig) error
 	LoadPricingConfig() (*PricingConfig, error)
+
+	// Pool configuration
+	SaveConfig(config *PoolConfig) error
+	LoadConfig() (*PoolConfig, error)
 }
 
 // FileStorage implements Storage using JSON files
@@ -420,6 +424,45 @@ func (s *FileStorage) LoadPricingConfig() (*PricingConfig, error) {
 	// Ensure CustomPricing map is initialized
 	if config.CustomPricing == nil {
 		config.CustomPricing = make(map[string]*ModelPricing)
+	}
+
+	return &config, nil
+}
+
+// configFile returns the path to the pool configuration file
+func (s *FileStorage) configFile() string {
+	return filepath.Join(s.basePath, "config.json")
+}
+
+// SaveConfig saves the pool configuration
+func (s *FileStorage) SaveConfig(config *PoolConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(s.configFile(), data, 0644)
+}
+
+// LoadConfig loads the pool configuration
+func (s *FileStorage) LoadConfig() (*PoolConfig, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	data, err := os.ReadFile(s.configFile())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	var config PoolConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
 	}
 
 	return &config, nil

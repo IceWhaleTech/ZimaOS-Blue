@@ -39,6 +39,15 @@ func (m *mockStorage) SavePricingConfig(config *PricingConfig) error {
 func (m *mockStorage) LoadPricingConfig() (*PricingConfig, error) {
 	return m.pricingConfig, nil
 }
+func (m *mockStorage) LoadConfig() (*PoolConfig, error) {
+	return &PoolConfig{
+		DefaultStrategy:    RoutingStrategyPriority,
+		DefaultRoutingMode: RoutingModeAuto,
+	}, nil
+}
+func (m *mockStorage) SaveConfig(config *PoolConfig) error {
+	return nil
+}
 
 func TestNormalizeModelID(t *testing.T) {
 	tests := []struct {

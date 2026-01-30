@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams } from '@/api/providerPool'
+import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats } from '@/api/providerPool'
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
   // State
@@ -13,6 +13,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const selectedProviderId = ref<string | null>(null)
+  const routingMode = ref<RoutingMode>('auto')
+  const locationStats = ref<LocationStats | null>(null)
 
   // Computed
   const enabledProviders = computed(() =>
@@ -34,6 +36,17 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const ideProviders = computed(() =>
     providers.value.filter(p => p.type === 'ide')
   )
+
+  const cloudProviders = computed(() =>
+    providers.value.filter(p => p.enabled && p.location === 'cloud')
+  )
+
+  const localProviders = computed(() =>
+    providers.value.filter(p => p.enabled && p.location === 'local')
+  )
+
+  const hasCloudProviders = computed(() => cloudProviders.value.length > 0)
+  const hasLocalProviders = computed(() => localProviders.value.length > 0)
 
   const selectedProvider = computed(() =>
     providers.value.find(p => p.id === selectedProviderId.value)
@@ -126,6 +139,25 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       throw e
     } finally {
       loading.value = false
+    }
+  }
+
+  // Update provider priority locally (for drag-and-drop reordering)
+  // This updates the frontend immediately and syncs to backend in background
+  function updateProviderPriorityLocal(id: string, priority: number) {
+    const provider = providers.value.find(p => p.id === id)
+    if (provider) {
+      provider.priority = priority
+    }
+  }
+
+  // Batch update priorities to backend (fire and forget)
+  async function syncPrioritiesToBackend(updates: Array<{ id: string; priority: number }>) {
+    // Update backend in background without blocking UI
+    for (const { id, priority } of updates) {
+      providerPoolApi.updateProvider(id, { priority }).catch(err => {
+        console.error(`Failed to sync priority for ${id}:`, err)
+      })
     }
   }
 
@@ -410,6 +442,41 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
+  // Routing mode actions
+  async function fetchRoutingMode() {
+    try {
+      const response = await providerPoolApi.getRoutingMode()
+      routingMode.value = response.data.mode
+      return response.data.mode
+    } catch (e) {
+      // Default to auto if fetch fails
+      routingMode.value = 'auto'
+      return 'auto'
+    }
+  }
+
+  async function setRoutingMode(mode: RoutingMode) {
+    try {
+      const response = await providerPoolApi.setRoutingMode(mode)
+      routingMode.value = response.data.mode
+      return response.data.mode
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to set routing mode'
+      throw e
+    }
+  }
+
+  async function fetchLocationStats() {
+    try {
+      const response = await providerPoolApi.getLocationStats()
+      locationStats.value = response.data
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch location stats'
+      throw e
+    }
+  }
+
   return {
     // State
     providers,
@@ -421,6 +488,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     loading,
     error,
     selectedProviderId,
+    routingMode,
+    locationStats,
 
     // Computed
     enabledProviders,
@@ -428,6 +497,10 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     builtinProviders,
     customProviders,
     ideProviders,
+    cloudProviders,
+    localProviders,
+    hasCloudProviders,
+    hasLocalProviders,
     selectedProvider,
     providerModels,
 
@@ -437,6 +510,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     refreshModels,
     addProvider,
     updateProvider,
+    updateProviderPriorityLocal,
+    syncPrioritiesToBackend,
     deleteProvider,
     enableProvider,
     disableProvider,
@@ -458,5 +533,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     setModelPricing,
     removeModelPricing,
     recalculateCosts,
+    fetchRoutingMode,
+    setRoutingMode,
+    fetchLocationStats,
   }
 })

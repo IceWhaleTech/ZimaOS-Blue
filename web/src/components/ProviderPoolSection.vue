@@ -19,15 +19,20 @@ const testingProvider = ref<string | null>(null)
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
-const activeTab = ref<'builtin' | 'custom' | 'ide'>('builtin')
+const activeTab = ref<'all' | 'builtin' | 'custom' | 'ide'>('all')
 const iconInput = ref<HTMLInputElement | null>(null)
 const uploadingIcon = ref(false)
+
+// Drag and drop state
+const draggedProvider = ref<Provider | null>(null)
+const dragOverProvider = ref<string | null>(null)
 
 // New provider form
 const newProvider = ref({
   name: '',
   base_url: '',
   priority: 50,
+  location: 'cloud' as 'cloud' | 'local',
 })
 
 // New API key form
@@ -59,6 +64,9 @@ const filteredProviders = computed(() => {
   let providers: Provider[] = []
 
   switch (activeTab.value) {
+    case 'all':
+      providers = store.providers || []
+      break
     case 'builtin':
       providers = store.builtinProviders || []
       break
@@ -78,12 +86,20 @@ const filteredProviders = computed(() => {
     )
   }
 
-  return providers.sort((a, b) => b.priority - a.priority)
+  // Sort: enabled first, then by priority (descending)
+  return providers.sort((a, b) => {
+    if (a.enabled !== b.enabled) {
+      return a.enabled ? -1 : 1
+    }
+    return b.priority - a.priority
+  })
 })
 
 // Check if selected provider belongs to current tab
 const currentTabSelectedProvider = computed(() => {
   if (!store.selectedProvider) return null
+  if (activeTab.value === 'all') return store.selectedProvider
+
   const providerType = store.selectedProvider.type
 
   // Map provider type to tab
@@ -118,7 +134,7 @@ function hasCustomPricing(modelId: string): boolean {
 
 // Clear selection when switching to a tab with no matching provider
 watch(activeTab, () => {
-  if (store.selectedProvider) {
+  if (store.selectedProvider && activeTab.value !== 'all') {
     const providerType = store.selectedProvider.type
     const typeToTab: Record<string, string> = {
       'builtin': 'builtin',
@@ -167,6 +183,14 @@ async function toggleProvider(provider: Provider) {
   }
 }
 
+async function updateProviderLocation(providerId: string, location: 'cloud' | 'local') {
+  try {
+    await store.updateProvider(providerId, { location })
+  } catch (e) {
+    console.error('Failed to update provider location:', e)
+  }
+}
+
 async function testConnection(providerId: string) {
   testingProvider.value = providerId
   try {
@@ -201,10 +225,11 @@ async function addCustomProvider() {
       name: newProvider.value.name,
       base_url: newProvider.value.base_url,
       priority: newProvider.value.priority,
+      location: newProvider.value.location,
       type: 'custom',
     })
     showAddModal.value = false
-    newProvider.value = { name: '', base_url: '', priority: 50 }
+    newProvider.value = { name: '', base_url: '', priority: 50, location: 'cloud' }
   } catch (e) {
     console.error('Failed to add provider:', e)
   }
@@ -250,6 +275,81 @@ async function removeAPIKey(providerId: string, keyId: string) {
 
 function selectProvider(providerId: string) {
   store.selectProvider(store.selectedProviderId === providerId ? null : providerId)
+}
+
+// Drag and drop handlers
+function handleDragStart(e: DragEvent, provider: Provider) {
+  draggedProvider.value = provider
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', provider.id)
+  }
+}
+
+function handleDragOver(e: DragEvent, provider: Provider) {
+  e.preventDefault()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move'
+  }
+  if (draggedProvider.value && draggedProvider.value.id !== provider.id) {
+    dragOverProvider.value = provider.id
+  }
+}
+
+function handleDragLeave() {
+  dragOverProvider.value = null
+}
+
+function handleDragEnd() {
+  draggedProvider.value = null
+  dragOverProvider.value = null
+}
+
+async function handleDrop(e: DragEvent, targetProvider: Provider) {
+  e.preventDefault()
+  dragOverProvider.value = null
+
+  if (!draggedProvider.value || draggedProvider.value.id === targetProvider.id) {
+    draggedProvider.value = null
+    return
+  }
+
+  // Get current list and find indices
+  const providers = [...filteredProviders.value]
+  const draggedIndex = providers.findIndex(p => p.id === draggedProvider.value!.id)
+  const targetIndex = providers.findIndex(p => p.id === targetProvider.id)
+
+  if (draggedIndex === -1 || targetIndex === -1) {
+    draggedProvider.value = null
+    return
+  }
+
+  // Reorder the list
+  const [removed] = providers.splice(draggedIndex, 1)
+  providers.splice(targetIndex, 0, removed)
+
+  // Calculate new priorities (higher index = lower priority, so we reverse)
+  const maxPriority = 100
+  const step = Math.floor(maxPriority / (providers.length + 1))
+
+  // Collect updates for batch sync
+  const updates: Array<{ id: string; priority: number }> = []
+
+  // Update priorities locally first (instant UI update)
+  for (let i = 0; i < providers.length; i++) {
+    const newPriority = maxPriority - (i * step)
+    if (providers[i].priority !== newPriority) {
+      store.updateProviderPriorityLocal(providers[i].id, newPriority)
+      updates.push({ id: providers[i].id, priority: newPriority })
+    }
+  }
+
+  // Sync to backend in background (fire and forget)
+  if (updates.length > 0) {
+    store.syncPrioritiesToBackend(updates)
+  }
+
+  draggedProvider.value = null
 }
 
 function getStatusColor(status: string, enabled: boolean) {
@@ -438,7 +538,7 @@ onMounted(() => {
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
       <button
-        v-for="tab in ['builtin', 'custom', 'ide'] as const"
+        v-for="tab in ['all', 'builtin', 'custom', 'ide'] as const"
         :key="tab"
         @click="activeTab = tab"
         :class="[
@@ -450,7 +550,7 @@ onMounted(() => {
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'builtin' ? store.builtinProviders.length : tab === 'custom' ? store.customProviders.length : store.ideProviders.length }})
+          ({{ tab === 'all' ? store.providers.length : tab === 'builtin' ? store.builtinProviders.length : tab === 'custom' ? store.customProviders.length : store.ideProviders.length }})
         </span>
       </button>
     </div>
@@ -461,6 +561,8 @@ onMounted(() => {
         v-model="searchQuery"
         type="text"
         :placeholder="t('providerPool.search')"
+        autocomplete="off"
+        data-form-filler-ignore
         class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent text-sm"
       />
     </div>
@@ -482,20 +584,47 @@ onMounted(() => {
     <!-- Provider List -->
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Provider Cards -->
-      <div class="space-y-3 max-h-[480px] overflow-y-auto">
+      <div class="space-y-2 max-h-[480px] overflow-y-auto">
+        <!-- Drag hint -->
+        <p v-if="filteredProviders.length > 1 && !searchQuery" class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
+          {{ t('providerPool.dragToReorder') }}
+        </p>
         <div
           v-for="provider in filteredProviders"
           :key="provider.id"
+          draggable="true"
           @click="selectProvider(provider.id)"
+          @dragstart="handleDragStart($event, provider)"
+          @dragover="handleDragOver($event, provider)"
+          @dragleave="handleDragLeave"
+          @dragend="handleDragEnd"
+          @drop="handleDrop($event, provider)"
           :class="[
-            'p-3 rounded-lg border cursor-pointer transition-all',
+            'p-3 rounded-lg border transition-all select-none group/card',
             store.selectedProviderId === provider.id
               ? 'bg-accent/10 dark:bg-accent/20 border-accent'
-              : 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
+              : 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600',
+            dragOverProvider === provider.id ? 'border-accent border-dashed bg-accent/5' : '',
+            draggedProvider?.id === provider.id ? 'opacity-50' : '',
+            draggedProvider ? 'cursor-grabbing' : 'cursor-pointer'
           ]"
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
+              <!-- Drag handle - only visible during drag -->
+              <div
+                :class="[
+                  'flex-shrink-0 text-gray-400 dark:text-gray-500 cursor-grab transition-opacity',
+                  draggedProvider ? 'opacity-100' : 'opacity-0'
+                ]"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+                </svg>
+              </div>
               <ProviderIcon :provider-id="provider.id" :custom-icon="provider.custom_icon" size="lg" />
               <div>
                 <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ provider.name }}</h3>
@@ -503,6 +632,24 @@ onMounted(() => {
               </div>
             </div>
             <div class="flex items-center gap-2">
+              <!-- API Keys count -->
+              <span
+                v-if="provider.api_keys?.length"
+                class="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-300"
+                :title="t('providerPool.apiKeys')"
+              >
+                🔑 {{ provider.api_keys.length }}
+              </span>
+              <!-- Location badge -->
+              <span
+                v-if="provider.location"
+                :class="[
+                  'text-[10px] px-1.5 py-0.5 rounded',
+                  provider.location === 'cloud' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                ]"
+              >
+                {{ provider.location === 'cloud' ? '☁️' : '💻' }}
+              </span>
               <span :class="getStatusColor(provider.status, provider.enabled)" class="text-xs">
                 {{ getStatusIcon(provider.status, provider.enabled) }}
               </span>
@@ -517,14 +664,6 @@ onMounted(() => {
               </label>
             </div>
           </div>
-
-          <div class="mt-2 flex items-center gap-2 text-xs">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.priority') }}:</span>
-            <span class="text-gray-700 dark:text-gray-300">{{ provider.priority }}</span>
-            <span class="text-gray-400">|</span>
-            <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.keys') }}:</span>
-            <span class="text-gray-700 dark:text-gray-300">{{ provider.api_keys?.length || 0 }}</span>
-          </div>
         </div>
 
         <div v-if="filteredProviders.length === 0" class="text-center py-6 text-gray-500 dark:text-gray-400 text-sm">
@@ -538,7 +677,21 @@ onMounted(() => {
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
               <div class="relative group">
-                <ProviderIcon :provider-id="currentTabSelectedProvider.id" :custom-icon="currentTabSelectedProvider.custom_icon" size="xl" />
+                <!-- Builtin provider: clickable logo to website -->
+                <a
+                  v-if="currentTabSelectedProvider.type === 'builtin' && currentTabSelectedProvider.website"
+                  :href="currentTabSelectedProvider.website"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block cursor-pointer hover:opacity-80 transition-opacity"
+                  :title="t('providerPool.visitWebsite')"
+                >
+                  <ProviderIcon :provider-id="currentTabSelectedProvider.id" :custom-icon="currentTabSelectedProvider.custom_icon" size="xl" />
+                </a>
+                <!-- Non-builtin or no website: regular icon -->
+                <template v-else>
+                  <ProviderIcon :provider-id="currentTabSelectedProvider.id" :custom-icon="currentTabSelectedProvider.custom_icon" size="xl" />
+                </template>
                 <button
                   v-if="currentTabSelectedProvider.type === 'custom'"
                   @click="openIconUpload"
@@ -561,6 +714,32 @@ onMounted(() => {
               <div>
                 <h2 class="font-bold text-gray-900 dark:text-white">{{ currentTabSelectedProvider.name }}</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ currentTabSelectedProvider.description || currentTabSelectedProvider.base_url }}</p>
+                <!-- Location Toggle -->
+                <div class="flex items-center gap-1 mt-1">
+                  <span class="text-xs text-gray-400">{{ t('providerPool.location') }}:</span>
+                  <button
+                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'cloud')"
+                    :class="[
+                      'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                      currentTabSelectedProvider.location === 'cloud'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
+                    ]"
+                  >
+                    ☁️ {{ t('providerPool.locationCloud') }}
+                  </button>
+                  <button
+                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'local')"
+                    :class="[
+                      'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                      currentTabSelectedProvider.location === 'local'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
+                    ]"
+                  >
+                    💻 {{ t('providerPool.locationLocal') }}
+                  </button>
+                </div>
               </div>
             </div>
             <div class="flex gap-1">
@@ -775,14 +954,40 @@ onMounted(() => {
             />
           </div>
           <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.priority') }}</label>
-            <input
-              v-model.number="newProvider.priority"
-              type="number"
-              min="1"
-              max="100"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
-            />
+            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.location') }}</label>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                @click="newProvider.location = 'cloud'"
+                :class="[
+                  'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
+                  newProvider.location === 'cloud'
+                    ? 'bg-blue-500/20 border-blue-500 text-blue-500'
+                    : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
+                ]"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                </svg>
+                {{ t('providerPool.locationCloud') }}
+              </button>
+              <button
+                type="button"
+                @click="newProvider.location = 'local'"
+                :class="[
+                  'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
+                  newProvider.location === 'local'
+                    ? 'bg-green-500/20 border-green-500 text-green-500'
+                    : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
+                ]"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                {{ t('providerPool.locationLocal') }}
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.locationHint') }}</p>
           </div>
           <div class="flex justify-end gap-3 mt-6">
             <button

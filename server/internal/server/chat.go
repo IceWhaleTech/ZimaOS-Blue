@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,8 +18,80 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 )
+
+// estimateTokens estimates the number of tokens in a text.
+// This is a rough estimation: ~4 characters per token for English,
+// ~1.5 characters per token for CJK languages.
+// Used as fallback when provider doesn't return usage info.
+func estimateTokens(text string) int {
+	if text == "" {
+		return 0
+	}
+
+	// Count characters and CJK characters
+	totalChars := 0
+	cjkChars := 0
+
+	for _, r := range text {
+		totalChars++
+		// Check if character is CJK (Chinese, Japanese, Korean)
+		if isCJK(r) {
+			cjkChars++
+		}
+	}
+
+	// Estimate tokens:
+	// - CJK characters: ~1.5 chars per token
+	// - Other characters: ~4 chars per token
+	nonCJKChars := totalChars - cjkChars
+	cjkTokens := float64(cjkChars) / 1.5
+	nonCJKTokens := float64(nonCJKChars) / 4.0
+
+	return int(cjkTokens + nonCJKTokens + 0.5) // Round to nearest int
+}
+
+// isCJK checks if a rune is a CJK character.
+func isCJK(r rune) bool {
+	// CJK Unified Ideographs
+	if r >= 0x4E00 && r <= 0x9FFF {
+		return true
+	}
+	// CJK Unified Ideographs Extension A
+	if r >= 0x3400 && r <= 0x4DBF {
+		return true
+	}
+	// CJK Unified Ideographs Extension B-F
+	if r >= 0x20000 && r <= 0x2CEAF {
+		return true
+	}
+	// Hiragana
+	if r >= 0x3040 && r <= 0x309F {
+		return true
+	}
+	// Katakana
+	if r >= 0x30A0 && r <= 0x30FF {
+		return true
+	}
+	// Hangul Syllables
+	if r >= 0xAC00 && r <= 0xD7AF {
+		return true
+	}
+	return false
+}
+
+// estimateInputTokens estimates input tokens from messages.
+func estimateInputTokens(messages []llm.Message) int {
+	total := 0
+	for _, msg := range messages {
+		// Add overhead for role and formatting (~4 tokens per message)
+		total += 4
+		total += estimateTokens(msg.Content)
+	}
+	return total
+}
 
 // providerPoolToLLM maps Provider Pool IDs to LLM provider names.
 // This allows the Chat API to work with both Provider Pool IDs and legacy LLM provider names.
@@ -27,6 +100,11 @@ var providerPoolToLLM = map[string]string{
 	"openai":       "openai",
 	"ollama":       "ollama",
 	"custom":       "custom",
+	"grok":         "grok",
+	"qwen":         "qwen",
+	"venice":       "venice",
+	"bedrock":      "bedrock",
+	"glm":          "glm",
 	// Also support direct LLM provider names for backwards compatibility
 	"claude":       "claude",
 }
@@ -37,14 +115,102 @@ func mapProviderID(providerID string) string {
 	if mapped, ok := providerPoolToLLM[providerID]; ok {
 		return mapped
 	}
-	// For unknown providers, try "custom" as fallback
-	return "custom"
+	// For unknown providers, return as-is (might be a direct LLM provider name)
+	return providerID
+}
+
+// getProviderFromPool retrieves a provider from the Provider Pool and creates an LLM provider instance.
+// This handles custom providers (prov_xxx IDs) by looking up their configuration in the pool.
+func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, error) {
+	if h.providerPool == nil {
+		return nil, fmt.Errorf("provider pool not configured")
+	}
+
+	// Get provider configuration from pool
+	poolProvider, err := h.providerPool.Registry.Get(providerID)
+	if err != nil {
+		return nil, fmt.Errorf("provider not found in pool: %s", providerID)
+	}
+
+	// Check if provider is enabled
+	if !poolProvider.Enabled {
+		return nil, fmt.Errorf("provider is disabled: %s", providerID)
+	}
+
+	// Get API key from provider configuration
+	apiKey := ""
+	for _, key := range poolProvider.APIKeys {
+		if key.Enabled && key.Key != "" {
+			apiKey = key.Key
+			break
+		}
+	}
+
+	// Create an OpenAI-compatible provider with the pool configuration
+	// All custom providers use OpenAI-compatible API format
+	return llm.NewCustomProvider(apiKey, poolProvider.BaseURL), nil
+}
+
+// getDefaultProvider returns the best available provider from the pool.
+// It selects the first enabled provider with the highest priority and creates
+// a dynamic LLM provider instance using the pool configuration.
+// Falls back to the legacy provider registry if no pool is configured.
+func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error) {
+	// Try provider pool first
+	if h.providerPool != nil {
+		// Get enabled providers from pool, sorted by priority
+		poolProviders := h.providerPool.Registry.ListEnabled()
+		if len(poolProviders) > 0 {
+			// Sort by priority (higher first)
+			sort.Slice(poolProviders, func(i, j int) bool {
+				return poolProviders[i].Priority > poolProviders[j].Priority
+			})
+
+			// Use the highest priority enabled provider
+			poolProvider := poolProviders[0]
+
+			// Create LLM provider from pool configuration
+			provider, err := h.getProviderFromPool(poolProvider.ID)
+			if err == nil {
+				// Get first available model from pool's model discovery
+				model := ""
+				models, _ := h.providerPool.Discovery.GetModels(poolProvider.ID)
+				if len(models) > 0 {
+					model = models[0].ID
+				}
+				return provider, poolProvider.ID, model, nil
+			}
+		}
+	}
+
+	// Fallback to legacy provider registry
+	providerNames := h.providers.List()
+	if len(providerNames) == 0 {
+		return nil, "", "", fmt.Errorf("no available providers")
+	}
+
+	// Use first available provider from registry
+	providerName := providerNames[0]
+	provider := h.providers.Get(providerName)
+	if provider == nil {
+		return nil, "", "", fmt.Errorf("provider not found: %s", providerName)
+	}
+
+	// Get first available model
+	models := provider.Models()
+	model := ""
+	if len(models) > 0 {
+		model = models[0]
+	}
+
+	return provider, providerName, model, nil
 }
 
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
 	store            *memory.Store
 	providers        *llm.ProviderRegistry
+	providerPool     *providerpool.Pool
 	toolRegistry     *tools.Registry
 	streamController *claudecode.StreamController
 	compactionConfig claudecode.CompactionConfig
@@ -92,6 +258,11 @@ func (h *ChatHandler) SetCompanionManager(manager *companion.Manager) {
 // SetPromptGuard sets the prompt guard detector for security checks.
 func (h *ChatHandler) SetPromptGuard(detector *promptguard.Detector) {
 	h.promptGuard = detector
+}
+
+// SetProviderPool sets the provider pool for auto-selecting providers.
+func (h *ChatHandler) SetProviderPool(pool *providerpool.Pool) {
+	h.providerPool = pool
 }
 
 // getCompanionSessionID returns the companion session ID for a conversation.
@@ -147,16 +318,26 @@ func (h *ChatHandler) CreateConversation(c echo.Context) error {
 	return c.JSON(http.StatusCreated, conv)
 }
 
-// ListConversations lists all conversations.
+// ListConversations lists all conversations or searches by query.
 func (h *ChatHandler) ListConversations(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if limit <= 0 {
 		limit = 50
 	}
 
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	query := c.QueryParam("q")
+	var convs []memory.Conversation
+	var err error
 
-	convs, err := h.store.ListConversations(c.Request().Context(), limit, offset)
+	if query != "" {
+		// Search conversations by title
+		convs, err = h.store.SearchConversations(c.Request().Context(), query, limit)
+	} else {
+		// List all conversations with pagination
+		offset, _ := strconv.Atoi(c.QueryParam("offset"))
+		convs, err = h.store.ListConversations(c.Request().Context(), limit, offset)
+	}
+
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to list conversations")
 	}
@@ -247,10 +428,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "message is required")
 	}
 
-	if req.Provider == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider is required")
-	}
-
 	// Check for prompt injection
 	if h.promptGuard != nil {
 		result := h.promptGuard.Detect(req.Message)
@@ -272,15 +449,19 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 	}
 
-	// Get provider (map Provider Pool ID to LLM provider name)
-	llmProviderName := mapProviderID(req.Provider)
-	provider := h.providers.Get(llmProviderName)
-	if provider == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider not found: "+req.Provider+" (mapped to: "+llmProviderName+")")
+	// Auto-select provider and model from pool
+	provider, _, model, err := h.getDefaultProvider()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
+	}
+
+	// Override model if specified in request
+	if req.Model != "" {
+		model = req.Model
 	}
 
 	// Store user message
-	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+	_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
 		Role:    "user",
 		Content: req.Message,
 	})
@@ -313,7 +494,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Build chat request
 	chatReq := llm.ChatRequest{
-		Model:       req.Model,
+		Model:       model,
 		Messages:    llmMessages,
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
@@ -351,17 +532,33 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			errorType = "api_error"
 		}
 
-		h.metricsRecorder.RecordAPICall(req.Model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
+		h.metricsRecorder.RecordAPICall(model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
 	}
 
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get response from LLM")
 	}
 
-	// Store assistant message
+	// Get provider name for display
+	providerName := req.Provider
+	if h.providerPool != nil {
+		if poolProvider, err := h.providerPool.Registry.Get(req.Provider); err == nil {
+			providerName = poolProvider.Name
+		}
+	}
+
+	// Store assistant message with stats
 	assistantMsg, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-		Role:    "assistant",
-		Content: resp.Message.Content,
+		Role:     "assistant",
+		Content:  resp.Message.Content,
+		Provider: providerName,
+		Model:    model,
+		Stats: &memory.MessageStats{
+			InputTokens:  resp.Usage.PromptTokens,
+			OutputTokens: resp.Usage.CompletionTokens,
+			TotalTokens:  resp.Usage.TotalTokens,
+			LatencyMs:    int64(latencyMs),
+		},
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store response")
@@ -427,6 +624,34 @@ func (h *ChatHandler) ListTools(c echo.Context) error {
 	return c.JSON(http.StatusOK, defs)
 }
 
+// DeleteMessagesRequest represents a request to delete messages.
+type DeleteMessagesRequest struct {
+	MessageIDs []string `json:"message_ids"`
+}
+
+// DeleteMessages deletes multiple messages from a conversation.
+func (h *ChatHandler) DeleteMessages(c echo.Context) error {
+	convID := c.Param("id")
+
+	var req DeleteMessagesRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if len(req.MessageIDs) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "message_ids is required")
+	}
+
+	if err := h.store.DeleteMessages(c.Request().Context(), convID, req.MessageIDs); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"deleted": len(req.MessageIDs),
+	})
+}
+
 // RegisterChatRoutes registers chat-related routes.
 func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/conversations", h.CreateConversation)
@@ -435,6 +660,7 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/conversations/:id", h.DeleteConversation)
 	g.GET("/conversations/:id/messages", h.GetMessages)
 	g.POST("/conversations/:id/messages", h.SendMessage)
+	g.DELETE("/conversations/:id/messages", h.DeleteMessages)
 	g.POST("/conversations/:id/messages/stream", h.StreamMessage)
 	g.POST("/conversations/:id/messages/cancel", h.CancelStream)
 	g.GET("/providers", h.ListProviders)
@@ -455,10 +681,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	if req.Message == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "message is required")
-	}
-
-	if req.Provider == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider is required")
 	}
 
 	// Check for prompt injection
@@ -482,19 +704,27 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 	}
 
-	// Get provider (map Provider Pool ID to LLM provider name)
-	llmProviderName := mapProviderID(req.Provider)
-	provider := h.providers.Get(llmProviderName)
-	if provider == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider not found: "+req.Provider+" (mapped to: "+llmProviderName+")")
+	// Auto-select provider and model from pool
+	provider, providerID, model, err := h.getDefaultProvider()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
-	// Get user's preferred language from Accept-Language header (for future use)
-	// acceptLang := c.Request().Header.Get("Accept-Language")
-	// targetLang := parseAcceptLanguage(acceptLang)
+	// Override model if specified in request
+	if req.Model != "" {
+		model = req.Model
+	}
+
+	// Get provider name for display
+	providerName := providerID
+	if h.providerPool != nil {
+		if poolProvider, err := h.providerPool.Registry.Get(providerID); err == nil {
+			providerName = poolProvider.Name
+		}
+	}
 
 	// Store user message
-	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+	_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
 		Role:    "user",
 		Content: req.Message,
 	})
@@ -538,7 +768,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Build chat request
 	chatReq := llm.ChatRequest{
-		Model:       req.Model,
+		Model:       model,
 		Messages:    compactedMessages,
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
@@ -589,7 +819,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Record error metrics
 			if h.metricsRecorder != nil {
 				latencyMs := float64(time.Since(startTime).Milliseconds())
-				h.metricsRecorder.RecordAPICall(req.Model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "stream_error")
+				h.metricsRecorder.RecordAPICall(model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "stream_error")
 			}
 			// Send error to client
 			data := map[string]interface{}{
@@ -616,25 +846,35 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			totalOutputTokens = chunk.Usage.CompletionTokens
 		}
 
-		// Write SSE data
-		data := map[string]interface{}{
-			"delta":     chunk.Delta,
-			"done":      chunk.Done,
-			"stream_id": streamID,
-		}
-		if chunk.Usage != nil {
-			data["usage"] = chunk.Usage
-		}
+		// Write SSE data - for non-final chunks only
+		if !chunk.Done {
+			data := map[string]interface{}{
+				"delta":     chunk.Delta,
+				"done":      false,
+				"stream_id": streamID,
+			}
+			if chunk.Usage != nil {
+				data["usage"] = chunk.Usage
+			}
 
-		jsonData, _ := json.Marshal(data)
-		c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
-		flusher.Flush()
+			jsonData, _ := json.Marshal(data)
+			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
+			flusher.Flush()
+		}
 
 		if chunk.Done {
+			// Fallback: estimate tokens if provider didn't return usage
+			if totalInputTokens == 0 {
+				totalInputTokens = estimateInputTokens(compactedMessages)
+			}
+			if totalOutputTokens == 0 {
+				totalOutputTokens = estimateTokens(fullContent)
+			}
+
 			// Record successful completion metrics
+			latencyMs := float64(time.Since(startTime).Milliseconds())
 			if h.metricsRecorder != nil {
-				latencyMs := float64(time.Since(startTime).Milliseconds())
-				h.metricsRecorder.RecordAPICall(req.Model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "")
+				h.metricsRecorder.RecordAPICall(model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "")
 				// Record speed metrics
 				if !firstChunkTime.IsZero() && totalOutputTokens > 0 {
 					ttftMs := float64(firstChunkTime.Sub(startTime).Milliseconds())
@@ -645,10 +885,55 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 					}
 				}
 			}
-			// Store the complete message
+
+			// Calculate speed metrics for response
+			var tokensPerSecond float64
+			var ttftMs float64
+			if !firstChunkTime.IsZero() {
+				ttftMs = float64(firstChunkTime.Sub(startTime).Milliseconds())
+				totalDuration := time.Since(startTime).Seconds()
+				if totalDuration > 0 && totalOutputTokens > 0 {
+					tokensPerSecond = float64(totalOutputTokens) / totalDuration
+				}
+			}
+
+			// Send final chunk with provider/model info and stats
+			finalData := map[string]interface{}{
+				"delta":     "",
+				"done":      true,
+				"stream_id": streamID,
+				"provider":  providerName,
+				"model":     model,
+				"stats": map[string]interface{}{
+					"input_tokens":     totalInputTokens,
+					"output_tokens":    totalOutputTokens,
+					"total_tokens":     totalInputTokens + totalOutputTokens,
+					"latency_ms":       latencyMs,
+					"ttft_ms":          ttftMs,
+					"tokens_per_second": tokensPerSecond,
+				},
+			}
+			if chunk.Usage != nil {
+				finalData["usage"] = chunk.Usage
+			}
+			finalJSON, _ := json.Marshal(finalData)
+			c.Response().Write([]byte("data: " + string(finalJSON) + "\n\n"))
+			flusher.Flush()
+
+			// Store the complete message with stats
 			h.store.AddMessage(context.Background(), convID, memory.Message{
-				Role:    "assistant",
-				Content: fullContent,
+				Role:     "assistant",
+				Content:  fullContent,
+				Provider: providerName,
+				Model:    model,
+				Stats: &memory.MessageStats{
+					InputTokens:     totalInputTokens,
+					OutputTokens:    totalOutputTokens,
+					TotalTokens:     totalInputTokens + totalOutputTokens,
+					LatencyMs:       int64(latencyMs),
+					TTFTMs:          int64(ttftMs),
+					TokensPerSecond: tokensPerSecond,
+				},
 			})
 			// Generate title for new conversations
 			go h.generateConversationTitle(convID, req.Message, "en")
@@ -663,7 +948,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Stream was cancelled
 			if h.metricsRecorder != nil {
 				latencyMs := float64(time.Since(startTime).Milliseconds())
-				h.metricsRecorder.RecordAPICall(req.Model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
+				h.metricsRecorder.RecordAPICall(model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
 			}
 			if fullContent != "" {
 				h.store.AddMessage(context.Background(), convID, memory.Message{

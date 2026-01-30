@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { skillApi } from '@/api/skill'
-import type { Skill, SkillSource, RemoteSkill, BrowseParams } from '@/api/skill'
+import type { Skill, SkillSource, RemoteSkill, BrowseParams, BrowseResponse } from '@/api/skill'
 
 export const useSkillStore = defineStore('skill', () => {
   // State
@@ -146,7 +146,14 @@ export const useSkillStore = defineStore('skill', () => {
       loading.value = true
       error.value = null
       const response = await skillApi.browse(params)
-      remoteSkills.value = response.data
+      // Handle both paginated response (object with skills array) and legacy array response
+      if (response.data && 'skills' in response.data) {
+        remoteSkills.value = response.data.skills || []
+      } else if (Array.isArray(response.data)) {
+        remoteSkills.value = response.data
+      } else {
+        remoteSkills.value = []
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to browse skills'
     } finally {

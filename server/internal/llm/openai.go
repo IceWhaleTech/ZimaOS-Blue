@@ -211,12 +211,18 @@ func (p *OpenAIProvider) RefreshModels() []string {
 
 // openAIRequest represents the OpenAI API request format.
 type openAIRequest struct {
-	Model       string              `json:"model"`
-	Messages    []openAIMessage     `json:"messages"`
-	Temperature float64             `json:"temperature,omitempty"`
-	MaxTokens   int                 `json:"max_tokens,omitempty"`
-	Tools       []openAITool        `json:"tools,omitempty"`
-	Stream      bool                `json:"stream,omitempty"`
+	Model         string                 `json:"model"`
+	Messages      []openAIMessage        `json:"messages"`
+	Temperature   float64                `json:"temperature,omitempty"`
+	MaxTokens     int                    `json:"max_tokens,omitempty"`
+	Tools         []openAITool           `json:"tools,omitempty"`
+	Stream        bool                   `json:"stream,omitempty"`
+	StreamOptions *openAIStreamOptions   `json:"stream_options,omitempty"`
+}
+
+// openAIStreamOptions represents streaming options for OpenAI API.
+type openAIStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type openAIMessage struct {
@@ -735,6 +741,13 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 		Stream:      req.Stream,
+	}
+
+	// Request usage data in streaming mode
+	if req.Stream {
+		openAIReq.StreamOptions = &openAIStreamOptions{
+			IncludeUsage: true,
+		}
 	}
 
 	if len(req.Tools) > 0 {

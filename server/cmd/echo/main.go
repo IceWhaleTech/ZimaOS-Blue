@@ -111,6 +111,12 @@ func loadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderReg
 			llmProvider = llm.NewGrokProvider(apiKey, baseURL)
 		case "qwen":
 			llmProvider = llm.NewQwenProvider(apiKey, baseURL)
+		case "venice":
+			llmProvider = llm.NewVeniceProvider(apiKey, baseURL)
+		case "bedrock":
+			llmProvider = llm.NewBedrockProvider(apiKey, baseURL)
+		case "glm":
+			llmProvider = llm.NewGLMProvider(apiKey, baseURL)
 		default:
 			// For unknown providers, try to use custom provider
 			logger.Debug().
@@ -981,6 +987,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		// This replaces the environment variable-based provider registration
 		loadProvidersFromPool(providerPool, llmRegistry)
 
+		// Set provider pool on chat handler for auto-selecting providers
+		chatHandler.SetProviderPool(providerPool)
+
 		providerPoolHandler := providerpool.NewHandler(providerPool)
 		providersGroup := protected.Group("/providers")
 		providerPoolHandler.RegisterRoutes(providersGroup)
@@ -993,6 +1002,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		// Register pricing routes
 		pricingGroup := protected.Group("/pricing")
 		providerPoolHandler.RegisterPricingRoutes(pricingGroup)
+		// Register config routes
+		configGroup := protected.Group("/config")
+		providerPoolHandler.RegisterConfigRoutes(configGroup)
 		logger.Info().Msg("Provider pool routes registered")
 
 		// Register proxy failover routes

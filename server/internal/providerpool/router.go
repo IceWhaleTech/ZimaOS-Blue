@@ -98,6 +98,16 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 			continue
 		}
 
+		// Filter by routing mode (location preference)
+		if req.Mode != "" && req.Mode != RoutingModeAuto {
+			if req.Mode == RoutingModeCloud && provider.Location != ProviderLocationCloud {
+				continue
+			}
+			if req.Mode == RoutingModeLocal && provider.Location != ProviderLocationLocal {
+				continue
+			}
+		}
+
 		// Get models for this provider
 		models, err := r.discovery.GetModels(provider.ID)
 		if err != nil {

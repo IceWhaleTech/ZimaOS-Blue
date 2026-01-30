@@ -400,3 +400,174 @@ select:disabled {
   line-height: 1.5;
   color: var(--color-text-muted);
 }
+
+/* ============================================
+   Chat Background Styles
+   Inspired by popular AI chat interfaces
+   ============================================ */
+
+/* Style 1: Default - Clean minimal style */
+.chat-style-default {
+  --chat-bg: var(--color-bg-base);
+  --chat-user-bg: #3B82F6;
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: rgba(255, 255, 255, 0.05);
+  --chat-assistant-text: var(--color-text-primary);
+  --chat-assistant-border: 1px solid rgba(148, 163, 184, 0.3);
+  --chat-bubble-radius: 1rem;
+}
+
+:root.light .chat-style-default,
+[data-theme="light"] .chat-style-default {
+  --chat-bg: #F8FAFC;
+  --chat-user-bg: #3B82F6;
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: #F1F5F9;
+  --chat-assistant-text: #0F172A;
+  --chat-assistant-border: 1px solid #E2E8F0;
+}
+
+/* Style 2: Bubble - ChatGPT-like rounded bubbles */
+.chat-style-bubble {
+  --chat-bg: linear-gradient(180deg, var(--color-bg-base) 0%, rgba(30, 41, 59, 0.95) 100%);
+  --chat-user-bg: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: rgba(139, 92, 246, 0.1);
+  --chat-assistant-text: var(--color-text-primary);
+  --chat-assistant-border: 1px solid rgba(139, 92, 246, 0.3);
+  --chat-bubble-radius: 1.25rem;
+}
+
+:root.light .chat-style-bubble,
+[data-theme="light"] .chat-style-bubble {
+  --chat-bg: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  --chat-user-bg: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: #F3F4F6;
+  --chat-assistant-text: #1F2937;
+  --chat-assistant-border: 1px solid #E0E7FF;
+}
+
+/* Style 3: Minimal - Claude-like clean interface */
+.chat-style-minimal {
+  --chat-bg: var(--color-bg-base);
+  --chat-user-bg: transparent;
+  --chat-user-text: var(--color-text-primary);
+  --chat-user-border: 1px solid var(--glass-border);
+  --chat-assistant-bg: rgba(255, 255, 255, 0.03);
+  --chat-assistant-text: var(--color-text-primary);
+  --chat-assistant-border: 1px solid var(--glass-border);
+  --chat-bubble-radius: 0.5rem;
+}
+
+:root.light .chat-style-minimal,
+[data-theme="light"] .chat-style-minimal {
+  --chat-bg: #FFFFFF;
+  --chat-user-bg: transparent;
+  --chat-user-text: #0F172A;
+  --chat-user-border: 1px solid #E5E7EB;
+  --chat-assistant-bg: #FAFAFA;
+  --chat-assistant-text: #0F172A;
+  --chat-assistant-border: 1px solid #E5E7EB;
+}
+
+/* Style 4: Gradient - Modern gradient background */
+.chat-style-gradient {
+  --chat-bg: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #0F172A 100%);
+  --chat-user-bg: linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: rgba(139, 92, 246, 0.15);
+  --chat-assistant-text: #F8FAFC;
+  --chat-assistant-border: 1px solid rgba(236, 72, 153, 0.3);
+  --chat-bubble-radius: 1rem;
+}
+
+:root.light .chat-style-gradient,
+[data-theme="light"] .chat-style-gradient {
+  --chat-bg: linear-gradient(135deg, #FDF4FF 0%, #FAF5FF 50%, #F5F3FF 100%);
+  --chat-user-bg: linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: rgba(139, 92, 246, 0.08);
+  --chat-assistant-text: #1F2937;
+  --chat-assistant-border: 1px solid #F5D0FE;
+}
+
+/* Style 5: Ocean - Calm blue tones */
+.chat-style-ocean {
+  --chat-bg: linear-gradient(180deg, #0C1929 0%, #0F2744 100%);
+  --chat-user-bg: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: rgba(14, 165, 233, 0.12);
+  --chat-assistant-text: #E0F2FE;
+  --chat-assistant-border: 1px solid rgba(14, 165, 233, 0.3);
+  --chat-bubble-radius: 1rem;
+}
+
+:root.light .chat-style-ocean,
+[data-theme="light"] .chat-style-ocean {
+  --chat-bg: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
+  --chat-user-bg: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
+  --chat-user-text: #FFFFFF;
+  --chat-assistant-bg: rgba(14, 165, 233, 0.08);
+  --chat-assistant-text: #0C4A6E;
+  --chat-assistant-border: 1px solid #BAE6FD;
+}
+
+/* Chat style application classes */
+.chat-messages-area {
+  background: var(--chat-bg);
+  transition: background 0.3s ease;
+}
+
+.chat-user-bubble {
+  background: var(--chat-user-bg);
+  color: var(--chat-user-text);
+  border: var(--chat-user-border, none);
+  border-radius: var(--chat-bubble-radius);
+}
+
+.chat-assistant-bubble {
+  color: var(--chat-assistant-text);
+}
+
+/* Chat style selector button */
+.chat-style-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--glass-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-style-btn:hover {
+  transform: scale(1.1);
+  border-color: var(--color-accent);
+}
+
+.chat-style-btn.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.chat-style-btn-default {
+  background: linear-gradient(135deg, #3B82F6 50%, #F1F5F9 50%);
+}
+
+.chat-style-btn-bubble {
+  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+}
+
+.chat-style-btn-minimal {
+  background: linear-gradient(135deg, #F8FAFC 50%, #E2E8F0 50%);
+}
+
+.chat-style-btn-gradient {
+  background: linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
+}
+
+.chat-style-btn-ocean {
+  background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
+}

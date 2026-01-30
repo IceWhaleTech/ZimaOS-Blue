@@ -2,7 +2,7 @@
 import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
-import { useSettingsStore } from '@/stores/settings'
+import { useSettingsStore, CHAT_STYLES, type ChatStyle } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import { claudeCodeApi } from '@/api/claudecode'
@@ -20,40 +20,80 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
-const showModelSelector = ref(false)
+const showStyleSelector = ref(false)
+const showRoutingMenu = ref(false)
+const routingMenuPosition = ref({ x: 0, y: 0 })
+const routingButtonRef = ref<HTMLElement | null>(null)
 const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
-const autoSwitchEnabled = ref(localStorage.getItem('autoSwitchProvider') === 'true')
+
+// Context menu state
+const showContextMenu = ref(false)
+const contextMenuPosition = ref({ x: 0, y: 0 })
+const contextMenuMessageId = ref<string | null>(null)
 
 // Check if Claude Code CLI is enabled
 const isClaudeCodeEnabled = computed(() => claudeCodeConfig.value?.enabled ?? false)
 
-// Configured providers - use Provider Pool's enabled providers
-const configuredProviders = computed(() => {
-  // First check Provider Pool for enabled providers
-  if (providerPoolStore.enabledProviders.length > 0) {
-    return providerPoolStore.enabledProviders.map(p => ({
-      name: p.id,
-      displayName: p.name,
-      models: [] // Models are fetched separately
-    }))
+// Provider status computed properties
+const hasConfiguredProviders = computed(() => providerPoolStore.enabledProviders.length > 0)
+const hasActiveProviders = computed(() => providerPoolStore.activeProviders.length > 0)
+const allProvidersFailed = computed(() =>
+  hasConfiguredProviders.value && !hasActiveProviders.value &&
+  providerPoolStore.enabledProviders.every(p => p.status === 'error')
+)
+
+// Provider status indicator
+const providerStatus = computed(() => {
+  if (!hasConfiguredProviders.value) {
+    return { status: 'none', color: 'gray', message: t('chat.noProviderConfigured') }
   }
-  // Fallback to legacy settings store
-  return settingsStore.providers.filter(p => {
-    // Ollama doesn't need API key
-    if (p.name === 'ollama') return true
-    // Check if API key is configured in settings
-    return !!settingsStore.apiKeys[p.name]
-  })
+  if (allProvidersFailed.value) {
+    return { status: 'error', color: 'red', message: t('chat.allProvidersFailed') }
+  }
+  if (hasActiveProviders.value) {
+    return { status: 'active', color: 'green', message: t('chat.providerActive') }
+  }
+  // Some providers enabled but not yet checked
+  return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
 })
 
-// Check if any providers are configured
-const hasConfiguredProviders = computed(() => configuredProviders.value.length > 0)
+// Routing mode display info
+const routingModeInfo = computed(() => {
+  const mode = providerPoolStore.routingMode
+  const cloudCount = providerPoolStore.cloudProviders.filter(p => p.status === 'active').length
+  const localCount = providerPoolStore.localProviders.filter(p => p.status === 'active').length
 
-// Toggle auto-switch
-function toggleAutoSwitch() {
-  autoSwitchEnabled.value = !autoSwitchEnabled.value
-  localStorage.setItem('autoSwitchProvider', String(autoSwitchEnabled.value))
-}
+  if (mode === 'cloud') {
+    return {
+      icon: 'cloud',
+      label: t('chat.routingMode.cloud'),
+      count: cloudCount,
+      color: 'blue'
+    }
+  } else if (mode === 'local') {
+    return {
+      icon: 'local',
+      label: t('chat.routingMode.local'),
+      count: localCount,
+      color: 'green'
+    }
+  } else {
+    return {
+      icon: 'auto',
+      label: t('chat.routingMode.auto'),
+      count: cloudCount + localCount,
+      color: 'accent'
+    }
+  }
+})
+
+// Available counts for routing menu
+const cloudActiveCount = computed(() =>
+  providerPoolStore.cloudProviders.filter(p => p.status === 'active').length
+)
+const localActiveCount = computed(() =>
+  providerPoolStore.localProviders.filter(p => p.status === 'active').length
+)
 
 // Check if mobile on mount and resize
 function checkMobile() {
@@ -149,59 +189,85 @@ async function handleDeleteConversation(id: string) {
 }
 
 function handleSearch(query: string) {
-  if (query.trim()) {
-    chatStore.searchConversations(query)
-  }
+  chatStore.searchConversations(query)
 }
 
 function toggleSidebar() {
   showSidebar.value = !showSidebar.value
 }
 
-function toggleModelSelector() {
-  showModelSelector.value = !showModelSelector.value
+function toggleStyleSelector() {
+  showStyleSelector.value = !showStyleSelector.value
+  showRoutingMenu.value = false
 }
 
-// Close model selector when clicking outside
+function toggleRoutingMenu() {
+  if (!showRoutingMenu.value && routingButtonRef.value) {
+    const rect = routingButtonRef.value.getBoundingClientRect()
+    routingMenuPosition.value = {
+      x: rect.right,
+      y: rect.bottom + 8
+    }
+  }
+  showRoutingMenu.value = !showRoutingMenu.value
+  showStyleSelector.value = false
+}
+
+function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
+  providerPoolStore.setRoutingMode(mode)
+  showRoutingMenu.value = false
+}
+
+function selectChatStyle(style: ChatStyle) {
+  settingsStore.setChatStyle(style)
+  showStyleSelector.value = false
+}
+
+// Computed class for chat style
+const chatStyleClass = computed(() => `chat-style-${settingsStore.chatStyle}`)
+
+// Close style selector when clicking outside
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
-  if (!target.closest('.model-selector-container')) {
-    showModelSelector.value = false
+  if (!target.closest('.style-selector-container')) {
+    showStyleSelector.value = false
+  }
+  if (!target.closest('.routing-menu-container')) {
+    showRoutingMenu.value = false
+  }
+  // Close context menu when clicking outside
+  if (!target.closest('.context-menu')) {
+    showContextMenu.value = false
   }
 }
 
-const currentModelDisplay = computed(() => {
-  const model = settingsStore.selectedModel
-  if (!model) return t('chat.selectModel')
-  // Truncate long model names on mobile
-  if (isMobile.value && model.length > 15) {
-    return model.substring(0, 12) + '...'
-  }
-  return model
-})
-
-// Get translated provider name
-function getProviderDisplayName(providerName: string | undefined): string {
-  if (!providerName) return ''
-  // First check if it's a Provider Pool provider with a display name
-  const poolProvider = providerPoolStore.providers.find(p => p.id === providerName)
-  if (poolProvider) {
-    return poolProvider.name
-  }
-  // Fallback to i18n translation
-  const key = `settings.providers.${providerName.toLowerCase()}`
-  const translated = t(key)
-  // If translation key doesn't exist, return original name
-  return translated === key ? providerName : translated
+// Context menu handlers
+function handleMessageContextMenu(event: MouseEvent, messageId: string) {
+  event.preventDefault()
+  contextMenuMessageId.value = messageId
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  showContextMenu.value = true
 }
 
-// Refresh models for current provider
-async function handleRefreshModels() {
+function handleSelectMessage() {
+  if (contextMenuMessageId.value) {
+    chatStore.enterMultiSelectMode(contextMenuMessageId.value)
+  }
+  showContextMenu.value = false
+}
+
+async function handleDeleteSelectedMessages() {
+  if (chatStore.selectedMessageIds.size === 0) return
+
   try {
-    await settingsStore.refreshProviderModels()
+    await chatStore.deleteSelectedMessages()
   } catch {
-    // Error is handled in the store
+    // Error is handled in store
   }
+}
+
+function handleCancelSelection() {
+  chatStore.exitMultiSelectMode()
 }
 
 // Fetch Claude Code CLI config
@@ -225,20 +291,9 @@ onMounted(async () => {
     settingsStore.fetchProviders(),
     settingsStore.fetchTools(),
     providerPoolStore.fetchProviders(),
+    providerPoolStore.fetchRoutingMode(),
     fetchClaudeCodeConfig(),
   ])
-
-  // Auto-select first enabled provider if current provider is not in the enabled list
-  if (providerPoolStore.enabledProviders.length > 0) {
-    const enabledIds = providerPoolStore.enabledProviders.map(p => p.id)
-    if (!enabledIds.includes(settingsStore.selectedProvider)) {
-      // Select the first enabled provider
-      const firstEnabled = providerPoolStore.enabledProviders[0]
-      if (firstEnabled) {
-        settingsStore.setProvider(firstEnabled.id)
-      }
-    }
-  }
 
   // Auto-select first conversation if available and none selected
   if (!chatStore.currentConversationId && chatStore.sortedConversations.length > 0) {
@@ -275,6 +330,7 @@ onUnmounted(() => {
         :conversations="chatStore.sortedConversations"
         :current-id="chatStore.currentConversationId"
         :loading="chatStore.loading"
+        :searching="chatStore.searching"
         @select="handleSelectConversation"
         @create="handleCreateConversation"
         @delete="handleDeleteConversation"
@@ -283,7 +339,7 @@ onUnmounted(() => {
     </aside>
 
     <!-- Main chat area -->
-    <main class="flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-surface-base relative">
+    <main class="flex-1 flex flex-col min-w-0 relative" :class="chatStyleClass">
       <!-- Chat header -->
       <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -336,183 +392,112 @@ onUnmounted(() => {
           </router-link>
         </div>
 
-        <!-- Model selector -->
-        <div class="model-selector-container relative flex-shrink-0">
-          <!-- No configured providers: Show add provider prompt -->
-          <router-link
-            v-if="!hasConfiguredProviders"
-            to="/settings"
-            class="flex items-center gap-2 px-3 py-1.5 glass-card text-amber-600 dark:text-amber-400 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all duration-200"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {{ t('chat.addProvider') }}
-          </router-link>
-
-          <!-- Has configured providers -->
-          <template v-else>
-            <!-- Mobile: Compact button -->
-            <button
-              v-if="isMobile"
-              class="flex items-center gap-1 px-3 py-1.5 glass-card text-gray-900 dark:text-white text-sm transition-all duration-200 cursor-pointer"
-              @click.stop="toggleModelSelector"
+        <!-- Routing Mode Switch & Provider Status -->
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <!-- Routing Mode Dropdown (replaces both the three-state buttons and status indicator) -->
+          <div class="routing-menu-container relative">
+            <!-- No providers configured - link to settings -->
+            <router-link
+              v-if="providerStatus.status === 'none'"
+              to="/settings?tab=llm"
+              class="flex items-center gap-2 px-3 py-1.5 glass-card text-sm transition-all duration-200 hover:bg-white/10 text-gray-500 dark:text-gray-400"
+              :title="providerStatus.message"
             >
-              <span class="truncate max-w-[100px]">{{ currentModelDisplay }}</span>
-              <svg
-                class="w-4 h-4 flex-shrink-0 transition-transform duration-200"
-                :class="{ 'rotate-180': showModelSelector }"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+              <span class="w-2 h-2 rounded-full bg-gray-400" />
+              <span class="hidden sm:inline text-xs">{{ t('chat.addProvider') }}</span>
+            </router-link>
+
+            <!-- Has providers - show routing menu trigger -->
+            <button
+              v-else
+              ref="routingButtonRef"
+              class="flex items-center gap-2 px-3 py-1.5 glass-card text-sm transition-all duration-200 hover:bg-white/10 cursor-pointer"
+              :class="{
+                'text-red-500 dark:text-red-400': providerStatus.status === 'error',
+                'text-green-500 dark:text-green-400': providerStatus.status === 'active' && routingModeInfo.color === 'green',
+                'text-blue-500 dark:text-blue-400': providerStatus.status === 'active' && routingModeInfo.color === 'blue',
+                'text-accent': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
+                'text-yellow-500 dark:text-yellow-400': providerStatus.status === 'pending',
+              }"
+              :title="providerStatus.message"
+              @click.stop="toggleRoutingMenu"
+            >
+              <!-- Status light -->
+              <span
+                class="w-2 h-2 rounded-full"
+                :class="{
+                  'bg-red-500 animate-pulse': providerStatus.status === 'error',
+                  'bg-green-500': providerStatus.status === 'active' && routingModeInfo.color === 'green',
+                  'bg-blue-500': providerStatus.status === 'active' && routingModeInfo.color === 'blue',
+                  'bg-accent': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
+                  'bg-yellow-500 animate-pulse': providerStatus.status === 'pending',
+                }"
+              />
+              <!-- Mode icon and label -->
+              <span class="hidden sm:flex items-center gap-1 text-xs">
+                <!-- Cloud icon -->
+                <svg v-if="routingModeInfo.icon === 'cloud'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                </svg>
+                <!-- Local icon -->
+                <svg v-else-if="routingModeInfo.icon === 'local'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <!-- Auto icon -->
+                <svg v-else class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>{{ routingModeInfo.label }}</span>
+                <span v-if="routingModeInfo.count > 0" class="opacity-60">({{ routingModeInfo.count }})</span>
+              </span>
+              <!-- Dropdown arrow -->
+              <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
+          </div>
 
-            <!-- Mobile: Dropdown -->
-            <div
-              v-if="isMobile && showModelSelector"
-              class="absolute right-0 top-full mt-2 w-64 glass-card shadow-xl z-50 p-4"
-            >
-              <div class="space-y-4">
-                <div>
-                  <label class="block text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.provider') }}</label>
-                  <select
-                    :value="settingsStore.selectedProvider"
-                    class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
-                    @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
-                  >
-                    <option
-                      v-for="provider in configuredProviders"
-                      :key="provider.name"
-                      :value="provider.name"
-                      class="bg-white dark:bg-surface-elevated"
-                    >
-                      {{ getProviderDisplayName(provider.name) }}
-                    </option>
-                  </select>
-                </div>
-                <div>
-                  <div class="flex items-center justify-between mb-2">
-                    <label class="text-xs text-gray-500 dark:text-slate-400 font-medium">{{ t('chat.model') }}</label>
-                    <button
-                      class="text-xs text-accent hover:text-accent-light transition-colors cursor-pointer flex items-center gap-1"
-                      :disabled="settingsStore.refreshing"
-                      @click="handleRefreshModels"
-                    >
-                      <svg
-                        class="w-3 h-3"
-                        :class="{ 'animate-spin': settingsStore.refreshing }"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      {{ t('chat.refreshModels') }}
-                    </button>
-                  </div>
-                  <select
-                    :value="settingsStore.selectedModel"
-                    class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 text-sm cursor-pointer"
-                    @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
-                  >
-                    <option
-                      v-for="model in settingsStore.availableModels"
-                      :key="model"
-                      :value="model"
-                      class="bg-white dark:bg-surface-elevated"
-                    >
-                      {{ model }}
-                    </option>
-                  </select>
-                </div>
-                <!-- Auto-switch checkbox (mobile) -->
-                <div class="flex items-center gap-2 pt-2 border-t border-glass-border">
-                  <input
-                    type="checkbox"
-                    :checked="autoSwitchEnabled"
-                    class="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-accent focus:ring-accent cursor-pointer"
-                    @change="toggleAutoSwitch"
-                  />
-                  <label class="text-xs text-gray-500 dark:text-slate-400 font-medium cursor-pointer" @click="toggleAutoSwitch">{{ t('chat.autoSwitch') }}</label>
-                </div>
-              </div>
-            </div>
-
-            <!-- Desktop: Inline selectors -->
-            <div v-else-if="!isMobile" class="flex items-center gap-2 text-sm">
-              <!-- Auto-switch checkbox at front -->
-              <label
-                class="flex items-center gap-1.5 cursor-pointer"
-                :title="t('chat.autoSwitchDesc')"
-              >
-                <input
-                  type="checkbox"
-                  :checked="autoSwitchEnabled"
-                  class="w-3.5 h-3.5 rounded border-gray-300 dark:border-slate-600 text-accent focus:ring-accent cursor-pointer"
-                  @change="toggleAutoSwitch"
-                />
-                <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('chat.auto') }}</span>
-              </label>
-
-              <select
-                :value="settingsStore.selectedProvider"
-                class="glass-input text-gray-900 dark:text-white px-3 py-1.5 cursor-pointer"
-                @change="settingsStore.setProvider(($event.target as HTMLSelectElement).value)"
-              >
-                <option
-                  v-for="provider in configuredProviders"
-                  :key="provider.name"
-                  :value="provider.name"
-                  class="bg-white dark:bg-surface-elevated"
-                >
-                  {{ getProviderDisplayName(provider.name) }}
-                </option>
-              </select>
-
-            <select
-              :value="settingsStore.selectedModel"
-              class="glass-input text-gray-900 dark:text-white px-3 py-1.5 cursor-pointer"
-              @change="settingsStore.setModel(($event.target as HTMLSelectElement).value)"
-            >
-              <option
-                v-for="model in settingsStore.availableModels"
-                :key="model"
-                :value="model"
-                class="bg-white dark:bg-surface-elevated"
-              >
-                {{ model }}
-              </option>
-            </select>
-
-            <!-- Refresh button for desktop -->
+          <!-- Style selector -->
+          <div class="style-selector-container relative">
             <button
               class="p-1.5 text-gray-500 dark:text-slate-400 hover:text-accent transition-colors cursor-pointer"
-              :disabled="settingsStore.refreshing"
-              :title="t('chat.refreshModels')"
-              @click="handleRefreshModels"
+              :title="t('chat.styles.title')"
+              @click.stop="toggleStyleSelector"
             >
-              <svg
-                class="w-4 h-4"
-                :class="{ 'animate-spin': settingsStore.refreshing }"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
               </svg>
             </button>
+            <!-- Style dropdown -->
+            <div
+              v-if="showStyleSelector"
+              class="absolute right-0 top-full mt-2 glass-card shadow-xl z-50 p-3 min-w-[180px]"
+            >
+              <div class="text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.styles.title') }}</div>
+              <div class="flex flex-col gap-1">
+                <button
+                  v-for="style in CHAT_STYLES"
+                  :key="style.id"
+                  class="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer"
+                  :class="settingsStore.chatStyle === style.id ? 'bg-accent/20 text-accent' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+                  @click="selectChatStyle(style.id)"
+                >
+                  <span
+                    class="chat-style-btn flex-shrink-0"
+                    :class="`chat-style-btn-${style.id}`"
+                  />
+                  <span>{{ t(style.labelKey) }}</span>
+                </button>
+              </div>
+            </div>
           </div>
-          </template>
         </div>
       </header>
 
       <!-- Messages area -->
       <div
         ref="messagesContainer"
-        class="flex-1 overflow-y-auto overscroll-contain pb-32"
+        class="flex-1 overflow-y-auto overscroll-contain pb-32 chat-messages-area"
         @scroll="handleScroll"
       >
         <!-- Load more indicator -->
@@ -563,9 +548,6 @@ onUnmounted(() => {
             </div>
             <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ t('chat.startConversation') }}</h3>
             <p class="text-sm sm:text-base text-gray-500 dark:text-slate-400">{{ t('chat.startConversationDesc') }}</p>
-            <div class="mt-6 glass-card p-4 inline-block">
-              <p class="text-sm">{{ t('chat.currentModel') }}: <span class="text-accent font-medium">{{ settingsStore.selectedModel }}</span></p>
-            </div>
             <div v-if="!isMobile" class="mt-6 text-xs text-gray-400 dark:text-slate-500">
               <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
               <p class="space-x-4">
@@ -584,9 +566,134 @@ onUnmounted(() => {
             :key="message.id"
             :message="message"
             :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
+            @contextmenu="handleMessageContextMenu"
           />
         </div>
       </div>
+
+      <!-- Context menu -->
+      <Teleport to="body">
+        <div
+          v-if="showContextMenu"
+          class="context-menu fixed z-[100] glass-card shadow-xl py-1 min-w-[160px]"
+          :style="{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }"
+        >
+          <button
+            class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+            @click="handleSelectMessage"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            {{ t('chat.selectMessage') }}
+          </button>
+        </div>
+      </Teleport>
+
+      <!-- Routing mode dropdown menu (teleported to body for proper z-index) -->
+      <Teleport to="body">
+        <div
+          v-if="showRoutingMenu"
+          class="routing-menu-container fixed z-[100] glass-card shadow-xl p-2 min-w-[200px]"
+          :style="{ left: `${Math.max(8, routingMenuPosition.x - 200)}px`, top: `${routingMenuPosition.y}px` }"
+        >
+          <!-- Auto mode -->
+          <button
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors cursor-pointer"
+            :class="providerPoolStore.routingMode === 'auto' ? 'bg-accent/20 text-accent' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+            @click="selectRoutingMode('auto')"
+          >
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <div class="flex-1">
+              <div class="font-medium">{{ t('chat.routingMode.auto') }}</div>
+              <div class="text-xs opacity-60">{{ t('chat.routingMode.autoDesc') }}</div>
+            </div>
+            <span class="text-xs opacity-60">{{ cloudActiveCount + localActiveCount }}</span>
+          </button>
+
+          <!-- Cloud mode -->
+          <button
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors cursor-pointer"
+            :class="providerPoolStore.routingMode === 'cloud' ? 'bg-blue-500/20 text-blue-500' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+            :disabled="!providerPoolStore.hasCloudProviders"
+            @click="selectRoutingMode('cloud')"
+          >
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            </svg>
+            <div class="flex-1">
+              <div class="font-medium" :class="{ 'opacity-50': !providerPoolStore.hasCloudProviders }">{{ t('chat.routingMode.cloud') }}</div>
+              <div class="text-xs opacity-60">{{ t('chat.routingMode.cloudDesc') }}</div>
+            </div>
+            <span class="text-xs" :class="cloudActiveCount > 0 ? 'text-green-500' : 'opacity-40'">{{ cloudActiveCount }}</span>
+          </button>
+
+          <!-- Local mode -->
+          <button
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors cursor-pointer"
+            :class="providerPoolStore.routingMode === 'local' ? 'bg-green-500/20 text-green-500' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+            :disabled="!providerPoolStore.hasLocalProviders"
+            @click="selectRoutingMode('local')"
+          >
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <div class="flex-1">
+              <div class="font-medium" :class="{ 'opacity-50': !providerPoolStore.hasLocalProviders }">{{ t('chat.routingMode.local') }}</div>
+              <div class="text-xs opacity-60">{{ t('chat.routingMode.localDesc') }}</div>
+            </div>
+            <span class="text-xs" :class="localActiveCount > 0 ? 'text-green-500' : 'opacity-40'">{{ localActiveCount }}</span>
+          </button>
+
+          <!-- Divider -->
+          <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+
+          <!-- Link to LLM settings -->
+          <router-link
+            to="/settings?tab=llm"
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors hover:bg-white/10 text-gray-500 dark:text-gray-400"
+            @click="showRoutingMenu = false"
+          >
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span>{{ t('chat.manageProviders') }}</span>
+          </router-link>
+        </div>
+      </Teleport>
+
+      <!-- Multi-select action bar -->
+      <Transition name="slide-up">
+        <div
+          v-if="chatStore.isMultiSelectMode"
+          class="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 glass-card shadow-xl px-4 py-3 flex items-center gap-4"
+        >
+          <span class="text-sm text-gray-600 dark:text-gray-300">
+            {{ chatStore.selectedMessageIds.size }} {{ t('chat.messagesSelected') }}
+          </span>
+          <div class="flex items-center gap-2">
+            <button
+              class="px-3 py-1.5 text-sm bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              :disabled="chatStore.selectedMessageIds.size === 0"
+              @click="handleDeleteSelectedMessages"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              {{ t('common.delete') }}
+            </button>
+            <button
+              class="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors cursor-pointer"
+              @click="handleCancelSelection"
+            >
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+        </div>
+      </Transition>
 
       <!-- Error message -->
       <div
@@ -683,5 +790,17 @@ onUnmounted(() => {
   .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
+}
+
+/* Slide up transition */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
 }
 </style>

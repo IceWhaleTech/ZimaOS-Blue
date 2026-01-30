@@ -3,7 +3,7 @@ import type { StreamChunk, SendMessageRequest } from '@/api/chat'
 export interface SSEClientOptions {
   onMessage: (chunk: StreamChunk) => void
   onError?: (error: Error) => void
-  onComplete?: () => void
+  onComplete?: (finalChunk?: StreamChunk) => void
   onBlocked?: (message: string, threatLevel: string) => void
 }
 
@@ -92,7 +92,7 @@ export class SSEClient {
               options.onMessage(chunk)
 
               if (chunk.done) {
-                options.onComplete?.()
+                options.onComplete?.(chunk)
                 this.isConnected = false
                 break
               }

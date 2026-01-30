@@ -222,3 +222,108 @@ func TestOpenAIProviderContextCancellation(t *testing.T) {
 		t.Fatal("expected error due to cancelled context")
 	}
 }
+
+// Test OpenAI provider streaming request includes stream_options
+func TestOpenAIProviderStreamingIncludesUsageOption(t *testing.T) {
+	var receivedRequest map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Decode the request body
+		json.NewDecoder(r.Body).Decode(&receivedRequest)
+
+		// Return a simple streaming response
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: {\"id\":\"chatcmpl-123\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"))
+		w.Write([]byte("data: {\"id\":\"chatcmpl-123\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider := NewOpenAIProvider("test-api-key", server.URL)
+	req := ChatRequest{
+		Model:    "gpt-4",
+		Messages: []Message{{Role: RoleUser, Content: "Hello"}},
+		Stream:   true,
+	}
+
+	ch, err := provider.ChatStream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Drain the channel
+	for range ch {
+	}
+
+	// Verify stream_options was included in the request
+	streamOptions, ok := receivedRequest["stream_options"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected stream_options in request")
+	}
+
+	includeUsage, ok := streamOptions["include_usage"].(bool)
+	if !ok || !includeUsage {
+		t.Error("expected stream_options.include_usage to be true")
+	}
+}
+
+// Test OpenAI provider streaming callback includes usage in final chunk
+func TestOpenAIProviderStreamingCallbackIncludesUsage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Send content chunks
+		w.Write([]byte("data: {\"id\":\"chatcmpl-123\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n"))
+		// Send final chunk with usage
+		w.Write([]byte("data: {\"id\":\"chatcmpl-123\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider := NewOpenAIProvider("test-api-key", server.URL)
+	req := ChatRequest{
+		Model:    "gpt-4",
+		Messages: []Message{{Role: RoleUser, Content: "Hello"}},
+		Stream:   true,
+	}
+
+	var finalChunk StreamChunk
+	var contentChunks []string
+
+	err := provider.ChatStreamCallback(context.Background(), req, func(chunk StreamChunk) error {
+		if chunk.Delta != "" {
+			contentChunks = append(contentChunks, chunk.Delta)
+		}
+		if chunk.Done {
+			finalChunk = chunk
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify content was received
+	if len(contentChunks) == 0 {
+		t.Error("expected at least one content chunk")
+	}
+
+	// Verify final chunk has usage data
+	if finalChunk.Usage == nil {
+		t.Fatal("expected usage in final chunk")
+	}
+
+	if finalChunk.Usage.PromptTokens != 10 {
+		t.Errorf("expected 10 prompt tokens, got %d", finalChunk.Usage.PromptTokens)
+	}
+
+	if finalChunk.Usage.CompletionTokens != 5 {
+		t.Errorf("expected 5 completion tokens, got %d", finalChunk.Usage.CompletionTokens)
+	}
+
+	if finalChunk.Usage.TotalTokens != 15 {
+		t.Errorf("expected 15 total tokens, got %d", finalChunk.Usage.TotalTokens)
+	}
+}

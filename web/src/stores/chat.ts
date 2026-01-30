@@ -1,11 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Conversation, Message, SendMessageRequest } from '@/api/chat'
+import type { Conversation, Message, SendMessageRequest, MessageStats } from '@/api/chat'
 import { conversationApi, messageApi } from '@/api/chat'
 import { SSEClient } from '@/utils/sse'
 import { useSettingsStore } from './settings'
 
 const PAGE_SIZE = 50
+
+// Store for message metadata (provider, model, stats) - keyed by message ID
+const messageMetadata = ref<Map<string, { provider?: string; model?: string; stats?: MessageStats }>>(new Map())
 
 export const useChatStore = defineStore('chat', () => {
   // State
@@ -24,6 +27,15 @@ export const useChatStore = defineStore('chat', () => {
   const loadingMore = ref(false)
   const currentPage = ref(0)
 
+  // Search state
+  const searchQuery = ref('')
+  const searchResults = ref<Conversation[] | null>(null)
+  const searching = ref(false)
+
+  // Multi-select state
+  const selectedMessageIds = ref<Set<string>>(new Set())
+  const isMultiSelectMode = ref(false)
+
   // SSE client for streaming
   const sseClient = new SSEClient()
 
@@ -32,11 +44,12 @@ export const useChatStore = defineStore('chat', () => {
     conversations.value.find((c) => c.id === currentConversationId.value)
   )
 
-  const sortedConversations = computed(() =>
-    [...conversations.value].sort(
+  const sortedConversations = computed(() => {
+    const list = searchResults.value !== null ? searchResults.value : conversations.value
+    return [...list].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     )
-  )
+  })
 
   // Actions
   async function fetchConversations() {
@@ -91,13 +104,47 @@ export const useChatStore = defineStore('chat', () => {
     if (currentConversationId.value === id) return
 
     currentConversationId.value = id
-    messages.value = []
+    // Don't clear messages immediately to avoid flash
+    // Reset pagination state
     hasMoreMessages.value = false
     currentPage.value = 0
-    await fetchMessages(id)
+
+    try {
+      // Fetch messages without setting loading state to avoid flash
+      error.value = null
+      const response = await messageApi.list(id, PAGE_SIZE, 0)
+      const fetchedMessages = response.data
+
+      // Only update if we're still on the same conversation
+      if (currentConversationId.value === id) {
+        messages.value = fetchedMessages
+        hasMoreMessages.value = fetchedMessages.length === PAGE_SIZE
+        currentPage.value = 0
+      }
+    } catch (e) {
+      if (currentConversationId.value === id) {
+        error.value = e instanceof Error ? e.message : 'Failed to fetch messages'
+        messages.value = []
+      }
+    }
   }
 
   async function fetchMessages(conversationId: string, page = 0) {
+    // Save metadata from current messages before refresh (for messages not yet persisted to DB)
+    const savedMetadata: Map<number, { provider?: string; model?: string; stats?: MessageStats }> = new Map()
+    if (page === 0) {
+      // Save metadata by index for the last few assistant messages
+      messages.value.forEach((msg, index) => {
+        if (msg.role === 'assistant' && (msg.provider || msg.model || msg.stats)) {
+          savedMetadata.set(index, {
+            provider: msg.provider,
+            model: msg.model,
+            stats: msg.stats,
+          })
+        }
+      })
+    }
+
     try {
       loading.value = true
       error.value = null
@@ -109,6 +156,20 @@ export const useChatStore = defineStore('chat', () => {
       const fetchedMessages = response.data
 
       if (page === 0) {
+        // Only restore metadata if server didn't return it (for backwards compatibility)
+        savedMetadata.forEach((meta, index) => {
+          if (fetchedMessages[index] && fetchedMessages[index].role === 'assistant') {
+            // Only use saved metadata if server didn't return stats
+            if (!fetchedMessages[index].stats && meta.stats) {
+              fetchedMessages[index] = {
+                ...fetchedMessages[index],
+                provider: fetchedMessages[index].provider || meta.provider,
+                model: fetchedMessages[index].model || meta.model,
+                stats: meta.stats,
+              }
+            }
+          }
+        })
         messages.value = fetchedMessages
       } else {
         // Prepend older messages
@@ -205,8 +266,29 @@ export const useChatStore = defineStore('chat', () => {
             (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
           )
         },
-        onComplete: () => {
+        onComplete: (finalChunk) => {
           streaming.value = false
+          // Store metadata from final chunk directly on the message object
+          // This ensures metadata persists even after fetchMessages() refreshes the list
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+            const lastIndex = messages.value.length - 1
+            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+              // Update the message with metadata inline (this will be visible immediately)
+              messages.value[lastIndex] = {
+                ...messages.value[lastIndex],
+                provider: finalChunk.provider,
+                model: finalChunk.model,
+                stats: finalChunk.stats,
+              }
+              // Also store in metadata map using streaming ID as backup
+              const msgId = messages.value[lastIndex].id
+              messageMetadata.value.set(msgId, {
+                provider: finalChunk.provider,
+                model: finalChunk.model,
+                stats: finalChunk.stats,
+              })
+            }
+          }
           // Refresh messages to get the actual IDs from server
           fetchMessages(conversationId)
           // Refresh conversations to get updated title (auto-generated after first message)
@@ -233,13 +315,37 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function searchConversations(query: string) {
+    searchQuery.value = query
+
+    // If query is empty, clear search results and show all conversations
+    if (!query.trim()) {
+      searchResults.value = null
+      searching.value = false
+      return conversations.value
+    }
+
     try {
+      searching.value = true
       const response = await conversationApi.search(query)
+      searchResults.value = response.data
       return response.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to search conversations'
-      return []
+      // Fall back to local filtering on error
+      const localResults = conversations.value.filter(c =>
+        c.title.toLowerCase().includes(query.toLowerCase())
+      )
+      searchResults.value = localResults
+      return localResults
+    } finally {
+      searching.value = false
     }
+  }
+
+  function clearSearch() {
+    searchQuery.value = ''
+    searchResults.value = null
+    searching.value = false
   }
 
   function clearError() {
@@ -248,6 +354,67 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearSecurityBlocked() {
     securityBlocked.value = null
+  }
+
+  function getMessageMetadata(messageId: string) {
+    return messageMetadata.value.get(messageId)
+  }
+
+  // Multi-select actions
+  function toggleMessageSelection(messageId: string) {
+    if (selectedMessageIds.value.has(messageId)) {
+      selectedMessageIds.value.delete(messageId)
+    } else {
+      selectedMessageIds.value.add(messageId)
+    }
+    // Trigger reactivity
+    selectedMessageIds.value = new Set(selectedMessageIds.value)
+  }
+
+  function selectMessage(messageId: string) {
+    selectedMessageIds.value.add(messageId)
+    selectedMessageIds.value = new Set(selectedMessageIds.value)
+  }
+
+  function deselectMessage(messageId: string) {
+    selectedMessageIds.value.delete(messageId)
+    selectedMessageIds.value = new Set(selectedMessageIds.value)
+  }
+
+  function clearSelection() {
+    selectedMessageIds.value = new Set()
+    isMultiSelectMode.value = false
+  }
+
+  function enterMultiSelectMode(initialMessageId?: string) {
+    isMultiSelectMode.value = true
+    if (initialMessageId) {
+      selectedMessageIds.value = new Set([initialMessageId])
+    }
+  }
+
+  function exitMultiSelectMode() {
+    isMultiSelectMode.value = false
+    selectedMessageIds.value = new Set()
+  }
+
+  async function deleteSelectedMessages() {
+    if (!currentConversationId.value || selectedMessageIds.value.size === 0) {
+      return
+    }
+
+    const idsToDelete = Array.from(selectedMessageIds.value)
+
+    try {
+      await messageApi.delete(currentConversationId.value, idsToDelete)
+      // Remove deleted messages from local state
+      messages.value = messages.value.filter((m) => !selectedMessageIds.value.has(m.id))
+      // Clear selection
+      clearSelection()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to delete messages'
+      throw e
+    }
   }
 
   return {
@@ -263,6 +430,10 @@ export const useChatStore = defineStore('chat', () => {
     securityBlocked,
     hasMoreMessages,
     loadingMore,
+    searchQuery,
+    searching,
+    selectedMessageIds,
+    isMultiSelectMode,
 
     // Computed
     currentConversation,
@@ -278,7 +449,16 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     cancelStreaming,
     searchConversations,
+    clearSearch,
     clearError,
     clearSecurityBlocked,
+    getMessageMetadata,
+    toggleMessageSelection,
+    selectMessage,
+    deselectMessage,
+    clearSelection,
+    enterMultiSelectMode,
+    exitMultiSelectMode,
+    deleteSelectedMessages,
   }
 })

@@ -53,6 +53,16 @@ export interface BrowseParams {
   source?: string
   category?: string
   search?: string
+  page?: number
+  page_size?: number
+}
+
+export interface BrowseResponse {
+  skills: RemoteSkill[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 // Skill API
@@ -78,7 +88,7 @@ export const skillApi = {
     api.delete<{ success: boolean; message: string }>(`/skill-store/sources/${id}`),
 
   browse: (params?: BrowseParams) =>
-    api.get<RemoteSkill[]>('/skill-store/browse', { params }),
+    api.get<BrowseResponse>('/skill-store/browse', { params }),
 
   install: (id: string) =>
     api.post<{ success: boolean; message: string; skill?: RemoteSkill }>(`/skill-store/install/${id}`),

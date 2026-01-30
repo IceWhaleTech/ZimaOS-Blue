@@ -1,7 +1,11 @@
 import { createI18n } from 'vue-i18n'
 
-// Only import en-US as the default/fallback locale
-import enUS from './locales/en-US'
+// Minimal fallback messages for initial render (before locale loads)
+const minimalMessages = {
+  common: {
+    loading: 'Loading...',
+  },
+}
 
 export type LocaleKey =
   | 'ca-ES'
@@ -131,41 +135,31 @@ export const i18n = createI18n({
   missingWarn: false,
   fallbackWarn: false,
   messages: {
-    'en-US': enUS,
+    'en-US': minimalMessages, // Minimal messages, full locale loaded async
   },
 })
 
-// Debug: log i18n state
-console.log('[i18n] Created i18n instance, initial locale:', i18n.global.locale.value)
-console.log('[i18n] Available messages:', Object.keys(i18n.global.messages.value))
-
 // Track loaded locales
-const loadedLocales = new Set<LocaleKey>(['en-US'])
+const loadedLocales = new Set<LocaleKey>()
 
 // Lazy load locale messages
 async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
   if (loadedLocales.has(locale)) {
-    console.log(`[i18n] Locale ${locale} already loaded`)
     return
   }
 
   try {
-    console.log(`[i18n] Loading locale ${locale}...`)
     const messages = await import(`./locales/${locale}.ts`)
-    console.log(`[i18n] Loaded locale ${locale}, keys:`, Object.keys(messages.default))
     i18n.global.setLocaleMessage(locale, messages.default)
     loadedLocales.add(locale)
-    console.log(`[i18n] Set locale message for ${locale}`)
   } catch (error) {
     console.warn(`Failed to load locale ${locale}, falling back to en-US`, error)
   }
 }
 
 export async function setLocale(locale: LocaleKey): Promise<void> {
-  console.log(`[i18n] setLocale called with ${locale}`)
   await loadLocaleMessages(locale)
   ;(i18n.global.locale as { value: string }).value = locale
-  console.log(`[i18n] Locale set to ${locale}, current locale:`, i18n.global.locale.value)
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.lang = locale
 }
@@ -174,13 +168,8 @@ export function getLocale(): LocaleKey {
   return i18n.global.locale.value as LocaleKey
 }
 
-// Initialize: load the default locale if not en-US
+// Initialize: always load the default locale (including en-US)
 export async function initLocale(): Promise<void> {
   const defaultLocale = getDefaultLocale()
-  console.log(`[i18n] initLocale called, defaultLocale: ${defaultLocale}`)
-  if (defaultLocale !== 'en-US') {
-    await setLocale(defaultLocale)
-  } else {
-    console.log(`[i18n] Using default en-US locale`)
-  }
+  await setLocale(defaultLocale)
 }

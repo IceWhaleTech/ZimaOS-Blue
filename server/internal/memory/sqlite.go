@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,16 @@ type ToolCall struct {
 	Arguments string `json:"arguments"`
 }
 
+// MessageStats represents statistics for a message.
+type MessageStats struct {
+	InputTokens     int     `json:"input_tokens"`
+	OutputTokens    int     `json:"output_tokens"`
+	TotalTokens     int     `json:"total_tokens"`
+	LatencyMs       int64   `json:"latency_ms"`
+	TTFTMs          int64   `json:"ttft_ms"`
+	TokensPerSecond float64 `json:"tokens_per_second"`
+}
+
 // Conversation represents a conversation.
 type Conversation struct {
 	ID        string    `json:"id"`
@@ -36,13 +47,16 @@ type Conversation struct {
 
 // Message represents a chat message.
 type Message struct {
-	ID             string     `json:"id"`
-	ConversationID string     `json:"conversation_id"`
-	Role           string     `json:"role"`
-	Content        string     `json:"content"`
-	ToolCalls      []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID     string     `json:"tool_call_id,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID             string        `json:"id"`
+	ConversationID string        `json:"conversation_id"`
+	Role           string        `json:"role"`
+	Content        string        `json:"content"`
+	ToolCalls      []ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID     string        `json:"tool_call_id,omitempty"`
+	Provider       string        `json:"provider,omitempty"`
+	Model          string        `json:"model,omitempty"`
+	Stats          *MessageStats `json:"stats,omitempty"`
+	CreatedAt      time.Time     `json:"created_at"`
 }
 
 // Store provides conversation storage using SQLite.
@@ -106,6 +120,9 @@ func (s *Store) migrate() error {
 		content TEXT NOT NULL,
 		tool_calls TEXT,
 		tool_call_id TEXT,
+		provider TEXT,
+		model TEXT,
+		stats TEXT,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
@@ -115,7 +132,23 @@ func (s *Store) migrate() error {
 	`
 
 	_, err := s.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Run migrations for existing databases
+	migrations := []string{
+		"ALTER TABLE messages ADD COLUMN provider TEXT",
+		"ALTER TABLE messages ADD COLUMN model TEXT",
+		"ALTER TABLE messages ADD COLUMN stats TEXT",
+	}
+
+	for _, migration := range migrations {
+		// Ignore errors for columns that already exist
+		s.db.Exec(migration)
+	}
+
+	return nil
 }
 
 // Close closes the database connection.
@@ -256,9 +289,18 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 		}
 	}
 
+	var statsJSON []byte
+	if msg.Stats != nil {
+		var err error
+		statsJSON, err = json.Marshal(msg.Stats)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal stats: %w", err)
+		}
+	}
+
 	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.CreatedAt,
+		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.Provider, msg.Model, statsJSON, msg.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add message: %w", err)
@@ -273,7 +315,7 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 // GetMessages retrieves messages for a conversation.
 func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
 		conversationID, limit, offset,
 	)
 	if err != nil {
@@ -286,8 +328,11 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 		var msg Message
 		var toolCallsJSON sql.NullString
 		var toolCallID sql.NullString
+		var provider sql.NullString
+		var model sql.NullString
+		var statsJSON sql.NullString
 
-		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &msg.CreatedAt); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &provider, &model, &statsJSON, &msg.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 
@@ -301,8 +346,54 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 			msg.ToolCallID = toolCallID.String
 		}
 
+		if provider.Valid {
+			msg.Provider = provider.String
+		}
+
+		if model.Valid {
+			msg.Model = model.String
+		}
+
+		if statsJSON.Valid && statsJSON.String != "" {
+			msg.Stats = &MessageStats{}
+			if err := json.Unmarshal([]byte(statsJSON.String), msg.Stats); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
+			}
+		}
+
 		messages = append(messages, msg)
 	}
 
 	return messages, rows.Err()
+}
+
+// DeleteMessages deletes multiple messages by their IDs.
+func (s *Store) DeleteMessages(ctx context.Context, conversationID string, messageIDs []string) error {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(messageIDs))
+	args := make([]interface{}, len(messageIDs)+1)
+	args[0] = conversationID
+	for i, id := range messageIDs {
+		placeholders[i] = "?"
+		args[i+1] = id
+	}
+
+	query := fmt.Sprintf(
+		"DELETE FROM messages WHERE conversation_id = ? AND id IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+
+	_, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete messages: %w", err)
+	}
+
+	return nil
 }

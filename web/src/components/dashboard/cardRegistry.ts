@@ -55,7 +55,7 @@ export const cardRegistry: DashboardCardConfig[] = [
     iconColor: 'blue',
     component: 'FailoverStatusCard',
     category: 'overview',
-    defaultEnabled: true,
+    defaultEnabled: false,
     defaultOrder: 5,
     minWidth: 4,
   },

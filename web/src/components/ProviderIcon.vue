@@ -15,6 +15,9 @@ import minimaxIcon from '@/assets/providers/minimax.svg'
 import codexIcon from '@/assets/providers/codex.svg'
 import grokIcon from '@/assets/providers/grok.svg'
 import qwenIcon from '@/assets/providers/qwen.svg'
+import veniceIcon from '@/assets/providers/venice.svg'
+import awsIcon from '@/assets/providers/aws.svg'
+import glmIcon from '@/assets/providers/glm.svg'
 import defaultIcon from '@/assets/providers/default.svg'
 
 const props = defineProps<{
@@ -38,6 +41,10 @@ const icons: Record<string, string> = {
   codex: codexIcon,
   grok: grokIcon,
   qwen: qwenIcon,
+  venice: veniceIcon,
+  aws: awsIcon,
+  bedrock: awsIcon,
+  glm: glmIcon,
 }
 
 // Use custom icon if provided, otherwise fall back to built-in icons

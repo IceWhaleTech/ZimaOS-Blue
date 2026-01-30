@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Conversation } from '@/api/chat'
 
@@ -9,6 +9,7 @@ const props = defineProps<{
   conversations: Conversation[]
   currentId: string | null
   loading?: boolean
+  searching?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,14 +21,6 @@ const emit = defineEmits<{
 
 const searchQuery = ref('')
 const showDeleteConfirm = ref<string | null>(null)
-
-const filteredConversations = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return props.conversations
-  }
-  const query = searchQuery.value.toLowerCase()
-  return props.conversations.filter((c) => c.title.toLowerCase().includes(query))
-})
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -134,14 +127,14 @@ watch(searchQuery, (query) => {
     <!-- Conversation list -->
     <div class="flex-1 overflow-y-auto">
       <!-- Loading state -->
-      <div v-if="loading" class="p-4 text-center text-gray-500 dark:text-gray-400">
+      <div v-if="loading || searching" class="p-4 text-center text-gray-500 dark:text-gray-400">
         <div class="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto" />
-        <p class="mt-2">{{ t('common.loading') }}</p>
+        <p class="mt-2">{{ searching ? t('chat.searching') : t('common.loading') }}</p>
       </div>
 
       <!-- Empty state -->
       <div
-        v-else-if="filteredConversations.length === 0"
+        v-else-if="conversations.length === 0"
         class="p-4 text-center text-gray-500 dark:text-gray-400"
       >
         <svg
@@ -166,7 +159,7 @@ watch(searchQuery, (query) => {
       <!-- Conversation items -->
       <div v-else class="divide-y divide-gray-100 dark:divide-gray-800">
         <div
-          v-for="conversation in filteredConversations"
+          v-for="conversation in conversations"
           :key="conversation.id"
           class="conversation-item relative group"
           :class="{ 'bg-blue-50 dark:bg-gray-800': conversation.id === currentId }"

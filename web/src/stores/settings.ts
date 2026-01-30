@@ -22,10 +22,22 @@ export interface ProviderModelOption {
   modelId: string
 }
 
+// Chat style types
+export type ChatStyle = 'default' | 'bubble' | 'minimal' | 'gradient' | 'ocean'
+
+export const CHAT_STYLES: { id: ChatStyle; labelKey: string }[] = [
+  { id: 'default', labelKey: 'chat.styles.default' },
+  { id: 'bubble', labelKey: 'chat.styles.bubble' },
+  { id: 'minimal', labelKey: 'chat.styles.minimal' },
+  { id: 'gradient', labelKey: 'chat.styles.gradient' },
+  { id: 'ocean', labelKey: 'chat.styles.ocean' },
+]
+
 interface StoredSettings {
   selectedProviderModel: string  // Format: "providerId:modelId"
   temperature: number
   maxTokens: number
+  chatStyle: ChatStyle
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -53,6 +65,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const selectedProviderModel = ref(stored.selectedProviderModel || '')  // Format: "providerId:modelId"
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? 2048)
+  const chatStyle = ref<ChatStyle>(stored.chatStyle || 'default')
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)
@@ -93,12 +106,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProviderModel, temperature, maxTokens],
+    [selectedProviderModel, temperature, maxTokens, chatStyle],
     () => {
       saveSettings({
         selectedProviderModel: selectedProviderModel.value,
         temperature: temperature.value,
         maxTokens: maxTokens.value,
+        chatStyle: chatStyle.value,
       })
     },
     { deep: true }
@@ -226,12 +240,42 @@ export const useSettingsStore = defineStore('settings', () => {
     selectedProviderModel.value = value
   }
 
+  // Set provider (keeps current model if available, otherwise selects first model)
+  function setProvider(providerId: string) {
+    const provider = providers.value.find(p => p.id === providerId)
+    if (provider && provider.models.length > 0) {
+      // Try to keep current model if it exists in new provider
+      const currentModel = selectedModel.value
+      if (provider.models.includes(currentModel)) {
+        selectedProviderModel.value = `${providerId}:${currentModel}`
+      } else {
+        // Select first model of new provider
+        const firstModel = provider.models[0]
+        if (firstModel) {
+          selectedProviderModel.value = `${providerId}:${firstModel}`
+        }
+      }
+    }
+  }
+
+  // Set model (keeps current provider)
+  function setModel(modelId: string) {
+    const currentProviderId = selectedProvider.value
+    if (currentProviderId) {
+      selectedProviderModel.value = `${currentProviderId}:${modelId}`
+    }
+  }
+
   function setTemperature(value: number) {
     temperature.value = Math.max(0, Math.min(2, value))
   }
 
   function setMaxTokens(value: number) {
     maxTokens.value = Math.max(1, Math.min(128000, value))
+  }
+
+  function setChatStyle(style: ChatStyle) {
+    chatStyle.value = style
   }
 
   function clearError() {
@@ -245,6 +289,7 @@ export const useSettingsStore = defineStore('settings', () => {
     selectedProviderModel,
     temperature,
     maxTokens,
+    chatStyle,
     loading,
     refreshing,
     error,
@@ -261,8 +306,11 @@ export const useSettingsStore = defineStore('settings', () => {
     refreshProviderModels,
     fetchTools,
     setProviderModel,
+    setProvider,
+    setModel,
     setTemperature,
     setMaxTokens,
+    setChatStyle,
     clearError,
   }
 })

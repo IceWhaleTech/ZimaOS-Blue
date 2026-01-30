@@ -20,6 +20,16 @@ const (
 	ProviderTypeIDE ProviderType = "ide"
 )
 
+// ProviderLocation represents where the provider runs
+type ProviderLocation string
+
+const (
+	// ProviderLocationCloud represents cloud-based providers (OpenAI, Anthropic, etc.)
+	ProviderLocationCloud ProviderLocation = "cloud"
+	// ProviderLocationLocal represents locally running providers (Ollama, LM Studio, etc.)
+	ProviderLocationLocal ProviderLocation = "local"
+)
+
 // ProviderStatus represents the current status of a provider
 type ProviderStatus string
 
@@ -34,13 +44,14 @@ const (
 
 // Provider represents an LLM provider configuration
 type Provider struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Type        ProviderType   `json:"type"`
-	Enabled     bool           `json:"enabled"`
-	Status      ProviderStatus `json:"status"`
-	BaseURL     string         `json:"base_url,omitempty"`
-	APIVersion  string         `json:"api_version,omitempty"` // e.g., "v1", "2024-01"
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Type        ProviderType     `json:"type"`
+	Location    ProviderLocation `json:"location"`  // cloud or local
+	Enabled     bool             `json:"enabled"`
+	Status      ProviderStatus   `json:"status"`
+	BaseURL     string           `json:"base_url,omitempty"`
+	APIVersion  string           `json:"api_version,omitempty"` // e.g., "v1", "2024-01"
 
 	// Authentication
 	APIKeys []APIKey     `json:"api_keys,omitempty"`
@@ -58,6 +69,7 @@ type Provider struct {
 	Icon        string    `json:"icon,omitempty"`        // Built-in icon name (e.g., "openai", "anthropic")
 	CustomIcon  string    `json:"custom_icon,omitempty"` // Custom icon: base64 data URL or relative file path
 	Description string    `json:"description,omitempty"`
+	Website     string    `json:"website,omitempty"`     // Official website URL for the provider
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
@@ -216,11 +228,24 @@ const (
 	RoutingStrategyRoundRobin RoutingStrategy = "round_robin"
 )
 
+// RoutingMode defines the location preference for routing
+type RoutingMode string
+
+const (
+	// RoutingModeAuto uses intelligent routing across all providers
+	RoutingModeAuto RoutingMode = "auto"
+	// RoutingModeCloud only uses cloud providers
+	RoutingModeCloud RoutingMode = "cloud"
+	// RoutingModeLocal only uses local providers
+	RoutingModeLocal RoutingMode = "local"
+)
+
 // RouteRequest represents a routing request
 type RouteRequest struct {
-	ModelID    string          `json:"model_id"`
-	Strategy   RoutingStrategy `json:"strategy,omitempty"`
-	Exclude    []string        `json:"exclude,omitempty"`    // Provider IDs to exclude
+	ModelID    string             `json:"model_id"`
+	Strategy   RoutingStrategy    `json:"strategy,omitempty"`
+	Mode       RoutingMode        `json:"mode,omitempty"`        // Location preference: auto, cloud, local
+	Exclude    []string           `json:"exclude,omitempty"`     // Provider IDs to exclude
 	RequireCap *ModelCapabilities `json:"require_cap,omitempty"` // Required capabilities
 }
 
@@ -262,7 +287,8 @@ type IDEProvider struct {
 // PoolConfig represents the provider pool configuration
 type PoolConfig struct {
 	// Routing
-	DefaultStrategy RoutingStrategy `json:"default_strategy"`
+	DefaultStrategy    RoutingStrategy `json:"default_strategy"`
+	DefaultRoutingMode RoutingMode     `json:"default_routing_mode"` // auto, cloud, local
 
 	// Health check
 	HealthCheckEnabled  bool          `json:"health_check_enabled"`
@@ -270,7 +296,7 @@ type PoolConfig struct {
 	HealthCheckTimeout  time.Duration `json:"health_check_timeout"`
 
 	// IDE discovery
-	IDEDiscoveryEnabled  bool          `json:"ide_discovery_enabled"`
+	IDEDiscoveryEnabled      bool          `json:"ide_discovery_enabled"`
 	IDEDiscoveryScanInterval time.Duration `json:"ide_discovery_scan_interval"`
 
 	// Usage tracking

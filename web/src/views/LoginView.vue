@@ -110,9 +110,7 @@ function getProviderIconSvg(type: ProviderType): string {
     <div class="max-w-md w-full">
       <!-- Logo and Title -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-600 mb-4 overflow-hidden">
-          <img src="/logo.png" alt="ZimaOS Echo" class="w-12 h-12 object-contain" />
-        </div>
+        <img src="/logo.png" alt="ZimaOS Echo" class="w-16 h-16 object-contain mx-auto mb-4 drop-shadow-lg" />
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">ZimaOS Echo</h1>
         <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.signInToAccount') }}</p>
       </div>

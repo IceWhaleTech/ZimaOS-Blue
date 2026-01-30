@@ -14,6 +14,15 @@ export interface ToolCall {
   arguments: string
 }
 
+export interface MessageStats {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  latency_ms: number
+  ttft_ms: number
+  tokens_per_second: number
+}
+
 export interface Message {
   id: string
   conversation_id: string
@@ -22,6 +31,10 @@ export interface Message {
   tool_calls?: ToolCall[]
   tool_call_id?: string
   created_at: string
+  // Runtime metadata (not persisted to database)
+  provider?: string
+  model?: string
+  stats?: MessageStats
 }
 
 export interface SendMessageRequest {
@@ -47,6 +60,17 @@ export interface ToolDefinition {
 export interface StreamChunk {
   delta: string
   done: boolean
+  stream_id?: string
+  provider?: string
+  model?: string
+  stats?: {
+    input_tokens: number
+    output_tokens: number
+    total_tokens: number
+    latency_ms: number
+    ttft_ms: number
+    tokens_per_second: number
+  }
   usage?: {
     prompt_tokens: number
     completion_tokens: number
@@ -79,6 +103,11 @@ export const messageApi = {
 
   send: (conversationId: string, request: SendMessageRequest) =>
     api.post<SendMessageResponse>(`/conversations/${conversationId}/messages`, request),
+
+  delete: (conversationId: string, messageIds: string[]) =>
+    api.delete<{ success: boolean; deleted: number }>(`/conversations/${conversationId}/messages`, {
+      data: { message_ids: messageIds },
+    }),
 
   // Note: For streaming, use the SSE utility instead
   getStreamUrl: (conversationId: string) =>

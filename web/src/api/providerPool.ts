@@ -11,10 +11,14 @@ export interface ModelParams {
   detected_at?: number
 }
 
+export type ProviderLocation = 'cloud' | 'local'
+export type RoutingMode = 'auto' | 'cloud' | 'local'
+
 export interface Provider {
   id: string
   name: string
   type: 'builtin' | 'custom' | 'acp' | 'ide'
+  location: ProviderLocation
   enabled: boolean
   status: 'active' | 'inactive' | 'error'
   base_url?: string
@@ -25,6 +29,7 @@ export interface Provider {
   icon?: string
   custom_icon?: string
   description?: string
+  website?: string
   created_at: string
   updated_at: string
   last_health_check?: string
@@ -115,6 +120,15 @@ export interface PricingConfig {
   default_cache_price: number
   custom_pricing: Record<string, ModelPricing>
   updated_at: string
+}
+
+export interface LocationStats {
+  cloud_count: number
+  local_count: number
+  cloud_providers: string[]
+  local_providers: string[]
+  has_cloud: boolean
+  has_local: boolean
 }
 
 // Failover types
@@ -280,6 +294,16 @@ export const providerPoolApi = {
 
   getCircuitBreakerStatus: () =>
     api.get<Record<string, { state: string; failures: number; last_failure?: string }>>('/proxy/failover/breakers'),
+
+  // Config operations
+  getRoutingMode: () =>
+    api.get<{ mode: RoutingMode }>('/config/routing-mode'),
+
+  setRoutingMode: (mode: RoutingMode) =>
+    api.put<{ mode: RoutingMode }>('/config/routing-mode', { mode }),
+
+  getLocationStats: () =>
+    api.get<LocationStats>('/config/location-stats'),
 }
 
 export default providerPoolApi

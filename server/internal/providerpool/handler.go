@@ -77,6 +77,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		Storage:        storage,
 		Config: &PoolConfig{
 			DefaultStrategy:          RoutingStrategyPriority,
+			DefaultRoutingMode:       RoutingModeAuto,
 			HealthCheckEnabled:       true,
 			HealthCheckInterval:      60 * time.Second,
 			HealthCheckTimeout:       10 * time.Second,
@@ -151,15 +152,61 @@ func (p *Pool) deduplicateProviders() {
 }
 
 // initBuiltinProviders initializes built-in providers if not already registered
+// and updates existing builtin providers with new metadata (icon, description, etc.)
 func (p *Pool) initBuiltinProviders() {
 	existing := p.Registry.List()
-	existingIDs := make(map[string]bool)
+	existingMap := make(map[string]*Provider)
 	for _, provider := range existing {
-		existingIDs[provider.ID] = true
+		existingMap[provider.ID] = provider
 	}
 
 	for _, builtin := range BuiltinProviders() {
-		if !existingIDs[builtin.ID] {
+		if existingProvider, exists := existingMap[builtin.ID]; exists {
+			// Update existing builtin provider's metadata (but preserve user settings)
+			needsUpdate := false
+
+			// Update icon if changed
+			if existingProvider.Icon != builtin.Icon {
+				existingProvider.Icon = builtin.Icon
+				needsUpdate = true
+			}
+
+			// Update description if changed
+			if existingProvider.Description != builtin.Description {
+				existingProvider.Description = builtin.Description
+				needsUpdate = true
+			}
+
+			// Update name if changed
+			if existingProvider.Name != builtin.Name {
+				existingProvider.Name = builtin.Name
+				needsUpdate = true
+			}
+
+			// Update base URL only if it was empty (user hasn't configured it)
+			if existingProvider.BaseURL == "" && builtin.BaseURL != "" {
+				existingProvider.BaseURL = builtin.BaseURL
+				needsUpdate = true
+			}
+
+			// Update API version if changed
+			if existingProvider.APIVersion != builtin.APIVersion {
+				existingProvider.APIVersion = builtin.APIVersion
+				needsUpdate = true
+			}
+
+			// Update website if changed
+			if existingProvider.Website != builtin.Website {
+				existingProvider.Website = builtin.Website
+				needsUpdate = true
+			}
+
+			if needsUpdate {
+				existingProvider.UpdatedAt = builtin.UpdatedAt
+				p.Registry.Update(existingProvider)
+			}
+		} else {
+			// Register new builtin provider
 			p.Registry.Register(builtin)
 		}
 	}
@@ -260,6 +307,13 @@ func (h *Handler) AddProvider(c echo.Context) error {
 	provider.Type = ProviderTypeCustom
 	provider.Status = ProviderStatusInactive
 
+	// Set location (default to cloud if not specified)
+	if provider.Location == "" {
+		provider.Location = ProviderLocationCloud
+	} else if provider.Location != ProviderLocationCloud && provider.Location != ProviderLocationLocal {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
+	}
+
 	if err := h.pool.Registry.Register(&provider); err != nil {
 		if err == ErrProviderExists {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "provider already exists"})
@@ -320,6 +374,12 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	}
 	if updates.Headers != nil {
 		existing.Headers = updates.Headers
+	}
+	if updates.Location != "" {
+		if updates.Location != ProviderLocationCloud && updates.Location != ProviderLocationLocal {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
+		}
+		existing.Location = updates.Location
 	}
 
 	if err := h.pool.Registry.Update(existing); err != nil {
@@ -906,5 +966,72 @@ func (h *Handler) RecalculateCosts(c echo.Context) error {
 		"new_total_cost":     totalNewCost,
 		"cost_difference":    totalNewCost - totalOldCost,
 		"message":            "costs recalculated (view only, historical records not modified)",
+	})
+}
+
+// RegisterConfigRoutes registers configuration routes on a separate group
+func (h *Handler) RegisterConfigRoutes(g *echo.Group) {
+	g.GET("/routing-mode", h.GetRoutingMode)
+	g.PUT("/routing-mode", h.SetRoutingMode)
+	g.GET("/location-stats", h.GetLocationStats)
+}
+
+// GetRoutingMode returns the current routing mode
+func (h *Handler) GetRoutingMode(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"mode": h.pool.Config.DefaultRoutingMode,
+	})
+}
+
+// SetRoutingMode sets the routing mode
+func (h *Handler) SetRoutingMode(c echo.Context) error {
+	var req struct {
+		Mode RoutingMode `json:"mode"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	// Validate mode
+	if req.Mode != RoutingModeAuto && req.Mode != RoutingModeCloud && req.Mode != RoutingModeLocal {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid routing mode"})
+	}
+
+	h.pool.Config.DefaultRoutingMode = req.Mode
+
+	// Save config to storage
+	if err := h.pool.Storage.SaveConfig(h.pool.Config); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"mode": h.pool.Config.DefaultRoutingMode,
+	})
+}
+
+// GetLocationStats returns statistics about provider locations
+func (h *Handler) GetLocationStats(c echo.Context) error {
+	providers := h.pool.Registry.ListEnabled()
+
+	var cloudCount, localCount int
+	var cloudProviders, localProviders []string
+
+	for _, p := range providers {
+		if p.Location == ProviderLocationCloud {
+			cloudCount++
+			cloudProviders = append(cloudProviders, p.ID)
+		} else if p.Location == ProviderLocationLocal {
+			localCount++
+			localProviders = append(localProviders, p.ID)
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"cloud_count":     cloudCount,
+		"local_count":     localCount,
+		"cloud_providers": cloudProviders,
+		"local_providers": localProviders,
+		"has_cloud":       cloudCount > 0,
+		"has_local":       localCount > 0,
 	})
 }
