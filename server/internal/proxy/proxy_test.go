@@ -270,6 +270,201 @@ func TestProxyHandler(t *testing.T) {
 	})
 }
 
+func TestHealthChecker(t *testing.T) {
+	// Create mock health endpoint server
+	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status": "ok"}`))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer healthServer.Close()
+
+	// Create unhealthy server
+	unhealthyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer unhealthyServer.Close()
+
+	routeConfig := &RouteConfig{
+		DefaultProvider: "healthy",
+		LoadBalancing:   "priority",
+		Providers: []*ProviderConfig{
+			{Name: "healthy", Endpoint: healthServer.URL, Priority: 1, Enabled: true, HealthCheck: "/health"},
+			{Name: "unhealthy", Endpoint: unhealthyServer.URL, Priority: 2, Enabled: true, HealthCheck: "/health"},
+			{Name: "no-check", Endpoint: "http://localhost:9999", Priority: 3, Enabled: true, HealthCheck: ""},
+		},
+	}
+
+	router := NewRouter(routeConfig)
+	connPool := NewConnectionPool(DefaultConnectionConfig())
+	healthConfig := &HealthCheckConfig{
+		Enabled:  true,
+		Interval: 100 * time.Millisecond,
+		Timeout:  5 * time.Second,
+	}
+
+	hc := NewHealthChecker(router, connPool, healthConfig)
+
+	t.Run("check healthy provider", func(t *testing.T) {
+		err := hc.CheckProvider("healthy")
+		if err != nil {
+			t.Fatalf("CheckProvider failed: %v", err)
+		}
+
+		provider, _ := router.GetProvider("healthy")
+		if !provider.Healthy {
+			t.Error("healthy provider should be marked healthy")
+		}
+	})
+
+	t.Run("check unhealthy provider", func(t *testing.T) {
+		err := hc.CheckProvider("unhealthy")
+		if err != nil {
+			t.Fatalf("CheckProvider failed: %v", err)
+		}
+
+		provider, _ := router.GetProvider("unhealthy")
+		if provider.Healthy {
+			t.Error("unhealthy provider should be marked unhealthy")
+		}
+	})
+
+	t.Run("check provider without health endpoint", func(t *testing.T) {
+		err := hc.CheckProvider("no-check")
+		if err != nil {
+			t.Fatalf("CheckProvider failed: %v", err)
+		}
+
+		// Provider without health check should remain in default state
+		provider, _ := router.GetProvider("no-check")
+		if !provider.Healthy {
+			t.Error("provider without health check should remain healthy by default")
+		}
+	})
+
+	t.Run("check non-existent provider", func(t *testing.T) {
+		err := hc.CheckProvider("non-existent")
+		if err != ErrProviderNotFound {
+			t.Errorf("expected ErrProviderNotFound, got %v", err)
+		}
+	})
+
+	t.Run("check all providers", func(t *testing.T) {
+		hc.CheckNow()
+
+		healthy, _ := router.GetProvider("healthy")
+		unhealthy, _ := router.GetProvider("unhealthy")
+
+		if !healthy.Healthy {
+			t.Error("healthy provider should be healthy after CheckNow")
+		}
+		if unhealthy.Healthy {
+			t.Error("unhealthy provider should be unhealthy after CheckNow")
+		}
+	})
+
+	t.Run("start and stop health checker", func(t *testing.T) {
+		hc.Start()
+		time.Sleep(150 * time.Millisecond) // Wait for at least one check cycle
+		hc.Stop()
+	})
+
+	t.Run("disabled health checker", func(t *testing.T) {
+		disabledConfig := &HealthCheckConfig{
+			Enabled:  false,
+			Interval: 100 * time.Millisecond,
+			Timeout:  5 * time.Second,
+		}
+		disabledHC := NewHealthChecker(router, connPool, disabledConfig)
+		disabledHC.Start() // Should return immediately
+		disabledHC.Stop()
+	})
+}
+
+func TestStreamingResponse(t *testing.T) {
+	// Create mock SSE server
+	sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		// Send SSE events
+		events := []string{
+			`data: {"id":"1","choices":[{"delta":{"content":"Hello"}}]}`,
+			`data: {"id":"2","choices":[{"delta":{"content":" World"}}]}`,
+			`data: [DONE]`,
+		}
+
+		for _, event := range events {
+			w.Write([]byte(event + "\n\n"))
+			flusher.Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer sseServer.Close()
+
+	config := &RouteConfig{
+		DefaultProvider: "sse-test",
+		LoadBalancing:   "priority",
+		Providers: []*ProviderConfig{
+			{Name: "sse-test", Endpoint: sseServer.URL, Priority: 1, Enabled: true},
+		},
+		Failover: FailoverConfig{
+			Enabled:    true,
+			MaxRetries: 1,
+		},
+	}
+
+	router := NewRouter(config)
+	connPool := NewConnectionPool(DefaultConnectionConfig())
+	failover := NewFailoverHandler(&config.Failover, router)
+	handler := NewProxyHandler(router, connPool, failover)
+
+	t.Run("stream SSE response", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		req.Header.Set("Accept", "text/event-stream")
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+
+		contentType := w.Header().Get("Content-Type")
+		if contentType != "text/event-stream" {
+			t.Errorf("expected Content-Type text/event-stream, got %s", contentType)
+		}
+
+		body := w.Body.String()
+		if !contains(body, "Hello") || !contains(body, "World") {
+			t.Errorf("response body missing expected content: %s", body)
+		}
+	})
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestProxyServer(t *testing.T) {
 	config := &ProxyConfig{
 		Enabled: true,

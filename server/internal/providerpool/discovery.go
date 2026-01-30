@@ -83,6 +83,9 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 	// Try to load from storage
 	storedModels, err := d.storage.LoadModels(providerID)
 	if err == nil && len(storedModels) > 0 {
+		// Merge pricing info from built-in models
+		mergeBuiltinPricing(providerID, storedModels)
+
 		d.mu.Lock()
 		d.cache[providerID] = storedModels
 		d.cacheAt[providerID] = time.Now()
@@ -236,8 +239,8 @@ func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) (
 		// Ollama doesn't require API key
 		models, fetchErr = d.fetchOllamaModels(ctx, provider)
 	default:
-		// Try OpenAI-compatible endpoint
-		models, fetchErr = d.fetchOpenAIModels(ctx, provider, apiKey)
+		// For custom providers, try multiple API formats
+		models, fetchErr = d.fetchCustomProviderModels(ctx, provider, apiKey)
 	}
 
 	if fetchErr != nil {
@@ -247,10 +250,265 @@ func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) (
 	return models, nil
 }
 
+// fetchCustomProviderModels tries multiple API formats for custom providers
+func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider *Provider, apiKey *APIKey) ([]*Model, error) {
+	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
+	var errors []string
+
+	// Strategy 1: Try OpenAI-compatible endpoints
+	models, err := d.fetchOpenAIModels(ctx, provider, apiKey)
+	if err == nil && len(models) > 0 {
+		return models, nil
+	}
+	if err != nil {
+		// If authentication failed, stop immediately and report the error
+		if err == ErrAuthRequired {
+			return nil, err
+		}
+		errors = append(errors, fmt.Sprintf("OpenAI: %v", err))
+	}
+
+	// Strategy 2: Try Ollama-style endpoint (/api/tags)
+	models, err = d.tryOllamaStyleEndpoint(ctx, baseURL)
+	if err == nil && len(models) > 0 {
+		// Mark models with provider ID
+		for _, m := range models {
+			m.ProviderID = provider.ID
+		}
+		return models, nil
+	}
+	if err != nil {
+		errors = append(errors, fmt.Sprintf("Ollama: %v", err))
+	}
+
+	// Strategy 3: Try LiteLLM-style endpoint (/model/info)
+	models, err = d.tryLiteLLMStyleEndpoint(ctx, baseURL, apiKey)
+	if err == nil && len(models) > 0 {
+		for _, m := range models {
+			m.ProviderID = provider.ID
+		}
+		return models, nil
+	}
+	if err != nil {
+		if err == ErrAuthRequired {
+			return nil, err
+		}
+		errors = append(errors, fmt.Sprintf("LiteLLM: %v", err))
+	}
+
+	// Return detailed error with all attempts
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("failed to fetch models: %s", strings.Join(errors, "; "))
+	}
+	return nil, fmt.Errorf("no models found from any endpoint format")
+}
+
+// tryOllamaStyleEndpoint tries to fetch models using Ollama API format
+func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL string) ([]*Model, error) {
+	// Try multiple path combinations
+	// baseURL might be "https://example.com" or "https://example.com/v1"
+	var urls []string
+	if strings.HasSuffix(baseURL, "/v1") {
+		// Strip /v1 and try Ollama paths
+		base := strings.TrimSuffix(baseURL, "/v1")
+		urls = []string{
+			base + "/api/tags",
+			base + "/tags",
+		}
+	} else {
+		urls = []string{
+			baseURL + "/api/tags",
+			baseURL + "/tags",
+		}
+	}
+
+	for _, url := range urls {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			continue
+		}
+
+		resp, err := d.client.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			continue
+		}
+
+		// Skip HTML responses
+		if len(body) > 0 && body[0] == '<' {
+			continue
+		}
+
+		var result struct {
+			Models []struct {
+				Name       string `json:"name"`
+				ModifiedAt string `json:"modified_at"`
+				Size       int64  `json:"size"`
+			} `json:"models"`
+		}
+
+		if err := json.Unmarshal(body, &result); err != nil {
+			continue
+		}
+
+		if len(result.Models) == 0 {
+			continue
+		}
+
+		models := make([]*Model, 0, len(result.Models))
+		for _, m := range result.Models {
+			model := &Model{
+				ID:          m.Name,
+				Name:        m.Name,
+				DisplayName: formatModelName(m.Name),
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Streaming:    true,
+					SystemPrompt: true,
+				},
+			}
+			inferOllamaCapabilities(model)
+			models = append(models, model)
+		}
+		return models, nil
+	}
+
+	return nil, fmt.Errorf("ollama-style endpoint not available")
+}
+
+// tryLiteLLMStyleEndpoint tries to fetch models using LiteLLM API format
+func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL string, apiKey *APIKey) ([]*Model, error) {
+	// LiteLLM uses /model/info or /models/info
+	var urls []string
+	if strings.HasSuffix(baseURL, "/v1") {
+		base := strings.TrimSuffix(baseURL, "/v1")
+		urls = []string{
+			base + "/model/info",
+			base + "/models/info",
+			baseURL + "/model/info",
+		}
+	} else {
+		urls = []string{
+			baseURL + "/model/info",
+			baseURL + "/models/info",
+			baseURL + "/v1/model/info",
+		}
+	}
+
+	for _, url := range urls {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			continue
+		}
+
+		if apiKey != nil && apiKey.Key != "" {
+			req.Header.Set("Authorization", "Bearer "+apiKey.Key)
+		}
+
+		resp, err := d.client.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Check for authentication errors
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, ErrAuthRequired
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			continue
+		}
+
+		// Skip HTML responses
+		if len(body) > 0 && body[0] == '<' {
+			continue
+		}
+
+		// LiteLLM returns a map of model_name -> model_info
+		var result map[string]interface{}
+		if err := json.Unmarshal(body, &result); err != nil {
+			continue
+		}
+
+		// Check if it's the expected format (has "data" key with model info)
+		if data, ok := result["data"].(map[string]interface{}); ok {
+			models := make([]*Model, 0, len(data))
+			for modelName := range data {
+				model := &Model{
+					ID:          modelName,
+					Name:        modelName,
+					DisplayName: formatModelName(modelName),
+					Enabled:     true,
+					Capabilities: ModelCapabilities{
+						Chat:         true,
+						Streaming:    true,
+						SystemPrompt: true,
+					},
+				}
+				inferCapabilities(model)
+				models = append(models, model)
+			}
+			if len(models) > 0 {
+				return models, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("litellm-style endpoint not available")
+}
+
 // fetchOpenAIModels fetches models from OpenAI-compatible API
 func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provider, apiKey *APIKey) ([]*Model, error) {
-	url := provider.BaseURL + "/models"
+	// Build list of URLs to try
+	// Different providers use different paths: /models, /v1/models
+	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
+	var urls []string
 
+	if strings.HasSuffix(baseURL, "/v1") {
+		// Base URL already includes /v1, just append /models
+		urls = []string{baseURL + "/models"}
+	} else {
+		// Try /v1/models first, then /models
+		urls = []string{
+			baseURL + "/v1/models",
+			baseURL + "/models",
+		}
+	}
+
+	var errors []string
+	for _, url := range urls {
+		result, err := d.tryFetchModels(ctx, url, apiKey)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", url, err))
+			continue
+		}
+		return d.parseOpenAIModelsResponse(result, provider)
+	}
+
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("tried endpoints: %s", strings.Join(errors, "; "))
+	}
+	return nil, fmt.Errorf("failed to fetch models from any endpoint")
+}
+
+// tryFetchModels attempts to fetch models from a single URL
+func (d *ModelDiscovery) tryFetchModels(ctx context.Context, url string, apiKey *APIKey) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -266,6 +524,11 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 	}
 	defer resp.Body.Close()
 
+	// Check for authentication errors - these should stop all retries
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, ErrAuthRequired
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
@@ -280,6 +543,11 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 		return nil, fmt.Errorf("provider returned HTML instead of JSON - check base URL and API key")
 	}
 
+	return body, nil
+}
+
+// parseOpenAIModelsResponse parses the OpenAI models API response
+func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provider) ([]*Model, error) {
 	var result struct {
 		Data []struct {
 			ID      string `json:"id"`
@@ -291,6 +559,13 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
+	}
+
+	// Get built-in models for this provider to merge pricing info
+	builtinModels := GetBuiltinModels(provider.ID)
+	builtinMap := make(map[string]*Model)
+	for _, bm := range builtinModels {
+		builtinMap[bm.ID] = bm
 	}
 
 	models := make([]*Model, 0, len(result.Data))
@@ -308,8 +583,19 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 			},
 		}
 
-		// Infer capabilities from model name
-		inferCapabilities(model)
+		// Merge info from built-in model if available
+		if builtin, ok := builtinMap[m.ID]; ok {
+			model.DisplayName = builtin.DisplayName
+			model.InputPrice = builtin.InputPrice
+			model.OutputPrice = builtin.OutputPrice
+			model.CachePrice = builtin.CachePrice
+			model.ContextWindow = builtin.ContextWindow
+			model.MaxOutput = builtin.MaxOutput
+			model.Capabilities = builtin.Capabilities
+		} else {
+			// Infer capabilities from model name
+			inferCapabilities(model)
+		}
 
 		models = append(models, model)
 	}
@@ -364,6 +650,13 @@ func (d *ModelDiscovery) fetchGoogleModels(ctx context.Context, provider *Provid
 		return nil, err
 	}
 
+	// Get built-in models for this provider to merge pricing info
+	builtinModels := GetBuiltinModels(provider.ID)
+	builtinMap := make(map[string]*Model)
+	for _, bm := range builtinModels {
+		builtinMap[bm.ID] = bm
+	}
+
 	models := make([]*Model, 0, len(result.Models))
 	for _, m := range result.Models {
 		// Extract model ID from name (e.g., "models/gemini-pro" -> "gemini-pro")
@@ -388,12 +681,26 @@ func (d *ModelDiscovery) fetchGoogleModels(ctx context.Context, provider *Provid
 			},
 		}
 
-		// Infer additional capabilities
-		if strings.Contains(modelID, "vision") || strings.Contains(modelID, "pro") {
-			model.Capabilities.Vision = true
-		}
-		if strings.Contains(modelID, "pro") || strings.Contains(modelID, "ultra") {
-			model.Capabilities.FunctionCall = true
+		// Merge pricing and capabilities from built-in model if available
+		if builtin, ok := builtinMap[modelID]; ok {
+			model.InputPrice = builtin.InputPrice
+			model.OutputPrice = builtin.OutputPrice
+			model.CachePrice = builtin.CachePrice
+			if builtin.ContextWindow > 0 {
+				model.ContextWindow = builtin.ContextWindow
+			}
+			if builtin.MaxOutput > 0 {
+				model.MaxOutput = builtin.MaxOutput
+			}
+			model.Capabilities = builtin.Capabilities
+		} else {
+			// Infer additional capabilities
+			if strings.Contains(modelID, "vision") || strings.Contains(modelID, "pro") {
+				model.Capabilities.Vision = true
+			}
+			if strings.Contains(modelID, "pro") || strings.Contains(modelID, "ultra") {
+				model.Capabilities.FunctionCall = true
+			}
 		}
 
 		models = append(models, model)
@@ -443,6 +750,13 @@ func (d *ModelDiscovery) fetchOllamaModels(ctx context.Context, provider *Provid
 		return nil, err
 	}
 
+	// Get built-in models for this provider to merge pricing info
+	builtinModels := GetBuiltinModels(provider.ID)
+	builtinMap := make(map[string]*Model)
+	for _, bm := range builtinModels {
+		builtinMap[bm.ID] = bm
+	}
+
 	models := make([]*Model, 0, len(result.Models))
 	for _, m := range result.Models {
 		model := &Model{
@@ -458,8 +772,19 @@ func (d *ModelDiscovery) fetchOllamaModels(ctx context.Context, provider *Provid
 			},
 		}
 
-		// Infer capabilities from model name
-		inferOllamaCapabilities(model)
+		// Merge info from built-in model if available
+		if builtin, ok := builtinMap[m.Name]; ok {
+			model.DisplayName = builtin.DisplayName
+			model.InputPrice = builtin.InputPrice
+			model.OutputPrice = builtin.OutputPrice
+			model.CachePrice = builtin.CachePrice
+			model.ContextWindow = builtin.ContextWindow
+			model.MaxOutput = builtin.MaxOutput
+			model.Capabilities = builtin.Capabilities
+		} else {
+			// Infer capabilities from model name
+			inferOllamaCapabilities(model)
+		}
 
 		models = append(models, model)
 	}
@@ -551,4 +876,39 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// mergeBuiltinPricing merges pricing info from built-in models into the given models
+func mergeBuiltinPricing(providerID string, models []*Model) {
+	builtinModels := GetBuiltinModels(providerID)
+	if builtinModels == nil {
+		return
+	}
+
+	builtinMap := make(map[string]*Model)
+	for _, bm := range builtinModels {
+		builtinMap[bm.ID] = bm
+	}
+
+	for _, model := range models {
+		if builtin, ok := builtinMap[model.ID]; ok {
+			// Only merge if model doesn't have pricing set
+			if model.InputPrice == 0 && builtin.InputPrice > 0 {
+				model.InputPrice = builtin.InputPrice
+			}
+			if model.OutputPrice == 0 && builtin.OutputPrice > 0 {
+				model.OutputPrice = builtin.OutputPrice
+			}
+			if model.CachePrice == 0 && builtin.CachePrice > 0 {
+				model.CachePrice = builtin.CachePrice
+			}
+			// Also merge context window and max output if not set
+			if model.ContextWindow == 0 && builtin.ContextWindow > 0 {
+				model.ContextWindow = builtin.ContextWindow
+			}
+			if model.MaxOutput == 0 && builtin.MaxOutput > 0 {
+				model.MaxOutput = builtin.MaxOutput
+			}
+		}
+	}
 }

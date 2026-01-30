@@ -148,21 +148,25 @@ func TestAPIErrorClassifier_ExtractContextSize(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		provider     string
 		responseBody string
 		expectedSize int
 	}{
 		{
 			name:         "Anthropic format",
+			provider:     "anthropic",
 			responseBody: `{"error":{"message":"Request context size (202154 tokens) exceeds maximum allowed (200000 tokens)"}}`,
 			expectedSize: 202154,
 		},
 		{
 			name:         "OpenAI format",
+			provider:     "openai",
 			responseBody: `{"error":{"message":"This model's maximum context length is 128000 tokens. However, your messages resulted in 150000 tokens."}}`,
 			expectedSize: 150000,
 		},
 		{
 			name:         "No token count",
+			provider:     "anthropic",
 			responseBody: `{"error":{"message":"Context is too long"}}`,
 			expectedSize: 0,
 		},
@@ -170,7 +174,7 @@ func TestAPIErrorClassifier_ExtractContextSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			classification := classifier.ClassifyError("anthropic", 400, []byte(tt.responseBody))
+			classification := classifier.ClassifyError(tt.provider, 400, []byte(tt.responseBody))
 
 			if classification.SuggestedContextWindow != tt.expectedSize {
 				t.Errorf("expected context size %d, got %d", tt.expectedSize, classification.SuggestedContextWindow)

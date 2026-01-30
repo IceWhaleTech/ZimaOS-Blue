@@ -344,3 +344,35 @@ func (a *Authenticator) Stats() map[string]interface{} {
 		"active_limiters":    len(a.rateLimits),
 	}
 }
+
+// ListAPIKeys returns all API keys (masked for security)
+func (a *Authenticator) ListAPIKeys() []map[string]interface{} {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	keys := make([]map[string]interface{}, 0, len(a.authConfig.APIKeys))
+	for i, key := range a.authConfig.APIKeys {
+		masked := maskAPIKey(key)
+		keys = append(keys, map[string]interface{}{
+			"id":     i,
+			"key":    masked,
+			"active": a.apiKeySet[key],
+		})
+	}
+	return keys
+}
+
+// maskAPIKey masks an API key for display
+func maskAPIKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:4] + "****" + key[len(key)-4:]
+}
+
+// ValidateAPIKey checks if an API key is valid
+func (a *Authenticator) ValidateAPIKey(key string) bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.apiKeySet[key]
+}

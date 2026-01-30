@@ -81,19 +81,18 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   }
 
   async function refreshModels(providerId: string) {
-    loading.value = true
-    error.value = null
+    // Don't set loading or clear error - this is a background refresh
+    // that shouldn't block the UI
     try {
       const response = await providerPoolApi.fetchProviderModels(providerId)
       // Update models for this provider
       models.value = models.value.filter(m => m.provider_id !== providerId)
       models.value.push(...(response.data.models || []))
-      return response.data.models || []
+      return { success: true, models: response.data.models || [] }
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to refresh models'
-      throw e
-    } finally {
-      loading.value = false
+      // Return error instead of setting store.error to avoid blocking UI
+      const errorMessage = e instanceof Error ? e.message : 'Failed to refresh models'
+      return { success: false, error: errorMessage }
     }
   }
 

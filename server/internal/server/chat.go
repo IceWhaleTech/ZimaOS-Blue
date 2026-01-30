@@ -20,6 +20,27 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 )
 
+// providerPoolToLLM maps Provider Pool IDs to LLM provider names.
+// This allows the Chat API to work with both Provider Pool IDs and legacy LLM provider names.
+var providerPoolToLLM = map[string]string{
+	"anthropic":    "claude",
+	"openai":       "openai",
+	"ollama":       "ollama",
+	"custom":       "custom",
+	// Also support direct LLM provider names for backwards compatibility
+	"claude":       "claude",
+}
+
+// mapProviderID converts a Provider Pool ID to an LLM provider name.
+// If no mapping exists, returns the original ID (for custom providers).
+func mapProviderID(providerID string) string {
+	if mapped, ok := providerPoolToLLM[providerID]; ok {
+		return mapped
+	}
+	// For unknown providers, try "custom" as fallback
+	return "custom"
+}
+
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
 	store            *memory.Store
@@ -251,10 +272,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 	}
 
-	// Get provider
-	provider := h.providers.Get(req.Provider)
+	// Get provider (map Provider Pool ID to LLM provider name)
+	llmProviderName := mapProviderID(req.Provider)
+	provider := h.providers.Get(llmProviderName)
 	if provider == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "provider not found")
+		return echo.NewHTTPError(http.StatusBadRequest, "provider not found: "+req.Provider+" (mapped to: "+llmProviderName+")")
 	}
 
 	// Store user message
@@ -694,11 +716,12 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, targetLang 
 	// Fallback: use truncated user message
 	title := userMessage
 	maxLen := 50
-	if len(title) > maxLen {
-		if idx := findWordBoundary(title, maxLen); idx > 0 {
+	runes := []rune(title)
+	if len(runes) > maxLen {
+		if idx := findRuneBoundary(title, maxLen); idx > 0 {
 			title = title[:idx] + "..."
 		} else {
-			title = title[:maxLen] + "..."
+			title = string(runes[:maxLen]) + "..."
 		}
 	}
 	// }
@@ -742,8 +765,9 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 
 	// Truncate user message if too long (to save tokens)
 	content := userMessage
-	if len(content) > 500 {
-		content = content[:500] + "..."
+	contentRunes := []rune(content)
+	if len(contentRunes) > 500 {
+		content = string(contentRunes[:500]) + "..."
 	}
 
 	// Build language instruction
@@ -777,21 +801,29 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 	// Clean up the response
 	title := sanitizeTitle(resp.Message.Content)
 	// Ensure it's not too long
-	if len(title) > 50 {
-		if idx := findWordBoundary(title, 50); idx > 0 {
+	titleRunes := []rune(title)
+	if len(titleRunes) > 50 {
+		if idx := findRuneBoundary(title, 50); idx > 0 {
 			title = title[:idx]
 		} else {
-			title = title[:50]
+			title = string(titleRunes[:50])
 		}
 	}
 	return title
 }
 
-// findWordBoundary finds the last space before maxLen.
-func findWordBoundary(s string, maxLen int) int {
+// findRuneBoundary finds the last space before maxLen runes, returning byte position.
+// For CJK text without spaces, returns -1 to use rune-based truncation.
+func findRuneBoundary(s string, maxLen int) int {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return -1
+	}
+	// Search backwards from maxLen for a space
 	for i := maxLen - 1; i >= 0; i-- {
-		if s[i] == ' ' {
-			return i
+		if runes[i] == ' ' {
+			// Return byte position of this space
+			return len(string(runes[:i]))
 		}
 	}
 	return -1
@@ -799,20 +831,19 @@ func findWordBoundary(s string, maxLen int) int {
 
 // sanitizeTitle removes newlines and extra whitespace from a title.
 func sanitizeTitle(s string) string {
-	result := make([]byte, 0, len(s))
+	var result []rune
 	lastWasSpace := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '\n' || c == '\r' || c == '\t' {
-			c = ' '
+	for _, r := range s {
+		if r == '\n' || r == '\r' || r == '\t' {
+			r = ' '
 		}
-		if c == ' ' {
+		if r == ' ' {
 			if !lastWasSpace {
-				result = append(result, c)
+				result = append(result, r)
 				lastWasSpace = true
 			}
 		} else {
-			result = append(result, c)
+			result = append(result, r)
 			lastWasSpace = false
 		}
 	}

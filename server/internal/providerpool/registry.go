@@ -623,7 +623,7 @@ func (pm *PricingManager) RemoveModelPricing(modelID, providerID string) error {
 }
 
 // GetModelPricing returns the pricing for a specific model
-// It checks in order: provider-specific pricing, model pricing, default pricing
+// It checks in order: provider-specific pricing, model pricing, heuristic match, default pricing
 func (pm *PricingManager) GetModelPricing(modelID, providerID string) *ModelPricing {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -641,7 +641,13 @@ func (pm *PricingManager) GetModelPricing(modelID, providerID string) *ModelPric
 		return pricing
 	}
 
-	// 3. Return default pricing for unknown models
+	// 3. Try heuristic matching against builtin pricing database
+	if matched := MatchModelPricing(modelID); matched != nil {
+		matched.ProviderID = providerID
+		return matched
+	}
+
+	// 4. Return default pricing for truly unknown models
 	return &ModelPricing{
 		ModelID:     modelID,
 		ProviderID:  providerID,

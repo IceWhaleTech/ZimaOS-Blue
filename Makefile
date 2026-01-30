@@ -5,6 +5,7 @@
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: download-claude-code prepare-claude-code-dir
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar
+.PHONY: build-echo-lib-macos build-echo-lib-arm64 build-echo-lib-x64 build-echo-lib-universal
 
 # Version info
 VERSION ?= 0.10.4
@@ -18,6 +19,8 @@ SERVER_DIR := $(PROJECT_ROOT)/server
 EMBED_DIR := $(SERVER_DIR)/internal/web/dist
 CLAUDE_CODE_DIR := $(SERVER_DIR)/internal/claudecode/bin
 DIST_DIR := $(PROJECT_ROOT)/dist
+TAURI_DIR := $(PROJECT_ROOT)/tauri-app
+TAURI_LIB_DIR := $(TAURI_DIR)/src-tauri/lib
 
 # Claude Code CLI embedding options (default: no embedding, download on first use)
 EMBED_CLAUDE_CODE ?= false
@@ -268,6 +271,12 @@ help:
 	@echo "  tauri-build-debug  Build Tauri app in debug mode"
 	@echo "  tauri-clean        Clean Tauri build artifacts"
 	@echo ""
+	@echo "macOS CGO Library Targets:"
+	@echo "  build-echo-lib-arm64    Build Go static library for macOS ARM64"
+	@echo "  build-echo-lib-x64      Build Go static library for macOS x64"
+	@echo "  build-echo-lib-universal Create universal binary (fat library)"
+	@echo "  build-echo-lib-macos    Build all macOS libraries (recommended)"
+	@echo ""
 	@echo "Release Targets:"
 	@echo "  release-check      Check GoReleaser configuration"
 	@echo "  release-snapshot   Build snapshot release (for testing)"
@@ -286,3 +295,82 @@ help:
 	@echo "  make tauri-dev                       # Run Tauri desktop app in dev mode"
 	@echo "  make tauri-build                     # Build Tauri desktop app"
 	@echo "  make tauri-package                   # Build Tauri package with full script"
+	@echo "  make build-echo-lib-macos            # Build Go library for macOS CGO integration"
+
+# =============================================================================
+# macOS CGO Library Build Targets
+# =============================================================================
+# These targets build the Go server as a static library for linking into Rust
+# This approach is used on macOS for faster startup (no process spawn overhead)
+# =============================================================================
+
+# Build Go static library for macOS ARM64 (Apple Silicon)
+build-echo-lib-arm64:
+	@echo "Building Go static library for macOS ARM64..."
+	@mkdir -p $(TAURI_LIB_DIR)
+	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+		go build -buildmode=c-archive \
+		-ldflags "$(LDFLAGS)" \
+		-o $(TAURI_LIB_DIR)/libecho_arm64.a \
+		./cmd/echolib
+	@echo "Built: $(TAURI_LIB_DIR)/libecho_arm64.a"
+	@ls -lh $(TAURI_LIB_DIR)/libecho_arm64.a
+
+# Build Go static library for macOS x64 (Intel)
+build-echo-lib-x64:
+	@echo "Building Go static library for macOS x64..."
+	@mkdir -p $(TAURI_LIB_DIR)
+	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+		go build -buildmode=c-archive \
+		-ldflags "$(LDFLAGS)" \
+		-o $(TAURI_LIB_DIR)/libecho_x64.a \
+		./cmd/echolib
+	@echo "Built: $(TAURI_LIB_DIR)/libecho_x64.a"
+	@ls -lh $(TAURI_LIB_DIR)/libecho_x64.a
+
+# Create universal binary (fat library) from ARM64 and x64
+build-echo-lib-universal: build-echo-lib-arm64 build-echo-lib-x64
+	@echo "Creating universal binary (fat library)..."
+	@lipo -create \
+		$(TAURI_LIB_DIR)/libecho_arm64.a \
+		$(TAURI_LIB_DIR)/libecho_x64.a \
+		-output $(TAURI_LIB_DIR)/libecho.a
+	@echo "Built: $(TAURI_LIB_DIR)/libecho.a"
+	@ls -lh $(TAURI_LIB_DIR)/libecho.a
+	@echo "Verifying architectures:"
+	@lipo -info $(TAURI_LIB_DIR)/libecho.a
+
+# Build all macOS libraries (recommended target)
+# Builds for current architecture only for faster builds
+build-echo-lib-macos:
+	@echo "Building Go static library for macOS..."
+	@mkdir -p $(TAURI_LIB_DIR)
+ifeq ($(shell uname -m),arm64)
+	@echo "Detected Apple Silicon, building ARM64 library..."
+	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+		go build -buildmode=c-archive \
+		-ldflags "$(LDFLAGS)" \
+		-o $(TAURI_LIB_DIR)/libecho.a \
+		./cmd/echolib
+else
+	@echo "Detected Intel, building x64 library..."
+	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+		go build -buildmode=c-archive \
+		-ldflags "$(LDFLAGS)" \
+		-o $(TAURI_LIB_DIR)/libecho.a \
+		./cmd/echolib
+endif
+	@echo "Built: $(TAURI_LIB_DIR)/libecho.a"
+	@ls -lh $(TAURI_LIB_DIR)/libecho.a
+
+# Build Tauri app for macOS with CGO library (no sidecar)
+tauri-build-macos-cgo: build-frontend copy-frontend build-echo-lib-macos
+	@echo "Building Tauri app for macOS with CGO library..."
+	@cd $(TAURI_DIR) && npm install && npm run build
+	@echo "macOS app built with embedded Go library"
+
+# Clean CGO library artifacts
+clean-echo-lib:
+	@echo "Cleaning CGO library artifacts..."
+	@rm -rf $(TAURI_LIB_DIR)
+	@echo "Clean complete!"

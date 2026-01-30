@@ -4,6 +4,10 @@
 mod server;
 mod tray;
 
+// macOS: Use CGO library approach (FFI to Go static library)
+#[cfg(target_os = "macos")]
+mod echo_ffi;
+
 use log::{error, info};
 use tauri::{
     image::Image,
@@ -46,12 +50,82 @@ fn get_server_port(state: tauri::State<AppState>) -> u16 {
     *state.server_port.lock().unwrap()
 }
 
+/// Start the server using platform-specific approach
+/// - macOS: Uses CGO library (FFI to Go static library) for faster startup
+/// - Windows: Uses sidecar process
+async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        info!("Starting Echo server via CGO library (macOS)");
+
+        // Get data directory
+        let data_dir = app.path().app_data_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .ok();
+
+        // Start server via FFI
+        echo_ffi::start_server(8080, data_dir.as_deref())?;
+
+        // Update app state
+        if let Some(state) = app.try_state::<AppState>() {
+            *state.server_port.lock().unwrap() = 8080;
+            *state.server_running.lock().unwrap() = true;
+        }
+
+        // Wait for server to be ready
+        let url = "http://localhost:8080/api/v1/health";
+        for i in 0..30 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if reqwest::get(url).await.is_ok() {
+                info!("Server ready after {}ms", (i + 1) * 100);
+                return Ok(());
+            }
+        }
+
+        info!("Server may not be fully ready, but FFI call succeeded");
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Windows/Linux: Use sidecar process approach
+        info!("Starting Echo server via sidecar process");
+        server::start_sidecar_server(app).await
+    }
+}
+
+/// Stop the server using platform-specific approach
+#[allow(dead_code)]
+async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        info!("Stopping Echo server via CGO library (macOS)");
+        echo_ffi::stop_server()?;
+
+        if let Some(state) = app.try_state::<AppState>() {
+            *state.server_running.lock().unwrap() = false;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        server::stop_server(app.clone()).await
+    }
+}
+
 /// Main application entry point
 pub fn run() {
     // Initialize logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     info!("Starting ZimaOS Echo desktop application");
+
+    #[cfg(target_os = "macos")]
+    info!("Platform: macOS (using CGO library approach)");
+
+    #[cfg(target_os = "windows")]
+    info!("Platform: Windows (using sidecar approach)");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -89,6 +163,13 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         info!("Quit requested from tray");
+
+                        // Stop server before exit on macOS
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = echo_ffi::stop_server();
+                        }
+
                         app.exit(0);
                     }
                     "show" => {
@@ -126,17 +207,15 @@ pub fn run() {
                 window.open_devtools();
             }
 
-            // Start the Echo server as sidecar
+            // Start the Echo server using platform-specific approach
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                info!("Attempting to start sidecar server...");
-                match server::start_sidecar_server(&app_handle).await {
-                    Ok(_) => info!("Sidecar server started successfully"),
+                info!("Attempting to start server...");
+                match start_server_platform(&app_handle).await {
+                    Ok(_) => info!("Server started successfully"),
                     Err(e) => {
                         error!("Failed to start server: {}", e);
-                        // Try to show error in a dialog or log more details
-                        error!("Sidecar startup failed - check if echo-server binary exists in app bundle");
                         return;
                     }
                 }
@@ -151,13 +230,35 @@ pub fn run() {
                 // Navigate the main window to the Go server URL and show it
                 if let Some(window) = app_handle_for_window.get_webview_window("main") {
                     let url = format!("http://localhost:{}", port);
-                    info!("Navigating to Go server at {}", url);
+                    info!("Navigating to server at {}", url);
                     if let Err(e) = window.navigate(url.parse().unwrap()) {
                         error!("Failed to navigate to server: {}", e);
                     }
+
+                    // Wait a bit for navigation to complete
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
                     // Show the window after navigation
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    info!("Showing window...");
+                    match window.show() {
+                        Ok(_) => info!("Window shown successfully"),
+                        Err(e) => error!("Failed to show window: {}", e),
+                    }
+                    match window.set_focus() {
+                        Ok(_) => info!("Window focused successfully"),
+                        Err(e) => error!("Failed to focus window: {}", e),
+                    }
+
+                    // On macOS, we need to activate the app to bring it to front
+                    #[cfg(target_os = "macos")]
+                    {
+                        use std::process::Command;
+                        let _ = Command::new("osascript")
+                            .args(["-e", "tell application \"ZimaOS Echo\" to activate"])
+                            .output();
+                    }
+                } else {
+                    error!("Failed to get main window");
                 }
             });
 

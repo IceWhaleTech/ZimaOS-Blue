@@ -85,7 +85,8 @@ const largeCards = computed(() => {
 <template>
   <div class="space-y-6">
     <!-- Header with Customizer -->
-    <div class="flex items-center justify-end">
+    <div class="flex items-center justify-between">
+      <slot name="header-left"></slot>
       <DashboardCustomizer />
     </div>
 

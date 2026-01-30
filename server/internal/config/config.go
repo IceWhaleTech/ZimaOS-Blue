@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
 )
 
 type Config struct {
@@ -29,6 +30,7 @@ type Config struct {
 	CCSwitch      CCSwitchConfig      `mapstructure:"cc_switch"`       // v0.10.3
 	Statistics    StatisticsConfig    `mapstructure:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
+	Proxy         *proxy.ProxyConfig  `mapstructure:"proxy"`           // v0.10.5.1: API Proxy
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
 	ClaudeCode ClaudeCodeConfig `mapstructure:"claudecode"`
@@ -731,4 +733,40 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tool_calling.adapters.cc_nexus.schema_mapping", "auto")
 	v.SetDefault("tool_calling.provider_overrides.ollama.tool_calling", "adapter")
 	v.SetDefault("tool_calling.provider_overrides.custom.tool_calling", "auto")
+
+	// API Proxy defaults (v0.10.5.1)
+	v.SetDefault("proxy.enabled", true)
+	v.SetDefault("proxy.port.value", 0)
+	v.SetDefault("proxy.port.range", "9000-9100")
+	v.SetDefault("proxy.port.bind_address", "127.0.0.1")
+	v.SetDefault("proxy.port.port_file", "")
+	v.SetDefault("proxy.routing.default_provider", "anthropic")
+	v.SetDefault("proxy.routing.load_balancing", "priority")
+	v.SetDefault("proxy.routing.failover.enabled", true)
+	v.SetDefault("proxy.routing.failover.max_retries", 3)
+	v.SetDefault("proxy.routing.failover.retry_delay", "1s")
+	v.SetDefault("proxy.routing.failover.circuit_breaker", true)
+	v.SetDefault("proxy.routing.failover.failure_threshold", 5)
+	v.SetDefault("proxy.routing.failover.recovery_timeout", "30s")
+	v.SetDefault("proxy.connection.max_idle_conns", 100)
+	v.SetDefault("proxy.connection.max_idle_conns_per_host", 10)
+	v.SetDefault("proxy.connection.max_conns_per_host", 100)
+	v.SetDefault("proxy.connection.idle_conn_timeout", "90s")
+	v.SetDefault("proxy.connection.keep_alive", true)
+	v.SetDefault("proxy.connection.keep_alive_interval", "30s")
+	v.SetDefault("proxy.connection.dial_timeout", "30s")
+	v.SetDefault("proxy.connection.tls_handshake_timeout", "10s")
+	v.SetDefault("proxy.connection.response_header_timeout", "60s")
+	v.SetDefault("proxy.connection.force_http2", true)
+	v.SetDefault("proxy.health_check.enabled", true)
+	v.SetDefault("proxy.health_check.interval", "30s")
+	v.SetDefault("proxy.health_check.timeout", "10s")
+	v.SetDefault("proxy.model_router.enabled", true)
+	v.SetDefault("proxy.model_router.default_family", "claude-3")
+	v.SetDefault("proxy.quota_monitor.enabled", true)
+	v.SetDefault("proxy.quota_monitor.sync_interval", "5m")
+	v.SetDefault("proxy.quota_monitor.warning_threshold", 20.0)
+	v.SetDefault("proxy.quota_monitor.critical_threshold", 5.0)
+	v.SetDefault("proxy.quota_monitor.track_tokens", true)
+	v.SetDefault("proxy.quota_monitor.track_requests", true)
 }

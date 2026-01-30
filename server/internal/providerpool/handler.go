@@ -120,6 +120,9 @@ func (p *Pool) Start(ctx context.Context) {
 	// Fix provider types for non-builtin providers that were incorrectly marked as builtin
 	p.fixProviderTypes()
 
+	// Deduplicate providers (merge duplicates from historical data)
+	p.deduplicateProviders()
+
 	// Initialize built-in providers
 	p.initBuiltinProviders()
 }
@@ -149,6 +152,12 @@ func (p *Pool) fixProviderTypes() {
 			p.Registry.Update(provider)
 		}
 	}
+}
+
+// deduplicateProviders merges duplicate custom providers from historical data
+func (p *Pool) deduplicateProviders() {
+	// Call the deduplication function from migration.go
+	DeduplicateProviders(p)
 }
 
 // initBuiltinProviders initializes built-in providers if not already registered

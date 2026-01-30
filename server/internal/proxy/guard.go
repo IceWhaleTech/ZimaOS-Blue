@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,6 +14,17 @@ type GuardResult struct {
 	RiskLevel   string   `json:"risk_level"`
 	Matches     []string `json:"matches,omitempty"`
 	Suggestions []string `json:"suggestions,omitempty"`
+}
+
+// GuardRule represents a custom guard rule
+type GuardRule struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Pattern     string `json:"pattern"`
+	Description string `json:"description,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	RiskLevel   string `json:"risk_level"` // low, medium, high
+	Action      string `json:"action"`     // log, warn, block
 }
 
 // GuardConfig holds prompt guard configuration
@@ -302,4 +314,42 @@ func (pg *PromptGuard) Stats() map[string]interface{} {
 		"blocked_count":    pg.blockedCount,
 		"max_prompt_length": pg.config.MaxPromptLength,
 	}
+}
+
+// GetRules returns all custom guard rules
+func (pg *PromptGuard) GetRules() []GuardRule {
+	pg.mu.RLock()
+	defer pg.mu.RUnlock()
+
+	rules := make([]GuardRule, 0, len(pg.config.CustomPatterns))
+	for i, pattern := range pg.config.CustomPatterns {
+		rules = append(rules, GuardRule{
+			ID:        fmt.Sprintf("custom-%d", i),
+			Name:      fmt.Sprintf("Custom Rule %d", i+1),
+			Pattern:   pattern,
+			Enabled:   true,
+			RiskLevel: "medium",
+			Action:    "log",
+		})
+	}
+	return rules
+}
+
+// AddRule adds a custom guard rule
+func (pg *PromptGuard) AddRule(rule GuardRule) error {
+	if rule.Pattern == "" {
+		return fmt.Errorf("pattern is required")
+	}
+
+	re, err := regexp.Compile(rule.Pattern)
+	if err != nil {
+		return fmt.Errorf("invalid pattern: %w", err)
+	}
+
+	pg.mu.Lock()
+	defer pg.mu.Unlock()
+
+	pg.patterns = append(pg.patterns, re)
+	pg.config.CustomPatterns = append(pg.config.CustomPatterns, rule.Pattern)
+	return nil
 }

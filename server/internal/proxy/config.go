@@ -4,16 +4,18 @@ import "time"
 
 // ProxyConfig is the main proxy configuration
 type ProxyConfig struct {
-	Enabled     bool               `json:"enabled" yaml:"enabled"`
-	Port        PortConfig         `json:"port" yaml:"port"`
-	Route       *RouteConfig       `json:"route" yaml:"route"`
-	Routing     RouteConfig        `json:"routing" yaml:"routing"` // Deprecated: use Route
-	Connection  ConnectionConfig   `json:"connection" yaml:"connection"`
-	HealthCheck HealthCheckConfig  `json:"health_check" yaml:"health_check"`
-	Mock        *MockConfig        `json:"mock" yaml:"mock"`
-	ModelCompat *ModelCompatConfig `json:"model_compat" yaml:"model_compat"`
-	Watcher     *WatcherConfig     `json:"watcher" yaml:"watcher"`
-	Masking     *MaskingConfig     `json:"masking" yaml:"masking"`
+	Enabled      bool                `json:"enabled" yaml:"enabled"`
+	Port         PortConfig          `json:"port" yaml:"port"`
+	Route        *RouteConfig        `json:"route" yaml:"route"`
+	Routing      RouteConfig         `json:"routing" yaml:"routing"` // Deprecated: use Route
+	Connection   ConnectionConfig    `json:"connection" yaml:"connection"`
+	HealthCheck  HealthCheckConfig   `json:"health_check" yaml:"health_check"`
+	Mock         *MockConfig         `json:"mock" yaml:"mock"`
+	ModelCompat  *ModelCompatConfig  `json:"model_compat" yaml:"model_compat"`
+	Watcher      *WatcherConfig      `json:"watcher" yaml:"watcher"`
+	Masking      *MaskingConfig      `json:"masking" yaml:"masking"`
+	ModelRouter  *ModelRouterConfig  `json:"model_router" yaml:"model_router"`   // NEW: Model Router
+	QuotaMonitor *QuotaMonitorConfig `json:"quota_monitor" yaml:"quota_monitor"` // NEW: Quota Monitor
 }
 
 // PortConfig port configuration

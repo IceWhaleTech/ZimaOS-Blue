@@ -10,6 +10,7 @@ docs-site/.vitepress/cache/
 # Tauri build outputs
 tauri-app/src-tauri/target/
 tauri-app/src-tauri/bin/
+tauri-app/src-tauri/lib/
 tauri-app/src-tauri/icons/
 
 # IDE
@@ -87,6 +88,8 @@ vendor/
 
 # Test files
 server/internal/web/test_embed.go
+
+server/internal/web/dist
 
 # Form filler data
 data/formfiller/

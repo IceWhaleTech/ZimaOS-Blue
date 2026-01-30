@@ -53,3 +53,129 @@ cgroup:
     enabled: false
     max_percent: 0        # Max CPU percentage (0 = unlimited)
     weight: 100           # CPU weight (1-10000, default 100)
+
+# API Proxy Configuration (v0.10.5.1+)
+proxy:
+  enabled: true
+
+  # Port configuration
+  port:
+    value: 0              # 0 = dynamic allocation
+    range: "9000-9100"    # Port range for dynamic allocation
+    bind_address: "127.0.0.1"
+    port_file: ""         # Optional: write allocated port to file
+
+  # Provider routing configuration
+  routing:
+    default_provider: "anthropic"
+    load_balancing: "priority"  # priority, round-robin, weighted
+
+    providers:
+      - name: "anthropic"
+        endpoint: "https://api.anthropic.com"
+        api_key: "${ANTHROPIC_API_KEY}"
+        priority: 1
+        weight: 100
+        enabled: true
+        health_check: "/v1/messages"
+
+      - name: "openai"
+        endpoint: "https://api.openai.com"
+        api_key: "${OPENAI_API_KEY}"
+        priority: 2
+        weight: 80
+        enabled: true
+        health_check: "/v1/models"
+
+      - name: "gemini"
+        endpoint: "https://generativelanguage.googleapis.com"
+        api_key: "${GOOGLE_API_KEY}"
+        priority: 3
+        weight: 60
+        enabled: false
+        health_check: ""
+
+    # Failover configuration
+    failover:
+      enabled: true
+      max_retries: 3
+      retry_delay: "1s"
+      circuit_breaker: true
+      failure_threshold: 5
+      recovery_timeout: "30s"
+
+  # Connection pool configuration
+  connection:
+    max_idle_conns: 100
+    max_idle_conns_per_host: 10
+    max_conns_per_host: 100
+    idle_conn_timeout: "90s"
+    keep_alive: true
+    keep_alive_interval: "30s"
+    dial_timeout: "30s"
+    tls_handshake_timeout: "10s"
+    response_header_timeout: "60s"
+    force_http2: true
+
+  # Health check configuration
+  health_check:
+    enabled: true
+    interval: "30s"
+    timeout: "10s"
+
+  # Model Router configuration (Antigravity-inspired)
+  model_router:
+    enabled: true
+    default_family: "claude-3"
+
+    families:
+      - name: "claude-3"
+        patterns:
+          - "^claude-3.*"
+          - "^claude-opus.*"
+          - "^claude-sonnet.*"
+        provider: "anthropic"
+        fallback: "claude-3-haiku-20240307"
+
+      - name: "gpt-4"
+        patterns:
+          - "^gpt-4.*"
+          - "^chatgpt-4.*"
+        provider: "openai"
+        fallback: "gpt-4o-mini"
+
+      - name: "gemini-pro"
+        patterns:
+          - "^gemini-.*-pro.*"
+          - "^gemini-pro.*"
+        provider: "google"
+        fallback: "gemini-1.5-flash"
+
+      - name: "gemini-flash"
+        patterns:
+          - "^gemini-.*-flash.*"
+        provider: "google"
+        fallback: ""  # Already a flash model
+
+    # Expert-level regex rules (highest priority)
+    regex_rules:
+      - pattern: "^claude-3-opus-latest$"
+        target: "claude-3-opus-20240229"
+        provider: "anthropic"
+        priority: 1
+        description: "Pin opus-latest to specific version"
+
+    # Models for background tasks
+    background_models:
+      - "claude-3-haiku"
+      - "gpt-4o-mini"
+      - "gemini-1.5-flash"
+
+  # Quota Monitor configuration (Antigravity-inspired)
+  quota_monitor:
+    enabled: true
+    sync_interval: "5m"
+    warning_threshold: 20.0    # Warn when below 20%
+    critical_threshold: 5.0    # Critical when below 5%
+    track_tokens: true
+    track_requests: true

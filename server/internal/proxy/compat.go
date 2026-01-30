@@ -297,6 +297,19 @@ func (mcl *ModelCompatLayer) ListModels() []*ModelFeatures {
 	return models
 }
 
+// GetAllFeatures returns all model features as a map
+func (mcl *ModelCompatLayer) GetAllFeatures() map[string]*ModelFeatures {
+	mcl.mu.RLock()
+	defer mcl.mu.RUnlock()
+
+	result := make(map[string]*ModelFeatures)
+	for k, v := range mcl.features {
+		copy := *v
+		result[k] = &copy
+	}
+	return result
+}
+
 // AdaptRequest adapts request for model compatibility
 func (mcl *ModelCompatLayer) AdaptRequest(model string, req *ChatRequest) (*ChatRequest, error) {
 	features := mcl.GetFeatures(model)

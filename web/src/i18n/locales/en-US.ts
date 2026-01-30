@@ -19,6 +19,8 @@ export default {
     reset: 'Reset',
     close: 'Close',
     clear: 'Clear',
+    copy: 'Copy',
+    copied: 'Copied',
     yes: 'Yes',
     no: 'No',
     ok: 'OK',
@@ -48,9 +50,11 @@ export default {
   },
   dashboard: {
     customize: 'Customize Dashboard',
-    customizeTitle: 'Customize Dashboard Cards',
+    customizeTitle: 'Customize Dashboard',
     resetToDefaults: 'Reset to Defaults',
     confirmReset: 'Are you sure you want to reset the dashboard to default settings?',
+    noCardsEnabled: 'No cards enabled',
+    clickCustomize: 'Click the customize button to add cards',
     categories: {
       all: 'All',
       overview: 'Overview',
@@ -365,6 +369,17 @@ export default {
     security: 'Security',
     advanced: 'Advanced',
     about: 'About',
+    // Tab names
+    tab: {
+      general: 'General',
+      llm: 'LLM',
+      metrics: 'Metrics',
+      config: 'Config',
+      backup: 'Backup',
+      logs: 'Logs',
+      service: 'Service',
+      retention: 'Retention',
+    },
     // General settings
     timezone: 'Timezone',
     languageSaved: 'Language saved',
@@ -657,10 +672,13 @@ export default {
     backupRestored: 'Backup restored successfully. The service may restart.',
     backupRestoreFailed: 'Failed to restore backup',
     backupDeleteFailed: 'Failed to delete backup',
+    backupCreated: 'Backup created successfully',
+    backupDeleted: 'Backup deleted successfully',
     // Detailed System Info
     detailedInfo: 'Detailed Info',
     detailedSystemInfo: 'Detailed System Information',
     loadingDetailedInfo: 'Loading detailed information...',
+    noDetailedInfo: 'No detailed information available',
     // OS Info
     osInfo: 'Operating System',
     osVersion: 'OS Version',
@@ -1727,7 +1745,8 @@ export default {
       noEvents: 'No security events',
     },
     settings: {
-      title: 'Data Retention Settings',
+      title: 'Security Data Retention',
+      description: 'Configure how long security monitoring data (sessions, events, alerts) is retained before automatic cleanup',
       configure: 'Configure',
       storageInfo: 'Storage Information',
       sessions: 'Sessions',
@@ -1739,7 +1758,8 @@ export default {
       alertsRetention: 'Alerts Retention',
       days: 'days',
       cleanupNow: 'Cleanup Now',
-      cleanupConfirm: 'This will delete all data older than the retention period. Are you sure?',
+      cleanupConfirm: 'This will delete all security monitoring data older than the retention period. Are you sure?',
+      cleanupSuccess: 'Cleanup completed successfully',
     },
   },
   sandbox: {
@@ -2479,6 +2499,7 @@ export default {
     lastUpdated: 'Last updated',
     reset: 'Reset',
     confirmReset: 'Are you sure you want to reset all metrics? This action cannot be undone.',
+    resetSuccess: 'Metrics reset successfully',
     noData: 'No data available',
     // Tabs
     tabs: {
@@ -2718,6 +2739,7 @@ export default {
     fetchModels: 'Fetch Models',
     fetching: 'Fetching...',
     refreshModels: 'Refresh Models',
+    refreshModelsFailed: 'Failed to refresh models',
     builtIn: 'Built-in',
     custom: 'Custom',
     local: 'Local',
@@ -2784,6 +2806,7 @@ export default {
     defaultPlaceholder: 'Use default',
     detectCapabilities: 'Detect',
     detecting: 'Detecting...',
+    detected: 'detected',
     detectedMax: 'Detected Max',
     // Pricing configuration (nested for component usage)
     pricing: {

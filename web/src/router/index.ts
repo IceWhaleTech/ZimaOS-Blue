@@ -50,12 +50,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/system',
-    name: 'System',
-    component: () => import('@/views/SystemView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
     path: '/admin/auth-providers',
     name: 'AuthProviders',
     component: () => import('@/views/AuthProvidersView.vue'),

@@ -26,7 +26,7 @@ export interface Message {
 
 export interface SendMessageRequest {
   message: string
-  provider: string
+  provider: string  // Provider ID from Provider Pool
   model: string
   temperature?: number
   max_tokens?: number
@@ -36,11 +36,6 @@ export interface SendMessageResponse {
   id: string
   role: string
   content: string
-}
-
-export interface ProviderInfo {
-  name: string
-  models: string[]
 }
 
 export interface ToolDefinition {
@@ -88,12 +83,6 @@ export const messageApi = {
   // Note: For streaming, use the SSE utility instead
   getStreamUrl: (conversationId: string) =>
     `/api/v1/conversations/${conversationId}/messages/stream`,
-}
-
-// Provider API
-export const providerApi = {
-  list: () => api.get<ProviderInfo[]>('/providers'),
-  refresh: (provider: string) => api.post<ProviderInfo>(`/providers/${provider}/refresh`),
 }
 
 // Tool API

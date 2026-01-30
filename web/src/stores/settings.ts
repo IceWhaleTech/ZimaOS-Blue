@@ -1,19 +1,31 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { ProviderInfo, ToolDefinition } from '@/api/chat'
-import { providerApi, toolApi } from '@/api/chat'
+import type { ToolDefinition } from '@/api/chat'
+import { toolApi } from '@/api/chat'
+import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
 
 const STORAGE_KEY = 'zimaos-echo-settings'
 
+// Provider info for Chat page (simplified view of Provider Pool data)
+export interface ChatProviderInfo {
+  id: string        // Provider ID from Provider Pool
+  name: string      // Display name
+  models: string[]  // Model IDs
+}
+
+// Combined option for single dropdown: Provider(model)
+export interface ProviderModelOption {
+  value: string       // Format: "providerId:modelId"
+  label: string       // Format: "ProviderName(modelId)"
+  providerId: string
+  providerName: string
+  modelId: string
+}
+
 interface StoredSettings {
-  selectedProvider: string
-  selectedModel: string
+  selectedProviderModel: string  // Format: "providerId:modelId"
   temperature: number
   maxTokens: number
-  apiKeys: Record<string, string>
-  baseUrls: Record<string, string>
-  // Store last used model per provider
-  lastModelPerProvider: Record<string, string>
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -36,98 +48,115 @@ export const useSettingsStore = defineStore('settings', () => {
   const stored = loadStoredSettings()
 
   // State
-  const providers = ref<ProviderInfo[]>([])
+  const providers = ref<ChatProviderInfo[]>([])
   const tools = ref<ToolDefinition[]>([])
-  const selectedProvider = ref(stored.selectedProvider || 'claude')
-  const selectedModel = ref(stored.selectedModel || 'claude-opus-4-5-20251101')
+  const selectedProviderModel = ref(stored.selectedProviderModel || '')  // Format: "providerId:modelId"
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? 2048)
-  const apiKeys = ref<Record<string, string>>(stored.apiKeys || {})
-  const baseUrls = ref<Record<string, string>>(stored.baseUrls || {})
-  const lastModelPerProvider = ref<Record<string, string>>(stored.lastModelPerProvider || {})
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)
 
-  // Computed
+  // Computed: All provider-model options for dropdown
+  const providerModelOptions = computed<ProviderModelOption[]>(() => {
+    const options: ProviderModelOption[] = []
+    for (const provider of providers.value) {
+      for (const modelId of provider.models) {
+        options.push({
+          value: `${provider.id}:${modelId}`,
+          label: `${provider.name}(${modelId})`,
+          providerId: provider.id,
+          providerName: provider.name,
+          modelId: modelId,
+        })
+      }
+    }
+    return options
+  })
+
+  // Computed: Parse selected provider and model from combined value
+  const selectedProvider = computed(() => {
+    const parts = selectedProviderModel.value.split(':')
+    return parts[0] || ''
+  })
+
+  const selectedModel = computed(() => {
+    const parts = selectedProviderModel.value.split(':')
+    return parts.slice(1).join(':') || ''  // Handle model IDs that contain ':'
+  })
+
   const currentProvider = computed(() =>
-    providers.value.find((p) => p.name === selectedProvider.value)
+    providers.value.find((p) => p.id === selectedProvider.value)
   )
 
   const availableModels = computed(() => currentProvider.value?.models || [])
 
-  const hasApiKey = computed(() => {
-    const provider = selectedProvider.value
-    // Ollama doesn't need an API key
-    if (provider === 'ollama') return true
-    return !!apiKeys.value[provider]
-  })
-
   // Watch for changes and persist
   watch(
-    [selectedProvider, selectedModel, temperature, maxTokens, apiKeys, baseUrls, lastModelPerProvider],
+    [selectedProviderModel, temperature, maxTokens],
     () => {
       saveSettings({
-        selectedProvider: selectedProvider.value,
-        selectedModel: selectedModel.value,
+        selectedProviderModel: selectedProviderModel.value,
         temperature: temperature.value,
         maxTokens: maxTokens.value,
-        apiKeys: apiKeys.value,
-        baseUrls: baseUrls.value,
-        lastModelPerProvider: lastModelPerProvider.value,
       })
     },
     { deep: true }
   )
-
-  // Update lastModelPerProvider when model changes
-  watch(selectedModel, (newModel) => {
-    if (newModel && selectedProvider.value) {
-      lastModelPerProvider.value = {
-        ...lastModelPerProvider.value,
-        [selectedProvider.value]: newModel,
-      }
-    }
-  })
 
   // Actions
   async function fetchProviders() {
     try {
       loading.value = true
       error.value = null
-      const response = await providerApi.list()
-      // Handle both array response and object response with providers key
-      const data = response.data
-      providers.value = Array.isArray(data) ? data : (data?.providers || [])
 
-      // Set default provider if current one is not available
-      if (providers.value.length > 0) {
-        const providerNames = providers.value.map((p) => p.name)
-        if (!providerNames.includes(selectedProvider.value)) {
-          // Prefer claude if available, otherwise use first provider
-          const claudeProvider = providers.value.find((p) => p.name === 'claude')
-          if (claudeProvider) {
-            selectedProvider.value = 'claude'
-          } else {
-            const firstProvider = providers.value[0]
-            if (firstProvider) {
-              selectedProvider.value = firstProvider.name
-            }
-          }
+      // Fetch providers from Provider Pool
+      const response = await providerPoolApi.listProviders()
+      const poolProviders = response.data.providers || []
+
+      // Filter enabled providers and convert to ChatProviderInfo
+      const enabledProviders = poolProviders.filter((p: Provider) => p.enabled)
+
+      // Fetch models for each enabled provider
+      const providerInfos: ChatProviderInfo[] = []
+      for (const provider of enabledProviders) {
+        try {
+          const modelsResponse = await providerPoolApi.listProviderModels(provider.id)
+          const models = modelsResponse.data.models || []
+          providerInfos.push({
+            id: provider.id,
+            name: provider.name,
+            models: models.filter((m: Model) => m.enabled).map((m: Model) => m.id),
+          })
+        } catch {
+          // If fetching models fails, still add provider with empty models
+          providerInfos.push({
+            id: provider.id,
+            name: provider.name,
+            models: [],
+          })
         }
+      }
 
-        // Set default model - prefer last used model for this provider
-        const currentModels = currentProvider.value?.models || []
-        if (currentModels.length > 0) {
-          const lastUsedModel = lastModelPerProvider.value[selectedProvider.value]
-          if (lastUsedModel && currentModels.includes(lastUsedModel)) {
-            // Use last used model for this provider
-            selectedModel.value = lastUsedModel
-          } else if (!currentModels.includes(selectedModel.value)) {
-            // Current model not available, use first model
-            const firstModel = currentModels[0]
-            if (firstModel) {
-              selectedModel.value = firstModel
+      providers.value = providerInfos
+
+      // Set default selection if current one is not available
+      if (providerModelOptions.value.length > 0) {
+        const currentOption = providerModelOptions.value.find(
+          (opt) => opt.value === selectedProviderModel.value
+        )
+        if (!currentOption) {
+          // Prefer anthropic provider if available
+          const anthropicOption = providerModelOptions.value.find(
+            (opt) => opt.providerId === 'anthropic'
+          )
+          if (anthropicOption) {
+            selectedProviderModel.value = anthropicOption.value
+          } else {
+            // Use first available option
+            const firstOption = providerModelOptions.value[0]
+            if (firstOption) {
+              selectedProviderModel.value = firstOption.value
             }
           }
         }
@@ -139,38 +168,42 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  // Refresh models for a specific provider (useful for Ollama)
-  async function refreshProviderModels(providerName?: string) {
-    const targetProvider = providerName || selectedProvider.value
+  // Refresh models for a specific provider
+  async function refreshProviderModels(providerId?: string) {
+    const targetProviderId = providerId || selectedProvider.value
     try {
       refreshing.value = true
       error.value = null
-      const response = await providerApi.refresh(targetProvider)
+
+      // Fetch models from Provider Pool
+      const response = await providerPoolApi.fetchProviderModels(targetProviderId)
+      const models = response.data.models || []
+      const modelIds = models.filter((m: Model) => m.enabled).map((m: Model) => m.id)
 
       // Update the provider's models in the list
-      const index = providers.value.findIndex((p) => p.name === targetProvider)
+      const index = providers.value.findIndex((p) => p.id === targetProviderId)
       if (index !== -1) {
-        providers.value[index] = response.data
-      }
-
-      // If refreshing current provider, check if selected model is still valid
-      if (targetProvider === selectedProvider.value) {
-        const currentModels = response.data.models || []
-        if (currentModels.length > 0 && !currentModels.includes(selectedModel.value)) {
-          // Try to use last used model, otherwise use first
-          const lastUsedModel = lastModelPerProvider.value[targetProvider]
-          if (lastUsedModel && currentModels.includes(lastUsedModel)) {
-            selectedModel.value = lastUsedModel
-          } else {
-            const firstModel = currentModels[0]
-            if (firstModel) {
-              selectedModel.value = firstModel
-            }
+        const existingProvider = providers.value[index]
+        if (existingProvider) {
+          providers.value[index] = {
+            id: existingProvider.id,
+            name: existingProvider.name,
+            models: modelIds,
           }
         }
       }
 
-      return response.data
+      // If current selection is no longer valid, select first model of this provider
+      if (targetProviderId === selectedProvider.value) {
+        if (modelIds.length > 0 && !modelIds.includes(selectedModel.value)) {
+          const firstModel = modelIds[0]
+          if (firstModel) {
+            selectedProviderModel.value = `${targetProviderId}:${firstModel}`
+          }
+        }
+      }
+
+      return { id: targetProviderId, models: modelIds }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to refresh models'
       throw e
@@ -188,25 +221,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  function setProvider(provider: string) {
-    selectedProvider.value = provider
-    // When changing provider, try to use last used model for that provider
-    const models = providers.value.find((p) => p.name === provider)?.models || []
-    if (models.length > 0) {
-      const lastUsedModel = lastModelPerProvider.value[provider]
-      if (lastUsedModel && models.includes(lastUsedModel)) {
-        selectedModel.value = lastUsedModel
-      } else {
-        const firstModel = models[0]
-        if (firstModel) {
-          selectedModel.value = firstModel
-        }
-      }
-    }
-  }
-
-  function setModel(model: string) {
-    selectedModel.value = model
+  // Set combined provider:model selection
+  function setProviderModel(value: string) {
+    selectedProviderModel.value = value
   }
 
   function setTemperature(value: number) {
@@ -217,26 +234,6 @@ export const useSettingsStore = defineStore('settings', () => {
     maxTokens.value = Math.max(1, Math.min(128000, value))
   }
 
-  function setApiKey(provider: string, key: string) {
-    apiKeys.value = { ...apiKeys.value, [provider]: key }
-  }
-
-  function clearApiKey(provider: string) {
-    const newKeys = { ...apiKeys.value }
-    delete newKeys[provider]
-    apiKeys.value = newKeys
-  }
-
-  function setBaseUrl(provider: string, url: string) {
-    baseUrls.value = { ...baseUrls.value, [provider]: url }
-  }
-
-  function clearBaseUrl(provider: string) {
-    const newUrls = { ...baseUrls.value }
-    delete newUrls[provider]
-    baseUrls.value = newUrls
-  }
-
   function clearError() {
     error.value = null
   }
@@ -245,34 +242,27 @@ export const useSettingsStore = defineStore('settings', () => {
     // State
     providers,
     tools,
-    selectedProvider,
-    selectedModel,
+    selectedProviderModel,
     temperature,
     maxTokens,
-    apiKeys,
-    baseUrls,
-    lastModelPerProvider,
     loading,
     refreshing,
     error,
 
     // Computed
+    providerModelOptions,
+    selectedProvider,
+    selectedModel,
     currentProvider,
     availableModels,
-    hasApiKey,
 
     // Actions
     fetchProviders,
     refreshProviderModels,
     fetchTools,
-    setProvider,
-    setModel,
+    setProviderModel,
     setTemperature,
     setMaxTokens,
-    setApiKey,
-    clearApiKey,
-    setBaseUrl,
-    clearBaseUrl,
     clearError,
   }
 })

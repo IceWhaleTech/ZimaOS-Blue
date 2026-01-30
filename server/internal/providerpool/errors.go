@@ -27,6 +27,9 @@ var (
 	// ErrAPIKeyInvalid indicates the API key is invalid or expired
 	ErrAPIKeyInvalid = errors.New("api key is invalid")
 
+	// ErrAuthRequired indicates authentication is required but no valid credentials provided
+	ErrAuthRequired = errors.New("authentication required - please provide a valid API key")
+
 	// ErrNoAPIKey indicates no API key is configured for the provider
 	ErrNoAPIKey = errors.New("no api key configured")
 

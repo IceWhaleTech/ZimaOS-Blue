@@ -1,12 +1,21 @@
 #!/bin/bash
 # ZimaOS Echo - Tauri Build Script
 # This script builds the complete Tauri application package
+#
+# Build Strategies:
+# - macOS: CGO library approach (Go static library linked into Rust)
+# - Windows: Sidecar approach (Go binary as separate process)
+#
+# Compression Strategy:
+# - DO NOT use UPX on binaries (causes slow startup)
+# - Use LZMA compression on DMG for smaller download size
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TAURI_DIR="$SCRIPT_DIR/src-tauri"
+LIB_DIR="$TAURI_DIR/lib"
 
 echo "=========================================="
 echo "ZimaOS Echo - Tauri Build Script"
@@ -30,6 +39,12 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Detect platform
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+
+echo "Platform: $GOOS-$GOARCH"
+
 # Step 1: Build frontend
 print_step "Building frontend..."
 cd "$PROJECT_ROOT/web"
@@ -42,49 +57,60 @@ EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"
 mkdir -p "$EMBED_DIR"
 rsync -av --delete --exclude='*.map' "$PROJECT_ROOT/web/dist/" "$EMBED_DIR/"
 
-# Step 3: Build Go sidecar
-print_step "Building Go sidecar..."
-cd "$PROJECT_ROOT/server"
+# Step 3: Build backend (platform-specific)
+if [ "$GOOS" = "darwin" ]; then
+    # macOS: Build Go static library for CGO integration
+    print_step "Building Go static library for macOS (CGO approach)..."
+    cd "$PROJECT_ROOT/server"
 
-# Detect platform
-GOOS=$(go env GOOS)
-GOARCH=$(go env GOARCH)
+    mkdir -p "$LIB_DIR"
 
-case "$GOOS-$GOARCH" in
-    darwin-arm64)
-        TARGET="aarch64-apple-darwin"
-        ;;
-    darwin-amd64)
-        TARGET="x86_64-apple-darwin"
-        ;;
-    linux-amd64)
-        TARGET="x86_64-unknown-linux-gnu"
-        ;;
-    linux-arm64)
-        TARGET="aarch64-unknown-linux-gnu"
-        ;;
-    windows-amd64)
-        TARGET="x86_64-pc-windows-msvc"
-        ;;
-    *)
-        print_error "Unsupported platform: $GOOS-$GOARCH"
-        exit 1
-        ;;
-esac
+    # Build for current architecture
+    CGO_ENABLED=1 go build -buildmode=c-archive \
+        -ldflags="-s -w" \
+        -o "$LIB_DIR/libecho.a" \
+        ./cmd/echolib/
 
-SIDECAR_NAME="echo-server-$TARGET"
-if [ "$GOOS" = "windows" ]; then
-    SIDECAR_NAME="$SIDECAR_NAME.exe"
+    print_step "Go library built: $LIB_DIR/libecho.a"
+    ls -lh "$LIB_DIR/libecho.a"
+
+    # Note: No sidecar needed for macOS
+    print_step "macOS uses CGO library - no sidecar binary needed"
+else
+    # Windows/Linux: Build Go sidecar binary
+    print_step "Building Go sidecar..."
+    cd "$PROJECT_ROOT/server"
+
+    case "$GOOS-$GOARCH" in
+        linux-amd64)
+            TARGET="x86_64-unknown-linux-gnu"
+            ;;
+        linux-arm64)
+            TARGET="aarch64-unknown-linux-gnu"
+            ;;
+        windows-amd64)
+            TARGET="x86_64-pc-windows-msvc"
+            ;;
+        *)
+            print_error "Unsupported platform: $GOOS-$GOARCH"
+            exit 1
+            ;;
+    esac
+
+    SIDECAR_NAME="echo-server-$TARGET"
+    if [ "$GOOS" = "windows" ]; then
+        SIDECAR_NAME="$SIDECAR_NAME.exe"
+    fi
+
+    # Build with optimizations (NO UPX compression!)
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/echo/
+
+    # Also copy to bin directory for resources bundling
+    mkdir -p "$TAURI_DIR/bin"
+    cp "$TAURI_DIR/binaries/$SIDECAR_NAME" "$TAURI_DIR/bin/"
+
+    print_step "Sidecar built: $SIDECAR_NAME (no UPX compression)"
 fi
-
-# Build with optimizations
-CGO_ENABLED=0 go build -ldflags="-s -w" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/echo/
-
-# Also copy to bin directory for resources bundling
-mkdir -p "$TAURI_DIR/bin"
-cp "$TAURI_DIR/binaries/$SIDECAR_NAME" "$TAURI_DIR/bin/"
-
-print_step "Sidecar built: $SIDECAR_NAME"
 
 # Step 4: Clean up data directory before build
 print_step "Cleaning up data directory..."
@@ -97,22 +123,62 @@ cd "$SCRIPT_DIR"
 npm install
 npm run build
 
-# Step 6: Set DMG file icon (macOS only)
+# Step 6: Post-build processing (macOS only)
 if [ "$GOOS" = "darwin" ]; then
-    print_step "Setting DMG file icon..."
+    print_step "Post-processing macOS build..."
 
-    # Find the DMG file
+    # Find the built app and DMG
+    APP_DIR="$TAURI_DIR/target/release/bundle/macos"
     DMG_DIR="$TAURI_DIR/target/release/bundle/dmg"
-    DMG_FILE=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -1)
-    ICON_FILE="$TAURI_DIR/icons/icon.icns"
 
-    if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+    # Get app name from tauri.conf.json
+    APP_NAME="ZimaOS Echo"
+
+    # Find existing DMG
+    EXISTING_DMG=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -1)
+
+    if [ -n "$EXISTING_DMG" ] && [ -f "$EXISTING_DMG" ]; then
+        # Check if create-dmg is available for LZMA compression
+        if command -v create-dmg &> /dev/null; then
+            print_step "Re-creating DMG with LZMA compression..."
+
+            # Get version from existing DMG name
+            DMG_BASENAME=$(basename "$EXISTING_DMG")
+
+            # Create new DMG with LZMA compression
+            TEMP_DMG="$DMG_DIR/temp_lzma.dmg"
+
+            create-dmg \
+                --volname "$APP_NAME" \
+                --window-pos 200 120 \
+                --window-size 660 400 \
+                --icon-size 100 \
+                --icon "$APP_NAME.app" 180 170 \
+                --hide-extension "$APP_NAME.app" \
+                --app-drop-link 480 170 \
+                --format ULMO \
+                "$TEMP_DMG" \
+                "$APP_DIR/$APP_NAME.app" 2>/dev/null || true
+
+            if [ -f "$TEMP_DMG" ]; then
+                # Replace original DMG with LZMA compressed version
+                mv "$TEMP_DMG" "$EXISTING_DMG"
+                print_step "DMG re-compressed with LZMA"
+            else
+                print_warning "LZMA compression failed, keeping original DMG"
+            fi
+        else
+            print_warning "create-dmg not found. Install with: brew install create-dmg"
+            print_warning "DMG was built but not LZMA compressed"
+        fi
+
+        # Set DMG file icon
+        ICON_FILE="$TAURI_DIR/icons/icon.icns"
         if command -v fileicon &> /dev/null; then
-            fileicon set "$DMG_FILE" "$ICON_FILE"
+            fileicon set "$EXISTING_DMG" "$ICON_FILE"
             print_step "DMG file icon set successfully"
         else
             print_warning "fileicon tool not found. Install with: brew install fileicon"
-            print_warning "The DMG was built but the file icon was not set."
         fi
     else
         print_warning "DMG file not found in $DMG_DIR"
@@ -131,6 +197,9 @@ if [ "$GOOS" = "darwin" ]; then
     DMG_PATH="$TAURI_DIR/target/release/bundle/dmg"
 
     echo ""
+    echo "Build Strategy: CGO Library (Go linked into Rust)"
+    echo "Compression: LZMA on DMG (no UPX on binary)"
+    echo ""
     echo "Output files:"
     if [ -d "$APP_PATH" ]; then
         echo "  App: $APP_PATH"
@@ -143,10 +212,15 @@ if [ "$GOOS" = "darwin" ]; then
     fi
 elif [ "$GOOS" = "windows" ]; then
     echo ""
+    echo "Build Strategy: Sidecar Process"
+    echo "Compression: None on binary (installer handles compression)"
+    echo ""
     echo "Output files:"
     ls -la "$TAURI_DIR/target/release/bundle/nsis/"*.exe 2>/dev/null || true
     ls -la "$TAURI_DIR/target/release/bundle/msi/"*.msi 2>/dev/null || true
 elif [ "$GOOS" = "linux" ]; then
+    echo ""
+    echo "Build Strategy: Sidecar Process"
     echo ""
     echo "Output files:"
     ls -la "$TAURI_DIR/target/release/bundle/appimage/"*.AppImage 2>/dev/null || true

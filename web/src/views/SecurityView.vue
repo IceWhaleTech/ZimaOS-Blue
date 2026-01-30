@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { securityApi } from '@/api/security'
 import { useCompanionStore } from '@/stores/companion'
 import { useCompanionStream } from '@/composables/useCompanionStream'
-import { companionSettingsApi, type RetentionConfig, type StorageInfo } from '@/api/companion'
 import type { CompanionSession, ThreatLevel, Platform } from '@/api/companion'
 
 const { t } = useI18n()
@@ -197,64 +196,6 @@ async function deleteSession(sessionId: string) {
 
 async function acknowledgeAlert(alertId: string) {
   await companionStore.acknowledgeAlert(alertId)
-}
-
-// Retention settings
-const showSettings = ref(false)
-const settingsLoading = ref(false)
-const cleanupLoading = ref(false)
-const retentionConfig = ref<RetentionConfig>({
-  events_days: 7,
-  sessions_days: 30,
-  alerts_days: 90,
-})
-const storageInfo = ref<StorageInfo>({
-  session_count: 0,
-  alert_count: 0,
-  event_count: 0,
-})
-
-async function loadSettings() {
-  settingsLoading.value = true
-  try {
-    const response = await companionSettingsApi.getSettings()
-    retentionConfig.value = response.data.retention
-    storageInfo.value = response.data.storage_info
-  } catch (e) {
-    console.error('Failed to load settings:', e)
-  } finally {
-    settingsLoading.value = false
-  }
-}
-
-async function saveSettings() {
-  settingsLoading.value = true
-  try {
-    await companionSettingsApi.updateSettings(retentionConfig.value)
-  } catch (e) {
-    console.error('Failed to save settings:', e)
-  } finally {
-    settingsLoading.value = false
-  }
-}
-
-async function triggerCleanup() {
-  if (!confirm(t('security.settings.cleanupConfirm'))) return
-  cleanupLoading.value = true
-  try {
-    await companionSettingsApi.triggerCleanup()
-    await loadSettings()
-    await companionStore.fetchStats()
-  } catch (e) {
-    console.error('Failed to trigger cleanup:', e)
-  } finally {
-    cleanupLoading.value = false
-  }
-}
-
-function openSettings() {
-  showSettings.value = true
-  loadSettings()
 }
 
 function getThreatColor(level: ThreatLevel): string {
@@ -795,136 +736,6 @@ function getAlertDescription(description: string): string {
         </div>
       </div>
 
-      <!-- Data Retention Settings -->
-      <div class="glass-card p-4">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('security.settings.title') }}</h3>
-          <button
-            class="px-3 py-1.5 text-sm bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors"
-            @click="openSettings"
-          >
-            {{ t('security.settings.configure') }}
-          </button>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-          <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-            <div class="text-gray-500 dark:text-slate-400">{{ t('security.settings.sessionsRetention') }}</div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ retentionConfig.sessions_days }} {{ t('security.settings.days') }}</div>
-          </div>
-          <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-            <div class="text-gray-500 dark:text-slate-400">{{ t('security.settings.eventsRetention') }}</div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ retentionConfig.events_days }} {{ t('security.settings.days') }}</div>
-          </div>
-          <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-            <div class="text-gray-500 dark:text-slate-400">{{ t('security.settings.alertsRetention') }}</div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ retentionConfig.alerts_days }} {{ t('security.settings.days') }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Settings Modal -->
-    <div v-if="showSettings" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="showSettings = false">
-      <div class="bg-white dark:bg-slate-800 rounded-xl max-w-lg w-full overflow-hidden">
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
-          <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ t('security.settings.title') }}</h2>
-          <button class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors" @click="showSettings = false">
-            <span class="text-xl">&times;</span>
-          </button>
-        </div>
-        <div class="p-4 space-y-4">
-          <!-- Storage Info -->
-          <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-            <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('security.settings.storageInfo') }}</h4>
-            <div class="grid grid-cols-3 gap-2 text-sm">
-              <div>
-                <div class="text-gray-500 dark:text-slate-400">{{ t('security.settings.sessions') }}</div>
-                <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.session_count }}</div>
-              </div>
-              <div>
-                <div class="text-gray-500 dark:text-slate-400">{{ t('security.settings.events') }}</div>
-                <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.event_count }}</div>
-              </div>
-              <div>
-                <div class="text-gray-500 dark:text-slate-400">{{ t('security.settings.alerts') }}</div>
-                <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.alert_count }}</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Retention Settings -->
-          <div class="space-y-3">
-            <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('security.settings.retentionPolicy') }}</h4>
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('security.settings.sessionsRetention') }}</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model.number="retentionConfig.sessions_days"
-                    type="number"
-                    min="1"
-                    max="365"
-                    class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                  />
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('security.settings.days') }}</span>
-                </div>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('security.settings.eventsRetention') }}</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model.number="retentionConfig.events_days"
-                    type="number"
-                    min="1"
-                    max="365"
-                    class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                  />
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('security.settings.days') }}</span>
-                </div>
-              </div>
-              <div class="flex items-center justify-between">
-                <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('security.settings.alertsRetention') }}</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model.number="retentionConfig.alerts_days"
-                    type="number"
-                    min="1"
-                    max="365"
-                    class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                  />
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('security.settings.days') }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-slate-700">
-            <button
-              class="px-4 py-2 text-sm bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 rounded-lg transition-colors disabled:opacity-50"
-              :disabled="cleanupLoading"
-              @click="triggerCleanup"
-            >
-              {{ cleanupLoading ? t('common.loading') : t('security.settings.cleanupNow') }}
-            </button>
-            <div class="flex items-center gap-2">
-              <button
-                class="px-4 py-2 text-sm bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-300 rounded-lg transition-colors"
-                @click="showSettings = false"
-              >
-                {{ t('common.cancel') }}
-              </button>
-              <button
-                class="px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50"
-                :disabled="settingsLoading"
-                @click="saveSettings"
-              >
-                {{ settingsLoading ? t('common.loading') : t('common.save') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Session Detail Modal -->

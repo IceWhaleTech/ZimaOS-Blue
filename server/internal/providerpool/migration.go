@@ -248,6 +248,204 @@ func isBuiltinProvider(id string) bool {
 		"openrouter":   true,
 		"aihubmix":     true,
 		"ollama":       true,
+		"minimax":      true,
+		"codex":        true,
 	}
 	return builtinIDs[id]
+}
+
+// DeduplicateResult contains the result of a deduplication operation
+type DeduplicateResult struct {
+	Merged       int      `json:"merged"`
+	Deleted      []string `json:"deleted,omitempty"`
+	KeptProvider string   `json:"kept_provider,omitempty"`
+}
+
+// DeduplicateProviders finds and merges duplicate custom providers based on base_url and api_key.
+// This handles historical data where providers like "claude-code" and "custom" may have been
+// created with the same configuration.
+func DeduplicateProviders(pool *Pool) (*DeduplicateResult, error) {
+	result := &DeduplicateResult{}
+
+	providers := pool.Registry.List()
+	if len(providers) < 2 {
+		return result, nil
+	}
+
+	// Group custom providers by their base_url (normalized)
+	type providerGroup struct {
+		providers []*Provider
+	}
+	groups := make(map[string]*providerGroup)
+
+	for _, p := range providers {
+		// Only consider custom providers for deduplication
+		if p.Type != ProviderTypeCustom {
+			continue
+		}
+
+		// Normalize base URL (remove trailing slash)
+		baseURL := normalizeURL(p.BaseURL)
+		if baseURL == "" {
+			continue
+		}
+
+		if groups[baseURL] == nil {
+			groups[baseURL] = &providerGroup{}
+		}
+		groups[baseURL].providers = append(groups[baseURL].providers, p)
+	}
+
+	// Process each group with duplicates
+	for _, group := range groups {
+		if len(group.providers) < 2 {
+			continue
+		}
+
+		// Check if providers have the same API key (by hash)
+		duplicates := findDuplicatesByAPIKey(group.providers)
+		if len(duplicates) < 2 {
+			continue
+		}
+
+		// Merge duplicates: keep the one with higher priority or "custom" ID
+		kept, toDelete := selectProviderToKeep(duplicates)
+		if kept == nil || len(toDelete) == 0 {
+			continue
+		}
+
+		// Merge API keys from deleted providers into the kept one
+		mergeAPIKeys(kept, toDelete)
+
+		// Update the kept provider
+		if err := pool.Registry.Update(kept); err != nil {
+			continue
+		}
+
+		// Delete the duplicate providers
+		for _, p := range toDelete {
+			if err := pool.Registry.Unregister(p.ID); err != nil {
+				continue
+			}
+			result.Deleted = append(result.Deleted, p.ID)
+			result.Merged++
+		}
+
+		if result.Merged > 0 {
+			result.KeptProvider = kept.ID
+		}
+	}
+
+	return result, nil
+}
+
+// normalizeURL normalizes a URL by removing trailing slashes
+func normalizeURL(url string) string {
+	for len(url) > 0 && url[len(url)-1] == '/' {
+		url = url[:len(url)-1]
+	}
+	return url
+}
+
+// findDuplicatesByAPIKey finds providers that share the same API key
+func findDuplicatesByAPIKey(providers []*Provider) []*Provider {
+	if len(providers) < 2 {
+		return nil
+	}
+
+	// Build a map of API key hashes to providers
+	keyHashToProviders := make(map[string][]*Provider)
+
+	for _, p := range providers {
+		for _, key := range p.APIKeys {
+			if key.KeyHash != "" && key.Enabled {
+				keyHashToProviders[key.KeyHash] = append(keyHashToProviders[key.KeyHash], p)
+				break // Only consider the first enabled key
+			}
+		}
+	}
+
+	// Find the largest group of duplicates
+	var largest []*Provider
+	for _, group := range keyHashToProviders {
+		if len(group) > len(largest) {
+			largest = group
+		}
+	}
+
+	return largest
+}
+
+// selectProviderToKeep selects which provider to keep and which to delete
+// Priority: "custom" ID > higher priority > earlier creation time
+func selectProviderToKeep(providers []*Provider) (*Provider, []*Provider) {
+	if len(providers) < 2 {
+		return nil, nil
+	}
+
+	var kept *Provider
+	var toDelete []*Provider
+
+	// First, prefer "custom" as the canonical ID
+	for _, p := range providers {
+		if p.ID == "custom" {
+			kept = p
+			break
+		}
+	}
+
+	// If no "custom" found, select by priority then creation time
+	if kept == nil {
+		kept = providers[0]
+		for _, p := range providers[1:] {
+			if p.Priority > kept.Priority {
+				kept = p
+			} else if p.Priority == kept.Priority && p.CreatedAt.Before(kept.CreatedAt) {
+				kept = p
+			}
+		}
+	}
+
+	// Build the list of providers to delete
+	for _, p := range providers {
+		if p.ID != kept.ID {
+			toDelete = append(toDelete, p)
+		}
+	}
+
+	return kept, toDelete
+}
+
+// mergeAPIKeys merges API keys from source providers into the target provider
+func mergeAPIKeys(target *Provider, sources []*Provider) {
+	// Build a set of existing key hashes
+	existingHashes := make(map[string]bool)
+	for _, key := range target.APIKeys {
+		if key.KeyHash != "" {
+			existingHashes[key.KeyHash] = true
+		}
+	}
+
+	// Add unique keys from sources
+	for _, source := range sources {
+		for _, key := range source.APIKeys {
+			if key.KeyHash != "" && !existingHashes[key.KeyHash] {
+				// Update label to indicate merge
+				key.Label = fmt.Sprintf("Merged from %s", source.ID)
+				target.APIKeys = append(target.APIKeys, key)
+				existingHashes[key.KeyHash] = true
+			}
+		}
+	}
+
+	// Update the target's enabled status if any source was enabled
+	for _, source := range sources {
+		if source.Enabled {
+			target.Enabled = true
+			if target.Status == ProviderStatusInactive {
+				target.Status = ProviderStatusActive
+			}
+			break
+		}
+	}
 }

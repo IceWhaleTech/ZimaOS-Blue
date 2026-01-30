@@ -2,11 +2,13 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useProviderPoolStore } from '@/stores/providerPool'
+import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
 import type { Provider, Model } from '@/api/providerPool'
 
 const { t } = useI18n()
 const store = useProviderPoolStore()
+const notification = useNotificationStore()
 
 // Local state
 const showAddModal = ref(false)
@@ -179,9 +181,15 @@ async function testConnection(providerId: string) {
 async function refreshModels(providerId: string) {
   refreshingModels.value = providerId
   try {
-    await store.refreshModels(providerId)
-  } catch (e) {
-    console.error('Failed to refresh models:', e)
+    const result = await store.refreshModels(providerId)
+    if (!result.success) {
+      // Show error as notification instead of blocking UI
+      notification.error(
+        t('providerPool.refreshModelsFailed'),
+        result.error,
+        { duration: 8000 }
+      )
+    }
   } finally {
     refreshingModels.value = null
   }
@@ -244,21 +252,21 @@ function selectProvider(providerId: string) {
   store.selectProvider(store.selectedProviderId === providerId ? null : providerId)
 }
 
-function getStatusColor(status: string) {
+function getStatusColor(status: string, enabled: boolean) {
+  if (!enabled) return 'text-gray-500'
   switch (status) {
     case 'active': return 'text-green-500'
-    case 'inactive': return 'text-gray-500'
     case 'error': return 'text-red-500'
-    default: return 'text-gray-500'
+    default: return 'text-green-500' // enabled but not yet tested
   }
 }
 
-function getStatusIcon(status: string) {
+function getStatusIcon(status: string, enabled: boolean) {
+  if (!enabled) return '○'
   switch (status) {
     case 'active': return '●'
-    case 'inactive': return '○'
     case 'error': return '⚠'
-    default: return '○'
+    default: return '●' // enabled but not yet tested
   }
 }
 
@@ -474,7 +482,7 @@ onMounted(() => {
     <!-- Provider List -->
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Provider Cards -->
-      <div class="space-y-3">
+      <div class="space-y-3 max-h-[480px] overflow-y-auto">
         <div
           v-for="provider in filteredProviders"
           :key="provider.id"
@@ -495,8 +503,8 @@ onMounted(() => {
               </div>
             </div>
             <div class="flex items-center gap-2">
-              <span :class="getStatusColor(provider.status)" class="text-xs">
-                {{ getStatusIcon(provider.status) }}
+              <span :class="getStatusColor(provider.status, provider.enabled)" class="text-xs">
+                {{ getStatusIcon(provider.status, provider.enabled) }}
               </span>
               <label class="relative inline-flex items-center cursor-pointer" @click.stop>
                 <input
@@ -600,7 +608,7 @@ onMounted(() => {
                 </button>
               </div>
             </div>
-            <div class="grid grid-cols-3 gap-2 p-2 bg-white dark:bg-slate-900/50 rounded text-xs">
+            <div class="grid grid-cols-2 gap-2 p-2 bg-white dark:bg-slate-900/50 rounded text-xs">
               <div>
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.temperature') }}:</span>
                 <span class="text-gray-900 dark:text-white ml-1">
@@ -609,14 +617,22 @@ onMounted(() => {
               </div>
               <div>
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.maxTokens') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-1">
-                  {{ currentTabSelectedProvider!.model_params?.max_tokens ?? t('providerPool.default') }}
+                <span
+                  v-if="currentTabSelectedProvider!.model_params?.max_tokens"
+                  class="text-gray-900 dark:text-white ml-1"
+                >
+                  {{ currentTabSelectedProvider!.model_params.max_tokens }}
                 </span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.detectedMax') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-1">
-                  {{ currentTabSelectedProvider!.model_params?.detected_max_tokens ?? '-' }}
+                <span
+                  v-else-if="currentTabSelectedProvider!.model_params?.detected_max_tokens"
+                  class="text-accent ml-1"
+                  :title="t('providerPool.detectedMax')"
+                >
+                  {{ currentTabSelectedProvider!.model_params.detected_max_tokens }}
+                  <span class="text-gray-400 text-[10px]">({{ t('providerPool.detected') }})</span>
+                </span>
+                <span v-else class="text-gray-900 dark:text-white ml-1">
+                  {{ t('providerPool.default') }}
                 </span>
               </div>
             </div>

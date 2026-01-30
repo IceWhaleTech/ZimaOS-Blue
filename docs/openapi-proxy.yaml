@@ -1,0 +1,1188 @@
+openapi: 3.0.3
+info:
+  title: ZimaOS Echo - API Proxy Sidecar
+  description: |
+    API Proxy Sidecar provides intelligent routing, failover, security monitoring,
+    and usage statistics for LLM API calls.
+  version: 0.10.5
+  contact:
+    name: IceWhale Tech
+    url: https://github.com/IceWhaleTech/ZimaOS-Echo
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:{port}/api/v1/proxy
+    description: Local proxy server
+    variables:
+      port:
+        default: "19000"
+        description: Dynamically allocated port
+
+tags:
+  - name: Core
+    description: Core proxy management endpoints
+  - name: Sessions
+    description: Session monitoring endpoints
+  - name: Metrics
+    description: Usage metrics endpoints
+  - name: Guard
+    description: Prompt injection guard endpoints
+  - name: Auth
+    description: Authentication management endpoints
+  - name: Models
+    description: Model compatibility endpoints
+  - name: Mock
+    description: Mock endpoint management
+  - name: Masking
+    description: Data masking endpoints
+  - name: Failover
+    description: Failover management endpoints
+  - name: Config
+    description: Configuration management
+
+paths:
+  /status:
+    get:
+      tags:
+        - Core
+      summary: Get proxy server status
+      description: Returns the current status of the proxy server
+      operationId: getStatus
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyStatus"
+
+  /health:
+    get:
+      tags:
+        - Core
+      summary: Health check endpoint
+      description: Returns the health status of the proxy server
+      operationId: getHealth
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /providers:
+    get:
+      tags:
+        - Core
+      summary: List all providers
+      description: Returns a list of all configured providers with their status
+      operationId: getProviders
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProvidersResponse"
+
+  /sessions:
+    get:
+      tags:
+        - Sessions
+      summary: List sessions
+      description: Returns a list of sessions with optional filtering
+      operationId: getSessions
+      parameters:
+        - name: active
+          in: query
+          description: Filter to active sessions only
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionsResponse"
+
+  /sessions/{id}:
+    get:
+      tags:
+        - Sessions
+      summary: Get session by ID
+      description: Returns details for a specific session
+      operationId: getSessionById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Session ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /metrics:
+    get:
+      tags:
+        - Metrics
+      summary: Get usage metrics summary
+      description: Returns aggregated usage metrics
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricsSummary"
+
+  /metrics/providers:
+    get:
+      tags:
+        - Metrics
+      summary: Get per-provider metrics
+      description: Returns metrics broken down by provider
+      operationId: getProviderMetrics
+      parameters:
+        - name: provider
+          in: query
+          description: Filter to specific provider
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderMetricsResponse"
+
+  /metrics/latency:
+    get:
+      tags:
+        - Metrics
+      summary: Get latency statistics
+      description: Returns detailed latency statistics
+      operationId: getLatencyStats
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatencyStats"
+
+  /metrics/timeseries:
+    get:
+      tags:
+        - Metrics
+      summary: Get time-series metrics
+      description: Returns time-series metrics data
+      operationId: getTimeseries
+      parameters:
+        - name: start
+          in: query
+          description: Start time (RFC3339)
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          description: End time (RFC3339)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeseriesResponse"
+
+  /guard/stats:
+    get:
+      tags:
+        - Guard
+      summary: Get guard statistics
+      description: Returns prompt guard statistics
+      operationId: getGuardStats
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardStats"
+
+  /guard/rules:
+    get:
+      tags:
+        - Guard
+      summary: List guard rules
+      description: Returns all configured guard rules
+      operationId: getGuardRules
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardRulesResponse"
+    post:
+      tags:
+        - Guard
+      summary: Add guard rule
+      description: Adds a new guard rule
+      operationId: addGuardRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardRuleInput"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardRuleResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/stats:
+    get:
+      tags:
+        - Auth
+      summary: Get authentication statistics
+      description: Returns authentication and rate limiting statistics
+      operationId: getAuthStats
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStats"
+
+  /auth/keys:
+    get:
+      tags:
+        - Auth
+      summary: List API keys
+      description: Returns a list of API keys (masked)
+      operationId: getApiKeys
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeysResponse"
+    post:
+      tags:
+        - Auth
+      summary: Add API key
+      description: Adds a new API key
+      operationId: addApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiKeyInput"
+      responses:
+        "200":
+          description: Key added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      tags:
+        - Auth
+      summary: Remove API key
+      description: Removes an API key
+      operationId: removeApiKey
+      parameters:
+        - name: key
+          in: query
+          required: true
+          description: The API key to remove
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /models:
+    get:
+      tags:
+        - Models
+      summary: List model compatibility
+      description: Returns model compatibility information
+      operationId: getModels
+      parameters:
+        - name: model
+          in: query
+          description: Get features for specific model
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsResponse"
+
+  /mock:
+    get:
+      tags:
+        - Mock
+      summary: List mock endpoints
+      description: Returns all configured mock endpoints
+      operationId: getMockEndpoints
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockEndpointsResponse"
+    post:
+      tags:
+        - Mock
+      summary: Add mock endpoint
+      description: Adds a new mock endpoint
+      operationId: addMockEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MockEndpointInput"
+      responses:
+        "200":
+          description: Endpoint added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockEndpointResponse"
+
+  /masking/stats:
+    get:
+      tags:
+        - Masking
+      summary: Get masking statistics
+      description: Returns data masking statistics
+      operationId: getMaskingStats
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaskingStats"
+
+  /masking/rules:
+    get:
+      tags:
+        - Masking
+      summary: List masking rules
+      description: Returns all masking rules
+      operationId: getMaskingRules
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaskingRulesResponse"
+    post:
+      tags:
+        - Masking
+      summary: Add masking rule
+      description: Adds a new masking rule
+      operationId: addMaskingRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaskingRuleInput"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaskingRuleResponse"
+    delete:
+      tags:
+        - Masking
+      summary: Remove masking rule
+      description: Removes a masking rule
+      operationId: removeMaskingRule
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Rule ID to remove
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rule removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /failover/metrics:
+    get:
+      tags:
+        - Failover
+      summary: Get failover metrics
+      description: Returns failover statistics
+      operationId: getFailoverMetrics
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FailoverMetrics"
+
+  /failover/config:
+    get:
+      tags:
+        - Failover
+      summary: Get failover configuration
+      description: Returns current failover configuration
+      operationId: getFailoverConfig
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FailoverConfig"
+    put:
+      tags:
+        - Failover
+      summary: Update failover configuration
+      description: Updates failover configuration
+      operationId: updateFailoverConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FailoverConfig"
+      responses:
+        "200":
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /failover/reset:
+    post:
+      tags:
+        - Failover
+      summary: Reset circuit breakers
+      description: Resets all circuit breakers to closed state
+      operationId: resetCircuitBreakers
+      responses:
+        "200":
+          description: Circuit breakers reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /failover/breakers:
+    get:
+      tags:
+        - Failover
+      summary: Get circuit breaker status
+      description: Returns status of all circuit breakers
+      operationId: getCircuitBreakers
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CircuitBreakersResponse"
+
+  /config/reload:
+    post:
+      tags:
+        - Config
+      summary: Reload configuration
+      description: Forces a configuration reload
+      operationId: reloadConfig
+      responses:
+        "200":
+          description: Configuration reloaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigReloadResponse"
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    ProxyStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [running, stopped]
+        port:
+          type: integer
+        bind_address:
+          type: string
+        endpoint:
+          type: string
+        uptime:
+          type: string
+        version:
+          type: string
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+
+    Provider:
+      type: object
+      properties:
+        name:
+          type: string
+        endpoint:
+          type: string
+        priority:
+          type: integer
+        enabled:
+          type: boolean
+        healthy:
+          type: boolean
+        last_check:
+          type: string
+          format: date-time
+        last_latency_ms:
+          type: integer
+        circuit_state:
+          type: string
+          enum: [closed, open, half-open]
+
+    ProvidersResponse:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Provider"
+        default_provider:
+          type: string
+        load_balancing:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+        provider:
+          type: string
+        model:
+          type: string
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+        status:
+          type: string
+          enum: [active, completed, failed]
+        request_count:
+          type: integer
+        error_count:
+          type: integer
+        client_ip:
+          type: string
+        user_agent:
+          type: string
+
+    SessionStats:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        total_sessions:
+          type: integer
+        active_sessions:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        total_tokens_in:
+          type: integer
+        total_tokens_out:
+          type: integer
+        total_requests:
+          type: integer
+
+    SessionsResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
+        stats:
+          $ref: "#/components/schemas/SessionStats"
+
+    MetricsSummary:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        total_requests:
+          type: integer
+        total_success:
+          type: integer
+        total_errors:
+          type: integer
+        success_rate:
+          type: number
+          format: float
+        avg_latency_ms:
+          type: number
+          format: float
+        avg_ttft_ms:
+          type: number
+          format: float
+        avg_proxy_overhead:
+          type: number
+          format: float
+        p95_latency_ms:
+          type: number
+          format: float
+        p99_latency_ms:
+          type: number
+          format: float
+        tokens_per_sec:
+          type: number
+          format: float
+        total_tokens_in:
+          type: integer
+        total_tokens_out:
+          type: integer
+        total_bytes:
+          type: integer
+        provider_count:
+          type: integer
+        bucket_count:
+          type: integer
+
+    ProviderMetrics:
+      type: object
+      properties:
+        name:
+          type: string
+        request_count:
+          type: integer
+        success_count:
+          type: integer
+        error_count:
+          type: integer
+        total_latency_ms:
+          type: integer
+        avg_latency_ms:
+          type: number
+          format: float
+        total_ttft_ms:
+          type: integer
+        avg_ttft_ms:
+          type: number
+          format: float
+        total_tokens_in:
+          type: integer
+        total_tokens_out:
+          type: integer
+        tokens_per_sec:
+          type: number
+          format: float
+
+    ProviderMetricsResponse:
+      type: object
+      properties:
+        providers:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ProviderMetrics"
+
+    LatencyStats:
+      type: object
+      properties:
+        avg_ms:
+          type: number
+          format: float
+        min_ms:
+          type: number
+          format: float
+        max_ms:
+          type: number
+          format: float
+        p50_ms:
+          type: number
+          format: float
+        p90_ms:
+          type: number
+          format: float
+        p95_ms:
+          type: number
+          format: float
+        p99_ms:
+          type: number
+          format: float
+        sample_count:
+          type: integer
+
+    TimeseriesBucket:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        requests:
+          type: integer
+        errors:
+          type: integer
+        avg_latency_ms:
+          type: number
+          format: float
+
+    TimeseriesResponse:
+      type: object
+      properties:
+        buckets:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimeseriesBucket"
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+
+    GuardStats:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        block_on_detect:
+          type: boolean
+        pattern_count:
+          type: integer
+        whitelist_count:
+          type: integer
+        detection_count:
+          type: integer
+        blocked_count:
+          type: integer
+        max_prompt_length:
+          type: integer
+
+    GuardRule:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        pattern:
+          type: string
+        enabled:
+          type: boolean
+        risk_level:
+          type: string
+          enum: [low, medium, high, critical]
+        action:
+          type: string
+          enum: [log, warn, block]
+
+    GuardRulesResponse:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuardRule"
+
+    GuardRuleInput:
+      type: object
+      required:
+        - name
+        - pattern
+      properties:
+        name:
+          type: string
+        pattern:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        risk_level:
+          type: string
+          enum: [low, medium, high, critical]
+          default: medium
+        action:
+          type: string
+          enum: [log, warn, block]
+          default: log
+
+    GuardRuleResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        rule:
+          $ref: "#/components/schemas/GuardRule"
+
+    AuthStats:
+      type: object
+      properties:
+        auth_enabled:
+          type: boolean
+        auth_type:
+          type: string
+        api_key_count:
+          type: integer
+        allowed_ip_count:
+          type: integer
+        auth_failures:
+          type: integer
+        rate_limit_enabled:
+          type: boolean
+        requests_per_min:
+          type: integer
+        burst_size:
+          type: integer
+        rate_limit_hits:
+          type: integer
+        active_limiters:
+          type: integer
+
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+          description: Masked API key
+        active:
+          type: boolean
+
+    ApiKeysResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKey"
+
+    ApiKeyInput:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+
+    ModelFeatures:
+      type: object
+      properties:
+        name:
+          type: string
+        provider:
+          type: string
+        max_context:
+          type: integer
+        max_output:
+          type: integer
+        supports_streaming:
+          type: boolean
+        supports_functions:
+          type: boolean
+        supports_vision:
+          type: boolean
+        tool_calling:
+          type: boolean
+
+    ModelsResponse:
+      type: object
+      properties:
+        models:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ModelFeatures"
+
+    MockEndpoint:
+      type: object
+      properties:
+        path:
+          type: string
+        method:
+          type: string
+        enabled:
+          type: boolean
+
+    MockEndpointsResponse:
+      type: object
+      properties:
+        endpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/MockEndpoint"
+        enabled:
+          type: boolean
+
+    MockEndpointInput:
+      type: object
+      required:
+        - path
+        - method
+        - response
+      properties:
+        path:
+          type: string
+        method:
+          type: string
+        response:
+          type: object
+        status_code:
+          type: integer
+          default: 200
+        enabled:
+          type: boolean
+          default: true
+
+    MockEndpointResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        endpoint:
+          $ref: "#/components/schemas/MockEndpoint"
+
+    MaskingStats:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        rule_count:
+          type: integer
+        total_masks:
+          type: integer
+        mask_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        status:
+          type: string
+
+    MaskingRule:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+          enum: [pii, credentials, financial, custom]
+        pattern:
+          type: string
+        replacement:
+          type: string
+        direction:
+          type: string
+          enum: [request, response, both]
+        enabled:
+          type: boolean
+
+    MaskingRulesResponse:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaskingRule"
+        default_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaskingRule"
+
+    MaskingRuleInput:
+      type: object
+      required:
+        - id
+        - name
+        - pattern
+        - replacement
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+          enum: [pii, credentials, financial, custom]
+          default: custom
+        pattern:
+          type: string
+        replacement:
+          type: string
+        direction:
+          type: string
+          enum: [request, response, both]
+          default: both
+        enabled:
+          type: boolean
+          default: true
+
+    MaskingRuleResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        rule:
+          $ref: "#/components/schemas/MaskingRule"
+
+    FailoverMetrics:
+      type: object
+      properties:
+        total_failovers:
+          type: integer
+        successful_failovers:
+          type: integer
+        failed_failovers:
+          type: integer
+        avg_failover_time_ms:
+          type: number
+          format: float
+
+    FailoverConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        max_retries:
+          type: integer
+        retry_delay:
+          type: string
+        circuit_breaker:
+          type: boolean
+        failure_threshold:
+          type: integer
+        recovery_timeout:
+          type: string
+
+    CircuitBreaker:
+      type: object
+      properties:
+        provider:
+          type: string
+        state:
+          type: string
+          enum: [closed, open, half-open]
+        failures:
+          type: integer
+        last_failure:
+          type: string
+          format: date-time
+
+    CircuitBreakersResponse:
+      type: object
+      properties:
+        breakers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CircuitBreaker"
+
+    ConfigReloadResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        reloaded_at:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - ApiKeyAuth: []

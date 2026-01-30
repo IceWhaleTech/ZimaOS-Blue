@@ -1,0 +1,248 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { proxyApi, type MetricsSummary, type ProviderMetrics, type LatencyStats } from '@/api/proxy'
+
+const { t } = useI18n()
+
+const metrics = ref<MetricsSummary | null>(null)
+const providerMetrics = ref<Record<string, ProviderMetrics>>({})
+const latencyStats = ref<LatencyStats | null>(null)
+const loading = ref(false)
+const error = ref<string | null>(null)
+const refreshInterval = ref<number | null>(null)
+const selectedProvider = ref<string | null>(null)
+
+// Computed
+const totalRequests = computed(() => metrics.value?.total_requests ?? 0)
+const successRate = computed(() => {
+  if (!metrics.value || metrics.value.total_requests === 0) return 0
+  return ((metrics.value.successful_requests / metrics.value.total_requests) * 100).toFixed(1)
+})
+const avgLatency = computed(() => {
+  if (!latencyStats.value) return 0
+  return latencyStats.value.avg_ms?.toFixed(0) ?? 0
+})
+
+const providerList = computed(() => Object.entries(providerMetrics.value))
+
+const formatBytes = (bytes: number) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const formatNumber = (num: number) => {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
+  return num.toString()
+}
+
+// Methods
+async function fetchData() {
+  loading.value = true
+  error.value = null
+  try {
+    const [metricsRes, providersRes, latencyRes] = await Promise.all([
+      proxyApi.getMetrics(),
+      proxyApi.getProviderMetrics(),
+      proxyApi.getLatencyStats(),
+    ])
+    metrics.value = metricsRes.data
+    providerMetrics.value = providersRes.data.providers || {}
+    latencyStats.value = latencyRes.data
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to fetch metrics'
+    console.error('Failed to fetch metrics:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+function startAutoRefresh() {
+  refreshInterval.value = window.setInterval(fetchData, 15000)
+}
+
+function stopAutoRefresh() {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+    refreshInterval.value = null
+  }
+}
+
+function selectProvider(name: string) {
+  selectedProvider.value = selectedProvider.value === name ? null : name
+}
+
+onMounted(() => {
+  fetchData()
+  startAutoRefresh()
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
+})
+</script>
+
+<template>
+  <div class="proxy-metrics-panel">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Proxy Metrics</h2>
+      <button
+        @click="fetchData"
+        :disabled="loading"
+        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+      >
+        {{ loading ? 'Refreshing...' : 'Refresh' }}
+      </button>
+    </div>
+
+    <!-- Error -->
+    <div
+      v-if="error"
+      class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400"
+    >
+      {{ error }}
+    </div>
+
+    <!-- Overview Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white">
+          {{ formatNumber(totalRequests) }}
+        </div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">Total Requests</div>
+      </div>
+      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="text-2xl font-bold" :class="Number(successRate) >= 95 ? 'text-green-600' : Number(successRate) >= 80 ? 'text-yellow-600' : 'text-red-600'">
+          {{ successRate }}%
+        </div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">Success Rate</div>
+      </div>
+      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+          {{ avgLatency }}ms
+        </div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">Avg Latency</div>
+      </div>
+      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
+          {{ providerList.length }}
+        </div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">Active Providers</div>
+      </div>
+    </div>
+
+    <!-- Latency Percentiles -->
+    <div v-if="latencyStats" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <h3 class="font-medium text-gray-900 dark:text-white mb-3">Latency Distribution</h3>
+      <div class="grid grid-cols-4 gap-4 text-sm">
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">P50:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
+        </div>
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">P90:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p90_ms?.toFixed(0) ?? '-' }}ms</span>
+        </div>
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">P95:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p95_ms?.toFixed(0) ?? '-' }}ms</span>
+        </div>
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">P99:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p99_ms?.toFixed(0) ?? '-' }}ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Token Usage -->
+    <div v-if="metrics" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <h3 class="font-medium text-gray-900 dark:text-white mb-3">Token Usage</h3>
+      <div class="grid grid-cols-3 gap-4 text-sm">
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">Input:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ formatNumber(metrics.total_input_tokens ?? 0) }}</span>
+        </div>
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">Output:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ formatNumber(metrics.total_output_tokens ?? 0) }}</span>
+        </div>
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">Total:</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white">
+            {{ formatNumber((metrics.total_input_tokens ?? 0) + (metrics.total_output_tokens ?? 0)) }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Provider List -->
+    <div class="space-y-2">
+      <h3 class="font-medium text-gray-900 dark:text-white">Providers</h3>
+
+      <div v-if="providerList.length === 0 && !loading" class="text-center py-8 text-gray-500 dark:text-gray-400">
+        No provider metrics available
+      </div>
+
+      <div
+        v-for="[name, provider] in providerList"
+        :key="name"
+        class="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
+        :class="{ 'border-blue-500 dark:border-blue-500': selectedProvider === name }"
+        @click="selectProvider(name)"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="text-lg">🔌</span>
+            <div>
+              <div class="font-medium text-gray-900 dark:text-white">{{ name }}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                {{ provider.request_count }} requests
+              </div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm font-medium" :class="provider.success_rate >= 95 ? 'text-green-600' : provider.success_rate >= 80 ? 'text-yellow-600' : 'text-red-600'">
+              {{ provider.success_rate?.toFixed(1) ?? 0 }}%
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ provider.avg_latency_ms?.toFixed(0) ?? 0 }}ms avg
+            </div>
+          </div>
+        </div>
+
+        <!-- Expanded Details -->
+        <div v-if="selectedProvider === name" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div>
+              <span class="text-gray-500 dark:text-gray-400">Success:</span>
+              <span class="ml-1 text-green-600">{{ provider.success_count ?? 0 }}</span>
+            </div>
+            <div>
+              <span class="text-gray-500 dark:text-gray-400">Errors:</span>
+              <span class="ml-1 text-red-600">{{ provider.error_count ?? 0 }}</span>
+            </div>
+            <div>
+              <span class="text-gray-500 dark:text-gray-400">Input Tokens:</span>
+              <span class="ml-1 text-gray-900 dark:text-white">{{ formatNumber(provider.total_input_tokens ?? 0) }}</span>
+            </div>
+            <div>
+              <span class="text-gray-500 dark:text-gray-400">Output Tokens:</span>
+              <span class="ml-1 text-gray-900 dark:text-white">{{ formatNumber(provider.total_output_tokens ?? 0) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.proxy-metrics-panel {
+  @apply p-4;
+}
+</style>
