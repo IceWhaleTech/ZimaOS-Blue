@@ -18,6 +18,11 @@ export default {
     previous: 'Anterior',
     settings: 'Configuració',
     language: 'Idioma',
+    refresh: 'Actualitzar',
+    refreshing: 'Actualitzant...',
+    testing: 'Provant...',
+    dismiss: 'Tancar',
+    done: 'Fet',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Informació detallada del sistema', noDetailedInfo: 'No hi ha informació detallada disponible' },
+  system: { ...enUS.system, detailedInfo: 'Informació detallada', detailedSystemInfo: 'Informació detallada del sistema', loadingDetailedInfo: 'Carregant informació detallada...', noDetailedInfo: 'No hi ha informació detallada disponible' },
   security: {
     ...enUS.security,
     settings: {

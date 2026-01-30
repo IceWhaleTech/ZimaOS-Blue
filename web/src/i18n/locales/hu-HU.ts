@@ -18,6 +18,11 @@ export default {
     previous: 'Előző',
     settings: 'Beállítások',
     language: 'Nyelv',
+    refresh: 'Frissítés',
+    refreshing: 'Frissítés...',
+    testing: 'Tesztelés...',
+    dismiss: 'Bezárás',
+    done: 'Kész',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Részletes rendszerinformációk', noDetailedInfo: 'Nincs elérhető részletes információ' },
+  system: { ...enUS.system, detailedInfo: 'Részletes információ', detailedSystemInfo: 'Részletes rendszerinformációk', loadingDetailedInfo: 'Részletes információk betöltése...', noDetailedInfo: 'Nincs elérhető részletes információ' },
   security: {
     ...enUS.security,
     settings: {

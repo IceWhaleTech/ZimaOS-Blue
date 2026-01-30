@@ -14,8 +14,7 @@ func setupRouterTest(t *testing.T) (*Router, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	enc, _ := NewEncryptor("test-key")
-	storage, _ := NewFileStorage(tmpDir, enc)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage)
 	discovery := NewModelDiscovery(registry, storage, time.Hour)
 	router := NewRouter(registry, discovery, RoutingStrategyPriority)
@@ -275,7 +274,7 @@ func TestRouterCapabilityFiltering(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "router-cap-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	storage, _ := NewFileStorage(tmpDir, nil)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage)
 	discovery := NewModelDiscovery(registry, storage, time.Hour)
 	router := NewRouter(registry, discovery, RoutingStrategyPriority)

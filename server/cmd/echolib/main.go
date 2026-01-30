@@ -286,6 +286,22 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	}
 	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
 
+	grokKey := os.Getenv("GROK_API_KEY")
+	grokBaseURL := ""
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "grok" && savedLLMConfig.APIKey != "" {
+		grokKey = savedLLMConfig.APIKey
+		grokBaseURL = savedLLMConfig.BaseURL
+	}
+	llmRegistry.Register(llm.NewGrokProvider(grokKey, grokBaseURL))
+
+	qwenKey := os.Getenv("QWEN_API_KEY")
+	qwenBaseURL := ""
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "qwen" && savedLLMConfig.APIKey != "" {
+		qwenKey = savedLLMConfig.APIKey
+		qwenBaseURL = savedLLMConfig.BaseURL
+	}
+	llmRegistry.Register(llm.NewQwenProvider(qwenKey, qwenBaseURL))
+
 	// Initialize tools registry
 	toolRegistry := tools.NewRegistry()
 	tools.RegisterBuiltinTools(toolRegistry)

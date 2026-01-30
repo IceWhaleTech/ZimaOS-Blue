@@ -18,6 +18,11 @@ export default {
     previous: 'Anterior',
     settings: 'Setări',
     language: 'Limbă',
+    refresh: 'Actualizează',
+    refreshing: 'Se actualizează...',
+    testing: 'Se testează...',
+    dismiss: 'Închide',
+    done: 'Gata',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Informații detaliate despre sistem', noDetailedInfo: 'Nicio informație detaliată disponibilă' },
+  system: { ...enUS.system, detailedInfo: 'Informații detaliate', detailedSystemInfo: 'Informații detaliate despre sistem', loadingDetailedInfo: 'Se încarcă informații detaliate...', noDetailedInfo: 'Nicio informație detaliată disponibilă' },
   security: {
     ...enUS.security,
     settings: {

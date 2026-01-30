@@ -13,6 +13,8 @@ import aihubmixIcon from '@/assets/providers/aihubmix.svg'
 import ollamaIcon from '@/assets/providers/ollama.svg'
 import minimaxIcon from '@/assets/providers/minimax.svg'
 import codexIcon from '@/assets/providers/codex.svg'
+import grokIcon from '@/assets/providers/grok.svg'
+import qwenIcon from '@/assets/providers/qwen.svg'
 import defaultIcon from '@/assets/providers/default.svg'
 
 const props = defineProps<{
@@ -34,6 +36,8 @@ const icons: Record<string, string> = {
   ollama: ollamaIcon,
   minimax: minimaxIcon,
   codex: codexIcon,
+  grok: grokIcon,
+  qwen: qwenIcon,
 }
 
 // Use custom icon if provided, otherwise fall back to built-in icons

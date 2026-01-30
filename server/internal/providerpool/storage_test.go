@@ -7,42 +7,6 @@ import (
 	"time"
 )
 
-func TestEncryptor(t *testing.T) {
-	enc, err := NewEncryptor("test-key-12345")
-	if err != nil {
-		t.Fatalf("NewEncryptor failed: %v", err)
-	}
-
-	tests := []struct {
-		name      string
-		plaintext string
-	}{
-		{"empty", ""},
-		{"simple", "hello world"},
-		{"api key", "sk-1234567890abcdef"},
-		{"unicode", "你好世界🌍"},
-		{"long", "this is a very long string that should still encrypt and decrypt correctly even though it is quite lengthy"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			encrypted, err := enc.Encrypt(tt.plaintext)
-			if err != nil {
-				t.Fatalf("Encrypt failed: %v", err)
-			}
-
-			decrypted, err := enc.Decrypt(encrypted)
-			if err != nil {
-				t.Fatalf("Decrypt failed: %v", err)
-			}
-
-			if decrypted != tt.plaintext {
-				t.Errorf("Decrypt mismatch: got %q, want %q", decrypted, tt.plaintext)
-			}
-		})
-	}
-}
-
 func TestHashAPIKey(t *testing.T) {
 	tests := []struct {
 		key      string
@@ -85,8 +49,7 @@ func TestFileStorage(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	enc, _ := NewEncryptor("test-key")
-	storage, err := NewFileStorage(tmpDir, enc)
+	storage, err := NewFileStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("NewFileStorage failed: %v", err)
 	}
@@ -282,7 +245,7 @@ func TestFileStorageDirectoryCreation(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	basePath := filepath.Join(tmpDir, "nested", "path", "providers")
-	_, err = NewFileStorage(basePath, nil)
+	_, err = NewFileStorage(basePath)
 	if err != nil {
 		t.Fatalf("NewFileStorage failed: %v", err)
 	}

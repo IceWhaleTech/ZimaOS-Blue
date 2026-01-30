@@ -512,18 +512,6 @@ func (s *Store) getPackageURL(plugin *StorePlugin) string {
 	}
 }
 
-// formatPluginName converts plugin ID to display name
-func formatPluginName(id string) string {
-	// Convert kebab-case to Title Case
-	words := strings.Split(id, "-")
-	for i, word := range words {
-		if len(word) > 0 {
-			words[i] = strings.ToUpper(word[:1]) + word[1:]
-		}
-	}
-	return strings.Join(words, " ")
-}
-
 // inferPluginTags infers tags from plugin ID
 func inferPluginTags(id string) []string {
 	tags := []string{}

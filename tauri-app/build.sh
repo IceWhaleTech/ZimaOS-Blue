@@ -45,25 +45,51 @@ GOARCH=$(go env GOARCH)
 
 echo "Platform: $GOOS-$GOARCH"
 
-# Step 1: Build frontend
-print_step "Building frontend..."
+# Step 1: Clean and prepare embed directory
+print_step "Cleaning embed directory..."
+EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"
+rm -rf "$EMBED_DIR"
+mkdir -p "$EMBED_DIR"
+
+# Step 2: Build frontend (force fresh build)
+print_step "Building frontend (fresh build)..."
 cd "$PROJECT_ROOT/web"
+# Clean previous build
+rm -rf dist node_modules/.vite
 npm install
 npm run build
 
-# Step 2: Copy frontend to embed directory (excluding source maps)
+# Verify frontend build succeeded
+if [ ! -d "$PROJECT_ROOT/web/dist" ] || [ -z "$(ls -A "$PROJECT_ROOT/web/dist")" ]; then
+    print_error "Frontend build failed - dist directory is empty or missing"
+    exit 1
+fi
+
+# Step 3: Copy frontend to embed directory (excluding source maps)
 print_step "Copying frontend to embed directory..."
-EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"
-mkdir -p "$EMBED_DIR"
 rsync -av --delete --exclude='*.map' "$PROJECT_ROOT/web/dist/" "$EMBED_DIR/"
 
-# Step 3: Build backend (platform-specific)
+# Verify copy succeeded
+if [ ! -f "$EMBED_DIR/index.html" ]; then
+    print_error "Failed to copy frontend to embed directory"
+    exit 1
+fi
+
+print_step "Frontend embedded successfully ($(ls -1 "$EMBED_DIR" | wc -l | tr -d ' ') files)"
+
+# Step 4: Build backend (platform-specific)
 if [ "$GOOS" = "darwin" ]; then
     # macOS: Build Go static library for CGO integration
-    print_step "Building Go static library for macOS (CGO approach)..."
+    print_step "Building Go static library for macOS (CGO approach with embedded frontend)..."
     cd "$PROJECT_ROOT/server"
 
     mkdir -p "$LIB_DIR"
+
+    # Verify embed directory exists before building
+    if [ ! -f "$EMBED_DIR/index.html" ]; then
+        print_error "Embed directory missing - frontend must be built first"
+        exit 1
+    fi
 
     # Build for current architecture
     CGO_ENABLED=1 go build -buildmode=c-archive \
@@ -78,7 +104,7 @@ if [ "$GOOS" = "darwin" ]; then
     print_step "macOS uses CGO library - no sidecar binary needed"
 else
     # Windows/Linux: Build Go sidecar binary
-    print_step "Building Go sidecar..."
+    print_step "Building Go sidecar (with embedded frontend)..."
     cd "$PROJECT_ROOT/server"
 
     case "$GOOS-$GOARCH" in

@@ -44,6 +44,16 @@ const providerMeta: Record<string, { requiresApiKey: boolean; defaultUrl: string
     defaultUrl: '',
     description: 'providerSettings.customDesc',
   },
+  grok: {
+    requiresApiKey: true,
+    defaultUrl: 'https://api.x.ai',
+    description: 'providerSettings.grokDesc',
+  },
+  qwen: {
+    requiresApiKey: true,
+    defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode',
+    description: 'providerSettings.qwenDesc',
+  },
 }
 
 // Computed

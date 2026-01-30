@@ -12,7 +12,7 @@ func setupTrackerTest(t *testing.T) (*UsageTracker, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	storage, err := NewFileStorage(tmpDir, nil)
+	storage, err := NewFileStorage(tmpDir)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create storage: %v", err)
@@ -35,9 +35,9 @@ func TestUsageTrackerRecord(t *testing.T) {
 	tracker.Start()
 
 	// Record some usage
-	tracker.RecordRequest("openai", "gpt-4", 1000, 500, 250, true, 0.05)
-	tracker.RecordRequest("openai", "gpt-4", 2000, 1000, 300, true, 0.10)
-	tracker.RecordRequest("anthropic", "claude-3", 1500, 750, 200, true, 0.08)
+	tracker.RecordRequest("openai", "gpt-4", 1000, 500, 250, true)
+	tracker.RecordRequest("openai", "gpt-4", 2000, 1000, 300, true)
+	tracker.RecordRequest("anthropic", "claude-3", 1500, 750, 200, true)
 
 	// Wait for processing
 	time.Sleep(50 * time.Millisecond)
@@ -163,7 +163,7 @@ func TestUsageTrackerFlush(t *testing.T) {
 	tracker.Start()
 
 	// Record usage
-	tracker.RecordRequest("openai", "gpt-4", 1000, 500, 250, true, 0.05)
+	tracker.RecordRequest("openai", "gpt-4", 1000, 500, 250, true)
 
 	// Wait for processing
 	time.Sleep(50 * time.Millisecond)

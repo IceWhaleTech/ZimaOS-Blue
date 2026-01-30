@@ -18,6 +18,11 @@ export default {
     previous: 'Wstecz',
     settings: 'Ustawienia',
     language: 'Język',
+    refresh: 'Odśwież',
+    refreshing: 'Odświeżanie...',
+    testing: 'Testowanie...',
+    dismiss: 'Zamknij',
+    done: 'Gotowe',
   },
   auth: {
     ...enUS.auth,
@@ -448,7 +453,9 @@ export default {
   },
   system: {
     ...enUS.system,
+    detailedInfo: 'Szczegółowe informacje',
     detailedSystemInfo: 'Szczegółowe informacje o systemie',
+    loadingDetailedInfo: 'Ładowanie szczegółowych informacji...',
     noDetailedInfo: 'Brak szczegółowych informacji',
   },
   security: {

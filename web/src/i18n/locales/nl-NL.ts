@@ -18,6 +18,11 @@ export default {
     previous: 'Vorige',
     settings: 'Instellingen',
     language: 'Taal',
+    refresh: 'Vernieuwen',
+    refreshing: 'Vernieuwen...',
+    testing: 'Testen...',
+    dismiss: 'Sluiten',
+    done: 'Klaar',
   },
   auth: {
     ...enUS.auth,
@@ -448,7 +453,9 @@ export default {
   },
   system: {
     ...enUS.system,
+    detailedInfo: 'Gedetailleerde informatie',
     detailedSystemInfo: 'Gedetailleerde systeeminformatie',
+    loadingDetailedInfo: 'Gedetailleerde informatie laden...',
     noDetailedInfo: 'Geen gedetailleerde informatie beschikbaar',
   },
   security: {

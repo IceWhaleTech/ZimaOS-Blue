@@ -57,3 +57,8 @@ func (p *CustomProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 func (p *CustomProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error) {
 	return p.OpenAIProvider.ChatStream(ctx, req)
 }
+
+// ChatStreamCallback sends a streaming chat completion request and calls the callback for each chunk.
+func (p *CustomProvider) ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error {
+	return p.OpenAIProvider.ChatStreamCallback(ctx, req, callback)
+}

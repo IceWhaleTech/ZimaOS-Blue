@@ -125,7 +125,22 @@ func (h *PluginHandler) EnablePlugin(c echo.Context) error {
 		})
 	}
 
-	// TODO: Implement plugin enable logic
+	// Only start native plugins (JavaScript plugins don't have a running state)
+	if p.IsNative {
+		if err := h.registry.StartPlugin(c.Request().Context(), id); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": err.Error(),
+			})
+		}
+	} else {
+		// For JavaScript plugins, just update the status to loaded
+		if err := h.registry.SetPluginStatus(id, plugin.StatusLoaded); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": err.Error(),
+			})
+		}
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "plugin enabled",
@@ -142,11 +157,20 @@ func (h *PluginHandler) DisablePlugin(c echo.Context) error {
 		})
 	}
 
-	// Stop the plugin
-	if err := h.registry.StopPlugin(c.Request().Context(), id); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
+	// Only stop native plugins (JavaScript plugins don't have a running state)
+	if p.IsNative {
+		if err := h.registry.StopPlugin(c.Request().Context(), id); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": err.Error(),
+			})
+		}
+	} else {
+		// For JavaScript plugins, just update the status to disabled
+		if err := h.registry.SetPluginStatus(id, plugin.StatusDisabled); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": err.Error(),
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

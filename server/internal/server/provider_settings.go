@@ -155,6 +155,10 @@ func (h *ProviderSettingsHandler) getProviderConfigResponse(name string) Provide
 		resp.DefaultURL = "https://api.openai.com"
 	case "ollama":
 		resp.DefaultURL = "http://localhost:11434"
+	case "grok":
+		resp.DefaultURL = "https://api.x.ai"
+	case "qwen":
+		resp.DefaultURL = "https://dashscope.aliyuncs.com/compatible-mode"
 	}
 
 	// Get saved config if exists
@@ -263,6 +267,20 @@ func (h *ProviderSettingsHandler) updateProviderInRegistry(name string, config P
 			baseURL = "https://api.openai.com"
 		}
 		provider := llm.NewCustomProvider(config.APIKey, baseURL)
+		h.registry.Update(provider)
+	case "grok":
+		baseURL := config.BaseURL
+		if baseURL == "" {
+			baseURL = "https://api.x.ai"
+		}
+		provider := llm.NewGrokProvider(config.APIKey, baseURL)
+		h.registry.Update(provider)
+	case "qwen":
+		baseURL := config.BaseURL
+		if baseURL == "" {
+			baseURL = "https://dashscope.aliyuncs.com/compatible-mode"
+		}
+		provider := llm.NewQwenProvider(config.APIKey, baseURL)
 		h.registry.Update(provider)
 	}
 }

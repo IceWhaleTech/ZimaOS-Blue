@@ -36,13 +36,12 @@ type Storage interface {
 
 // FileStorage implements Storage using JSON files
 type FileStorage struct {
-	basePath  string
-	encryptor *Encryptor
-	mu        sync.RWMutex
+	basePath string
+	mu       sync.RWMutex
 }
 
 // NewFileStorage creates a new FileStorage
-func NewFileStorage(basePath string, encryptor *Encryptor) (*FileStorage, error) {
+func NewFileStorage(basePath string) (*FileStorage, error) {
 	// Create directory structure
 	dirs := []string{
 		basePath,
@@ -56,8 +55,7 @@ func NewFileStorage(basePath string, encryptor *Encryptor) (*FileStorage, error)
 	}
 
 	return &FileStorage{
-		basePath:  basePath,
-		encryptor: encryptor,
+		basePath: basePath,
 	}, nil
 }
 
@@ -87,10 +85,10 @@ type providerStorage struct {
 	UpdatedAt time.Time                `json:"updated_at"`
 }
 
-// providerData stores provider with encrypted API keys
+// providerData stores provider with API keys (for storage only)
 type providerData struct {
-	Provider         *Provider `json:"provider"`
-	EncryptedAPIKeys []string  `json:"encrypted_api_keys,omitempty"`
+	Provider *Provider `json:"provider"`
+	APIKeys  []string  `json:"api_keys,omitempty"` // Store actual keys separately
 }
 
 // SaveProvider saves a provider to storage
@@ -109,33 +107,16 @@ func (s *FileStorage) SaveProvider(provider *Provider) error {
 		}
 	}
 
-	// Encrypt API keys
-	encryptedKeys := make([]string, 0, len(provider.APIKeys))
-	for _, key := range provider.APIKeys {
-		if key.Key != "" && s.encryptor != nil {
-			encrypted, err := s.encryptor.Encrypt(key.Key)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt API key: %w", err)
-			}
-			encryptedKeys = append(encryptedKeys, encrypted)
-		} else if key.Key != "" {
-			// No encryptor, store empty string as placeholder
-			encryptedKeys = append(encryptedKeys, "")
-		}
-	}
-
-	// Create a deep copy without the actual keys for storage
-	providerCopy := *provider
-	providerCopy.APIKeys = make([]APIKey, len(provider.APIKeys))
+	// Extract API keys (since they have json:"-" tag)
+	apiKeys := make([]string, len(provider.APIKeys))
 	for i, key := range provider.APIKeys {
-		keyCopy := key
-		keyCopy.Key = "" // Clear the actual key in the copy only
-		providerCopy.APIKeys[i] = keyCopy
+		apiKeys[i] = key.Key
 	}
 
+	// Store provider with keys separately
 	storage.Providers[provider.ID] = &providerData{
-		Provider:         &providerCopy,
-		EncryptedAPIKeys: encryptedKeys,
+		Provider: provider,
+		APIKeys:  apiKeys,
 	}
 	storage.UpdatedAt = time.Now()
 
@@ -157,7 +138,15 @@ func (s *FileStorage) LoadProvider(id string) (*Provider, error) {
 		return nil, ErrProviderNotFound
 	}
 
-	return s.decryptProvider(data)
+	// Restore API keys
+	provider := data.Provider
+	for i := range provider.APIKeys {
+		if i < len(data.APIKeys) {
+			provider.APIKeys[i].Key = data.APIKeys[i]
+		}
+	}
+
+	return provider, nil
 }
 
 // LoadAllProviders loads all providers from storage
@@ -175,10 +164,12 @@ func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
 
 	providers := make([]*Provider, 0, len(storage.Providers))
 	for _, data := range storage.Providers {
-		provider, err := s.decryptProvider(data)
-		if err != nil {
-			// Log error but continue loading other providers
-			continue
+		provider := data.Provider
+		// Restore API keys
+		for i := range provider.APIKeys {
+			if i < len(data.APIKeys) {
+				provider.APIKeys[i].Key = data.APIKeys[i]
+			}
 		}
 		providers = append(providers, provider)
 	}
@@ -232,27 +223,7 @@ func (s *FileStorage) saveProvidersInternal(storage *providerStorage) error {
 		return err
 	}
 
-	return os.WriteFile(s.providersFile(), data, 0644)
-}
-
-// decryptProvider decrypts API keys in a provider
-func (s *FileStorage) decryptProvider(data *providerData) (*Provider, error) {
-	provider := *data.Provider
-
-	// Decrypt API keys
-	if s.encryptor != nil && len(data.EncryptedAPIKeys) > 0 {
-		for i, encrypted := range data.EncryptedAPIKeys {
-			if i < len(provider.APIKeys) {
-				decrypted, err := s.encryptor.Decrypt(encrypted)
-				if err != nil {
-					return nil, fmt.Errorf("failed to decrypt API key: %w", err)
-				}
-				provider.APIKeys[i].Key = decrypted
-			}
-		}
-	}
-
-	return &provider, nil
+	return os.WriteFile(s.providersFile(), data, 0600)
 }
 
 // SaveModels saves models for a provider

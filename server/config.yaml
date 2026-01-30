@@ -10,6 +10,65 @@ log:
   format: "console"
 
 # =============================================================================
+# API Proxy Configuration (v0.10.5.1+)
+# =============================================================================
+# OpenAI-compatible API proxy on /v1/* (unified port architecture)
+# This allows external apps and Claude Code CLI to use Echo as an OpenAI-compatible API
+# =============================================================================
+proxy:
+  enabled: true
+
+  # Provider routing configuration
+  routing:
+    default_provider: "anthropic"
+    load_balancing: "priority"  # priority, round-robin, weighted
+
+    providers:
+      - name: "anthropic"
+        endpoint: "https://api.anthropic.com/v1/messages"  # Cursor proxy endpoint (with /v1)
+        api_key: ""  # Empty = pass-through client's Authorization header
+        priority: 1
+        weight: 100
+        enabled: true
+        health_check: "/chat/completions"
+
+      - name: "openai"
+        endpoint: "https://api.openai.com"
+        api_key: ""  # Empty = pass-through client's Authorization header
+        priority: 2
+        weight: 80
+        enabled: true
+        health_check: "/v1/models"
+
+    # Failover configuration
+    failover:
+      enabled: true
+      max_retries: 3
+      retry_delay: "1s"
+      circuit_breaker: true
+      failure_threshold: 5
+      recovery_timeout: "30s"
+
+  # Connection pool configuration
+  connection:
+    max_idle_conns: 100
+    max_idle_conns_per_host: 10
+    max_conns_per_host: 100
+    idle_conn_timeout: "90s"
+    keep_alive: true
+    keep_alive_interval: "30s"
+    dial_timeout: "30s"
+    tls_handshake_timeout: "10s"
+    response_header_timeout: "60s"
+    force_http2: true
+
+  # Health check configuration
+  health_check:
+    enabled: true
+    interval: "30s"
+    timeout: "10s"
+
+# =============================================================================
 # Claude Code CLI Configuration
 # =============================================================================
 # IMPORTANT: This is NOT an LLM provider. Claude Code CLI is a separate tool

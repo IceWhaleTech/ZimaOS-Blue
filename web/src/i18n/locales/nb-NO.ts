@@ -18,6 +18,11 @@ export default {
     previous: 'Forrige',
     settings: 'Innstillinger',
     language: 'Språk',
+    refresh: 'Oppdater',
+    refreshing: 'Oppdaterer...',
+    testing: 'Tester...',
+    dismiss: 'Lukk',
+    done: 'Ferdig',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Detaljert systeminformasjon', noDetailedInfo: 'Ingen detaljert informasjon tilgjengelig' },
+  system: { ...enUS.system, detailedInfo: 'Detaljert informasjon', detailedSystemInfo: 'Detaljert systeminformasjon', loadingDetailedInfo: 'Laster detaljert informasjon...', noDetailedInfo: 'Ingen detaljert informasjon tilgjengelig' },
   security: {
     ...enUS.security,
     settings: {

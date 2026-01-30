@@ -33,19 +33,9 @@ func WithConfig(config *PoolConfig) PoolOption {
 }
 
 // NewPool creates a new Pool with all components
-func NewPool(dataPath string, encryptionKey string, opts ...PoolOption) (*Pool, error) {
-	// Create encryptor
-	var encryptor *Encryptor
-	if encryptionKey != "" {
-		var err error
-		encryptor, err = NewEncryptor(encryptionKey)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Create storage
-	storage, err := NewFileStorage(dataPath, encryptor)
+func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
+	// Create storage (no encryption)
+	storage, err := NewFileStorage(dataPath)
 	if err != nil {
 		return nil, err
 	}

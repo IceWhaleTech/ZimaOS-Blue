@@ -159,6 +159,34 @@ func BuiltinProviders() []*Provider {
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		},
+		{
+			ID:          "grok",
+			Name:        "Grok (xAI)",
+			Type:        ProviderTypeBuiltin,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://api.x.ai/v1",
+			APIVersion:  "v1",
+			Priority:    40,
+			Icon:        "grok",
+			Description: "xAI Grok API - Advanced AI models from xAI",
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		},
+		{
+			ID:          "qwen",
+			Name:        "Qwen (Alibaba Cloud)",
+			Type:        ProviderTypeBuiltin,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			APIVersion:  "v1",
+			Priority:    35,
+			Icon:        "qwen",
+			Description: "Alibaba Cloud Qwen API - Qwen series models with multilingual support",
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		},
 	}
 }
 
@@ -674,6 +702,157 @@ func BuiltinModels() map[string][]*Model {
 				MaxOutput:     16384,
 				InputPrice:    2.0,
 				OutputPrice:   8.0,
+			},
+		},
+		"grok": {
+			{
+				ID:          "grok-beta",
+				ProviderID:  "grok",
+				Name:        "grok-beta",
+				DisplayName: "Grok Beta",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 131072,
+				MaxOutput:     16384,
+				InputPrice:    5.0,   // $5.00 per 1M input tokens
+				OutputPrice:   15.0,  // $15.00 per 1M output tokens
+			},
+			{
+				ID:          "grok-vision-beta",
+				ProviderID:  "grok",
+				Name:        "grok-vision-beta",
+				DisplayName: "Grok Vision Beta",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 8192,
+				MaxOutput:     4096,
+				InputPrice:    5.0,   // $5.00 per 1M input tokens
+				OutputPrice:   15.0,  // $15.00 per 1M output tokens
+			},
+		},
+		"qwen": {
+			{
+				ID:          "qwen-turbo",
+				ProviderID:  "qwen",
+				Name:        "qwen-turbo",
+				DisplayName: "Qwen Turbo",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 8192,
+				MaxOutput:     2048,
+				InputPrice:    0.3,   // $0.30 per 1M input tokens
+				OutputPrice:   0.6,   // $0.60 per 1M output tokens
+			},
+			{
+				ID:          "qwen-plus",
+				ProviderID:  "qwen",
+				Name:        "qwen-plus",
+				DisplayName: "Qwen Plus",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 32768,
+				MaxOutput:     8192,
+				InputPrice:    0.8,   // $0.80 per 1M input tokens
+				OutputPrice:   2.0,   // $2.00 per 1M output tokens
+			},
+			{
+				ID:          "qwen-max",
+				ProviderID:  "qwen",
+				Name:        "qwen-max",
+				DisplayName: "Qwen Max",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 32768,
+				MaxOutput:     8192,
+				InputPrice:    4.0,   // $4.00 per 1M input tokens
+				OutputPrice:   12.0,  // $12.00 per 1M output tokens
+			},
+			{
+				ID:          "qwen-max-longcontext",
+				ProviderID:  "qwen",
+				Name:        "qwen-max-longcontext",
+				DisplayName: "Qwen Max (Long Context)",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 1000000,
+				MaxOutput:     8192,
+				InputPrice:    4.0,   // $4.00 per 1M input tokens
+				OutputPrice:   12.0,  // $12.00 per 1M output tokens
+			},
+			{
+				ID:          "qwen-vl-plus",
+				ProviderID:  "qwen",
+				Name:        "qwen-vl-plus",
+				DisplayName: "Qwen VL Plus",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 8192,
+				MaxOutput:     2048,
+				InputPrice:    0.8,   // $0.80 per 1M input tokens
+				OutputPrice:   2.0,   // $2.00 per 1M output tokens
+			},
+			{
+				ID:          "qwen-vl-max",
+				ProviderID:  "qwen",
+				Name:        "qwen-vl-max",
+				DisplayName: "Qwen VL Max",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 32768,
+				MaxOutput:     8192,
+				InputPrice:    4.0,   // $4.00 per 1M input tokens
+				OutputPrice:   12.0,  // $12.00 per 1M output tokens
 			},
 		},
 	}

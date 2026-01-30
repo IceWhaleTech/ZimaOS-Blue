@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -10,6 +10,7 @@ import NetworkAddressBar from '@/components/network/NetworkAddressBar.vue'
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const systemStore = useSystemStore()
@@ -61,6 +62,8 @@ function getThemeIcon(): string {
 function handleLogout() {
   showUserMenu.value = false
   authStore.logout()
+  // Redirect to login page after logout
+  router.push('/login')
 }
 </script>
 

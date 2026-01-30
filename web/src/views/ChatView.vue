@@ -332,7 +332,7 @@ onUnmounted(() => {
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            {{ t('chat.enableClaudeCode') }}
+            {{ t('common.enable') }} Claude Code CLI
           </router-link>
         </div>
 
@@ -683,15 +683,5 @@ onUnmounted(() => {
   .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
-}
-
-/* Select dropdown styling */
-select {
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394A3B8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 0.5rem center;
-  background-repeat: no-repeat;
-  background-size: 1.5em 1.5em;
-  padding-right: 2.5rem;
 }
 </style>

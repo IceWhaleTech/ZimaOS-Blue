@@ -42,6 +42,13 @@ export default {
     light: '浅色',
     system: '跟随系统',
     refresh: '刷新',
+    refreshing: '刷新中...',
+    testing: '测试中...',
+    dismiss: '关闭',
+    done: '完成',
+    // 通用动作
+    enable: '启用',
+    poweredBy: '由',
   },
   auth: {
     signIn: '登录',
@@ -284,10 +291,15 @@ export default {
     threatLevel: '威胁等级',
     dismissWarning: '关闭',
     // Claude Code CLI
-    poweredByClaudeCode: '由 Claude Code CLI 驱动',
+    poweredByClaudeCode: 'Powered by Claude Code CLI',
     poweredByClaudeCodeDesc: '聊天已增强 Claude Code CLI 功能，包括技能、工具调用和文件操作',
     enableClaudeCode: '启用 Claude Code CLI',
     enableClaudeCodeDesc: '启用 Claude Code CLI 获得更强大的功能，包括技能、工具调用和文件操作',
+    // Provider selector
+    addProvider: '添加提供商',
+    autoSwitch: '自动切换',
+    autoSwitchDesc: '当前提供商失败时自动切换到另一个提供商',
+    auto: '自动',
   },
   dashboard: {
     title: '仪表盘',

@@ -18,6 +18,11 @@ export default {
     previous: 'Föregående',
     settings: 'Inställningar',
     language: 'Språk',
+    refresh: 'Uppdatera',
+    refreshing: 'Uppdaterar...',
+    testing: 'Testar...',
+    dismiss: 'Stäng',
+    done: 'Klar',
   },
   auth: {
     ...enUS.auth,
@@ -448,7 +453,9 @@ export default {
   },
   system: {
     ...enUS.system,
+    detailedInfo: 'Detaljerad information',
     detailedSystemInfo: 'Detaljerad systeminformation',
+    loadingDetailedInfo: 'Laddar detaljerad information...',
     noDetailedInfo: 'Ingen detaljerad information tillgänglig',
   },
   security: {

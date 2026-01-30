@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
@@ -113,6 +114,20 @@ func (r *Registry) loadPlugin(ctx context.Context, path string, origin PluginOri
 	}
 	if manifest.ConfigSchema == nil {
 		manifest.ConfigSchema = make(map[string]interface{})
+	}
+
+	// Fill in missing metadata fields with reasonable defaults
+	if manifest.Name == "" {
+		manifest.Name = formatPluginName(manifest.ID)
+	}
+	if manifest.Description == "" {
+		manifest.Description = generatePluginDescription(&manifest)
+	}
+	if manifest.Version == "" {
+		manifest.Version = "1.0.0"
+	}
+	if manifest.Author == "" {
+		manifest.Author = "community"
 	}
 
 	r.mu.Lock()
@@ -592,6 +607,46 @@ func (l *pluginLogger) Error(msg string, fields ...interface{}) {
 	logger.Error().Str("plugin_id", l.pluginID).Interface("fields", fields).Msg(msg)
 }
 
+// StartPlugin starts a specific plugin by ID
+func (r *Registry) StartPlugin(ctx context.Context, id string) error {
+	r.mu.RLock()
+	plugin, exists := r.nativePlugins[id]
+	info := r.plugins[id]
+	r.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("plugin %s not found or not a native plugin", id)
+	}
+
+	// Skip plugins in error state
+	if info != nil && info.Status == StatusError {
+		return fmt.Errorf("plugin %s is in error state", id)
+	}
+
+	err := safeExecute(ctx, r.isolationConfig.StartTimeout, id, "start", func(ctx context.Context) error {
+		return plugin.Start(ctx)
+	})
+
+	if err != nil {
+		r.mu.Lock()
+		if info, exists := r.plugins[id]; exists {
+			info.Status = StatusError
+			info.Error = err.Error()
+		}
+		r.mu.Unlock()
+		return fmt.Errorf("failed to start plugin %s: %w", id, err)
+	}
+
+	r.mu.Lock()
+	if info, exists := r.plugins[id]; exists {
+		info.Status = StatusLoaded
+	}
+	r.mu.Unlock()
+
+	logger.Info().Str("plugin_id", id).Msg("Started plugin")
+	return nil
+}
+
 // StopPlugin stops a specific plugin by ID
 func (r *Registry) StopPlugin(ctx context.Context, id string) error {
 	r.mu.RLock()
@@ -629,4 +684,59 @@ func (r *Registry) UnregisterPlugin(id string) {
 	delete(r.nativePlugins, id)
 
 	logger.Info().Str("plugin_id", id).Msg("Unregistered plugin")
+}
+
+// SetPluginStatus updates the status of a plugin
+func (r *Registry) SetPluginStatus(id string, status PluginStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	info, exists := r.plugins[id]
+	if !exists {
+		return fmt.Errorf("plugin %s not found", id)
+	}
+
+	info.Status = status
+	logger.Info().Str("plugin_id", id).Str("status", string(status)).Msg("Updated plugin status")
+	return nil
+}
+
+// formatPluginName converts plugin ID to display name
+func formatPluginName(id string) string {
+	// Convert kebab-case to Title Case
+	words := strings.Split(id, "-")
+	for i, word := range words {
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + word[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+// generatePluginDescription generates a description based on the manifest
+func generatePluginDescription(manifest *Manifest) string {
+	name := manifest.Name
+	if name == "" {
+		name = formatPluginName(manifest.ID)
+	}
+
+	// Generate description based on plugin type
+	if len(manifest.Channels) > 0 {
+		return fmt.Sprintf("%s messaging integration", name)
+	}
+	if len(manifest.Skills) > 0 {
+		return fmt.Sprintf("%s skills and capabilities", name)
+	}
+	if len(manifest.Providers) > 0 {
+		return fmt.Sprintf("%s provider integration", name)
+	}
+	if manifest.Kind == PluginKindMemory {
+		return fmt.Sprintf("%s memory storage", name)
+	}
+	if manifest.Kind == PluginKindTool {
+		return fmt.Sprintf("%s tool integration", name)
+	}
+
+	// Default description
+	return fmt.Sprintf("%s plugin", name)
 }

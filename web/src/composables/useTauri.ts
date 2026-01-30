@@ -74,7 +74,7 @@ export function useTauri() {
     }
 
     try {
-      // Use Tauri's invoke API directly to call the opener plugin
+      // Use Tauri's opener plugin to open URLs
       const internals = window.__TAURI_INTERNALS__
       if (internals?.invoke) {
         await internals.invoke('plugin:opener|open_url', { url })

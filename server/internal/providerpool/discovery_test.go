@@ -17,8 +17,7 @@ func TestModelDiscovery(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	enc, _ := NewEncryptor("test-key")
-	storage, _ := NewFileStorage(tmpDir, enc)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage)
 
 	discovery := NewModelDiscovery(registry, storage, time.Hour)
@@ -127,7 +126,7 @@ func TestFetchOpenAIModels(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "fetch-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	storage, _ := NewFileStorage(tmpDir, nil)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage)
 
 	// Register provider with mock server URL
@@ -183,7 +182,7 @@ func TestFetchOllamaModels(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "ollama-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	storage, _ := NewFileStorage(tmpDir, nil)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage)
 
 	// Register Ollama provider with mock server URL
@@ -226,7 +225,7 @@ func TestModelCaching(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "cache-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	storage, _ := NewFileStorage(tmpDir, nil)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage)
 
 	// Register provider

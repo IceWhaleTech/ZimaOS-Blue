@@ -18,6 +18,11 @@ export default {
     previous: 'മുമ്പത്തേത്',
     settings: 'ക്രമീകരണങ്ങൾ',
     language: 'ഭാഷ',
+    refresh: 'പുതുക്കുക',
+    refreshing: 'പുതുക്കുന്നു...',
+    testing: 'പരീക്ഷിക്കുന്നു...',
+    dismiss: 'അടയ്ക്കുക',
+    done: 'പൂർത്തിയായി',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'വിശദമായ സിസ്റ്റം വിവരങ്ങൾ', noDetailedInfo: 'വിശദമായ വിവരങ്ങൾ ലഭ്യമല്ല' },
+  system: { ...enUS.system, detailedInfo: 'വിശദമായ വിവരങ്ങൾ', detailedSystemInfo: 'വിശദമായ സിസ്റ്റം വിവരങ്ങൾ', loadingDetailedInfo: 'വിശദമായ വിവരങ്ങൾ ലോഡ് ചെയ്യുന്നു...', noDetailedInfo: 'വിശദമായ വിവരങ്ങൾ ലഭ്യമല്ല' },
   security: {
     ...enUS.security,
     settings: {

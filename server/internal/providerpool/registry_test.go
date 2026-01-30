@@ -15,8 +15,7 @@ func TestRegistry(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	enc, _ := NewEncryptor("test-key")
-	storage, err := NewFileStorage(tmpDir, enc)
+	storage, err := NewFileStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("NewFileStorage failed: %v", err)
 	}
@@ -172,7 +171,7 @@ func TestRegistryWithCallback(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "registry-callback-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	storage, _ := NewFileStorage(tmpDir, nil)
+	storage, _ := NewFileStorage(tmpDir)
 
 	var actions []string
 	callback := func(provider *Provider, action string) {
@@ -324,7 +323,7 @@ func TestRegistryHealthCheck(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "registry-health-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	storage, _ := NewFileStorage(tmpDir, nil)
+	storage, _ := NewFileStorage(tmpDir)
 	registry, _ := NewRegistry(storage, WithHealthCheck(100*time.Millisecond, 5*time.Second))
 
 	// Register a provider

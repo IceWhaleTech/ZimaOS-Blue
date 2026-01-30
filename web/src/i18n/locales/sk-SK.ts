@@ -18,6 +18,11 @@ export default {
     previous: 'Predchádzajúce',
     settings: 'Nastavenia',
     language: 'Jazyk',
+    refresh: 'Obnoviť',
+    refreshing: 'Obnovuje sa...',
+    testing: 'Testuje sa...',
+    dismiss: 'Zavrieť',
+    done: 'Hotovo',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Podrobné systémové informácie', noDetailedInfo: 'Žiadne podrobné informácie k dispozícii' },
+  system: { ...enUS.system, detailedInfo: 'Podrobné informácie', detailedSystemInfo: 'Podrobné systémové informácie', loadingDetailedInfo: 'Načítavanie podrobných informácií...', noDetailedInfo: 'Žiadne podrobné informácie k dispozícii' },
   security: {
     ...enUS.security,
     settings: {

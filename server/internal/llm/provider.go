@@ -248,3 +248,40 @@ func (m *MockProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan 
 
 	return ch, nil
 }
+
+// ChatStreamCallback sends a streaming chat completion request and calls the callback for each chunk.
+func (m *MockProvider) ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error {
+	// Check context cancellation first
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	if m.err != nil {
+		return m.err
+	}
+
+	content := "Mock response"
+	if m.response != nil {
+		content = m.response.Message.Content
+	}
+
+	// Send content chunk
+	if err := callback(StreamChunk{
+		ID:    "mock-stream",
+		Model: req.Model,
+		Delta: content,
+		Done:  false,
+	}); err != nil {
+		return err
+	}
+
+	// Send final done chunk
+	return callback(StreamChunk{
+		ID:    "mock-stream",
+		Model: req.Model,
+		Done:  true,
+		Usage: &Usage{TotalTokens: 10},
+	})
+}

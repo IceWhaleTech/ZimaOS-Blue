@@ -18,6 +18,11 @@ export default {
     previous: 'Προηγούμενο',
     settings: 'Ρυθμίσεις',
     language: 'Γλώσσα',
+    refresh: 'Ανανέωση',
+    refreshing: 'Ανανέωση...',
+    testing: 'Δοκιμή...',
+    dismiss: 'Κλείσιμο',
+    done: 'Ολοκληρώθηκε',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Λεπτομερείς πληροφορίες συστήματος', noDetailedInfo: 'Δεν υπάρχουν λεπτομερείς πληροφορίες' },
+  system: { ...enUS.system, detailedInfo: 'Λεπτομερείς πληροφορίες', detailedSystemInfo: 'Λεπτομερείς πληροφορίες συστήματος', loadingDetailedInfo: 'Φόρτωση λεπτομερών πληροφοριών...', noDetailedInfo: 'Δεν υπάρχουν λεπτομερείς πληροφορίες' },
   security: {
     ...enUS.security,
     settings: {

@@ -18,6 +18,11 @@ export default {
     previous: 'Prethodno',
     settings: 'Postavke',
     language: 'Jezik',
+    refresh: 'Osvježi',
+    refreshing: 'Osvježavanje...',
+    testing: 'Testiranje...',
+    dismiss: 'Zatvori',
+    done: 'Gotovo',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Detaljne informacije o sustavu', noDetailedInfo: 'Nema dostupnih detaljnih informacija' },
+  system: { ...enUS.system, detailedInfo: 'Detaljne informacije', detailedSystemInfo: 'Detaljne informacije o sustavu', loadingDetailedInfo: 'Učitavanje detaljnih informacija...', noDetailedInfo: 'Nema dostupnih detaljnih informacija' },
   security: {
     ...enUS.security,
     settings: {

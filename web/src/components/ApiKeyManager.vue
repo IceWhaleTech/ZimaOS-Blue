@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface ApiKey {
   id: string
@@ -234,7 +237,7 @@ function confirmRevoke(key: ApiKey) {
               class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               @click="closeModal"
             >
-              {{ createdKey ? 'Done' : 'Cancel' }}
+              {{ createdKey ? t('common.done') : t('common.cancel') }}
             </button>
             <button
               v-if="!createdKey"

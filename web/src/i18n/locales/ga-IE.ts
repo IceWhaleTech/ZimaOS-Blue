@@ -18,6 +18,11 @@ export default {
     previous: 'Roimhe seo',
     settings: 'Socruithe',
     language: 'Teanga',
+    refresh: 'Athnuachan',
+    refreshing: 'Ag athnuachan...',
+    testing: 'Ag tástáil...',
+    dismiss: 'Dún',
+    done: 'Déanta',
   },
   auth: {
     ...enUS.auth,
@@ -437,7 +442,7 @@ export default {
       },
     },
   },
-  system: { ...enUS.system, detailedSystemInfo: 'Faisnéis mhionsonraithe an chórais', noDetailedInfo: 'Níl faisnéis mhionsonraithe ar fáil' },
+  system: { ...enUS.system, detailedInfo: 'Faisnéis mhionsonraithe', detailedSystemInfo: 'Faisnéis mhionsonraithe an chórais', loadingDetailedInfo: 'Ag lódáil faisnéise mhionsonraithe...', noDetailedInfo: 'Níl faisnéis mhionsonraithe ar fáil' },
   security: {
     ...enUS.security,
     settings: {

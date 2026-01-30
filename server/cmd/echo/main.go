@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	_ "modernc.org/sqlite"
 	"go.uber.org/zap"
+	_ "modernc.org/sqlite"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/a2ui"
 	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
@@ -63,6 +63,80 @@ var (
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
+
+// loadProvidersFromPool loads providers from Provider Pool and registers them in LLM registry
+// This replaces the environment variable-based provider registration with encrypted storage
+func loadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderRegistry) {
+	if pool == nil || llmRegistry == nil {
+		return
+	}
+
+	// Get all enabled providers from the pool
+	providers := pool.Registry.ListEnabled()
+
+	registeredCount := 0
+	for _, provider := range providers {
+		// Get the first enabled API key
+		var apiKey string
+		var baseURL string
+
+		if len(provider.APIKeys) > 0 {
+			for _, key := range provider.APIKeys {
+				if key.Enabled && key.Key != "" {
+					apiKey = key.Key
+					break
+				}
+			}
+		}
+
+		baseURL = provider.BaseURL
+
+		// Map Provider Pool provider to LLM provider
+		var llmProvider llm.Provider
+
+		switch provider.ID {
+		case "openai":
+			llmProvider = llm.NewOpenAIProvider(apiKey, baseURL)
+		case "anthropic":
+			llmProvider = llm.NewClaudeProvider(apiKey, baseURL)
+		case "ollama":
+			// Ollama doesn't need API key
+			if baseURL == "" {
+				baseURL = "http://localhost:11434"
+			}
+			llmProvider = llm.NewOllamaProvider(baseURL)
+		case "custom":
+			llmProvider = llm.NewCustomProvider(apiKey, baseURL)
+		case "grok":
+			llmProvider = llm.NewGrokProvider(apiKey, baseURL)
+		case "qwen":
+			llmProvider = llm.NewQwenProvider(apiKey, baseURL)
+		default:
+			// For unknown providers, try to use custom provider
+			logger.Debug().
+				Str("provider_id", provider.ID).
+				Str("provider_name", provider.Name).
+				Msg("Unknown provider type, skipping")
+			continue
+		}
+
+		if llmProvider != nil {
+			llmRegistry.Register(llmProvider)
+			registeredCount++
+			logger.Info().
+				Str("provider_id", provider.ID).
+				Str("provider_name", provider.Name).
+				Bool("has_api_key", apiKey != "").
+				Str("base_url", baseURL).
+				Msg("Registered provider from Provider Pool")
+		}
+	}
+
+	logger.Info().
+		Int("total_enabled", len(providers)).
+		Int("registered", registeredCount).
+		Msg("Loaded providers from Provider Pool")
+}
 
 func main() {
 	// Handle Windows service commands (install, uninstall, start, stop, status)
@@ -251,6 +325,32 @@ func main() {
 		}
 	}
 	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
+
+	// Grok provider (xAI)
+	grokKey := os.Getenv("GROK_API_KEY")
+	grokBaseURL := ""
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "grok" && savedLLMConfig.APIKey != "" {
+		grokKey = savedLLMConfig.APIKey
+		grokBaseURL = savedLLMConfig.BaseURL
+	}
+	if grokKey != "" {
+		llmRegistry.Register(llm.NewGrokProvider(grokKey, grokBaseURL))
+	} else {
+		llmRegistry.Register(llm.NewGrokProvider("", ""))
+	}
+
+	// Qwen provider (Alibaba Cloud)
+	qwenKey := os.Getenv("QWEN_API_KEY")
+	qwenBaseURL := ""
+	if savedLLMConfig != nil && savedLLMConfig.Provider == "qwen" && savedLLMConfig.APIKey != "" {
+		qwenKey = savedLLMConfig.APIKey
+		qwenBaseURL = savedLLMConfig.BaseURL
+	}
+	if qwenKey != "" {
+		llmRegistry.Register(llm.NewQwenProvider(qwenKey, qwenBaseURL))
+	} else {
+		llmRegistry.Register(llm.NewQwenProvider("", ""))
+	}
 
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
@@ -616,7 +716,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, zapLogger, version, buildTime, gitCommit, dataDir)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -660,7 +760,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry) {
 	e := srv.Echo()
 
 	// Setup wizard routes (no auth required)
@@ -853,7 +953,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Register provider pool routes (protected) - /api/v1/providers/*
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerPool, err := providerpool.NewPool(providerPoolPath, "")
+
+	// Create provider pool (no encryption)
+	providerPool, err := providerpool.NewPool(providerPoolPath)
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize provider pool, provider pool features will be disabled")
 	} else {
@@ -875,6 +977,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			}
 		}
 
+		// Load providers from Provider Pool and register them in LLM registry
+		// This replaces the environment variable-based provider registration
+		loadProvidersFromPool(providerPool, llmRegistry)
+
 		providerPoolHandler := providerpool.NewHandler(providerPool)
 		providersGroup := protected.Group("/providers")
 		providerPoolHandler.RegisterRoutes(providersGroup)
@@ -895,6 +1001,45 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		failoverGroup := protected.Group("/proxy/failover")
 		failoverHandler.RegisterRoutes(failoverGroup)
 		logger.Info().Msg("Proxy failover routes registered")
+
+		// Register OpenAI-compatible proxy routes on /v1/* (unified port architecture)
+		// This allows external apps and Claude Code CLI to use Echo as an OpenAI-compatible API
+		if cfg.Proxy != nil && cfg.Proxy.Enabled {
+			logger.Info().Msg("Initializing OpenAI-compatible proxy on /v1/*")
+
+			// Use Routing config (prefer Route over deprecated Routing field)
+			routingConfig := &cfg.Proxy.Routing
+			if cfg.Proxy.Route != nil {
+				routingConfig = cfg.Proxy.Route
+			}
+
+			// Create proxy components
+			proxyRouter := proxy.NewRouter(routingConfig)
+			proxyConnPool := proxy.NewConnectionPool(&cfg.Proxy.Connection)
+			proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
+			proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+
+			// Create /v1 group (no /api prefix - OpenAI-compatible)
+			v1ProxyGroup := e.Group("/v1")
+
+			// Optional: Add authentication middleware if configured
+			// For now, we'll make it public to allow easy integration with Claude Code CLI
+			// Users can add authentication via API keys in the provider configuration
+
+			// Register OpenAI-compatible endpoints
+			// These endpoints forward requests to configured providers (Anthropic, OpenAI, etc.)
+			v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
+			v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
+			v1ProxyGroup.Any("/embeddings", echo.WrapHandler(proxyHandler))
+			v1ProxyGroup.Any("/models", echo.WrapHandler(proxyHandler))
+
+			logger.Info().
+				Str("path", "/v1/*").
+				Str("providers", fmt.Sprintf("%d configured", len(routingConfig.Providers))).
+				Str("load_balancing", routingConfig.LoadBalancing).
+				Bool("failover", routingConfig.Failover.Enabled).
+				Msg("OpenAI-compatible proxy routes registered (unified port)")
+		}
 	}
 
 	// Register companion routes (Echo Companion - real-time AI Agent monitoring)
