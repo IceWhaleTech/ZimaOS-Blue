@@ -1432,7 +1432,6 @@ export default {
     contextWindow: 'Janela de contexto',
     maxTokens: 'Limite de conteúdo',
     capabilities: 'Recursos',
-    pricing: 'Preços',
     perInputToken: 'por token de entrada',
     perOutputToken: 'por token de saída',
     fetchModels: 'Buscar modelos',

@@ -135,8 +135,10 @@ async function handleStart() {
 }
 
 async function handleStop() {
+  console.log('RemoteAccessSettings: handleStop called')
   try {
     await stopRemoteAccess()
+    console.log('RemoteAccessSettings: stopRemoteAccess completed')
     stopStatusPolling()
     tunnelStatus.value = { active: false }
     state.value = 'ready'
@@ -263,6 +265,9 @@ watch(() => tunnelStatus.value?.active, (active) => {
           <p class="text-sm text-gray-600 dark:text-gray-400">
             {{ t('remoteAccess.readyDescription') }}
           </p>
+          <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">
+            {{ t('remoteAccess.antivirusHint') }}
+          </p>
         </div>
 
         <!-- Provider Selection (custom dropdown so each option shows logo in front) -->
@@ -365,6 +370,9 @@ watch(() => tunnelStatus.value?.active, (active) => {
             />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('remoteAccess.ngrokDomainHint') }}
+              <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">
+                {{ t('remoteAccess.ngrokClaimDomain') }}
+              </a>
             </p>
           </div>
         </div>
@@ -388,7 +396,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
       <!-- Connecting State -->
       <div v-else-if="state === 'connecting'" class="space-y-4">
         <!-- Show TunnelStatus with connecting state -->
-        <TunnelStatus v-if="tunnelStatus" :status="tunnelStatus" />
+        <TunnelStatus v-if="tunnelStatus" :status="tunnelStatus" @disconnect="handleStop" />
 
         <div v-else class="flex items-center justify-center py-8">
           <div class="text-center">
@@ -425,7 +433,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
       <!-- Connected State -->
       <div v-else-if="state === 'connected' && tunnelStatus" class="space-y-4">
-        <TunnelStatus :status="tunnelStatus" />
+        <TunnelStatus :status="tunnelStatus" @disconnect="handleStop" />
       </div>
 
       <!-- Error State -->

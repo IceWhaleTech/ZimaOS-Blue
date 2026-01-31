@@ -829,7 +829,6 @@ export default {
     contextWindow: 'Kontextové okno',
     maxTokens: 'Limit obsahu',
     capabilities: 'Schopnosti',
-    pricing: 'Ceny',
     perInputToken: 'za vstupní token',
     perOutputToken: 'za výstupní token',
     fetchModels: 'Načíst modely',

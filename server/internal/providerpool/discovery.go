@@ -115,9 +115,13 @@ func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) 
 		return models, nil // Return all models if provider not found
 	}
 
-	// If AllowedModels is empty, return all models
-	if len(provider.AllowedModels) == 0 {
+	// If AllowedModels is nil (never configured), return all models
+	// If AllowedModels is empty slice (explicitly set to none), return no models
+	if provider.AllowedModels == nil {
 		return models, nil
+	}
+	if len(provider.AllowedModels) == 0 {
+		return []*Model{}, nil
 	}
 
 	// Filter models by AllowedModels
@@ -126,8 +130,12 @@ func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) 
 
 // filterModelsByAllowed filters models to only include those in the allowed list
 func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
-	if len(allowedModels) == 0 {
+	// nil means "no filter" (all allowed), empty slice means "none allowed"
+	if allowedModels == nil {
 		return models
+	}
+	if len(allowedModels) == 0 {
+		return []*Model{}
 	}
 
 	// Create a set for fast lookup

@@ -1093,7 +1093,6 @@ export default {
     contextWindow: 'コンテキスト長',
     maxTokens: '内容上限',
     capabilities: '機能',
-    pricing: '料金',
     perInputToken: '入力トークンあたり',
     perOutputToken: '出力トークンあたり',
     fetchModels: 'モデルを取得',

@@ -19,6 +19,9 @@ const (
 	boreControlPort = 7835
 	boreMaxFrameLen = 256
 	boreDialTimeout = 10 * time.Second
+	// Server sends heartbeat every 500ms, so we should receive one within a few seconds.
+	// Using 10 seconds as timeout to allow for network latency and some packet loss.
+	boreReadTimeout = 10 * time.Second
 )
 
 // clientMessage is sent from client to server (JSON with tag).
@@ -97,6 +100,8 @@ func (c *boreConn) close() error {
 }
 
 // boreClient implements the bore client protocol (connect to bore.pub, Hello, then handle Connection/Accept).
+// The server sends heartbeat messages every 500ms to keep the connection alive.
+// Client only needs to receive these heartbeats; no response is required.
 func boreClient(ctx context.Context, server string, localPort int, onURL func(string)) error {
 	addr := fmt.Sprintf("%s:%d", server, boreControlPort)
 	conn, err := net.DialTimeout("tcp", addr, boreDialTimeout)
@@ -104,6 +109,12 @@ func boreClient(ctx context.Context, server string, localPort int, onURL func(st
 		return fmt.Errorf("bore dial: %w", err)
 	}
 	defer conn.Close()
+
+	// Enable TCP Keep-Alive to prevent connection drop by intermediate devices (NAT, firewall)
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(30 * time.Second)
+	}
 
 	// When ctx is cancelled, close the connection so blocking read returns.
 	go func() {
@@ -120,6 +131,7 @@ func boreClient(ctx context.Context, server string, localPort int, onURL func(st
 	}
 
 	// Read Hello(remotePort) or Error
+	conn.SetReadDeadline(time.Now().Add(boreReadTimeout))
 	msg, err := bc.readMessage()
 	if err != nil {
 		return err
@@ -135,12 +147,18 @@ func boreClient(ctx context.Context, server string, localPort int, onURL func(st
 	onURL(urlStr)
 
 	// Loop: read ServerMessage; on Connection(uuid), accept and proxy
+	// Server sends Heartbeat every 500ms to keep connection alive.
+	// We use a 10-second read timeout - if no message received, connection is likely dead.
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
+
+		// Set read deadline for each read to detect dead connections.
+		// Server sends heartbeat every 500ms, so 10s timeout is very generous.
+		conn.SetReadDeadline(time.Now().Add(boreReadTimeout))
 		msg, err := bc.readMessage()
 		if err != nil {
 			return err
@@ -152,7 +170,8 @@ func boreClient(ctx context.Context, server string, localPort int, onURL func(st
 		if msg.Error != nil {
 			return fmt.Errorf("bore server: %s", *msg.Error)
 		}
-		// Heartbeat / Hello ignore
+		// Heartbeat or Hello received - connection is alive, continue loop.
+		// No response needed per bore protocol.
 	}
 }
 

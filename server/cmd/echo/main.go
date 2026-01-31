@@ -24,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
@@ -339,7 +340,20 @@ func main() {
 	tools.RegisterBuiltinTools(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
-	// Claude Code CLI module removed to avoid antivirus warnings (download/exec external binary).
+	// Claude Code CLI provider (v0.10)
+	if cfg.ClaudeCode.Enabled {
+		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, claudeKey, claudeBaseURL)
+		ccProvider := claudecode.NewProvider(ccConfig)
+		ccProvider.SetToolRegistry(toolRegistry) // Set tool registry for system prompt
+		ccProvider.Start()
+		llmRegistry.Register(ccProvider)
+		logger.Info().Str("command", cfg.ClaudeCode.Command).Msg("Claude Code CLI provider registered")
+
+		// Register shutdown hook for Claude Code provider
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return ccProvider.Close()
+		})
+	}
 
 	// Initialize skill registry and register built-in skills
 	skillRegistry := skill.NewRegistry()
@@ -938,7 +952,12 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Info().Msg("Form filler routes registered")
 	}
 
-	// Claude Code CLI module removed to avoid antivirus warnings.
+	// Register Claude Code CLI version management routes (protected) - /api/v1/claudecode/*
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+	claudeCodeGroup := protected.Group("/claudecode")
+	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
+	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
+	logger.Info().Msg("Claude Code CLI routes registered")
 
 	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
 	// Also register multi-provider tunnel routes - /api/v1/tunnel/*
@@ -1146,4 +1165,36 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Info().Msg("Development mode: proxying to Vite dev server")
 	}
 	web.RegisterStaticRoutes(e)
+}
+
+// convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
+func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL string) *claudecode.ClaudeCodeConfig {
+	return &claudecode.ClaudeCodeConfig{
+		Enabled:      cfg.Enabled,
+		Command:      cfg.Command,
+		WorkspaceDir: cfg.WorkspaceDir,
+		DefaultModel: cfg.DefaultModel,
+		Timeout:      cfg.Timeout,
+		SessionTTL:   cfg.SessionTTL,
+		APIKey:       apiKey,
+		BaseURL:      baseURL,
+		Backend: claudecode.CliBackendConfig{
+			Command:           cfg.Command,
+			Args:              cfg.Backend.Args,
+			ResumeArgs:        cfg.Backend.ResumeArgs,
+			Output:            cfg.Backend.Output,
+			Input:             cfg.Backend.Input,
+			MaxPromptArgChars: cfg.Backend.MaxPromptArgChars,
+			Env:               cfg.Backend.Env,
+			ClearEnv:          cfg.Backend.ClearEnv,
+			ModelArg:          cfg.Backend.ModelArg,
+			ModelAliases:      cfg.Backend.ModelAliases,
+			SessionArg:        cfg.Backend.SessionArg,
+			SessionMode:       cfg.Backend.SessionMode,
+			SystemPromptArg:   cfg.Backend.SystemPromptArg,
+			SystemPromptMode:  cfg.Backend.SystemPromptMode,
+			SystemPromptWhen:  cfg.Backend.SystemPromptWhen,
+			Serialize:         cfg.Backend.Serialize,
+		},
+	}
 }

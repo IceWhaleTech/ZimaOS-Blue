@@ -1187,7 +1187,6 @@ export default {
     contextWindow: '上下文長度',
     maxTokens: '內容上限',
     capabilities: '能力',
-    pricing: '定價',
     perInputToken: '每輸入 Token',
     perOutputToken: '每輸出 Token',
     fetchModels: '拉取模型',

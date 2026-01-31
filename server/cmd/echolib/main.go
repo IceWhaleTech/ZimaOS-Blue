@@ -28,6 +28,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
@@ -699,7 +700,10 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		formfillerHandler.RegisterRoutes(formfillerGroup)
 	}
 
-	// Claude Code CLI module removed to avoid antivirus warnings.
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+	claudeCodeGroup := protected.Group("/claudecode")
+	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
+	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
 
 	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)
 	providerSettingsGroup := protected.Group("/providers/settings")

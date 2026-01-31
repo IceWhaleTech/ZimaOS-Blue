@@ -829,7 +829,6 @@ export default {
     contextWindow: 'Okno kontekstu',
     maxTokens: 'Limit treści',
     capabilities: 'Możliwości',
-    pricing: 'Cennik',
     perInputToken: 'za token wejściowy',
     perOutputToken: 'za token wyjściowy',
     fetchModels: 'Pobierz modele',

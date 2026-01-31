@@ -50,8 +50,14 @@ type connectResult struct {
 func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 	m.mu.Lock()
 	if m.running || m.connecting {
-		m.mu.Unlock()
-		return fmt.Errorf("tunnel already running")
+		// If active manager has stopped, clean up and allow restart
+		if m.activeManager == nil || !m.activeManager.IsRunning() {
+			m.running = false
+			m.activeManager = nil
+		} else {
+			m.mu.Unlock()
+			return fmt.Errorf("tunnel already running")
+		}
 	}
 	m.connecting = true
 	m.mu.Unlock()
@@ -250,6 +256,9 @@ func (m *AutoManager) GetStatus() Status {
 	status := m.activeManager.GetStatus()
 	// Override provider to show "auto" but include actual provider info
 	status.Provider = ProviderAuto
+	// Use AutoManager's own timing info (sub-managers may not track these)
+	status.StartedAt = m.startedAt
+	status.ExpiresAt = m.expiresAt
 
 	return status
 }

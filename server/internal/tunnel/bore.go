@@ -9,7 +9,12 @@ import (
 
 // BoreManager manages Bore tunnels using the native Go implementation of the bore protocol.
 // Compatible with bore.pub (https://github.com/ekzhang/bore).
-const boreServer = "bore.pub"
+const (
+	boreServer               = "bore.pub"
+	boreMaxReconnectDelay    = 60 * time.Second // Maximum delay between reconnection attempts
+	boreInitReconnectDelay   = 2 * time.Second  // Initial delay between reconnection attempts
+	boreMaxReconnectAttempts = 10               // Maximum reconnection attempts before giving up
+)
 
 // BoreManager implements Manager for bore.
 type BoreManager struct {
@@ -18,6 +23,7 @@ type BoreManager struct {
 	url       string
 	startedAt time.Time
 	cancel    context.CancelFunc
+	port      int // Store port for reconnection
 
 	onURLChange func(url string)
 	onError     func(err error)
@@ -29,6 +35,7 @@ func NewBoreManager() *BoreManager {
 }
 
 // Start runs the bore client in-process (native Go protocol); no external binary required.
+// Includes automatic reconnection with exponential backoff.
 func (m *BoreManager) Start(ctx context.Context, cfg *Config) error {
 	m.mu.Lock()
 	if m.running {
@@ -42,37 +49,104 @@ func (m *BoreManager) Start(ctx context.Context, cfg *Config) error {
 		port = 8080
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	// Create independent context for long-running tunnel operation
+	// This prevents parent context cancellation from stopping the tunnel
+	tunnelCtx, cancel := context.WithCancel(context.Background())
 
 	m.mu.Lock()
 	m.running = true
 	m.cancel = cancel
 	m.startedAt = time.Now()
+	m.port = port
 	m.mu.Unlock()
 
-	go func() {
-		err := boreClient(ctx, boreServer, port, func(urlStr string) {
-			m.mu.Lock()
-			if m.url == "" {
-				m.url = urlStr
-				m.mu.Unlock()
-				if m.onURLChange != nil {
-					m.onURLChange(urlStr)
-				}
-			} else {
-				m.mu.Unlock()
-			}
-		})
-		m.mu.Lock()
-		m.running = false
-		m.url = ""
-		m.mu.Unlock()
-		if err != nil && err != context.Canceled && m.onError != nil {
-			m.onError(err)
-		}
-	}()
+	go m.runWithReconnect(tunnelCtx, port)
 
 	return nil
+}
+
+// runWithReconnect runs the bore client with automatic reconnection on failure.
+func (m *BoreManager) runWithReconnect(ctx context.Context, port int) {
+	reconnectDelay := boreInitReconnectDelay
+	reconnectAttempts := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			m.mu.Lock()
+			m.running = false
+			m.url = ""
+			m.mu.Unlock()
+			return
+		default:
+		}
+
+		err := boreClient(ctx, boreServer, port, func(urlStr string) {
+			m.mu.Lock()
+			oldURL := m.url
+			m.url = urlStr
+			m.mu.Unlock()
+
+			// Notify on URL change (including reconnection with new URL)
+			if m.onURLChange != nil && oldURL != urlStr {
+				m.onURLChange(urlStr)
+			}
+
+			// Reset reconnect attempts on successful connection
+			reconnectAttempts = 0
+			reconnectDelay = boreInitReconnectDelay
+		})
+
+		// Check if context was cancelled (intentional stop)
+		select {
+		case <-ctx.Done():
+			m.mu.Lock()
+			m.running = false
+			m.url = ""
+			m.mu.Unlock()
+			return
+		default:
+		}
+
+		// Connection failed or dropped
+		m.mu.Lock()
+		m.url = "" // Clear URL while disconnected
+		m.mu.Unlock()
+
+		reconnectAttempts++
+		if reconnectAttempts > boreMaxReconnectAttempts {
+			m.mu.Lock()
+			m.running = false
+			m.mu.Unlock()
+			if err != nil && m.onError != nil {
+				m.onError(fmt.Errorf("bore: max reconnection attempts (%d) exceeded: %w", boreMaxReconnectAttempts, err))
+			}
+			return
+		}
+
+		// Log reconnection attempt (via error callback for visibility)
+		if m.onError != nil {
+			m.onError(fmt.Errorf("bore: connection lost, reconnecting in %v (attempt %d/%d): %v",
+				reconnectDelay, reconnectAttempts, boreMaxReconnectAttempts, err))
+		}
+
+		// Wait before reconnecting with exponential backoff
+		select {
+		case <-ctx.Done():
+			m.mu.Lock()
+			m.running = false
+			m.url = ""
+			m.mu.Unlock()
+			return
+		case <-time.After(reconnectDelay):
+		}
+
+		// Exponential backoff: double the delay up to max
+		reconnectDelay *= 2
+		if reconnectDelay > boreMaxReconnectDelay {
+			reconnectDelay = boreMaxReconnectDelay
+		}
+	}
 }
 
 // Stop stops the tunnel.

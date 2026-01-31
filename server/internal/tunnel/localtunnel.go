@@ -47,13 +47,15 @@ func (m *LocalTunnelManager) Start(ctx context.Context, cfg *Config) error {
 	subdomain := cfg.Subdomain
 	host := localtunnelDefaultHost
 
-	ctx, cancel := context.WithCancel(ctx)
-
+	// Use passed ctx only for initial request (to respect caller's timeout/cancel during setup)
 	info, err := requestLocaltunnel(ctx, host, subdomain)
 	if err != nil {
-		cancel()
 		return fmt.Errorf("localtunnel request: %w", err)
 	}
+
+	// Create independent context for long-running tunnel operation
+	// This prevents parent context cancellation from stopping the tunnel
+	tunnelCtx, cancel := context.WithCancel(context.Background())
 
 	m.mu.Lock()
 	m.running = true
@@ -72,7 +74,7 @@ func (m *LocalTunnelManager) Start(ctx context.Context, cfg *Config) error {
 	}
 
 	go func() {
-		err := runLocaltunnelClient(ctx, info, port, func(u string) {
+		err := runLocaltunnelClient(tunnelCtx, info, port, func(u string) {
 			m.mu.Lock()
 			if m.url == "" {
 				m.url = u

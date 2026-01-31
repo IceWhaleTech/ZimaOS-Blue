@@ -499,23 +499,29 @@ async function openAllowedModelsModal() {
       allAvailableModels.value = selectedProviderModels.value
     }
 
-    // Initialize form with current allowed models
-    allowedModelsForm.value = provider.allowed_models ? [...provider.allowed_models] : []
+    // Initialize form: if allowed_models has values, use them; otherwise default to all models
+    if (provider.allowed_models && provider.allowed_models.length > 0) {
+      allowedModelsForm.value = [...provider.allowed_models]
+    } else {
+      // No restriction configured - default to all models selected
+      allowedModelsForm.value = allAvailableModels.value.map(m => m.id)
+    }
   } catch (e) {
     console.error('Failed to load models:', e)
     allAvailableModels.value = selectedProviderModels.value
-    allowedModelsForm.value = provider.allowed_models ? [...provider.allowed_models] : []
+    // On error, default to all models selected
+    allowedModelsForm.value = allAvailableModels.value.map(m => m.id)
   } finally {
     loadingAllModels.value = false
   }
 }
 
 function toggleModelInAllowedList(modelId: string) {
-  const index = allowedModelsForm.value.indexOf(modelId)
-  if (index === -1) {
-    allowedModelsForm.value.push(modelId)
+  // Simple toggle: checked = in array, unchecked = not in array
+  if (allowedModelsForm.value.includes(modelId)) {
+    allowedModelsForm.value = allowedModelsForm.value.filter(id => id !== modelId)
   } else {
-    allowedModelsForm.value.splice(index, 1)
+    allowedModelsForm.value = [...allowedModelsForm.value, modelId]
   }
 }
 
@@ -1315,7 +1321,7 @@ onMounted(() => {
               {{ t('providerPool.clearAll') }}
             </button>
             <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto self-center">
-              {{ allowedModelsForm.length === 0 ? t('providerPool.allModelsEnabled') : t('providerPool.selectedCount', { count: allowedModelsForm.length }) }}
+              {{ t('providerPool.selectedCount', { count: allowedModelsForm.length }) }}
             </span>
           </div>
 
@@ -1328,7 +1334,7 @@ onMounted(() => {
             >
               <input
                 type="checkbox"
-                :checked="allowedModelsForm.length === 0 || allowedModelsForm.includes(model.id)"
+                :checked="allowedModelsForm.includes(model.id)"
                 class="w-4 h-4 text-accent bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-accent"
                 @change="toggleModelInAllowedList(model.id)"
               />

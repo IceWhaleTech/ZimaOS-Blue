@@ -265,6 +265,11 @@ func (h *TunnelHandler) StopTunnel(c echo.Context) error {
 		})
 	}
 
+	// Clear active tunnel reference
+	h.mu.Lock()
+	h.active = nil
+	h.mu.Unlock()
+
 	// Log stop
 	if h.repository != nil {
 		h.repository.AddLog(context.Background(), "", "stopped", "Tunnel stopped", nil)

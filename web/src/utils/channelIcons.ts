@@ -92,8 +92,11 @@ export const channelIcons: Record<string, string> = {
 
 /** Tunnel provider icons (remote access: ngrok, Cloudflare, localtunnel, etc.) */
 export const tunnelProviderIcons: Record<string, string> = {
+  auto: '/icons/tunnel/auto.svg',
   ngrok: '/icons/tunnel/ngrok.svg',
   cloudflare: '/icons/tunnel/cloudflare.svg',
+  bore: '/icons/tunnel/bore.svg',
+  serveo: '/icons/tunnel/serveo.svg',
   localtunnel: '/icons/tunnel/localtunnel.svg',
 }
 

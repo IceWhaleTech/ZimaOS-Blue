@@ -1083,7 +1083,6 @@ export default {
     contextWindow: '컨텍스트 길이',
     maxTokens: '콘텐츠 상한',
     capabilities: '기능',
-    pricing: '가격',
     perInputToken: '입력 토큰당',
     perOutputToken: '출력 토큰당',
     fetchModels: '모델 가져오기',

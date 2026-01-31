@@ -1098,7 +1098,6 @@ export default {
     contextWindow: 'Fenêtre de contexte',
     maxTokens: 'Limite de contenu',
     capabilities: 'Fonctionnalités',
-    pricing: 'Tarification',
     perInputToken: 'par token d\'entrée',
     perOutputToken: 'par token de sortie',
     fetchModels: 'Récupérer les modèles',

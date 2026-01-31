@@ -1097,7 +1097,6 @@ export default {
     contextWindow: 'Kontextfenster',
     maxTokens: 'Inhaltslimit',
     capabilities: 'Funktionen',
-    pricing: 'Preise',
     perInputToken: 'pro Eingabe-Token',
     perOutputToken: 'pro Ausgabe-Token',
     fetchModels: 'Modelle laden',

@@ -827,7 +827,6 @@ export default {
     contextWindow: 'Finestra de context',
     maxTokens: 'Límit de contingut',
     capabilities: 'Capacitats',
-    pricing: 'Preus',
     perInputToken: 'per token d\'entrada',
     perOutputToken: 'per token de sortida',
     fetchModels: 'Obtenir models',

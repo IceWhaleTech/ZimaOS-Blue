@@ -829,7 +829,6 @@ export default {
     contextWindow: 'Kontextfönster',
     maxTokens: 'Innehållsgräns',
     capabilities: 'Funktioner',
-    pricing: 'Priser',
     perInputToken: 'per ingångstoken',
     perOutputToken: 'per utgångstoken',
     fetchModels: 'Hämta modeller',

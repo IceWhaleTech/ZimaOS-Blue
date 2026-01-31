@@ -38,8 +38,10 @@ func (m *ServeoManager) Start(ctx context.Context, cfg *Config) error {
 		port = 8080
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	url, cleanup, err := startServeoNativeSSH(ctx, port, cfg.Subdomain)
+	// Create independent context for long-running tunnel operation
+	// This prevents parent context cancellation from stopping the tunnel
+	tunnelCtx, cancel := context.WithCancel(context.Background())
+	url, cleanup, err := startServeoNativeSSH(tunnelCtx, port, cfg.Subdomain)
 	if err != nil {
 		cancel()
 		return err

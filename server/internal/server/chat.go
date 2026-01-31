@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
@@ -207,16 +208,18 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
-	store            *memory.Store
-	providers        *llm.ProviderRegistry
-	providerPool     *providerpool.Pool
-	toolRegistry     *tools.Registry
-	streamController *StreamController
-	metricsRecorder  MetricsRecorder
-	companionManager *companion.Manager
-	promptGuard      *promptguard.Detector
-	convToSession    map[string]string
-	convMu           sync.RWMutex
+	store             *memory.Store
+	providers         *llm.ProviderRegistry
+	providerPool      *providerpool.Pool
+	toolRegistry      *tools.Registry
+	streamController  *claudecode.StreamController
+	compactionConfig  claudecode.CompactionConfig
+	claudeCodeHandler *claudecode.Handler
+	metricsRecorder   MetricsRecorder
+	companionManager  *companion.Manager
+	promptGuard       *promptguard.Detector
+	convToSession     map[string]string
+	convMu            sync.RWMutex
 }
 
 // MetricsRecorder is an interface for recording API call metrics.
@@ -231,7 +234,8 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		store:            store,
 		providers:        providers,
 		toolRegistry:     toolRegistry,
-		streamController: NewStreamController(),
+		streamController: claudecode.NewStreamController(),
+		compactionConfig: claudecode.DefaultCompactionConfig(),
 		convToSession:    make(map[string]string),
 	}
 }
@@ -239,6 +243,11 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 // SetMetricsRecorder sets the metrics recorder for tracking API call metrics.
 func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 	h.metricsRecorder = recorder
+}
+
+// SetClaudeCodeHandler sets the Claude Code handler for checking enabled status.
+func (h *ChatHandler) SetClaudeCodeHandler(handler *claudecode.Handler) {
+	h.claudeCodeHandler = handler
 }
 
 // SetCompanionManager sets the companion manager for session tracking.
@@ -1249,9 +1258,9 @@ func (h *ChatHandler) CancelAllStreams(c echo.Context) error {
 }
 
 // compactMessages applies context compaction to messages if needed.
-// Compaction (Claude Code module) removed to avoid antivirus triggers; returns messages as-is.
-func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, _ llm.Provider) ([]llm.Message, string, error) {
-	return messages, "", nil
+func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, provider llm.Provider) ([]llm.Message, string, error) {
+	compactor := claudecode.NewCompactor(h.compactionConfig, provider)
+	return compactor.CompactMessages(ctx, messages)
 }
 
 // emitMessageEvent emits a message event to the companion system.

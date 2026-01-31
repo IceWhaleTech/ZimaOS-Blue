@@ -1432,7 +1432,6 @@ export default {
     contextWindow: 'Размер контекста',
     maxTokens: 'Лимит контента',
     capabilities: 'Возможности',
-    pricing: 'Цены',
     perInputToken: 'за входной токен',
     perOutputToken: 'за выходной токен',
     fetchModels: 'Загрузить модели',

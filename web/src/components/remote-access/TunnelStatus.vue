@@ -11,6 +11,15 @@ const props = defineProps<{
   status: TunnelStatusType
 }>()
 
+const emit = defineEmits<{
+  (e: 'disconnect'): void
+}>()
+
+function handleDisconnect() {
+  console.log('TunnelStatus: handleDisconnect called')
+  emit('disconnect')
+}
+
 // QR Code state - auto-show when URL available
 const qrCodeLoading = ref(false)
 const qrCodeData = ref<string | null>(null)
@@ -307,6 +316,20 @@ watch(
         <div class="text-gray-500 dark:text-gray-400">{{ t('remoteAccess.renewedCount') }}</div>
         <div class="text-gray-900 dark:text-gray-100">{{ status.renewed_count }}</div>
       </div>
+    </div>
+
+    <!-- Disconnect Button (prominent, always visible when tunnel has URL or is active/connecting) -->
+    <div v-if="status.active || status.connecting || status.url" class="mb-4">
+      <button
+        type="button"
+        class="w-full px-4 py-3 text-sm font-medium rounded-lg border transition-colors flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer"
+        @click.stop="handleDisconnect"
+      >
+        <svg class="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        </svg>
+        {{ status.connecting ? t('remoteAccess.cancel') : t('remoteAccess.disconnect') }}
+      </button>
     </div>
 
     <!-- Action Buttons -->

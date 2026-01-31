@@ -832,7 +832,6 @@ export default {
     contextWindow: 'Kontekstvindue',
     maxTokens: 'Indholdsgrænse',
     capabilities: 'Funktioner',
-    pricing: 'Priser',
     perInputToken: 'per input-token',
     perOutputToken: 'per output-token',
     fetchModels: 'Hent modeller',

@@ -829,7 +829,6 @@ export default {
     contextWindow: 'Contextvenster',
     maxTokens: 'Inhoudslimiet',
     capabilities: 'Mogelijkheden',
-    pricing: 'Prijzen',
     perInputToken: 'per invoertoken',
     perOutputToken: 'per uitvoertoken',
     fetchModels: 'Modellen ophalen',
