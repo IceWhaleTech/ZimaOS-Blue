@@ -1,17 +1,91 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
+// Preview mode state (cached to avoid repeated API calls)
+let previewModeChecked = false
+let isPreviewMode = false
+let connectionFailed = false
+let previewTokenFetched = false
+
+async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
+  if (previewModeChecked) return { preview: isPreviewMode, connectionError: connectionFailed }
+
+  try {
+    const response = await fetch('/api/v1/system/mode')
+    // Treat 500+ errors as connection/server errors
+    if (response.status >= 500) {
+      previewModeChecked = true
+      isPreviewMode = false
+      connectionFailed = true
+      return { preview: false, connectionError: true }
+    }
+    if (!response.ok) {
+      previewModeChecked = true
+      isPreviewMode = false
+      connectionFailed = false
+      return { preview: false, connectionError: false }
+    }
+    const data = await response.json()
+    isPreviewMode = data.mode === 'preview'
+    previewModeChecked = true
+    connectionFailed = false
+
+    // If in preview mode, fetch a token
+    if (isPreviewMode && !previewTokenFetched) {
+      await fetchPreviewToken()
+    }
+
+    return { preview: isPreviewMode, connectionError: false }
+  } catch {
+    previewModeChecked = true
+    isPreviewMode = false
+    connectionFailed = true
+    return { preview: false, connectionError: true }
+  }
+}
+
+async function fetchPreviewToken(): Promise<void> {
+  // Check if we already have a token
+  const existingToken = localStorage.getItem('preview_token')
+  if (existingToken) {
+    localStorage.setItem('token', existingToken)
+    previewTokenFetched = true
+    return
+  }
+
+  try {
+    const response = await fetch('/api/v1/preview/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    if (response.ok) {
+      const data = await response.json()
+      if (data.token) {
+        localStorage.setItem('preview_token', data.token)
+        localStorage.setItem('token', data.token)
+        previewTokenFetched = true
+      }
+    }
+  } catch {
+    console.error('Failed to fetch preview token')
+  }
+}
+
+// Reset preview mode status (call this after upgrade completes)
+export function resetPreviewModeStatus(): void {
+  previewModeChecked = false
+  isPreviewMode = false
+  connectionFailed = false
+  previewTokenFetched = false
+  localStorage.removeItem('preview_token')
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
-  },
-  {
-    path: '/setup',
-    name: 'Setup',
-    component: () => import('@/views/SetupWizardView.vue'),
-    meta: { public: true, hideLayout: true },
   },
   {
     path: '/login',
@@ -23,6 +97,12 @@ const routes: RouteRecordRaw[] = [
     path: '/auth/callback/:provider',
     name: 'AuthCallback',
     component: () => import('@/views/AuthCallbackView.vue'),
+    meta: { public: true, hideLayout: true },
+  },
+  {
+    path: '/connection-error',
+    name: 'ConnectionError',
+    component: () => import('@/views/ConnectionErrorView.vue'),
     meta: { public: true, hideLayout: true },
   },
   {
@@ -175,55 +255,50 @@ const router = createRouter({
   routes,
 })
 
-// Check if setup is complete
-let setupChecked = false
-let setupComplete = false
-
-async function checkSetupStatus(): Promise<boolean> {
-  if (setupChecked) return setupComplete
-
-  try {
-    const response = await fetch('/api/setup/status')
-    if (!response.ok) {
-      // API error - redirect to setup for safety
-      setupChecked = true
-      setupComplete = false
-      return false
-    }
-    const data = await response.json()
-    setupComplete = data.completed
-    setupChecked = true
-    return setupComplete
-  } catch {
-    // Network error - redirect to setup for safety
-    setupChecked = true
-    setupComplete = false
-    return false
-  }
-}
-
-// Reset setup status (call this after setup completes)
-export function resetSetupStatus(): void {
-  setupChecked = false
-  setupComplete = false
-}
-
-// Navigation guard for authentication and setup
+// Navigation guard for authentication and preview mode
 router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('token')
   const isAuthenticated = !!token
   const requiresAuth = to.meta.requiresAuth
+  const requiresAdmin = to.meta.requiresAdmin
   const isPublic = to.meta.public
 
-  // Check setup status for non-setup routes
-  if (to.name !== 'Setup') {
-    const isSetupComplete = await checkSetupStatus()
-    if (!isSetupComplete) {
-      next({ name: 'Setup' })
-      return
-    }
+  // Allow connection error page without checks
+  if (to.name === 'ConnectionError') {
+    next()
+    return
   }
 
+  // Check preview mode (no users exist)
+  const { preview: inPreviewMode, connectionError } = await checkPreviewMode()
+
+  // If connection error (500 or network failure), redirect to error page
+  if (connectionError) {
+    // Pass the original route so we can return after connection is restored
+    next({ name: 'ConnectionError', query: { from: to.fullPath } })
+    return
+  }
+
+  // In preview mode, allow access to most routes without authentication
+  if (inPreviewMode) {
+    // Block admin-only routes in preview mode
+    if (requiresAdmin) {
+      next({ name: 'Chat' })
+      return
+    }
+
+    // Allow all other routes in preview mode (no auth required)
+    if (to.name === 'Login') {
+      // Redirect login to chat in preview mode
+      next({ name: 'Chat' })
+      return
+    }
+
+    next()
+    return
+  }
+
+  // Normal mode (users exist): standard authentication flow
   if (requiresAuth && !isAuthenticated) {
     // Redirect to login with return URL
     next({ name: 'Login', query: { redirect: to.fullPath } })

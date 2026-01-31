@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { proxyApi, type MetricsSummary, type ProviderMetrics, type LatencyStats } from '@/api/proxy'
 
-const { t } = useI18n()
+const { t: _t } = useI18n()
 
 const metrics = ref<MetricsSummary | null>(null)
 const providerMetrics = ref<Record<string, ProviderMetrics>>({})
@@ -26,19 +26,52 @@ const avgLatency = computed(() => {
 
 const providerList = computed(() => Object.entries(providerMetrics.value))
 
-const formatBytes = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
 const formatNumber = (num: number) => {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
   return num.toString()
 }
+
+// Calculate bar heights for percentile visualization
+const percentileBars = computed(() => {
+  if (!latencyStats.value) return []
+
+  const values = [
+    latencyStats.value.min_ms ?? 0,
+    latencyStats.value.p50_ms ?? 0,
+    latencyStats.value.p90_ms ?? 0,
+    latencyStats.value.p95_ms ?? 0,
+    latencyStats.value.p99_ms ?? 0,
+    latencyStats.value.max_ms ?? 0,
+  ]
+
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = max - min
+
+  const percentiles = [
+    { label: 'Min', value: latencyStats.value.min_ms ?? 0, color: 'bg-green-500' },
+    { label: 'P50', value: latencyStats.value.p50_ms ?? 0, color: 'bg-blue-500' },
+    { label: 'P90', value: latencyStats.value.p90_ms ?? 0, color: 'bg-yellow-500' },
+    { label: 'P95', value: latencyStats.value.p95_ms ?? 0, color: 'bg-orange-500' },
+    { label: 'P99', value: latencyStats.value.p99_ms ?? 0, color: 'bg-red-500' },
+    { label: 'Max', value: latencyStats.value.max_ms ?? 0, color: 'bg-red-700' },
+  ]
+
+  // If all values are the same or range is very small, show all bars at 80% height
+  if (range < 1 || max === 0) {
+    return percentiles.map(p => ({
+      ...p,
+      height: p.value > 0 ? 80 : 5,
+    }))
+  }
+
+  // Otherwise, scale based on range with minimum 10% height for non-zero values
+  return percentiles.map(p => ({
+    ...p,
+    height: p.value === 0 ? 5 : Math.max(10, ((p.value - min) / range) * 90 + 10),
+  }))
+})
 
 // Methods
 async function fetchData() {
@@ -92,9 +125,9 @@ onUnmounted(() => {
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Proxy Metrics</h2>
       <button
-        @click="fetchData"
         :disabled="loading"
         class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+        @click="fetchData"
       >
         {{ loading ? 'Refreshing...' : 'Refresh' }}
       </button>
@@ -139,22 +172,47 @@ onUnmounted(() => {
     <!-- Latency Percentiles -->
     <div v-if="latencyStats" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
       <h3 class="font-medium text-gray-900 dark:text-white mb-3">Latency Distribution</h3>
-      <div class="grid grid-cols-4 gap-4 text-sm">
+
+      <!-- Bar Chart Visualization -->
+      <div class="flex justify-around h-32 bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4 mb-4">
+        <div
+          v-for="bar in percentileBars"
+          :key="bar.label"
+          class="flex flex-col items-center h-full justify-end"
+        >
+          <div class="w-8 flex items-end" :style="{ height: bar.height + '%' }">
+            <div :class="[bar.color, 'w-full rounded-t transition-all duration-300']" style="height: 100%"></div>
+          </div>
+          <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ bar.label }}</div>
+          <div class="text-xs font-medium text-gray-900 dark:text-white">{{ bar.value.toFixed(0) }}ms</div>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">Min:</span>
+          <span class="ml-2 font-medium text-green-600 dark:text-green-400">{{ latencyStats.min_ms?.toFixed(0) ?? '-' }}ms</span>
+        </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P50:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
+          <span class="ml-2 font-medium text-blue-600 dark:text-blue-400">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P90:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p90_ms?.toFixed(0) ?? '-' }}ms</span>
+          <span class="ml-2 font-medium text-yellow-600 dark:text-yellow-400">{{ latencyStats.p90_ms?.toFixed(0) ?? '-' }}ms</span>
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P95:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p95_ms?.toFixed(0) ?? '-' }}ms</span>
+          <span class="ml-2 font-medium text-orange-600 dark:text-orange-400">{{ latencyStats.p95_ms?.toFixed(0) ?? '-' }}ms</span>
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P99:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ latencyStats.p99_ms?.toFixed(0) ?? '-' }}ms</span>
+          <span class="ml-2 font-medium text-red-600 dark:text-red-400">{{ latencyStats.p99_ms?.toFixed(0) ?? '-' }}ms</span>
+        </div>
+        <div>
+          <span class="text-gray-500 dark:text-gray-400">Max:</span>
+          <span class="ml-2 font-medium text-red-700 dark:text-red-500">{{ latencyStats.max_ms?.toFixed(0) ?? '-' }}ms</span>
         </div>
       </div>
     </div>

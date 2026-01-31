@@ -6,8 +6,6 @@ import {
   type FormFillerConfig,
 } from '@/api/formfiller'
 import {
-  getUrlProbability,
-  getTokenProbability,
   parseClipboardData,
 } from '@/utils/clipboardParser'
 
@@ -104,7 +102,7 @@ export function useFormFillerWidget() {
       if (defaultTemplate) {
         globalState.selectedTemplate = defaultTemplate
       } else if (globalState.templates.length > 0) {
-        globalState.selectedTemplate = globalState.templates[0]
+        globalState.selectedTemplate = globalState.templates[0] ?? null
       }
 
       globalState.isInitialized = true
@@ -233,7 +231,7 @@ export function useFormFillerWidget() {
   }
 
   // Handle blur - hide widget after a delay (to allow clicking on widget)
-  function handleBlur(event: FocusEvent) {
+  function handleBlur(_event: FocusEvent) {
     // Use setTimeout to allow click events on widget to fire first
     setTimeout(() => {
       const activeElement = document.activeElement
@@ -315,7 +313,7 @@ export function useFormFillerWidget() {
     if (keyParts.length === 0) return 0
 
     // The last part is the most important (e.g., "id" in "app_id", "secret" in "app_secret")
-    const keyLastPart = keyParts[keyParts.length - 1]
+    const keyLastPart = keyParts[keyParts.length - 1] || ''
     // Second to last part is also important for context (e.g., "app" in "app_id")
     const keySecondLastPart = keyParts.length > 1 ? keyParts[keyParts.length - 2] : null
 
@@ -327,7 +325,7 @@ export function useFormFillerWidget() {
       const idParts = extractKeyParts(identifier)
       if (idParts.length === 0) continue
 
-      const idLastPart = idParts[idParts.length - 1]
+      const idLastPart = idParts[idParts.length - 1] || ''
 
       // Exact full match (highest priority)
       if (keyParts.join('') === idParts.join('')) {
@@ -380,7 +378,7 @@ export function useFormFillerWidget() {
   ): { key: string; value: string } | null {
     const name = element.name || ''
     const id = element.id || ''
-    const placeholder = element.placeholder || ''
+    const placeholder = 'placeholder' in element ? (element.placeholder || '') : ''
     const autocomplete = element.autocomplete || ''
 
     // Get label text
@@ -442,7 +440,7 @@ export function useFormFillerWidget() {
     // Fall back to template matching
     const name = element.name?.toLowerCase() || ''
     const id = element.id?.toLowerCase() || ''
-    const placeholder = element.placeholder?.toLowerCase() || ''
+    const placeholder = 'placeholder' in element ? (element.placeholder?.toLowerCase() || '') : ''
     const type = element.type?.toLowerCase() || ''
     const autocomplete = element.autocomplete?.toLowerCase() || ''
 

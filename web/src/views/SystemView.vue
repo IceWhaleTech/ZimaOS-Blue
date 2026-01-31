@@ -6,7 +6,6 @@ import { useMetricsStore } from '@/stores/metrics'
 import { systemApi, backupApi } from '@/api/index'
 import type { LogEntry, SystemMetrics, DetailedSystemInfo } from '@/api/system'
 import type { BackupInfo } from '@/api/index'
-import Skeleton from '@/components/Skeleton.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import DonutChart from '@/components/DonutChart.vue'
 import MetricsOverview from '@/components/metrics/MetricsOverview.vue'
@@ -195,23 +194,23 @@ async function createBackup() {
 }
 
 async function restoreBackup(id: string) {
-  if (!confirm(t('system.backup.restoreConfirm'))) {
+  if (!confirm(t('system.restoreConfirm'))) {
     return
   }
 
   backupRestoring.value = id
   try {
     await backupApi.restore(id)
-    alert(t('system.backup.backupRestored'))
+    alert(t('system.backupRestored'))
   } catch {
-    alert(t('system.backup.backupRestoreFailed'))
+    alert(t('system.backupRestoreFailed'))
   } finally {
     backupRestoring.value = null
   }
 }
 
 async function deleteBackup(id: string) {
-  if (!confirm(t('system.backup.deleteConfirm'))) {
+  if (!confirm(t('system.deleteConfirm'))) {
     return
   }
 
@@ -219,7 +218,7 @@ async function deleteBackup(id: string) {
     await backupApi.delete(id)
     backups.value = backups.value.filter((b) => b.id !== id)
   } catch {
-    alert(t('system.backup.backupDeleteFailed'))
+    alert(t('system.backupDeleteFailed'))
   }
 }
 
@@ -544,7 +543,7 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 
                   </div>
                   <div>
                     <span class="text-gray-500 dark:text-gray-400">{{ t('system.cached') }}:</span>
-                    <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(detailedInfo.hardware.memory.cached || 0) }}</span>
+                    <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes((detailedInfo.hardware.memory as Record<string, number>).cached ?? 0) }}</span>
                   </div>
                 </div>
               </div>
@@ -650,9 +649,9 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 
                       <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuMemory') }}:</span>
                       <span class="text-gray-900 dark:text-white ml-2">{{ formatBytes(gpu.memory_total) }}</span>
                     </div>
-                    <div v-if="gpu.temperature">
+                    <div v-if="(gpu as Record<string, unknown>).temperature">
                       <span class="text-gray-500 dark:text-gray-400">{{ t('system.gpuTemperature') }}:</span>
-                      <span class="text-gray-900 dark:text-white ml-2">{{ gpu.temperature }}°C</span>
+                      <span class="text-gray-900 dark:text-white ml-2">{{ (gpu as Record<string, unknown>).temperature }}°C</span>
                     </div>
                   </div>
                 </div>
@@ -761,8 +760,8 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 
           </span>
         </div>
         <button
-          @click="handleResetMetrics"
           class="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+          @click="handleResetMetrics"
         >
           {{ t('metrics.reset') }}
         </button>
@@ -809,7 +808,7 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 
                 </td>
                 <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.total_tokens ?? 0).toLocaleString() }}</td>
                 <td class="py-3 px-2 text-right text-green-600 dark:text-green-400">${{ (model.estimated_cost ?? 0).toFixed(4) }}</td>
-                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.avg_latency ?? 0).toFixed(0) }}ms</td>
+                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.avg_latency_ms ?? 0).toFixed(0) }}ms</td>
               </tr>
             </tbody>
           </table>
@@ -899,7 +898,7 @@ function switchTab(tab: 'overview' | 'metrics' | 'logs' | 'config' | 'backup' | 
         <div v-else-if="logs.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
           {{ t('system.noLogsFound') }}
         </div>
-        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[600px] overflow-y-auto font-mono text-sm">
+        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[calc(100vh-280px)] min-h-[600px] overflow-y-auto font-mono text-sm">
           <div
             v-for="(log, index) in logs"
             :key="index"

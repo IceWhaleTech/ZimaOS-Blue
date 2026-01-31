@@ -55,7 +55,7 @@ export function useCompanionStream(options: UseCompanionStreamOptions = {}) {
 
           // Call custom handler
           onEvent?.(data)
-        } catch (e) {
+        } catch {
           // Ignore non-JSON messages (like pong)
         }
       },

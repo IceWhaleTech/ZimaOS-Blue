@@ -45,7 +45,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/setup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
@@ -239,68 +238,51 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	// Initialize LLM provider registry
 	llmRegistry := llm.NewProviderRegistry()
 
-	// Load saved LLM configuration
-	savedLLMConfig, _ := setup.LoadLLMConfig(dataDir)
-
-	// Register LLM providers
+	// Register LLM providers from environment variables
 	openaiKey := os.Getenv("OPENAI_API_KEY")
-	openaiBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "openai" && savedLLMConfig.APIKey != "" {
-		openaiKey = savedLLMConfig.APIKey
-		openaiBaseURL = savedLLMConfig.BaseURL
+	if openaiKey != "" {
+		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, ""))
+	} else {
+		llmRegistry.Register(llm.NewOpenAIProvider("", ""))
 	}
-	llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, openaiBaseURL))
 
 	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
 	claudeBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "anthropic" && savedLLMConfig.APIKey != "" {
-		claudeKey = savedLLMConfig.APIKey
-		claudeBaseURL = savedLLMConfig.BaseURL
-	}
 	if cfg.ClaudeCode.APIKey != "" {
 		claudeKey = cfg.ClaudeCode.APIKey
 	}
 	if cfg.ClaudeCode.BaseURL != "" {
 		claudeBaseURL = cfg.ClaudeCode.BaseURL
 	}
-	llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
+	if claudeKey != "" {
+		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
+	} else {
+		llmRegistry.Register(llm.NewClaudeProvider("", ""))
+	}
 
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "ollama" && savedLLMConfig.BaseURL != "" {
-		ollamaURL = savedLLMConfig.BaseURL
-	}
 	llmRegistry.Register(llm.NewOllamaProvider(ollamaURL))
 
 	customKey := os.Getenv("CUSTOM_API_KEY")
 	customURL := os.Getenv("CUSTOM_API_URL")
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "custom" {
-		if savedLLMConfig.APIKey != "" {
-			customKey = savedLLMConfig.APIKey
-		}
-		if savedLLMConfig.BaseURL != "" {
-			customURL = savedLLMConfig.BaseURL
-		}
-	}
 	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
 
 	grokKey := os.Getenv("GROK_API_KEY")
-	grokBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "grok" && savedLLMConfig.APIKey != "" {
-		grokKey = savedLLMConfig.APIKey
-		grokBaseURL = savedLLMConfig.BaseURL
+	if grokKey != "" {
+		llmRegistry.Register(llm.NewGrokProvider(grokKey, ""))
+	} else {
+		llmRegistry.Register(llm.NewGrokProvider("", ""))
 	}
-	llmRegistry.Register(llm.NewGrokProvider(grokKey, grokBaseURL))
 
 	qwenKey := os.Getenv("QWEN_API_KEY")
-	qwenBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "qwen" && savedLLMConfig.APIKey != "" {
-		qwenKey = savedLLMConfig.APIKey
-		qwenBaseURL = savedLLMConfig.BaseURL
+	if qwenKey != "" {
+		llmRegistry.Register(llm.NewQwenProvider(qwenKey, ""))
+	} else {
+		llmRegistry.Register(llm.NewQwenProvider("", ""))
 	}
-	llmRegistry.Register(llm.NewQwenProvider(qwenKey, qwenBaseURL))
 
 	// Initialize tools registry
 	toolRegistry := tools.NewRegistry()
@@ -562,25 +544,6 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 
 	// Serve embedded frontend
 	web.RegisterStaticRoutes(e)
-
-	// Setup wizard routes
-	setupHandler := setup.NewHandlerWithVersion(dataDir, version)
-	setupHandler.SetUserCreator(func(username, password string, isAdmin bool) error {
-		role := user.RoleUser
-		if isAdmin {
-			role = user.RoleAdmin
-		}
-		_, err := userService.Create(context.Background(), &user.CreateUserRequest{
-			Username: username,
-			Password: password,
-			Role:     role,
-		})
-		return err
-	})
-	setupHandler.SetUserChecker(func(username string) (bool, error) {
-		return userService.ExistsByUsername(context.Background(), username)
-	})
-	setupHandler.RegisterRoutes(e)
 
 	// API v1 group
 	v1 := e.Group("/api/v1")

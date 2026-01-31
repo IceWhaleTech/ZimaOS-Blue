@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { systemApi } from '@/api/index'
@@ -11,18 +11,24 @@ import { ConfigurableDashboard } from '@/components/dashboard'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
-const { health, loading } = storeToRefs(systemStore)
+const { health: _health, loading: _loading } = storeToRefs(systemStore)
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 const autoRefresh = ref(true)
 
-// Metrics history for dashboard
-const metricsHistory = ref<SystemMetrics[]>([])
+// AbortController for request cancellation
+let abortController: AbortController | null = null
+
+// Metrics history for dashboard (use shallowRef for performance)
+const metricsHistory = shallowRef<SystemMetrics[]>([])
 
 // Detailed system info
 const detailedInfo = ref<DetailedSystemInfo | null>(null)
 const detailedInfoLoading = ref(false)
 const showDetailedInfo = ref(false)
+
+// Visibility API support
+const isPageVisible = ref(true)
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -34,10 +40,19 @@ function formatBytes(bytes: number): string {
 
 async function fetchMetricsHistory() {
   try {
+    // Cancel previous request if still pending
+    if (abortController) {
+      abortController.abort()
+    }
+
+    abortController = new AbortController()
     const response = await systemApi.getMetricsHistory('5m')
     metricsHistory.value = response.data.metrics || []
-  } catch {
-    metricsHistory.value = []
+  } catch (error: any) {
+    // Don't update state if request was aborted
+    if (error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
+      metricsHistory.value = []
+    }
   }
 }
 
@@ -60,22 +75,69 @@ function toggleDetailedInfo() {
   }
 }
 
+// Handle visibility change to pause/resume polling
+function handleVisibilityChange() {
+  isPageVisible.value = !document.hidden
+}
+
+// Debounced refresh function
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+function debouncedRefresh() {
+  if (refreshDebounceTimer) {
+    clearTimeout(refreshDebounceTimer)
+  }
+  refreshDebounceTimer = setTimeout(() => {
+    if (autoRefresh.value && isPageVisible.value) {
+      systemStore.fetchAll()
+      fetchMetricsHistory()
+    }
+  }, 100)
+}
+
+// Watch autoRefresh changes with debouncing
+watch(autoRefresh, (newValue) => {
+  if (newValue && isPageVisible.value) {
+    debouncedRefresh()
+  }
+})
+
 onMounted(async () => {
   await systemStore.fetchAll()
   await fetchMetricsHistory()
 
+  // Add visibility change listener
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  // Optimized polling interval: 15 seconds (reduced from 5s = 66% fewer API calls)
   refreshInterval = setInterval(() => {
-    if (autoRefresh.value) {
+    if (autoRefresh.value && isPageVisible.value) {
       systemStore.fetchAll()
       fetchMetricsHistory()
     }
-  }, 5000)
+  }, 15000)
 })
 
 onUnmounted(() => {
+  // Cleanup interval
   if (refreshInterval) {
     clearInterval(refreshInterval)
+    refreshInterval = null
   }
+
+  // Cleanup debounce timer
+  if (refreshDebounceTimer) {
+    clearTimeout(refreshDebounceTimer)
+    refreshDebounceTimer = null
+  }
+
+  // Cancel pending requests
+  if (abortController) {
+    abortController.abort()
+    abortController = null
+  }
+
+  // Remove visibility listener
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

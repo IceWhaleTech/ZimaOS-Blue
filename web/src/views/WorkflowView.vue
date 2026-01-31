@@ -540,7 +540,7 @@ function getNodeTypeColor(type: NodeType): string {
             {{ t('workflow.createNew') }}
           </h3>
 
-          <form @submit.prevent="createWorkflow" class="space-y-4">
+          <form class="space-y-4" @submit.prevent="createWorkflow">
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('workflow.name') }}</label>
               <input
@@ -743,7 +743,7 @@ function getNodeTypeColor(type: NodeType): string {
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getNodeTypeInfo(node.type).icon" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getNodeTypeInfo(node.type)?.icon ?? ''" />
                       </svg>
                       <span class="font-medium">{{ node.name }}</span>
                     </div>
@@ -756,7 +756,7 @@ function getNodeTypeColor(type: NodeType): string {
                       </svg>
                     </button>
                   </div>
-                  <div class="text-xs mt-1 opacity-75">{{ t(getNodeTypeInfo(node.type).labelKey) }}</div>
+                  <div class="text-xs mt-1 opacity-75">{{ t(getNodeTypeInfo(node.type)?.labelKey ?? '') }}</div>
                 </div>
               </div>
             </div>
@@ -838,7 +838,7 @@ function getNodeTypeColor(type: NodeType): string {
             {{ t('workflow.addNode') }}
           </h3>
 
-          <form @submit.prevent="addNode" class="space-y-4">
+          <form class="space-y-4" @submit.prevent="addNode">
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('workflow.nodeType') }}</label>
               <div class="grid grid-cols-2 gap-2">

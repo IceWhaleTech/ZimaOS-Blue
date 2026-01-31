@@ -5,7 +5,7 @@ import type { Conversation } from '@/api/chat'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+defineProps<{
   conversations: Conversation[]
   currentId: string | null
   loading?: boolean

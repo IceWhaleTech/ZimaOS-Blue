@@ -5,8 +5,10 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useSystemStore } from '@/stores/system'
+import { usePreviewStore } from '@/stores/preview'
 import { storeToRefs } from 'pinia'
 import NetworkAddressBar from '@/components/network/NetworkAddressBar.vue'
+import PreviewBanner from '@/components/preview/PreviewBanner.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -14,6 +16,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const systemStore = useSystemStore()
+const previewStore = usePreviewStore()
 const { health } = storeToRefs(systemStore)
 
 // User menu dropdown state
@@ -27,12 +30,15 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+// Initialize preview store
 onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   // Fetch user data if authenticated but user info not loaded
   if (authStore.isAuthenticated && !authStore.user) {
     await authStore.fetchUser()
   }
+  // Initialize preview mode detection
+  await previewStore.initialize()
 })
 
 onUnmounted(() => {
@@ -118,6 +124,8 @@ function handleLogout() {
       <div class="flex items-center space-x-1 sm:space-x-3">
         <!-- Network address bar (only in Tauri desktop app) -->
         <NetworkAddressBar class="hidden sm:flex" />
+        <!-- Preview mode banner -->
+        <PreviewBanner />
         <!-- Theme toggle -->
         <button
           class="p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors"
@@ -128,9 +136,9 @@ function handleLogout() {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getThemeIcon()" />
           </svg>
         </button>
-        <!-- User menu dropdown -->
+        <!-- User menu dropdown (hidden in preview mode) -->
         <div
-          v-if="authStore.isAuthenticated"
+          v-if="authStore.isAuthenticated && !previewStore.isPreviewMode"
           ref="userMenuRef"
           class="relative"
         >

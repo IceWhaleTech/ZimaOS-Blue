@@ -41,6 +41,7 @@ function handleInput(event: Event) {
 <template>
   <div class="relative">
     <input
+      :id="id || undefined"
       :type="inputType"
       :value="modelValue"
       :placeholder="placeholder"
@@ -48,7 +49,6 @@ function handleInput(event: Event) {
       :autocomplete="autocomplete"
       :disabled="disabled"
       :name="name || undefined"
-      :id="id || undefined"
       :class="[
         'w-full pr-10',
         props.class || 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500'

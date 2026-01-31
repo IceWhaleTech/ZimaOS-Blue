@@ -8,7 +8,7 @@ export interface QuickAction {
   disabled?: boolean
 }
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     actions?: QuickAction[]
     loading?: boolean

@@ -8,7 +8,7 @@ const { t } = useI18n()
 const {
   state,
   canUndo,
-  hasClipboardData,
+  hasClipboardData: _hasClipboardData,
   parsedFieldCount,
   setClipboardData,
   readFromClipboard,
@@ -44,7 +44,7 @@ const positionStyle = computed(() => ({
 const currentFieldName = computed(() => {
   if (!state.focusedElement) return ''
   const el = state.focusedElement
-  return el.name || el.id || el.placeholder || el.type || 'field'
+  return el.name || el.id || ('placeholder' in el ? el.placeholder : '') || el.type || 'field'
 })
 
 // Check if current field is a password field
@@ -186,8 +186,8 @@ watch(() => state.clipboardData, (newVal) => {
         <button
           class="w-5 h-5 rounded flex items-center justify-center text-sm leading-none
                  bg-white/20 hover:bg-white/30 border-none text-white cursor-pointer"
-          @click="hideWidget"
           :title="t('common.close')"
+          @click="hideWidget"
         >×</button>
       </div>
 
@@ -213,13 +213,13 @@ watch(() => state.clipboardData, (newVal) => {
         <div v-if="state.templates.length > 1" class="mb-2">
           <select
             :value="state.selectedTemplate?.id"
+            class="w-full px-2 py-1.5 rounded text-xs cursor-pointer
+                   bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
+                   border border-gray-300 dark:border-gray-600"
             @change="(e) => {
               const template = state.templates.find(t => t.id === (e.target as HTMLSelectElement).value)
               if (template) selectTemplate(template)
             }"
-            class="w-full px-2 py-1.5 rounded text-xs cursor-pointer
-                   bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
-                   border border-gray-300 dark:border-gray-600"
           >
             <option v-for="template in state.templates" :key="template.id" :value="template.id">
               {{ template.name }}
@@ -244,26 +244,28 @@ watch(() => state.clipboardData, (newVal) => {
             v-else
             class="rounded overflow-hidden border border-gray-200 dark:border-gray-600"
           >
-            <div class="flex justify-between items-center px-2 py-1.5 text-[11px]
+            <div
+class="flex justify-between items-center px-2 py-1.5 text-[11px]
                         bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
               <span>{{ t('formFiller.widget.pasteDataHint') }}</span>
               <button
                 class="p-0.5 text-sm opacity-70 hover:opacity-100 bg-transparent border-none cursor-pointer"
-                @click="handleReadClipboard"
                 :title="t('formFiller.widget.readClipboard')"
+                @click="handleReadClipboard"
               >📋</button>
             </div>
             <textarea
               v-model="pasteText"
-              @input="handlePasteInput"
               :placeholder="t('formFiller.widget.pasteExample')"
               class="w-full p-2 text-[11px] font-mono resize-none outline-none
                      bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
                      border-t border-gray-200 dark:border-gray-600
                      placeholder:text-gray-400 dark:placeholder:text-gray-500"
               rows="4"
+              @input="handlePasteInput"
             ></textarea>
-            <div class="flex justify-between items-center px-2 py-1
+            <div
+class="flex justify-between items-center px-2 py-1
                         bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
               <span v-if="parsedFieldCount > 0" class="text-[11px] text-emerald-600 dark:text-emerald-400">
                 {{ t('formFiller.widget.parsedFields', { count: parsedFieldCount }) }}
@@ -287,9 +289,9 @@ watch(() => state.clipboardData, (newVal) => {
                    border border-gray-300 dark:border-gray-600
                    hover:bg-gray-200 dark:hover:bg-gray-600
                    disabled:opacity-50 disabled:cursor-not-allowed"
-            @click="handleFillCurrent"
             :disabled="!state.focusedElement"
             :title="currentFieldName"
+            @click="handleFillCurrent"
           >
             {{ t('formFiller.widget.fillThis') }}
           </button>
@@ -300,8 +302,8 @@ watch(() => state.clipboardData, (newVal) => {
                    bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200
                    border border-gray-300 dark:border-gray-600
                    hover:bg-gray-200 dark:hover:bg-gray-600"
-            @click="handleTogglePassword"
             :title="isCurrentPasswordRevealed ? t('formFiller.widget.hidePassword') : t('formFiller.widget.showPassword')"
+            @click="handleTogglePassword"
           >
             {{ isCurrentPasswordRevealed ? '🙈' : '👁️' }}
           </button>

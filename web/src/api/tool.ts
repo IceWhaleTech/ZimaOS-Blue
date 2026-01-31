@@ -16,6 +16,7 @@ export interface Tool {
   description: string
   author?: string
   category?: string
+  icon?: string
   tags?: string[]
   enabled: boolean
   builtin: boolean

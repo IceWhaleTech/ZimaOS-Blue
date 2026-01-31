@@ -22,6 +22,7 @@ func NewDateTime() *DateTime {
 			Version:     "1.0.0",
 			Description: "Returns current date and time information",
 			Category:    "utility",
+			Icon:        "datetime",
 			Tags:        []string{"date", "time", "utility"},
 			Inputs: []skill.Parameter{
 				{

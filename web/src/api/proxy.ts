@@ -1,4 +1,4 @@
-import { apiClient } from './client'
+import apiClient from './client'
 
 // Types
 export interface Session {

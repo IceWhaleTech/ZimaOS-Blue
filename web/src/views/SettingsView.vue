@@ -510,8 +510,8 @@ onMounted(async () => {
           </span>
         </div>
         <button
-          @click="handleResetMetrics"
           class="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+          @click="handleResetMetrics"
         >
           {{ t('metrics.reset') }}
         </button>
@@ -556,7 +556,7 @@ onMounted(async () => {
                 </td>
                 <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.total_tokens ?? 0).toLocaleString() }}</td>
                 <td class="py-3 px-2 text-right text-green-600 dark:text-green-400">${{ (model.estimated_cost ?? 0).toFixed(4) }}</td>
-                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.avg_latency ?? 0).toFixed(0) }}ms</td>
+                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.avg_latency_ms ?? 0).toFixed(0) }}ms</td>
               </tr>
             </tbody>
           </table>

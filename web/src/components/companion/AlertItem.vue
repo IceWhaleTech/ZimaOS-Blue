@@ -37,6 +37,11 @@ const severityConfig = computed(() => {
       color: 'text-blue-600 dark:text-blue-400',
       bg: 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700',
     },
+    error: {
+      icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+      color: 'text-red-600 dark:text-red-400',
+      bg: 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700',
+    },
   }
   return configs[props.alert.severity] || configs.info
 })
@@ -90,7 +95,7 @@ function formatTime(timestamp: string): string {
             {{ alert.severity }}
           </span>
           <span class="text-xs text-gray-500 dark:text-gray-400">
-            {{ formatTime(alert.timestamp) }}
+            {{ formatTime(alert.createdAt) }}
           </span>
           <span
             v-if="alert.acknowledged"

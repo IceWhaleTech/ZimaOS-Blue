@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { skillApi } from '@/api/skill'
-import type { Skill, SkillSource, RemoteSkill, BrowseParams, BrowseResponse } from '@/api/skill'
+import type { Skill, SkillSource, RemoteSkill, BrowseParams, InstallFromURLRequest } from '@/api/skill'
 
 export const useSkillStore = defineStore('skill', () => {
   // State
@@ -36,7 +36,7 @@ export const useSkillStore = defineStore('skill', () => {
       if (!grouped[s.source_id]) {
         grouped[s.source_id] = []
       }
-      grouped[s.source_id].push(s)
+      grouped[s.source_id]?.push(s)
     })
     return grouped
   })
@@ -226,6 +226,66 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
+  async function installFromURL(req: InstallFromURLRequest) {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await skillApi.installFromURL(req)
+      if (response.data.success) {
+        // Refresh local skills to show the newly installed skill
+        await fetchSkills()
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to install skill from URL'
+      return { success: false }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchFeaturedSkills() {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await skillApi.featured()
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch featured skills'
+      return []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchLocalSkills() {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await skillApi.listLocal()
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to fetch local skills'
+      return { skills: [], count: 0 }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function scanLocalSkills() {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await skillApi.scanLocal()
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to scan local skills'
+      return { success: false, skills_found: 0 }
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearError() {
     error.value = null
   }
@@ -257,8 +317,12 @@ export const useSkillStore = defineStore('skill', () => {
     removeSource,
     browseSkills,
     installSkill,
+    installFromURL,
     uninstallSkill,
     refreshSources,
+    fetchFeaturedSkills,
+    fetchLocalSkills,
+    scanLocalSkills,
     clearError,
   }
 })

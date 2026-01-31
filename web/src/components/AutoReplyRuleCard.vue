@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AutoReplyRule } from '@/api/autoreply'
 
-const props = defineProps<{
+defineProps<{
   rule: AutoReplyRule
   loading?: boolean
 }>()

@@ -36,6 +36,7 @@ func NewNotes() *Notes {
 			Version:     "1.0.0",
 			Description: "Take and manage notes",
 			Category:    "productivity",
+			Icon:        "notes",
 			Tags:        []string{"notes", "memo", "text", "productivity"},
 			Inputs: []skill.Parameter{
 				{

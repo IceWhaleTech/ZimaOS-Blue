@@ -37,17 +37,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/preview"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/setup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
@@ -266,24 +268,12 @@ func main() {
 	// Initialize LLM provider registry
 	llmRegistry := llm.NewProviderRegistry()
 
-	// Load saved LLM configuration from setup wizard
-	savedLLMConfig, err := setup.LoadLLMConfig(dataDir)
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to load saved LLM config, falling back to environment variables")
-	}
-
-	// Register default LLM providers
-	// Priority: saved config > environment variables > empty (for listing)
+	// Register default LLM providers from environment variables
 
 	// OpenAI provider
 	openaiKey := os.Getenv("OPENAI_API_KEY")
-	openaiBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "openai" && savedLLMConfig.APIKey != "" {
-		openaiKey = savedLLMConfig.APIKey
-		openaiBaseURL = savedLLMConfig.BaseURL
-	}
 	if openaiKey != "" {
-		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, openaiBaseURL))
+		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, ""))
 	} else {
 		// Register with empty key - will fail on actual API calls but allows listing
 		llmRegistry.Register(llm.NewOpenAIProvider("", ""))
@@ -292,10 +282,6 @@ func main() {
 	// Claude provider
 	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
 	claudeBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "anthropic" && savedLLMConfig.APIKey != "" {
-		claudeKey = savedLLMConfig.APIKey
-		claudeBaseURL = savedLLMConfig.BaseURL
-	}
 	// Also check config.yaml for Claude Code CLI settings
 	if cfg.ClaudeCode.APIKey != "" {
 		claudeKey = cfg.ClaudeCode.APIKey
@@ -314,46 +300,25 @@ func main() {
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "ollama" && savedLLMConfig.BaseURL != "" {
-		ollamaURL = savedLLMConfig.BaseURL
-	}
 	llmRegistry.Register(llm.NewOllamaProvider(ollamaURL))
 
 	// Custom OpenAI-compatible provider (for third-party services like DeepSeek, Together, etc.)
 	customKey := os.Getenv("CUSTOM_API_KEY")
 	customURL := os.Getenv("CUSTOM_API_URL")
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "custom" {
-		if savedLLMConfig.APIKey != "" {
-			customKey = savedLLMConfig.APIKey
-		}
-		if savedLLMConfig.BaseURL != "" {
-			customURL = savedLLMConfig.BaseURL
-		}
-	}
 	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
 
 	// Grok provider (xAI)
 	grokKey := os.Getenv("GROK_API_KEY")
-	grokBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "grok" && savedLLMConfig.APIKey != "" {
-		grokKey = savedLLMConfig.APIKey
-		grokBaseURL = savedLLMConfig.BaseURL
-	}
 	if grokKey != "" {
-		llmRegistry.Register(llm.NewGrokProvider(grokKey, grokBaseURL))
+		llmRegistry.Register(llm.NewGrokProvider(grokKey, ""))
 	} else {
 		llmRegistry.Register(llm.NewGrokProvider("", ""))
 	}
 
 	// Qwen provider (Alibaba Cloud)
 	qwenKey := os.Getenv("QWEN_API_KEY")
-	qwenBaseURL := ""
-	if savedLLMConfig != nil && savedLLMConfig.Provider == "qwen" && savedLLMConfig.APIKey != "" {
-		qwenKey = savedLLMConfig.APIKey
-		qwenBaseURL = savedLLMConfig.BaseURL
-	}
 	if qwenKey != "" {
-		llmRegistry.Register(llm.NewQwenProvider(qwenKey, qwenBaseURL))
+		llmRegistry.Register(llm.NewQwenProvider(qwenKey, ""))
 	} else {
 		llmRegistry.Register(llm.NewQwenProvider("", ""))
 	}
@@ -465,6 +430,8 @@ func main() {
 		companionHandler   *companion.Handler
 		companionWSHandler *companion.WebSocketHandler
 		companionManager   *companion.Manager
+		ngrokTunnelMgr     *ngrok.SDKTunnelManager
+		ngrokRepo          *ngrok.Repository
 	)
 
 	var initWg sync.WaitGroup
@@ -478,8 +445,10 @@ func main() {
 		// Metrics collector (collect every 5 seconds, keep 10 minutes of history)
 		metricsCollector = metrics.NewCollector(5*time.Second, 120)
 		metricsCollector.Start()
-		// Metrics writer for detailed API metrics
-		metricsWriter = metrics.NewMetricsWriter(nil, metrics.DefaultWriterConfig())
+		// Metrics writer for detailed API metrics with SQLite persistence
+		metricsConfig := metrics.DefaultWriterConfig()
+		metricsConfig.SQLiteDBPath = filepath.Join(dataDir, "metrics.db")
+		metricsWriter = metrics.NewMetricsWriter(nil, metricsConfig)
 		metricsWriter.Start()
 		logger.Info().Msg("Metrics services initialized")
 	}()
@@ -713,6 +682,21 @@ func main() {
 		logger.Info().Msg("Voice handler initialized")
 	}
 
+	// Initialize ngrok remote access services with SDK
+	ngrokRepoPath := filepath.Join(dataDir, "ngrok.db")
+	ngrokRepo, err = ngrok.NewRepository(ngrokRepoPath)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize ngrok repository, tunnel state persistence will be disabled")
+		ngrokTunnelMgr = ngrok.NewSDKTunnelManager(nil)
+	} else {
+		ngrokTunnelMgr = ngrok.NewSDKTunnelManager(ngrokRepo)
+		// Register shutdown hook for ngrok repository
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return ngrokRepo.Close()
+		})
+	}
+	logger.Info().Msg("Ngrok remote access services initialized (SDK-based)")
+
 	// Set metrics recorder on chat handler for API call tracking
 	chatHandler.SetMetricsRecorder(metricsWriter)
 
@@ -722,7 +706,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -766,29 +750,15 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService) {
 	e := srv.Echo()
 
-	// Setup wizard routes (no auth required)
-	setupHandler := setup.NewHandlerWithVersion(dataDir, version)
-	// Set user creator for setup wizard to create admin user
-	setupHandler.SetUserCreator(func(username, password string, isAdmin bool) error {
-		role := user.RoleUser
-		if isAdmin {
-			role = user.RoleAdmin
-		}
-		_, err := userService.Create(context.Background(), &user.CreateUserRequest{
-			Username: username,
-			Password: password,
-			Role:     role,
-		})
-		return err
-	})
-	// Set user checker for setup wizard to check if username exists
-	setupHandler.SetUserChecker(func(username string) (bool, error) {
-		return userService.ExistsByUsername(context.Background(), username)
-	})
-	setupHandler.RegisterRoutes(e)
+	// Preview mode routes (no auth required - for preview mode detection and upgrade)
+	previewModeService := preview.NewModeService(userService)
+	previewUpgradeService := preview.NewUpgradeService(userService, db)
+	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, jwtService)
+	previewHandler.RegisterRoutes(e)
+	logger.Info().Msg("Preview mode routes registered")
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
@@ -857,6 +827,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	networkHandler.RegisterRoutes(e)
 	logger.Info().Msg("Network routes registered")
 
+	// Register link preview routes (public - for fetching URL metadata)
+	linkPreviewHandler := networkapi.NewLinkPreviewHandler()
+	linkPreviewHandler.RegisterRoutes(v1)
+	logger.Info().Msg("Link preview routes registered")
+
 	// Register metrics routes (system metrics from collector)
 	metricsHandler := server.NewMetricsHandler(metricsCollector)
 	metricsHandler.RegisterRoutes(v1)
@@ -880,6 +855,22 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Register skill routes (skills and skill store)
 	skillHandler := server.NewSkillHandler(skillRegistry)
+
+	// Initialize featured skills loader (v0.10.8)
+	featuredDataPath := filepath.Join(dataDir, "featured_skills.json")
+	featuredLoader := skillstore.NewFeaturedSkillsLoader(featuredDataPath)
+	if err := featuredLoader.Load(); err != nil {
+		logger.Warn().Err(err).Msg("Failed to load featured skills, featured fallback will be disabled")
+	} else {
+		skillHandler.SetFeaturedLoader(featuredLoader)
+		logger.Info().Int("count", len(featuredLoader.GetAll())).Msg("Featured skills loaded")
+	}
+
+	// Initialize local skill scanner (v0.10.8)
+	localScanner := skillstore.NewLocalSkillScanner("")
+	skillHandler.SetLocalScanner(localScanner)
+	logger.Info().Msg("Local skill scanner initialized")
+
 	skillHandler.RegisterRoutes(v1)
 
 	// Register plugin routes (installed plugins management)
@@ -950,6 +941,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
 	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
 	logger.Info().Msg("Claude Code CLI routes registered")
+
+	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
+	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokRepo)
+	remoteAccessHandler.RegisterRoutes(e)
+	logger.Info().Msg("Remote access routes registered (SDK-based)")
 
 	// Register provider settings routes (protected) - /api/v1/providers/settings/*
 	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)

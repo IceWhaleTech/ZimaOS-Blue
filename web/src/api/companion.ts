@@ -5,7 +5,7 @@ import api from './client'
 export type Platform = 'whatsapp' | 'telegram' | 'discord' | 'slack' | 'matrix' | 'feishu' | 'web' | 'api'
 export type SessionStatus = 'active' | 'idle' | 'ended' | 'error'
 export type ThreatLevel = 'none' | 'low' | 'medium' | 'high' | 'critical'
-export type AlertSeverity = 'info' | 'warning' | 'error' | 'critical'
+export type AlertSeverity = 'info' | 'warning' | 'high' | 'error' | 'critical'
 
 export type SessionEventType =
   | 'session_start'

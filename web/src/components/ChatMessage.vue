@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
 import { renderMarkdown, copyCodeToClipboard } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
+import { useProviderPoolStore } from '@/stores/providerPool'
+import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
+import type { TypelessCard } from '@/types/typeless'
+import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 
 const { t } = useI18n()
+const providerPoolStore = useProviderPoolStore()
 
 const props = defineProps<{
   message: Message
@@ -23,12 +28,39 @@ const isAssistant = computed(() => props.message.role === 'assistant')
 const isSelected = computed(() => chatStore.selectedMessageIds.has(props.message.id))
 const isMultiSelectMode = computed(() => chatStore.isMultiSelectMode)
 
+// Copy button state
+const copyState = ref<'idle' | 'copied'>('idle')
+
 const renderedContent = computed(() => {
   if (isUser.value) {
     return props.message.content
   }
   return renderMarkdown(props.message.content)
 })
+
+// Parse typeless cards from assistant messages
+// Use incremental parsing for streaming messages, regular parsing for completed messages
+const parsedContent = computed(() => {
+  if (isUser.value || !hasTypelessCards(props.message.content)) {
+    return null
+  }
+  // Use incremental parsing for streaming to avoid re-parsing entire content
+  if (props.isStreaming) {
+    return parseTypelessContentIncremental(props.message.content, props.message.id)
+  }
+  return parseTypelessContent(props.message.content)
+})
+
+// Get content segments (text and cards interleaved)
+const contentSegments = computed(() => {
+  if (!parsedContent.value) {
+    return null
+  }
+  return splitIntoSegments(parsedContent.value.text, parsedContent.value.cards)
+})
+
+// Check if message has typeless cards
+const hasCards = computed(() => parsedContent.value !== null && parsedContent.value.cards.length > 0)
 
 const formattedTime = computed(() => {
   const date = new Date(props.message.created_at)
@@ -47,6 +79,13 @@ const metadata = computed(() => {
   }
   // Fall back to store metadata
   return chatStore.getMessageMetadata(props.message.id)
+})
+
+// Get provider location (cloud/local) for icon display
+const providerLocation = computed(() => {
+  if (!metadata.value?.provider) return null
+  const provider = providerPoolStore.providers.find(p => p.name === metadata.value?.provider || p.id === metadata.value?.provider)
+  return provider?.location || null
 })
 
 function handleCopyClick(event: Event) {
@@ -99,11 +138,29 @@ function handleClick() {
     chatStore.toggleMessageSelection(props.message.id)
   }
 }
+
+// Copy entire message content
+async function handleCopyMessage() {
+  try {
+    await navigator.clipboard.writeText(props.message.content)
+    copyState.value = 'copied'
+    setTimeout(() => {
+      copyState.value = 'idle'
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy message:', err)
+  }
+}
+
+// Clean up incremental parse state when component is unmounted
+onUnmounted(() => {
+  clearIncrementalState(props.message.id)
+})
 </script>
 
 <template>
   <div
-    class="message relative p-4 transition-colors duration-150"
+    class="message group relative p-4 transition-colors duration-150"
     :class="{
       'bg-accent/10': isSelected,
       'cursor-pointer': isMultiSelectMode,
@@ -146,22 +203,91 @@ function handleClick() {
       <div
         class="content min-w-0 max-w-[80%]"
       >
-        <div
-          v-if="isUser"
-          class="user-message chat-user-bubble px-4 py-2 inline-block"
-        >
-          {{ message.content }}
+        <!-- Provider and Model info (above chat bubble for assistant) -->
+        <div v-if="isAssistant && metadata && (metadata.provider || metadata.model)" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <!-- Cloud/Local icon -->
+          <svg v-if="providerLocation === 'cloud'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+          </svg>
+          <svg v-else-if="providerLocation === 'local'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          <!-- Provider name -->
+          <span v-if="metadata.provider">{{ metadata.provider }}</span>
+          <!-- Model name -->
+          <span v-if="metadata.model" class="text-gray-400 dark:text-gray-500">/</span>
+          <span v-if="metadata.model">{{ metadata.model }}</span>
         </div>
 
+        <!-- User message bubble -->
+        <div
+          v-if="isUser"
+          class="user-message-wrapper relative"
+        >
+          <div class="user-message chat-user-bubble px-4 py-2 inline-block">
+            {{ message.content }}
+          </div>
+          <!-- Copy button for user message -->
+          <button
+            v-if="!isStreaming && !isMultiSelectMode"
+            class="copy-message-btn absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+            :title="t('chat.copyMessage')"
+            @click.stop="handleCopyMessage"
+          >
+            <svg v-if="copyState === 'idle'" class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Assistant message -->
         <div
           v-else
-          class="assistant-message-wrapper"
+          class="assistant-message-wrapper relative"
         >
+          <!-- Copy button for assistant message -->
+          <button
+            v-if="!isStreaming && !isMultiSelectMode"
+            class="copy-message-btn absolute -right-8 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+            :title="t('chat.copyMessage')"
+            @click.stop="handleCopyMessage"
+          >
+            <svg v-if="copyState === 'idle'" class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+
+          <!-- Render with typeless cards embedded in single bubble -->
           <div
             class="assistant-message chat-assistant-bubble px-4 py-3 prose prose-slate dark:prose-invert max-w-none"
             @click="handleCopyClick"
-            v-html="renderedContent"
-          />
+          >
+            <template v-if="hasCards && contentSegments">
+              <template v-for="(segment, index) in contentSegments" :key="index">
+                <div
+                  v-if="segment.type === 'text'"
+                  class="prose-content"
+                  v-html="renderMarkdown(segment.content as string)"
+                />
+                <TypelessCardComponent
+                  v-else
+                  :card="segment.content as TypelessCard"
+                  class="my-3 -mx-1"
+                />
+              </template>
+            </template>
+            <!-- Render without typeless cards -->
+            <div
+              v-else
+              v-html="renderedContent"
+            />
+          </div>
         </div>
 
         <!-- Streaming indicator -->
@@ -173,19 +299,35 @@ function handleClick() {
           </span>
         </div>
 
-        <!-- Timestamp and Stats -->
+        <!-- Timestamp (always visible) -->
         <div
           class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-2 flex-wrap"
           :class="{ 'justify-end': isUser }"
         >
           <span>{{ formattedTime }}</span>
-          <!-- Inline stats for assistant messages -->
-          <template v-if="isAssistant && metadata?.stats && !isStreaming">
-            <span class="text-gray-300 dark:text-gray-600">·</span>
-            <span v-if="formatTokens(metadata.stats.input_tokens)">{{ formatTokens(metadata.stats.input_tokens) }} {{ t('chat.stats.inputTokens') }}</span>
-            <span v-if="formatTokens(metadata.stats.output_tokens)">{{ formatTokens(metadata.stats.output_tokens) }} {{ t('chat.stats.outputTokens') }}</span>
-            <span v-if="formatTTFT(metadata.stats.ttft_ms)">{{ formatTTFT(metadata.stats.ttft_ms) }} {{ t('chat.stats.ttft') }}</span>
-            <span v-if="formatSpeed(metadata.stats.tokens_per_second)">{{ formatSpeed(metadata.stats.tokens_per_second) }}{{ t('chat.stats.speed') }}</span>
+
+          <!-- Stats for assistant messages -->
+          <template v-if="isAssistant && metadata?.stats">
+            <span class="ml-2 flex items-center gap-2">
+              <span v-if="formatTokens(metadata.stats.input_tokens)" class="flex items-center gap-0.5">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4" />
+                </svg>
+                {{ formatTokens(metadata.stats.input_tokens) }}
+              </span>
+              <span v-if="formatTokens(metadata.stats.output_tokens)" class="flex items-center gap-0.5">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8v12m0 0l-4-4m4 4l4-4" />
+                </svg>
+                {{ formatTokens(metadata.stats.output_tokens) }}
+              </span>
+              <span v-if="formatTTFT(metadata.stats.ttft_ms)">
+                ⏱️ {{ formatTTFT(metadata.stats.ttft_ms) }}
+              </span>
+              <span v-if="formatSpeed(metadata.stats.tokens_per_second)">
+                {{ formatSpeed(metadata.stats.tokens_per_second) }} tokens/s
+              </span>
+            </span>
           </template>
         </div>
       </div>
@@ -219,6 +361,22 @@ function handleClick() {
   margin: 0;
   padding: 0;
   background: transparent;
+}
+
+/* Tree structure whitespace preservation */
+.prose :deep(.tree-structure) {
+  white-space: pre !important;
+  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+
+:root.dark .prose :deep(.tree-structure),
+[data-theme="dark"] .prose :deep(.tree-structure) {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .prose :deep(.code-block) {
@@ -260,5 +418,40 @@ function handleClick() {
 :root.dark .prose :deep(blockquote),
 [data-theme="dark"] .prose :deep(blockquote) {
   color: #9ca3af;
+}
+
+/* Embedded card styles */
+.prose-content :deep(p:first-child) {
+  margin-top: 0;
+}
+
+.prose-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* Copy button styles */
+.copy-message-btn {
+  background: transparent;
+}
+
+/* Metadata tooltip styles */
+.metadata-tooltip {
+  pointer-events: none;
+}
+
+/* Fade transition */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* User message wrapper for positioning copy button */
+.user-message-wrapper {
+  display: inline-block;
 }
 </style>

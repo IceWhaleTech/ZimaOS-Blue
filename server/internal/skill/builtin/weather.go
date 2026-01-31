@@ -46,6 +46,7 @@ func NewWeather(config *WeatherConfig) *Weather {
 			Version:     "1.0.0",
 			Description: "Get current weather information for a location",
 			Category:    "information",
+			Icon:        "weather",
 			Tags:        []string{"weather", "forecast", "utility"},
 			Inputs: []skill.Parameter{
 				{

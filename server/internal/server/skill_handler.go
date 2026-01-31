@@ -46,26 +46,30 @@ type RemoteSkill struct {
 
 // SkillHandler handles skill-related HTTP requests
 type SkillHandler struct {
-	registry      *skill.Registry
-	store         *skillstore.Store       // Local database store for skills
-	syncService   *skillstore.SyncService // Sync service for periodic updates
-	sources       map[string]*SkillSource
-	remoteSkills  map[string]*RemoteSkill
-	mu            sync.RWMutex
-	httpClient    *http.Client
-	useMockData   bool // When true, return mock data if API fails; when false, return error
+	registry        *skill.Registry
+	store           *skillstore.Store              // Local database store for skills
+	syncService     *skillstore.SyncService        // Sync service for periodic updates
+	featuredLoader  *skillstore.FeaturedSkillsLoader // Featured skills fallback
+	localScanner    *skillstore.LocalSkillScanner    // Local skill discovery
+	sources         map[string]*SkillSource
+	remoteSkills    map[string]*RemoteSkill
+	mu              sync.RWMutex
+	httpClient      *http.Client
+	useMockData     bool // When true, return mock data if API fails; when false, return error
+	useFeaturedFallback bool // When true, use featured skills as fallback on API failure
 }
 
 // NewSkillHandler creates a new skill handler
 func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 	h := &SkillHandler{
-		registry:     registry,
-		sources:      make(map[string]*SkillSource),
-		remoteSkills: make(map[string]*RemoteSkill),
+		registry:            registry,
+		sources:             make(map[string]*SkillSource),
+		remoteSkills:        make(map[string]*RemoteSkill),
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 30 * time.Second, // Per-request timeout
 		},
-		useMockData: false, // Default to not using mock data in production
+		useMockData:         false, // Default to not using mock data in production
+		useFeaturedFallback: true,  // Default to using featured skills as fallback
 	}
 
 	// Register default sources
@@ -77,14 +81,7 @@ func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 		Description: "Official ClawHub skill marketplace",
 		Enabled:     true,
 	}
-	h.sources["moltbot"] = &SkillSource{
-		ID:          "moltbot",
-		Name:        "Community Extensions",
-		URL:         "https://api.github.com/repos/moltbot/moltbot/contents/extensions",
-		Type:        "github",
-		Description: "Community extensions",
-		Enabled:     true,
-	}
+	// Note: moltbot extensions source removed - extensions are now native
 
 	return h
 }
@@ -99,11 +96,27 @@ func (h *SkillHandler) SetSyncService(syncService *skillstore.SyncService) {
 	h.syncService = syncService
 }
 
+// SetFeaturedLoader sets the featured skills loader for fallback
+func (h *SkillHandler) SetFeaturedLoader(loader *skillstore.FeaturedSkillsLoader) {
+	h.featuredLoader = loader
+}
+
+// SetLocalScanner sets the local skill scanner
+func (h *SkillHandler) SetLocalScanner(scanner *skillstore.LocalSkillScanner) {
+	h.localScanner = scanner
+}
+
 // SetUseMockData enables or disables mock data fallback
 // When enabled, mock data is returned if the API fails
 // This is useful for development and demo purposes
 func (h *SkillHandler) SetUseMockData(enabled bool) {
 	h.useMockData = enabled
+}
+
+// SetUseFeaturedFallback enables or disables featured skills fallback
+// When enabled, featured skills are returned if the API fails
+func (h *SkillHandler) SetUseFeaturedFallback(enabled bool) {
+	h.useFeaturedFallback = enabled
 }
 
 // RegisterRoutes registers skill routes
@@ -113,6 +126,9 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills.GET("/:id", h.GetSkill)
 	skills.POST("/:id/enable", h.EnableSkill)
 	skills.POST("/:id/disable", h.DisableSkill)
+	skills.GET("/local", h.ListLocalSkills)       // New: List local skills
+	skills.POST("/local/scan", h.ScanLocalSkills) // New: Scan local skills
+	skills.GET("/verify/:id", h.VerifySkill)      // New: Verify skill visibility
 
 	// Skill store routes
 	store := g.Group("/skill-store")
@@ -120,14 +136,16 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	store.POST("/sources", h.AddSource)
 	store.DELETE("/sources/:id", h.RemoveSource)
 	store.GET("/browse", h.BrowseSkills)
-	store.GET("/search", h.SearchSkills)       // New: Full-text search
-	store.GET("/categories", h.GetCategories)  // New: Get all categories
-	store.GET("/stats", h.GetStats)            // New: Get statistics
-	store.GET("/sync-status", h.GetSyncStatus) // New: Get sync status
+	store.GET("/featured", h.GetFeaturedSkills)  // New: Get featured skills
+	store.GET("/search", h.SearchSkills)         // Full-text search
+	store.GET("/categories", h.GetCategories)    // Get all categories
+	store.GET("/stats", h.GetStats)              // Get statistics
+	store.GET("/sync-status", h.GetSyncStatus)   // Get sync status
 	store.POST("/install/:id", h.InstallSkill)
+	store.POST("/install-url", h.InstallFromURL) // New: Install from URL
 	store.POST("/uninstall/:id", h.UninstallSkill)
 	store.POST("/refresh", h.RefreshSources)
-	store.POST("/sync", h.TriggerSync) // New: Trigger manual sync
+	store.POST("/sync", h.TriggerSync)           // Trigger manual sync
 }
 
 // SkillResponse represents a skill in API responses
@@ -138,6 +156,7 @@ type SkillResponse struct {
 	Description string            `json:"description"`
 	Author      string            `json:"author,omitempty"`
 	Category    string            `json:"category,omitempty"`
+	Icon        string            `json:"icon,omitempty"`
 	Tags        []string          `json:"tags,omitempty"`
 	Enabled     bool              `json:"enabled"`
 	Builtin     bool              `json:"builtin"`
@@ -159,6 +178,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			Description: m.Description,
 			Author:      m.Author,
 			Category:    m.Category,
+			Icon:        m.Icon,
 			Tags:        m.Tags,
 			Enabled:     s.Enabled,
 			Builtin:     s.Builtin,
@@ -188,6 +208,7 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 		Description: m.Description,
 		Author:      m.Author,
 		Category:    m.Category,
+		Icon:        m.Icon,
 		Tags:        m.Tags,
 		Enabled:     info.Enabled,
 		Builtin:     info.Builtin,
@@ -420,6 +441,24 @@ func (h *SkillHandler) browseSkillsFromMemory(c echo.Context) error {
 		skills = append(skills, rs)
 	}
 
+	// If no skills found and featured fallback is enabled, use featured skills
+	if len(skills) == 0 && h.useFeaturedFallback && h.featuredLoader != nil {
+		featuredSkills := h.getFeaturedSkillsFallback()
+		for _, fs := range featuredSkills {
+			// Apply filters
+			if category != "" && fs.Category != category {
+				continue
+			}
+			if search != "" {
+				if !containsIgnoreCase(fs.Name, search) && !containsIgnoreCase(fs.Description, search) {
+					continue
+				}
+			}
+			fs.Installed = installedIDs[fs.ID]
+			skills = append(skills, fs)
+		}
+	}
+
 	return c.JSON(http.StatusOK, skills)
 }
 
@@ -456,7 +495,7 @@ func (h *SkillHandler) skillToRemoteSkill(s *skillstore.Skill, installedIDs map[
 	}
 }
 
-// InstallSkill installs a skill from a remote source
+// InstallSkill installs a skill from a remote source with retry logic
 func (h *SkillHandler) InstallSkill(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
@@ -493,11 +532,43 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 		rs = memSkill
 	}
 
-	// Download skill manifest from source
-	manifest, err := h.downloadSkillManifest(ctx, rs)
-	if err != nil {
+	// Download skill manifest from source with retry logic
+	const maxRetries = 3
+	var manifest *skill.Manifest
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		manifest, lastErr = h.downloadSkillManifest(ctx, rs)
+		if lastErr == nil {
+			break
+		}
+
+		// Check if context is cancelled
+		if ctx.Err() != nil {
+			return c.JSON(http.StatusRequestTimeout, map[string]string{
+				"error":   "request cancelled",
+				"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
+			})
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s)
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return c.JSON(http.StatusRequestTimeout, map[string]string{
+					"error":   "request cancelled during retry",
+					"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
+				})
+			case <-time.After(time.Duration(1<<(attempt-1)) * time.Second):
+				// Continue to next retry
+			}
+		}
+	}
+
+	if lastErr != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": fmt.Sprintf("failed to download skill: %v", err),
+			"error":       fmt.Sprintf("failed to download skill after %d attempts: %v", maxRetries, lastErr),
+			"retry_count": fmt.Sprintf("%d", maxRetries),
 		})
 	}
 
@@ -510,8 +581,16 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 	}
 
 	// Update installed status in database
+	// If this fails, rollback the registration
 	if h.store != nil {
-		h.store.SetInstalled(ctx, id, true)
+		if err := h.store.SetInstalled(ctx, id, true); err != nil {
+			// Rollback: unregister the skill
+			h.registry.Unregister(id)
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error":    fmt.Sprintf("failed to update database: %v", err),
+				"rollback": "skill registration rolled back",
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -636,9 +715,14 @@ func (h *SkillHandler) refreshSourcesInMemory(c echo.Context) error {
 	// Clear existing remote skills
 	h.remoteSkills = make(map[string]*RemoteSkill)
 
+	// Create a context with timeout for external API calls (60 seconds for full pagination)
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 60*time.Second)
+	defer cancel()
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	errors := make([]string, 0)
+	fetchedAny := false
 
 	for _, source := range h.sources {
 		if !source.Enabled {
@@ -649,7 +733,7 @@ func (h *SkillHandler) refreshSourcesInMemory(c echo.Context) error {
 		go func(src *SkillSource) {
 			defer wg.Done()
 
-			skills, err := h.fetchSkillsFromSource(c.Request().Context(), src)
+			skills, err := h.fetchSkillsFromSource(ctx, src)
 			if err != nil {
 				mu.Lock()
 				errors = append(errors, fmt.Sprintf("%s: %v", src.Name, err))
@@ -661,19 +745,33 @@ func (h *SkillHandler) refreshSourcesInMemory(c echo.Context) error {
 			for _, s := range skills {
 				h.remoteSkills[s.ID] = s
 			}
+			if len(skills) > 0 {
+				fetchedAny = true
+			}
 			mu.Unlock()
 		}(source)
 	}
 
 	wg.Wait()
 
+	// If no skills were fetched and featured fallback is enabled, use featured skills
+	if !fetchedAny && h.useFeaturedFallback && h.featuredLoader != nil {
+		featuredSkills := h.getFeaturedSkillsFallback()
+		for _, s := range featuredSkills {
+			h.remoteSkills[s.ID] = s
+		}
+	}
+
 	response := map[string]interface{}{
-		"success":      len(errors) == 0,
+		"success":      len(h.remoteSkills) > 0,
 		"skills_count": len(h.remoteSkills),
 	}
 
 	if len(errors) > 0 {
 		response["errors"] = errors
+		if len(h.remoteSkills) > 0 {
+			response["message"] = "partial success with featured fallback"
+		}
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -726,15 +824,30 @@ type ClawHubSkill struct {
 func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource) ([]*RemoteSkill, error) {
 	var allSkills []*RemoteSkill
 	baseURL := source.URL + "/api/v1/skills"
-	cursor := ""
-	maxPages := 100 // Limit to prevent infinite loops (supports ~2400 skills at 24 per page)
+	maxPages := 100       // Limit to prevent infinite loops
+	pageSize := 24        // ClawHub returns 24 items per page
+	emptyPageCount := 0   // Track consecutive empty pages
+	maxEmptyPages := 2    // Stop after 2 consecutive empty pages
 
-	for page := 0; page < maxPages; page++ {
-		// Build URL with cursor if available
-		apiURL := baseURL
-		if cursor != "" {
-			apiURL = fmt.Sprintf("%s?cursor=%s", baseURL, cursor)
+	for page := 1; page <= maxPages; page++ {
+		// Check if context is cancelled (timeout)
+		select {
+		case <-ctx.Done():
+			if len(allSkills) > 0 {
+				// Return what we have so far
+				fmt.Printf("[ClawHub] Context cancelled, returning %d skills fetched so far\n", len(allSkills))
+				return allSkills, nil
+			}
+			// If no skills fetched yet, try featured fallback
+			if h.useFeaturedFallback && h.featuredLoader != nil {
+				return h.getFeaturedSkillsFallback(), nil
+			}
+			return nil, ctx.Err()
+		default:
 		}
+
+		// Build URL with page parameter
+		apiURL := fmt.Sprintf("%s?page=%d", baseURL, page)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
@@ -755,6 +868,10 @@ func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource
 			}
 			if len(allSkills) > 0 {
 				return allSkills, nil
+			}
+			// If context cancelled, try featured fallback
+			if ctx.Err() != nil && h.useFeaturedFallback && h.featuredLoader != nil {
+				return h.getFeaturedSkillsFallback(), nil
 			}
 			return nil, fmt.Errorf("failed to fetch skills from %s: %w", source.Name, err)
 		}
@@ -791,18 +908,34 @@ func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource
 			return nil, fmt.Errorf("failed to parse skills response: %w", err)
 		}
 
+		// Debug: Log pagination info
+		fmt.Printf("[ClawHub] Page %d: fetched %d items, total so far=%d\n",
+			page, len(apiResp.Items), len(allSkills)+len(apiResp.Items))
+
+		// Check if page is empty
+		if len(apiResp.Items) == 0 {
+			emptyPageCount++
+			if emptyPageCount >= maxEmptyPages {
+				fmt.Printf("[ClawHub] %d consecutive empty pages, stopping pagination. Total skills: %d\n", maxEmptyPages, len(allSkills))
+				break
+			}
+			continue
+		}
+		emptyPageCount = 0 // Reset counter on non-empty page
+
 		// Convert ClawHub skills to RemoteSkill format
 		for _, item := range apiResp.Items {
 			allSkills = append(allSkills, h.convertClawHubSkill(item, source))
 		}
 
-		// Check if there are more pages
-		if apiResp.NextCursor == "" {
+		// If we got fewer items than page size, we've reached the last page
+		if len(apiResp.Items) < pageSize {
+			fmt.Printf("[ClawHub] Last page reached (got %d items < %d). Total skills: %d\n", len(apiResp.Items), pageSize, len(allSkills))
 			break
 		}
-		cursor = apiResp.NextCursor
 	}
 
+	fmt.Printf("[ClawHub] Pagination complete. Total skills fetched: %d\n", len(allSkills))
 	return allSkills, nil
 }
 
@@ -1298,4 +1431,384 @@ func (h *SkillHandler) TriggerSync(c echo.Context) error {
 		"success": true,
 		"message": "sync triggered for all sources",
 	})
+}
+
+// =============================================================================
+// New v0.10.8 Endpoints
+// =============================================================================
+
+// GetFeaturedSkills returns the curated list of featured skills
+// This serves as a fallback when external APIs fail
+func (h *SkillHandler) GetFeaturedSkills(c echo.Context) error {
+	if h.featuredLoader == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "featured skills not configured",
+		})
+	}
+
+	if !h.featuredLoader.IsLoaded() {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "featured skills not loaded",
+		})
+	}
+
+	// Get optional category filter
+	category := c.QueryParam("category")
+
+	var skills []*skillstore.FeaturedSkill
+	if category != "" {
+		skills = h.featuredLoader.GetByCategory(category)
+	} else {
+		skills = h.featuredLoader.GetAll()
+	}
+
+	// Convert to RemoteSkill format for consistency
+	result := make([]*RemoteSkill, 0, len(skills))
+	for _, s := range skills {
+		result = append(result, &RemoteSkill{
+			ID:          s.ID,
+			Name:        s.Name,
+			Version:     s.Version,
+			Description: s.Description,
+			Author:      s.Author,
+			Category:    s.Category,
+			Tags:        s.Tags,
+			SourceID:    "featured",
+			SourceName:  "Featured",
+			Homepage:    s.Homepage,
+			DownloadURL: s.SourceURL,
+			Stars:       s.Stars,
+			Installed:   h.registry.Get(s.ID) != nil,
+		})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+// ListLocalSkills returns skills discovered from local directory
+func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
+	if h.localScanner == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "local skill scanner not configured",
+		})
+	}
+
+	skills := h.localScanner.GetAll()
+
+	// Convert to response format
+	result := make([]map[string]interface{}, 0, len(skills))
+	for _, s := range skills {
+		result = append(result, map[string]interface{}{
+			"id":            s.ID,
+			"name":          s.Name,
+			"description":   s.Description,
+			"version":       s.Version,
+			"author":        s.Author,
+			"category":      s.Category,
+			"tags":          s.Tags,
+			"file_path":     s.FilePath,
+			"discovered_at": s.DiscoveredAt,
+			"last_modified": s.LastModified,
+			"installed":     h.registry.Get(s.ID) != nil,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"skills": result,
+		"count":  len(result),
+	})
+}
+
+// ScanLocalSkills triggers a scan of the local skills directory
+func (h *SkillHandler) ScanLocalSkills(c echo.Context) error {
+	if h.localScanner == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "local skill scanner not configured",
+		})
+	}
+
+	if err := h.localScanner.Scan(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("scan failed: %v", err),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":      true,
+		"skills_found": h.localScanner.Count(),
+	})
+}
+
+// VerifySkill verifies that a skill is properly registered and visible
+func (h *SkillHandler) VerifySkill(c echo.Context) error {
+	id := c.Param("id")
+	if id == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "skill ID is required",
+		})
+	}
+
+	// Check if skill exists in registry
+	skill := h.registry.Get(id)
+	if skill == nil {
+		return c.JSON(http.StatusNotFound, map[string]interface{}{
+			"id":       id,
+			"visible":  false,
+			"error":    "skill not found in registry",
+		})
+	}
+
+	// Get skill info
+	info := h.registry.GetInfo(id)
+	manifest := skill.Manifest()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":          id,
+		"visible":     true,
+		"enabled":     info.Enabled,
+		"builtin":     info.Builtin,
+		"name":        manifest.Name,
+		"version":     manifest.Version,
+		"description": manifest.Description,
+	})
+}
+
+// InstallFromURLRequest represents a request to install a skill from URL
+type InstallFromURLRequest struct {
+	URL         string `json:"url"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// InstallFromURL installs a skill from a URL (GitHub raw URL or direct link) with retry logic
+func (h *SkillHandler) InstallFromURL(c echo.Context) error {
+	var req InstallFromURLRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request body",
+		})
+	}
+
+	if req.URL == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "URL is required",
+		})
+	}
+
+	ctx := c.Request().Context()
+
+	// Fetch the skill content from URL with retry logic
+	const maxRetries = 3
+	var body []byte
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		httpReq, err := http.NewRequestWithContext(ctx, "GET", req.URL, nil)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("invalid URL: %v", err),
+			})
+		}
+
+		resp, err := h.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to fetch skill: %v", err)
+		} else {
+			if resp.StatusCode == http.StatusOK {
+				body, lastErr = io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if lastErr == nil {
+					break // Success
+				}
+				lastErr = fmt.Errorf("failed to read skill content: %v", lastErr)
+			} else {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("failed to fetch skill: HTTP %d", resp.StatusCode)
+			}
+		}
+
+		// Check if context is cancelled
+		if ctx.Err() != nil {
+			return c.JSON(http.StatusRequestTimeout, map[string]string{
+				"error":   "request cancelled",
+				"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
+			})
+		}
+
+		// Wait before retry (exponential backoff: 1s, 2s, 4s)
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return c.JSON(http.StatusRequestTimeout, map[string]string{
+					"error":   "request cancelled during retry",
+					"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
+				})
+			case <-time.After(time.Duration(1<<(attempt-1)) * time.Second):
+				// Continue to next retry
+			}
+		}
+	}
+
+	if lastErr != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{
+			"error":       fmt.Sprintf("failed after %d attempts: %v", maxRetries, lastErr),
+			"retry_count": fmt.Sprintf("%d", maxRetries),
+		})
+	}
+
+	// Parse the skill content (expecting SKILL.md format)
+	skillID, skillManifest, err := h.parseSkillContent(string(body), req.URL, req.Name, req.Description)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("failed to parse skill: %v", err),
+		})
+	}
+
+	// Check if already installed
+	if h.registry.Get(skillID) != nil {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": "skill already installed",
+		})
+	}
+
+	// Create and register the skill
+	adapter := NewRemoteSkillAdapter(skillManifest)
+	if err := h.registry.Register(adapter, false); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to register skill: %v", err),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"skill": map[string]interface{}{
+			"id":          skillManifest.ID,
+			"name":        skillManifest.Name,
+			"version":     skillManifest.Version,
+			"description": skillManifest.Description,
+		},
+	})
+}
+
+// parseSkillContent parses SKILL.md content and returns skill ID and manifest
+func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overrideDesc string) (string, *skill.Manifest, error) {
+	manifest := &skill.Manifest{
+		Version:  "1.0.0",
+		Metadata: make(map[string]string),
+	}
+
+	// Parse YAML frontmatter if present
+	if strings.HasPrefix(content, "---") {
+		parts := strings.SplitN(content, "---", 3)
+		if len(parts) >= 3 {
+			frontmatter := parts[1]
+
+			// Parse frontmatter lines
+			for _, line := range strings.Split(frontmatter, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+
+				colonIdx := strings.Index(line, ":")
+				if colonIdx == -1 {
+					continue
+				}
+
+				key := strings.TrimSpace(line[:colonIdx])
+				value := strings.TrimSpace(line[colonIdx+1:])
+
+				switch key {
+				case "name":
+					manifest.Name = value
+					if manifest.ID == "" {
+						manifest.ID = value
+					}
+				case "id":
+					manifest.ID = value
+				case "description":
+					manifest.Description = value
+				case "version":
+					manifest.Version = value
+				case "author":
+					manifest.Author = value
+				case "category":
+					manifest.Category = value
+				case "tags":
+					// Parse tags array [tag1, tag2]
+					value = strings.Trim(value, "[]")
+					for _, tag := range strings.Split(value, ",") {
+						tag = strings.TrimSpace(tag)
+						if tag != "" {
+							manifest.Tags = append(manifest.Tags, tag)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Apply overrides
+	if overrideName != "" {
+		manifest.Name = overrideName
+	}
+	if overrideDesc != "" {
+		manifest.Description = overrideDesc
+	}
+
+	// Generate ID from URL if not set
+	if manifest.ID == "" {
+		// Extract ID from URL path
+		parts := strings.Split(sourceURL, "/")
+		for i := len(parts) - 1; i >= 0; i-- {
+			part := strings.TrimSuffix(parts[i], ".md")
+			part = strings.TrimSuffix(part, ".MD")
+			if part != "" && part != "SKILL" {
+				manifest.ID = strings.ToLower(part)
+				break
+			}
+		}
+	}
+
+	// Use ID as name if not set
+	if manifest.Name == "" {
+		manifest.Name = manifest.ID
+	}
+
+	if manifest.ID == "" {
+		return "", nil, fmt.Errorf("could not determine skill ID")
+	}
+
+	// Store source URL in metadata
+	manifest.Metadata["source_url"] = sourceURL
+
+	return manifest.ID, manifest, nil
+}
+
+// getFeaturedSkillsFallback returns featured skills when API fails
+func (h *SkillHandler) getFeaturedSkillsFallback() []*RemoteSkill {
+	if h.featuredLoader == nil || !h.featuredLoader.IsLoaded() {
+		return nil
+	}
+
+	skills := h.featuredLoader.GetAll()
+	result := make([]*RemoteSkill, 0, len(skills))
+	for _, s := range skills {
+		result = append(result, &RemoteSkill{
+			ID:          s.ID,
+			Name:        s.Name,
+			Version:     s.Version,
+			Description: s.Description,
+			Author:      s.Author,
+			Category:    s.Category,
+			Tags:        s.Tags,
+			SourceID:    "featured",
+			SourceName:  "Featured",
+			Homepage:    s.Homepage,
+			DownloadURL: s.SourceURL,
+			Stars:       s.Stars,
+			Installed:   h.registry.Get(s.ID) != nil,
+		})
+	}
+	return result
 }

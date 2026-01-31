@@ -195,6 +195,14 @@ type Config struct {
 	WhatsApp WhatsAppConfig `mapstructure:"whatsapp"`
 	// Signal configuration.
 	Signal SignalConfig `mapstructure:"signal"`
+	// Teams configuration.
+	Teams TeamsConfig `mapstructure:"teams"`
+	// Mattermost configuration.
+	Mattermost MattermostConfig `mapstructure:"mattermost"`
+	// BlueBubbles configuration.
+	BlueBubbles BlueBubblesConfig `mapstructure:"bluebubbles"`
+	// Zalo configuration.
+	Zalo ZaloConfig `mapstructure:"zalo"`
 }
 
 // TelegramConfig contains Telegram bot configuration.
@@ -285,6 +293,43 @@ type SignalConfig struct {
 	UseJsonRpc     bool     `mapstructure:"use_json_rpc"`
 }
 
+// TeamsConfig contains Microsoft Teams configuration.
+type TeamsConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	AppID        string   `mapstructure:"app_id"`
+	AppPassword  string   `mapstructure:"app_password"`
+	TenantID     string   `mapstructure:"tenant_id"`
+	AllowedTeams []string `mapstructure:"allowed_teams"`
+	AllowedUsers []string `mapstructure:"allowed_users"`
+}
+
+// MattermostConfig contains Mattermost configuration.
+type MattermostConfig struct {
+	Enabled         bool     `mapstructure:"enabled"`
+	ServerURL       string   `mapstructure:"server_url"`
+	BotToken        string   `mapstructure:"bot_token"`
+	AllowedChannels []string `mapstructure:"allowed_channels"`
+	AllowedUsers    []string `mapstructure:"allowed_users"`
+}
+
+// BlueBubblesConfig contains BlueBubbles (iMessage bridge) configuration.
+type BlueBubblesConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	ServerURL    string   `mapstructure:"server_url"`
+	Password     string   `mapstructure:"password"`
+	AllowedChats []string `mapstructure:"allowed_chats"`
+}
+
+// ZaloConfig contains Zalo Official Account configuration.
+type ZaloConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	OAID         string `mapstructure:"oa_id"`
+	AccessToken  string `mapstructure:"access_token"`
+	RefreshToken string `mapstructure:"refresh_token"`
+	AppID        string `mapstructure:"app_id"`
+	SecretKey    string `mapstructure:"secret_key"`
+}
+
 // DefaultConfig returns the default channel configuration.
 func DefaultConfig() Config {
 	return Config{
@@ -324,6 +369,18 @@ func DefaultConfig() Config {
 			ConfigPath:    "./data/signal",
 			SignalCLIPath: "signal-cli",
 			UseJsonRpc:    true,
+		},
+		Teams: TeamsConfig{
+			Enabled: false,
+		},
+		Mattermost: MattermostConfig{
+			Enabled: false,
+		},
+		BlueBubbles: BlueBubblesConfig{
+			Enabled: false,
+		},
+		Zalo: ZaloConfig{
+			Enabled: false,
 		},
 	}
 }

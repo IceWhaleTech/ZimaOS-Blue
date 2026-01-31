@@ -3,7 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { proxyApi, type Session, type SessionStats } from '@/api/proxy'
 
-const { t } = useI18n()
+// t is available for future i18n use
+const { t: _t } = useI18n()
 
 const sessions = ref<Session[]>([])
 const stats = ref<SessionStats | null>(null)
@@ -124,16 +125,16 @@ onUnmounted(() => {
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Session Monitor</h2>
       <div class="flex items-center gap-2">
         <button
-          @click="toggleActiveFilter"
           :class="showActiveOnly ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
           class="px-3 py-1.5 text-sm rounded-md transition-colors"
+          @click="toggleActiveFilter"
         >
           {{ showActiveOnly ? 'Active Only' : 'All Sessions' }}
         </button>
         <button
-          @click="fetchData"
           :disabled="loading"
           class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+          @click="fetchData"
         >
           {{ loading ? 'Refreshing...' : 'Refresh' }}
         </button>

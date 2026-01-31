@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSkillStore } from '@/stores/skill'
-import type { Skill, RemoteSkill, SkillSource } from '@/api/skill'
+import type { Skill, RemoteSkill } from '@/api/skill'
 
 const { t, te } = useI18n()
 const skillStore = useSkillStore()
@@ -123,6 +123,11 @@ async function addSource() {
   newSource.value = { id: '', name: '', url: '', type: 'custom', description: '' }
 }
 
+function getSkillIconUrl(icon?: string): string | null {
+  if (!icon) return null
+  return `/icons/skills/${icon}.svg`
+}
+
 function getCategoryIcon(category?: string): string {
   const icons: Record<string, string> = {
     integration: '🔗',
@@ -130,6 +135,10 @@ function getCategoryIcon(category?: string): string {
     development: '💻',
     analytics: '📈',
     extension: '🧩',
+    utility: '🔧',
+    system: '💻',
+    communication: '💬',
+    information: '📰',
   }
   return icons[category || ''] || '⚡'
 }
@@ -206,7 +215,7 @@ function getCategoryLabel(category?: string): string {
       </select>
 
       <div class="filter-actions">
-        <button v-if="activeTab === 'store'" class="btn-refresh" @click="refreshStore" :disabled="skillStore.refreshing">
+        <button v-if="activeTab === 'store'" class="btn-refresh" :disabled="skillStore.refreshing" @click="refreshStore">
           <svg v-if="!skillStore.refreshing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -219,7 +228,7 @@ function getCategoryLabel(category?: string): string {
         <button v-if="activeTab === 'store'" class="btn-add-source" @click="showAddSourceModal = true">
           + {{ t('skillStore.actions.addSource') }}
         </button>
-        <button v-if="activeTab === 'installed'" class="btn-refresh" @click="skillStore.fetchSkills()" :disabled="skillStore.loading">
+        <button v-if="activeTab === 'installed'" class="btn-refresh" :disabled="skillStore.loading" @click="skillStore.fetchSkills()">
           <svg v-if="!skillStore.loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -252,7 +261,8 @@ function getCategoryLabel(category?: string): string {
         :class="['item-card', { disabled: !skill.enabled }]"
       >
         <div class="item-header">
-          <span class="item-icon">{{ getCategoryIcon(skill.category) }}</span>
+          <img v-if="getSkillIconUrl(skill.icon)" :src="getSkillIconUrl(skill.icon)!" class="item-icon-svg" :alt="skill.name" />
+          <span v-else class="item-icon">{{ getCategoryIcon(skill.category) }}</span>
           <div class="item-title">
             <h3 :title="skill.name">{{ skill.name }}</h3>
             <div class="item-title-meta">
@@ -371,8 +381,8 @@ function getCategoryLabel(category?: string): string {
           <button
             v-if="!skill.installed"
             class="btn-install"
-            @click="installSkill(skill)"
             :disabled="skillStore.loading"
+            @click="installSkill(skill)"
           >
             {{ t('skillStore.actions.install') }}
           </button>

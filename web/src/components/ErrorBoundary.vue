@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onErrorCaptured } from 'vue'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     fallbackTitle?: string
     fallbackMessage?: string

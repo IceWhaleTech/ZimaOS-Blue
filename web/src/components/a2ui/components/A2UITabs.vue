@@ -12,7 +12,7 @@
       </button>
     </div>
     <div class="tabs-content">
-      <div v-for="(_tab, index) in tabs" :key="index" v-show="activeTab === index" class="tab-panel">
+      <div v-for="(_tab, index) in tabs" v-show="activeTab === index" :key="index" class="tab-panel">
         <A2UIComponent
           v-for="child in getTabChildren(index)"
           :key="child.id"

@@ -47,6 +47,7 @@ func NewNews(config *NewsConfig) *News {
 			Version:     "1.0.0",
 			Description: "News aggregation and headlines",
 			Category:    "information",
+			Icon:        "news",
 			Tags:        []string{"news", "headlines", "articles"},
 			Inputs: []skill.Parameter{
 				{
@@ -309,6 +310,7 @@ func NewStocks(config *StocksConfig) *Stocks {
 			Version:     "1.0.0",
 			Description: "Stock market data and quotes",
 			Category:    "information",
+			Icon:        "stocks",
 			Tags:        []string{"stocks", "market", "finance", "trading"},
 			Inputs: []skill.Parameter{
 				{
@@ -469,6 +471,7 @@ func NewCrypto(config *CryptoConfig) *Crypto {
 			Version:     "1.0.0",
 			Description: "Cryptocurrency prices and market data",
 			Category:    "information",
+			Icon:        "crypto",
 			Tags:        []string{"crypto", "bitcoin", "ethereum", "blockchain"},
 			Inputs: []skill.Parameter{
 				{

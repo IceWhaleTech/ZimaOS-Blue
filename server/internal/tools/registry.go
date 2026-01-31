@@ -18,6 +18,7 @@ var (
 type ToolDefinition struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
+	Icon        string                 `json:"icon,omitempty"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 

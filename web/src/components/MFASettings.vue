@@ -41,7 +41,7 @@ async function startSetup() {
     loading.value = true
     const response = await mfaApi.setup(true)
     setupData.value = response.data
-  } catch (e) {
+  } catch (_e) {
     emit('status-change', t('mfa.setupFailed'))
   } finally {
     loading.value = false

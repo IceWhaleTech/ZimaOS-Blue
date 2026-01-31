@@ -23,6 +23,7 @@ func NewCalculator() *Calculator {
 			Version:     "1.0.0",
 			Description: "Performs basic arithmetic calculations",
 			Category:    "utility",
+			Icon:        "calculator",
 			Tags:        []string{"math", "calculator", "utility"},
 			Inputs: []skill.Parameter{
 				{

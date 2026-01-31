@@ -41,6 +41,7 @@ func NewEmail(config *EmailConfig) *Email {
 			Version:     "1.0.0",
 			Description: "Send and manage emails via SMTP/IMAP",
 			Category:    "communication",
+			Icon:        "email",
 			Tags:        []string{"email", "smtp", "imap", "communication"},
 			Inputs: []skill.Parameter{
 				{

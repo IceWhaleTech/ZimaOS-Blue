@@ -4,7 +4,13 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import FormFillerWidget from '@/components/formfiller/FormFillerWidget.vue'
+import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingModal.vue'
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
+import { usePreviewStore } from '@/stores/preview'
+import { storeToRefs } from 'pinia'
+
+const previewStore = usePreviewStore()
+const { isPreviewMode } = storeToRefs(previewStore)
 
 const route = useRoute()
 const noPadding = computed(() => route.meta.noPadding === true)
@@ -45,5 +51,7 @@ onUnmounted(() => {
     </div>
     <!-- Form filler widget available on all pages -->
     <FormFillerWidget />
+    <!-- Preview mode onboarding tooltip -->
+    <PreviewOnboardingModal v-if="isPreviewMode" />
   </div>
 </template>

@@ -25,6 +25,8 @@ const sizeClasses = computed(() => {
       return 'h-12 w-12'
     case 'xl':
       return 'h-16 w-16'
+    default:
+      return 'h-8 w-8'
   }
 })
 
@@ -36,6 +38,8 @@ const colorClasses = computed(() => {
       return 'text-gray-600 dark:text-gray-400'
     case 'white':
       return 'text-white'
+    default:
+      return 'text-blue-600 dark:text-blue-400'
   }
 })
 </script>

@@ -28,9 +28,7 @@ func TestNewSkillHandler(t *testing.T) {
 	if _, exists := handler.sources["clawhub"]; !exists {
 		t.Error("clawhub source not registered")
 	}
-	if _, exists := handler.sources["moltbot"]; !exists {
-		t.Error("moltbot source not registered")
-	}
+	// Note: moltbot source removed - extensions are now native
 }
 
 func TestSkillHandler_DefaultSources(t *testing.T) {
@@ -49,16 +47,7 @@ func TestSkillHandler_DefaultSources(t *testing.T) {
 			t.Error("clawhub source should be enabled by default")
 		}
 	})
-
-	t.Run("moltbot source has correct URL", func(t *testing.T) {
-		source := handler.sources["moltbot"]
-		if source.Type != "github" {
-			t.Errorf("expected type 'github', got '%s'", source.Type)
-		}
-		if !source.Enabled {
-			t.Error("moltbot source should be enabled by default")
-		}
-	})
+	// Note: moltbot source test removed - extensions are now native
 }
 
 func TestSkillHandler_ListSources(t *testing.T) {
@@ -84,8 +73,9 @@ func TestSkillHandler_ListSources(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	if len(sources) < 2 {
-		t.Errorf("expected at least 2 sources, got %d", len(sources))
+	// Note: moltbot source removed - only clawhub source is registered by default
+	if len(sources) < 1 {
+		t.Errorf("expected at least 1 source, got %d", len(sources))
 	}
 }
 
@@ -187,22 +177,7 @@ func TestSkillHandler_RemoveSource(t *testing.T) {
 		}
 	})
 
-	t.Run("cannot remove default moltbot source", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/skill-store/sources/moltbot", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-		c.SetParamNames("id")
-		c.SetParamValues("moltbot")
-
-		err := handler.RemoveSource(c)
-		if err != nil {
-			t.Fatalf("RemoveSource failed: %v", err)
-		}
-
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected status %d, got %d", http.StatusForbidden, rec.Code)
-		}
-	})
+	// Note: moltbot source test removed - extensions are now native
 
 	t.Run("remove non-existent source", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/skill-store/sources/non-existent", nil)

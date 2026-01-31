@@ -79,6 +79,156 @@ describe('Markdown Renderer', () => {
       const result = renderMarkdown(markdown)
       expect(result).toContain('javascript')
     })
+
+    describe('tables', () => {
+      it('should render a basic table with header', () => {
+        const markdown = `| Header 1 | Header 2 |
+|----------|----------|
+| Cell 1   | Cell 2   |
+| Cell 3   | Cell 4   |`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('<table')
+        expect(result).toContain('<thead')
+        expect(result).toContain('<tbody')
+        expect(result).toContain('<th')
+        expect(result).toContain('<td')
+        expect(result).toContain('Header 1')
+        expect(result).toContain('Header 2')
+        expect(result).toContain('Cell 1')
+        expect(result).toContain('Cell 2')
+      })
+
+      it('should render a table without leading/trailing pipes', () => {
+        const markdown = `Header 1 | Header 2
+---------|----------
+Cell 1   | Cell 2`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('<table')
+        expect(result).toContain('Header 1')
+        expect(result).toContain('Cell 1')
+      })
+
+      it('should render Chinese content in tables', () => {
+        const markdown = `| 特性 | 说明 |
+|------|------|
+| 叠加 | 量子比特可同时处于多个状态 |
+| 纠缠 | 多个量子比特之间存在关联 |`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('<table')
+        expect(result).toContain('特性')
+        expect(result).toContain('说明')
+        expect(result).toContain('叠加')
+        expect(result).toContain('量子比特可同时处于多个状态')
+      })
+
+      it('should apply proper styling classes to tables', () => {
+        const markdown = `| A | B |
+|---|---|
+| 1 | 2 |`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('overflow-x-auto')
+        expect(result).toContain('border-collapse')
+        expect(result).toContain('border-gray-300')
+        expect(result).toContain('dark:border-gray-600')
+      })
+
+      it('should render inline markdown within table cells', () => {
+        const markdown = `| Feature | Description |
+|---------|-------------|
+| **Bold** | Use \`code\` here |`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('<strong>Bold</strong>')
+        expect(result).toContain('<code class="inline-code">code</code>')
+      })
+
+      it('should handle table with alignment separators', () => {
+        const markdown = `| Left | Center | Right |
+|:-----|:------:|------:|
+| L    | C      | R     |`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('<table')
+        expect(result).toContain('Left')
+        expect(result).toContain('Center')
+        expect(result).toContain('Right')
+      })
+
+      it('should flush table before other block elements', () => {
+        const markdown = `| A | B |
+|---|---|
+| 1 | 2 |
+
+# Header after table`
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('</table>')
+        expect(result).toContain('<h1')
+        // Table should be closed before header
+        const tableEnd = result.indexOf('</table>')
+        const headerStart = result.indexOf('<h1')
+        expect(tableEnd).toBeLessThan(headerStart)
+      })
+
+      it('should handle table followed by code block', () => {
+        const markdown = `| A | B |
+|---|---|
+| 1 | 2 |
+
+\`\`\`js
+const x = 1;
+\`\`\``
+        const result = renderMarkdown(markdown)
+        expect(result).toContain('</table>')
+        expect(result).toContain('code-block')
+      })
+
+      it('should NOT render tree structures as tables', () => {
+        const markdown = `人工智能（AI）
+├── 传统方法（规则、搜索等）
+├── 机器学习（ML）
+│   ├── 浅层学习
+│   └── 深度学习（DL）← 最先进的方向
+└── 其他方法`
+        const result = renderMarkdown(markdown)
+        // Should NOT be rendered as a table
+        expect(result).not.toContain('<table')
+        expect(result).not.toContain('<th')
+        expect(result).not.toContain('<td')
+        // Should preserve the tree structure as paragraphs
+        expect(result).toContain('├──')
+        expect(result).toContain('└──')
+        expect(result).toContain('│')
+      })
+
+      it('should NOT render lines with box-drawing characters as tables', () => {
+        const markdown = `目录结构：
+├── src/
+│   ├── components/
+│   └── utils/
+└── package.json`
+        const result = renderMarkdown(markdown)
+        expect(result).not.toContain('<table')
+        expect(result).toContain('├──')
+        expect(result).toContain('└──')
+      })
+
+      it('should preserve tree structure formatting with preformatted block', () => {
+        const markdown = `人工智能（AI）
+├── 传统方法（规则、搜索等）
+├── 机器学习（ML）
+│   ├── 浅层学习
+│   └── 深度学习（DL）← 最先进的方向
+└── 其他方法`
+        const result = renderMarkdown(markdown)
+        // Tree lines should be in a pre block
+        expect(result).toContain('<pre class="tree-structure')
+        expect(result).toContain('whitespace-pre')
+        // Should preserve the structure
+        expect(result).toContain('├──')
+        expect(result).toContain('└──')
+        expect(result).toContain('│')
+        // First line without tree chars should be a paragraph
+        expect(result).toContain('<p class="my-1">人工智能（AI）</p>')
+      })
+    })
   })
 
   describe('copyCodeToClipboard', () => {

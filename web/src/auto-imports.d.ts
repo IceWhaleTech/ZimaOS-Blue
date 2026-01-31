@@ -8,6 +8,7 @@ export {}
 declare global {
   const CHAT_STYLES: typeof import('./stores/settings').CHAT_STYLES
   const EffectScope: typeof import('vue').EffectScope
+  const THEME_STYLES: typeof import('./stores/settings').THEME_STYLES
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
   const computed: typeof import('vue').computed
   const createApp: typeof import('vue').createApp
@@ -97,6 +98,7 @@ declare global {
   const useNetwork: typeof import('./composables/useNetwork').useNetwork
   const useNotificationStore: typeof import('./stores/notification').useNotificationStore
   const usePluginStore: typeof import('./stores/plugin').usePluginStore
+  const usePreviewStore: typeof import('./stores/preview').usePreviewStore
   const useProviderPoolStore: typeof import('./stores/providerPool').useProviderPoolStore
   const useRoute: typeof import('vue-router').useRoute
   const useRouter: typeof import('vue-router').useRouter
@@ -144,7 +146,7 @@ declare global {
   export type { NotificationType, Notification } from './stores/notification'
   import('./stores/notification')
   // @ts-ignore
-  export type { ChatProviderInfo, ProviderModelOption, ChatStyle } from './stores/settings'
+  export type { ChatProviderInfo, ProviderModelOption, ThemeStyle } from './stores/settings'
   import('./stores/settings')
   // @ts-ignore
   export type { Theme } from './stores/theme'
@@ -156,8 +158,8 @@ import { UnwrapRef } from 'vue'
 declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
-    readonly CHAT_STYLES: UnwrapRef<typeof import('./stores/settings')['CHAT_STYLES']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly THEME_STYLES: UnwrapRef<typeof import('./stores/settings')['THEME_STYLES']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
@@ -247,6 +249,7 @@ declare module 'vue' {
     readonly useNetwork: UnwrapRef<typeof import('./composables/useNetwork')['useNetwork']>
     readonly useNotificationStore: UnwrapRef<typeof import('./stores/notification')['useNotificationStore']>
     readonly usePluginStore: UnwrapRef<typeof import('./stores/plugin')['usePluginStore']>
+    readonly usePreviewStore: UnwrapRef<typeof import('./stores/preview')['usePreviewStore']>
     readonly useProviderPoolStore: UnwrapRef<typeof import('./stores/providerPool')['useProviderPoolStore']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('vue-router')['useRouter']>

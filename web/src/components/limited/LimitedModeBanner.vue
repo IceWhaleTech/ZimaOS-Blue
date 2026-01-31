@@ -72,7 +72,7 @@ onMounted(() => {
             {{ t('limitedMode.disabledFeatures') }}:
           </p>
           <ul class="text-sm text-yellow-700 dark:text-yellow-300 list-disc list-inside">
-            <li v-for="(reason, feature) in featureStatus.disabled_reasons" :key="feature">
+            <li v-for="(_reason, feature) in featureStatus.disabled_reasons" :key="feature">
               {{ feature }}
             </li>
           </ul>

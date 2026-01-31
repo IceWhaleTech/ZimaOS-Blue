@@ -4,7 +4,7 @@ import type { CompanionSession, ThreatLevel, Platform } from '@/api/companion'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+defineProps<{
   sessions: CompanionSession[]
   loading?: boolean
   hasMore?: boolean

@@ -341,3 +341,8 @@ func (s *Service) GetUserSessions(ctx context.Context, userID uuid.UUID) ([]*Ses
 func (s *Service) ExistsByUsername(ctx context.Context, username string) (bool, error) {
 	return s.repo.ExistsByUsername(ctx, username)
 }
+
+// AdminExists checks if any admin user exists.
+func (s *Service) AdminExists(ctx context.Context) (bool, error) {
+	return s.repo.AdminExists(ctx)
+}

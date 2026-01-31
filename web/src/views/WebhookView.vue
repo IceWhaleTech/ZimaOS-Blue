@@ -281,7 +281,7 @@ function getStatusCodeColor(code: number): string {
             {{ t('webhook.createNew') }}
           </h3>
 
-          <form @submit.prevent="createWebhook" class="space-y-4">
+          <form class="space-y-4" @submit.prevent="createWebhook">
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('webhook.name') }}</label>
               <input

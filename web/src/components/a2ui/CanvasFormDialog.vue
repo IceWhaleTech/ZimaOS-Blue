@@ -155,9 +155,12 @@ function moveComponent(index: number, direction: 'up' | 'down'): void {
   const newIndex = direction === 'up' ? index - 1 : index + 1
   if (newIndex < 0 || newIndex >= components.value.length) return
 
-  const temp = components.value[index]
-  components.value[index] = components.value[newIndex]
-  components.value[newIndex] = temp
+  const currentItem = components.value[index]
+  const swapItem = components.value[newIndex]
+  if (currentItem && swapItem) {
+    components.value[index] = swapItem
+    components.value[newIndex] = currentItem
+  }
 
   if (selectedComponentIndex.value === index) {
     selectedComponentIndex.value = newIndex
@@ -395,7 +398,7 @@ function handleSubmit(): void {
           <div class="w-72 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 pl-4">
             <ComponentEditor
               v-if="selectedComponentIndex !== null && components[selectedComponentIndex]"
-              :component="components[selectedComponentIndex]"
+              :component="components[selectedComponentIndex]!"
               @update="(c) => updateComponent(selectedComponentIndex!, c)"
             />
             <div v-else class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">

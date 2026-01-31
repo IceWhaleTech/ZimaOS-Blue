@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
 
@@ -288,7 +288,17 @@ function focus() {
   textareaRef.value?.focus()
 }
 
-defineExpose({ focus })
+function setInput(text: string) {
+  message.value = text
+  nextTick(() => {
+    if (textareaRef.value) {
+      textareaRef.value.style.height = 'auto'
+      textareaRef.value.style.height = `${Math.min(textareaRef.value.scrollHeight, 200)}px`
+    }
+  })
+}
+
+defineExpose({ focus, setInput })
 </script>
 
 <template>

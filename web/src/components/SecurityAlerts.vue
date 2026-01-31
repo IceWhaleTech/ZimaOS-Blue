@@ -3,7 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { proxyApi, type SecurityAlert, type GuardStats, type AuthStats } from '@/api/proxy'
 
-const { t } = useI18n()
+// t is available for future i18n use
+const { t: _t } = useI18n()
 
 const alerts = ref<SecurityAlert[]>([])
 const guardStats = ref<GuardStats | null>(null)
@@ -18,7 +19,6 @@ const highAlerts = computed(() => alerts.value.filter((a) => a.severity === 'hig
 const mediumAlerts = computed(() => alerts.value.filter((a) => a.severity === 'medium'))
 const lowAlerts = computed(() => alerts.value.filter((a) => a.severity === 'low'))
 
-const totalAlerts = computed(() => alerts.value.length)
 const unresolvedAlerts = computed(() => alerts.value.filter((a) => !a.resolved).length)
 
 const severityColor = (severity: string) => {
@@ -114,9 +114,9 @@ onUnmounted(() => {
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Security Alerts</h2>
       <button
-        @click="fetchData"
         :disabled="loading"
         class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+        @click="fetchData"
       >
         {{ loading ? 'Refreshing...' : 'Refresh' }}
       </button>

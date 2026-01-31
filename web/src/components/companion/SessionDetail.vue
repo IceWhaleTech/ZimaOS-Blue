@@ -127,7 +127,7 @@ function formatDuration(ms: number): string {
           <div class="font-medium text-gray-900 dark:text-white capitalize">{{ session.platform }}</div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.status') }}</div>
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('companion.statusLabel') }}</div>
           <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getStatusColor(session.status)]">
             {{ t(`companion.status.${session.status}`) }}
           </span>

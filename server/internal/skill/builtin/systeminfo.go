@@ -22,6 +22,7 @@ func NewSystemInfo() *SystemInfo {
 			Version:     "1.0.0",
 			Description: "Returns comprehensive system information including OS, hardware, network, and GPU details",
 			Category:    "system",
+			Icon:        "systeminfo",
 			Tags:        []string{"system", "info", "utility", "hardware", "network"},
 			Inputs: []skill.Parameter{
 				{

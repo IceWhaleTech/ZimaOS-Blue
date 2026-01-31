@@ -23,6 +23,7 @@ func NewSearch() *Search {
 			Version:     "1.0.0",
 			Description: "Search and filter text content",
 			Category:    "utility",
+			Icon:        "search",
 			Tags:        []string{"search", "filter", "text", "utility"},
 			Inputs: []skill.Parameter{
 				{

@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import {
   webauthnApi,
   prepareRegistrationOptions,
-  type WebAuthnCredential,
   type WebAuthnStatus,
 } from '@/api/webauthn'
 
@@ -218,7 +217,7 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
             {{ t('webauthn.addCredential') }}
           </h3>
 
-          <form @submit.prevent="registerCredential" class="space-y-4">
+          <form class="space-y-4" @submit.prevent="registerCredential">
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">
                 {{ t('webauthn.credentialName') }}

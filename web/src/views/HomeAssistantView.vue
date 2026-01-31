@@ -53,7 +53,7 @@
             :placeholder="t('homeAssistant.voicePlaceholder')"
             @keyup.enter="handleVoiceCommand"
           />
-          <button class="btn btn-primary" @click="handleVoiceCommand" :disabled="processingCommand">
+          <button class="btn btn-primary" :disabled="processingCommand" @click="handleVoiceCommand">
             {{ processingCommand ? t('homeAssistant.processing') : t('homeAssistant.send') }}
           </button>
         </div>
@@ -127,8 +127,8 @@
               min="0"
               max="100"
               :value="getBrightness(entity)"
-              @change="setBrightness(entity, $event)"
               class="brightness-slider"
+              @change="setBrightness(entity, $event)"
             />
           </div>
         </div>

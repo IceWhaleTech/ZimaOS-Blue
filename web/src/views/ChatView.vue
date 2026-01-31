@@ -2,7 +2,7 @@
 import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
-import { useSettingsStore, CHAT_STYLES, type ChatStyle } from '@/stores/settings'
+import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import { claudeCodeApi } from '@/api/claudecode'
@@ -10,21 +10,39 @@ import type { ClaudeCodeConfigResponse } from '@/api/claudecode'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
+import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
+import VirtualScroll from '@/components/VirtualScroll.vue'
+import { componentPool } from '@/utils/componentPool'
+import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 
 const { t } = useI18n()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
 
+// Theme style class for chat interface
+const themeStyleClass = computed(() => `theme-style-${settingsStore.themeStyle}`)
+
 const messagesContainer = ref<HTMLElement | null>(null)
+const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
-const showStyleSelector = ref(false)
 const showRoutingMenu = ref(false)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 const routingButtonRef = ref<HTMLElement | null>(null)
 const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
+
+// Theme style selector state
+const showStyleSelector = ref(false)
+const styleButtonRef = ref<HTMLElement | null>(null)
+const styleSelectorPosition = ref({ x: 0, y: 0 })
+
+// Virtual scroll threshold - use virtual scroll when message count exceeds this
+const VIRTUAL_SCROLL_THRESHOLD = 50
+
+// Whether to use virtual scrolling
+const useVirtualScroll = computed(() => chatStore.messages.length > VIRTUAL_SCROLL_THRESHOLD)
 
 // Context menu state
 const showContextMenu = ref(false)
@@ -141,13 +159,18 @@ watch(
 )
 
 function scrollToBottom() {
-  if (messagesContainer.value) {
+  if (useVirtualScroll.value && virtualScrollRef.value) {
+    virtualScrollRef.value.scrollToBottom('smooth')
+  } else if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 }
 
 // Handle scroll for loading more messages
 function handleScroll() {
+  // Skip for virtual scroll - it handles its own scrolling
+  if (useVirtualScroll.value) return
+
   if (!messagesContainer.value) return
 
   // Load more when scrolled near the top
@@ -162,6 +185,14 @@ function handleScroll() {
         }
       })
     })
+  }
+}
+
+// Handle virtual scroll visible range change
+function handleVisibleRangeChange(start: number, _end: number) {
+  // Load more when scrolled near the top in virtual scroll mode
+  if (start < 5 && chatStore.hasMoreMessages && !chatStore.loadingMore) {
+    chatStore.loadMoreMessages()
   }
 }
 
@@ -196,11 +227,6 @@ function toggleSidebar() {
   showSidebar.value = !showSidebar.value
 }
 
-function toggleStyleSelector() {
-  showStyleSelector.value = !showStyleSelector.value
-  showRoutingMenu.value = false
-}
-
 function toggleRoutingMenu() {
   if (!showRoutingMenu.value && routingButtonRef.value) {
     const rect = routingButtonRef.value.getBoundingClientRect()
@@ -210,7 +236,6 @@ function toggleRoutingMenu() {
     }
   }
   showRoutingMenu.value = !showRoutingMenu.value
-  showStyleSelector.value = false
 }
 
 function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
@@ -218,22 +243,32 @@ function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
   showRoutingMenu.value = false
 }
 
-function selectChatStyle(style: ChatStyle) {
-  settingsStore.setChatStyle(style)
+// Theme style selector functions
+function toggleStyleSelector() {
+  if (!showStyleSelector.value && styleButtonRef.value) {
+    const rect = styleButtonRef.value.getBoundingClientRect()
+    styleSelectorPosition.value = {
+      x: rect.right,
+      y: rect.bottom + 8
+    }
+  }
+  showStyleSelector.value = !showStyleSelector.value
+}
+
+function selectThemeStyle(style: ThemeStyle) {
+  settingsStore.setThemeStyle(style)
   showStyleSelector.value = false
 }
 
-// Computed class for chat style
-const chatStyleClass = computed(() => `chat-style-${settingsStore.chatStyle}`)
-
-// Close style selector when clicking outside
+// Close routing menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
-  if (!target.closest('.style-selector-container')) {
-    showStyleSelector.value = false
-  }
   if (!target.closest('.routing-menu-container')) {
     showRoutingMenu.value = false
+  }
+  // Close style selector when clicking outside
+  if (!target.closest('.style-selector-container')) {
+    showStyleSelector.value = false
   }
   // Close context menu when clicking outside
   if (!target.closest('.context-menu')) {
@@ -270,6 +305,11 @@ function handleCancelSelection() {
   chatStore.exitMultiSelectMode()
 }
 
+// Handle preset question selection - directly send the message
+async function handlePresetQuestionSelect(text: string) {
+  await handleSend(text)
+}
+
 // Fetch Claude Code CLI config
 async function fetchClaudeCodeConfig() {
   try {
@@ -286,6 +326,9 @@ onMounted(async () => {
   window.addEventListener('resize', checkMobile)
   document.addEventListener('click', handleClickOutside)
 
+  // Preload common card components for better UX
+  componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file'])
+
   await Promise.all([
     chatStore.fetchConversations(),
     settingsStore.fetchProviders(),
@@ -296,7 +339,7 @@ onMounted(async () => {
   ])
 
   // Auto-select first conversation if available and none selected
-  if (!chatStore.currentConversationId && chatStore.sortedConversations.length > 0) {
+  if (!chatStore.currentConversationId && chatStore.sortedConversations.length > 0 && chatStore.sortedConversations[0]) {
     await chatStore.selectConversation(chatStore.sortedConversations[0].id)
   }
 })
@@ -308,7 +351,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="chat-view h-full flex relative">
+  <div class="chat-view h-full flex relative" :class="themeStyleClass">
     <!-- Overlay for mobile sidebar -->
     <div
       v-if="showSidebar && isMobile"
@@ -339,7 +382,7 @@ onUnmounted(() => {
     </aside>
 
     <!-- Main chat area -->
-    <main class="flex-1 flex flex-col min-w-0 relative" :class="chatStyleClass">
+    <main class="flex-1 flex flex-col min-w-0 relative">
       <!-- Chat header -->
       <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -457,39 +500,18 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- Style selector -->
+          <!-- Theme style selector -->
           <div class="style-selector-container relative">
             <button
-              class="p-1.5 text-gray-500 dark:text-slate-400 hover:text-accent transition-colors cursor-pointer"
-              :title="t('chat.styles.title')"
+              ref="styleButtonRef"
+              class="p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors"
+              :title="t('theme.styles.title')"
               @click.stop="toggleStyleSelector"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
               </svg>
             </button>
-            <!-- Style dropdown -->
-            <div
-              v-if="showStyleSelector"
-              class="absolute right-0 top-full mt-2 glass-card shadow-xl z-50 p-3 min-w-[180px]"
-            >
-              <div class="text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('chat.styles.title') }}</div>
-              <div class="flex flex-col gap-1">
-                <button
-                  v-for="style in CHAT_STYLES"
-                  :key="style.id"
-                  class="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer"
-                  :class="settingsStore.chatStyle === style.id ? 'bg-accent/20 text-accent' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
-                  @click="selectChatStyle(style.id)"
-                >
-                  <span
-                    class="chat-style-btn flex-shrink-0"
-                    :class="`chat-style-btn-${style.id}`"
-                  />
-                  <span>{{ t(style.labelKey) }}</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </header>
@@ -527,9 +549,9 @@ onUnmounted(() => {
         <!-- Empty state -->
         <div
           v-if="chatStore.messages.length === 0 && !chatStore.loading"
-          class="h-full flex items-center justify-center p-4"
+          class="h-full flex flex-col items-center justify-center p-4"
         >
-          <div class="text-center text-gray-500 dark:text-slate-400 max-w-md">
+          <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">
             <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent to-cta flex items-center justify-center shadow-glow">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -548,27 +570,54 @@ onUnmounted(() => {
             </div>
             <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ t('chat.startConversation') }}</h3>
             <p class="text-sm sm:text-base text-gray-500 dark:text-slate-400">{{ t('chat.startConversationDesc') }}</p>
-            <div v-if="!isMobile" class="mt-6 text-xs text-gray-400 dark:text-slate-500">
-              <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
-              <p class="space-x-4">
-                <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+N</span> {{ t('chat.newChatShortcut') }}
-                <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+/</span> {{ t('chat.focusInputShortcut') }}
-                <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+B</span> {{ t('chat.toggleSidebarShortcut') }}
-              </p>
-            </div>
+          </div>
+
+          <!-- Preset Questions -->
+          <PresetQuestions @select="handlePresetQuestionSelect" />
+
+          <div v-if="!isMobile" class="mt-8 text-xs text-gray-400 dark:text-slate-500">
+            <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
+            <p class="space-x-4">
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+N</span> {{ t('chat.newChatShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+/</span> {{ t('chat.focusInputShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+B</span> {{ t('chat.toggleSidebarShortcut') }}
+            </p>
           </div>
         </div>
 
-        <!-- Messages list -->
-        <div v-else class="pb-4">
-          <ChatMessage
-            v-for="(message, index) in chatStore.messages"
-            :key="message.id"
-            :message="message"
-            :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
-            @contextmenu="handleMessageContextMenu"
-          />
-        </div>
+        <!-- Messages list - Virtual scroll for large lists -->
+        <template v-if="chatStore.messages.length > 0">
+          <!-- Use virtual scroll for large message lists -->
+          <VirtualScroll
+            v-if="useVirtualScroll"
+            ref="virtualScrollRef"
+            :item-count="chatStore.messages.length"
+            :estimated-item-height="120"
+            :overscan="5"
+            class="h-full pb-4"
+            @visible-range-change="handleVisibleRangeChange"
+          >
+            <template #default="{ index }">
+              <ChatMessage
+                v-if="chatStore.messages[index]"
+                :message="chatStore.messages[index]!"
+                :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
+                @contextmenu="handleMessageContextMenu"
+              />
+            </template>
+          </VirtualScroll>
+
+          <!-- Regular rendering for small lists -->
+          <div v-else class="pb-4">
+            <ChatMessage
+              v-for="(message, index) in chatStore.messages"
+              :key="message.id"
+              :message="message"
+              :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
+              @contextmenu="handleMessageContextMenu"
+            />
+          </div>
+        </template>
       </div>
 
       <!-- Context menu -->
@@ -662,6 +711,32 @@ onUnmounted(() => {
             </svg>
             <span>{{ t('chat.manageProviders') }}</span>
           </router-link>
+        </div>
+      </Teleport>
+
+      <!-- Theme style selector dropdown (teleported to body for proper z-index) -->
+      <Teleport to="body">
+        <div
+          v-if="showStyleSelector"
+          class="style-selector-container fixed z-[100] glass-card shadow-xl p-3 min-w-[180px]"
+          :style="{ left: `${Math.max(8, styleSelectorPosition.x - 180)}px`, top: `${styleSelectorPosition.y}px` }"
+        >
+          <div class="text-xs text-gray-500 dark:text-slate-400 mb-2 font-medium">{{ t('theme.styles.title') }}</div>
+          <div class="flex flex-col gap-1">
+            <button
+              v-for="style in THEME_STYLES"
+              :key="style.id"
+              class="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer"
+              :class="settingsStore.themeStyle === style.id ? 'bg-accent/20 text-accent' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+              @click="selectThemeStyle(style.id)"
+            >
+              <span
+                class="theme-style-btn flex-shrink-0"
+                :class="`theme-style-btn-${style.id}`"
+              />
+              <span>{{ t(style.labelKey) }}</span>
+            </button>
+          </div>
         </div>
       </Teleport>
 

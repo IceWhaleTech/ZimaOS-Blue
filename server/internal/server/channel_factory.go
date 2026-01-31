@@ -4,12 +4,16 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/bluebubbles"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/discord"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/feishu"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/matrix"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/mattermost"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/slack"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/teams"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/telegram"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/wechat"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/zalo"
 )
 
 // ChannelFactory creates channel instances from stored configurations.
@@ -37,8 +41,16 @@ func (f *ChannelFactory) CreateChannel(cfg *ChannelConfig) (channel.Channel, err
 		return f.createWechat(cfg)
 	case "matrix":
 		return f.createMatrix(cfg)
+	case "teams":
+		return f.createTeams(cfg)
+	case "mattermost":
+		return f.createMattermost(cfg)
+	case "bluebubbles":
+		return f.createBlueBubbles(cfg)
+	case "zalo":
+		return f.createZalo(cfg)
 	// These channels are not yet fully implemented or require special setup
-	case "whatsapp", "signal", "teams", "googlechat", "dingtalk", "qq", "imessage":
+	case "whatsapp", "signal", "googlechat", "dingtalk", "qq", "imessage":
 		return nil, nil // Not supported yet
 	default:
 		return nil, nil // Unknown channel type
@@ -101,4 +113,44 @@ func (f *ChannelFactory) createMatrix(cfg *ChannelConfig) (channel.Channel, erro
 		AccessToken: cfg.Config["access_token"],
 	}
 	return matrix.New(matrixCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createTeams(cfg *ChannelConfig) (channel.Channel, error) {
+	teamsCfg := channel.TeamsConfig{
+		Enabled:     cfg.Enabled,
+		AppID:       cfg.Config["app_id"],
+		AppPassword: cfg.Config["app_password"],
+		TenantID:    cfg.Config["tenant_id"],
+	}
+	return teams.New(teamsCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createMattermost(cfg *ChannelConfig) (channel.Channel, error) {
+	mattermostCfg := channel.MattermostConfig{
+		Enabled:   cfg.Enabled,
+		ServerURL: cfg.Config["server_url"],
+		BotToken:  cfg.Config["bot_token"],
+	}
+	return mattermost.New(mattermostCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createBlueBubbles(cfg *ChannelConfig) (channel.Channel, error) {
+	bluebubblesCfg := channel.BlueBubblesConfig{
+		Enabled:   cfg.Enabled,
+		ServerURL: cfg.Config["server_url"],
+		Password:  cfg.Config["password"],
+	}
+	return bluebubbles.New(bluebubblesCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createZalo(cfg *ChannelConfig) (channel.Channel, error) {
+	zaloCfg := channel.ZaloConfig{
+		Enabled:      cfg.Enabled,
+		OAID:         cfg.Config["oa_id"],
+		AccessToken:  cfg.Config["access_token"],
+		RefreshToken: cfg.Config["refresh_token"],
+		AppID:        cfg.Config["app_id"],
+		SecretKey:    cfg.Config["secret_key"],
+	}
+	return zalo.New(zaloCfg, f.logger), nil
 }

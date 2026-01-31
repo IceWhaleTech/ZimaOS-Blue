@@ -45,6 +45,7 @@ func NewDocker(config *DockerConfig) *Docker {
 			Version:     "1.0.0",
 			Description: "Docker container management",
 			Category:    "system",
+			Icon:        "docker",
 			Tags:        []string{"docker", "containers", "devops"},
 			Inputs: []skill.Parameter{
 				{
@@ -268,6 +269,7 @@ func NewGitHub(config *GitHubConfig) *GitHub {
 			Version:     "1.0.0",
 			Description: "GitHub repository operations",
 			Category:    "integration",
+			Icon:        "github",
 			Tags:        []string{"github", "git", "repository", "code"},
 			Inputs: []skill.Parameter{
 				{
@@ -487,6 +489,7 @@ func NewNotion(config *NotionConfig) *Notion {
 			Version:     "1.0.0",
 			Description: "Notion workspace integration",
 			Category:    "integration",
+			Icon:        "notion",
 			Tags:        []string{"notion", "notes", "workspace", "productivity"},
 			Inputs: []skill.Parameter{
 				{
@@ -643,6 +646,7 @@ func NewSlackSkill(config *SlackSkillConfig) *SlackSkill {
 			Version:     "1.0.0",
 			Description: "Slack workspace operations",
 			Category:    "integration",
+			Icon:        "slack",
 			Tags:        []string{"slack", "messaging", "team"},
 			Inputs: []skill.Parameter{
 				{
@@ -797,6 +801,7 @@ func NewDiscordSkill(config *DiscordSkillConfig) *DiscordSkill {
 			Version:     "1.0.0",
 			Description: "Discord server operations",
 			Category:    "integration",
+			Icon:        "discord",
 			Tags:        []string{"discord", "messaging", "community"},
 			Inputs: []skill.Parameter{
 				{

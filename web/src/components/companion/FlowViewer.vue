@@ -6,7 +6,9 @@ import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { useI18n } from 'vue-i18n'
 import { useCompanionStore } from '@/stores/companion'
-import type { FlowGraph, FlowNode as ApiFlowNode } from '@/api/companion'
+import type { FlowNode as ApiFlowNode } from '@/api/companion'
+
+import type { NodeTypesObject } from '@vue-flow/core'
 
 // Import custom nodes
 import MessageNode from './nodes/MessageNode.vue'
@@ -109,7 +111,7 @@ async function loadFlow() {
 }
 
 // Handle node click
-function onNodeClick(_event: MouseEvent, node: { id: string; data: Record<string, unknown> }) {
+function onNodeClick({ node }: { node: { id: string; data: Record<string, unknown> } }) {
   const apiNode = flowGraph.value?.nodes.find((n) => n.id === node.id)
   if (apiNode) {
     selectedNode.value = apiNode
@@ -132,7 +134,7 @@ const nodeTypes = {
   toolCall: ToolCallNode,
   llmRequest: LLMRequestNode,
   securityCheck: SecurityCheckNode,
-}
+} as NodeTypesObject
 </script>
 
 <template>
@@ -216,8 +218,8 @@ const nodeTypes = {
     <div class="absolute bottom-4 left-4 flex gap-2 z-10">
       <button
         class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        @click="zoomIn()"
         :title="t('companion.flow.zoomIn')"
+        @click="zoomIn()"
       >
         <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
@@ -225,8 +227,8 @@ const nodeTypes = {
       </button>
       <button
         class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        @click="zoomOut()"
         :title="t('companion.flow.zoomOut')"
+        @click="zoomOut()"
       >
         <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
@@ -234,8 +236,8 @@ const nodeTypes = {
       </button>
       <button
         class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        @click="fitView({ padding: 0.2 })"
         :title="t('companion.flow.fitView')"
+        @click="fitView({ padding: 0.2 })"
       >
         <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />

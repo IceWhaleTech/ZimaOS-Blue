@@ -328,6 +328,16 @@ func (r *SQLiteRepository) ExistsByEmail(ctx context.Context, email string) (boo
 	return exists, nil
 }
 
+// AdminExists checks if any admin user exists.
+func (r *SQLiteRepository) AdminExists(ctx context.Context) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin' AND deleted_at IS NULL)`
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query).Scan(&exists); err != nil {
+		return false, fmt.Errorf("failed to check admin exists: %w", err)
+	}
+	return exists, nil
+}
+
 // AddPasswordHistory adds a password hash to history.
 func (r *SQLiteRepository) AddPasswordHistory(ctx context.Context, userID uuid.UUID, passwordHash string) error {
 	query := `INSERT INTO password_history (id, user_id, password_hash, created_at) VALUES (?, ?, ?, ?)`

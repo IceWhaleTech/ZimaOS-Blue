@@ -72,20 +72,12 @@ function addAction(): void {
 function updateAction(index: number, key: keyof Action, value: unknown): void {
   if (!localComponent.value.actions) return
   const actions = [...localComponent.value.actions]
-  actions[index] = { ...actions[index], [key]: value }
-  localComponent.value.actions = actions
-  emit('update', localComponent.value)
-}
-
-function updateActionParam(index: number, paramKey: string, value: string): void {
-  if (!localComponent.value.actions) return
-  const actions = [...localComponent.value.actions]
-  actions[index] = {
-    ...actions[index],
-    params: { ...actions[index].params, [paramKey]: value },
+  const existingAction = actions[index]
+  if (existingAction) {
+    actions[index] = { ...existingAction, [key]: value }
+    localComponent.value.actions = actions
+    emit('update', localComponent.value)
   }
-  localComponent.value.actions = actions
-  emit('update', localComponent.value)
 }
 
 function removeAction(index: number): void {
@@ -171,10 +163,13 @@ function moveChild(index: number, direction: 'up' | 'down'): void {
   if (newIndex < 0 || newIndex >= localComponent.value.children.length) return
 
   const children = [...localComponent.value.children]
-  const temp = children[index]
-  children[index] = children[newIndex]
-  children[newIndex] = temp
-  localComponent.value.children = children
+  const currentItem = children[index]
+  const swapItem = children[newIndex]
+  if (currentItem && swapItem) {
+    children[index] = swapItem
+    children[newIndex] = currentItem
+    localComponent.value.children = children
+  }
 
   if (selectedChildIndex.value === index) {
     selectedChildIndex.value = newIndex
@@ -358,7 +353,7 @@ const styleFields = [
             <!-- Textarea -->
             <textarea
               v-else-if="field.type === 'textarea'"
-              :value="localComponent.props?.[field.key] ?? ''"
+              :value="String(localComponent.props?.[field.key] ?? '')"
               rows="3"
               class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600 resize-none"
               @input="updateProps(field.key, ($event.target as HTMLTextAreaElement).value)"

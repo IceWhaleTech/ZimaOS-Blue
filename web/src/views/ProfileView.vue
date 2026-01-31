@@ -660,7 +660,7 @@ function getScopeLabel(scope: string): string {
           </div>
 
           <!-- Create key form -->
-          <form v-else @submit.prevent="createApiKey" class="space-y-4">
+          <form v-else class="space-y-4" @submit.prevent="createApiKey">
             <!-- Name -->
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ $t('profile.name') }}</label>

@@ -90,7 +90,7 @@ async function toggleEnabled() {
     const response = await claudeCodeApi.setConfig({ enabled: newEnabled })
     configInfo.value = response.data
     emit('status-change', newEnabled ? t('claudecode.enabled') : t('claudecode.disabled'))
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.toggleError')
     emit('status-change', t('claudecode.toggleError'))
   } finally {
@@ -107,7 +107,7 @@ async function toggleSandbox() {
     const response = await claudeCodeApi.setConfig({ sandbox_enabled: newSandboxEnabled })
     configInfo.value = response.data
     emit('status-change', newSandboxEnabled ? t('claudecode.sandboxEnabled') : t('claudecode.sandboxDisabled'))
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.toggleError')
     emit('status-change', t('claudecode.toggleError'))
   } finally {
@@ -124,7 +124,7 @@ async function toggleNetwork() {
     const response = await claudeCodeApi.setConfig({ network_enabled: newNetworkEnabled })
     configInfo.value = response.data
     emit('status-change', newNetworkEnabled ? t('claudecode.networkEnabled') : t('claudecode.networkDisabled'))
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.toggleError')
     emit('status-change', t('claudecode.toggleError'))
   } finally {
@@ -138,7 +138,7 @@ async function loadVersionInfo() {
     error.value = null
     const response = await claudeCodeApi.getVersion()
     versionInfo.value = response.data
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.loadError')
     versionInfo.value = null
   } finally {
@@ -159,7 +159,7 @@ async function checkForUpdates() {
     } else {
       emit('status-change', t('claudecode.upToDate'))
     }
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.checkError')
     emit('status-change', t('claudecode.checkError'))
   } finally {
@@ -180,7 +180,7 @@ async function updateCLI() {
       error.value = response.data.message
       emit('status-change', response.data.message)
     }
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.updateError')
     emit('status-change', t('claudecode.updateError'))
   } finally {
@@ -200,7 +200,7 @@ async function validateCLI() {
       error.value = response.data.message
       emit('status-change', response.data.message)
     }
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.validateError')
     emit('status-change', t('claudecode.validateError'))
   } finally {
@@ -219,7 +219,7 @@ async function clearCache() {
     } else {
       error.value = response.data.message
     }
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.clearCacheError')
     emit('status-change', t('claudecode.clearCacheError'))
   } finally {
@@ -240,7 +240,7 @@ async function downloadCLI() {
       error.value = response.data.message
       emit('status-change', response.data.message)
     }
-  } catch (e) {
+  } catch (_e) {
     error.value = t('claudecode.downloadError')
     emit('status-change', t('claudecode.downloadError'))
   } finally {
@@ -270,7 +270,7 @@ function formatDate(dateStr?: string) {
         class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         :class="isEnabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
         role="switch"
-        :aria-checked="isEnabled"
+        :aria-checked="isEnabled ? 'true' : 'false'"
         @click="toggleEnabled"
       >
         <span
@@ -389,7 +389,7 @@ function formatDate(dateStr?: string) {
               class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               :class="configInfo?.sandbox_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
               role="switch"
-              :aria-checked="configInfo?.sandbox_enabled"
+              :aria-checked="configInfo?.sandbox_enabled ? 'true' : 'false'"
               @click="toggleSandbox"
             >
               <span
@@ -410,7 +410,7 @@ function formatDate(dateStr?: string) {
               class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               :class="configInfo?.network_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
               role="switch"
-              :aria-checked="configInfo?.network_enabled"
+              :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
               @click="toggleNetwork"
             >
               <span

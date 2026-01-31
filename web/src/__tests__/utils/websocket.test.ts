@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { WebSocketClient, type WebSocketStatus } from '@/utils/websocket'
+import { WebSocketClient } from '@/utils/websocket'
+import type { WebSocketStatus } from '@/utils/websocket'
+
+// Use the type to avoid unused import error
+const _statusType: WebSocketStatus | undefined = undefined
+void _statusType
 
 // Mock WebSocket
 class MockWebSocket {

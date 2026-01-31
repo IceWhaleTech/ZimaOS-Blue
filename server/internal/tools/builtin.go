@@ -29,6 +29,7 @@ func (c *CalculatorTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "Calculator",
 		Description: "Performs basic arithmetic operations. Supports +, -, *, /, and parentheses.",
+		Icon:        "calculator",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -142,6 +143,7 @@ func (s *SystemInfoTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "System Info",
 		Description: "Returns information about the system (OS, architecture, hostname, CPU count, Go version).",
+		Icon:        "system-info",
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -178,6 +180,7 @@ func (t *CurrentTimeTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "Current Time",
 		Description: "Returns the current time in UTC, local time, and Unix timestamp. Optionally accepts a timezone.",
+		Icon:        "current-time",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -239,6 +242,7 @@ func (f *FileReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "File Read",
 		Description: "Reads content from a file. Returns the file content as text.",
+		Icon:        "file-read",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -345,6 +349,7 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "File Write",
 		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
+		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

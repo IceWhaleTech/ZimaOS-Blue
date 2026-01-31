@@ -29,6 +29,7 @@ func NewFiles(baseDir string) *Files {
 			Version:     "1.0.0",
 			Description: "File system operations",
 			Category:    "system",
+			Icon:        "files",
 			Tags:        []string{"files", "filesystem", "io", "system"},
 			Inputs: []skill.Parameter{
 				{
@@ -350,6 +351,7 @@ func NewNetwork() *Network {
 			Version:     "1.0.0",
 			Description: "Network diagnostics and information",
 			Category:    "system",
+			Icon:        "network",
 			Tags:        []string{"network", "diagnostics", "connectivity", "system"},
 			Inputs: []skill.Parameter{
 				{
@@ -447,6 +449,7 @@ func NewProcesses() *Processes {
 			Version:     "1.0.0",
 			Description: "Process information and management",
 			Category:    "system",
+			Icon:        "processes",
 			Tags:        []string{"processes", "system", "monitoring"},
 			Inputs: []skill.Parameter{
 				{

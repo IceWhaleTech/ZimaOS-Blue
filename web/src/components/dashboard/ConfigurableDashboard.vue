@@ -16,7 +16,7 @@ import GoroutinesChartCard from './cards/GoroutinesChartCard.vue'
 import HeapChartCard from './cards/HeapChartCard.vue'
 import FailoverStatusCard from './cards/FailoverStatusCard.vue'
 
-const props = defineProps<{
+defineProps<{
   metricsHistory?: Array<{
     timestamp: string
     cpu_percent: number

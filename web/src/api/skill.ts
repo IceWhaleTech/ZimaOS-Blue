@@ -16,6 +16,7 @@ export interface Skill {
   description: string
   author?: string
   category?: string
+  icon?: string
   tags?: string[]
   enabled: boolean
   builtin: boolean
@@ -44,8 +45,23 @@ export interface RemoteSkill {
   source_name: string
   download_url?: string
   homepage?: string
+  source_url?: string
   stars?: number
   downloads?: number
+  installed: boolean
+}
+
+export interface LocalSkill {
+  id: string
+  name: string
+  description: string
+  version?: string
+  author?: string
+  category?: string
+  tags?: string[]
+  file_path: string
+  discovered_at: string
+  last_modified: string
   installed: boolean
 }
 
@@ -65,6 +81,28 @@ export interface BrowseResponse {
   total_pages: number
 }
 
+export interface VerifyResponse {
+  id: string
+  visible: boolean
+  enabled?: boolean
+  builtin?: boolean
+  name?: string
+  version?: string
+  description?: string
+  error?: string
+}
+
+export interface LocalSkillsResponse {
+  skills: LocalSkill[]
+  count: number
+}
+
+export interface InstallFromURLRequest {
+  url: string
+  name?: string
+  description?: string
+}
+
 // Skill API
 export const skillApi = {
   // Local skills
@@ -78,6 +116,14 @@ export const skillApi = {
   disable: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/skills/${id}/disable`),
 
+  // Local skill discovery (v0.10.8)
+  listLocal: () => api.get<LocalSkillsResponse>('/skills/local'),
+
+  scanLocal: () =>
+    api.post<{ success: boolean; skills_found: number }>('/skills/local/scan'),
+
+  verify: (id: string) => api.get<VerifyResponse>(`/skills/verify/${id}`),
+
   // Skill store
   listSources: () => api.get<SkillSource[]>('/skill-store/sources'),
 
@@ -90,12 +136,29 @@ export const skillApi = {
   browse: (params?: BrowseParams) =>
     api.get<BrowseResponse>('/skill-store/browse', { params }),
 
+  // Featured skills (v0.10.8)
+  featured: (category?: string) =>
+    api.get<RemoteSkill[]>('/skill-store/featured', { params: category ? { category } : undefined }),
+
   install: (id: string) =>
     api.post<{ success: boolean; message: string; skill?: RemoteSkill }>(`/skill-store/install/${id}`),
+
+  // Install from URL (v0.10.8)
+  installFromURL: (req: InstallFromURLRequest) =>
+    api.post<{ success: boolean; skill?: { id: string; name: string; version: string; description: string } }>('/skill-store/install-url', req),
 
   uninstall: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/skill-store/uninstall/${id}`),
 
   refresh: () =>
     api.post<{ success: boolean; skills_count: number; errors?: string[] }>('/skill-store/refresh'),
+
+  // Sync (v0.10.8)
+  sync: (sourceId?: string) =>
+    api.post<{ success: boolean; message: string }>('/skill-store/sync', null, { params: sourceId ? { source: sourceId } : undefined }),
+
+  // Stats and categories
+  categories: () => api.get<string[]>('/skill-store/categories'),
+
+  stats: () => api.get<{ total_skills: number; installed: number; by_source: Record<string, number> }>('/skill-store/stats'),
 }

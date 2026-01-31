@@ -182,7 +182,7 @@
               :placeholder="t('browserAutomation.security.allowedDomainsPlaceholder')"
               @keyup.enter="addAllowedDomain"
             />
-            <button class="btn btn-primary btn-sm" @click="addAllowedDomain" :disabled="!newAllowedDomain">
+            <button class="btn btn-primary btn-sm" :disabled="!newAllowedDomain" @click="addAllowedDomain">
               {{ t('browserAutomation.security.add') }}
             </button>
           </div>
@@ -210,7 +210,7 @@
               :placeholder="t('browserAutomation.security.blockedDomainsPlaceholder')"
               @keyup.enter="addBlockedDomain"
             />
-            <button class="btn btn-danger btn-sm" @click="addBlockedDomain" :disabled="!newBlockedDomain">
+            <button class="btn btn-danger btn-sm" :disabled="!newBlockedDomain" @click="addBlockedDomain">
               {{ t('browserAutomation.security.block') }}
             </button>
           </div>
@@ -237,7 +237,7 @@
             :placeholder="t('browserAutomation.security.testUrlPlaceholder')"
             @keyup.enter="testUrl"
           />
-          <button class="btn btn-secondary" @click="testUrl" :disabled="!testUrlInput || testingUrl">
+          <button class="btn btn-secondary" :disabled="!testUrlInput || testingUrl" @click="testUrl">
             {{ testingUrl ? t('browserAutomation.security.testing') : t('browserAutomation.security.test') }}
           </button>
         </div>
@@ -380,7 +380,7 @@
           <button class="btn btn-secondary" @click="showCreateModal = false">
             {{ t('browserAutomation.createTask.cancel') }}
           </button>
-          <button class="btn btn-primary" @click="createTask" :disabled="!canCreateTask">
+          <button class="btn btn-primary" :disabled="!canCreateTask" @click="createTask">
             {{ t('browserAutomation.createTask.create') }}
           </button>
         </div>
@@ -709,7 +709,7 @@ async function testUrl() {
   testResult.value = null
   try {
     testResult.value = await browserApi.testUrl(testUrlInput.value)
-  } catch (error) {
+  } catch {
     testResult.value = { allowed: false, reason: 'Failed to test URL' }
   } finally {
     testingUrl.value = false

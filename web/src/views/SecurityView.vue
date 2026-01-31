@@ -30,9 +30,61 @@ const scanResults = ref<ScanItem[]>([])
 const scanCompleted = ref(false)
 const scanResultsExpanded = ref(true)
 
+// Check if scan should run (once per day)
+function shouldRunScan(): boolean {
+  const lastScanKey = 'security_last_scan_timestamp'
+  const lastScanStr = localStorage.getItem(lastScanKey)
+
+  if (!lastScanStr) {
+    return true // Never scanned before
+  }
+
+  const lastScan = new Date(lastScanStr)
+  const now = new Date()
+  const hoursSinceLastScan = (now.getTime() - lastScan.getTime()) / (1000 * 60 * 60)
+
+  return hoursSinceLastScan >= 24
+}
+
+// Save scan timestamp and results
+function saveScanTimestamp() {
+  const lastScanKey = 'security_last_scan_timestamp'
+  const lastScanResultsKey = 'security_last_scan_results'
+  localStorage.setItem(lastScanKey, new Date().toISOString())
+  localStorage.setItem(lastScanResultsKey, JSON.stringify(scanResults.value))
+}
+
+// Load cached scan results
+function loadCachedScanResults() {
+  const lastScanResultsKey = 'security_last_scan_results'
+  const cachedResultsStr = localStorage.getItem(lastScanResultsKey)
+
+  if (cachedResultsStr) {
+    try {
+      const cachedResults = JSON.parse(cachedResultsStr)
+      scanResults.value = cachedResults
+      scanProgress.value = 100
+      scanCompleted.value = true
+      // Auto-collapse if no issues
+      const warnings = scanResults.value.filter(r => r.status === 'warning').length
+      const failed = scanResults.value.filter(r => r.status === 'failed').length
+      if (warnings === 0 && failed === 0) {
+        scanResultsExpanded.value = false
+      }
+    } catch (error) {
+      console.error('Failed to load cached scan results:', error)
+    }
+  }
+}
+
 onMounted(async () => {
-  // Auto-start security scan on page load
-  startSecurityScan()
+  // Load cached results first
+  loadCachedScanResults()
+
+  // Auto-start security scan only if 24 hours have passed
+  if (shouldRunScan()) {
+    startSecurityScan()
+  }
   // Load companion data
   await Promise.all([
     companionStore.fetchStats(),
@@ -97,6 +149,9 @@ async function startSecurityScan() {
 
   isScanning.value = false
   scanCompleted.value = true
+
+  // Save scan timestamp
+  saveScanTimestamp()
 
   // Auto-collapse if no issues
   if (scanSummary.value.warnings === 0 && scanSummary.value.failed === 0) {
@@ -291,7 +346,8 @@ function getAlertDescription(description: string): string {
 
     <!-- Security Status Banner -->
     <div class="mb-6">
-      <div :class="[
+      <div
+:class="[
         'rounded-lg p-4 flex items-center justify-between',
         securityStatus === 'passed'
           ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
@@ -302,7 +358,8 @@ function getAlertDescription(description: string): string {
               : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
       ]">
         <div class="flex items-center gap-3">
-          <div :class="[
+          <div
+:class="[
             'w-10 h-10 rounded-full flex items-center justify-center',
             securityStatus === 'passed' ? 'bg-green-500' :
             securityStatus === 'warning' ? 'bg-yellow-500' :
@@ -322,7 +379,8 @@ function getAlertDescription(description: string): string {
             </svg>
           </div>
           <div>
-            <h2 :class="[
+            <h2
+:class="[
               'text-lg font-semibold',
               securityStatus === 'passed' ? 'text-green-800 dark:text-green-200' :
               securityStatus === 'warning' ? 'text-yellow-800 dark:text-yellow-200' :
@@ -334,7 +392,8 @@ function getAlertDescription(description: string): string {
                  securityStatus === 'failed' ? t('security.statusFailed') :
                  t('security.statusScanning') }}
             </h2>
-            <p :class="[
+            <p
+:class="[
               'text-sm',
               securityStatus === 'passed' ? 'text-green-600 dark:text-green-400' :
               securityStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
@@ -766,7 +825,7 @@ function getAlertDescription(description: string): string {
               <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.platform }}</div>
             </div>
             <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.status') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.statusLabel') }}</div>
               <span :class="['px-2 py-0.5 rounded text-xs font-medium', getStatusColor(selectedSession.status)]">{{ selectedSession.status }}</span>
             </div>
             <div>

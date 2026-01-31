@@ -375,6 +375,40 @@ func (c *CallCollector) Reset() {
 	c.globalStats = &statsAccumulator{}
 }
 
+// LoadModelStats loads model statistics from persisted data.
+func (c *CallCollector) LoadModelStats(stats []ModelStats) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, stat := range stats {
+		acc := &modelStatsAccumulator{
+			calls:            stat.Calls,
+			successfulCalls:  stat.SuccessfulCalls,
+			failedCalls:      stat.FailedCalls,
+			inputTokens:      stat.InputTokens,
+			outputTokens:     stat.OutputTokens,
+			cacheReadTokens:  stat.CacheReadTokens,
+			cacheWriteTokens: stat.CacheWriteTokens,
+			latencies:        make([]float64, 0, 1000),
+			tokensPerSecond:  make([]float64, 0, 1000),
+			ttftSamples:      make([]float64, 0, 1000),
+		}
+
+		// Restore average latency as a single sample
+		if stat.AvgLatency > 0 {
+			acc.latencies = append(acc.latencies, stat.AvgLatency)
+			acc.totalLatency = stat.AvgLatency
+		}
+
+		c.modelStats[stat.Model] = acc
+
+		// Update global stats
+		c.globalStats.totalCalls += stat.Calls
+		c.globalStats.successfulCalls += stat.SuccessfulCalls
+		c.globalStats.failedCalls += stat.FailedCalls
+	}
+}
+
 // periodToDuration converts a period string to duration.
 func periodToDuration(period string) time.Duration {
 	switch period {

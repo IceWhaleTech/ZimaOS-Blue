@@ -227,7 +227,7 @@ func (s *Store) GetSkill(ctx context.Context, id string) (*Skill, error) {
 	return skill, err
 }
 
-// Search performs a full-text search on skills.
+// Search performs a full-text search on skills with relevance scoring.
 func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse, error) {
 	if opts.Page < 1 {
 		opts.Page = 1
@@ -239,19 +239,31 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	var args []interface{}
 	var conditions []string
 	var orderBy string
+	hasQuery := opts.Query != ""
 
 	// Build base query
 	baseQuery := `FROM skills s`
+	scoreSelect := "0.0 as score"
 
-	// Full-text search
-	if opts.Query != "" {
-		// Use FTS5 for full-text search
+	// Full-text search with relevance scoring
+	if hasQuery {
+		// Use FTS5 for full-text search with BM25 relevance scoring
 		baseQuery = `FROM skills s
 			INNER JOIN skills_fts fts ON s.rowid = fts.rowid`
 		conditions = append(conditions, "skills_fts MATCH ?")
 		// Escape special FTS5 characters and add prefix matching
 		searchQuery := escapeFTS5Query(opts.Query)
 		args = append(args, searchQuery)
+		// BM25 returns negative values (more negative = more relevant), so we negate it
+		// Also add boost for exact name matches and prefix matches
+		scoreSelect = `(
+			-bm25(skills_fts, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 1.0) +
+			CASE WHEN LOWER(s.name) = LOWER(?) THEN 100.0 ELSE 0.0 END +
+			CASE WHEN LOWER(s.name) LIKE LOWER(?) || '%' THEN 50.0 ELSE 0.0 END +
+			CASE WHEN LOWER(s.id) = LOWER(?) THEN 80.0 ELSE 0.0 END +
+			CASE WHEN LOWER(s.id) LIKE LOWER(?) || '%' THEN 40.0 ELSE 0.0 END +
+			(s.stars * 0.01) + (s.downloads * 0.001)
+		) as score`
 	}
 
 	// Filter by categories
@@ -296,9 +308,15 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		orderBy = "s.updated_at"
 	case "name":
 		orderBy = "s.name"
+	case "relevance":
+		if hasQuery {
+			orderBy = "score"
+		} else {
+			orderBy = "s.downloads"
+		}
 	default:
-		if opts.Query != "" {
-			orderBy = "bm25(skills_fts)" // FTS5 relevance score
+		if hasQuery {
+			orderBy = "score"
 		} else {
 			orderBy = "s.downloads"
 		}
@@ -310,10 +328,11 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		orderBy += " DESC"
 	}
 
-	// Count total results
+	// Count total results (without score calculation for efficiency)
 	countQuery := "SELECT COUNT(*) " + baseQuery + whereClause
+	countArgs := args
 	var total int64
-	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, err
 	}
 
@@ -321,19 +340,39 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	offset := (opts.Page - 1) * opts.PageSize
 	totalPages := int((total + int64(opts.PageSize) - 1) / int64(opts.PageSize))
 
-	// Fetch results
-	selectQuery := fmt.Sprintf(`
-		SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
-			s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
-			s.versions, s.changelog, s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at
-		%s %s
-		ORDER BY %s
-		LIMIT ? OFFSET ?
-	`, baseQuery, whereClause, orderBy)
+	// Build select query with score
+	var selectQuery string
+	var selectArgs []interface{}
 
-	args = append(args, opts.PageSize, offset)
+	if hasQuery {
+		// Add query parameters for score calculation (exact match, prefix match for name and id)
+		selectArgs = append(selectArgs, opts.Query, opts.Query, opts.Query, opts.Query)
+		selectArgs = append(selectArgs, args...)
+		selectQuery = fmt.Sprintf(`
+			SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
+				s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
+				s.versions, s.changelog, s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at,
+				%s
+			%s %s
+			ORDER BY %s
+			LIMIT ? OFFSET ?
+		`, scoreSelect, baseQuery, whereClause, orderBy)
+	} else {
+		selectArgs = args
+		selectQuery = fmt.Sprintf(`
+			SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
+				s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
+				s.versions, s.changelog, s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at,
+				%s
+			%s %s
+			ORDER BY %s
+			LIMIT ? OFFSET ?
+		`, scoreSelect, baseQuery, whereClause, orderBy)
+	}
 
-	rows, err := s.db.QueryContext(ctx, selectQuery, args...)
+	selectArgs = append(selectArgs, opts.PageSize, offset)
+
+	rows, err := s.db.QueryContext(ctx, selectQuery, selectArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -342,17 +381,18 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	var results []SearchResult
 	for rows.Next() {
 		var skill Skill
+		var score float64
 		err := rows.Scan(
 			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
 			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
 			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
 			&skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
-			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
+			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt, &score,
 		)
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, SearchResult{Skill: skill})
+		results = append(results, SearchResult{Skill: skill, Score: score})
 	}
 
 	return &SearchResponse{

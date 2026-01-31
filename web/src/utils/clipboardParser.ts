@@ -73,9 +73,11 @@ export function parseClipboardData(data: string): Record<string, string> {
   // Format: key1 = "value1" key2 = "value2" OR key1 = value1 key2 = value2
   const singleLineMatches = data.matchAll(/(\w+)\s*=\s*"([^"]+)"/g)
   for (const match of singleLineMatches) {
-    const key = match[1].trim().toLowerCase()
-    const value = match[2].trim()
-    result[key] = value
+    const key = match[1]?.trim().toLowerCase() || ''
+    const value = match[2]?.trim() || ''
+    if (key) {
+      result[key] = value
+    }
   }
 
   // If we found matches with quoted values, return
@@ -89,23 +91,26 @@ export function parseClipboardData(data: string): Record<string, string> {
   // Special case: single line with space-separated URL + token
   // Format: "https://example.com/ sk-xxxxx" or "sk-xxxxx https://example.com/"
   if (lines.length === 1) {
-    const parts = lines[0].split(/\s+/).filter(p => p)
+    const firstLine = lines[0] || ''
+    const parts = firstLine.split(/\s+/).filter(p => p)
     if (parts.length === 2) {
-      const part1UrlProb = getUrlProbability(parts[0])
-      const part1TokenProb = getTokenProbability(parts[0])
-      const part2UrlProb = getUrlProbability(parts[1])
-      const part2TokenProb = getTokenProbability(parts[1])
+      const part0 = parts[0] || ''
+      const part1 = parts[1] || ''
+      const part1UrlProb = getUrlProbability(part0)
+      const part1TokenProb = getTokenProbability(part0)
+      const part2UrlProb = getUrlProbability(part1)
+      const part2TokenProb = getTokenProbability(part1)
 
       const threshold = 0.4
       let urlPart: string | null = null
       let tokenPart: string | null = null
 
       if (part1UrlProb >= threshold && part2TokenProb >= threshold && part1UrlProb > part1TokenProb) {
-        urlPart = parts[0]
-        tokenPart = parts[1]
+        urlPart = part0 ?? null
+        tokenPart = part1 ?? null
       } else if (part2UrlProb >= threshold && part1TokenProb >= threshold && part2UrlProb > part2TokenProb) {
-        urlPart = parts[1]
-        tokenPart = parts[0]
+        urlPart = part1 ?? null
+        tokenPart = part0 ?? null
       }
 
       if (urlPart && tokenPart) {
@@ -118,10 +123,12 @@ export function parseClipboardData(data: string): Record<string, string> {
 
   // Special case: detect URL + token/key pattern (two lines)
   if (lines.length === 2) {
-    const line1UrlProb = getUrlProbability(lines[0])
-    const line1TokenProb = getTokenProbability(lines[0])
-    const line2UrlProb = getUrlProbability(lines[1])
-    const line2TokenProb = getTokenProbability(lines[1])
+    const line0 = lines[0] || ''
+    const line1 = lines[1] || ''
+    const line1UrlProb = getUrlProbability(line0)
+    const line1TokenProb = getTokenProbability(line0)
+    const line2UrlProb = getUrlProbability(line1)
+    const line2TokenProb = getTokenProbability(line1)
 
     // Check if one line is likely URL and other is likely token
     const threshold = 0.4
@@ -129,11 +136,11 @@ export function parseClipboardData(data: string): Record<string, string> {
     let tokenLine: string | null = null
 
     if (line1UrlProb >= threshold && line2TokenProb >= threshold && line1UrlProb > line1TokenProb) {
-      urlLine = lines[0]
-      tokenLine = lines[1]
+      urlLine = line0 ?? null
+      tokenLine = line1 ?? null
     } else if (line2UrlProb >= threshold && line1TokenProb >= threshold && line2UrlProb > line2TokenProb) {
-      urlLine = lines[1]
-      tokenLine = lines[0]
+      urlLine = line1 ?? null
+      tokenLine = line0 ?? null
     }
 
     if (urlLine && tokenLine) {
@@ -147,7 +154,7 @@ export function parseClipboardData(data: string): Record<string, string> {
     // Try "key = value" or "key=value" format first
     // Key must look like a variable name (no colons, no spaces before =)
     let match = line.match(/^([\w-]+)\s*=\s*(.+)$/)
-    if (match) {
+    if (match && match[1] && match[2]) {
       const key = match[1].trim().toLowerCase()
       const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
       result[key] = value
@@ -157,7 +164,7 @@ export function parseClipboardData(data: string): Record<string, string> {
     // Try "key: value" format (supports Chinese colon too)
     // But exclude URLs (don't match if value starts with //)
     match = line.match(/^([^:：]+)[：:]\s*(?!\/\/)(.+)$/)
-    if (match) {
+    if (match && match[1] && match[2]) {
       const key = match[1].trim().toLowerCase()
       const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
       result[key] = value
@@ -166,7 +173,7 @@ export function parseClipboardData(data: string): Record<string, string> {
 
     // Try "key\tvalue" (tab-separated) format
     match = line.match(/^([^\t]+)\t(.+)$/)
-    if (match) {
+    if (match && match[1] && match[2]) {
       const key = match[1].trim().toLowerCase()
       const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
       result[key] = value
@@ -176,7 +183,7 @@ export function parseClipboardData(data: string): Record<string, string> {
     // Try "key value" (space-separated, key is first word, value is rest)
     // Only if key looks like a field name (alphanumeric with underscores/hyphens)
     match = line.match(/^([\w-]+)\s+(.+)$/)
-    if (match) {
+    if (match && match[1] && match[2]) {
       const key = match[1].trim().toLowerCase()
       const value = match[2].trim().replace(/^["']|["']$/g, '') // Remove quotes
       result[key] = value

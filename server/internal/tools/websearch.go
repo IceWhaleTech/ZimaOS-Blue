@@ -87,6 +87,7 @@ func (w *WebSearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "Web Search",
 		Description: "Searches the web for information. Returns a list of relevant web pages with titles, URLs, and descriptions.",
+		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

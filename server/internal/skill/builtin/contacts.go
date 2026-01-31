@@ -55,6 +55,7 @@ func NewContacts(config *ContactsConfig) *Contacts {
 			Version:     "1.0.0",
 			Description: "Contact management with CardDAV support",
 			Category:    "communication",
+			Icon:        "contacts",
 			Tags:        []string{"contacts", "address book", "carddav"},
 			Inputs: []skill.Parameter{
 				{

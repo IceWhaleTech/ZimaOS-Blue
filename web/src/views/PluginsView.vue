@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { SkillTab, PluginTab, ToolTab } from '@/components/extensions'
+import { SkillTab, ToolTab } from '@/components/extensions'
 
 const { t } = useI18n()
 
-// Main tab state - 'extension' maps to PluginTab component (moltbot extensions)
-const activeMainTab = ref<'skill' | 'extension' | 'tool'>('skill')
+// Main tab state - extensions tab removed (extensions are now native)
+const activeMainTab = ref<'skill' | 'tool'>('skill')
 
 // Tab definitions for cleaner template
 const tabs = computed(() => [
@@ -16,18 +16,13 @@ const tabs = computed(() => [
     icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   },
   {
-    id: 'extension' as const,
-    label: t('extensions.extensions'),
-    icon: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
-  },
-  {
     id: 'tool' as const,
     label: t('extensions.tools'),
     icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   },
 ])
 
-function setActiveTab(tabId: 'skill' | 'extension' | 'tool') {
+function setActiveTab(tabId: 'skill' | 'tool') {
   activeMainTab.value = tabId
 }
 </script>
@@ -63,7 +58,6 @@ function setActiveTab(tabId: 'skill' | 'extension' | 'tool') {
     <div class="tab-content">
       <Transition name="tab-fade" mode="out-in">
         <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
-        <PluginTab v-else-if="activeMainTab === 'extension'" key="extension" />
         <ToolTab v-else key="tool" />
       </Transition>
     </div>

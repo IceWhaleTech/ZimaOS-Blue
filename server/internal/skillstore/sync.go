@@ -36,14 +36,14 @@ type Source struct {
 
 // SyncServiceConfig holds configuration for the sync service.
 type SyncServiceConfig struct {
-	Interval time.Duration // Sync interval (default: 24 hours)
+	Interval time.Duration // Sync interval (default: 1 hour)
 	Timeout  time.Duration // HTTP timeout (default: 30 seconds)
 }
 
 // DefaultSyncServiceConfig returns default configuration.
 func DefaultSyncServiceConfig() SyncServiceConfig {
 	return SyncServiceConfig{
-		Interval: 24 * time.Hour,
+		Interval: 1 * time.Hour, // Sync every hour
 		Timeout:  30 * time.Second,
 	}
 }
@@ -51,7 +51,7 @@ func DefaultSyncServiceConfig() SyncServiceConfig {
 // NewSyncService creates a new sync service.
 func NewSyncService(store *Store, config SyncServiceConfig, log *slog.Logger) *SyncService {
 	if config.Interval == 0 {
-		config.Interval = 24 * time.Hour
+		config.Interval = 1 * time.Hour // Default to 1 hour
 	}
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
@@ -172,70 +172,8 @@ func (s *SyncService) SyncSource(ctx context.Context, sourceID string) error {
 		return fmt.Errorf("source not found: %s", sourceID)
 	}
 
-	// Check if already synced successfully today
-	if synced, _ := s.hasSyncedToday(ctx, sourceID); synced {
-		if s.logger != nil {
-			s.logger.Info("skipping sync, already synced today", "source", sourceID)
-		}
-		return nil
-	}
-
-	startTime := time.Now()
-
-	// Update status to in_progress
-	status := &SyncStatus{
-		SourceID:   sourceID,
-		LastSyncAt: startTime,
-		Status:     "in_progress",
-		NextSyncAt: s.getNextSyncTime(startTime),
-	}
-	s.store.UpdateSyncStatus(ctx, status)
-
-	var skills []*Skill
-	var err error
-
-	switch source.Type {
-	case "clawhub":
-		skills, err = s.fetchClawHubSkills(ctx, source)
-	default:
-		err = fmt.Errorf("unsupported source type: %s", source.Type)
-	}
-
-	duration := time.Since(startTime).Milliseconds()
-
-	if err != nil {
-		status.Status = "failed"
-		status.ErrorMessage = err.Error()
-		status.SyncDuration = duration
-		s.store.UpdateSyncStatus(ctx, status)
-		return err
-	}
-
-	// Save skills to database
-	if err := s.store.UpsertSkillBatch(ctx, skills); err != nil {
-		status.Status = "failed"
-		status.ErrorMessage = err.Error()
-		status.SyncDuration = duration
-		s.store.UpdateSyncStatus(ctx, status)
-		return err
-	}
-
-	// Update status to success
-	status.Status = "success"
-	status.SkillCount = len(skills)
-	status.SyncDuration = duration
-	status.ErrorMessage = ""
-	s.store.UpdateSyncStatus(ctx, status)
-
-	if s.logger != nil {
-		s.logger.Info("synced skills from source",
-			"source", sourceID,
-			"count", len(skills),
-			"duration_ms", duration,
-		)
-	}
-
-	return nil
+	// Note: Removed daily sync check - now syncs every hour
+	return s.doSync(ctx, source)
 }
 
 // ForceSyncSource synchronizes a specific source, ignoring today's sync check.
@@ -360,10 +298,10 @@ func isSameDay(t1, t2 time.Time) bool {
 	return y1 == y2 && m1 == m2 && d1 == d2
 }
 
-// getNextSyncTime calculates the next sync time (tomorrow at the same time).
+// getNextSyncTime calculates the next sync time.
 func (s *SyncService) getNextSyncTime(from time.Time) time.Time {
-	// Next sync is tomorrow at the same time
-	return from.Add(24 * time.Hour)
+	// Next sync is after the configured interval (default: 1 hour)
+	return from.Add(s.interval)
 }
 
 // ClawHubAPIResponse represents the response from ClawHub API.
@@ -401,21 +339,23 @@ type ClawHubSkill struct {
 func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([]*Skill, error) {
 	var allSkills []*Skill
 	baseURL := source.URL + "/api/v1/skills"
-	cursor := ""
-	maxPages := 100 // Safety limit
+	maxPages := 100       // Safety limit
+	pageSize := 24        // ClawHub returns 24 items per page
+	emptyPageCount := 0   // Track consecutive empty pages
+	maxEmptyPages := 2    // Stop after 2 consecutive empty pages
 
-	for page := 0; page < maxPages; page++ {
+	for page := 1; page <= maxPages; page++ {
 		select {
 		case <-ctx.Done():
-			return allSkills, ctx.Err()
+			if len(allSkills) > 0 {
+				return allSkills, nil
+			}
+			return nil, ctx.Err()
 		default:
 		}
 
-		// Build URL with cursor
-		apiURL := baseURL
-		if cursor != "" {
-			apiURL = fmt.Sprintf("%s?cursor=%s", baseURL, cursor)
-		}
+		// Build URL with page parameter
+		apiURL := fmt.Sprintf("%s?page=%d", baseURL, page)
 
 		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
@@ -458,6 +398,16 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 			return nil, err
 		}
 
+		// Check if page is empty
+		if len(apiResp.Items) == 0 {
+			emptyPageCount++
+			if emptyPageCount >= maxEmptyPages {
+				break
+			}
+			continue
+		}
+		emptyPageCount = 0 // Reset counter on non-empty page
+
 		// Convert to local skill format
 		now := time.Now()
 		for _, item := range apiResp.Items {
@@ -487,11 +437,14 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 			allSkills = append(allSkills, skill)
 		}
 
-		// Check for more pages
-		if apiResp.NextCursor == "" {
+		// If we got fewer items than page size, we've reached the last page
+		if len(apiResp.Items) < pageSize {
 			break
 		}
-		cursor = apiResp.NextCursor
+	}
+
+	if s.logger != nil {
+		s.logger.Info("fetched skills from ClawHub", "count", len(allSkills))
 	}
 
 	return allSkills, nil

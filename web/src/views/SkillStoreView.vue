@@ -1,22 +1,61 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSkillStore } from '@/stores/skill'
-import type { Skill, RemoteSkill } from '@/api/skill'
+import { useNotificationStore } from '@/stores/notification'
+import { skillApi } from '@/api/skill'
+import type { Skill, RemoteSkill, LocalSkill } from '@/api/skill'
 
 const { t, te } = useI18n()
 const skillStore = useSkillStore()
+const notificationStore = useNotificationStore()
 
 // Tab state
-const activeTab = ref<'installed' | 'store'>('installed')
+const activeTab = ref<'installed' | 'store' | 'featured' | 'local'>('installed')
+
+// Featured skills state
+const featuredSkills = ref<RemoteSkill[]>([])
+const loadingFeatured = ref(false)
+
+// Local skills state
+const localSkills = ref<LocalSkill[]>([])
+const loadingLocal = ref(false)
+const scanningLocal = ref(false)
+
+// Verification state
+const verificationStatus = ref<Record<string, 'pending' | 'verified' | 'error'>>({})
+const verifyingSkillId = ref<string | null>(null)
 
 // Filter state
 const searchQuery = ref('')
+const debouncedSearchQuery = ref('')
+const searchDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const selectedCategory = ref('')
 const selectedSource = ref('')
 
+// Debounce search input
+watch(searchQuery, (newValue) => {
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+  }
+  searchDebounceTimer.value = setTimeout(() => {
+    debouncedSearchQuery.value = newValue
+  }, 300)
+})
+
 // UI state
 const showAddSourceModal = ref(false)
+const showInstallURLModal = ref(false)
+const showUninstallConfirm = ref(false)
+const skillToUninstall = ref<Skill | null>(null)
+const installURL = ref('')
+const installURLName = ref('')
+const isInstallingFromURL = ref(false)
+const installingSkillId = ref<string | null>(null)
+const installRetryCount = ref<Record<string, number>>({})
+const installRetryMax = 3
+const initialLoading = ref(true)
+
 const newSource = ref({
   id: '',
   name: '',
@@ -28,8 +67,8 @@ const newSource = ref({
 // Computed
 const filteredInstalledSkills = computed(() => {
   let result = skillStore.skills
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
+  if (debouncedSearchQuery.value) {
+    const query = debouncedSearchQuery.value.toLowerCase()
     result = result.filter(
       (s) =>
         s.name.toLowerCase().includes(query) ||
@@ -45,8 +84,8 @@ const filteredInstalledSkills = computed(() => {
 
 const filteredRemoteSkills = computed(() => {
   let result = skillStore.remoteSkills
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
+  if (debouncedSearchQuery.value) {
+    const query = debouncedSearchQuery.value.toLowerCase()
     result = result.filter(
       (s) =>
         s.name.toLowerCase().includes(query) ||
@@ -80,17 +119,152 @@ async function toggleSkill(skill: Skill) {
   }
 }
 
-async function installSkill(skill: RemoteSkill) {
-  await skillStore.installSkill(skill.id)
+async function installSkill(skill: RemoteSkill, isRetry = false) {
+  installingSkillId.value = skill.id
+
+  // Initialize or increment retry count
+  if (!isRetry) {
+    installRetryCount.value[skill.id] = 0
+  }
+
+  try {
+    const result = await skillStore.installSkill(skill.id)
+    if (result.success) {
+      // Clear retry count on success
+      delete installRetryCount.value[skill.id]
+      notificationStore.success(
+        t('skillStore.notifications.installSuccess'),
+        t('skillStore.notifications.installSuccessMessage', { name: skill.name })
+      )
+    } else {
+      // Check if we should retry
+      const currentRetry = installRetryCount.value[skill.id] || 0
+      if (currentRetry < installRetryMax - 1) {
+        installRetryCount.value[skill.id] = currentRetry + 1
+        notificationStore.warning(
+          t('skillStore.notifications.installRetrying'),
+          t('skillStore.notifications.installRetryingMessage', {
+            name: skill.name,
+            attempt: currentRetry + 2,
+            max: installRetryMax
+          })
+        )
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        return installSkill(skill, true)
+      } else {
+        // Max retries reached
+        delete installRetryCount.value[skill.id]
+        notificationStore.error(
+          t('skillStore.notifications.installError'),
+          result.message || t('skillStore.notifications.installErrorMessage', { name: skill.name })
+        )
+      }
+    }
+  } catch {
+    // Check if we should retry on exception
+    const currentRetry = installRetryCount.value[skill.id] || 0
+    if (currentRetry < installRetryMax - 1) {
+      installRetryCount.value[skill.id] = currentRetry + 1
+      notificationStore.warning(
+        t('skillStore.notifications.installRetrying'),
+        t('skillStore.notifications.installRetryingMessage', {
+          name: skill.name,
+          attempt: currentRetry + 2,
+          max: installRetryMax
+        })
+      )
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      return installSkill(skill, true)
+    } else {
+      delete installRetryCount.value[skill.id]
+      notificationStore.error(
+        t('skillStore.notifications.installError'),
+        t('skillStore.notifications.installErrorMessage', { name: skill.name })
+      )
+    }
+  } finally {
+    if (!installRetryCount.value[skill.id]) {
+      installingSkillId.value = null
+    }
+  }
+}
+
+function confirmUninstall(skill: Skill) {
+  if (skill.builtin) return
+  skillToUninstall.value = skill
+  showUninstallConfirm.value = true
 }
 
 async function uninstallSkill(skill: Skill) {
   if (skill.builtin) return
-  await skillStore.uninstallSkill(skill.id)
+  const result = await skillStore.uninstallSkill(skill.id)
+  showUninstallConfirm.value = false
+  skillToUninstall.value = null
+  if (result.success) {
+    notificationStore.success(
+      t('skillStore.notifications.uninstallSuccess'),
+      t('skillStore.notifications.uninstallSuccessMessage', { name: skill.name })
+    )
+  } else {
+    notificationStore.error(
+      t('skillStore.notifications.uninstallError'),
+      result.message || t('skillStore.notifications.uninstallErrorMessage', { name: skill.name })
+    )
+  }
+}
+
+function cancelUninstall() {
+  showUninstallConfirm.value = false
+  skillToUninstall.value = null
+}
+
+async function installFromURL() {
+  if (!installURL.value) return
+  isInstallingFromURL.value = true
+  try {
+    const result = await skillStore.installFromURL({
+      url: installURL.value,
+      name: installURLName.value || undefined,
+    })
+    if (result.success) {
+      showInstallURLModal.value = false
+      installURL.value = ''
+      installURLName.value = ''
+      notificationStore.success(
+        t('skillStore.notifications.installSuccess'),
+        t('skillStore.notifications.installFromURLSuccess', { name: result.skill?.name || 'Skill' })
+      )
+    } else {
+      notificationStore.error(
+        t('skillStore.notifications.installError'),
+        t('skillStore.notifications.installFromURLError')
+      )
+    }
+  } finally {
+    isInstallingFromURL.value = false
+  }
 }
 
 async function refreshStore() {
   await skillStore.refreshSources()
+}
+
+async function verifySkill(skillId: string) {
+  verifyingSkillId.value = skillId
+  verificationStatus.value[skillId] = 'pending'
+  try {
+    const response = await skillApi.verify(skillId)
+    if (response.data.visible) {
+      verificationStatus.value[skillId] = 'verified'
+    } else {
+      verificationStatus.value[skillId] = 'error'
+    }
+  } catch {
+    verificationStatus.value[skillId] = 'error'
+  } finally {
+    verifyingSkillId.value = null
+  }
 }
 
 async function addSource() {
@@ -123,15 +297,226 @@ function getCategoryLabel(category: string | undefined): string {
   return category || t('skillStore.categories.other')
 }
 
+function highlightText(text: string, query: string): string {
+  if (!query || !text) return text
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escapedQuery})`, 'gi')
+  return text.replace(regex, '<mark class="search-highlight">$1</mark>')
+}
+
+function getInstallButtonText(skillId: string): string {
+  if (installingSkillId.value !== skillId) {
+    return t('skillStore.actions.install')
+  }
+  const retryCount = installRetryCount.value[skillId]
+  if (retryCount && retryCount > 0) {
+    return t('skillStore.notifications.retryAttempt', { attempt: retryCount + 1, max: installRetryMax })
+  }
+  return t('skillStore.modal.installing')
+}
+
+// Filtered featured skills
+const filteredFeaturedSkills = computed(() => {
+  let result = featuredSkills.value
+  if (debouncedSearchQuery.value) {
+    const query = debouncedSearchQuery.value.toLowerCase()
+    result = result.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        s.description.toLowerCase().includes(query) ||
+        s.tags?.some((t) => t.toLowerCase().includes(query))
+    )
+  }
+  if (selectedCategory.value) {
+    result = result.filter((s) => s.category === selectedCategory.value)
+  }
+  return result
+})
+
+// Fetch featured skills
+async function fetchFeatured() {
+  loadingFeatured.value = true
+  try {
+    featuredSkills.value = await skillStore.fetchFeaturedSkills()
+  } finally {
+    loadingFeatured.value = false
+  }
+}
+
+// Watch for tab changes to load featured skills
+watch(activeTab, (newTab) => {
+  if (newTab === 'featured' && featuredSkills.value.length === 0) {
+    fetchFeatured()
+  }
+  if (newTab === 'local' && localSkills.value.length === 0) {
+    fetchLocal()
+  }
+})
+
+// Filtered local skills
+const filteredLocalSkills = computed(() => {
+  let result = localSkills.value
+  if (debouncedSearchQuery.value) {
+    const query = debouncedSearchQuery.value.toLowerCase()
+    result = result.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        s.description.toLowerCase().includes(query) ||
+        s.tags?.some((t) => t.toLowerCase().includes(query))
+    )
+  }
+  if (selectedCategory.value) {
+    result = result.filter((s) => s.category === selectedCategory.value)
+  }
+  return result
+})
+
+// Combined search results across all sources
+interface CombinedSearchResult {
+  id: string
+  name: string
+  description: string
+  source: 'installed' | 'featured' | 'store' | 'local'
+  installed: boolean
+  enabled?: boolean
+  category?: string
+  tags?: string[]
+  author?: string
+  homepage?: string
+  source_url?: string
+  stars?: number
+}
+
+const combinedSearchResults = computed((): CombinedSearchResult[] => {
+  if (!debouncedSearchQuery.value) return []
+
+  const results: CombinedSearchResult[] = []
+  const seenIds = new Set<string>()
+
+  // Add installed skills
+  for (const skill of filteredInstalledSkills.value) {
+    if (!seenIds.has(skill.id)) {
+      seenIds.add(skill.id)
+      results.push({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        source: 'installed',
+        installed: true,
+        enabled: skill.enabled,
+        category: skill.category,
+        tags: skill.tags,
+      })
+    }
+  }
+
+  // Add featured skills (not already installed)
+  for (const skill of filteredFeaturedSkills.value) {
+    if (!seenIds.has(skill.id)) {
+      seenIds.add(skill.id)
+      results.push({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        source: 'featured',
+        installed: skill.installed || false,
+        category: skill.category,
+        tags: skill.tags,
+        author: skill.author,
+        homepage: skill.homepage,
+        source_url: skill.source_url ?? undefined,
+        stars: skill.stars,
+      })
+    }
+  }
+
+  // Add store skills (not already in results)
+  for (const skill of filteredRemoteSkills.value) {
+    if (!seenIds.has(skill.id)) {
+      seenIds.add(skill.id)
+      results.push({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        source: 'store',
+        installed: skill.installed || false,
+        category: skill.category,
+        tags: skill.tags,
+        author: skill.author,
+        homepage: skill.homepage,
+        source_url: skill.source_url ?? undefined,
+        stars: skill.stars,
+      })
+    }
+  }
+
+  // Add local skills (not already in results)
+  for (const skill of filteredLocalSkills.value) {
+    if (!seenIds.has(skill.id)) {
+      seenIds.add(skill.id)
+      results.push({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        source: 'local',
+        installed: skill.installed || false,
+        category: skill.category,
+        tags: skill.tags,
+        author: skill.author,
+      })
+    }
+  }
+
+  return results
+})
+
+// Fetch local skills
+async function fetchLocal() {
+  loadingLocal.value = true
+  try {
+    const response = await skillStore.fetchLocalSkills()
+    localSkills.value = response.skills || []
+  } finally {
+    loadingLocal.value = false
+  }
+}
+
+// Scan local skills directory
+async function scanLocal() {
+  scanningLocal.value = true
+  try {
+    const result = await skillStore.scanLocalSkills()
+    await fetchLocal()
+    if (result.success) {
+      notificationStore.success(
+        t('skillStore.notifications.scanSuccess'),
+        t('skillStore.notifications.scanSuccessMessage', { count: result.skills_found })
+      )
+    }
+  } finally {
+    scanningLocal.value = false
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([
-    skillStore.fetchSkills(),
-    skillStore.fetchSources(),
-  ])
-  // Auto refresh store on first load
+  // Fetch installed skills first (fast, local)
+  await skillStore.fetchSkills()
+  initialLoading.value = false
+
+  // Fetch sources in background (don't block)
+  skillStore.fetchSources().catch(() => {})
+
+  // Auto refresh store in background (don't block page load)
   if (skillStore.remoteSkills.length === 0) {
-    await skillStore.refreshSources()
+    skillStore.refreshSources().catch(() => {})
+  }
+})
+
+onUnmounted(() => {
+  // Cleanup debounce timer
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
   }
 })
 </script>
@@ -153,10 +538,6 @@ onMounted(async () => {
           <span class="stat-value">{{ stats.enabled }}</span>
           <span class="stat-label">{{ t('skillStore.stats.enabled') }}</span>
         </div>
-        <div class="stat">
-          <span class="stat-value">{{ stats.available }}</span>
-          <span class="stat-label">{{ t('skillStore.stats.available') }}</span>
-        </div>
       </div>
     </div>
 
@@ -169,10 +550,31 @@ onMounted(async () => {
         {{ t('skillStore.tabs.installedWithCount', { count: skillStore.skills.length }) }}
       </button>
       <button
+        :class="['tab', { active: activeTab === 'featured' }]"
+        @click="activeTab = 'featured'"
+      >
+        {{ t('skillStore.tabs.featured') }}
+      </button>
+      <button
+        :class="['tab', { active: activeTab === 'local' }]"
+        @click="activeTab = 'local'"
+      >
+        {{ t('skillStore.tabs.local') }}
+      </button>
+      <button
         :class="['tab', { active: activeTab === 'store' }]"
         @click="activeTab = 'store'"
       >
-        {{ t('skillStore.tabs.storeWithCount', { count: skillStore.remoteSkills.length }) }}
+        <template v-if="skillStore.refreshing">
+          {{ t('skillStore.tabs.store') }}
+          <span class="tab-spinner"></span>
+        </template>
+        <template v-else-if="skillStore.remoteSkills.length > 0">
+          {{ t('skillStore.tabs.storeWithCount', { count: skillStore.remoteSkills.length }) }}
+        </template>
+        <template v-else>
+          {{ t('skillStore.tabs.store') }}
+        </template>
       </button>
     </div>
 
@@ -206,7 +608,7 @@ onMounted(async () => {
       </select>
 
       <div class="filter-actions">
-        <button v-if="activeTab === 'store'" class="btn-refresh" @click="refreshStore" :disabled="skillStore.refreshing">
+        <button v-if="activeTab === 'store'" class="btn-refresh" :disabled="skillStore.refreshing" @click="refreshStore">
           <svg v-if="!skillStore.refreshing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -216,8 +618,24 @@ onMounted(async () => {
           <span v-else class="spinner"></span>
           {{ t('skillStore.actions.refresh') }}
         </button>
+        <button class="btn-install-url" @click="showInstallURLModal = true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+          {{ t('skillStore.actions.installFromURL') }}
+        </button>
         <button v-if="activeTab === 'store'" class="btn-add-source" @click="showAddSourceModal = true">
           + {{ t('skillStore.actions.addSource') }}
+        </button>
+        <button v-if="activeTab === 'local'" class="btn-scan-local" :disabled="scanningLocal" @click="scanLocal">
+          <svg v-if="!scanningLocal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            <line x1="12" y1="11" x2="12" y2="17" />
+            <line x1="9" y1="14" x2="15" y2="14" />
+          </svg>
+          <span v-else class="spinner"></span>
+          {{ t('skillStore.actions.scanLocal') }}
         </button>
       </div>
     </div>
@@ -228,8 +646,36 @@ onMounted(async () => {
       <button @click="skillStore.clearError">×</button>
     </div>
 
+    <!-- Search Results Summary -->
+    <div v-if="debouncedSearchQuery && !initialLoading" class="search-results-summary">
+      <div class="search-results-header">
+        <h3>{{ t('skillStore.search.resultsCount', { count: combinedSearchResults.length, query: debouncedSearchQuery }) }}</h3>
+        <button class="btn-clear-search" @click="searchQuery = ''; debouncedSearchQuery = ''">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+          {{ t('skillStore.search.clearSearch') }}
+        </button>
+      </div>
+      <div v-if="combinedSearchResults.length > 0" class="search-results-breakdown">
+        <span v-if="filteredInstalledSkills.length > 0" class="result-source" @click="activeTab = 'installed'">
+          {{ t('skillStore.search.sourceInstalled') }}: {{ filteredInstalledSkills.length }}
+        </span>
+        <span v-if="filteredFeaturedSkills.length > 0" class="result-source" @click="activeTab = 'featured'">
+          {{ t('skillStore.search.sourceFeatured') }}: {{ filteredFeaturedSkills.length }}
+        </span>
+        <span v-if="filteredRemoteSkills.length > 0" class="result-source" @click="activeTab = 'store'">
+          {{ t('skillStore.search.sourceStore') }}: {{ filteredRemoteSkills.length }}
+        </span>
+        <span v-if="filteredLocalSkills.length > 0" class="result-source" @click="activeTab = 'local'">
+          {{ t('skillStore.search.sourceLocal') }}: {{ filteredLocalSkills.length }}
+        </span>
+      </div>
+    </div>
+
     <!-- Loading -->
-    <div v-if="skillStore.loading" class="loading">
+    <div v-if="initialLoading" class="loading">
       <div class="spinner"></div>
       <span>{{ t('common.loading') }}</span>
     </div>
@@ -244,18 +690,35 @@ onMounted(async () => {
         <div class="skill-header">
           <span class="skill-icon">{{ getCategoryIcon(skill.category) }}</span>
           <div class="skill-title">
-            <h3 :title="skill.name">{{ skill.name }}</h3>
+            <h3 :title="skill.name" v-html="highlightText(skill.name, debouncedSearchQuery)"></h3>
             <div class="skill-title-meta">
               <span v-if="skill.version && skill.version !== 'latest'" class="skill-version">v{{ skill.version }}</span>
               <span v-if="skill.builtin" class="badge builtin">{{ t('skillStore.status.builtin') }}</span>
               <span :class="['badge', skill.enabled ? 'enabled' : 'disabled']">
                 {{ skill.enabled ? t('skillStore.actions.enable') : t('skillStore.actions.disable') }}
               </span>
+              <!-- Verification status indicator -->
+              <span
+                v-if="!skill.builtin && verificationStatus[skill.id]"
+                :class="['badge', 'verification', verificationStatus[skill.id]]"
+                :title="verificationStatus[skill.id] === 'verified' ? t('skillStore.status.verified') : t('skillStore.status.verificationFailed')"
+              >
+                <svg v-if="verificationStatus[skill.id] === 'verified'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verify-icon">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <svg v-else-if="verificationStatus[skill.id] === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="verify-icon">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+                <span v-else class="spinner-small"></span>
+              </span>
             </div>
           </div>
         </div>
 
-        <p class="skill-description">{{ skill.description }}</p>
+        <p class="skill-description" v-html="highlightText(skill.description, debouncedSearchQuery)"></p>
 
         <div v-if="skill.tags?.length" class="skill-tags">
           <span v-for="tag in skill.tags.slice(0, 3)" :key="tag" class="tag">{{ tag }}</span>
@@ -283,8 +746,21 @@ onMounted(async () => {
           </button>
           <button
             v-if="!skill.builtin"
+            class="btn-verify"
+            :disabled="verifyingSkillId === skill.id"
+            :title="t('skillStore.actions.verify')"
+            @click="verifySkill(skill.id)"
+          >
+            <span v-if="verifyingSkillId === skill.id" class="spinner-small"></span>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          </button>
+          <button
+            v-if="!skill.builtin"
             class="btn-uninstall"
-            @click="uninstallSkill(skill)"
+            @click="confirmUninstall(skill)"
           >
             {{ t('skillStore.actions.uninstall') }}
           </button>
@@ -292,21 +768,191 @@ onMounted(async () => {
       </div>
 
       <div v-if="filteredInstalledSkills.length === 0" class="empty-state">
-        <p>{{ t('skillStore.empty.noMatchingInstalled') }}</p>
+        <template v-if="debouncedSearchQuery">
+          <p class="no-results-title">{{ t('skillStore.empty.noResultsTitle', { query: debouncedSearchQuery }) }}</p>
+          <div class="suggestions">
+            <p class="suggestions-label">{{ t('skillStore.empty.suggestions') }}:</p>
+            <ul>
+              <li>{{ t('skillStore.empty.tryDifferentKeywords') }}</li>
+              <li>{{ t('skillStore.empty.checkSpelling') }}</li>
+              <li class="suggestion-link" @click="activeTab = 'store'">{{ t('skillStore.empty.checkFeatured') }}</li>
+            </ul>
+          </div>
+        </template>
+        <p v-else>{{ t('skillStore.empty.noMatchingInstalled') }}</p>
       </div>
+    </div>
+
+    <!-- Featured Skills Grid -->
+    <div v-else-if="activeTab === 'featured'" class="skills-grid">
+      <div v-if="loadingFeatured" class="loading-state">
+        <div class="spinner"></div>
+        <span>{{ t('common.loading') }}</span>
+      </div>
+      <template v-else>
+        <div
+          v-for="skill in filteredFeaturedSkills"
+          :key="skill.id"
+          :class="['skill-card', 'featured-card', { installed: skill.installed }]"
+        >
+          <div class="skill-header">
+            <span class="skill-icon">{{ getCategoryIcon(skill.category) }}</span>
+            <div class="skill-title">
+              <h3 :title="skill.name" v-html="highlightText(skill.name, debouncedSearchQuery)"></h3>
+              <div class="skill-title-meta">
+                <span v-if="skill.version && skill.version !== 'latest'" class="skill-version">v{{ skill.version }}</span>
+                <span class="featured-badge">{{ t('skillStore.status.featured') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="skill-description" v-html="highlightText(skill.description, debouncedSearchQuery)"></p>
+
+          <div v-if="skill.tags?.length" class="skill-tags">
+            <span v-for="tag in skill.tags.slice(0, 3)" :key="tag" class="tag">{{ tag }}</span>
+          </div>
+
+          <div class="skill-meta">
+            <span v-if="skill.author && skill.author !== 'clawdbot' && skill.author !== 'moltbot'" class="meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              {{ skill.author }}
+            </span>
+            <span v-if="skill.stars" class="meta-item">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              {{ skill.stars }}
+            </span>
+            <span v-if="skill.category" class="meta-item">
+              {{ getCategoryLabel(skill.category) }}
+            </span>
+          </div>
+
+          <div class="skill-actions">
+            <button
+              v-if="!skill.installed"
+              class="btn-install"
+              :class="{ retrying: (installRetryCount[skill.id] ?? 0) > 0 }"
+              :disabled="installingSkillId === skill.id"
+              @click="installSkill(skill)"
+            >
+              <span v-if="installingSkillId === skill.id" class="spinner"></span>
+              {{ getInstallButtonText(skill.id) }}
+            </button>
+            <span v-else class="installed-badge">{{ t('skillStore.status.installed') }}</span>
+            <a v-if="skill.homepage" :href="skill.homepage" target="_blank" class="btn-link">
+              {{ t('skillStore.actions.details') }}
+            </a>
+          </div>
+        </div>
+
+        <div v-if="filteredFeaturedSkills.length === 0 && !loadingFeatured" class="empty-state">
+          <template v-if="debouncedSearchQuery">
+            <p class="no-results-title">{{ t('skillStore.empty.noResultsTitle', { query: debouncedSearchQuery }) }}</p>
+            <div class="suggestions">
+              <p class="suggestions-label">{{ t('skillStore.empty.suggestions') }}:</p>
+              <ul>
+                <li>{{ t('skillStore.empty.tryDifferentKeywords') }}</li>
+                <li>{{ t('skillStore.empty.checkSpelling') }}</li>
+                <li class="suggestion-link" @click="activeTab = 'store'">{{ t('skillStore.empty.browseCategories') }}</li>
+              </ul>
+            </div>
+          </template>
+          <p v-else>{{ t('skillStore.empty.noFeatured') }}</p>
+        </div>
+      </template>
+    </div>
+
+    <!-- Local Skills Grid -->
+    <div v-else-if="activeTab === 'local'" class="skills-grid">
+      <div v-if="loadingLocal" class="loading-state">
+        <div class="spinner"></div>
+        <span>{{ t('common.loading') }}</span>
+      </div>
+      <template v-else>
+        <div
+          v-for="skill in filteredLocalSkills"
+          :key="skill.id"
+          :class="['skill-card', 'local-card', { installed: skill.installed }]"
+        >
+          <div class="skill-header">
+            <span class="skill-icon">{{ getCategoryIcon(skill.category) }}</span>
+            <div class="skill-title">
+              <h3 :title="skill.name">{{ skill.name }}</h3>
+              <div class="skill-title-meta">
+                <span v-if="skill.version" class="skill-version">v{{ skill.version }}</span>
+                <span class="local-badge">{{ t('skillStore.status.local') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="skill-description">{{ skill.description }}</p>
+
+          <div v-if="skill.tags?.length" class="skill-tags">
+            <span v-for="tag in skill.tags.slice(0, 3)" :key="tag" class="tag">{{ tag }}</span>
+          </div>
+
+          <div class="skill-meta">
+            <span v-if="skill.author" class="meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              {{ skill.author }}
+            </span>
+            <span class="meta-item" :title="skill.file_path">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              {{ t('skillStore.status.localFile') }}
+            </span>
+          </div>
+
+          <div class="skill-actions">
+            <span v-if="skill.installed" class="installed-badge">{{ t('skillStore.status.installed') }}</span>
+            <span v-else class="local-ready-badge">{{ t('skillStore.status.ready') }}</span>
+          </div>
+        </div>
+
+        <div v-if="filteredLocalSkills.length === 0 && !loadingLocal" class="empty-state">
+          <template v-if="debouncedSearchQuery">
+            <p class="no-results-title">{{ t('skillStore.empty.noResultsTitle', { query: debouncedSearchQuery }) }}</p>
+            <div class="suggestions">
+              <p class="suggestions-label">{{ t('skillStore.empty.suggestions') }}:</p>
+              <ul>
+                <li>{{ t('skillStore.empty.tryDifferentKeywords') }}</li>
+                <li>{{ t('skillStore.empty.checkSpelling') }}</li>
+                <li class="suggestion-link" @click="scanLocal">{{ t('skillStore.empty.scanLocalSkills') }}</li>
+              </ul>
+            </div>
+          </template>
+          <template v-else>
+            <p>{{ t('skillStore.empty.noLocal') }}</p>
+            <p class="empty-hint">{{ t('skillStore.empty.localHint') }}</p>
+          </template>
+        </div>
+      </template>
     </div>
 
     <!-- Store Skills Grid -->
     <div v-else class="skills-grid">
-      <div
-        v-for="skill in filteredRemoteSkills"
-        :key="skill.id"
-        :class="['skill-card', 'store-card', { installed: skill.installed }]"
-      >
+      <div v-if="skillStore.refreshing" class="loading-state">
+        <div class="spinner"></div>
+        <span>{{ t('skillStore.empty.loadingStore') }}</span>
+      </div>
+      <template v-else>
+        <div
+          v-for="skill in filteredRemoteSkills"
+          :key="skill.id"
+          :class="['skill-card', 'store-card', { installed: skill.installed }]"
+        >
         <div class="skill-header">
           <span class="skill-icon">{{ getCategoryIcon(skill.category) }}</span>
           <div class="skill-title">
-            <h3 :title="skill.name">{{ skill.name }}</h3>
+            <h3 :title="skill.name" v-html="highlightText(skill.name, debouncedSearchQuery)"></h3>
             <div class="skill-title-meta">
               <span v-if="skill.version && skill.version !== 'latest'" class="skill-version">v{{ skill.version }}</span>
               <span class="source-badge">{{ skill.source_name }}</span>
@@ -314,7 +960,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <p class="skill-description">{{ skill.description }}</p>
+        <p class="skill-description" v-html="highlightText(skill.description, debouncedSearchQuery)"></p>
 
         <div v-if="skill.tags?.length" class="skill-tags">
           <span v-for="tag in skill.tags.slice(0, 3)" :key="tag" class="tag">{{ tag }}</span>
@@ -348,9 +994,12 @@ onMounted(async () => {
           <button
             v-if="!skill.installed"
             class="btn-install"
+            :class="{ retrying: (installRetryCount[skill.id] ?? 0) > 0 }"
+            :disabled="installingSkillId === skill.id"
             @click="installSkill(skill)"
           >
-            {{ t('skillStore.actions.install') }}
+            <span v-if="installingSkillId === skill.id" class="spinner"></span>
+            {{ getInstallButtonText(skill.id) }}
           </button>
           <span v-else class="installed-badge">{{ t('skillStore.status.installed') }}</span>
           <a v-if="skill.homepage" :href="skill.homepage" target="_blank" class="btn-link">
@@ -359,10 +1008,22 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div v-if="filteredRemoteSkills.length === 0" class="empty-state">
-        <p v-if="skillStore.refreshing">{{ t('skillStore.empty.loadingStore') }}</p>
+      <div v-if="filteredRemoteSkills.length === 0 && !skillStore.refreshing" class="empty-state">
+        <template v-if="debouncedSearchQuery">
+          <p class="no-results-title">{{ t('skillStore.empty.noResultsTitle', { query: debouncedSearchQuery }) }}</p>
+          <div class="suggestions">
+            <p class="suggestions-label">{{ t('skillStore.empty.suggestions') }}:</p>
+            <ul>
+              <li>{{ t('skillStore.empty.tryDifferentKeywords') }}</li>
+              <li>{{ t('skillStore.empty.checkSpelling') }}</li>
+              <li v-if="selectedCategory" class="suggestion-link" @click="selectedCategory = ''">{{ t('skillStore.empty.tryClearFilters') }}</li>
+              <li class="suggestion-link" @click="showInstallURLModal = true">{{ t('skillStore.empty.installFromUrl') }}</li>
+            </ul>
+          </div>
+        </template>
         <p v-else>{{ t('skillStore.empty.noMatchingStore') }}</p>
       </div>
+      </template>
     </div>
 
     <!-- Add Source Modal -->
@@ -405,6 +1066,61 @@ onMounted(async () => {
         <div class="modal-footer">
           <button class="btn-cancel" @click="showAddSourceModal = false">{{ t('skillStore.modal.cancel') }}</button>
           <button class="btn-confirm" @click="addSource">{{ t('skillStore.modal.add') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Install from URL Modal -->
+    <div v-if="showInstallURLModal" class="modal-overlay" @click.self="showInstallURLModal = false">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>{{ t('skillStore.modal.installFromURLTitle') }}</h2>
+          <button class="modal-close" @click="showInstallURLModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">{{ t('skillStore.modal.installFromURLDescription') }}</p>
+          <div class="form-group">
+            <label>{{ t('skillStore.modal.skillURL') }}</label>
+            <input
+              v-model="installURL"
+              type="text"
+              :placeholder="t('skillStore.modal.skillURLPlaceholder')"
+            />
+          </div>
+          <div class="form-group">
+            <label>{{ t('skillStore.modal.skillNameOptional') }}</label>
+            <input
+              v-model="installURLName"
+              type="text"
+              :placeholder="t('skillStore.modal.skillNamePlaceholder')"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="showInstallURLModal = false">{{ t('skillStore.modal.cancel') }}</button>
+          <button class="btn-confirm" :disabled="!installURL || isInstallingFromURL" @click="installFromURL">
+            <span v-if="isInstallingFromURL" class="spinner"></span>
+            {{ isInstallingFromURL ? t('skillStore.modal.installing') : t('skillStore.modal.install') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Uninstall Confirmation Modal -->
+    <div v-if="showUninstallConfirm" class="modal-overlay" @click.self="cancelUninstall">
+      <div class="modal modal-confirm">
+        <div class="modal-header">
+          <h2>{{ t('skillStore.modal.confirmUninstallTitle') }}</h2>
+          <button class="modal-close" @click="cancelUninstall">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="confirm-message">
+            {{ t('skillStore.modal.confirmUninstallMessage', { name: skillToUninstall?.name }) }}
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="cancelUninstall">{{ t('skillStore.modal.cancel') }}</button>
+          <button class="btn-danger" @click="uninstallSkill(skillToUninstall!)">{{ t('skillStore.modal.uninstall') }}</button>
         </div>
       </div>
     </div>
@@ -484,6 +1200,19 @@ onMounted(async () => {
 .tab.active {
   background: var(--primary);
   color: white;
+}
+
+.tab-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: 6px;
+  vertical-align: middle;
+  opacity: 0.7;
 }
 
 .filters {
@@ -589,6 +1318,73 @@ onMounted(async () => {
   font-size: 20px;
   cursor: pointer;
   color: inherit;
+}
+
+/* Search Results Summary */
+.search-results-summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.search-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.search-results-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.btn-clear-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn-clear-search:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-clear-search svg {
+  width: 14px;
+  height: 14px;
+}
+
+.search-results-breakdown {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.result-source {
+  font-size: 13px;
+  color: var(--primary);
+  cursor: pointer;
+  padding: 4px 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.result-source:hover {
+  background: rgba(59, 130, 246, 0.2);
 }
 
 .loading {
@@ -765,6 +1561,93 @@ onMounted(async () => {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.featured-badge {
+  padding: 2px 6px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(168, 85, 247, 0.15);
+  color: #c4b5fd;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.featured-card::before {
+  background: linear-gradient(90deg, #a855f7, #ec4899);
+}
+
+.local-card::before {
+  background: linear-gradient(90deg, #06b6d4, #3b82f6);
+}
+
+.local-badge {
+  padding: 2px 6px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(6, 182, 212, 0.15);
+  color: #67e8f9;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.local-ready-badge {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: var(--radius-md, 8px);
+}
+
+.btn-scan-local {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1px solid rgba(6, 182, 212, 0.5);
+  border-radius: 8px;
+  background: transparent;
+  color: #67e8f9;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-scan-local:hover {
+  background: rgba(6, 182, 212, 0.15);
+}
+
+.btn-scan-local:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-scan-local svg {
+  width: 16px;
+  height: 16px;
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.loading-state {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px;
+  color: var(--text-secondary);
+}
+
 /* Light mode badge overrides */
 :root.light .badge.builtin,
 [data-theme="light"] .badge.builtin {
@@ -785,6 +1668,33 @@ onMounted(async () => {
   background: rgba(245, 158, 11, 0.1);
   color: #b45309;
   border-color: rgba(245, 158, 11, 0.2);
+}
+
+:root.light .featured-badge,
+[data-theme="light"] .featured-badge {
+  background: rgba(168, 85, 247, 0.1);
+  color: #7c3aed;
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+:root.light .local-badge,
+[data-theme="light"] .local-badge {
+  background: rgba(6, 182, 212, 0.1);
+  color: #0891b2;
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+:root.light .local-ready-badge,
+[data-theme="light"] .local-ready-badge {
+  background: rgba(6, 182, 212, 0.1);
+  color: #0891b2;
+  border-color: rgba(6, 182, 212, 0.2);
+}
+
+:root.light .btn-scan-local,
+[data-theme="light"] .btn-scan-local {
+  color: #0891b2;
+  border-color: rgba(6, 182, 212, 0.4);
 }
 
 .skill-description {
@@ -897,6 +1807,69 @@ onMounted(async () => {
   background: rgba(239, 68, 68, 0.15);
 }
 
+.btn-verify {
+  padding: 0.5rem;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: transparent;
+  color: var(--primary);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-verify svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-verify:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.btn-verify:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.badge.verification {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+}
+
+.badge.verification.verified {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.badge.verification.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.badge.verification.pending {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--primary);
+}
+
+.verify-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.spinner-small {
+  width: 12px;
+  height: 12px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .btn-install {
   flex: 1;
   border: none;
@@ -912,6 +1885,34 @@ onMounted(async () => {
 
 .btn-install:active {
   transform: translateY(0);
+}
+
+.btn-install:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-install .spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  margin-right: 4px;
+}
+
+.btn-install.retrying {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+  animation: pulse-retry 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-retry {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .installed-badge {
@@ -972,6 +1973,48 @@ onMounted(async () => {
   text-align: center;
   padding: 48px;
   color: var(--text-secondary);
+}
+
+.no-results-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.suggestions {
+  display: inline-block;
+  text-align: left;
+  background: var(--bg-secondary);
+  padding: 16px 24px;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.suggestions-label {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.suggestions ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.suggestions li {
+  margin: 6px 0;
+  color: var(--text-secondary);
+}
+
+.suggestion-link {
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.suggestion-link:hover {
+  color: var(--primary-hover);
 }
 
 /* Modal */
@@ -1073,6 +2116,70 @@ onMounted(async () => {
   border: none;
   background: var(--primary);
   color: white;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  background: var(--error);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-install-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-install-url:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-install-url svg {
+  width: 16px;
+  height: 16px;
+}
+
+.modal-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.modal-confirm {
+  max-width: 400px;
+}
+
+.confirm-message {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
 }
 
 /* Use global design system variables */
@@ -1101,5 +2208,18 @@ onMounted(async () => {
   --text-secondary: var(--color-text-secondary, #475569);
   --text-muted: var(--color-text-muted, #64748B);
   --border: var(--glass-border, rgba(0, 0, 0, 0.1));
+}
+
+/* Search highlight */
+:deep(.search-highlight) {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+:root.light :deep(.search-highlight),
+[data-theme="light"] :deep(.search-highlight) {
+  background: rgba(59, 130, 246, 0.2);
 }
 </style>

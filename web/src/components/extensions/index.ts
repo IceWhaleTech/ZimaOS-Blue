@@ -1,3 +1,3 @@
 export { default as SkillTab } from './SkillTab.vue'
-export { default as PluginTab } from './PluginTab.vue'
+// PluginTab removed - extensions are now native
 export { default as ToolTab } from './ToolTab.vue'

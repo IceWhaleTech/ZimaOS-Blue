@@ -40,6 +40,7 @@ func NewTasks() *Tasks {
 			Version:     "1.0.0",
 			Description: "Task and todo management",
 			Category:    "productivity",
+			Icon:        "tasks",
 			Tags:        []string{"tasks", "todo", "productivity", "project"},
 			Inputs: []skill.Parameter{
 				{

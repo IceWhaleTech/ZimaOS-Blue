@@ -96,8 +96,8 @@ function getIconColorClass(type: NotificationType): string {
             <button
               v-if="notification.dismissible"
               class="flex-shrink-0 p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-              @click="notificationStore.remove(notification.id)"
               aria-label="Dismiss notification"
+              @click="notificationStore.remove(notification.id)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

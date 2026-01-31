@@ -18,7 +18,7 @@ function escapeHtml(text: string): string {
 }
 
 // Parse inline markdown elements
-function parseInline(text: string): string {
+export function parseInline(text: string): string {
   let result = escapeHtml(text)
 
   // Bold: **text** or __text__
@@ -532,6 +532,61 @@ function highlightCode(code: string, language: string): string {
   return result
 }
 
+// Parse a table row into cells
+function parseTableRow(line: string): string[] {
+  // Remove leading/trailing pipes and split by pipe
+  const trimmed = line.trim()
+  const withoutPipes = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed
+  const withoutEndPipe = withoutPipes.endsWith('|') ? withoutPipes.slice(0, -1) : withoutPipes
+  return withoutEndPipe.split('|').map(cell => cell.trim())
+}
+
+// Check if a line is a table separator (e.g., |---|---|)
+function isTableSeparator(line: string): boolean {
+  const trimmed = line.trim()
+  // Must contain at least one pipe to be a table separator
+  if (!trimmed.includes('|')) return false
+  // Remove pipes and check if remaining content is only dashes, colons, and spaces
+  const content = trimmed.replace(/\|/g, '').trim()
+  return /^[\s:-]+$/.test(content) && content.includes('-')
+}
+
+// Check if a line looks like a table row
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim()
+  // Must contain ASCII pipe character (U+007C), not box-drawing characters
+  if (!trimmed.includes('|')) return false
+  if (isTableSeparator(trimmed)) return false
+
+  // Exclude lines that look like tree structures (contain box-drawing characters)
+  // Common box-drawing characters used in tree structures
+  const boxDrawingChars = /[│├└┌┐┘┬┴┼─]/
+  if (boxDrawingChars.test(trimmed)) return false
+
+  // A valid table row should have pipe as a delimiter with content on both sides
+  // or start/end with pipe (standard markdown table format)
+  const pipeCount = (trimmed.match(/\|/g) || []).length
+  if (pipeCount === 0) return false
+
+  // If line starts or ends with pipe, it's likely a table
+  if (trimmed.startsWith('|') || trimmed.endsWith('|')) return true
+
+  // Otherwise, require at least one pipe with non-whitespace content on both sides
+  const parts = trimmed.split('|')
+  if (parts.length < 2) return false
+
+  // Check that we have actual content (not just whitespace) in at least 2 cells
+  const nonEmptyCells = parts.filter(p => p.trim().length > 0)
+  return nonEmptyCells.length >= 2
+}
+
+// Check if a line is part of a tree structure (uses box-drawing characters)
+function isTreeLine(line: string): boolean {
+  // Box-drawing characters commonly used in tree structures
+  const boxDrawingChars = /[│├└┌┐┘┬┴┼─]/
+  return boxDrawingChars.test(line)
+}
+
 // Main render function
 export function renderMarkdown(markdown: string, _options: RenderOptions = {}): string {
   const lines = markdown.split('\n')
@@ -541,6 +596,11 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   let codeBlockContent: string[] = []
   let inList = false
   let listItems: string[] = []
+  let inTable = false
+  let tableRows: string[][] = []
+  let hasTableHeader = false
+  let inTree = false
+  let treeLines: string[] = []
 
   const flushList = () => {
     if (inList && listItems.length > 0) {
@@ -552,6 +612,52 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     }
   }
 
+  const flushTable = () => {
+    if (inTable && tableRows.length > 0) {
+      result.push('<div class="overflow-x-auto my-3">')
+      result.push('<table class="min-w-full border-collapse border border-gray-300 dark:border-gray-600">')
+
+      tableRows.forEach((row, rowIndex) => {
+        if (rowIndex === 0 && hasTableHeader) {
+          result.push('<thead class="bg-gray-100 dark:bg-gray-700">')
+          result.push('<tr>')
+          row.forEach(cell => {
+            result.push(`<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold">${parseInline(cell)}</th>`)
+          })
+          result.push('</tr>')
+          result.push('</thead>')
+          result.push('<tbody>')
+        } else {
+          result.push('<tr class="even:bg-gray-50 dark:even:bg-gray-800/50">')
+          row.forEach(cell => {
+            result.push(`<td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${parseInline(cell)}</td>`)
+          })
+          result.push('</tr>')
+        }
+      })
+
+      if (hasTableHeader) {
+        result.push('</tbody>')
+      }
+      result.push('</table>')
+      result.push('</div>')
+
+      tableRows = []
+      inTable = false
+      hasTableHeader = false
+    }
+  }
+
+  const flushTree = () => {
+    if (inTree && treeLines.length > 0) {
+      // Render tree structure with preserved whitespace
+      const treeContent = treeLines.map(line => escapeHtml(line)).join('\n')
+      result.push(`<pre class="tree-structure my-2 font-mono text-sm whitespace-pre">${treeContent}</pre>`)
+      treeLines = []
+      inTree = false
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (line === undefined) continue
@@ -560,6 +666,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     if (line.startsWith('```')) {
       if (!inCodeBlock) {
         flushList()
+        flushTable()
         inCodeBlock = true
         codeBlockLang = detectLanguage(line.slice(3).trim())
         codeBlockContent = []
@@ -586,9 +693,55 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       continue
     }
 
+    // Table handling - check for table separator first
+    if (isTableSeparator(line)) {
+      flushTree()
+      // If we have a pending table row, this confirms it's a header
+      if (inTable && tableRows.length === 1) {
+        hasTableHeader = true
+      }
+      continue
+    }
+
+    // Table row handling
+    if (isTableRow(line)) {
+      flushList()
+      flushTree()
+      if (!inTable) {
+        inTable = true
+        tableRows = []
+      }
+      tableRows.push(parseTableRow(line))
+      continue
+    }
+
+    // If we were in a table but this line is not a table row, flush the table
+    if (inTable) {
+      flushTable()
+    }
+
+    // Tree structure handling (lines with box-drawing characters)
+    if (isTreeLine(line)) {
+      flushList()
+      flushTable()
+      if (!inTree) {
+        inTree = true
+        treeLines = []
+      }
+      treeLines.push(line)
+      continue
+    }
+
+    // If we were in a tree but this line is not a tree line, flush the tree
+    if (inTree) {
+      flushTree()
+    }
+
     // Empty line
     if (line.trim() === '') {
       flushList()
+      flushTable()
+      flushTree()
       result.push('<br>')
       continue
     }
@@ -597,6 +750,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     const headerMatch = line.match(/^(#{1,6})\s+(.+)$/)
     if (headerMatch && headerMatch[1] && headerMatch[2]) {
       flushList()
+      flushTable()
+      flushTree()
       const level = headerMatch[1].length
       const text = parseInline(headerMatch[2])
       const sizes = ['text-2xl', 'text-xl', 'text-lg', 'text-base', 'text-sm', 'text-sm']
@@ -609,6 +764,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     // Horizontal rule
     if (/^[-*_]{3,}$/.test(line.trim())) {
       flushList()
+      flushTable()
+      flushTree()
       result.push('<hr class="my-4 border-gray-600">')
       continue
     }
@@ -616,6 +773,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     // Blockquote
     if (line.startsWith('>')) {
       flushList()
+      flushTable()
+      flushTree()
       const text = parseInline(line.slice(1).trim())
       result.push(
         `<blockquote class="border-l-4 border-gray-500 pl-4 my-2 text-gray-400 italic">${text}</blockquote>`
@@ -626,6 +785,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     // Unordered list
     const ulMatch = line.match(/^[-*+]\s+(.+)$/)
     if (ulMatch && ulMatch[1]) {
+      flushTable()
+      flushTree()
       inList = true
       listItems.push(`<li>${parseInline(ulMatch[1])}</li>`)
       continue
@@ -634,6 +795,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     // Ordered list
     const olMatch = line.match(/^\d+\.\s+(.+)$/)
     if (olMatch && olMatch[1]) {
+      flushTable()
+      flushTree()
       if (!inList) {
         inList = true
         listItems = []
@@ -644,10 +807,14 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 
     // Regular paragraph
     flushList()
+    flushTable()
+    flushTree()
     result.push(`<p class="my-1">${parseInline(line)}</p>`)
   }
 
   flushList()
+  flushTable()
+  flushTree()
 
   return result.join('\n')
 }

@@ -323,7 +323,7 @@ function formatLogTime(timestamp: string): string {
       </select>
 
       <div class="filter-actions">
-        <button v-if="activeTab === 'store'" class="btn-refresh" @click="refreshStore" :disabled="pluginStore.refreshing">
+        <button v-if="activeTab === 'store'" class="btn-refresh" :disabled="pluginStore.refreshing" @click="refreshStore">
           <svg v-if="!pluginStore.refreshing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -336,7 +336,7 @@ function formatLogTime(timestamp: string): string {
         <button v-if="activeTab === 'store'" class="btn-add-source" @click="showAddSourceModal = true">
           + {{ t('skillStore.actions.addSource') }}
         </button>
-        <button v-if="activeTab === 'installed'" class="btn-refresh" @click="pluginStore.fetchPlugins()" :disabled="pluginStore.loading">
+        <button v-if="activeTab === 'installed'" class="btn-refresh" :disabled="pluginStore.loading" @click="pluginStore.fetchPlugins()">
           <svg v-if="!pluginStore.loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -369,7 +369,7 @@ function formatLogTime(timestamp: string): string {
         :class="['item-card', { disabled: !plugin.enabled, error: plugin.status === 'error' }]"
       >
         <div class="item-header">
-          <img v-if="getPluginIconSrc(plugin)" :src="getPluginIconSrc(plugin)" :alt="plugin.name" class="item-icon-img" />
+          <img v-if="getPluginIconSrc(plugin)" :src="getPluginIconSrc(plugin) ?? undefined" :alt="plugin.name" class="item-icon-img" />
           <span v-else class="item-icon">{{ getTypeIcon(plugin.type) }}</span>
           <div class="item-title">
             <h3 :title="plugin.name">{{ plugin.name }}</h3>
@@ -465,7 +465,7 @@ function formatLogTime(timestamp: string): string {
         :class="['item-card', 'store-card', { installed: plugin.installed }]"
       >
         <div class="item-header">
-          <img v-if="getPluginIconSrc(plugin)" :src="getPluginIconSrc(plugin)" :alt="plugin.name" class="item-icon-img" />
+          <img v-if="getPluginIconSrc(plugin)" :src="getPluginIconSrc(plugin) ?? undefined" :alt="plugin.name" class="item-icon-img" />
           <span v-else class="item-icon">{{ getTypeIcon(plugin.type) }}</span>
           <div class="item-title">
             <h3 :title="plugin.name">{{ plugin.name }}</h3>
@@ -512,8 +512,8 @@ function formatLogTime(timestamp: string): string {
           <button
             v-if="!plugin.installed"
             class="btn-install"
-            @click="installPlugin(plugin)"
             :disabled="pluginStore.loading"
+            @click="installPlugin(plugin)"
           >
             {{ t('extensions.actions.install') }}
           </button>
@@ -633,7 +633,7 @@ function formatLogTime(timestamp: string): string {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-refresh" @click="fetchLogs" :disabled="logsLoading">{{ t('extensions.modal.refresh') }}</button>
+          <button class="btn-refresh" :disabled="logsLoading" @click="fetchLogs">{{ t('extensions.modal.refresh') }}</button>
           <button class="btn-cancel" @click="closeLogsModal">{{ t('extensions.modal.close') }}</button>
         </div>
       </div>

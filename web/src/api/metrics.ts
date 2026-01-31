@@ -32,7 +32,7 @@ export interface ModelStats {
   cache_read_tokens: number
   cache_write_tokens: number
   estimated_cost: number
-  avg_latency: number
+  avg_latency_ms: number
 }
 
 export interface StatsSummary {

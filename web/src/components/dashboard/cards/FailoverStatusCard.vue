@@ -14,7 +14,7 @@ const refreshInterval = ref<number | null>(null)
 // Error type labels
 const errorTypeLabels: Record<string, string> = {
   context_too_long: 'Context Too Long',
-  max_tokens_exceeded: 'Max Tokens',
+  max_tokens_exceeded: 'Content Limit',
   rate_limited: 'Rate Limited',
   quota_exceeded: 'Quota Exceeded',
   concurrency_limit: 'Concurrency',

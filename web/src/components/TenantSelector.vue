@@ -1,5 +1,5 @@
 <template>
-  <div class="tenant-selector" ref="selectorRef">
+  <div ref="selectorRef" class="tenant-selector">
     <button class="selector-trigger" @click="toggleDropdown">
       <div class="current-tenant">
         <span class="tenant-icon">{{ currentTenantInitial }}</span>

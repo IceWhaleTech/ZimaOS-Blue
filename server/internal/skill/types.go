@@ -14,6 +14,7 @@ type Manifest struct {
 	Description string            `json:"description" yaml:"description"`
 	Author      string            `json:"author,omitempty" yaml:"author,omitempty"`
 	Category    string            `json:"category,omitempty" yaml:"category,omitempty"`
+	Icon        string            `json:"icon,omitempty" yaml:"icon,omitempty"`
 	Tags        []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Inputs      []Parameter       `json:"inputs,omitempty" yaml:"inputs,omitempty"`
 	Outputs     []Parameter       `json:"outputs,omitempty" yaml:"outputs,omitempty"`

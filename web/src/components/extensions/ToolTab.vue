@@ -123,6 +123,11 @@ async function addSource() {
   newSource.value = { id: '', name: '', url: '', type: 'custom', description: '' }
 }
 
+function getToolIconUrl(icon?: string): string | null {
+  if (!icon) return null
+  return `/icons/tools/${icon}.svg`
+}
+
 function getCategoryIcon(category?: string): string {
   const icons: Record<string, string> = {
     search: '🔍',
@@ -200,7 +205,7 @@ function getCategoryIcon(category?: string): string {
       </select>
 
       <div class="filter-actions">
-        <button v-if="activeTab === 'store'" class="btn-refresh" @click="refreshStore" :disabled="toolStore.refreshing">
+        <button v-if="activeTab === 'store'" class="btn-refresh" :disabled="toolStore.refreshing" @click="refreshStore">
           <svg v-if="!toolStore.refreshing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -213,7 +218,7 @@ function getCategoryIcon(category?: string): string {
         <button v-if="activeTab === 'store'" class="btn-add-source" @click="showAddSourceModal = true">
           + {{ t('skillStore.actions.addSource') }}
         </button>
-        <button v-if="activeTab === 'installed'" class="btn-refresh" @click="toolStore.fetchTools()" :disabled="toolStore.loading">
+        <button v-if="activeTab === 'installed'" class="btn-refresh" :disabled="toolStore.loading" @click="toolStore.fetchTools()">
           <svg v-if="!toolStore.loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
@@ -246,7 +251,8 @@ function getCategoryIcon(category?: string): string {
         :class="['item-card', { disabled: !tool.enabled }]"
       >
         <div class="item-header">
-          <span class="item-icon">{{ getCategoryIcon(tool.category) }}</span>
+          <img v-if="getToolIconUrl(tool.icon)" :src="getToolIconUrl(tool.icon)!" class="item-icon-svg" :alt="tool.name" />
+          <span v-else class="item-icon">{{ getCategoryIcon(tool.category) }}</span>
           <div class="item-title">
             <h3 :title="tool.name">{{ tool.name }}</h3>
             <div class="item-title-meta">
@@ -359,8 +365,8 @@ function getCategoryIcon(category?: string): string {
           <button
             v-if="!tool.installed"
             class="btn-install"
-            @click="installTool(tool)"
             :disabled="toolStore.loading"
+            @click="installTool(tool)"
           >
             {{ t('extensions.actions.install') }}
           </button>

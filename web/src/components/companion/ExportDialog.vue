@@ -6,7 +6,7 @@ import { useCompanionStore } from '@/stores/companion'
 const { t } = useI18n()
 const companionStore = useCompanionStore()
 
-const props = defineProps<{
+defineProps<{
   visible: boolean
 }>()
 

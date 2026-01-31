@@ -23,6 +23,7 @@ func NewTimer() *Timer {
 			Version:     "1.0.0",
 			Description: "Set timers and stopwatch functionality",
 			Category:    "productivity",
+			Icon:        "timer",
 			Tags:        []string{"timer", "stopwatch", "countdown", "productivity"},
 			Inputs: []skill.Parameter{
 				{

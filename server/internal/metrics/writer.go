@@ -9,6 +9,7 @@ import (
 // MetricsWriter coordinates metrics collection and storage.
 type MetricsWriter struct {
 	store          MetricsStore
+	sqliteStore    *SQLiteStore // SQLite store for persistence
 	callCollector  *CallCollector
 	tokenTracker   *TokenTracker
 	latencyTracker *LatencyTracker
@@ -38,6 +39,12 @@ type WriterConfig struct {
 
 	// Disk path for disk usage monitoring
 	DiskPath string
+
+	// SQLite database path for persistence
+	SQLiteDBPath string
+
+	// Persistence save interval
+	PersistenceInterval time.Duration
 }
 
 // DefaultWriterConfig returns the default writer configuration.
@@ -47,6 +54,7 @@ func DefaultWriterConfig() *WriterConfig {
 		MaxSamples:            1000,
 		EnableSystemMetrics:   true,
 		SystemMetricsInterval: 30 * time.Second,
+		PersistenceInterval:   60 * time.Second, // Save every minute
 	}
 }
 
@@ -61,7 +69,7 @@ func NewMetricsWriter(store MetricsStore, config *WriterConfig) *MetricsWriter {
 		systemMonitor = NewSystemMonitor(config.MaxSamples, config.DiskPath)
 	}
 
-	return &MetricsWriter{
+	w := &MetricsWriter{
 		store:          store,
 		callCollector:  NewCallCollector(config.MaxSamples, time.Hour),
 		tokenTracker:   NewTokenTracker(),
@@ -70,10 +78,79 @@ func NewMetricsWriter(store MetricsStore, config *WriterConfig) *MetricsWriter {
 		config:         config,
 		done:           make(chan struct{}),
 	}
+
+	// Initialize SQLite store if path is configured
+	if config.SQLiteDBPath != "" {
+		sqliteStore, err := NewSQLiteStore(config.SQLiteDBPath)
+		if err == nil {
+			w.sqliteStore = sqliteStore
+			// Load persisted data
+			w.loadPersistedData()
+		}
+	}
+
+	return w
+}
+
+// loadPersistedData loads metrics data from SQLite on startup.
+func (w *MetricsWriter) loadPersistedData() {
+	if w.sqliteStore == nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	// Load global token usage
+	usage, err := w.sqliteStore.LoadTokenUsage(ctx)
+	if err == nil && usage != nil {
+		w.tokenTracker.LoadUsage(usage)
+	}
+
+	// Load model token usage
+	modelUsages, err := w.sqliteStore.LoadModelTokenUsage(ctx)
+	if err == nil && len(modelUsages) > 0 {
+		w.tokenTracker.LoadModelUsages(modelUsages)
+	}
+
+	// Load model stats into call collector
+	modelStats, err := w.sqliteStore.LoadModelMetrics(ctx)
+	if err == nil && len(modelStats) > 0 {
+		w.callCollector.LoadModelStats(modelStats)
+	}
+}
+
+// persistData saves metrics data to SQLite.
+func (w *MetricsWriter) persistData() {
+	if w.sqliteStore == nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	// Save global token usage
+	usage := w.tokenTracker.GetTokenUsage()
+	if usage != nil {
+		w.sqliteStore.SaveTokenUsage(ctx, usage)
+	}
+
+	// Save model token usage
+	modelUsages := w.tokenTracker.GetAllModelUsage()
+	if len(modelUsages) > 0 {
+		w.sqliteStore.SaveModelTokenUsage(ctx, modelUsages)
+	}
+
+	// Save model stats
+	modelStats := w.GetModelStats()
+	if len(modelStats) > 0 {
+		w.sqliteStore.SaveModelMetrics(ctx, modelStats)
+	}
 }
 
 // Start starts background metrics collection.
 func (w *MetricsWriter) Start() {
+	// Load persisted data if not already loaded
+	w.loadPersistedData()
+
 	// Start periodic flush
 	w.wg.Add(1)
 	go w.collectionLoop()
@@ -83,12 +160,48 @@ func (w *MetricsWriter) Start() {
 		w.wg.Add(1)
 		go w.systemMetricsLoop()
 	}
+
+	// Start persistence loop if SQLite store is available
+	if w.sqliteStore != nil {
+		w.wg.Add(1)
+		go w.persistenceLoop()
+	}
 }
 
 // Stop stops background metrics collection.
 func (w *MetricsWriter) Stop() {
 	close(w.done)
 	w.wg.Wait()
+
+	// Final persist before shutdown
+	w.persistData()
+
+	// Close SQLite store
+	if w.sqliteStore != nil {
+		w.sqliteStore.Close()
+	}
+}
+
+// persistenceLoop periodically saves metrics to SQLite.
+func (w *MetricsWriter) persistenceLoop() {
+	defer w.wg.Done()
+
+	interval := w.config.PersistenceInterval
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			w.persistData()
+		case <-w.done:
+			return
+		}
+	}
 }
 
 // collectionLoop periodically writes collected metrics to storage.
@@ -289,9 +402,19 @@ func (w *MetricsWriter) GetCallStats() *CallStats {
 	return w.callCollector.GetCallStats()
 }
 
-// GetModelStats returns statistics for all models.
+// GetModelStats returns statistics for all models with cost data.
 func (w *MetricsWriter) GetModelStats() []ModelStats {
-	return w.callCollector.GetModelStats()
+	stats := w.callCollector.GetModelStats()
+
+	// Merge cost data from token tracker
+	for i := range stats {
+		usage := w.tokenTracker.GetTokenUsageByModel(stats[i].Model)
+		if usage != nil {
+			stats[i].EstimatedCost = usage.EstimatedCost
+		}
+	}
+
+	return stats
 }
 
 // GetTokenUsage returns current token usage.

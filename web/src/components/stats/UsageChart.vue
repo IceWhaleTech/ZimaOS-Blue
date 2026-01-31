@@ -30,7 +30,7 @@ const colors = [
 ]
 
 function getColor(index: number): string {
-  return colors[index % colors.length]
+  return colors[index % colors.length] ?? 'bg-blue-500'
 }
 </script>
 

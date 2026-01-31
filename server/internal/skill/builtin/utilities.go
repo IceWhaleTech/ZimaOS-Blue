@@ -22,6 +22,7 @@ func NewTranslate() *Translate {
 			Version:     "1.0.0",
 			Description: "Text translation between languages",
 			Category:    "information",
+			Icon:        "translate",
 			Tags:        []string{"translate", "language", "i18n", "localization"},
 			Inputs: []skill.Parameter{
 				{
@@ -118,6 +119,7 @@ func NewNotifications() *Notifications {
 			Version:     "1.0.0",
 			Description: "System notifications management",
 			Category:    "communication",
+			Icon:        "notifications",
 			Tags:        []string{"notifications", "alerts", "system"},
 			Inputs: []skill.Parameter{
 				{
@@ -242,6 +244,7 @@ func NewUnitConverter() *UnitConverter {
 			Version:     "1.0.0",
 			Description: "Convert between different units of measurement",
 			Category:    "utility",
+			Icon:        "unit-converter",
 			Tags:        []string{"convert", "units", "measurement", "utility"},
 			Inputs: []skill.Parameter{
 				{

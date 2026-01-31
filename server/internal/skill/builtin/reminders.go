@@ -35,6 +35,7 @@ func NewReminders() *Reminders {
 			Version:     "1.0.0",
 			Description: "Set and manage reminders",
 			Category:    "productivity",
+			Icon:        "reminders",
 			Tags:        []string{"reminder", "alert", "schedule", "productivity"},
 			Inputs: []skill.Parameter{
 				{

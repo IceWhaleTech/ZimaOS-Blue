@@ -407,7 +407,7 @@ select:disabled {
    ============================================ */
 
 /* Style 1: Default - Clean minimal style */
-.chat-style-default {
+.theme-style-default {
   --chat-bg: var(--color-bg-base);
   --chat-user-bg: #3B82F6;
   --chat-user-text: #FFFFFF;
@@ -417,8 +417,8 @@ select:disabled {
   --chat-bubble-radius: 1rem;
 }
 
-:root.light .chat-style-default,
-[data-theme="light"] .chat-style-default {
+:root.light .theme-style-default,
+[data-theme="light"] .theme-style-default {
   --chat-bg: #F8FAFC;
   --chat-user-bg: #3B82F6;
   --chat-user-text: #FFFFFF;
@@ -428,7 +428,7 @@ select:disabled {
 }
 
 /* Style 2: Bubble - ChatGPT-like rounded bubbles */
-.chat-style-bubble {
+.theme-style-bubble {
   --chat-bg: linear-gradient(180deg, var(--color-bg-base) 0%, rgba(30, 41, 59, 0.95) 100%);
   --chat-user-bg: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
   --chat-user-text: #FFFFFF;
@@ -438,8 +438,8 @@ select:disabled {
   --chat-bubble-radius: 1.25rem;
 }
 
-:root.light .chat-style-bubble,
-[data-theme="light"] .chat-style-bubble {
+:root.light .theme-style-bubble,
+[data-theme="light"] .theme-style-bubble {
   --chat-bg: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
   --chat-user-bg: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
   --chat-user-text: #FFFFFF;
@@ -449,7 +449,7 @@ select:disabled {
 }
 
 /* Style 3: Minimal - Claude-like clean interface */
-.chat-style-minimal {
+.theme-style-minimal {
   --chat-bg: var(--color-bg-base);
   --chat-user-bg: transparent;
   --chat-user-text: var(--color-text-primary);
@@ -460,8 +460,8 @@ select:disabled {
   --chat-bubble-radius: 0.5rem;
 }
 
-:root.light .chat-style-minimal,
-[data-theme="light"] .chat-style-minimal {
+:root.light .theme-style-minimal,
+[data-theme="light"] .theme-style-minimal {
   --chat-bg: #FFFFFF;
   --chat-user-bg: transparent;
   --chat-user-text: #0F172A;
@@ -472,7 +472,7 @@ select:disabled {
 }
 
 /* Style 4: Gradient - Modern gradient background */
-.chat-style-gradient {
+.theme-style-gradient {
   --chat-bg: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #0F172A 100%);
   --chat-user-bg: linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
   --chat-user-text: #FFFFFF;
@@ -482,8 +482,8 @@ select:disabled {
   --chat-bubble-radius: 1rem;
 }
 
-:root.light .chat-style-gradient,
-[data-theme="light"] .chat-style-gradient {
+:root.light .theme-style-gradient,
+[data-theme="light"] .theme-style-gradient {
   --chat-bg: linear-gradient(135deg, #FDF4FF 0%, #FAF5FF 50%, #F5F3FF 100%);
   --chat-user-bg: linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
   --chat-user-text: #FFFFFF;
@@ -493,7 +493,7 @@ select:disabled {
 }
 
 /* Style 5: Ocean - Calm blue tones */
-.chat-style-ocean {
+.theme-style-ocean {
   --chat-bg: linear-gradient(180deg, #0C1929 0%, #0F2744 100%);
   --chat-user-bg: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
   --chat-user-text: #FFFFFF;
@@ -503,8 +503,8 @@ select:disabled {
   --chat-bubble-radius: 1rem;
 }
 
-:root.light .chat-style-ocean,
-[data-theme="light"] .chat-style-ocean {
+:root.light .theme-style-ocean,
+[data-theme="light"] .theme-style-ocean {
   --chat-bg: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
   --chat-user-bg: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
   --chat-user-text: #FFFFFF;
@@ -531,7 +531,7 @@ select:disabled {
 }
 
 /* Chat style selector button */
-.chat-style-btn {
+.theme-style-btn {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -542,32 +542,32 @@ select:disabled {
   overflow: hidden;
 }
 
-.chat-style-btn:hover {
+.theme-style-btn:hover {
   transform: scale(1.1);
   border-color: var(--color-accent);
 }
 
-.chat-style-btn.active {
+.theme-style-btn.active {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
 }
 
-.chat-style-btn-default {
+.theme-style-btn-default {
   background: linear-gradient(135deg, #3B82F6 50%, #F1F5F9 50%);
 }
 
-.chat-style-btn-bubble {
+.theme-style-btn-bubble {
   background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
 }
 
-.chat-style-btn-minimal {
+.theme-style-btn-minimal {
   background: linear-gradient(135deg, #F8FAFC 50%, #E2E8F0 50%);
 }
 
-.chat-style-btn-gradient {
+.theme-style-btn-gradient {
   background: linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
 }
 
-.chat-style-btn-ocean {
+.theme-style-btn-ocean {
   background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
 }

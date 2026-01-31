@@ -388,7 +388,7 @@ function getNextRunText(job: CronJob): string {
             {{ showCreateModal ? t('cron.createNew') : t('cron.edit') }}
           </h3>
 
-          <form @submit.prevent="showCreateModal ? createJob() : updateJob()" class="space-y-4">
+          <form class="space-y-4" @submit.prevent="showCreateModal ? createJob() : updateJob()">
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.name') }}</label>
               <input

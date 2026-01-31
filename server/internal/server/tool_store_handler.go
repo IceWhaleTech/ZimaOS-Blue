@@ -102,6 +102,7 @@ type ToolResponse struct {
 	Description string                   `json:"description"`
 	Author      string                   `json:"author,omitempty"`
 	Category    string                   `json:"category,omitempty"`
+	Icon        string                   `json:"icon,omitempty"`
 	Tags        []string                 `json:"tags,omitempty"`
 	Enabled     bool                     `json:"enabled"`
 	Builtin     bool                     `json:"builtin"`
@@ -124,6 +125,7 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 			Name:        def.Name,
 			Version:     "1.0.0", // Tools don't have version in current implementation
 			Description: def.Description,
+			Icon:        def.Icon,
 			Enabled:     true, // All registered tools are enabled
 			Builtin:     true, // Currently all tools are builtin
 			Parameters:  def.Parameters,
@@ -149,6 +151,7 @@ func (h *ToolStoreHandler) GetTool(c echo.Context) error {
 		Name:        def.Name,
 		Version:     "1.0.0",
 		Description: def.Description,
+		Icon:        def.Icon,
 		Enabled:     true,
 		Builtin:     true,
 		Parameters:  def.Parameters,
@@ -444,80 +447,9 @@ func (h *ToolStoreHandler) fetchFromRegistry(ctx context.Context, source *ToolSo
 	return toolsList, nil
 }
 
-// getMockRegistryTools returns mock registry tools for demo
+// getMockRegistryTools returns empty list when registry is unavailable
 func (h *ToolStoreHandler) getMockRegistryTools(source *ToolSource) []*RemoteTool {
-	return []*RemoteTool{
-		{
-			ID:          "web-search",
-			Name:        "Web Search",
-			Version:     "1.0.0",
-			Description: "Search the web using various search engines",
-			Author:      "ZimaOS Team",
-			Category:    "search",
-			Tags:        []string{"web", "search", "google", "bing"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://toolhub.zimaos.com/tools/web-search",
-			Stars:       156,
-			Downloads:   2340,
-		},
-		{
-			ID:          "file-manager",
-			Name:        "File Manager",
-			Version:     "1.2.0",
-			Description: "Advanced file management operations",
-			Author:      "ZimaOS Team",
-			Category:    "system",
-			Tags:        []string{"file", "manager", "storage"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://toolhub.zimaos.com/tools/file-manager",
-			Stars:       234,
-			Downloads:   4560,
-		},
-		{
-			ID:          "code-executor",
-			Name:        "Code Executor",
-			Version:     "2.0.0",
-			Description: "Execute code in various programming languages",
-			Author:      "ZimaOS Team",
-			Category:    "development",
-			Tags:        []string{"code", "execute", "python", "javascript"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://toolhub.zimaos.com/tools/code-executor",
-			Stars:       312,
-			Downloads:   5670,
-		},
-		{
-			ID:          "image-processor",
-			Name:        "Image Processor",
-			Version:     "1.5.0",
-			Description: "Process and manipulate images",
-			Author:      "ZimaOS Team",
-			Category:    "media",
-			Tags:        []string{"image", "process", "resize", "convert"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://toolhub.zimaos.com/tools/image-processor",
-			Stars:       189,
-			Downloads:   3210,
-		},
-		{
-			ID:          "api-caller",
-			Name:        "API Caller",
-			Version:     "1.0.0",
-			Description: "Make HTTP requests to external APIs",
-			Author:      "ZimaOS Team",
-			Category:    "integration",
-			Tags:        []string{"api", "http", "rest", "webhook"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://toolhub.zimaos.com/tools/api-caller",
-			Stars:       267,
-			Downloads:   4120,
-		},
-	}
+	return []*RemoteTool{}
 }
 
 // fetchFromGitHub fetches tools from a GitHub repository
@@ -576,70 +508,9 @@ func (h *ToolStoreHandler) fetchFromGitHub(ctx context.Context, source *ToolSour
 	return toolsList, nil
 }
 
-// getMockGitHubTools returns mock GitHub tools for demo (fallback)
+// getMockGitHubTools returns empty list when GitHub is unavailable
 func (h *ToolStoreHandler) getMockGitHubTools(source *ToolSource) []*RemoteTool {
-	return []*RemoteTool{
-		{
-			ID:          "moltbot-weather",
-			Name:        "Weather Extension",
-			Version:     "1.0.0",
-			Description: "Get weather information from multiple providers",
-			Author:      "MoltBot Community",
-			Category:    "extension",
-			Tags:        []string{"moltbot", "weather", "extension"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/weather",
-		},
-		{
-			ID:          "moltbot-reminder",
-			Name:        "Reminder Extension",
-			Version:     "1.0.0",
-			Description: "Set and manage reminders with natural language",
-			Author:      "MoltBot Community",
-			Category:    "extension",
-			Tags:        []string{"moltbot", "reminder", "extension"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/reminder",
-		},
-		{
-			ID:          "moltbot-translator",
-			Name:        "Translator Extension",
-			Version:     "1.0.0",
-			Description: "Translate text between multiple languages",
-			Author:      "MoltBot Community",
-			Category:    "extension",
-			Tags:        []string{"moltbot", "translator", "extension"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/translator",
-		},
-		{
-			ID:          "moltbot-calculator",
-			Name:        "Calculator Extension",
-			Version:     "1.0.0",
-			Description: "Advanced mathematical calculator with unit conversion",
-			Author:      "MoltBot Community",
-			Category:    "extension",
-			Tags:        []string{"moltbot", "calculator", "math", "extension"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/calculator",
-		},
-		{
-			ID:          "moltbot-notes",
-			Name:        "Notes Extension",
-			Version:     "1.0.0",
-			Description: "Create and manage notes with tags and search",
-			Author:      "MoltBot Community",
-			Category:    "extension",
-			Tags:        []string{"moltbot", "notes", "productivity", "extension"},
-			SourceID:    source.ID,
-			SourceName:  source.Name,
-			Homepage:    "https://github.com/moltbot/moltbot/tree/main/extensions/notes",
-		},
-	}
+	return []*RemoteTool{}
 }
 
 // fetchFromCustom fetches tools from a custom source

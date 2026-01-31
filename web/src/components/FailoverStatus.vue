@@ -15,7 +15,7 @@ const refreshInterval = ref<number | null>(null)
 // Error type labels
 const errorTypeLabels: Record<string, string> = {
   context_too_long: 'Context Too Long',
-  max_tokens_exceeded: 'Max Tokens Exceeded',
+  max_tokens_exceeded: 'Content Limit Exceeded',
   rate_limited: 'Rate Limited',
   quota_exceeded: 'Quota Exceeded',
   concurrency_limit: 'Concurrency Limit',
@@ -147,8 +147,8 @@ onUnmounted(() => {
         {{ t('settings.failover.title', 'Smart Failover Status') }}
       </h3>
       <button
-        @click="refresh"
         class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+        @click="refresh"
       >
         {{ t('common.refresh', 'Refresh') }}
       </button>
@@ -204,9 +204,9 @@ onUnmounted(() => {
           {{ t('settings.failover.circuitBreakers', 'Circuit Breakers') }}
         </h4>
         <button
-          @click="resetBreakers"
           :disabled="loading"
           class="px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+          @click="resetBreakers"
         >
           {{ t('settings.failover.resetAll', 'Reset All') }}
         </button>

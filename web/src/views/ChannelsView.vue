@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getChannelIconOrDefault } from '@/utils/channelIcons'
 import PasswordInput from '@/components/ui/PasswordInput.vue'
+import {
+  getRemoteAccessStatus,
+  startRemoteAccess,
+  stopRemoteAccess,
+  type TunnelStatus as TunnelStatusType
+} from '@/api/remote-access'
+import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
+import ngrokLogo from '@/assets/providers/ngrok.svg'
 
 const { t } = useI18n()
 
@@ -35,6 +43,14 @@ const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
 
+// Remote Access state
+type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
+const remoteAccessState = ref<RemoteAccessState>('loading')
+const tunnelStatus = ref<TunnelStatusType | null>(null)
+const remoteAccessError = ref<string | null>(null)
+const remoteAccessExpanded = ref(false)
+let statusInterval: ReturnType<typeof setInterval> | null = null
+
 const channelDefs = ref<ChannelDef[]>([
   {
     id: 'telegram',
@@ -46,7 +62,7 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.telegramHint',
     docUrl: 'https://core.telegram.org/bots#how-do-i-create-a-bot',
     fields: [
-      { key: 'bot_token', labelKey: 'setup.botToken', type: 'password', placeholder: '123456789:ABCdefGHIjklMNOpqrsTUVwxyz', value: '', required: true },
+      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholder: '123456789:ABCdefGHIjklMNOpqrsTUVwxyz', value: '', required: true },
       { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholder: 'my_bot', value: '' },
     ],
   },
@@ -60,7 +76,7 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.discordHint',
     docUrl: 'https://discord.com/developers/docs/getting-started',
     fields: [
-      { key: 'bot_token', labelKey: 'setup.botToken', type: 'password', placeholder: 'Enter your Discord bot token', value: '', required: true },
+      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholder: 'Enter your Discord bot token', value: '', required: true },
       { key: 'application_id', labelKey: 'channels.applicationId', type: 'text', placeholder: 'Application ID', value: '' },
     ],
   },
@@ -71,11 +87,11 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.slackDesc',
-    hintKey: 'setup.slackHint',
+    hintKey: 'channels.slackHint',
     docUrl: 'https://api.slack.com/start/quickstart',
     fields: [
-      { key: 'bot_token', labelKey: 'setup.slackBotToken', type: 'password', placeholder: 'xoxb-xxxx-xxxx-xxxx', value: '', required: true },
-      { key: 'app_token', labelKey: 'setup.slackAppToken', type: 'password', placeholder: 'xapp-xxxx-xxxx-xxxx', value: '', required: true },
+      { key: 'bot_token', labelKey: 'channels.slackBotToken', type: 'password', placeholder: 'xoxb-xxxx-xxxx-xxxx', value: '', required: true },
+      { key: 'app_token', labelKey: 'channels.slackAppToken', type: 'password', placeholder: 'xapp-xxxx-xxxx-xxxx', value: '', required: true },
       { key: 'signing_secret', labelKey: 'channels.signingSecret', type: 'password', placeholder: 'Signing secret', value: '' },
     ],
   },
@@ -86,10 +102,10 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.whatsappDesc',
-    hintKey: 'setup.whatsappHint',
+    hintKey: 'channels.whatsappHint',
     docUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
     fields: [
-      { key: 'phone_number', labelKey: 'setup.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
+      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
     ],
   },
   {
@@ -99,10 +115,10 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.signalDesc',
-    hintKey: 'setup.signalHint',
+    hintKey: 'channels.signalHint',
     docUrl: 'https://github.com/AsamK/signal-cli',
     fields: [
-      { key: 'phone_number', labelKey: 'setup.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
+      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
     ],
   },
   {
@@ -112,11 +128,26 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.teamsDesc',
-    hintKey: 'setup.teamsHint',
+    hintKey: 'channels.teamsHint',
     docUrl: 'https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/create-a-bot-for-teams',
     fields: [
-      { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', value: '', required: true },
-      { key: 'app_password', labelKey: 'setup.appPassword', type: 'password', placeholder: 'App password', value: '', required: true },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', value: '', required: true },
+      { key: 'app_password', labelKey: 'channels.appPassword', type: 'password', placeholder: 'App password', value: '', required: true },
+      { key: 'tenant_id', labelKey: 'channels.tenantId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (optional)', value: '' },
+    ],
+  },
+  {
+    id: 'mattermost',
+    name: 'Mattermost',
+    icon: getChannelIconOrDefault('mattermost'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.mattermostDesc',
+    hintKey: 'channels.mattermostHint',
+    docUrl: 'https://developers.mattermost.com/integrate/reference/bot-accounts/',
+    fields: [
+      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholder: 'https://mattermost.example.com', value: '', required: true },
+      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholder: 'Bot access token', value: '', required: true },
     ],
   },
   {
@@ -126,15 +157,15 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.googleChatDesc',
-    hintKey: 'setup.googleChatHint',
+    hintKey: 'channels.googleChatHint',
     docUrl: 'https://developers.google.com/workspace/chat/quickstart/gcf-app',
     fields: [
-      { key: 'credentials_json', labelKey: 'setup.serviceAccountJson', type: 'textarea', placeholder: '{"type": "service_account", ...}', value: '', required: true },
+      { key: 'credentials_json', labelKey: 'channels.serviceAccountJson', type: 'textarea', placeholder: '{"type": "service_account", ...}', value: '', required: true },
     ],
   },
   {
     id: 'feishu',
-    nameKey: 'setup.feishuBot',
+    nameKey: 'channels.feishuBot',
     icon: getChannelIconOrDefault('feishu'),
     enabled: false,
     status: 'disconnected',
@@ -142,8 +173,8 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.feishuHint',
     docUrl: 'https://open.feishu.cn/document/develop-an-echo-bot/introduction',
     fields: [
-      { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: 'cli_xxxxxxxxxx', value: '', required: true },
-      { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: 'cli_xxxxxxxxxx', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
       { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholder: 'Verification token', value: '', required: true },
       { key: 'encrypt_key', labelKey: 'channels.encryptKey', type: 'password', placeholder: '', value: '' },
       { key: 'webhook_url', labelKey: 'channels.webhookUrl', type: 'url', placeholder: 'https://your-server.com/api/v1/channels/feishu/callback', value: '' },
@@ -151,7 +182,7 @@ const channelDefs = ref<ChannelDef[]>([
   },
   {
     id: 'dingtalk',
-    nameKey: 'setup.dingtalkBot',
+    nameKey: 'channels.dingtalkBot',
     icon: getChannelIconOrDefault('dingtalk'),
     enabled: false,
     status: 'disconnected',
@@ -160,7 +191,7 @@ const channelDefs = ref<ChannelDef[]>([
     docUrl: 'https://open.dingtalk.com/document/orgapp/create-an-enterprise-chatbot',
     fields: [
       { key: 'app_key', labelKey: 'channels.appKey', type: 'text', placeholder: 'dingxxxxxxxxxx', value: '', required: true },
-      { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
       { key: 'robot_code', labelKey: 'channels.robotCode', type: 'text', placeholder: 'dingxxxxxxxxxx', value: '', required: true },
     ],
   },
@@ -174,14 +205,14 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.qqHint',
     docUrl: 'https://q.qq.com/wiki/develop/api-231017/dev-prepare/interface-framework/api-use.html',
     fields: [
-      { key: 'app_id', labelKey: 'setup.appId', type: 'text', placeholder: '102xxxxxx', value: '', required: true },
-      { key: 'app_secret', labelKey: 'setup.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
-      { key: 'token', labelKey: 'setup.botToken', type: 'password', placeholder: 'Bot token', value: '', required: true },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: '102xxxxxx', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
+      { key: 'token', labelKey: 'channels.botToken', type: 'password', placeholder: 'Bot token', value: '', required: true },
     ],
   },
   {
     id: 'wechat',
-    nameKey: 'setup.wechatWorkBot',
+    nameKey: 'channels.wechatWorkBot',
     icon: getChannelIconOrDefault('wechat'),
     enabled: false,
     status: 'disconnected',
@@ -189,9 +220,9 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.wechatHint',
     docUrl: 'https://developer.work.weixin.qq.com/document/path/90664',
     fields: [
-      { key: 'corp_id', labelKey: 'setup.corpId', type: 'text', placeholder: 'ww1234567890abcdef', value: '', required: true },
-      { key: 'agent_id', labelKey: 'setup.agentId', type: 'text', placeholder: '1000001', value: '', required: true },
-      { key: 'secret', labelKey: 'setup.secret', type: 'password', placeholder: 'Secret', value: '', required: true },
+      { key: 'corp_id', labelKey: 'channels.corpId', type: 'text', placeholder: 'ww1234567890abcdef', value: '', required: true },
+      { key: 'agent_id', labelKey: 'channels.agentId', type: 'text', placeholder: '1000001', value: '', required: true },
+      { key: 'secret', labelKey: 'channels.secret', type: 'password', placeholder: 'Secret', value: '', required: true },
     ],
   },
   {
@@ -204,9 +235,9 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.matrixHint',
     docUrl: 'https://spec.matrix.org/latest/client-server-api/',
     fields: [
-      { key: 'homeserver', labelKey: 'setup.matrixHomeserver', type: 'url', placeholder: 'https://matrix.org', value: '', required: true },
-      { key: 'user_id', labelKey: 'setup.matrixUserId', type: 'text', placeholder: '@bot:matrix.org', value: '', required: true },
-      { key: 'access_token', labelKey: 'setup.accessToken', type: 'password', placeholder: 'Access token', value: '', required: true },
+      { key: 'homeserver', labelKey: 'channels.matrixHomeserver', type: 'url', placeholder: 'https://matrix.org', value: '', required: true },
+      { key: 'user_id', labelKey: 'channels.matrixUserId', type: 'text', placeholder: '@bot:matrix.org', value: '', required: true },
+      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholder: 'Access token', value: '', required: true },
     ],
   },
   {
@@ -216,9 +247,40 @@ const channelDefs = ref<ChannelDef[]>([
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.imessageDesc',
-    hintKey: 'setup.imessageHint',
+    hintKey: 'channels.imessageHint',
     docUrl: 'https://github.com/mautrix/imessage',
     fields: [],
+  },
+  {
+    id: 'bluebubbles',
+    name: 'BlueBubbles',
+    icon: getChannelIconOrDefault('bluebubbles'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.blueBubblesDesc',
+    hintKey: 'channels.blueBubblesHint',
+    docUrl: 'https://bluebubbles.app/docs/',
+    fields: [
+      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholder: 'http://localhost:1234', value: '', required: true },
+      { key: 'password', labelKey: 'channels.password', type: 'password', placeholder: 'Server password', value: '', required: true },
+    ],
+  },
+  {
+    id: 'zalo',
+    name: 'Zalo OA',
+    icon: getChannelIconOrDefault('zalo'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.zaloDesc',
+    hintKey: 'channels.zaloHint',
+    docUrl: 'https://developers.zalo.me/docs/api/official-account-api-147',
+    fields: [
+      { key: 'oa_id', labelKey: 'channels.oaId', type: 'text', placeholder: 'Official Account ID', value: '', required: true },
+      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholder: 'OA Access Token', value: '', required: true },
+      { key: 'refresh_token', labelKey: 'channels.refreshToken', type: 'password', placeholder: 'OA Refresh Token', value: '' },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: 'Zalo App ID', value: '' },
+      { key: 'secret_key', labelKey: 'channels.secretKey', type: 'password', placeholder: 'Zalo Secret Key', value: '' },
+    ],
   },
 ])
 
@@ -237,8 +299,16 @@ const channels = computed(() => channelDefs.value.map(ch => ({
 
 const expandedChannel = ref<string | null>(null)
 
-const enabledCount = computed(() => channels.value.filter(c => c.enabled).length)
-const connectedCount = computed(() => channels.value.filter(c => c.status === 'connected').length)
+const enabledCount = computed(() => {
+  const channelCount = channels.value.filter(c => c.enabled).length
+  const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
+  return channelCount + remoteCount
+})
+const connectedCount = computed(() => {
+  const channelCount = channels.value.filter(c => c.status === 'connected').length
+  const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
+  return channelCount + remoteCount
+})
 
 function toggleChannel(channelId: string) {
   expandedChannel.value = expandedChannel.value === channelId ? null : channelId
@@ -294,7 +364,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       channelDef.lastError = data.message
       testResult.value = { channelId, success: false, message: data.message || t('channels.toggleFailed') }
     }
-  } catch (error) {
+  } catch {
     // Revert on error
     channelDef.enabled = !enabled
     channelDef.status = 'error'
@@ -344,8 +414,8 @@ async function loadChannelConfigs() {
         }
       }
     }
-  } catch (error) {
-    console.error('Failed to load channel configs:', error)
+  } catch (err) {
+    console.error('Failed to load channel configs:', err)
   } finally {
     loading.value = false
   }
@@ -386,7 +456,7 @@ async function saveChannel(channelId: string) {
     } else {
       testResult.value = { channelId, success: false, message: data.message || t('channels.saveFailed') }
     }
-  } catch (error) {
+  } catch {
     testResult.value = { channelId, success: false, message: t('channels.saveFailed') }
   } finally {
     saving.value = null
@@ -431,7 +501,7 @@ async function testConnection(channelId: string) {
         channelDef.status = 'error'
       }
     }
-  } catch (error) {
+  } catch {
     testResult.value = { channelId, success: false, message: t('channels.testFailed') }
     if (channelDef.enabled) {
       channelDef.status = 'error'
@@ -441,8 +511,107 @@ async function testConnection(channelId: string) {
   }
 }
 
+// Remote Access functions
+async function loadRemoteAccessStatus() {
+  try {
+    const statusRes = await getRemoteAccessStatus()
+    tunnelStatus.value = statusRes.data.tunnel
+
+    if (statusRes.data.tunnel.connecting) {
+      remoteAccessState.value = 'connecting'
+      startRemoteAccessPolling()
+    } else if (statusRes.data.tunnel.active) {
+      remoteAccessState.value = 'connected'
+      startRemoteAccessPolling()
+    } else {
+      remoteAccessState.value = 'ready'
+    }
+  } catch (e) {
+    console.error('Failed to load remote access status:', e)
+    remoteAccessError.value = t('remoteAccess.loadError')
+    remoteAccessState.value = 'error'
+  }
+}
+
+async function handleRemoteAccessStart() {
+  remoteAccessState.value = 'connecting'
+  remoteAccessError.value = null
+
+  try {
+    const response = await startRemoteAccess()
+    if (response.data.success) {
+      startRemoteAccessPolling()
+    } else {
+      throw new Error(response.data.message || 'Failed to start tunnel')
+    }
+  } catch (e: unknown) {
+    console.error('Failed to start tunnel:', e)
+    const err = e as { response?: { data?: { error?: string } }; message?: string }
+    remoteAccessState.value = 'error'
+    remoteAccessError.value = err.response?.data?.error || err.message || t('remoteAccess.startError')
+  }
+}
+
+async function handleRemoteAccessStop() {
+  try {
+    await stopRemoteAccess()
+    stopRemoteAccessPolling()
+    tunnelStatus.value = { active: false }
+    remoteAccessState.value = 'ready'
+  } catch (e) {
+    console.error('Failed to stop tunnel:', e)
+    remoteAccessError.value = t('remoteAccess.stopError')
+  }
+}
+
+function startRemoteAccessPolling() {
+  statusInterval = setInterval(async () => {
+    try {
+      const response = await getRemoteAccessStatus()
+      tunnelStatus.value = response.data.tunnel
+
+      if (response.data.tunnel.active) {
+        remoteAccessState.value = 'connected'
+      } else if (remoteAccessState.value === 'connecting') {
+        // Still waiting for tunnel to start
+      } else {
+        remoteAccessState.value = 'ready'
+      }
+    } catch (e) {
+      console.error('Failed to poll status:', e)
+    }
+  }, 2000)
+}
+
+function stopRemoteAccessPolling() {
+  if (statusInterval) {
+    clearInterval(statusInterval)
+    statusInterval = null
+  }
+}
+
+function handleDownloadComplete() {
+  loadRemoteAccessStatus()
+}
+
+function toggleRemoteAccessExpanded() {
+  remoteAccessExpanded.value = !remoteAccessExpanded.value
+}
+
 onMounted(() => {
   loadChannelConfigs()
+  loadRemoteAccessStatus()
+})
+
+onUnmounted(() => {
+  stopRemoteAccessPolling()
+})
+
+// Watch for tunnel becoming active
+watch(() => tunnelStatus.value?.active, (active) => {
+  if (active && remoteAccessState.value === 'connecting') {
+    remoteAccessState.value = 'connected'
+  }
 })
 </script>
 
@@ -473,6 +642,185 @@ onMounted(() => {
 
     <!-- Channel List -->
     <div v-else class="space-y-3">
+      <!-- Remote Access Card (Recommended) -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg border-2 border-blue-500 dark:border-blue-400 overflow-hidden">
+        <!-- Remote Access Header -->
+        <div
+          class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+          @click="toggleRemoteAccessExpanded"
+        >
+          <div class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center p-1.5">
+            <img :src="ngrokLogo" alt="ngrok" class="w-full h-full dark:invert" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <h3 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.title') }}</h3>
+              <span class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
+                {{ t('remoteAccess.recommended') }}
+              </span>
+              <span
+                class="w-2 h-2 rounded-full"
+                :class="{
+                  'bg-green-500': remoteAccessState === 'connected',
+                  'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
+                  'bg-red-500': remoteAccessState === 'error',
+                  'bg-gray-400': ['loading', 'not-installed', 'ready'].includes(remoteAccessState)
+                }"
+              ></span>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
+              {{ t('remoteAccess.channelDescription') }}
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <!-- Toggle for connected state -->
+            <label v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'" class="relative inline-flex items-center cursor-pointer" @click.stop>
+              <input
+                :checked="remoteAccessState === 'connected'"
+                type="checkbox"
+                class="sr-only peer"
+                :disabled="remoteAccessState === 'connecting'"
+                @change="($event.target as HTMLInputElement).checked ? handleRemoteAccessStart() : handleRemoteAccessStop()"
+              />
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
+            </label>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 text-gray-400 transition-transform"
+              :class="{ 'rotate-180': remoteAccessExpanded }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Remote Access Expanded Content -->
+        <div
+          v-if="remoteAccessExpanded"
+          class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50"
+        >
+          <!-- Loading State -->
+          <div v-if="remoteAccessState === 'loading'" class="flex items-center justify-center py-8">
+            <svg class="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+
+          <!-- Not Installed State -->
+          <div v-else-if="remoteAccessState === 'not-installed'" class="space-y-4">
+            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+              <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p class="text-sm text-blue-800 dark:text-blue-200">
+                    {{ t('remoteAccess.needsDownload') }}
+                  </p>
+                  <ul class="mt-2 text-sm text-blue-700 dark:text-blue-300 list-disc list-inside">
+                    <li>{{ t('remoteAccess.feature1') }}</li>
+                    <li>{{ t('remoteAccess.feature2') }}</li>
+                    <li>{{ t('remoteAccess.feature3') }}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <NgrokDownloadButton @download-complete="handleDownloadComplete" />
+          </div>
+
+          <!-- Ready State -->
+          <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
+            <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
+              <div class="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span class="font-medium">{{ t('remoteAccess.ngrokReady') }}</span>
+              </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                {{ t('remoteAccess.readyDescription') }}
+              </p>
+            </div>
+            <button
+              class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              @click="handleRemoteAccessStart"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              {{ t('remoteAccess.enable') }}
+            </button>
+            <div class="text-xs text-gray-500 dark:text-gray-400 text-center">
+              {{ t('remoteAccess.securityWarning') }}
+            </div>
+          </div>
+
+          <!-- Connecting State -->
+          <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
+            <div class="flex items-center justify-center py-4">
+              <div class="text-center">
+                <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <p class="text-gray-600 dark:text-gray-400">{{ t('remoteAccess.connecting') }}</p>
+              </div>
+            </div>
+            <!-- Antivirus Warning -->
+            <div class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-4 border border-amber-200 dark:border-amber-800">
+              <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    {{ t('remoteAccess.antivirusWarningTitle') }}
+                  </p>
+                  <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                    {{ t('remoteAccess.antivirusWarningDesc') }}
+                  </p>
+                  <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
+                    <li>{{ t('remoteAccess.antivirusHint1') }}</li>
+                    <li>{{ t('remoteAccess.antivirusHint2') }}</li>
+                    <li>{{ t('remoteAccess.antivirusHint3') }}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connected State -->
+          <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
+            <TunnelStatus :status="tunnelStatus" />
+          </div>
+
+          <!-- Error State -->
+          <div v-else-if="remoteAccessState === 'error'" class="space-y-4">
+            <div class="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+              <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p class="text-sm text-red-800 dark:text-red-200">{{ remoteAccessError }}</p>
+                </div>
+              </div>
+            </div>
+            <button
+              class="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
+              @click="loadRemoteAccessStatus"
+            >
+              {{ t('common.retry') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Other Channels -->
       <div
         v-for="channel in channels"
         :key="channel.id"
@@ -593,7 +941,7 @@ onMounted(() => {
               class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
               @click="testConnection(channel.id)"
             >
-              {{ testingConnection === channel.id ? t('setup.testing') : t('setup.testConnection') }}
+              {{ testingConnection === channel.id ? t('channels.testing') : t('channels.testConnection') }}
             </button>
             <button
               :disabled="saving === channel.id"

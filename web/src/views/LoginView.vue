@@ -117,7 +117,7 @@ function getProviderIconSvg(type: ProviderType): string {
 
       <!-- Login Form -->
       <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-xl">
-        <form @submit.prevent="handleSubmit" class="space-y-6">
+        <form class="space-y-6" @submit.prevent="handleSubmit">
           <!-- Error Message -->
           <div
             v-if="authStore.error"

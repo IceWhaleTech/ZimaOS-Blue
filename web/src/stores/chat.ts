@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, computed } from 'vue'
 import type { Conversation, Message, SendMessageRequest, MessageStats } from '@/api/chat'
 import { conversationApi, messageApi } from '@/api/chat'
 import { SSEClient } from '@/utils/sse'
@@ -14,7 +14,9 @@ export const useChatStore = defineStore('chat', () => {
   // State
   const conversations = ref<Conversation[]>([])
   const currentConversationId = ref<string | null>(null)
-  const messages = ref<Message[]>([])
+  // Use shallowRef for messages to reduce reactivity overhead
+  // Manual triggerRef() calls are needed when mutating the array
+  const messages = shallowRef<Message[]>([])
   const loading = ref(false)
   const sending = ref(false)
   const streaming = ref(false)
@@ -200,7 +202,9 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendMessage(content: string) {
     if (!currentConversationId.value) {
-      await createConversation()
+      // Use the first part of the message as the conversation title
+      const title = content.length > 30 ? content.substring(0, 30) + '...' : content
+      await createConversation(title)
     }
 
     const conversationId = currentConversationId.value!
@@ -214,7 +218,7 @@ export const useChatStore = defineStore('chat', () => {
       content,
       created_at: new Date().toISOString(),
     }
-    messages.value.push(userMessage)
+    messages.value = [...messages.value, userMessage]
 
     const request: SendMessageRequest = {
       message: content,
@@ -239,18 +243,23 @@ export const useChatStore = defineStore('chat', () => {
         content: '',
         created_at: new Date().toISOString(),
       }
-      messages.value.push(assistantMessage)
+      messages.value = [...messages.value, assistantMessage]
 
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           streamingContent.value += chunk.delta
-          // Update the last message (assistant's response) - use Vue's reactivity properly
+          // Update the last message (assistant's response) - use shallowRef properly
           const lastIndex = messages.value.length - 1
           if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-            // Create a new object to trigger Vue reactivity
-            messages.value[lastIndex] = {
-              ...messages.value[lastIndex],
-              content: streamingContent.value,
+            // Create a new array to trigger shallowRef reactivity
+            const newMessages = [...messages.value]
+            const currentMsg = newMessages[lastIndex]
+            if (currentMsg) {
+              newMessages[lastIndex] = {
+                ...currentMsg,
+                content: streamingContent.value,
+              }
+              messages.value = newMessages
             }
           }
         },
@@ -272,21 +281,26 @@ export const useChatStore = defineStore('chat', () => {
           // This ensures metadata persists even after fetchMessages() refreshes the list
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
-            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+            const lastMsg = messages.value[lastIndex]
+            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
               // Update the message with metadata inline (this will be visible immediately)
-              messages.value[lastIndex] = {
-                ...messages.value[lastIndex],
+              const newMessages = [...messages.value]
+              newMessages[lastIndex] = {
+                ...lastMsg,
                 provider: finalChunk.provider,
                 model: finalChunk.model,
                 stats: finalChunk.stats,
               }
+              messages.value = newMessages
               // Also store in metadata map using streaming ID as backup
-              const msgId = messages.value[lastIndex].id
-              messageMetadata.value.set(msgId, {
-                provider: finalChunk.provider,
-                model: finalChunk.model,
-                stats: finalChunk.stats,
-              })
+              const msgId = newMessages[lastIndex]?.id
+              if (msgId) {
+                  messageMetadata.value.set(msgId, {
+                  provider: finalChunk.provider,
+                  model: finalChunk.model,
+                  stats: finalChunk.stats,
+                })
+              }
             }
           }
           // Refresh messages to get the actual IDs from server

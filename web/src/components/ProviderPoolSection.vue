@@ -326,6 +326,10 @@ async function handleDrop(e: DragEvent, targetProvider: Provider) {
 
   // Reorder the list
   const [removed] = providers.splice(draggedIndex, 1)
+  if (!removed) {
+    draggedProvider.value = null
+    return
+  }
   providers.splice(targetIndex, 0, removed)
 
   // Calculate new priorities (higher index = lower priority, so we reverse)
@@ -337,10 +341,12 @@ async function handleDrop(e: DragEvent, targetProvider: Provider) {
 
   // Update priorities locally first (instant UI update)
   for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i]
+    if (!provider) continue
     const newPriority = maxPriority - (i * step)
-    if (providers[i].priority !== newPriority) {
-      store.updateProviderPriorityLocal(providers[i].id, newPriority)
-      updates.push({ id: providers[i].id, priority: newPriority })
+    if (provider.priority !== newPriority) {
+      store.updateProviderPriorityLocal(provider.id, newPriority)
+      updates.push({ id: provider.id, priority: newPriority })
     }
   }
 
@@ -527,8 +533,8 @@ onMounted(() => {
         <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('providerPool.description') }}</p>
       </div>
       <button
-        @click="showAddModal = true"
         class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
+        @click="showAddModal = true"
       >
         <span>+</span>
         {{ t('providerPool.addCustom') }}
@@ -540,13 +546,13 @@ onMounted(() => {
       <button
         v-for="tab in ['all', 'builtin', 'custom', 'ide'] as const"
         :key="tab"
-        @click="activeTab = tab"
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
           activeTab === tab
             ? 'bg-accent text-white'
             : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600'
         ]"
+        @click="activeTab = tab"
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
@@ -576,7 +582,7 @@ onMounted(() => {
     <!-- Error -->
     <div v-else-if="store.error" class="bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg p-3 mb-4">
       <p class="text-red-600 dark:text-red-400 text-sm">{{ store.error }}</p>
-      <button @click="store.clearError()" class="text-red-500 dark:text-red-300 underline mt-1 text-sm">
+      <button class="text-red-500 dark:text-red-300 underline mt-1 text-sm" @click="store.clearError()">
         {{ t('common.dismiss') }}
       </button>
     </div>
@@ -596,12 +602,6 @@ onMounted(() => {
           v-for="provider in filteredProviders"
           :key="provider.id"
           draggable="true"
-          @click="selectProvider(provider.id)"
-          @dragstart="handleDragStart($event, provider)"
-          @dragover="handleDragOver($event, provider)"
-          @dragleave="handleDragLeave"
-          @dragend="handleDragEnd"
-          @drop="handleDrop($event, provider)"
           :class="[
             'p-3 rounded-lg border transition-all select-none group/card',
             store.selectedProviderId === provider.id
@@ -611,6 +611,12 @@ onMounted(() => {
             draggedProvider?.id === provider.id ? 'opacity-50' : '',
             draggedProvider ? 'cursor-grabbing' : 'cursor-pointer'
           ]"
+          @click="selectProvider(provider.id)"
+          @dragstart="handleDragStart($event, provider)"
+          @dragover="handleDragOver($event, provider)"
+          @dragleave="handleDragLeave"
+          @dragend="handleDragEnd"
+          @drop="handleDrop($event, provider)"
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -657,8 +663,8 @@ onMounted(() => {
                 <input
                   type="checkbox"
                   :checked="provider.enabled"
-                  @change="toggleProvider(provider)"
                   class="sr-only peer"
+                  @change="toggleProvider(provider)"
                 />
                 <div class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-accent"></div>
               </label>
@@ -694,9 +700,9 @@ onMounted(() => {
                 </template>
                 <button
                   v-if="currentTabSelectedProvider.type === 'custom'"
-                  @click="openIconUpload"
                   class="absolute inset-0 flex items-center justify-center bg-black/50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   :title="t('providerPool.changeIcon')"
+                  @click="openIconUpload"
                 >
                   <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -718,24 +724,24 @@ onMounted(() => {
                 <div class="flex items-center gap-1 mt-1">
                   <span class="text-xs text-gray-400">{{ t('providerPool.location') }}:</span>
                   <button
-                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'cloud')"
                     :class="[
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
                       currentTabSelectedProvider.location === 'cloud'
                         ? 'bg-blue-500 text-white'
                         : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
                     ]"
+                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'cloud')"
                   >
                     ☁️ {{ t('providerPool.locationCloud') }}
                   </button>
                   <button
-                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'local')"
                     :class="[
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
                       currentTabSelectedProvider.location === 'local'
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
                     ]"
+                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'local')"
                   >
                     💻 {{ t('providerPool.locationLocal') }}
                   </button>
@@ -744,23 +750,23 @@ onMounted(() => {
             </div>
             <div class="flex gap-1">
               <button
-                @click="testConnection(currentTabSelectedProvider!.id)"
                 :disabled="testingProvider === currentTabSelectedProvider!.id"
                 class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
+                @click="testConnection(currentTabSelectedProvider!.id)"
               >
                 {{ testingProvider === currentTabSelectedProvider!.id ? t('common.testing') : t('providerPool.test') }}
               </button>
               <button
-                @click="refreshModels(currentTabSelectedProvider!.id)"
                 :disabled="refreshingModels === currentTabSelectedProvider!.id"
                 class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
+                @click="refreshModels(currentTabSelectedProvider!.id)"
               >
                 {{ refreshingModels === currentTabSelectedProvider!.id ? t('common.refreshing') : t('providerPool.refreshModels') }}
               </button>
               <button
                 v-if="currentTabSelectedProvider!.type === 'custom'"
-                @click="deleteProvider(currentTabSelectedProvider!.id)"
                 class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
+                @click="deleteProvider(currentTabSelectedProvider!.id)"
               >
                 {{ t('common.delete') }}
               </button>
@@ -773,15 +779,15 @@ onMounted(() => {
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.modelParams') }}</h3>
               <div class="flex gap-1">
                 <button
-                  @click="detectCapabilities"
                   :disabled="detectingCapabilities === currentTabSelectedProvider!.id"
                   class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
+                  @click="detectCapabilities"
                 >
                   {{ detectingCapabilities === currentTabSelectedProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
                 </button>
                 <button
-                  @click="openParamsModal"
                   class="px-2 py-1 bg-accent hover:bg-accent-hover text-white rounded text-xs"
+                  @click="openParamsModal"
                 >
                   {{ t('common.edit') }}
                 </button>
@@ -822,8 +828,8 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
               <button
-                @click="openKeyModal(currentTabSelectedProvider!.id)"
                 class="px-2 py-1 bg-accent hover:bg-accent-hover text-white rounded text-xs"
+                @click="openKeyModal(currentTabSelectedProvider!.id)"
               >
                 + {{ t('providerPool.addKey') }}
               </button>
@@ -843,8 +849,8 @@ onMounted(() => {
                     {{ t('providerPool.usageCount') }}: {{ key.usage_count }}
                   </span>
                   <button
-                    @click="removeAPIKey(currentTabSelectedProvider!.id, key.id)"
                     class="text-red-400 hover:text-red-300"
+                    @click="removeAPIKey(currentTabSelectedProvider!.id, key.id)"
                   >
                     ✕
                   </button>
@@ -890,9 +896,9 @@ onMounted(() => {
                     </span>
                     <!-- Edit pricing button -->
                     <button
-                      @click.stop="openPricingModal(model)"
                       class="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded transition-opacity"
                       :title="t('providerPool.editPricing')"
+                      @click.stop="openPricingModal(model)"
                     >
                       <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -901,9 +907,9 @@ onMounted(() => {
                     <!-- Remove custom pricing button -->
                     <button
                       v-if="hasCustomPricing(model.id)"
-                      @click.stop="removeCustomPricing(model.id, store.selectedProviderId)"
                       class="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-opacity"
                       :title="t('providerPool.resetPricing')"
+                      @click.stop="removeCustomPricing(model.id, store.selectedProviderId ?? undefined)"
                     >
                       <svg class="w-3 h-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -933,7 +939,7 @@ onMounted(() => {
     <div v-if="showAddModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addCustomProvider') }}</h2>
-        <form @submit.prevent="addCustomProvider" class="space-y-4">
+        <form class="space-y-4" @submit.prevent="addCustomProvider">
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.providerName') }}</label>
             <input
@@ -958,13 +964,13 @@ onMounted(() => {
             <div class="flex gap-2">
               <button
                 type="button"
-                @click="newProvider.location = 'cloud'"
                 :class="[
                   'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
                   newProvider.location === 'cloud'
                     ? 'bg-blue-500/20 border-blue-500 text-blue-500'
                     : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
                 ]"
+                @click="newProvider.location = 'cloud'"
               >
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
@@ -973,13 +979,13 @@ onMounted(() => {
               </button>
               <button
                 type="button"
-                @click="newProvider.location = 'local'"
                 :class="[
                   'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
                   newProvider.location === 'local'
                     ? 'bg-green-500/20 border-green-500 text-green-500'
                     : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
                 ]"
+                @click="newProvider.location = 'local'"
               >
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -992,8 +998,8 @@ onMounted(() => {
           <div class="flex justify-end gap-3 mt-6">
             <button
               type="button"
-              @click="showAddModal = false"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+              @click="showAddModal = false"
             >
               {{ t('common.cancel') }}
             </button>
@@ -1012,7 +1018,7 @@ onMounted(() => {
     <div v-if="showKeyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addApiKey') }}</h2>
-        <form @submit.prevent="addAPIKey" class="space-y-4">
+        <form class="space-y-4" @submit.prevent="addAPIKey">
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiKey') }}</label>
             <input
@@ -1035,8 +1041,8 @@ onMounted(() => {
           <div class="flex justify-end gap-3 mt-6">
             <button
               type="button"
-              @click="showKeyModal = false"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+              @click="showKeyModal = false"
             >
               {{ t('common.cancel') }}
             </button>
@@ -1055,7 +1061,7 @@ onMounted(() => {
     <div v-if="showPricingModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addModelPricing') }}</h2>
-        <form @submit.prevent="saveModelPricing" class="space-y-4">
+        <form class="space-y-4" @submit.prevent="saveModelPricing">
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.modelId') }}</label>
             <input
@@ -1113,8 +1119,8 @@ onMounted(() => {
           <div class="flex justify-end gap-3 mt-6">
             <button
               type="button"
-              @click="showPricingModal = false"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+              @click="showPricingModal = false"
             >
               {{ t('common.cancel') }}
             </button>
@@ -1133,7 +1139,7 @@ onMounted(() => {
     <div v-if="showParamsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.editModelParams') }}</h2>
-        <form @submit.prevent="saveModelParams" class="space-y-4">
+        <form class="space-y-4" @submit.prevent="saveModelParams">
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.temperature') }}</label>
             <input
@@ -1180,8 +1186,8 @@ onMounted(() => {
           <div class="flex justify-end gap-3 mt-6">
             <button
               type="button"
-              @click="showParamsModal = false"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+              @click="showParamsModal = false"
             >
               {{ t('common.cancel') }}
             </button>

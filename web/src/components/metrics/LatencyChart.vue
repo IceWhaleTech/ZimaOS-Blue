@@ -43,7 +43,19 @@ function formatLatency(ms: number | undefined | null): string {
 const percentileBars = computed(() => {
   if (!latencyData.value) return []
 
-  const max = latencyData.value.max || 1
+  const values = [
+    latencyData.value.min ?? 0,
+    latencyData.value.p50 ?? 0,
+    latencyData.value.p90 ?? 0,
+    latencyData.value.p95 ?? 0,
+    latencyData.value.p99 ?? 0,
+    latencyData.value.max ?? 0,
+  ]
+
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = max - min
+
   const percentiles = [
     { label: t('metrics.min'), value: latencyData.value.min ?? 0, color: 'bg-green-500' },
     { label: t('metrics.p50'), value: latencyData.value.p50 ?? 0, color: 'bg-blue-500' },
@@ -53,9 +65,18 @@ const percentileBars = computed(() => {
     { label: t('metrics.max'), value: latencyData.value.max ?? 0, color: 'bg-red-700' },
   ]
 
+  // If all values are the same or range is very small, show all bars at 80% height
+  if (range < 1 || max === 0) {
+    return percentiles.map(p => ({
+      ...p,
+      height: p.value > 0 ? 80 : 5,
+    }))
+  }
+
+  // Otherwise, scale based on range with minimum 10% height for non-zero values
   return percentiles.map(p => ({
     ...p,
-    height: Math.max(5, (p.value / max) * 100),
+    height: p.value === 0 ? 5 : Math.max(10, ((p.value - min) / range) * 90 + 10),
   }))
 })
 </script>
@@ -76,17 +97,16 @@ const percentileBars = computed(() => {
         <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
           {{ t('metrics.latencyDistribution') }}
         </h4>
-        <div class="flex items-end justify-around h-32 bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
+        <div class="flex justify-around h-32 bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
           <div
             v-for="bar in percentileBars"
             :key="bar.label"
-            class="flex flex-col items-center"
+            class="flex flex-col items-center h-full justify-end"
           >
-            <div
-              :class="[bar.color, 'w-8 rounded-t transition-all duration-300']"
-              :style="{ height: bar.height + '%' }"
-            ></div>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ bar.label }}</div>
+            <div class="w-8 flex items-end" :style="{ height: bar.height + '%' }">
+              <div :class="[bar.color, 'w-full rounded-t transition-all duration-300']" style="height: 100%"></div>
+            </div>
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ bar.label }}</div>
             <div class="text-xs font-medium text-gray-900 dark:text-white">{{ formatLatency(bar.value) }}</div>
           </div>
         </div>

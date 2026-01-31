@@ -293,6 +293,18 @@
   flex-shrink: 0;
 }
 
+.item-icon-svg {
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  flex-shrink: 0;
+  object-fit: contain;
+  color: var(--text-primary);
+}
+
 .item-icon-img {
   width: 36px;
   height: 36px;

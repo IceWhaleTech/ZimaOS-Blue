@@ -199,8 +199,23 @@ func (h *Handler) GetUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, user)
 }
 
+// PreviewUserID is the special user ID for preview mode.
+const PreviewUserID = "preview-user"
+
 // GetCurrentUser handles getting the current user.
 func (h *Handler) GetCurrentUser(c echo.Context) error {
+	// Check if this is a preview user first
+	claims := auth.GetUserFromContext(c)
+	if claims != nil && claims.UserID == PreviewUserID {
+		// Return a synthetic preview user
+		return c.JSON(http.StatusOK, &User{
+			ID:       uuid.Nil,
+			Username: claims.Username,
+			Role:     RoleUser,
+			Status:   StatusActive,
+		})
+	}
+
 	userID := getUserIDFromContext(c)
 	if userID == uuid.Nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "not authenticated")

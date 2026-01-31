@@ -360,7 +360,7 @@ function updateScope(index: number, value: string) {
             {{ isCreating ? 'Add Authentication Provider' : 'Edit Provider' }}
           </h3>
 
-          <form @submit.prevent="saveProvider" class="space-y-6">
+          <form class="space-y-6" @submit.prevent="saveProvider">
             <!-- Basic Info -->
             <div class="grid grid-cols-2 gap-4">
               <div>

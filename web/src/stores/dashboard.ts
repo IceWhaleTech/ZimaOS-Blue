@@ -100,7 +100,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     if (!movedCard) return
 
     // Calculate new order values
-    const newOrder = enabledList.map((card, index) => {
+    const newOrder = enabledList.map((_card, index) => {
       if (index === fromIndex) return toIndex
       if (fromIndex < toIndex) {
         if (index > fromIndex && index <= toIndex) return index - 1

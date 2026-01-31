@@ -22,22 +22,22 @@ export interface ProviderModelOption {
   modelId: string
 }
 
-// Chat style types
-export type ChatStyle = 'default' | 'bubble' | 'minimal' | 'gradient' | 'ocean'
+// Theme style types
+export type ThemeStyle = 'default' | 'bubble' | 'minimal' | 'gradient' | 'ocean'
 
-export const CHAT_STYLES: { id: ChatStyle; labelKey: string }[] = [
-  { id: 'default', labelKey: 'chat.styles.default' },
-  { id: 'bubble', labelKey: 'chat.styles.bubble' },
-  { id: 'minimal', labelKey: 'chat.styles.minimal' },
-  { id: 'gradient', labelKey: 'chat.styles.gradient' },
-  { id: 'ocean', labelKey: 'chat.styles.ocean' },
+export const THEME_STYLES: { id: ThemeStyle; labelKey: string }[] = [
+  { id: 'default', labelKey: 'theme.styles.default' },
+  { id: 'bubble', labelKey: 'theme.styles.bubble' },
+  { id: 'minimal', labelKey: 'theme.styles.minimal' },
+  { id: 'gradient', labelKey: 'theme.styles.gradient' },
+  { id: 'ocean', labelKey: 'theme.styles.ocean' },
 ]
 
 interface StoredSettings {
   selectedProviderModel: string  // Format: "providerId:modelId"
   temperature: number
   maxTokens: number
-  chatStyle: ChatStyle
+  themeStyle: ThemeStyle
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -65,7 +65,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const selectedProviderModel = ref(stored.selectedProviderModel || '')  // Format: "providerId:modelId"
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? 2048)
-  const chatStyle = ref<ChatStyle>(stored.chatStyle || 'default')
+  const themeStyle = ref<ThemeStyle>(stored.themeStyle || 'default')
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)
@@ -106,13 +106,13 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProviderModel, temperature, maxTokens, chatStyle],
+    [selectedProviderModel, temperature, maxTokens, themeStyle],
     () => {
       saveSettings({
         selectedProviderModel: selectedProviderModel.value,
         temperature: temperature.value,
         maxTokens: maxTokens.value,
-        chatStyle: chatStyle.value,
+        themeStyle: themeStyle.value,
       })
     },
     { deep: true }
@@ -274,8 +274,8 @@ export const useSettingsStore = defineStore('settings', () => {
     maxTokens.value = Math.max(1, Math.min(128000, value))
   }
 
-  function setChatStyle(style: ChatStyle) {
-    chatStyle.value = style
+  function setThemeStyle(style: ThemeStyle) {
+    themeStyle.value = style
   }
 
   function clearError() {
@@ -289,7 +289,7 @@ export const useSettingsStore = defineStore('settings', () => {
     selectedProviderModel,
     temperature,
     maxTokens,
-    chatStyle,
+    themeStyle,
     loading,
     refreshing,
     error,
@@ -310,7 +310,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setModel,
     setTemperature,
     setMaxTokens,
-    setChatStyle,
+    setThemeStyle,
     clearError,
   }
 })

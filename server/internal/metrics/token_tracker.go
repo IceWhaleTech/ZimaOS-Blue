@@ -157,10 +157,13 @@ func (t *TokenTracker) GetAllModelUsage() []ModelTokenUsage {
 	result := make([]ModelTokenUsage, 0, len(t.modelUsage))
 	for model, usage := range t.modelUsage {
 		result = append(result, ModelTokenUsage{
-			Model:         model,
-			InputTokens:   usage.InputTokens,
-			OutputTokens:  usage.OutputTokens,
-			EstimatedCost: usage.EstimatedCost,
+			Model:            model,
+			InputTokens:      usage.InputTokens,
+			OutputTokens:     usage.OutputTokens,
+			TotalTokens:      usage.TotalTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
+			CacheWriteTokens: usage.CacheWriteTokens,
+			EstimatedCost:    usage.EstimatedCost,
 		})
 	}
 
@@ -210,6 +213,40 @@ func (t *TokenTracker) Reset() {
 
 	t.modelUsage = make(map[string]*TokenUsage)
 	t.globalUsage = &TokenUsage{}
+}
+
+// LoadUsage loads global token usage from persisted data.
+func (t *TokenTracker) LoadUsage(usage *TokenUsage) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if usage != nil {
+		t.globalUsage = &TokenUsage{
+			InputTokens:      usage.InputTokens,
+			OutputTokens:     usage.OutputTokens,
+			TotalTokens:      usage.TotalTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
+			CacheWriteTokens: usage.CacheWriteTokens,
+			EstimatedCost:    usage.EstimatedCost,
+		}
+	}
+}
+
+// LoadModelUsages loads model token usages from persisted data.
+func (t *TokenTracker) LoadModelUsages(usages []ModelTokenUsage) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, u := range usages {
+		t.modelUsage[u.Model] = &TokenUsage{
+			InputTokens:      u.InputTokens,
+			OutputTokens:     u.OutputTokens,
+			TotalTokens:      u.TotalTokens,
+			CacheReadTokens:  u.CacheReadTokens,
+			CacheWriteTokens: u.CacheWriteTokens,
+			EstimatedCost:    u.EstimatedCost,
+		}
+	}
 }
 
 // getPricingForModel returns the pricing for a model (internal, no lock).

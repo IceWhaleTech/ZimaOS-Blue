@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import SecurityBadge from './SecurityBadge.vue'
-import type { SecurityData, ThreatLevel } from '@/api/companion'
+import type { SecurityData } from '@/api/companion'
 
 const { t } = useI18n()
 

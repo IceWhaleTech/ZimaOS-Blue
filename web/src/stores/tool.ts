@@ -36,7 +36,7 @@ export const useToolStore = defineStore('tool', () => {
       if (!grouped[t.source_id]) {
         grouped[t.source_id] = []
       }
-      grouped[t.source_id].push(t)
+      grouped[t.source_id]?.push(t)
     })
     return grouped
   })

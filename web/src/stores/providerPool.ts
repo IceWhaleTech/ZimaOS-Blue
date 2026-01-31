@@ -64,9 +64,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     try {
       const response = await providerPoolApi.listProviders()
       providers.value = response.data.providers || []
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch providers'
-      throw e
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to fetch providers'
+      throw err
     } finally {
       loading.value = false
     }
@@ -448,7 +448,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       const response = await providerPoolApi.getRoutingMode()
       routingMode.value = response.data.mode
       return response.data.mode
-    } catch (e) {
+    } catch {
       // Default to auto if fetch fails
       routingMode.value = 'auto'
       return 'auto'

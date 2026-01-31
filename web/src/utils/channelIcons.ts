@@ -125,9 +125,12 @@ export function getPluginIcon(plugin: {
 
   // Try first channel
   if (plugin.channels?.length) {
-    const channelKey = plugin.channels[0].toLowerCase()
-    if (channelIcons[channelKey]) {
-      return channelIcons[channelKey]
+    const firstChannel = plugin.channels[0]
+    if (firstChannel) {
+      const channelKey = firstChannel.toLowerCase()
+      if (channelIcons[channelKey]) {
+        return channelIcons[channelKey]
+      }
     }
   }
 

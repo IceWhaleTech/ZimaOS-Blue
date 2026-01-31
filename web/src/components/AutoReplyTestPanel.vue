@@ -5,7 +5,7 @@ import type { TestRuleResponse } from '@/api/autoreply'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+defineProps<{
   loading?: boolean
 }>()
 

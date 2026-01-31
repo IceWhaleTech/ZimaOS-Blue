@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type {
   CompanionSession,
   SessionEvent,
+  SessionEventType,
   Alert,
   Stats,
   FlowGraph,
@@ -266,10 +267,13 @@ export const useCompanionStore = defineStore('companion', () => {
       ids.forEach((id) => {
         const index = alerts.value.findIndex((a) => a.id === id)
         if (index !== -1) {
-          alerts.value[index] = {
-            ...alerts.value[index],
-            acknowledged: true,
-            ackedAt: now,
+          const existingAlert = alerts.value[index]
+          if (existingAlert) {
+            alerts.value[index] = {
+              ...existingAlert,
+              acknowledged: true,
+              ackedAt: now,
+            }
           }
         }
       })
@@ -407,15 +411,15 @@ export const useCompanionStore = defineStore('companion', () => {
 
     return {
       id,
-      platform: platforms[Math.floor(Math.random() * platforms.length)],
+      platform: platforms[Math.floor(Math.random() * platforms.length)] ?? 'web',
       user_id: `user-${Math.floor(Math.random() * 1000)}`,
       tenant_id: 'demo-tenant',
-      status: statuses[Math.floor(Math.random() * statuses.length)],
+      status: statuses[Math.floor(Math.random() * statuses.length)] ?? 'active',
       started_at: startedAt.toISOString(),
       ended_at: Math.random() > 0.5 ? now.toISOString() : undefined,
       duration: now.getTime() - startedAt.getTime(),
       event_count: Math.floor(Math.random() * 50) + 5,
-      threat_level: threats[Math.floor(Math.random() * threats.length)],
+      threat_level: threats[Math.floor(Math.random() * threats.length)] ?? 'none',
       threat_score: Math.floor(Math.random() * 30),
       metadata: {
         message_count: Math.floor(Math.random() * 20) + 1,
@@ -428,7 +432,7 @@ export const useCompanionStore = defineStore('companion', () => {
 
   function generateDemoEvent(sessionId: string): SessionEvent {
     const eventTypes = ['message_received', 'message_sent', 'tool_call', 'llm_request'] as const
-    const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)]
+    const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)] ?? 'message_received'
     const platforms: Platform[] = ['telegram', 'whatsapp', 'discord', 'slack', 'web']
 
     return {
@@ -436,7 +440,7 @@ export const useCompanionStore = defineStore('companion', () => {
       sessionId,
       timestamp: new Date().toISOString(),
       eventType,
-      platform: platforms[Math.floor(Math.random() * platforms.length)],
+      platform: platforms[Math.floor(Math.random() * platforms.length)] ?? 'web',
       userId: `user-${Math.floor(Math.random() * 1000)}`,
       tenantId: 'demo-tenant',
       duration: Math.floor(Math.random() * 500) + 50,
@@ -453,12 +457,13 @@ export const useCompanionStore = defineStore('companion', () => {
       'rateLimitApproaching',
       'longResponseTime',
     ]
-    const severity = severities[Math.floor(Math.random() * severities.length)]
-    const titleKey = titleKeys[Math.floor(Math.random() * titleKeys.length)]
+    const severity = severities[Math.floor(Math.random() * severities.length)] ?? 'info'
+    const titleKey = titleKeys[Math.floor(Math.random() * titleKeys.length)] ?? 'unusualPattern'
 
     return {
       id: crypto.randomUUID(),
       sessionId: sessions.value[0]?.id || crypto.randomUUID(),
+      eventId: crypto.randomUUID(),
       title: titleKey, // Use i18n key, will be translated in component
       description: 'demoDescription', // Use i18n key
       severity,
@@ -486,6 +491,12 @@ export const useCompanionStore = defineStore('companion', () => {
       totalSessions: demoSessions.length,
       totalEvents: demoSessions.reduce((sum, s) => sum + s.event_count, 0),
       totalAlerts: demoAlerts.length,
+      unackedAlerts: demoAlerts.filter(a => !a.acknowledged).length,
+      avgSessionDuration: demoSessions.reduce((sum, s) => sum + s.duration, 0) / demoSessions.length,
+      sessionsByPlatform: {} as Record<Platform, number>,
+      threatsByLevel: { none: 0, low: 0, medium: 0, high: 0, critical: 0 },
+      eventsByType: {} as Record<SessionEventType, number>,
+      lastUpdated: new Date().toISOString(),
     }
 
     // Simulate real-time events

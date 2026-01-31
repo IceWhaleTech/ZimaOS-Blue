@@ -50,6 +50,7 @@ func NewCalendar(config *CalendarConfig) *Calendar {
 			Version:     "1.0.0",
 			Description: "Calendar management with CalDAV support",
 			Category:    "communication",
+			Icon:        "calendar",
 			Tags:        []string{"calendar", "events", "schedule", "caldav"},
 			Inputs: []skill.Parameter{
 				{
