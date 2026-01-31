@@ -57,6 +57,11 @@ func RegisterStaticRoutes(e *echo.Echo) {
 			return echo.ErrNotFound
 		}
 
+		// Legacy/incorrect request for index.js - redirect to root (Vite build uses hashed names like index-xxx.js)
+		if path == "index.js" {
+			return c.Redirect(http.StatusFound, "/")
+		}
+
 		// Try to open the file
 		f, err := distFS.Open(path)
 		if err != nil {

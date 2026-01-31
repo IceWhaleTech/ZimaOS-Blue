@@ -142,17 +142,24 @@ func (s *Session) IsValid() bool {
 
 // CreateUserRequest represents a request to create a user.
 type CreateUserRequest struct {
-	Username string  `json:"username" validate:"required,min=3,max=50"`
-	Email    *string `json:"email,omitempty" validate:"omitempty,email"`
-	Password string  `json:"password" validate:"required"`
-	Role     Role    `json:"role,omitempty"`
+	Username    string   `json:"username" validate:"required,min=3,max=50"`
+	Email       *string  `json:"email,omitempty" validate:"omitempty,email"`
+	Password    string   `json:"password" validate:"required"`
+	Role        Role     `json:"role,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // UpdateUserRequest represents a request to update a user.
 type UpdateUserRequest struct {
-	Email  *string `json:"email,omitempty" validate:"omitempty,email"`
-	Role   *Role   `json:"role,omitempty"`
-	Status *Status `json:"status,omitempty"`
+	Email       *string  `json:"email,omitempty" validate:"omitempty,email"`
+	Role        *Role    `json:"role,omitempty"`
+	Status      *Status  `json:"status,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+}
+
+// ResetPasswordRequest represents a request to reset a user's password.
+type ResetPasswordRequest struct {
+	NewPassword string `json:"new_password" validate:"required"`
 }
 
 // ChangePasswordRequest represents a request to change password.

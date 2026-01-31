@@ -234,6 +234,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:id/disable", h.DisableProvider)
 	g.POST("/:id/test", h.TestProvider)
 	g.PUT("/:id/params", h.UpdateModelParams)
+	g.PUT("/:id/allowed-models", h.UpdateAllowedModels)
 	g.POST("/:id/detect", h.DetectCapabilities)
 	g.PUT("/:id/icon", h.UpdateProviderIcon)
 	g.DELETE("/:id/icon", h.DeleteProviderIcon)
@@ -506,6 +507,38 @@ func (h *Handler) UpdateModelParams(c echo.Context) error {
 	})
 }
 
+// UpdateAllowedModels updates the allowed models for a provider
+func (h *Handler) UpdateAllowedModels(c echo.Context) error {
+	id := c.Param("id")
+
+	provider, err := h.pool.Registry.Get(id)
+	if err != nil {
+		if err == ErrProviderNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	var req struct {
+		AllowedModels []string `json:"allowed_models"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	provider.AllowedModels = req.AllowedModels
+	provider.UpdatedAt = time.Now()
+
+	if err := h.pool.Registry.Update(provider); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":        "allowed models updated",
+		"allowed_models": provider.AllowedModels,
+	})
+}
+
 // DetectCapabilities detects server capabilities for a provider
 func (h *Handler) DetectCapabilities(c echo.Context) error {
 	id := c.Param("id")
@@ -648,7 +681,7 @@ func (h *Handler) DeleteProviderIcon(c echo.Context) error {
 func (h *Handler) ListProviderModels(c echo.Context) error {
 	id := c.Param("id")
 
-	models, err := h.pool.Discovery.GetModels(id)
+	models, err := h.pool.Discovery.GetFilteredModels(id)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

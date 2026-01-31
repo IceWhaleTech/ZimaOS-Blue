@@ -25,13 +25,35 @@ const error = ref<string | null>(null)
 const isValid = computed(() => {
   return (
     username.value.length >= 3 &&
-    password.value.length >= 8 &&
+    allPasswordChecksPassed.value &&
     password.value === confirmPassword.value
   )
 })
 
 const passwordMismatch = computed(() => {
   return confirmPassword.value.length > 0 && password.value !== confirmPassword.value
+})
+
+// Password strength indicators
+const passwordChecks = computed(() => {
+  const pwd = password.value
+  return {
+    length: pwd.length >= 8,
+    uppercase: /[A-Z]/.test(pwd),
+    lowercase: /[a-z]/.test(pwd),
+    number: /[0-9]/.test(pwd),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd),
+  }
+})
+
+const passwordStrength = computed(() => {
+  const checks = passwordChecks.value
+  return Object.values(checks).filter(Boolean).length
+})
+
+const allPasswordChecksPassed = computed(() => {
+  const checks = passwordChecks.value
+  return checks.length && checks.uppercase && checks.lowercase && checks.number && checks.special
 })
 
 async function handleSubmit() {
@@ -63,7 +85,8 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+  <Teleport to="body">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
     <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-xl">
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -162,6 +185,61 @@ async function handleSubmit() {
                 </svg>
               </button>
             </div>
+            <!-- Password Strength Indicator -->
+            <div v-if="password.length > 0" class="mt-2 space-y-2">
+              <!-- Strength Bar -->
+              <div class="flex gap-1">
+                <div
+                  v-for="i in 5"
+                  :key="i"
+                  class="h-1 flex-1 rounded-full transition-colors"
+                  :class="i <= passwordStrength ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                />
+              </div>
+              <!-- Requirements Checklist -->
+              <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div class="flex items-center gap-1.5">
+                  <span :class="passwordChecks.length ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
+                    {{ passwordChecks.length ? '✓' : '○' }}
+                  </span>
+                  <span :class="passwordChecks.length ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ t('preview.passwordCheck.length') }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span :class="passwordChecks.uppercase ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
+                    {{ passwordChecks.uppercase ? '✓' : '○' }}
+                  </span>
+                  <span :class="passwordChecks.uppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ t('preview.passwordCheck.uppercase') }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span :class="passwordChecks.lowercase ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
+                    {{ passwordChecks.lowercase ? '✓' : '○' }}
+                  </span>
+                  <span :class="passwordChecks.lowercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ t('preview.passwordCheck.lowercase') }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span :class="passwordChecks.number ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
+                    {{ passwordChecks.number ? '✓' : '○' }}
+                  </span>
+                  <span :class="passwordChecks.number ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ t('preview.passwordCheck.number') }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1.5 col-span-2">
+                  <span :class="passwordChecks.special ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
+                    {{ passwordChecks.special ? '✓' : '○' }}
+                  </span>
+                  <span :class="passwordChecks.special ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ t('preview.passwordCheck.special') }}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Confirm Password -->
@@ -209,5 +287,6 @@ async function handleSubmit() {
         </form>
       </div>
     </div>
-  </div>
+    </div>
+  </Teleport>
 </template>

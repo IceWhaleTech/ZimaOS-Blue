@@ -12,6 +12,13 @@ export const useSkillStore = defineStore('skill', () => {
   const refreshing = ref(false)
   const error = ref<string | null>(null)
 
+  // Pagination state
+  const currentPage = ref(1)
+  const totalPages = ref(1)
+  const totalSkills = ref(0)
+  const pageSize = ref(24)
+  const loadingMore = ref(false)
+
   // Computed
   const enabledSkills = computed(() => skills.value.filter((s) => s.enabled))
   const disabledSkills = computed(() => skills.value.filter((s) => !s.enabled))
@@ -149,16 +156,58 @@ export const useSkillStore = defineStore('skill', () => {
       // Handle both paginated response (object with skills array) and legacy array response
       if (response.data && 'skills' in response.data) {
         remoteSkills.value = response.data.skills || []
+        // Update pagination state
+        currentPage.value = response.data.page || 1
+        totalPages.value = response.data.total_pages || 1
+        totalSkills.value = response.data.total || 0
+        pageSize.value = response.data.page_size || 24
       } else if (Array.isArray(response.data)) {
         remoteSkills.value = response.data
+        totalSkills.value = response.data.length
+        totalPages.value = 1
+        currentPage.value = 1
       } else {
         remoteSkills.value = []
+        totalSkills.value = 0
+        totalPages.value = 1
+        currentPage.value = 1
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to browse skills'
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadMoreSkills(params?: BrowseParams) {
+    if (loadingMore.value || currentPage.value >= totalPages.value) return false
+
+    try {
+      loadingMore.value = true
+      error.value = null
+      const nextPage = currentPage.value + 1
+      const response = await skillApi.browse({ ...params, page: nextPage, page_size: pageSize.value })
+
+      if (response.data && 'skills' in response.data) {
+        // Append new skills to existing list
+        const newSkills = response.data.skills || []
+        remoteSkills.value = [...remoteSkills.value, ...newSkills]
+        currentPage.value = response.data.page || nextPage
+        totalPages.value = response.data.total_pages || totalPages.value
+        totalSkills.value = response.data.total || totalSkills.value
+        return newSkills.length > 0
+      }
+      return false
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load more skills'
+      return false
+    } finally {
+      loadingMore.value = false
+    }
+  }
+
+  function hasMoreSkills() {
+    return currentPage.value < totalPages.value
   }
 
   async function installSkill(id: string) {
@@ -299,6 +348,13 @@ export const useSkillStore = defineStore('skill', () => {
     refreshing,
     error,
 
+    // Pagination state
+    currentPage,
+    totalPages,
+    totalSkills,
+    pageSize,
+    loadingMore,
+
     // Computed
     enabledSkills,
     disabledSkills,
@@ -316,6 +372,8 @@ export const useSkillStore = defineStore('skill', () => {
     addSource,
     removeSource,
     browseSkills,
+    loadMoreSkills,
+    hasMoreSkills,
     installSkill,
     installFromURL,
     uninstallSkill,

@@ -52,6 +52,7 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]) {
 }
 
 // Common shortcuts for the chat view
+// Using Alt combinations to avoid browser shortcut conflicts (Ctrl+N, Ctrl+B)
 export function useChatShortcuts(options: {
   onNewChat: () => void
   onFocusInput: () => void
@@ -62,19 +63,18 @@ export function useChatShortcuts(options: {
   return useKeyboardShortcuts([
     {
       key: 'n',
-      ctrl: true,
+      alt: true,
       description: 'New conversation',
       handler: options.onNewChat,
     },
     {
       key: '/',
-      ctrl: true,
       description: 'Focus message input',
       handler: options.onFocusInput,
     },
     {
       key: 'b',
-      ctrl: true,
+      alt: true,
       description: 'Toggle sidebar',
       handler: options.onToggleSidebar,
     },

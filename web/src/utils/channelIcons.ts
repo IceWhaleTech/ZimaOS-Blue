@@ -65,13 +65,13 @@ export const channelIcons: Record<string, string> = {
   'google-antigravity-auth': '/icons/extensions/google-antigravity-auth.svg',
   'google-gemini-cli-auth': '/icons/extensions/google-gemini-cli-auth.svg',
   gemini: '/icons/extensions/google-gemini-cli-auth.svg',
-  googlechat: '/icons/extensions/googlechat.svg',
-  'google-chat': '/icons/extensions/googlechat.svg',
+  googlechat: '/icons/channels/googlechat.svg',
+  'google-chat': '/icons/channels/googlechat.svg',
   line: '/icons/extensions/line.svg',
   'llm-task': '/icons/extensions/llm-task.svg',
   llmtask: '/icons/extensions/llm-task.svg',
   lobster: '/icons/extensions/lobster.svg',
-  mattermost: '/icons/extensions/mattermost.svg',
+  mattermost: '/icons/channels/mattermost.svg',
   'memory-core': '/icons/extensions/memory-core.svg',
   memorycore: '/icons/extensions/memory-core.svg',
   'memory-lancedb': '/icons/extensions/memory-lancedb.svg',
@@ -88,6 +88,17 @@ export const channelIcons: Record<string, string> = {
   voicecall: '/icons/extensions/voice-call.svg',
   zalo: '/icons/extensions/zalo.svg',
   zalouser: '/icons/extensions/zalouser.svg',
+}
+
+/** Tunnel provider icons (remote access: ngrok, Cloudflare, localtunnel, etc.) */
+export const tunnelProviderIcons: Record<string, string> = {
+  ngrok: '/icons/tunnel/ngrok.svg',
+  cloudflare: '/icons/tunnel/cloudflare.svg',
+  localtunnel: '/icons/tunnel/localtunnel.svg',
+}
+
+export function getTunnelProviderIcon(providerId: string): string | undefined {
+  return tunnelProviderIcons[providerId?.toLowerCase()]
 }
 
 export function getChannelIcon(channelType: string): string | undefined {

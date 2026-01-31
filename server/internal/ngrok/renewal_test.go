@@ -8,8 +8,7 @@ import (
 )
 
 func TestRenewalService_NewRenewalService(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	if rs == nil {
@@ -30,8 +29,7 @@ func TestRenewalService_NewRenewalService(t *testing.T) {
 }
 
 func TestRenewalService_ShouldRenew(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	tests := []struct {
@@ -77,8 +75,7 @@ func TestRenewalService_ShouldRenew(t *testing.T) {
 }
 
 func TestRenewalService_IsRunning(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	if rs.IsRunning() {
@@ -87,8 +84,7 @@ func TestRenewalService_IsRunning(t *testing.T) {
 }
 
 func TestRenewalService_StartStop(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	// Start the service
@@ -116,8 +112,7 @@ func TestRenewalService_StartStop(t *testing.T) {
 }
 
 func TestRenewalService_OnRenewal_Callback(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	var callbackCalled bool
@@ -149,8 +144,7 @@ func TestRenewalService_OnRenewal_Callback(t *testing.T) {
 }
 
 func TestRenewalService_SetCheckInterval(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	newInterval := 15 * time.Minute
@@ -162,8 +156,7 @@ func TestRenewalService_SetCheckInterval(t *testing.T) {
 }
 
 func TestRenewalService_SetRenewalThreshold(t *testing.T) {
-	dm := NewDownloadManager("")
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 	rs := NewRenewalService(tm)
 
 	newThreshold := 2 * time.Hour

@@ -12,6 +12,7 @@ import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
 import VirtualScroll from '@/components/VirtualScroll.vue'
+import TalkMode from '@/components/chat/TalkMode.vue'
 import { componentPool } from '@/utils/componentPool'
 import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 
@@ -37,6 +38,9 @@ const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
 const showStyleSelector = ref(false)
 const styleButtonRef = ref<HTMLElement | null>(null)
 const styleSelectorPosition = ref({ x: 0, y: 0 })
+
+// Talk mode state
+const showTalkMode = ref(false)
 
 // Virtual scroll threshold - use virtual scroll when message count exceeds this
 const VIRTUAL_SCROLL_THRESHOLD = 50
@@ -578,9 +582,9 @@ onUnmounted(() => {
           <div v-if="!isMobile" class="mt-8 text-xs text-gray-400 dark:text-slate-500">
             <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
             <p class="space-x-4">
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+N</span> {{ t('chat.newChatShortcut') }}
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+/</span> {{ t('chat.focusInputShortcut') }}
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Ctrl+B</span> {{ t('chat.toggleSidebarShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Alt+N</span> {{ t('chat.newChatShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">/</span> {{ t('chat.focusInputShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Alt+B</span> {{ t('chat.toggleSidebarShortcut') }}
             </p>
           </div>
         </div>
@@ -812,8 +816,16 @@ onUnmounted(() => {
           :streaming="chatStore.streaming"
           @send="handleSend"
           @cancel="handleCancel"
+          @open-talk-mode="showTalkMode = true"
         />
       </div>
+
+      <!-- Talk Mode -->
+      <TalkMode
+        v-model="showTalkMode"
+        :conversation-id="chatStore.currentConversationId || undefined"
+        @transcript="(text) => chatInputRef?.setInput(text)"
+      />
     </main>
   </div>
 </template>

@@ -8,6 +8,7 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
 import type { TypelessCard } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
+import { voiceApi, playAudioFromBase64 } from '@/api/voice'
 
 const { t } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -30,6 +31,11 @@ const isMultiSelectMode = computed(() => chatStore.isMultiSelectMode)
 
 // Copy button state
 const copyState = ref<'idle' | 'copied'>('idle')
+
+// TTS playback state
+const isSpeaking = ref(false)
+const ttsError = ref<string | null>(null)
+let currentAudio: HTMLAudioElement | null = null
 
 const renderedContent = computed(() => {
   if (isUser.value) {
@@ -155,7 +161,55 @@ async function handleCopyMessage() {
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
   clearIncrementalState(props.message.id)
+  // Stop any playing audio
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio = null
+  }
 })
+
+// TTS playback function
+async function handlePlayTTS() {
+  if (isSpeaking.value) {
+    // Stop current playback
+    if (currentAudio) {
+      currentAudio.pause()
+      currentAudio = null
+    }
+    isSpeaking.value = false
+    return
+  }
+
+  ttsError.value = null
+  isSpeaking.value = true
+
+  try {
+    // Get plain text content (strip markdown)
+    const textContent = props.message.content
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/`[^`]+`/g, '') // Remove inline code
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/[#*_~]/g, '') // Remove markdown formatting
+      .trim()
+
+    if (!textContent) {
+      ttsError.value = t('chat.ttsNoContent')
+      isSpeaking.value = false
+      return
+    }
+
+    const response = await voiceApi.synthesize(textContent)
+    if (response.data.audio) {
+      await playAudioFromBase64(response.data.audio, response.data.content_type)
+    }
+  } catch (error) {
+    console.error('TTS error:', error)
+    ttsError.value = t('chat.ttsError')
+  } finally {
+    isSpeaking.value = false
+    currentAudio = null
+  }
+}
 </script>
 
 <template>
@@ -248,20 +302,40 @@ onUnmounted(() => {
           v-else
           class="assistant-message-wrapper relative"
         >
-          <!-- Copy button for assistant message -->
-          <button
+          <!-- Action buttons for assistant message -->
+          <div
             v-if="!isStreaming && !isMultiSelectMode"
-            class="copy-message-btn absolute -right-8 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
-            :title="t('chat.copyMessage')"
-            @click.stop="handleCopyMessage"
+            class="absolute -right-8 top-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           >
-            <svg v-if="copyState === 'idle'" class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-          </button>
+            <!-- Copy button -->
+            <button
+              class="copy-message-btn p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+              :title="t('chat.copyMessage')"
+              @click.stop="handleCopyMessage"
+            >
+              <svg v-if="copyState === 'idle'" class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <svg v-else class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+            <!-- TTS Play button -->
+            <button
+              class="tts-btn p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+              :class="{ 'animate-pulse': isSpeaking }"
+              :title="isSpeaking ? t('chat.stopTTS') : t('chat.playTTS')"
+              @click.stop="handlePlayTTS"
+            >
+              <svg v-if="isSpeaking" class="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+              <svg v-else class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+            </button>
+          </div>
 
           <!-- Render with typeless cards embedded in single bubble -->
           <div

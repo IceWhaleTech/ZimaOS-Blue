@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,12 +32,33 @@ type TunnelStatus struct {
 	RenewedCount  int       `json:"renewed_count"`
 }
 
+// NgrokStatus represents ngrok installation status (from PATH).
+type NgrokStatus struct {
+	Installed bool   `json:"installed"`
+	Version   string `json:"version,omitempty"`
+	Path      string `json:"path,omitempty"`
+}
+
+// GetNgrokStatus returns ngrok installation status by checking PATH.
+func GetNgrokStatus(ctx context.Context) (*NgrokStatus, error) {
+	path, err := exec.LookPath("ngrok")
+	if err != nil {
+		return &NgrokStatus{Installed: false}, nil
+	}
+	cmd := exec.CommandContext(ctx, path, "version")
+	output, err := cmd.Output()
+	if err != nil {
+		return &NgrokStatus{Installed: true, Path: path}, nil
+	}
+	version := strings.TrimSpace(string(output))
+	return &NgrokStatus{Installed: true, Version: version, Path: path}, nil
+}
+
 // TunnelManager manages ngrok tunnel lifecycle.
 type TunnelManager struct {
-	downloadManager *DownloadManager
-	repository      *Repository
-	port            int
-	authtoken       string
+	repository *Repository
+	port       int
+	authtoken  string
 
 	mu           sync.RWMutex
 	running      bool
@@ -55,18 +76,15 @@ type TunnelManager struct {
 	OnError     func(err error)
 }
 
-// NewTunnelManager creates a new tunnel manager.
-func NewTunnelManager(dm *DownloadManager) *TunnelManager {
-	return &TunnelManager{
-		downloadManager: dm,
-	}
+// NewTunnelManager creates a new tunnel manager (ngrok must be in PATH).
+func NewTunnelManager() *TunnelManager {
+	return &TunnelManager{}
 }
 
 // NewTunnelManagerWithRepo creates a new tunnel manager with repository.
-func NewTunnelManagerWithRepo(dm *DownloadManager, repo *Repository) *TunnelManager {
+func NewTunnelManagerWithRepo(repo *Repository) *TunnelManager {
 	return &TunnelManager{
-		downloadManager: dm,
-		repository:      repo,
+		repository: repo,
 	}
 }
 
@@ -79,15 +97,10 @@ func (tm *TunnelManager) Start(ctx context.Context, port int, authtoken string) 
 	}
 	tm.mu.Unlock()
 
-	// Check if ngrok is installed
-	ngrokPath := tm.downloadManager.GetNgrokPath()
-	if _, err := os.Stat(ngrokPath); os.IsNotExist(err) {
-		// Also check system path
-		systemPath, err := exec.LookPath("ngrok")
-		if err != nil {
-			return ErrNgrokNotInstalled
-		}
-		ngrokPath = systemPath
+	// Check if ngrok is in PATH
+	ngrokPath, err := exec.LookPath("ngrok")
+	if err != nil {
+		return ErrNgrokNotInstalled
 	}
 
 	// Try to add firewall exception (Windows only, requires admin)

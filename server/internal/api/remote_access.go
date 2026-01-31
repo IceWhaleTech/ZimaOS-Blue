@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,25 +13,22 @@ import (
 
 // RemoteAccessHandler handles remote access API requests.
 type RemoteAccessHandler struct {
-	downloadManager *ngrok.DownloadManager
-	tunnelManager   *ngrok.TunnelManager
-	repository      *ngrok.Repository
+	tunnelManager *ngrok.TunnelManager
+	repository    *ngrok.Repository
 }
 
 // NewRemoteAccessHandler creates a new remote access handler.
-func NewRemoteAccessHandler(dm *ngrok.DownloadManager, tm *ngrok.TunnelManager) *RemoteAccessHandler {
+func NewRemoteAccessHandler(tm *ngrok.TunnelManager) *RemoteAccessHandler {
 	return &RemoteAccessHandler{
-		downloadManager: dm,
-		tunnelManager:   tm,
+		tunnelManager: tm,
 	}
 }
 
 // NewRemoteAccessHandlerWithRepo creates a new remote access handler with repository.
-func NewRemoteAccessHandlerWithRepo(dm *ngrok.DownloadManager, tm *ngrok.TunnelManager, repo *ngrok.Repository) *RemoteAccessHandler {
+func NewRemoteAccessHandlerWithRepo(tm *ngrok.TunnelManager, repo *ngrok.Repository) *RemoteAccessHandler {
 	return &RemoteAccessHandler{
-		downloadManager: dm,
-		tunnelManager:   tm,
-		repository:      repo,
+		tunnelManager: tm,
+		repository:    repo,
 	}
 }
 
@@ -40,11 +36,7 @@ func NewRemoteAccessHandlerWithRepo(dm *ngrok.DownloadManager, tm *ngrok.TunnelM
 func (h *RemoteAccessHandler) RegisterRoutes(e *echo.Echo) {
 	g := e.Group("/api/v1/remote-access")
 
-	// Ngrok download endpoints
 	g.GET("/ngrok/status", h.GetNgrokStatus)
-	g.POST("/ngrok/download", h.StartNgrokDownload)
-	g.GET("/ngrok/download/progress", h.GetNgrokDownloadProgress)
-	g.POST("/ngrok/download/cancel", h.CancelNgrokDownload)
 
 	// Tunnel endpoints
 	g.POST("/start", h.StartRemoteAccess)
@@ -61,54 +53,16 @@ func (h *RemoteAccessHandler) RegisterRoutes(e *echo.Echo) {
 	g.GET("/diagnostics", h.GetDiagnostics)
 }
 
-// GetNgrokStatus returns the ngrok installation status.
+// GetNgrokStatus returns the ngrok installation status (from PATH).
 func (h *RemoteAccessHandler) GetNgrokStatus(c echo.Context) error {
-	status, err := h.downloadManager.GetStatus(c.Request().Context())
+	status, err := ngrok.GetNgrokStatus(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
 			"error":   err.Error(),
 		})
 	}
-
 	return c.JSON(http.StatusOK, status)
-}
-
-// StartNgrokDownload starts the ngrok download.
-func (h *RemoteAccessHandler) StartNgrokDownload(c echo.Context) error {
-	if h.downloadManager.IsDownloading() {
-		return c.JSON(http.StatusConflict, map[string]interface{}{
-			"success": false,
-			"error":   "Download already in progress",
-		})
-	}
-
-	// Start download in background with a new context
-	// Note: We use context.Background() because the request context will be cancelled
-	// when the HTTP response is sent, which would cancel the download immediately
-	go func() {
-		h.downloadManager.Download(context.Background())
-	}()
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Download started",
-	})
-}
-
-// GetNgrokDownloadProgress returns the current download progress.
-func (h *RemoteAccessHandler) GetNgrokDownloadProgress(c echo.Context) error {
-	progress := h.downloadManager.GetProgress()
-	return c.JSON(http.StatusOK, progress)
-}
-
-// CancelNgrokDownload cancels the current download.
-func (h *RemoteAccessHandler) CancelNgrokDownload(c echo.Context) error {
-	h.downloadManager.Cancel()
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Download cancelled",
-	})
 }
 
 // StartRemoteAccessRequest represents the start remote access request.
@@ -146,10 +100,9 @@ func (h *RemoteAccessHandler) StartRemoteAccess(c echo.Context) error {
 	if err := h.tunnelManager.Start(c.Request().Context(), req.Port, req.Authtoken); err != nil {
 		if err == ngrok.ErrNgrokNotInstalled {
 			return c.JSON(http.StatusPreconditionFailed, map[string]interface{}{
-				"success":       false,
-				"error":         "ngrok is not installed",
-				"error_code":    "NGROK_NOT_INSTALLED",
-				"action":        "Please download ngrok first using POST /api/v1/remote-access/ngrok/download",
+				"success":    false,
+				"error":      "ngrok is not installed",
+				"error_code": "NGROK_NOT_INSTALLED",
 			})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
@@ -181,8 +134,8 @@ func (h *RemoteAccessHandler) StopRemoteAccess(c echo.Context) error {
 
 // GetRemoteAccessStatus returns the current remote access status.
 func (h *RemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
-	// Get ngrok installation status
-	ngrokStatus, _ := h.downloadManager.GetStatus(c.Request().Context())
+	// Get ngrok installation status (from PATH)
+	ngrokStatus, _ := ngrok.GetNgrokStatus(c.Request().Context())
 
 	// Get tunnel status from memory
 	tunnelStatus := h.tunnelManager.GetStatus()
@@ -377,8 +330,8 @@ func (h *RemoteAccessHandler) GetRemoteAccessLogs(c echo.Context) error {
 func (h *RemoteAccessHandler) GetDiagnostics(c echo.Context) error {
 	diagnostics := make(map[string]interface{})
 
-	// Check ngrok installation
-	ngrokStatus, _ := h.downloadManager.GetStatus(c.Request().Context())
+	// Check ngrok installation (from PATH)
+	ngrokStatus, _ := ngrok.GetNgrokStatus(c.Request().Context())
 	diagnostics["ngrok_installed"] = ngrokStatus.Installed
 	diagnostics["ngrok_path"] = ngrokStatus.Path
 	diagnostics["ngrok_version"] = ngrokStatus.Version
@@ -423,7 +376,7 @@ func (h *RemoteAccessHandler) GetDiagnostics(c echo.Context) error {
 	// Troubleshooting hints
 	hints := make([]string, 0)
 	if !ngrokStatus.Installed {
-		hints = append(hints, "Ngrok is not installed. Please download it first.")
+		hints = append(hints, "Ngrok is not installed. Please install ngrok and ensure it is in PATH.")
 	}
 	if ngrokStatus.Installed && !ngrok.CheckFirewallException() {
 		hints = append(hints, "Windows Firewall exception not found. You may need to run as administrator or manually add firewall rule.")

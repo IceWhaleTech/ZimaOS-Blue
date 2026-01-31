@@ -2,6 +2,7 @@ package ngrok
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"time"
@@ -14,7 +15,11 @@ import (
 type RemoteAccessConfig struct {
 	ID                    string    `json:"id"`
 	Enabled               bool      `json:"enabled"`
+	TunnelSubdomain       string    `json:"tunnel_subdomain,omitempty"`
 	NgrokAuthtoken        string    `json:"ngrok_authtoken,omitempty"`
+	NgrokDomain           string    `json:"ngrok_domain,omitempty"`
+	CloudflareToken       string    `json:"cloudflare_token,omitempty"`
+	DefaultProvider       string    `json:"default_provider,omitempty"`
 	NotificationEmail     string    `json:"notification_email,omitempty"`
 	NotifyOnURLChange     bool      `json:"notify_on_url_change"`
 	NotifyOnExpiryWarning bool      `json:"notify_on_expiry_warning"`
@@ -79,6 +84,8 @@ func (r *Repository) migrate() error {
 			id TEXT PRIMARY KEY DEFAULT 'default',
 			enabled BOOLEAN DEFAULT FALSE,
 			ngrok_authtoken TEXT,
+			cloudflare_token TEXT,
+			default_provider TEXT,
 			notification_email TEXT,
 			notify_on_url_change BOOLEAN DEFAULT TRUE,
 			notify_on_expiry_warning BOOLEAN DEFAULT FALSE,
@@ -115,7 +122,109 @@ func (r *Repository) migrate() error {
 		}
 	}
 
+	// Add new columns if they don't exist (for existing databases)
+	alterQueries := []string{
+		`ALTER TABLE remote_access_config ADD COLUMN cloudflare_token TEXT`,
+		`ALTER TABLE remote_access_config ADD COLUMN default_provider TEXT`,
+		`ALTER TABLE remote_access_config ADD COLUMN tunnel_subdomain TEXT`,
+		`ALTER TABLE remote_access_config ADD COLUMN ngrok_domain TEXT`,
+	}
+
+	for _, query := range alterQueries {
+		// Ignore errors for columns that already exist
+		r.db.Exec(query)
+	}
+
+	// Initialize tunnel_subdomain if not set
+	if err := r.initializeTunnelSubdomain(context.Background()); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// Base58 alphabet (excludes 0, O, I, l to avoid confusion).
+const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+// generateTunnelSubdomain generates a random subdomain like "echo-" + 8 base58 chars.
+func generateTunnelSubdomain() string {
+	const n = 8
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback: fill with time-derived bytes so output is still non-deterministic
+		for i := range b {
+			b[i] = byte((int(time.Now().UnixNano()) + i) % 256)
+		}
+	}
+	for i := range b {
+		b[i] = base58Alphabet[int(b[i])%len(base58Alphabet)]
+	}
+	return "echo-" + string(b)
+}
+
+// initializeTunnelSubdomain ensures a tunnel subdomain exists.
+func (r *Repository) initializeTunnelSubdomain(ctx context.Context) error {
+	// Check if subdomain already exists
+	var subdomain sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		SELECT tunnel_subdomain FROM remote_access_config WHERE id = 'default'
+	`).Scan(&subdomain)
+
+	if err == sql.ErrNoRows {
+		// No config exists, create one with subdomain
+		_, err = r.db.ExecContext(ctx, `
+			INSERT INTO remote_access_config (id, tunnel_subdomain) VALUES ('default', ?)
+		`, generateTunnelSubdomain())
+		return err
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// If subdomain is empty, generate one
+	if !subdomain.Valid || subdomain.String == "" {
+		_, err = r.db.ExecContext(ctx, `
+			UPDATE remote_access_config SET tunnel_subdomain = ? WHERE id = 'default'
+		`, generateTunnelSubdomain())
+		return err
+	}
+
+	return nil
+}
+
+// EnsureTunnelSubdomain returns the tunnel subdomain, generating and persisting one if empty.
+// Call this when starting auto (Serveo) so we always pass echo-xxx.
+func (r *Repository) EnsureTunnelSubdomain(ctx context.Context) (string, error) {
+	var subdomain sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		SELECT tunnel_subdomain FROM remote_access_config WHERE id = 'default'
+	`).Scan(&subdomain)
+
+	if err == sql.ErrNoRows {
+		sub := generateTunnelSubdomain()
+		_, err = r.db.ExecContext(ctx, `
+			INSERT INTO remote_access_config (id, tunnel_subdomain) VALUES ('default', ?)
+		`, sub)
+		if err != nil {
+			return "", err
+		}
+		return sub, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if subdomain.Valid && subdomain.String != "" {
+		return subdomain.String, nil
+	}
+	sub := generateTunnelSubdomain()
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE remote_access_config SET tunnel_subdomain = ? WHERE id = 'default'
+	`, sub)
+	if err != nil {
+		return "", err
+	}
+	return sub, nil
 }
 
 // GetConfig returns the remote access configuration.
@@ -123,26 +232,31 @@ func (r *Repository) GetConfig(ctx context.Context) (*RemoteAccessConfig, error)
 	config := &RemoteAccessConfig{
 		ID:                    "default",
 		Enabled:               false,
+		DefaultProvider:       "auto",
 		NotifyOnURLChange:     true,
 		NotifyOnExpiryWarning: false,
 		NotifyOnError:         true,
 	}
 
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, enabled, ngrok_authtoken, notification_email,
-		       notify_on_url_change, notify_on_expiry_warning, notify_on_error,
-		       created_at, updated_at
+		SELECT id, enabled, tunnel_subdomain, ngrok_authtoken, ngrok_domain, cloudflare_token, default_provider,
+		       notification_email, notify_on_url_change, notify_on_expiry_warning,
+		       notify_on_error, created_at, updated_at
 		FROM remote_access_config
 		WHERE id = 'default'
 	`)
 
-	var ngrokAuthtoken, notificationEmail sql.NullString
+	var tunnelSubdomain, ngrokAuthtoken, ngrokDomain, cloudflareToken, defaultProvider, notificationEmail sql.NullString
 	var createdAt, updatedAt sql.NullTime
 
 	err := row.Scan(
 		&config.ID,
 		&config.Enabled,
+		&tunnelSubdomain,
 		&ngrokAuthtoken,
+		&ngrokDomain,
+		&cloudflareToken,
+		&defaultProvider,
 		&notificationEmail,
 		&config.NotifyOnURLChange,
 		&config.NotifyOnExpiryWarning,
@@ -160,8 +274,20 @@ func (r *Repository) GetConfig(ctx context.Context) (*RemoteAccessConfig, error)
 		return nil, err
 	}
 
+	if tunnelSubdomain.Valid {
+		config.TunnelSubdomain = tunnelSubdomain.String
+	}
 	if ngrokAuthtoken.Valid {
 		config.NgrokAuthtoken = ngrokAuthtoken.String
+	}
+	if ngrokDomain.Valid {
+		config.NgrokDomain = ngrokDomain.String
+	}
+	if cloudflareToken.Valid {
+		config.CloudflareToken = cloudflareToken.String
+	}
+	if defaultProvider.Valid && defaultProvider.String != "" {
+		config.DefaultProvider = defaultProvider.String
 	}
 	if notificationEmail.Valid {
 		config.NotificationEmail = notificationEmail.String
@@ -180,13 +306,16 @@ func (r *Repository) GetConfig(ctx context.Context) (*RemoteAccessConfig, error)
 func (r *Repository) SaveConfig(ctx context.Context, config *RemoteAccessConfig) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO remote_access_config (
-			id, enabled, ngrok_authtoken, notification_email,
-			notify_on_url_change, notify_on_expiry_warning, notify_on_error,
-			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			id, enabled, ngrok_authtoken, ngrok_domain, cloudflare_token, default_provider,
+			notification_email, notify_on_url_change, notify_on_expiry_warning,
+			notify_on_error, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
 			ngrok_authtoken = excluded.ngrok_authtoken,
+			ngrok_domain = excluded.ngrok_domain,
+			cloudflare_token = excluded.cloudflare_token,
+			default_provider = excluded.default_provider,
 			notification_email = excluded.notification_email,
 			notify_on_url_change = excluded.notify_on_url_change,
 			notify_on_expiry_warning = excluded.notify_on_expiry_warning,
@@ -196,6 +325,9 @@ func (r *Repository) SaveConfig(ctx context.Context, config *RemoteAccessConfig)
 		"default",
 		config.Enabled,
 		config.NgrokAuthtoken,
+		config.NgrokDomain,
+		config.CloudflareToken,
+		config.DefaultProvider,
 		config.NotificationEmail,
 		config.NotifyOnURLChange,
 		config.NotifyOnExpiryWarning,
@@ -331,6 +463,51 @@ func (r *Repository) GetLogs(ctx context.Context, limit, offset int) ([]*RemoteA
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, session_id, event_type, message, metadata, created_at
 		FROM remote_access_logs
+		ORDER BY created_at DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []*RemoteAccessLog
+	for rows.Next() {
+		log := &RemoteAccessLog{}
+		var sessionID, metadataStr sql.NullString
+
+		err := rows.Scan(
+			&log.ID,
+			&sessionID,
+			&log.EventType,
+			&log.Message,
+			&metadataStr,
+			&log.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if sessionID.Valid {
+			log.SessionID = sessionID.String
+		}
+		if metadataStr.Valid && metadataStr.String != "" {
+			json.Unmarshal([]byte(metadataStr.String), &log.Metadata)
+		}
+
+		logs = append(logs, log)
+	}
+
+	return logs, nil
+}
+
+// GetErrorLogs returns only error log entries with pagination.
+func (r *Repository) GetErrorLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, session_id, event_type, message, metadata, created_at
+		FROM remote_access_logs
+		WHERE event_type = 'error'
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`, limit, offset)

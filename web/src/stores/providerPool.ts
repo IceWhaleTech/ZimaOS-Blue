@@ -255,6 +255,20 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
+  async function updateAllowedModels(id: string, allowedModels: string[]) {
+    try {
+      const response = await providerPoolApi.updateAllowedModels(id, allowedModels)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.allowed_models = response.data.allowed_models
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update allowed models'
+      throw e
+    }
+  }
+
   async function updateProviderIcon(id: string, icon: string) {
     try {
       const response = await providerPoolApi.updateProviderIcon(id, icon)
@@ -518,6 +532,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     testProvider,
     updateModelParams,
     detectCapabilities,
+    updateAllowedModels,
     updateProviderIcon,
     deleteProviderIcon,
     addAPIKey,

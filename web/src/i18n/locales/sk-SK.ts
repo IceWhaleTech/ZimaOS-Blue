@@ -179,7 +179,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Automatizácia prehliadača',
     newTask: 'Nová úloha',
-    createTask: 'Vytvoriť úlohu',
     stats: {
       totalTasks: 'Celkom úloh',
       running: 'Spustené',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Spravovať používateľov a systémové nastavenia',
     benefit3: 'Zabezpečené trvalé uloženie údajov',
     upgradeFailed: 'Nepodarilo sa vytvoriť účet správcu',
+    passwordCheck: {
+      length: 'Aspoň 8 znakov',
+      uppercase: 'Jedno veľké písmeno',
+      lowercase: 'Jedno malé písmeno',
+      number: 'Jedna číslica',
+      special: 'Jeden špeciálny znak (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Vitajte v Echo!',

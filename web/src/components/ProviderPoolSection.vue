@@ -15,6 +15,7 @@ const showAddModal = ref(false)
 const showKeyModal = ref(false)
 const showPricingModal = ref(false)
 const showParamsModal = ref(false)
+const showAllowedModelsModal = ref(false)
 const testingProvider = ref<string | null>(null)
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
@@ -57,6 +58,12 @@ const paramsForm = ref({
   maxTokens: undefined as number | undefined,
   topP: undefined as number | undefined,
 })
+
+// Allowed models form
+const allowedModelsForm = ref<string[]>([])
+const allAvailableModels = ref<Model[]>([])
+const loadingAllModels = ref(false)
+const savingAllowedModels = ref(false)
 
 
 // Computed
@@ -474,6 +481,69 @@ async function detectCapabilities() {
   }
 }
 
+// Allowed models methods
+async function openAllowedModelsModal() {
+  const provider = currentTabSelectedProvider.value
+  if (!provider) return
+
+  loadingAllModels.value = true
+  showAllowedModelsModal.value = true
+
+  try {
+    // Fetch all models from API (unfiltered) by refreshing
+    const result = await store.refreshModels(provider.id)
+    if (result.success) {
+      allAvailableModels.value = result.models || []
+    } else {
+      // Fall back to currently displayed models
+      allAvailableModels.value = selectedProviderModels.value
+    }
+
+    // Initialize form with current allowed models
+    allowedModelsForm.value = provider.allowed_models ? [...provider.allowed_models] : []
+  } catch (e) {
+    console.error('Failed to load models:', e)
+    allAvailableModels.value = selectedProviderModels.value
+    allowedModelsForm.value = provider.allowed_models ? [...provider.allowed_models] : []
+  } finally {
+    loadingAllModels.value = false
+  }
+}
+
+function toggleModelInAllowedList(modelId: string) {
+  const index = allowedModelsForm.value.indexOf(modelId)
+  if (index === -1) {
+    allowedModelsForm.value.push(modelId)
+  } else {
+    allowedModelsForm.value.splice(index, 1)
+  }
+}
+
+function selectAllModels() {
+  allowedModelsForm.value = allAvailableModels.value.map(m => m.id)
+}
+
+function clearAllModels() {
+  allowedModelsForm.value = []
+}
+
+async function saveAllowedModels() {
+  const provider = currentTabSelectedProvider.value
+  if (!provider) return
+
+  savingAllowedModels.value = true
+  try {
+    await store.updateAllowedModels(provider.id, allowedModelsForm.value)
+    // Refresh models to show filtered list
+    await store.fetchModels(provider.id)
+    showAllowedModelsModal.value = false
+  } catch (e) {
+    console.error('Failed to save allowed models:', e)
+  } finally {
+    savingAllowedModels.value = false
+  }
+}
+
 function openIconUpload() {
   iconInput.value?.click()
 }
@@ -845,7 +915,7 @@ onMounted(() => {
                   <span v-if="key.label" class="ml-2 text-gray-500">({{ key.label }})</span>
                 </div>
                 <div class="flex items-center gap-3">
-                  <span class="text-gray-500">
+                  <span v-if="key.usage_count" class="text-gray-500">
                     {{ t('providerPool.usageCount') }}: {{ key.usage_count }}
                   </span>
                   <button
@@ -868,7 +938,20 @@ onMounted(() => {
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.models') }}
                 <span class="text-gray-500 text-xs ml-1">({{ selectedProviderModels.length }})</span>
+                <span
+                  v-if="currentTabSelectedProvider?.allowed_models?.length"
+                  class="text-accent text-xs ml-1"
+                  :title="t('providerPool.filteredModels')"
+                >
+                  ({{ t('providerPool.filtered') }})
+                </span>
               </h3>
+              <button
+                class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs"
+                @click="openAllowedModelsModal"
+              >
+                {{ t('providerPool.configureModels') }}
+              </button>
             </div>
             <div class="space-y-1 max-h-64 overflow-y-auto">
               <div
@@ -1199,6 +1282,88 @@ onMounted(() => {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Allowed Models Modal -->
+    <div v-if="showAllowedModelsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ t('providerPool.configureAllowedModels') }}</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ t('providerPool.allowedModelsHint') }}</p>
+
+        <!-- Loading state -->
+        <div v-if="loadingAllModels" class="flex-1 flex items-center justify-center">
+          <div class="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full"></div>
+        </div>
+
+        <!-- Model list -->
+        <div v-else class="flex-1 overflow-hidden flex flex-col">
+          <!-- Quick actions -->
+          <div class="flex gap-2 mb-3">
+            <button
+              type="button"
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded"
+              @click="selectAllModels"
+            >
+              {{ t('providerPool.selectAll') }}
+            </button>
+            <button
+              type="button"
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded"
+              @click="clearAllModels"
+            >
+              {{ t('providerPool.clearAll') }}
+            </button>
+            <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto self-center">
+              {{ allowedModelsForm.length === 0 ? t('providerPool.allModelsEnabled') : t('providerPool.selectedCount', { count: allowedModelsForm.length }) }}
+            </span>
+          </div>
+
+          <!-- Model checkboxes -->
+          <div class="flex-1 overflow-y-auto space-y-1 border border-gray-200 dark:border-slate-600 rounded-lg p-2">
+            <label
+              v-for="model in allAvailableModels"
+              :key="model.id"
+              class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                :checked="allowedModelsForm.length === 0 || allowedModelsForm.includes(model.id)"
+                class="w-4 h-4 text-accent bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-accent"
+                @change="toggleModelInAllowedList(model.id)"
+              />
+              <div class="flex-1 min-w-0">
+                <span class="text-sm text-gray-900 dark:text-white">{{ model.display_name || model.name }}</span>
+                <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
+              </div>
+              <span v-if="model.context_window" class="text-xs text-gray-400">
+                {{ (model.context_window / 1000).toFixed(0) }}K
+              </span>
+            </label>
+            <div v-if="allAvailableModels.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
+              {{ t('providerPool.noModelsAvailable') }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-slate-600">
+          <button
+            type="button"
+            class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
+            @click="showAllowedModelsModal = false"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            :disabled="savingAllowedModels"
+            class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg disabled:opacity-50"
+            @click="saveAllowedModels"
+          >
+            {{ savingAllowedModels ? t('common.saving') : t('common.save') }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi, getProviderDisplayName } from '@/api/extauth'
 import type { CreateApiKeyRequest } from '@/api/auth'
@@ -401,6 +402,46 @@ function getScopeLabel(scope: string): string {
 
         <div v-else class="text-gray-500 dark:text-slate-400 text-center py-4">{{ $t('profile.loadingUserInformation') }}</div>
       </div>
+    </section>
+
+    <!-- User Management Link (Admin Only) -->
+    <section v-if="authStore.isAdmin" class="mb-6 sm:mb-8">
+      <RouterLink
+        to="/users"
+        class="glass-card p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group"
+      >
+        <div class="flex items-center gap-3 sm:gap-4">
+          <div class="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center flex-shrink-0">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 text-purple-600 dark:text-purple-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-gray-900 dark:text-white font-medium">{{ $t('profile.userManagement') }}</h3>
+            <p class="text-sm text-gray-500 dark:text-slate-400">{{ $t('profile.userManagementDesc') }}</p>
+          </div>
+        </div>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5 text-gray-400 dark:text-slate-500 group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </RouterLink>
     </section>
 
     <!-- MFA Settings Section -->

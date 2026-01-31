@@ -117,6 +117,24 @@ func (w *MetricsWriter) loadPersistedData() {
 	if err == nil && len(modelStats) > 0 {
 		w.callCollector.LoadModelStats(modelStats)
 	}
+
+	// Load latency samples for percentile calculations
+	latencySamples, err := w.sqliteStore.LoadLatencySamples(ctx)
+	if err == nil && len(latencySamples) > 0 {
+		exports := make([]LatencySampleExport, len(latencySamples))
+		for i, sample := range latencySamples {
+			exports[i] = LatencySampleExport{
+				Model:       sample.Model,
+				SampleType:  sample.SampleType,
+				Samples:     sample.Samples,
+				TotalValue:  sample.TotalValue,
+				MinValue:    sample.MinValue,
+				MaxValue:    sample.MaxValue,
+				SampleCount: sample.SampleCount,
+			}
+		}
+		w.latencyTracker.LoadLatencySamples(exports)
+	}
 }
 
 // persistData saves metrics data to SQLite.
@@ -143,6 +161,24 @@ func (w *MetricsWriter) persistData() {
 	modelStats := w.GetModelStats()
 	if len(modelStats) > 0 {
 		w.sqliteStore.SaveModelMetrics(ctx, modelStats)
+	}
+
+	// Save latency samples for percentile calculations
+	latencyExports := w.latencyTracker.ExportLatencySamples()
+	if len(latencyExports) > 0 {
+		samples := make([]LatencySampleData, len(latencyExports))
+		for i, exp := range latencyExports {
+			samples[i] = LatencySampleData{
+				Model:       exp.Model,
+				SampleType:  exp.SampleType,
+				Samples:     exp.Samples,
+				TotalValue:  exp.TotalValue,
+				MinValue:    exp.MinValue,
+				MaxValue:    exp.MaxValue,
+				SampleCount: exp.SampleCount,
+			}
+		}
+		w.sqliteStore.SaveLatencySamples(ctx, samples)
 	}
 }
 

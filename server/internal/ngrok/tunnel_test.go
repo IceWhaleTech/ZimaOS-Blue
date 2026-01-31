@@ -2,8 +2,6 @@ package ngrok
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -21,21 +19,15 @@ func TestTunnelStatus_Initial(t *testing.T) {
 }
 
 func TestTunnelManager_NewTunnelManager(t *testing.T) {
-	dm := NewDownloadManager(filepath.Join(os.TempDir(), "ngrok-test"))
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 
 	if tm == nil {
 		t.Fatal("NewTunnelManager() returned nil")
 	}
-
-	if tm.downloadManager != dm {
-		t.Error("downloadManager not set correctly")
-	}
 }
 
 func TestTunnelManager_IsRunning_Initial(t *testing.T) {
-	dm := NewDownloadManager(filepath.Join(os.TempDir(), "ngrok-test"))
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 
 	if tm.IsRunning() {
 		t.Error("IsRunning() should be false initially")
@@ -43,8 +35,7 @@ func TestTunnelManager_IsRunning_Initial(t *testing.T) {
 }
 
 func TestTunnelManager_GetStatus_NotRunning(t *testing.T) {
-	dm := NewDownloadManager(filepath.Join(os.TempDir(), "ngrok-test"))
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 
 	status := tm.GetStatus()
 
@@ -58,13 +49,7 @@ func TestTunnelManager_GetStatus_NotRunning(t *testing.T) {
 }
 
 func TestTunnelManager_Start_NgrokNotInstalled(t *testing.T) {
-	// Use a temp directory without ngrok
-	tempDir := filepath.Join(os.TempDir(), "ngrok-test-empty-tunnel")
-	os.MkdirAll(tempDir, 0755)
-	defer os.RemoveAll(tempDir)
-
-	dm := NewDownloadManager(tempDir)
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -80,8 +65,7 @@ func TestTunnelManager_Start_NgrokNotInstalled(t *testing.T) {
 }
 
 func TestTunnelManager_Stop_NotRunning(t *testing.T) {
-	dm := NewDownloadManager(filepath.Join(os.TempDir(), "ngrok-test"))
-	tm := NewTunnelManager(dm)
+	tm := NewTunnelManager()
 
 	// Stop when not running should not error
 	err := tm.Stop()

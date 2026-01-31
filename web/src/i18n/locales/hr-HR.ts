@@ -179,7 +179,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Automatizacija preglednika',
     newTask: 'Novi zadatak',
-    createTask: 'Stvori zadatak',
     stats: {
       totalTasks: 'Ukupno zadataka',
       running: 'Pokrenuto',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Upravljanje korisnicima i postavkama sustava',
     benefit3: 'Sigurno trajno pohranjivanje podataka',
     upgradeFailed: 'Nije moguće stvoriti administratorski račun',
+    passwordCheck: {
+      length: 'Najmanje 8 znakova',
+      uppercase: 'Jedno veliko slovo',
+      lowercase: 'Jedno malo slovo',
+      number: 'Jedna znamenka',
+      special: 'Jedan poseban znak (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Dobrodošli u Echo!',

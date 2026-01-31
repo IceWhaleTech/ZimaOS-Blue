@@ -103,6 +103,21 @@ func (s *SQLiteStore) initSchema() error {
 
 	-- Initialize global token usage row
 	INSERT OR IGNORE INTO token_usage (id) VALUES (1);
+
+	-- Latency samples for percentile calculations
+	CREATE TABLE IF NOT EXISTS latency_samples (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		model TEXT NOT NULL,
+		sample_type TEXT NOT NULL,
+		samples TEXT NOT NULL,
+		total_value REAL DEFAULT 0,
+		min_value REAL DEFAULT 0,
+		max_value REAL DEFAULT 0,
+		sample_count INTEGER DEFAULT 0,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_latency_samples_model_type ON latency_samples(model, sample_type);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -427,6 +442,98 @@ func (s *SQLiteStore) LoadModelTokenUsage(ctx context.Context) ([]ModelTokenUsag
 	}
 
 	return usages, nil
+}
+
+// LatencySampleData represents latency sample data for persistence.
+type LatencySampleData struct {
+	Model       string    `json:"model"`
+	SampleType  string    `json:"sample_type"` // "latency", "tps", "ttft", "decode"
+	Samples     []float64 `json:"samples"`
+	TotalValue  float64   `json:"total_value"`
+	MinValue    float64   `json:"min_value"`
+	MaxValue    float64   `json:"max_value"`
+	SampleCount int64     `json:"sample_count"`
+}
+
+// SaveLatencySamples saves latency samples to the database.
+func (s *SQLiteStore) SaveLatencySamples(ctx context.Context, samples []LatencySampleData) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO latency_samples (model, sample_type, samples, total_value, min_value, max_value, sample_count, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(model, sample_type) DO UPDATE SET
+			samples = excluded.samples,
+			total_value = excluded.total_value,
+			min_value = excluded.min_value,
+			max_value = excluded.max_value,
+			sample_count = excluded.sample_count,
+			updated_at = CURRENT_TIMESTAMP
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, sample := range samples {
+		samplesJSON, err := json.Marshal(sample.Samples)
+		if err != nil {
+			return err
+		}
+
+		_, err = stmt.ExecContext(ctx,
+			sample.Model, sample.SampleType, string(samplesJSON),
+			sample.TotalValue, sample.MinValue, sample.MaxValue, sample.SampleCount,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// LoadLatencySamples loads latency samples from the database.
+func (s *SQLiteStore) LoadLatencySamples(ctx context.Context) ([]LatencySampleData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT model, sample_type, samples, total_value, min_value, max_value, sample_count
+		FROM latency_samples
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var samples []LatencySampleData
+	for rows.Next() {
+		var sample LatencySampleData
+		var samplesJSON string
+		err := rows.Scan(
+			&sample.Model, &sample.SampleType, &samplesJSON,
+			&sample.TotalValue, &sample.MinValue, &sample.MaxValue, &sample.SampleCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(samplesJSON), &sample.Samples); err != nil {
+			return nil, err
+		}
+
+		samples = append(samples, sample)
+	}
+
+	return samples, nil
 }
 
 // Cleanup removes old metrics data.

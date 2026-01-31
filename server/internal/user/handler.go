@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
@@ -12,10 +13,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 )
 
+// PermissionService interface for permission operations
+type PermissionService interface {
+	GetEffectivePermissions(ctx context.Context, userID uuid.UUID) ([]string, error)
+	SetUserPermissions(ctx context.Context, userID uuid.UUID, permissions []string, grantedBy *string) error
+	InitializeUserPermissions(ctx context.Context, userID uuid.UUID, role string, grantedBy *string) error
+	DeleteUserPermissions(ctx context.Context, userID uuid.UUID) error
+}
+
 // Handler handles HTTP requests for user management.
 type Handler struct {
-	service    *Service
-	jwtService *auth.JWTService
+	service           *Service
+	jwtService        *auth.JWTService
+	permissionService PermissionService
 }
 
 // NewHandler creates a new user handler.
@@ -26,6 +36,11 @@ func NewHandler(service *Service) *Handler {
 // SetJWTService sets the JWT service for token generation.
 func (h *Handler) SetJWTService(jwtService *auth.JWTService) {
 	h.jwtService = jwtService
+}
+
+// SetPermissionService sets the permission service.
+func (h *Handler) SetPermissionService(permissionService PermissionService) {
+	h.permissionService = permissionService
 }
 
 // RegisterRoutes registers the user routes.
@@ -45,6 +60,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	users.DELETE("/:id", h.DeleteUser)
 	users.POST("/:id/lock", h.LockUser)
 	users.POST("/:id/unlock", h.UnlockUser)
+	users.POST("/:id/reset-password", h.ResetPassword)
 
 	// Password routes
 	g.POST("/auth/password", h.ChangePassword)
@@ -207,11 +223,12 @@ func (h *Handler) GetCurrentUser(c echo.Context) error {
 	// Check if this is a preview user first
 	claims := auth.GetUserFromContext(c)
 	if claims != nil && claims.UserID == PreviewUserID {
-		// Return a synthetic preview user
+		// Return a synthetic preview user with admin role
+		// In preview mode, users should have full admin access
 		return c.JSON(http.StatusOK, &User{
 			ID:       uuid.Nil,
 			Username: claims.Username,
-			Role:     RoleUser,
+			Role:     RoleAdmin,
 			Status:   StatusActive,
 		})
 	}
@@ -402,6 +419,38 @@ func (h *Handler) ChangePassword(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "new password does not meet requirements")
 		default:
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to change password")
+		}
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+// ResetPassword handles admin resetting a user's password.
+func (h *Handler) ResetPassword(c echo.Context) error {
+	// Check if requester is admin
+	claims := auth.GetUserFromContext(c)
+	if claims == nil || claims.Role != string(RoleAdmin) {
+		return echo.NewHTTPError(http.StatusForbidden, "admin access required")
+	}
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid user ID")
+	}
+
+	var req ResetPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if err := h.service.ResetPassword(c.Request().Context(), id, req.NewPassword); err != nil {
+		switch err {
+		case ErrUserNotFound:
+			return echo.NewHTTPError(http.StatusNotFound, "user not found")
+		case ErrInvalidPassword:
+			return echo.NewHTTPError(http.StatusBadRequest, "password does not meet requirements")
+		default:
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to reset password")
 		}
 	}
 

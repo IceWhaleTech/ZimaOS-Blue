@@ -480,3 +480,199 @@ func (t *TimeBreakdownTracker) Reset() {
 	t.modelBreakdowns = make(map[string][]TimeBreakdown)
 	t.globalBreakdowns = make([]TimeBreakdown, 0, t.maxSamples)
 }
+
+// ExportLatencySamples exports all latency samples for persistence.
+func (t *LatencyTracker) ExportLatencySamples() []LatencySampleExport {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	var exports []LatencySampleExport
+
+	// Export global latency samples
+	if t.globalLatencies != nil && len(t.globalLatencies.samples) > 0 {
+		exports = append(exports, LatencySampleExport{
+			Model:       "_global",
+			SampleType:  "latency",
+			Samples:     append([]float64{}, t.globalLatencies.samples...),
+			TotalValue:  t.globalLatencies.totalMs,
+			MinValue:    t.globalLatencies.minMs,
+			MaxValue:    t.globalLatencies.maxMs,
+			SampleCount: t.globalLatencies.sampleCount,
+		})
+	}
+
+	// Export model latency samples
+	for model, acc := range t.modelLatencies {
+		if len(acc.samples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:       model,
+				SampleType:  "latency",
+				Samples:     append([]float64{}, acc.samples...),
+				TotalValue:  acc.totalMs,
+				MinValue:    acc.minMs,
+				MaxValue:    acc.maxMs,
+				SampleCount: acc.sampleCount,
+			})
+		}
+	}
+
+	// Export global speed samples
+	if t.globalSpeeds != nil {
+		if len(t.globalSpeeds.tpsSamples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:      "_global",
+				SampleType: "tps",
+				Samples:    append([]float64{}, t.globalSpeeds.tpsSamples...),
+				TotalValue: t.globalSpeeds.totalTPS,
+				MaxValue:   t.globalSpeeds.maxTPS,
+			})
+		}
+		if len(t.globalSpeeds.ttftSamples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:      "_global",
+				SampleType: "ttft",
+				Samples:    append([]float64{}, t.globalSpeeds.ttftSamples...),
+				TotalValue: t.globalSpeeds.totalTTFT,
+			})
+		}
+		if len(t.globalSpeeds.decodeSamples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:      "_global",
+				SampleType: "decode",
+				Samples:    append([]float64{}, t.globalSpeeds.decodeSamples...),
+				TotalValue: t.globalSpeeds.totalDecode,
+			})
+		}
+	}
+
+	// Export model speed samples
+	for model, acc := range t.modelSpeeds {
+		if len(acc.tpsSamples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:      model,
+				SampleType: "tps",
+				Samples:    append([]float64{}, acc.tpsSamples...),
+				TotalValue: acc.totalTPS,
+				MaxValue:   acc.maxTPS,
+			})
+		}
+		if len(acc.ttftSamples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:      model,
+				SampleType: "ttft",
+				Samples:    append([]float64{}, acc.ttftSamples...),
+				TotalValue: acc.totalTTFT,
+			})
+		}
+		if len(acc.decodeSamples) > 0 {
+			exports = append(exports, LatencySampleExport{
+				Model:      model,
+				SampleType: "decode",
+				Samples:    append([]float64{}, acc.decodeSamples...),
+				TotalValue: acc.totalDecode,
+			})
+		}
+	}
+
+	return exports
+}
+
+// LatencySampleExport represents exported latency sample data.
+type LatencySampleExport struct {
+	Model       string
+	SampleType  string // "latency", "tps", "ttft", "decode"
+	Samples     []float64
+	TotalValue  float64
+	MinValue    float64
+	MaxValue    float64
+	SampleCount int64
+}
+
+// LoadLatencySamples loads latency samples from persisted data.
+func (t *LatencyTracker) LoadLatencySamples(exports []LatencySampleExport) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, exp := range exports {
+		switch exp.SampleType {
+		case "latency":
+			if exp.Model == "_global" {
+				t.globalLatencies.samples = append([]float64{}, exp.Samples...)
+				t.globalLatencies.totalMs = exp.TotalValue
+				t.globalLatencies.minMs = exp.MinValue
+				t.globalLatencies.maxMs = exp.MaxValue
+				t.globalLatencies.sampleCount = exp.SampleCount
+			} else {
+				acc, ok := t.modelLatencies[exp.Model]
+				if !ok {
+					acc = newLatencyAccumulator(t.maxSamples)
+					t.modelLatencies[exp.Model] = acc
+				}
+				acc.samples = append([]float64{}, exp.Samples...)
+				acc.totalMs = exp.TotalValue
+				acc.minMs = exp.MinValue
+				acc.maxMs = exp.MaxValue
+				acc.sampleCount = exp.SampleCount
+			}
+		case "tps":
+			if exp.Model == "_global" {
+				t.globalSpeeds.tpsSamples = append([]float64{}, exp.Samples...)
+				t.globalSpeeds.totalTPS = exp.TotalValue
+				t.globalSpeeds.maxTPS = exp.MaxValue
+				if len(exp.Samples) > 0 {
+					t.globalSpeeds.currentTPS = exp.Samples[len(exp.Samples)-1]
+				}
+			} else {
+				acc, ok := t.modelSpeeds[exp.Model]
+				if !ok {
+					acc = newSpeedAccumulator(t.maxSamples)
+					t.modelSpeeds[exp.Model] = acc
+				}
+				acc.tpsSamples = append([]float64{}, exp.Samples...)
+				acc.totalTPS = exp.TotalValue
+				acc.maxTPS = exp.MaxValue
+				if len(exp.Samples) > 0 {
+					acc.currentTPS = exp.Samples[len(exp.Samples)-1]
+				}
+			}
+		case "ttft":
+			if exp.Model == "_global" {
+				t.globalSpeeds.ttftSamples = append([]float64{}, exp.Samples...)
+				t.globalSpeeds.totalTTFT = exp.TotalValue
+				if len(exp.Samples) > 0 {
+					t.globalSpeeds.currentTTFT = exp.Samples[len(exp.Samples)-1]
+				}
+			} else {
+				acc, ok := t.modelSpeeds[exp.Model]
+				if !ok {
+					acc = newSpeedAccumulator(t.maxSamples)
+					t.modelSpeeds[exp.Model] = acc
+				}
+				acc.ttftSamples = append([]float64{}, exp.Samples...)
+				acc.totalTTFT = exp.TotalValue
+				if len(exp.Samples) > 0 {
+					acc.currentTTFT = exp.Samples[len(exp.Samples)-1]
+				}
+			}
+		case "decode":
+			if exp.Model == "_global" {
+				t.globalSpeeds.decodeSamples = append([]float64{}, exp.Samples...)
+				t.globalSpeeds.totalDecode = exp.TotalValue
+				if len(exp.Samples) > 0 {
+					t.globalSpeeds.currentDecode = exp.Samples[len(exp.Samples)-1]
+				}
+			} else {
+				acc, ok := t.modelSpeeds[exp.Model]
+				if !ok {
+					acc = newSpeedAccumulator(t.maxSamples)
+					t.modelSpeeds[exp.Model] = acc
+				}
+				acc.decodeSamples = append([]float64{}, exp.Samples...)
+				acc.totalDecode = exp.TotalValue
+				if len(exp.Samples) > 0 {
+					acc.currentDecode = exp.Samples[len(exp.Samples)-1]
+				}
+			}
+		}
+	}
+}

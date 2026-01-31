@@ -179,7 +179,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Αυτοματοποίηση προγράμματος περιήγησης',
     newTask: 'Νέα εργασία',
-    createTask: 'Δημιουργία εργασίας',
     stats: {
       totalTasks: 'Σύνολο εργασιών',
       running: 'Εκτελείται',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Διαχείριση χρηστών και ρυθμίσεων συστήματος',
     benefit3: 'Ασφαλής μόνιμη αποθήκευση δεδομένων',
     upgradeFailed: 'Αποτυχία δημιουργίας λογαριασμού διαχειριστή',
+    passwordCheck: {
+      length: 'Τουλάχιστον 8 χαρακτήρες',
+      uppercase: 'Ένα κεφαλαίο γράμμα',
+      lowercase: 'Ένα πεζό γράμμα',
+      number: 'Ένας αριθμός',
+      special: 'Ένας ειδικός χαρακτήρας (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Καλώς ήρθατε στο Echo!',

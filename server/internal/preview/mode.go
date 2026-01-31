@@ -49,7 +49,7 @@ func (s *ModeService) GetSystemMode(ctx context.Context) (*SystemMode, error) {
 
 	if isPreview {
 		mode.Mode = "preview"
-		// In preview mode, most features are available except admin functions
+		// In preview mode, all features are available (user is treated as admin)
 		mode.Features = map[string]bool{
 			"chat":            true,
 			"attachment":      true,
@@ -58,8 +58,8 @@ func (s *ModeService) GetSystemMode(ctx context.Context) (*SystemMode, error) {
 			"voice_input":     true,
 			"provider_config": true,
 			"settings":        true,
-			"admin":           false,
-			"user_management": false,
+			"admin":           true,
+			"user_management": true,
 		}
 	} else {
 		mode.Mode = "normal"

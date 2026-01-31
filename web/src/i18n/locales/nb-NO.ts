@@ -179,7 +179,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Nettleserautomatisering',
     newTask: 'Ny oppgave',
-    createTask: 'Opprett oppgave',
     stats: {
       totalTasks: 'Totalt antall oppgaver',
       running: 'Kjører',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Administrer brukere og systeminnstillinger',
     benefit3: 'Sikker varig datalagring',
     upgradeFailed: 'Kunne ikke opprette administratorkonto',
+    passwordCheck: {
+      length: 'Minst 8 tegn',
+      uppercase: 'Én stor bokstav',
+      lowercase: 'Én liten bokstav',
+      number: 'Ét tall',
+      special: 'Ét spesialtegn (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Velkommen til Echo!',

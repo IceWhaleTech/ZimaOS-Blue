@@ -65,6 +65,9 @@ type Provider struct {
 	// Model Parameters (defaults for this provider)
 	ModelParams *ModelParams `json:"model_params,omitempty"`
 
+	// Allowed Models (if set, only these models are available; if empty, all models from API are available)
+	AllowedModels []string `json:"allowed_models,omitempty"`
+
 	// Metadata
 	Icon        string    `json:"icon,omitempty"`        // Built-in icon name (e.g., "openai", "anthropic")
 	CustomIcon  string    `json:"custom_icon,omitempty"` // Custom icon: base64 data URL or relative file path

@@ -179,7 +179,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Böngésző automatizálás',
     newTask: 'Új feladat',
-    createTask: 'Feladat létrehozása',
     stats: {
       totalTasks: 'Összes feladat',
       running: 'Fut',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Felhasználók és rendszerbeállítások kezelése',
     benefit3: 'Biztonságos tartós adattárolás',
     upgradeFailed: 'A rendszergazdai fiók létrehozása sikertelen',
+    passwordCheck: {
+      length: 'Legalább 8 karakter',
+      uppercase: 'Egy nagybetű',
+      lowercase: 'Egy kisbetű',
+      number: 'Egy szám',
+      special: 'Egy speciális karakter (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Üdvözöljük az Echoban!',

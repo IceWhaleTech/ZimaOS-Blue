@@ -3,12 +3,16 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
+import { useAuthStore } from '@/stores/auth'
+import { PagePermissions } from '@/api/users'
 import { storeToRefs } from 'pinia'
 
 const { t } = useI18n()
 const route = useRoute()
 const systemStore = useSystemStore()
+const authStore = useAuthStore()
 const { health } = storeToRefs(systemStore)
+const { isAdmin } = storeToRefs(authStore)
 
 // Mobile menu state
 const isOpen = ref(false)
@@ -26,43 +30,74 @@ defineExpose({
   isOpen
 })
 
-const navItems = computed(() => [
+// Check if user has permission for a page
+const hasPermission = (permission?: string) => {
+  if (!permission) return true
+  return authStore.hasPermission(permission)
+}
+
+// Define all nav items with their permissions
+const allNavItems = [
   {
-    name: t('nav.dashboard'),
+    name: 'nav.dashboard',
     path: '/',
     icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z',
+    permission: PagePermissions.HOME,
   },
   {
-    name: t('nav.chat'),
+    name: 'nav.chat',
     path: '/chat',
     icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+    permission: PagePermissions.CHAT,
   },
   {
-    name: t('nav.channels'),
+    name: 'nav.channels',
     path: '/channels',
     icon: 'M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z',
+    permission: PagePermissions.CHANNELS,
   },
   {
-    name: t('nav.automation'),
+    name: 'nav.automation',
     path: '/automation',
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+    permission: PagePermissions.AUTOMATION,
   },
   {
-    name: t('nav.plugins'),
+    name: 'nav.plugins',
     path: '/plugins',
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+    permission: PagePermissions.PLUGINS,
   },
   {
-    name: t('nav.security'),
+    name: 'nav.security',
     path: '/security',
     icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+    permission: PagePermissions.SECURITY,
   },
   {
-    name: t('nav.settings'),
+    name: 'nav.settings',
     path: '/settings',
     icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
+    permission: PagePermissions.SETTINGS,
   },
-])
+]
+
+// Filter nav items based on permissions
+const navItems = computed(() => {
+  return allNavItems
+    .filter(item => {
+      // Admin-only items
+      if (item.adminOnly) {
+        return isAdmin.value
+      }
+      // Permission-based items
+      return hasPermission(item.permission)
+    })
+    .map(item => ({
+      ...item,
+      name: t(item.name),
+    }))
+})
 </script>
 
 <template>

@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { onClickOutside } from '@vueuse/core'
 import {
   getRemoteAccessStatus,
+  getRemoteAccessConfig,
+  updateRemoteAccessConfig,
+  getTunnelProviders,
   startRemoteAccess,
   stopRemoteAccess,
-  type TunnelStatus as TunnelStatusType
+  type TunnelStatus as TunnelStatusType,
+  type TunnelProvider,
+  type RemoteAccessConfig
 } from '@/api/remote-access'
 import TunnelStatus from './TunnelStatus.vue'
+import { getTunnelProviderIcon } from '@/utils/channelIcons'
 
 const { t } = useI18n()
 
@@ -16,17 +23,49 @@ type ViewState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
 const state = ref<ViewState>('loading')
 const tunnelStatus = ref<TunnelStatusType | null>(null)
 const error = ref<string | null>(null)
+const providers = ref<TunnelProvider[]>([])
+const config = ref<RemoteAccessConfig | null>(null)
+
+// Form state
+const selectedProvider = ref('auto')
+const ngrokAuthtoken = ref('')
+const ngrokDomain = ref('')
+const showAdvanced = ref(false)
+const providerDropdownOpen = ref(false)
+const providerDropdownRef = ref<HTMLElement | null>(null)
 
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
-async function loadStatus() {
+// Check if selected provider requires configuration
+const selectedProviderInfo = computed(() => {
+  return providers.value.find(p => p.id === selectedProvider.value)
+})
+
+const requiresNgrokConfig = computed(() => {
+  return selectedProvider.value === 'ngrok'
+})
+
+async function loadData() {
   try {
-    const statusRes = await getRemoteAccessStatus()
+    const [statusRes, providersRes, configRes] = await Promise.all([
+      getRemoteAccessStatus(),
+      getTunnelProviders(),
+      getRemoteAccessConfig()
+    ])
+
     tunnelStatus.value = statusRes.data.tunnel
+    providers.value = providersRes.data.providers || []
+    config.value = configRes.data.config
+
+    // Load saved config values
+    if (config.value) {
+      selectedProvider.value = config.value.default_provider || 'auto'
+      ngrokAuthtoken.value = config.value.ngrok_authtoken || ''
+      ngrokDomain.value = config.value.ngrok_domain || ''
+    }
 
     if (statusRes.data.tunnel.connecting) {
       state.value = 'connecting'
-      // Start polling to detect when connection is established
       startStatusPolling()
     } else if (statusRes.data.tunnel.active) {
       state.value = 'connected'
@@ -34,7 +73,7 @@ async function loadStatus() {
       state.value = 'ready'
     }
   } catch (e) {
-    console.error('Failed to load status:', e)
+    console.error('Failed to load data:', e)
     error.value = t('remoteAccess.loadError')
     state.value = 'error'
   }
@@ -45,9 +84,44 @@ async function handleStart() {
   error.value = null
 
   try {
-    const response = await startRemoteAccess()
+    // Save config first if ngrok is selected
+    if (selectedProvider.value === 'ngrok' && (ngrokAuthtoken.value || ngrokDomain.value)) {
+      await updateRemoteAccessConfig({
+        ngrok_authtoken: ngrokAuthtoken.value,
+        ngrok_domain: ngrokDomain.value,
+        default_provider: selectedProvider.value
+      })
+    }
+
+    const response = await startRemoteAccess(
+      selectedProvider.value,
+      undefined,
+      selectedProvider.value === 'ngrok' ? ngrokAuthtoken.value : undefined,
+      undefined,
+      selectedProvider.value === 'ngrok' ? ngrokDomain.value : undefined
+    )
+
     if (response.data.success) {
-      // Start polling for status
+      // Use tunnel status from start response if available
+      if (response.data.tunnel) {
+        tunnelStatus.value = response.data.tunnel
+        if (response.data.tunnel.active && response.data.tunnel.url) {
+          state.value = 'connected'
+        }
+      }
+
+      // Immediately fetch latest status (URL may appear in logs before status API; ensure UI updates)
+      try {
+        const statusRes = await getRemoteAccessStatus()
+        tunnelStatus.value = statusRes.data.tunnel
+        if (statusRes.data.tunnel.active || statusRes.data.tunnel.url) {
+          state.value = 'connected'
+        }
+      } catch {
+        // Ignore; polling will retry
+      }
+
+      // Start polling to get updates (URL may not be ready yet for async providers)
       startStatusPolling()
     } else {
       throw new Error(response.data.message || 'Failed to start tunnel')
@@ -73,31 +147,20 @@ async function handleStop() {
 }
 
 function startStatusPolling() {
-  // Use adaptive polling: faster when connecting, slower when connected
-  const pollInterval = state.value === 'connecting' ? 5000 : 15000
+  // Faster when connecting (2s), slower when connected (15s)
+  const pollInterval = state.value === 'connecting' ? 2000 : 15000
 
   statusInterval = setInterval(async () => {
     try {
       const response = await getRemoteAccessStatus()
       tunnelStatus.value = response.data.tunnel
 
-      if (response.data.tunnel.active) {
+      if (response.data.tunnel.active || response.data.tunnel.url) {
         state.value = 'connected'
         // Switch to slower polling when connected
         if (statusInterval) {
           clearInterval(statusInterval)
-          statusInterval = setInterval(async () => {
-            try {
-              const response = await getRemoteAccessStatus()
-              tunnelStatus.value = response.data.tunnel
-              if (!response.data.tunnel.active) {
-                state.value = 'ready'
-                stopStatusPolling()
-              }
-            } catch (e) {
-              console.error('Failed to poll status:', e)
-            }
-          }, 15000) // Poll every 15 seconds when connected
+          statusInterval = setInterval(pollWhenConnected, 15000)
         }
       } else if (state.value === 'connecting') {
         // Still waiting for tunnel to start
@@ -107,8 +170,24 @@ function startStatusPolling() {
       }
     } catch (e) {
       console.error('Failed to poll status:', e)
+      // On API error: keep current state (don't flip to ready)
     }
   }, pollInterval)
+}
+
+async function pollWhenConnected() {
+  try {
+    const response = await getRemoteAccessStatus()
+    tunnelStatus.value = response.data.tunnel
+    // Only transition to ready when both active and url are gone (connection actually stopped)
+    if (!response.data.tunnel.active && !response.data.tunnel.url) {
+      state.value = 'ready'
+      stopStatusPolling()
+    }
+  } catch (e) {
+    console.error('Failed to poll status:', e)
+    // On API error: stay connected, keep last known tunnelStatus
+  }
 }
 
 function stopStatusPolling() {
@@ -119,7 +198,12 @@ function stopStatusPolling() {
 }
 
 onMounted(() => {
-  loadStatus()
+  loadData()
+})
+
+// Close provider dropdown when clicking outside
+onClickOutside(providerDropdownRef, () => {
+  providerDropdownOpen.value = false
 })
 
 onUnmounted(() => {
@@ -181,8 +265,113 @@ watch(() => tunnelStatus.value?.active, (active) => {
           </p>
         </div>
 
+        <!-- Provider Selection (custom dropdown so each option shows logo in front) -->
+        <div class="space-y-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('remoteAccess.provider') }}
+          </label>
+          <div ref="providerDropdownRef" class="relative">
+            <button
+              type="button"
+              class="w-full flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-left"
+              @click.stop="providerDropdownOpen = !providerDropdownOpen"
+            >
+              <img
+                v-if="getTunnelProviderIcon(selectedProvider)"
+                :src="getTunnelProviderIcon(selectedProvider)!"
+                :alt="selectedProvider"
+                class="h-5 w-5 shrink-0 rounded object-contain flex-shrink-0"
+              />
+              <span v-else class="w-5 h-5 shrink-0 block flex-shrink-0" />
+              <span class="flex-1 min-w-0 truncate">
+                {{ selectedProviderInfo ? selectedProviderInfo.name : selectedProvider }}
+                <template v-if="selectedProviderInfo?.requires_key"> ({{ t('remoteAccess.requiresKey') }})</template>
+              </span>
+              <svg class="h-4 w-4 shrink-0 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <Transition name="dropdown">
+              <div
+                v-show="providerDropdownOpen"
+                class="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg max-h-56 overflow-auto"
+              >
+                <button
+                  v-for="provider in providers"
+                  :key="provider.id"
+                  type="button"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg"
+                  :class="{ 'bg-blue-50 dark:bg-blue-900/20': selectedProvider === provider.id }"
+                  @click.stop="selectedProvider = provider.id; providerDropdownOpen = false"
+                >
+                  <img
+                    v-if="getTunnelProviderIcon(provider.id)"
+                    :src="getTunnelProviderIcon(provider.id)!"
+                    :alt="provider.id"
+                    class="h-5 w-5 shrink-0 rounded object-contain flex-shrink-0"
+                  />
+                  <span v-else class="w-5 h-5 shrink-0 block flex-shrink-0" aria-hidden="true" />
+                  <span>
+                    {{ provider.name }}
+                    <template v-if="provider.requires_key"> ({{ t('remoteAccess.requiresKey') }})</template>
+                  </span>
+                </button>
+              </div>
+            </Transition>
+          </div>
+          <p v-if="selectedProviderInfo" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ selectedProviderInfo.description }}
+          </p>
+        </div>
+
+        <!-- ngrok Configuration -->
+        <div v-if="requiresNgrokConfig" class="space-y-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <div class="flex items-center gap-2 text-sm font-medium text-blue-800 dark:text-blue-200">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {{ t('remoteAccess.ngrokConfig') }}
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm text-gray-700 dark:text-gray-300">
+              {{ t('remoteAccess.ngrokAuthtoken') }}
+              <span class="text-red-500">*</span>
+            </label>
+            <input
+              v-model="ngrokAuthtoken"
+              type="password"
+              :placeholder="t('remoteAccess.ngrokAuthtokenPlaceholder')"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('remoteAccess.ngrokAuthtokenHint') }}
+              <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">
+                ngrok.com/dashboard
+              </a>
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm text-gray-700 dark:text-gray-300">
+              {{ t('remoteAccess.ngrokDomain') }}
+              <span class="text-gray-400">({{ t('common.optional') }})</span>
+            </label>
+            <input
+              v-model="ngrokDomain"
+              type="text"
+              :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('remoteAccess.ngrokDomainHint') }}
+            </p>
+          </div>
+        </div>
+
         <button
-          class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+          class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="requiresNgrokConfig && !ngrokAuthtoken"
           @click="handleStart"
         >
           <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -198,7 +387,10 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
       <!-- Connecting State -->
       <div v-else-if="state === 'connecting'" class="space-y-4">
-        <div class="flex items-center justify-center py-8">
+        <!-- Show TunnelStatus with connecting state -->
+        <TunnelStatus v-if="tunnelStatus" :status="tunnelStatus" />
+
+        <div v-else class="flex items-center justify-center py-8">
           <div class="text-center">
             <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -251,7 +443,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
         <button
           class="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-          @click="loadStatus"
+          @click="loadData"
         >
           {{ t('common.retry') }}
         </button>

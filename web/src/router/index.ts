@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { PagePermissions } from '@/api/users'
 
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false
@@ -86,6 +87,7 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
+    meta: { permission: PagePermissions.HOME },
   },
   {
     path: '/login',
@@ -109,19 +111,19 @@ const routes: RouteRecordRaw[] = [
     path: '/chat',
     name: 'Chat',
     component: () => import('@/views/ChatView.vue'),
-    meta: { requiresAuth: true, noPadding: true },
+    meta: { requiresAuth: true, noPadding: true, permission: PagePermissions.CHAT },
   },
   {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/SettingsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.SETTINGS },
   },
   {
     path: '/plugins',
     name: 'Plugins',
     component: () => import('@/views/PluginsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.PLUGINS },
   },
   {
     path: '/profile',
@@ -139,55 +141,55 @@ const routes: RouteRecordRaw[] = [
     path: '/voice',
     name: 'VoiceChat',
     component: () => import('@/views/VoiceChatView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.CHAT },
   },
   {
     path: '/smart-home',
     name: 'SmartHome',
     component: () => import('@/views/HomeAssistantView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/browser-automation',
     name: 'BrowserAutomation',
     component: () => import('@/views/BrowserAutomationView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/auto-reply',
     name: 'AutoReply',
     component: () => import('@/views/AutoReplyView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/channels',
     name: 'Channels',
     component: () => import('@/views/ChannelsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.CHANNELS },
   },
   {
     path: '/workflows',
     name: 'Workflows',
     component: () => import('@/views/WorkflowView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/webhooks',
     name: 'Webhooks',
     component: () => import('@/views/WebhookView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/cron',
     name: 'CronJobs',
     component: () => import('@/views/CronView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/automation',
     name: 'Automation',
     component: () => import('@/views/AutomationView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/audit',
@@ -205,43 +207,49 @@ const routes: RouteRecordRaw[] = [
     path: '/tools',
     name: 'ToolStore',
     component: () => import('@/views/ToolStoreView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.PLUGINS },
   },
   {
     path: '/security',
     name: 'Security',
     component: () => import('@/views/SecurityView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.SECURITY },
   },
   {
     path: '/sandbox',
     name: 'Sandbox',
     component: () => import('@/views/SandboxView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/a2ui',
     name: 'A2UI',
     component: () => import('@/views/A2UIView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/tenants',
     name: 'Tenants',
     component: () => import('@/views/TenantsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/tenants/:id',
     name: 'TenantDetail',
     component: () => import('@/views/TenantDetailView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/form-filler',
     name: 'FormFiller',
     component: () => import('@/views/FormFillerView.vue'),
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/users',
+    name: 'Users',
+    component: () => import('@/views/UsersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -255,12 +263,13 @@ const router = createRouter({
   routes,
 })
 
-// Navigation guard for authentication and preview mode
+// Navigation guard for authentication, preview mode, and permissions
 router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('token')
   const isAuthenticated = !!token
   const requiresAuth = to.meta.requiresAuth
   const requiresAdmin = to.meta.requiresAdmin
+  const requiredPermission = to.meta.permission as string | undefined
   const isPublic = to.meta.public
 
   // Allow connection error page without checks
@@ -281,12 +290,7 @@ router.beforeEach(async (to, _from, next) => {
 
   // In preview mode, allow access to most routes without authentication
   if (inPreviewMode) {
-    // Block admin-only routes in preview mode
-    if (requiresAdmin) {
-      next({ name: 'Chat' })
-      return
-    }
-
+    // In preview mode, users are treated as admin, so allow admin routes
     // Allow all other routes in preview mode (no auth required)
     if (to.name === 'Login') {
       // Redirect login to chat in preview mode
@@ -302,10 +306,40 @@ router.beforeEach(async (to, _from, next) => {
   if (requiresAuth && !isAuthenticated) {
     // Redirect to login with return URL
     next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else if (to.name === 'Login' && isAuthenticated) {
+    return
+  }
+
+  if (to.name === 'Login' && isAuthenticated) {
     // Already logged in, redirect to chat
     next({ name: 'Chat' })
-  } else if (isPublic || isAuthenticated || !requiresAuth) {
+    return
+  }
+
+  // Check admin requirement
+  if (requiresAdmin && isAuthenticated) {
+    // Dynamically import auth store to check admin status
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+    if (!authStore.isAdmin) {
+      next({ name: 'Chat' })
+      return
+    }
+  }
+
+  // Check page permission requirement
+  if (requiredPermission && isAuthenticated) {
+    const { useAuthStore } = await import('@/stores/auth')
+    const authStore = useAuthStore()
+
+    // Admin has all permissions
+    if (!authStore.isAdmin && !authStore.hasPermission(requiredPermission)) {
+      // Redirect to chat (default allowed page)
+      next({ name: 'Chat' })
+      return
+    }
+  }
+
+  if (isPublic || isAuthenticated || !requiresAuth) {
     next()
   } else {
     next()

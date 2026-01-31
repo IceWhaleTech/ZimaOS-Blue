@@ -16,13 +16,8 @@ import (
 )
 
 func setupRemoteAccessHandler(t *testing.T) (*RemoteAccessHandler, *echo.Echo) {
-	tempDir := filepath.Join(os.TempDir(), "ngrok-api-test")
-	os.MkdirAll(tempDir, 0755)
-	t.Cleanup(func() { os.RemoveAll(tempDir) })
-
-	dm := ngrok.NewDownloadManager(tempDir)
-	tm := ngrok.NewTunnelManager(dm)
-	h := NewRemoteAccessHandler(dm, tm)
+	tm := ngrok.NewTunnelManager()
+	h := NewRemoteAccessHandler(tm)
 
 	e := echo.New()
 	h.RegisterRoutes(e)
@@ -50,51 +45,6 @@ func TestRemoteAccessHandler_GetNgrokStatus(t *testing.T) {
 	// Should not be installed in test environment
 	if status.Installed {
 		t.Log("ngrok is installed in test environment")
-	}
-}
-
-func TestRemoteAccessHandler_GetNgrokDownloadProgress(t *testing.T) {
-	_, e := setupRemoteAccessHandler(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/remote-access/ngrok/download/progress", nil)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Status code = %d, want %d", rec.Code, http.StatusOK)
-	}
-
-	var progress ngrok.NgrokDownloadProgress
-	if err := json.Unmarshal(rec.Body.Bytes(), &progress); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
-
-	// Initial progress should be 0
-	if progress.Downloaded != 0 {
-		t.Errorf("Downloaded = %d, want 0", progress.Downloaded)
-	}
-}
-
-func TestRemoteAccessHandler_CancelNgrokDownload(t *testing.T) {
-	_, e := setupRemoteAccessHandler(t)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/remote-access/ngrok/download/cancel", nil)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Status code = %d, want %d", rec.Code, http.StatusOK)
-	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
-
-	if resp["success"] != true {
-		t.Error("Expected success to be true")
 	}
 }
 
@@ -188,9 +138,6 @@ func setupRemoteAccessHandlerWithRepo(t *testing.T) (*RemoteAccessHandler, *echo
 	os.MkdirAll(tempDir, 0755)
 	t.Cleanup(func() { os.RemoveAll(tempDir) })
 
-	dm := ngrok.NewDownloadManager(tempDir)
-	tm := ngrok.NewTunnelManager(dm)
-
 	dbPath := filepath.Join(tempDir, "remote_access.db")
 	repo, err := ngrok.NewRepository(dbPath)
 	if err != nil {
@@ -198,7 +145,8 @@ func setupRemoteAccessHandlerWithRepo(t *testing.T) (*RemoteAccessHandler, *echo
 	}
 	t.Cleanup(func() { repo.Close() })
 
-	h := NewRemoteAccessHandlerWithRepo(dm, tm, repo)
+	tm := ngrok.NewTunnelManagerWithRepo(repo)
+	h := NewRemoteAccessHandlerWithRepo(tm, repo)
 
 	e := echo.New()
 	h.RegisterRoutes(e)

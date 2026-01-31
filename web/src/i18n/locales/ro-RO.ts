@@ -179,7 +179,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Automatizare browser',
     newTask: 'Sarcină nouă',
-    createTask: 'Creați sarcină',
     stats: {
       totalTasks: 'Total sarcini',
       running: 'Rulează',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Gestionați utilizatori și setări de sistem',
     benefit3: 'Stocare persistentă și sigură a datelor',
     upgradeFailed: 'Crearea contului administrator a eșuat',
+    passwordCheck: {
+      length: 'Cel puțin 8 caractere',
+      uppercase: 'O literă mare',
+      lowercase: 'O literă mică',
+      number: 'O cifră',
+      special: 'Un caracter special (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Bine ați venit la Echo!',

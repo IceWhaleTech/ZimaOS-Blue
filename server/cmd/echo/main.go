@@ -24,7 +24,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
@@ -39,6 +38,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/preview"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
@@ -258,6 +258,17 @@ func main() {
 	userService := user.NewService(userRepo, passwordHasher, passwordPolicy, nil)
 	userHandler := user.NewHandler(userService)
 
+	// Initialize permission repository and service
+	permissionRepo, err := permission.NewRepository(db)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize permission repository")
+	}
+	permissionService := permission.NewService(permissionRepo, userRepo)
+	permissionHandler := permission.NewHandler(permissionService, userRepo)
+
+	// Set permission service on user handler
+	userHandler.SetPermissionService(permissionService)
+
 	// Initialize memory store for conversations
 	memoryDbPath := filepath.Join(dataDir, "memory.db")
 	memoryStore, err := memory.NewStore(memoryDbPath)
@@ -328,20 +339,7 @@ func main() {
 	tools.RegisterBuiltinTools(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
-	// Claude Code CLI provider (v0.10)
-	if cfg.ClaudeCode.Enabled {
-		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, claudeKey, claudeBaseURL)
-		ccProvider := claudecode.NewProvider(ccConfig)
-		ccProvider.SetToolRegistry(toolRegistry) // Set tool registry for system prompt
-		ccProvider.Start()
-		llmRegistry.Register(ccProvider)
-		logger.Info().Str("command", cfg.ClaudeCode.Command).Msg("Claude Code CLI provider registered")
-
-		// Register shutdown hook for Claude Code provider
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			return ccProvider.Close()
-		})
-	}
+	// Claude Code CLI module removed to avoid antivirus warnings (download/exec external binary).
 
 	// Initialize skill registry and register built-in skills
 	skillRegistry := skill.NewRegistry()
@@ -706,7 +704,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -750,7 +748,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler) {
 	e := srv.Echo()
 
 	// Preview mode routes (no auth required - for preview mode detection and upgrade)
@@ -796,6 +794,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	usersGroup.DELETE("/:id", userHandler.DeleteUser)
 	usersGroup.POST("/:id/lock", userHandler.LockUser)
 	usersGroup.POST("/:id/unlock", userHandler.UnlockUser)
+	usersGroup.POST("/:id/reset-password", userHandler.ResetPassword)
+
+	// Permission routes (protected)
+	permissionHandler.RegisterRoutes(protected)
+	logger.Info().Msg("Permission routes registered")
 
 	// Password change (protected)
 	protected.POST("/auth/password", userHandler.ChangePassword)
@@ -935,17 +938,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Info().Msg("Form filler routes registered")
 	}
 
-	// Register Claude Code CLI version management routes (protected) - /api/v1/claudecode/*
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
-	claudeCodeGroup := protected.Group("/claudecode")
-	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
-	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
-	logger.Info().Msg("Claude Code CLI routes registered")
+	// Claude Code CLI module removed to avoid antivirus warnings.
 
 	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
+	// Also register multi-provider tunnel routes - /api/v1/tunnel/*
 	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokRepo)
 	remoteAccessHandler.RegisterRoutes(e)
-	logger.Info().Msg("Remote access routes registered (SDK-based)")
+	tunnelHandler := networkapi.NewTunnelHandler(ngrokRepo, cfg.Server.Port)
+	tunnelHandler.RegisterRoutes(e)
+	logger.Info().Msg("Remote access and tunnel routes registered")
 
 	// Register provider settings routes (protected) - /api/v1/providers/settings/*
 	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)
@@ -1145,36 +1146,4 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Info().Msg("Development mode: proxying to Vite dev server")
 	}
 	web.RegisterStaticRoutes(e)
-}
-
-// convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
-func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL string) *claudecode.ClaudeCodeConfig {
-	return &claudecode.ClaudeCodeConfig{
-		Enabled:      cfg.Enabled,
-		Command:      cfg.Command,
-		WorkspaceDir: cfg.WorkspaceDir,
-		DefaultModel: cfg.DefaultModel,
-		Timeout:      cfg.Timeout,
-		SessionTTL:   cfg.SessionTTL,
-		APIKey:       apiKey,
-		BaseURL:      baseURL,
-		Backend: claudecode.CliBackendConfig{
-			Command:           cfg.Command,
-			Args:              cfg.Backend.Args,
-			ResumeArgs:        cfg.Backend.ResumeArgs,
-			Output:            cfg.Backend.Output,
-			Input:             cfg.Backend.Input,
-			MaxPromptArgChars: cfg.Backend.MaxPromptArgChars,
-			Env:               cfg.Backend.Env,
-			ClearEnv:          cfg.Backend.ClearEnv,
-			ModelArg:          cfg.Backend.ModelArg,
-			ModelAliases:      cfg.Backend.ModelAliases,
-			SessionArg:        cfg.Backend.SessionArg,
-			SessionMode:       cfg.Backend.SessionMode,
-			SystemPromptArg:   cfg.Backend.SystemPromptArg,
-			SystemPromptMode:  cfg.Backend.SystemPromptMode,
-			SystemPromptWhen:  cfg.Backend.SystemPromptWhen,
-			Serialize:         cfg.Backend.Serialize,
-		},
-	}
 }

@@ -257,7 +257,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'ബ്രൗസർ ഓട്ടോമേഷൻ',
     newTask: 'പുതിയ ടാസ്ക്',
-    createTask: 'ടാസ്ക് സൃഷ്ടിക്കുക',
     stats: {
       totalTasks: 'ആകെ ടാസ്കുകൾ',
       running: 'പ്രവർത്തിക്കുന്നു',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'ഉപയോക്താക്കളെയും സിസ്റ്റം ക്രമീകരണങ്ങളെയും നിയന്ത്രിക്കുക',
     benefit3: 'സുരക്ഷിതമായ സ്ഥിര ഡാറ്റ സംഭരണം',
     upgradeFailed: 'അഡ്മിൻ അക്കൗണ്ട് സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു',
+    passwordCheck: {
+      length: 'കുറഞ്ഞത് 8 പ്രതീകങ്ങൾ',
+      uppercase: 'ഒരു വലിയ അക്ഷരം',
+      lowercase: 'ഒരു ചെറിയ അക്ഷരം',
+      number: 'ഒരു അക്കം',
+      special: 'ഒരു പ്രത്യേക പ്രതീകം (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Echo-യിലേക്ക് സ്വാഗതം!',

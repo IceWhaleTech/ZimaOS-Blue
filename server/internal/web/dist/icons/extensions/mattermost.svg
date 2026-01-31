@@ -1,7 +1,0 @@
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="24" height="24" rx="4" fill="#0058CC"/>
-  <path d="M6 8L12 4L18 8V16L12 20L6 16V8Z" fill="white"/>
-  <path d="M12 4V20" stroke="#0058CC" stroke-width="1.5"/>
-  <path d="M6 8L18 16" stroke="#0058CC" stroke-width="1.5"/>
-  <path d="M18 8L6 16" stroke="#0058CC" stroke-width="1.5"/>
-</svg>

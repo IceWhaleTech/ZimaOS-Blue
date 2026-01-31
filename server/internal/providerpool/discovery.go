@@ -102,6 +102,51 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 	return nil, ErrModelNotFound
 }
 
+// GetFilteredModels returns models for a provider, filtered by AllowedModels if set
+func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) {
+	models, err := d.GetModels(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get provider to check AllowedModels
+	provider, err := d.registry.Get(providerID)
+	if err != nil {
+		return models, nil // Return all models if provider not found
+	}
+
+	// If AllowedModels is empty, return all models
+	if len(provider.AllowedModels) == 0 {
+		return models, nil
+	}
+
+	// Filter models by AllowedModels
+	return filterModelsByAllowed(models, provider.AllowedModels), nil
+}
+
+// filterModelsByAllowed filters models to only include those in the allowed list
+func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
+	if len(allowedModels) == 0 {
+		return models
+	}
+
+	// Create a set for fast lookup
+	allowedSet := make(map[string]bool, len(allowedModels))
+	for _, id := range allowedModels {
+		allowedSet[id] = true
+	}
+
+	// Filter models
+	filtered := make([]*Model, 0, len(allowedModels))
+	for _, model := range models {
+		if allowedSet[model.ID] || allowedSet[model.Name] {
+			filtered = append(filtered, model)
+		}
+	}
+
+	return filtered
+}
+
 // GetAllModels returns all models from all enabled providers
 func (d *ModelDiscovery) GetAllModels() []*Model {
 	providers := d.registry.ListEnabled()

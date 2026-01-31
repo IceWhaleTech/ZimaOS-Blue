@@ -37,6 +37,11 @@ func RegisterStaticRoutes(e *echo.Echo) {
 			return echo.ErrNotFound
 		}
 
+		// Legacy/incorrect request for index.js - redirect to root
+		if path == "/index.js" {
+			return c.Redirect(http.StatusFound, "/")
+		}
+
 		proxy.ServeHTTP(c.Response(), c.Request())
 		return nil
 	})

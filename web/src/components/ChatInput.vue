@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
+import ImagePreview from '@/components/chat/ImagePreview.vue'
 
 const { t } = useI18n()
 
@@ -24,13 +25,20 @@ const props = defineProps<{
 const emit = defineEmits<{
   send: [message: string, attachments: FileAttachment[]]
   cancel: []
+  openTalkMode: []
 }>()
 
 const message = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const cameraInputRef = ref<HTMLInputElement | null>(null)
 const attachments = ref<FileAttachment[]>([])
 const dragOver = ref(false)
+
+// Image preview state
+const showImagePreview = ref(false)
+const previewImageSrc = ref('')
+const previewImageAlt = ref('')
 
 // Voice recording state
 const isRecording = ref(false)
@@ -167,6 +175,26 @@ function handlePaste(event: ClipboardEvent) {
 
 function openFileDialog() {
   fileInputRef.value?.click()
+}
+
+function openCameraDialog() {
+  cameraInputRef.value?.click()
+}
+
+function handleCameraCapture(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files) {
+    addFiles(input.files)
+    input.value = '' // Reset input
+  }
+}
+
+function openImagePreview(attachment: FileAttachment) {
+  if (attachment.preview) {
+    previewImageSrc.value = attachment.preview
+    previewImageAlt.value = attachment.name
+    showImagePreview.value = true
+  }
 }
 
 function handleSend() {
@@ -322,6 +350,23 @@ defineExpose({ focus, setInput })
       @change="handleFileSelect"
     />
 
+    <!-- Hidden camera input -->
+    <input
+      ref="cameraInputRef"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      class="hidden"
+      @change="handleCameraCapture"
+    />
+
+    <!-- Image Preview Modal -->
+    <ImagePreview
+      v-model="showImagePreview"
+      :src="previewImageSrc"
+      :alt="previewImageAlt"
+    />
+
     <!-- Attachments preview -->
     <div v-if="attachments.length > 0" class="mb-3 flex flex-wrap gap-2">
       <div
@@ -330,12 +375,16 @@ defineExpose({ focus, setInput })
         class="relative group glass-card p-2 flex items-center gap-2 max-w-xs"
       >
         <!-- Preview or icon -->
-        <div class="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-surface-card flex items-center justify-center">
+        <div
+          class="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-surface-card flex items-center justify-center"
+          :class="{ 'cursor-pointer': attachment.preview }"
+          @click="attachment.preview && openImagePreview(attachment)"
+        >
           <img
             v-if="attachment.preview"
             :src="attachment.preview"
             :alt="attachment.name"
-            class="w-full h-full object-cover"
+            class="w-full h-full object-cover hover:opacity-80 transition-opacity"
           />
           <svg
             v-else-if="getFileIcon(attachment.type) === 'pdf'"
@@ -408,6 +457,35 @@ defineExpose({ focus, setInput })
         </svg>
       </button>
 
+      <!-- Camera button (mobile-friendly) -->
+      <button
+        :disabled="disabled || streaming"
+        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        :title="t('chat.takePhoto')"
+        @click="openCameraDialog"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5 sm:h-6 sm:w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+          />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+          />
+        </svg>
+      </button>
+
       <!-- Voice input button -->
       <button
         :disabled="disabled || streaming || isTranscribing"
@@ -441,6 +519,29 @@ defineExpose({ focus, setInput })
             stroke-linejoin="round"
             stroke-width="2"
             d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+          />
+        </svg>
+      </button>
+
+      <!-- Talk Mode button -->
+      <button
+        :disabled="disabled || streaming"
+        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        :title="t('chat.talkMode.title')"
+        @click="$emit('openTalkMode')"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5 sm:h-6 sm:w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
           />
         </svg>
       </button>

@@ -250,6 +250,13 @@ async function refreshStore() {
   await skillStore.refreshSources()
 }
 
+async function loadMore() {
+  await skillStore.loadMoreSkills({
+    source: selectedSource.value || undefined,
+    category: selectedCategory.value || undefined,
+  })
+}
+
 async function verifySkill(skillId: string) {
   verifyingSkillId.value = skillId
   verificationStatus.value[skillId] = 'pending'
@@ -1022,6 +1029,21 @@ onUnmounted(() => {
           </div>
         </template>
         <p v-else>{{ t('skillStore.empty.noMatchingStore') }}</p>
+      </div>
+
+      <!-- Load More Button -->
+      <div v-if="filteredRemoteSkills.length > 0 && skillStore.hasMoreSkills() && !debouncedSearchQuery && !selectedCategory && !selectedSource" class="load-more-container">
+        <button
+          class="btn-load-more"
+          :disabled="skillStore.loadingMore"
+          @click="loadMore"
+        >
+          <span v-if="skillStore.loadingMore" class="spinner"></span>
+          {{ skillStore.loadingMore ? t('skillStore.actions.loading') : t('skillStore.actions.loadMore') }}
+        </button>
+        <p class="load-more-info">
+          {{ t('skillStore.pagination.showing', { current: skillStore.remoteSkills.length, total: skillStore.totalSkills }) }}
+        </p>
       </div>
       </template>
     </div>
@@ -1973,6 +1995,46 @@ onUnmounted(() => {
   text-align: center;
   padding: 48px;
   color: var(--text-secondary);
+}
+
+.load-more-container {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  gap: 12px;
+}
+
+.btn-load-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 32px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-load-more:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-load-more:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.load-more-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .no-results-title {

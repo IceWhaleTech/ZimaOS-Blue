@@ -11,15 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
 // estimateTokens estimates the number of tokens in a text.
@@ -96,17 +95,17 @@ func estimateInputTokens(messages []llm.Message) int {
 // providerPoolToLLM maps Provider Pool IDs to LLM provider names.
 // This allows the Chat API to work with both Provider Pool IDs and legacy LLM provider names.
 var providerPoolToLLM = map[string]string{
-	"anthropic":    "claude",
-	"openai":       "openai",
-	"ollama":       "ollama",
-	"custom":       "custom",
-	"grok":         "grok",
-	"qwen":         "qwen",
-	"venice":       "venice",
-	"bedrock":      "bedrock",
-	"glm":          "glm",
+	"anthropic": "claude",
+	"openai":    "openai",
+	"ollama":    "ollama",
+	"custom":    "custom",
+	"grok":      "grok",
+	"qwen":      "qwen",
+	"venice":    "venice",
+	"bedrock":   "bedrock",
+	"glm":       "glm",
 	// Also support direct LLM provider names for backwards compatibility
-	"claude":       "claude",
+	"claude": "claude",
 }
 
 // mapProviderID converts a Provider Pool ID to an LLM provider name.
@@ -212,9 +211,7 @@ type ChatHandler struct {
 	providers        *llm.ProviderRegistry
 	providerPool     *providerpool.Pool
 	toolRegistry     *tools.Registry
-	streamController *claudecode.StreamController
-	compactionConfig claudecode.CompactionConfig
-	claudeCodeHandler *claudecode.Handler
+	streamController *StreamController
 	metricsRecorder  MetricsRecorder
 	companionManager *companion.Manager
 	promptGuard      *promptguard.Detector
@@ -234,8 +231,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		store:            store,
 		providers:        providers,
 		toolRegistry:     toolRegistry,
-		streamController: claudecode.NewStreamController(),
-		compactionConfig: claudecode.DefaultCompactionConfig(),
+		streamController: NewStreamController(),
 		convToSession:    make(map[string]string),
 	}
 }
@@ -243,11 +239,6 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 // SetMetricsRecorder sets the metrics recorder for tracking API call metrics.
 func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 	h.metricsRecorder = recorder
-}
-
-// SetClaudeCodeHandler sets the Claude Code handler for checking enabled status.
-func (h *ChatHandler) SetClaudeCodeHandler(handler *claudecode.Handler) {
-	h.claudeCodeHandler = handler
 }
 
 // SetCompanionManager sets the companion manager for session tracking.
@@ -401,11 +392,11 @@ func (h *ChatHandler) GetMessages(c echo.Context) error {
 
 // SendMessageRequest represents a request to send a message.
 type SendMessageRequest struct {
-	Message     string `json:"message"`
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
+	Message     string  `json:"message"`
+	Provider    string  `json:"provider"`
+	Model       string  `json:"model"`
 	Temperature float64 `json:"temperature,omitempty"`
-	MaxTokens   int    `json:"max_tokens,omitempty"`
+	MaxTokens   int     `json:"max_tokens,omitempty"`
 }
 
 // SendMessageResponse represents a response from sending a message.
@@ -905,11 +896,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				"provider":  providerName,
 				"model":     model,
 				"stats": map[string]interface{}{
-					"input_tokens":     totalInputTokens,
-					"output_tokens":    totalOutputTokens,
-					"total_tokens":     totalInputTokens + totalOutputTokens,
-					"latency_ms":       latencyMs,
-					"ttft_ms":          ttftMs,
+					"input_tokens":      totalInputTokens,
+					"output_tokens":     totalOutputTokens,
+					"total_tokens":      totalInputTokens + totalOutputTokens,
+					"latency_ms":        latencyMs,
+					"ttft_ms":           ttftMs,
 					"tokens_per_second": tokensPerSecond,
 				},
 			}
@@ -1140,14 +1131,14 @@ func sanitizeTitle(s string) string {
 // Supports multiple languages.
 func isDefaultTitle(title string) bool {
 	defaultTitles := []string{
-		"New Conversation",  // English
-		"新对话",            // Chinese Simplified
-		"新對話",            // Chinese Traditional
-		"Nueva conversación", // Spanish
+		"New Conversation",      // English
+		"新对话",                   // Chinese Simplified
+		"新對話",                   // Chinese Traditional
+		"Nueva conversación",    // Spanish
 		"Nouvelle conversation", // French
-		"Neue Unterhaltung", // German
-		"新しい会話",        // Japanese
-		"새 대화",           // Korean
+		"Neue Unterhaltung",     // German
+		"新しい会話",                 // Japanese
+		"새 대화",                  // Korean
 	}
 	for _, dt := range defaultTitles {
 		if title == dt {
@@ -1258,9 +1249,9 @@ func (h *ChatHandler) CancelAllStreams(c echo.Context) error {
 }
 
 // compactMessages applies context compaction to messages if needed.
-func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, provider llm.Provider) ([]llm.Message, string, error) {
-	compactor := claudecode.NewCompactor(h.compactionConfig, provider)
-	return compactor.CompactMessages(ctx, messages)
+// Compaction (Claude Code module) removed to avoid antivirus triggers; returns messages as-is.
+func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, _ llm.Provider) ([]llm.Message, string, error) {
+	return messages, "", nil
 }
 
 // emitMessageEvent emits a message event to the companion system.

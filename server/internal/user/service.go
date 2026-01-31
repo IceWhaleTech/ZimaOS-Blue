@@ -346,3 +346,35 @@ func (s *Service) ExistsByUsername(ctx context.Context, username string) (bool, 
 func (s *Service) AdminExists(ctx context.Context) (bool, error) {
 	return s.repo.AdminExists(ctx)
 }
+
+// ResetPassword resets a user's password (admin action, no current password required).
+func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, newPassword string) error {
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Validate new password
+	if errs := s.passwordPolicy.Validate(newPassword); len(errs) > 0 {
+		return ErrInvalidPassword
+	}
+
+	// Hash new password
+	hash, err := s.passwordHasher.Hash(newPassword)
+	if err != nil {
+		return err
+	}
+
+	user.PasswordHash = hash
+	if err := s.repo.Update(ctx, user); err != nil {
+		return err
+	}
+
+	// Add to password history
+	_ = s.repo.AddPasswordHistory(ctx, id, hash)
+
+	// Revoke all sessions (force re-login)
+	_ = s.repo.RevokeUserSessions(ctx, id)
+
+	return nil
+}

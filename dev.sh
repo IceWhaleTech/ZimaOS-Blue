@@ -2,7 +2,7 @@
 
 # ZimaOS-Echo Development Script
 # Usage: ./dev.sh [command]
-# Commands: start (default), server, web, build, clean
+# Commands: start (default), server, web, build, clean, prd
 
 set -e
 
@@ -204,6 +204,33 @@ build_all() {
     success "Production build complete!"
 }
 
+# Production run: build web, copy to server/internal/web/dist, start server (embedded frontend)
+prd_run() {
+    check_prereqs
+
+    info "Production run: build web, copy to server/internal/web, start server..."
+
+    # Build web
+    info "Building web frontend..."
+    cd "$PROJECT_ROOT/web"
+    if [ ! -d "node_modules" ]; then
+        npm install
+    fi
+    npm run build
+    success "Web built: web/dist/"
+
+    # Copy web/dist to server/internal/web/dist
+    info "Copying web build to server/internal/web/dist..."
+    rm -rf "$PROJECT_ROOT/server/internal/web/dist"
+    cp -r "$PROJECT_ROOT/web/dist" "$PROJECT_ROOT/server/internal/web/dist"
+    success "Web assets copied to server/internal/web/dist"
+
+    # Start server (production mode, no -tags dev, serves embedded frontend)
+    info "Starting Go server (production mode, http://localhost:8080)..."
+    cd "$PROJECT_ROOT/server"
+    go run ./cmd/echo
+}
+
 # Clean build artifacts
 clean_all() {
     info "Cleaning build artifacts..."
@@ -216,6 +243,7 @@ clean_all() {
     # Clean web
     rm -rf "$PROJECT_ROOT/web/dist"
     rm -rf "$PROJECT_ROOT/web/node_modules"
+    rm -rf "$PROJECT_ROOT/server/internal/web/dist"
 
     success "Clean complete!"
 }
@@ -240,9 +268,12 @@ case "$COMMAND" in
     clean)
         clean_all
         ;;
+    prd)
+        prd_run
+        ;;
     *)
         echo "Unknown command: $COMMAND"
-        echo "Usage: $0 [start|server|web|build|clean]"
+        echo "Usage: $0 [start|server|web|build|clean|prd]"
         exit 1
         ;;
 esac

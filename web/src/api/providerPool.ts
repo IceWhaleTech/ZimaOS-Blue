@@ -26,6 +26,7 @@ export interface Provider {
   api_keys?: APIKey[]
   priority: number
   model_params?: ModelParams
+  allowed_models?: string[]
   icon?: string
   custom_icon?: string
   description?: string
@@ -204,6 +205,9 @@ export const providerPoolApi = {
 
   updateModelParams: (id: string, params: ModelParams) =>
     api.put<{ message: string; model_params: ModelParams }>(`/providers/${id}/params`, params),
+
+  updateAllowedModels: (id: string, allowedModels: string[]) =>
+    api.put<{ message: string; allowed_models: string[] }>(`/providers/${id}/allowed-models`, { allowed_models: allowedModels }),
 
   detectCapabilities: (id: string) =>
     api.post<{ message: string; detected_max_tokens?: number; detected_at?: number }>(`/providers/${id}/detect`),

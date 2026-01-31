@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, shallowRef, triggerRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getChannelIconOrDefault } from '@/utils/channelIcons'
-import PasswordInput from '@/components/ui/PasswordInput.vue'
+import ChannelCard from '@/components/channels/ChannelCard.vue'
 import {
   getRemoteAccessStatus,
   startRemoteAccess,
   stopRemoteAccess,
-  type TunnelStatus as TunnelStatusType
+  getTunnelProviders,
+  getRemoteAccessConfig,
+  updateRemoteAccessConfig,
+  type TunnelStatus as TunnelStatusType,
+  type TunnelProvider
 } from '@/api/remote-access'
 import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
-import ngrokLogo from '@/assets/providers/ngrok.svg'
 
 const { t } = useI18n()
 
@@ -18,7 +21,8 @@ interface ChannelFieldDef {
   key: string
   labelKey: string
   type: 'text' | 'password' | 'tel' | 'url' | 'textarea'
-  placeholder: string
+  placeholder?: string
+  placeholderKey?: string
   value: string
   required?: boolean
 }
@@ -49,12 +53,26 @@ const remoteAccessState = ref<RemoteAccessState>('loading')
 const tunnelStatus = ref<TunnelStatusType | null>(null)
 const remoteAccessError = ref<string | null>(null)
 const remoteAccessExpanded = ref(false)
+const tunnelProviders = ref<TunnelProvider[]>([])
+const selectedProvider = ref<string>('localhost_run')
+const ngrokAuthtoken = ref<string>('')
+const cloudflareToken = ref<string>('')
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
-const channelDefs = ref<ChannelDef[]>([
+// When tunnelStatus gets URL (e.g. from polling), switch to connected
+watch(
+  () => tunnelStatus.value?.url,
+  (url) => {
+    if (url && remoteAccessState.value === 'connecting') {
+      remoteAccessState.value = 'connected'
+    }
+  }
+)
+
+const channelDefs = shallowRef<ChannelDef[]>([
   {
     id: 'telegram',
-    name: 'Telegram',
+    nameKey: 'channels.telegram',
     icon: getChannelIconOrDefault('telegram'),
     enabled: false,
     status: 'disconnected',
@@ -62,13 +80,13 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.telegramHint',
     docUrl: 'https://core.telegram.org/bots#how-do-i-create-a-bot',
     fields: [
-      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholder: '123456789:ABCdefGHIjklMNOpqrsTUVwxyz', value: '', required: true },
-      { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholder: 'my_bot', value: '' },
+      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotToken', value: '', required: true },
+      { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholderKey: 'channels.placeholderBotUsername', value: '' },
     ],
   },
   {
     id: 'discord',
-    name: 'Discord',
+    nameKey: 'channels.discord',
     icon: getChannelIconOrDefault('discord'),
     enabled: false,
     status: 'disconnected',
@@ -76,13 +94,13 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.discordHint',
     docUrl: 'https://discord.com/developers/docs/getting-started',
     fields: [
-      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholder: 'Enter your Discord bot token', value: '', required: true },
-      { key: 'application_id', labelKey: 'channels.applicationId', type: 'text', placeholder: 'Application ID', value: '' },
+      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderDiscordBotToken', value: '', required: true },
+      { key: 'application_id', labelKey: 'channels.applicationId', type: 'text', placeholderKey: 'channels.placeholderApplicationId', value: '' },
     ],
   },
   {
     id: 'slack',
-    name: 'Slack',
+    nameKey: 'channels.slack',
     icon: getChannelIconOrDefault('slack'),
     enabled: false,
     status: 'disconnected',
@@ -90,14 +108,14 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.slackHint',
     docUrl: 'https://api.slack.com/start/quickstart',
     fields: [
-      { key: 'bot_token', labelKey: 'channels.slackBotToken', type: 'password', placeholder: 'xoxb-xxxx-xxxx-xxxx', value: '', required: true },
-      { key: 'app_token', labelKey: 'channels.slackAppToken', type: 'password', placeholder: 'xapp-xxxx-xxxx-xxxx', value: '', required: true },
-      { key: 'signing_secret', labelKey: 'channels.signingSecret', type: 'password', placeholder: 'Signing secret', value: '' },
+      { key: 'bot_token', labelKey: 'channels.slackBotToken', type: 'password', placeholderKey: 'channels.placeholderSlackBotToken', value: '', required: true },
+      { key: 'app_token', labelKey: 'channels.slackAppToken', type: 'password', placeholderKey: 'channels.placeholderSlackAppToken', value: '', required: true },
+      { key: 'signing_secret', labelKey: 'channels.signingSecret', type: 'password', placeholderKey: 'channels.placeholderSigningSecret', value: '' },
     ],
   },
   {
     id: 'whatsapp',
-    name: 'WhatsApp',
+    nameKey: 'channels.whatsapp',
     icon: getChannelIconOrDefault('whatsapp'),
     enabled: false,
     status: 'disconnected',
@@ -105,12 +123,12 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.whatsappHint',
     docUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
     fields: [
-      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
+      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholderKey: 'channels.placeholderPhoneNumber', value: '', required: true },
     ],
   },
   {
     id: 'signal',
-    name: 'Signal',
+    nameKey: 'channels.signal',
     icon: getChannelIconOrDefault('signal'),
     enabled: false,
     status: 'disconnected',
@@ -118,12 +136,12 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.signalHint',
     docUrl: 'https://github.com/AsamK/signal-cli',
     fields: [
-      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholder: '+1234567890', value: '', required: true },
+      { key: 'phone_number', labelKey: 'channels.phoneNumber', type: 'tel', placeholderKey: 'channels.placeholderPhoneNumber', value: '', required: true },
     ],
   },
   {
     id: 'teams',
-    name: 'Microsoft Teams',
+    nameKey: 'channels.teams',
     icon: getChannelIconOrDefault('teams'),
     enabled: false,
     status: 'disconnected',
@@ -131,14 +149,14 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.teamsHint',
     docUrl: 'https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/create-a-bot-for-teams',
     fields: [
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', value: '', required: true },
-      { key: 'app_password', labelKey: 'channels.appPassword', type: 'password', placeholder: 'App password', value: '', required: true },
-      { key: 'tenant_id', labelKey: 'channels.tenantId', type: 'text', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (optional)', value: '' },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderAppId', value: '', required: true },
+      { key: 'app_password', labelKey: 'channels.appPassword', type: 'password', placeholderKey: 'channels.placeholderAppPassword', value: '', required: true },
+      { key: 'tenant_id', labelKey: 'channels.tenantId', type: 'text', placeholderKey: 'channels.placeholderTenantId', value: '' },
     ],
   },
   {
     id: 'mattermost',
-    name: 'Mattermost',
+    nameKey: 'channels.mattermost',
     icon: getChannelIconOrDefault('mattermost'),
     enabled: false,
     status: 'disconnected',
@@ -146,21 +164,21 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.mattermostHint',
     docUrl: 'https://developers.mattermost.com/integrate/reference/bot-accounts/',
     fields: [
-      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholder: 'https://mattermost.example.com', value: '', required: true },
-      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholder: 'Bot access token', value: '', required: true },
+      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderServerUrl', value: '', required: true },
+      { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotAccessToken', value: '', required: true },
     ],
   },
   {
     id: 'googlechat',
-    name: 'Google Chat',
-    icon: getChannelIconOrDefault('google'),
+    nameKey: 'channels.googleChat',
+    icon: getChannelIconOrDefault('googlechat'),
     enabled: false,
     status: 'disconnected',
     descriptionKey: 'channels.googleChatDesc',
     hintKey: 'channels.googleChatHint',
     docUrl: 'https://developers.google.com/workspace/chat/quickstart/gcf-app',
     fields: [
-      { key: 'credentials_json', labelKey: 'channels.serviceAccountJson', type: 'textarea', placeholder: '{"type": "service_account", ...}', value: '', required: true },
+      { key: 'credentials_json', labelKey: 'channels.serviceAccountJson', type: 'textarea', placeholderKey: 'channels.placeholderServiceAccountJson', value: '', required: true },
     ],
   },
   {
@@ -173,11 +191,11 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.feishuHint',
     docUrl: 'https://open.feishu.cn/document/develop-an-echo-bot/introduction',
     fields: [
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: 'cli_xxxxxxxxxx', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
-      { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholder: 'Verification token', value: '', required: true },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderFeishuAppId', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
+      { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholderKey: 'channels.placeholderVerificationToken', value: '', required: true },
       { key: 'encrypt_key', labelKey: 'channels.encryptKey', type: 'password', placeholder: '', value: '' },
-      { key: 'webhook_url', labelKey: 'channels.webhookUrl', type: 'url', placeholder: 'https://your-server.com/api/v1/channels/feishu/callback', value: '' },
+      { key: 'webhook_url', labelKey: 'channels.webhookUrl', type: 'url', placeholderKey: 'channels.placeholderWebhookUrl', value: '' },
     ],
   },
   {
@@ -190,14 +208,14 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.dingtalkHint',
     docUrl: 'https://open.dingtalk.com/document/orgapp/create-an-enterprise-chatbot',
     fields: [
-      { key: 'app_key', labelKey: 'channels.appKey', type: 'text', placeholder: 'dingxxxxxxxxxx', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
-      { key: 'robot_code', labelKey: 'channels.robotCode', type: 'text', placeholder: 'dingxxxxxxxxxx', value: '', required: true },
+      { key: 'app_key', labelKey: 'channels.appKey', type: 'text', placeholderKey: 'channels.placeholderDingtalkAppKey', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
+      { key: 'robot_code', labelKey: 'channels.robotCode', type: 'text', placeholderKey: 'channels.placeholderRobotCode', value: '', required: true },
     ],
   },
   {
     id: 'qq',
-    name: 'QQ Bot',
+    nameKey: 'channels.qqBot',
     icon: getChannelIconOrDefault('qq'),
     enabled: false,
     status: 'disconnected',
@@ -205,9 +223,9 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.qqHint',
     docUrl: 'https://q.qq.com/wiki/develop/api-231017/dev-prepare/interface-framework/api-use.html',
     fields: [
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: '102xxxxxx', value: '', required: true },
-      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholder: 'App secret', value: '', required: true },
-      { key: 'token', labelKey: 'channels.botToken', type: 'password', placeholder: 'Bot token', value: '', required: true },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderQQAppId', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
+      { key: 'token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotTokenGeneric', value: '', required: true },
     ],
   },
   {
@@ -220,14 +238,14 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.wechatHint',
     docUrl: 'https://developer.work.weixin.qq.com/document/path/90664',
     fields: [
-      { key: 'corp_id', labelKey: 'channels.corpId', type: 'text', placeholder: 'ww1234567890abcdef', value: '', required: true },
-      { key: 'agent_id', labelKey: 'channels.agentId', type: 'text', placeholder: '1000001', value: '', required: true },
-      { key: 'secret', labelKey: 'channels.secret', type: 'password', placeholder: 'Secret', value: '', required: true },
+      { key: 'corp_id', labelKey: 'channels.corpId', type: 'text', placeholderKey: 'channels.placeholderWechatCorpId', value: '', required: true },
+      { key: 'agent_id', labelKey: 'channels.agentId', type: 'text', placeholderKey: 'channels.placeholderAgentId', value: '', required: true },
+      { key: 'secret', labelKey: 'channels.secret', type: 'password', placeholderKey: 'channels.placeholderSecret', value: '', required: true },
     ],
   },
   {
     id: 'matrix',
-    name: 'Matrix',
+    nameKey: 'channels.matrix',
     icon: getChannelIconOrDefault('matrix'),
     enabled: false,
     status: 'disconnected',
@@ -235,14 +253,14 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.matrixHint',
     docUrl: 'https://spec.matrix.org/latest/client-server-api/',
     fields: [
-      { key: 'homeserver', labelKey: 'channels.matrixHomeserver', type: 'url', placeholder: 'https://matrix.org', value: '', required: true },
-      { key: 'user_id', labelKey: 'channels.matrixUserId', type: 'text', placeholder: '@bot:matrix.org', value: '', required: true },
-      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholder: 'Access token', value: '', required: true },
+      { key: 'homeserver', labelKey: 'channels.matrixHomeserver', type: 'url', placeholderKey: 'channels.placeholderMatrixHomeserver', value: '', required: true },
+      { key: 'user_id', labelKey: 'channels.matrixUserId', type: 'text', placeholderKey: 'channels.placeholderMatrixUserId', value: '', required: true },
+      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholderKey: 'channels.placeholderAccessToken', value: '', required: true },
     ],
   },
   {
     id: 'imessage',
-    name: 'iMessage',
+    nameKey: 'channels.imessage',
     icon: getChannelIconOrDefault('imessage'),
     enabled: false,
     status: 'disconnected',
@@ -253,7 +271,7 @@ const channelDefs = ref<ChannelDef[]>([
   },
   {
     id: 'bluebubbles',
-    name: 'BlueBubbles',
+    nameKey: 'channels.blueBubbles',
     icon: getChannelIconOrDefault('bluebubbles'),
     enabled: false,
     status: 'disconnected',
@@ -261,13 +279,13 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.blueBubblesHint',
     docUrl: 'https://bluebubbles.app/docs/',
     fields: [
-      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholder: 'http://localhost:1234', value: '', required: true },
-      { key: 'password', labelKey: 'channels.password', type: 'password', placeholder: 'Server password', value: '', required: true },
+      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderBlueBubblesServerUrl', value: '', required: true },
+      { key: 'password', labelKey: 'channels.password', type: 'password', placeholderKey: 'channels.placeholderServerPassword', value: '', required: true },
     ],
   },
   {
     id: 'zalo',
-    name: 'Zalo OA',
+    nameKey: 'channels.zaloOA',
     icon: getChannelIconOrDefault('zalo'),
     enabled: false,
     status: 'disconnected',
@@ -275,39 +293,63 @@ const channelDefs = ref<ChannelDef[]>([
     hintKey: 'channels.zaloHint',
     docUrl: 'https://developers.zalo.me/docs/api/official-account-api-147',
     fields: [
-      { key: 'oa_id', labelKey: 'channels.oaId', type: 'text', placeholder: 'Official Account ID', value: '', required: true },
-      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholder: 'OA Access Token', value: '', required: true },
-      { key: 'refresh_token', labelKey: 'channels.refreshToken', type: 'password', placeholder: 'OA Refresh Token', value: '' },
-      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholder: 'Zalo App ID', value: '' },
-      { key: 'secret_key', labelKey: 'channels.secretKey', type: 'password', placeholder: 'Zalo Secret Key', value: '' },
+      { key: 'oa_id', labelKey: 'channels.oaId', type: 'text', placeholderKey: 'channels.placeholderOaId', value: '', required: true },
+      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholderKey: 'channels.placeholderOaAccessToken', value: '', required: true },
+      { key: 'refresh_token', labelKey: 'channels.refreshToken', type: 'password', placeholderKey: 'channels.placeholderOaRefreshToken', value: '' },
+      { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderZaloAppId', value: '' },
+      { key: 'secret_key', labelKey: 'channels.secretKey', type: 'password', placeholderKey: 'channels.placeholderZaloSecretKey', value: '' },
     ],
   },
 ])
 
-// Computed channels with translated strings
-const channels = computed(() => channelDefs.value.map(ch => ({
-  ...ch,
-  name: ch.nameKey ? t(ch.nameKey) : ch.name!,
-  description: t(ch.descriptionKey),
-  hint: ch.hintKey ? t(ch.hintKey) : undefined,
-  fields: ch.fields.map(f => ({
-    ...f,
-    label: t(f.labelKey),
-    placeholder: f.key === 'encrypt_key' ? t('channels.encryptKeyPlaceholder') : f.placeholder,
-  })),
-})))
+// Sorted channels - enabled channels first
+const sortedChannels = computed(() => {
+  return [...channelDefs.value].sort((a, b) => {
+    // Enabled channels first
+    if (a.enabled && !b.enabled) return -1
+    if (!a.enabled && b.enabled) return 1
+    // Then by connection status (connected > connecting > error > disconnected)
+    const statusOrder = { connected: 0, connecting: 1, error: 2, disconnected: 3 }
+    return (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3)
+  })
+})
+
+// Channel map for O(1) lookup
+const channelMap = computed(() => {
+  const map = new Map<string, ChannelDef>()
+  for (const ch of channelDefs.value) {
+    map.set(ch.id, ch)
+  }
+  return map
+})
 
 const expandedChannel = ref<string | null>(null)
 
 const enabledCount = computed(() => {
-  const channelCount = channels.value.filter(c => c.enabled).length
+  const channelCount = channelDefs.value.filter(c => c.enabled).length
   const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
   return channelCount + remoteCount
 })
 const connectedCount = computed(() => {
-  const channelCount = channels.value.filter(c => c.status === 'connected').length
+  const channelCount = channelDefs.value.filter(c => c.status === 'connected').length
   const remoteCount = remoteAccessState.value === 'connected' ? 1 : 0
   return channelCount + remoteCount
+})
+
+const selectedProviderInfo = computed(() => {
+  return tunnelProviders.value.find(p => p.id === selectedProvider.value)
+})
+
+const currentProviderToken = computed({
+  get: () => {
+    if (selectedProvider.value === 'ngrok') return ngrokAuthtoken.value
+    if (selectedProvider.value === 'cloudflare') return cloudflareToken.value
+    return ''
+  },
+  set: (value: string) => {
+    if (selectedProvider.value === 'ngrok') ngrokAuthtoken.value = value
+    else if (selectedProvider.value === 'cloudflare') cloudflareToken.value = value
+  }
 })
 
 function toggleChannel(channelId: string) {
@@ -316,7 +358,7 @@ function toggleChannel(channelId: string) {
 
 async function toggleChannelEnabled(channelId: string, enabled: boolean) {
   toggling.value = channelId
-  const channelDef = channelDefs.value.find(c => c.id === channelId)
+  const channelDef = channelMap.value.get(channelId)
   if (!channelDef) return
 
   // Check if required fields are filled when enabling
@@ -340,6 +382,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
   } else {
     channelDef.status = 'disconnected'
   }
+  triggerRef(channelDefs)
 
   try {
     const response = await fetch(`/api/channels/${channelId}/toggle`, {
@@ -353,6 +396,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       // Update status from server response
       channelDef.status = data.status || (enabled ? 'connected' : 'disconnected')
       channelDef.lastError = data.channel?.last_error
+      triggerRef(channelDefs)
       // Show error message if status is error
       if (channelDef.status === 'error' && channelDef.lastError) {
         testResult.value = { channelId, success: false, message: channelDef.lastError }
@@ -362,33 +406,17 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       channelDef.enabled = !enabled
       channelDef.status = 'error'
       channelDef.lastError = data.message
+      triggerRef(channelDefs)
       testResult.value = { channelId, success: false, message: data.message || t('channels.toggleFailed') }
     }
   } catch {
     // Revert on error
     channelDef.enabled = !enabled
     channelDef.status = 'error'
+    triggerRef(channelDefs)
     testResult.value = { channelId, success: false, message: t('channels.toggleFailed') }
   } finally {
     toggling.value = null
-  }
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'connected': return 'bg-green-500'
-    case 'connecting': return 'bg-yellow-500 animate-pulse'
-    case 'error': return 'bg-red-500'
-    default: return 'bg-gray-400'
-  }
-}
-
-function getStatusText(status: string): string {
-  switch (status) {
-    case 'connected': return t('channels.statusConnected')
-    case 'connecting': return t('channels.statusConnecting')
-    case 'error': return t('channels.statusError')
-    default: return t('channels.statusDisconnected')
   }
 }
 
@@ -400,7 +428,7 @@ async function loadChannelConfigs() {
       const data = await response.json()
       // Merge server data with local channel definitions
       for (const serverChannel of data.channels || []) {
-        const localChannel = channelDefs.value.find(c => c.id === serverChannel.id)
+        const localChannel = channelMap.value.get(serverChannel.id)
         if (localChannel) {
           localChannel.enabled = serverChannel.enabled
           localChannel.status = serverChannel.status
@@ -413,6 +441,7 @@ async function loadChannelConfigs() {
           }
         }
       }
+      triggerRef(channelDefs)
     }
   } catch (err) {
     console.error('Failed to load channel configs:', err)
@@ -423,7 +452,7 @@ async function loadChannelConfigs() {
 
 async function saveChannel(channelId: string) {
   saving.value = channelId
-  const channelDef = channelDefs.value.find(c => c.id === channelId)
+  const channelDef = channelMap.value.get(channelId)
   if (!channelDef) return
 
   try {
@@ -447,6 +476,7 @@ async function saveChannel(channelId: string) {
       if (data.channel) {
         channelDef.status = data.channel.status || channelDef.status
         channelDef.lastError = data.channel.last_error
+        triggerRef(channelDefs)
       }
       if (channelDef.status === 'error' && channelDef.lastError) {
         testResult.value = { channelId, success: false, message: channelDef.lastError }
@@ -471,7 +501,7 @@ async function saveChannel(channelId: string) {
 async function testConnection(channelId: string) {
   testingConnection.value = channelId
   testResult.value = null
-  const channelDef = channelDefs.value.find(c => c.id === channelId)
+  const channelDef = channelMap.value.get(channelId)
   if (!channelDef) return
 
   try {
@@ -494,17 +524,20 @@ async function testConnection(channelId: string) {
       // If enabled, set to connected; otherwise keep disconnected but mark as valid config
       if (channelDef.enabled) {
         channelDef.status = 'connected'
+        triggerRef(channelDefs)
       }
     } else {
       // Test failed - if enabled, show error
       if (channelDef.enabled) {
         channelDef.status = 'error'
+        triggerRef(channelDefs)
       }
     }
   } catch {
     testResult.value = { channelId, success: false, message: t('channels.testFailed') }
     if (channelDef.enabled) {
       channelDef.status = 'error'
+      triggerRef(channelDefs)
     }
   } finally {
     testingConnection.value = null
@@ -514,14 +547,43 @@ async function testConnection(channelId: string) {
 // Remote Access functions
 async function loadRemoteAccessStatus() {
   try {
+    // Load providers
+    const providersRes = await getTunnelProviders()
+    if (providersRes.data.providers) {
+      tunnelProviders.value = providersRes.data.providers
+    }
+
+    // Load saved config (tokens)
+    try {
+      const configRes = await getRemoteAccessConfig()
+      if (configRes.data.config) {
+        if (configRes.data.config.ngrok_authtoken) {
+          ngrokAuthtoken.value = configRes.data.config.ngrok_authtoken
+        }
+        if (configRes.data.config.cloudflare_token) {
+          cloudflareToken.value = configRes.data.config.cloudflare_token
+        }
+        if (configRes.data.config.default_provider) {
+          selectedProvider.value = configRes.data.config.default_provider
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load saved config:', e)
+    }
+
     const statusRes = await getRemoteAccessStatus()
     tunnelStatus.value = statusRes.data.tunnel
 
-    if (statusRes.data.tunnel.connecting) {
-      remoteAccessState.value = 'connecting'
-      startRemoteAccessPolling()
-    } else if (statusRes.data.tunnel.active) {
+    if (statusRes.data.tunnel.provider) {
+      selectedProvider.value = statusRes.data.tunnel.provider
+    }
+
+    // URL or active = connected (prioritize over connecting)
+    if (statusRes.data.tunnel.active || statusRes.data.tunnel.url) {
       remoteAccessState.value = 'connected'
+      startRemoteAccessPolling()
+    } else if (statusRes.data.tunnel.connecting) {
+      remoteAccessState.value = 'connecting'
       startRemoteAccessPolling()
     } else {
       remoteAccessState.value = 'ready'
@@ -538,8 +600,40 @@ async function handleRemoteAccessStart() {
   remoteAccessError.value = null
 
   try {
-    const response = await startRemoteAccess()
+    // Save token to config if provided
+    if (currentProviderToken.value) {
+      const configUpdate: Record<string, string> = { default_provider: selectedProvider.value }
+      if (selectedProvider.value === 'ngrok') {
+        configUpdate.ngrok_authtoken = ngrokAuthtoken.value
+      } else if (selectedProvider.value === 'cloudflare') {
+        configUpdate.cloudflare_token = cloudflareToken.value
+      }
+      await updateRemoteAccessConfig(configUpdate)
+    }
+
+    const response = await startRemoteAccess(
+      selectedProvider.value,
+      undefined,
+      selectedProvider.value === 'ngrok' ? ngrokAuthtoken.value : undefined,
+      selectedProvider.value === 'cloudflare' ? cloudflareToken.value : undefined
+    )
     if (response.data.success) {
+      // Update from response and fetch latest status (URL may be in status; ensure UI updates)
+      if (response.data.tunnel) {
+        tunnelStatus.value = response.data.tunnel
+        if (response.data.tunnel.active || response.data.tunnel.url) {
+          remoteAccessState.value = 'connected'
+        }
+      }
+      try {
+        const statusRes = await getRemoteAccessStatus()
+        tunnelStatus.value = statusRes.data.tunnel
+        if (statusRes.data.tunnel.active || statusRes.data.tunnel.url) {
+          remoteAccessState.value = 'connected'
+        }
+      } catch {
+        /* polling will retry */
+      }
       startRemoteAccessPolling()
     } else {
       throw new Error(response.data.message || 'Failed to start tunnel')
@@ -570,13 +664,15 @@ function startRemoteAccessPolling() {
       const response = await getRemoteAccessStatus()
       tunnelStatus.value = response.data.tunnel
 
-      if (response.data.tunnel.active) {
+      if (response.data.tunnel.active || response.data.tunnel.url) {
         remoteAccessState.value = 'connected'
       } else if (remoteAccessState.value === 'connecting') {
         // Still waiting for tunnel to start
-      } else {
+      } else if (!response.data.tunnel.active && !response.data.tunnel.url) {
+        // Only transition to ready when both are gone (connection actually stopped)
         remoteAccessState.value = 'ready'
       }
+      // On API error (catch): stay in current state
     } catch (e) {
       console.error('Failed to poll status:', e)
     }
@@ -590,12 +686,16 @@ function stopRemoteAccessPolling() {
   }
 }
 
-function handleDownloadComplete() {
-  loadRemoteAccessStatus()
-}
-
 function toggleRemoteAccessExpanded() {
   remoteAccessExpanded.value = !remoteAccessExpanded.value
+}
+
+function updateChannelField(channelId: string, fieldIndex: number, value: string) {
+  const channel = channelMap.value.get(channelId)
+  if (channel && channel.fields[fieldIndex]) {
+    channel.fields[fieldIndex].value = value
+    triggerRef(channelDefs)
+  }
 }
 
 onMounted(() => {
@@ -649,8 +749,10 @@ watch(() => tunnelStatus.value?.active, (active) => {
           class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
           @click="toggleRemoteAccessExpanded"
         >
-          <div class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center p-1.5">
-            <img :src="ngrokLogo" alt="ngrok" class="w-full h-full dark:invert" />
+          <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
@@ -664,7 +766,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
                   'bg-green-500': remoteAccessState === 'connected',
                   'bg-yellow-500 animate-pulse': remoteAccessState === 'connecting',
                   'bg-red-500': remoteAccessState === 'error',
-                  'bg-gray-400': ['loading', 'not-installed', 'ready'].includes(remoteAccessState)
+                  'bg-gray-400': ['loading', 'ready'].includes(remoteAccessState)
                 }"
               ></span>
             </div>
@@ -679,7 +781,6 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 :checked="remoteAccessState === 'connected'"
                 type="checkbox"
                 class="sr-only peer"
-                :disabled="remoteAccessState === 'connecting'"
                 @change="($event.target as HTMLInputElement).checked ? handleRemoteAccessStart() : handleRemoteAccessStop()"
               />
               <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
@@ -710,43 +811,59 @@ watch(() => tunnelStatus.value?.active, (active) => {
             </svg>
           </div>
 
-          <!-- Not Installed State -->
-          <div v-else-if="remoteAccessState === 'not-installed'" class="space-y-4">
-            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-              <div class="flex items-start gap-3">
-                <svg class="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p class="text-sm text-blue-800 dark:text-blue-200">
-                    {{ t('remoteAccess.needsDownload') }}
-                  </p>
-                  <ul class="mt-2 text-sm text-blue-700 dark:text-blue-300 list-disc list-inside">
-                    <li>{{ t('remoteAccess.feature1') }}</li>
-                    <li>{{ t('remoteAccess.feature2') }}</li>
-                    <li>{{ t('remoteAccess.feature3') }}</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            <NgrokDownloadButton @download-complete="handleDownloadComplete" />
-          </div>
-
           <!-- Ready State -->
           <div v-else-if="remoteAccessState === 'ready'" class="space-y-4">
-            <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
-              <div class="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                <span class="font-medium">{{ t('remoteAccess.ngrokReady') }}</span>
+            <!-- Provider Selection -->
+            <div class="space-y-3">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('remoteAccess.selectProvider') }}
+              </label>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  v-for="provider in tunnelProviders"
+                  :key="provider.id"
+                  class="p-3 rounded-lg border-2 text-left transition-colors"
+                  :class="selectedProvider === provider.id
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
+                  @click="selectedProvider = provider.id"
+                >
+                  <div class="font-medium text-gray-900 dark:text-white text-sm">{{ provider.name }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {{ provider.requires_key ? t('remoteAccess.requiresKey') : t('remoteAccess.noKeyRequired') }}
+                  </div>
+                </button>
               </div>
-              <p class="text-sm text-gray-600 dark:text-gray-400">
-                {{ t('remoteAccess.readyDescription') }}
-              </p>
             </div>
+
+            <!-- Auth Token Input (if required) -->
+            <div v-if="selectedProviderInfo?.requires_key" class="space-y-2">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ selectedProviderInfo.key_label || 'Auth Token' }}
+              </label>
+              <input
+                v-model="currentProviderToken"
+                type="password"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                :placeholder="selectedProviderInfo.key_hint || ''"
+              />
+              <a
+                v-if="selectedProviderInfo.doc_url"
+                :href="selectedProviderInfo.doc_url"
+                target="_blank"
+                class="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                {{ t('remoteAccess.getToken') }}
+              </a>
+            </div>
+
             <button
               class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
+              :class="{ 'opacity-50 cursor-not-allowed': selectedProviderInfo?.requires_key && !currentProviderToken }"
               @click="handleRemoteAccessStart"
             >
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -786,11 +903,12 @@ watch(() => tunnelStatus.value?.active, (active) => {
                   <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
                     <li>{{ t('remoteAccess.antivirusHint1') }}</li>
                     <li>{{ t('remoteAccess.antivirusHint2') }}</li>
-                    <li>{{ t('remoteAccess.antivirusHint3') }}</li>
                   </ul>
                 </div>
               </div>
             </div>
+            <!-- Diagnostics and Logs (available during connecting) -->
+            <TunnelStatus :status="tunnelStatus || { active: false, connecting: true }" />
           </div>
 
           <!-- Connected State -->
@@ -816,207 +934,29 @@ watch(() => tunnelStatus.value?.active, (active) => {
             >
               {{ t('common.retry') }}
             </button>
+            <!-- Diagnostics and Logs (available during error) -->
+            <TunnelStatus :status="tunnelStatus || { active: false }" />
           </div>
         </div>
       </div>
 
       <!-- Other Channels -->
-      <div
-        v-for="channel in channels"
+      <ChannelCard
+        v-for="channel in sortedChannels"
         :key="channel.id"
-        class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
-      >
-        <!-- Channel Header -->
-        <div
-          class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-          @click="toggleChannel(channel.id)"
-        >
-          <img :src="channel.icon" :alt="channel.name" class="w-10 h-10 object-contain" />
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <h3 class="font-medium text-gray-900 dark:text-white">{{ channel.name }}</h3>
-              <span
-                class="w-2 h-2 rounded-full"
-                :class="getStatusColor(channel.status)"
-                :title="getStatusText(channel.status) + (channelDefs.find(c => c.id === channel.id)?.lastError ? ': ' + channelDefs.find(c => c.id === channel.id)?.lastError : '')"
-              ></span>
-            </div>
-            <p class="text-sm text-gray-500 dark:text-gray-400 truncate">
-              <template v-if="channelDefs.find(c => c.id === channel.id)?.status === 'error' && channelDefs.find(c => c.id === channel.id)?.lastError">
-                <span class="text-red-500">{{ channelDefs.find(c => c.id === channel.id)?.lastError }}</span>
-              </template>
-              <template v-else>
-                {{ channel.description }}
-              </template>
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <label class="relative inline-flex items-center cursor-pointer" @click.stop>
-              <input
-                :checked="channelDefs.find(c => c.id === channel.id)!.enabled"
-                type="checkbox"
-                class="sr-only peer"
-                :disabled="toggling === channel.id"
-                @change="toggleChannelEnabled(channel.id, ($event.target as HTMLInputElement).checked)"
-              />
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
-            </label>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5 text-gray-400 transition-transform"
-              :class="{ 'rotate-180': expandedChannel === channel.id }"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
-
-        <!-- Channel Config (Expanded) -->
-        <div
-          v-if="expandedChannel === channel.id"
-          class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50"
-        >
-          <!-- Hint -->
-          <p v-if="channel.hint" class="text-xs text-gray-500 dark:text-gray-400 mb-4 flex items-start gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {{ channel.hint }}
-          </p>
-
-          <!-- Fields -->
-          <div v-if="channel.fields.length > 0" class="space-y-4">
-            <div v-for="(field, fieldIndex) in channel.fields" :key="field.key">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                {{ field.label }}
-                <span v-if="field.required" class="text-red-500">*</span>
-              </label>
-              <textarea
-                v-if="field.type === 'textarea'"
-                v-model="channelDefs.find(c => c.id === channel.id)!.fields[fieldIndex].value"
-                :name="field.key"
-                :placeholder="field.placeholder"
-                rows="4"
-                class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-              />
-              <PasswordInput
-                v-else-if="field.type === 'password'"
-                v-model="channelDefs.find(c => c.id === channel.id)!.fields[fieldIndex].value"
-                :name="field.key"
-                :placeholder="field.placeholder"
-                class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                v-else
-                v-model="channelDefs.find(c => c.id === channel.id)!.fields[fieldIndex].value"
-                :name="field.key"
-                :type="field.type"
-                :placeholder="field.placeholder"
-                class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-            {{ t('channels.noConfigRequired') }}
-          </p>
-
-          <!-- Test Result -->
-          <div
-            v-if="testResult && testResult.channelId === channel.id"
-            class="mt-4 p-3 rounded-lg"
-            :class="testResult.success ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'"
-          >
-            {{ testResult.message }}
-          </div>
-
-          <!-- Actions -->
-          <div class="flex flex-wrap items-center gap-3 mt-4">
-            <button
-              v-if="channel.fields.length > 0"
-              :disabled="testingConnection === channel.id"
-              class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
-              @click="testConnection(channel.id)"
-            >
-              {{ testingConnection === channel.id ? t('channels.testing') : t('channels.testConnection') }}
-            </button>
-            <button
-              :disabled="saving === channel.id"
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
-              @click="saveChannel(channel.id)"
-            >
-              {{ saving === channel.id ? t('channels.saving') : t('common.save') }}
-            </button>
-            <a
-              v-if="channel.docUrl"
-              :href="channel.docUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              {{ t('channels.viewDocs') }}
-            </a>
-            <!-- Feishu Open Bot Chat Link -->
-            <a
-              v-if="channel.id === 'feishu' && channelDefs.find(c => c.id === 'feishu')?.fields.find(f => f.key === 'app_id')?.value"
-              :href="`https://applink.feishu.cn/client/bot/open?appId=${channelDefs.find(c => c.id === 'feishu')?.fields.find(f => f.key === 'app_id')?.value}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              {{ t('channels.feishuOpenChat') }}
-            </a>
-            <!-- Telegram Open Bot Chat Link -->
-            <a
-              v-if="channel.id === 'telegram' && channelDefs.find(c => c.id === 'telegram')?.fields.find(f => f.key === 'bot_username')?.value"
-              :href="`https://t.me/${channelDefs.find(c => c.id === 'telegram')?.fields.find(f => f.key === 'bot_username')?.value}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              {{ t('channels.telegramOpenChat') }}
-            </a>
-            <!-- DingTalk Open Bot Chat Link -->
-            <a
-              v-if="channel.id === 'dingtalk' && channelDefs.find(c => c.id === 'dingtalk')?.fields.find(f => f.key === 'robot_code')?.value"
-              :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${channelDefs.find(c => c.id === 'dingtalk')?.fields.find(f => f.key === 'robot_code')?.value}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              {{ t('channels.dingtalkOpenChat') }}
-            </a>
-            <!-- WhatsApp Open Chat Link -->
-            <a
-              v-if="channel.id === 'whatsapp' && channelDefs.find(c => c.id === 'whatsapp')?.fields.find(f => f.key === 'phone_number')?.value"
-              :href="`https://wa.me/${channelDefs.find(c => c.id === 'whatsapp')?.fields.find(f => f.key === 'phone_number')?.value?.replace(/[^0-9]/g, '')}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              {{ t('channels.whatsappOpenChat') }}
-            </a>
-          </div>
-        </div>
-      </div>
+        v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult]"
+        :channel="channel"
+        :expanded="expandedChannel === channel.id"
+        :toggling="toggling === channel.id"
+        :saving="saving === channel.id"
+        :testing-connection="testingConnection === channel.id"
+        :test-result="testResult"
+        @toggle="toggleChannel(channel.id)"
+        @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
+        @save="saveChannel(channel.id)"
+        @test-connection="testConnection(channel.id)"
+        @update-field="(fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)"
+      />
     </div>
   </div>
 </template>

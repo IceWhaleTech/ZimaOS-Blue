@@ -257,7 +257,6 @@ export default {
     ...enUS.browserAutomation,
     title: 'Uathoibriú Brabhsálaí',
     newTask: 'Tasc nua',
-    createTask: 'Cruthaigh tasc',
     stats: {
       totalTasks: 'Iomlán Tascanna',
       running: 'Ag rith',
@@ -798,6 +797,13 @@ export default {
     benefit2: 'Bainistigh úsáideoirí agus socruithe córais',
     benefit3: 'Stóráil shlán buan sonraí',
     upgradeFailed: 'Theip ar chuntas riarthóra a chruthú',
+    passwordCheck: {
+      length: 'Ar a laghad 8 carachtar',
+      uppercase: 'Litir cháipitil amháin',
+      lowercase: 'Litir bheag amháin',
+      number: 'Uimhir amháin',
+      special: 'Carachtar speisialta amháin (!@#$%...)',
+    },
   },
   onboarding: {
     welcome: 'Fáilte go Echo!',

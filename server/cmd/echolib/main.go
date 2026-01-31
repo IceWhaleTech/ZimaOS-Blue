@@ -19,8 +19,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	_ "modernc.org/sqlite"
 	"go.uber.org/zap"
+	_ "modernc.org/sqlite"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/a2ui"
 	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
@@ -28,7 +28,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
@@ -700,10 +699,7 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		formfillerHandler.RegisterRoutes(formfillerGroup)
 	}
 
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
-	claudeCodeGroup := protected.Group("/claudecode")
-	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
-	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
+	// Claude Code CLI module removed to avoid antivirus warnings.
 
 	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)
 	providerSettingsGroup := protected.Group("/providers/settings")
