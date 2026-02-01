@@ -568,7 +568,7 @@ func main() {
 					Type:          tts.ProviderSherpa,
 					Enabled:       true,
 					BaseURL:       filepath.Join(dataDir, "sherpa-tts"), // Model directory
-					DefaultVoice:  "kokoro",                             // Model type
+					DefaultVoice:  "piper-en",                           // Model type
 					DefaultFormat: tts.FormatWAV,
 					MaxTextLength: 5000,
 				},
@@ -659,6 +659,25 @@ func main() {
 		if sherpaASRProvider != nil {
 			logger.Info().Msg("Using Sherpa ASR provider from STT service")
 		}
+	}
+
+	// Create standalone providers if not available from services
+	if sherpaTTSProvider == nil {
+		sherpaTTSProvider = tts.NewSherpaProvider(&tts.SherpaConfig{
+			ModelDir:      filepath.Join(dataDir, "sherpa-tts"),
+			ModelType:     "piper-en",
+			DefaultVoice:  "0",
+			DefaultFormat: tts.FormatWAV,
+			MaxTextLength: 5000,
+		})
+		logger.Info().Msg("Created standalone Sherpa TTS provider")
+	}
+	if sherpaASRProvider == nil {
+		sherpaASRProvider = stt.NewSherpaProvider(&stt.SherpaConfig{
+			ModelDir:  filepath.Join(dataDir, "sherpa-asr"),
+			ModelType: "whisper-tiny",
+		})
+		logger.Info().Msg("Created standalone Sherpa ASR provider")
 	}
 
 	// Register deferred cleanup for metrics services
