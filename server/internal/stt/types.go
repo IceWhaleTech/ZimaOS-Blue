@@ -151,4 +151,6 @@ type Service interface {
 	ListProviders() []ProviderType
 	// GetDefaultProvider returns the default provider type.
 	GetDefaultProvider() ProviderType
+	// GetSherpaProvider returns the Sherpa ASR provider if available.
+	GetSherpaProvider() *SherpaProvider
 }

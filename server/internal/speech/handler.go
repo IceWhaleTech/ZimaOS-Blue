@@ -3,6 +3,7 @@ package speech
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -217,7 +218,13 @@ func (h *Handler) DownloadTTSModel(c echo.Context) error {
 	// Start download in background
 	go func() {
 		ctx := context.Background()
-		provider.GetDownloadManager().Download(ctx, req.ModelType)
+		if err := provider.GetDownloadManager().Download(ctx, req.ModelType); err != nil {
+			fmt.Printf("TTS model download failed: %v\n", err)
+		} else {
+			fmt.Printf("TTS model download completed: %s\n", req.ModelType)
+			// Refresh model status after successful download
+			provider.RefreshModelStatus()
+		}
 	}()
 
 	return c.JSON(http.StatusOK, map[string]string{

@@ -44,9 +44,13 @@ func NewService(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service) Service {
 		config:     cfg,
 	}
 
-	// Try to get Sherpa providers if they exist
-	// This would require type assertion from the service
-	// For now, we'll create them directly if configured
+	// Get Sherpa providers from the underlying services
+	if ttsSvc != nil {
+		s.sherpaTTS = ttsSvc.GetSherpaProvider()
+	}
+	if sttSvc != nil {
+		s.sherpaASR = sttSvc.GetSherpaProvider()
+	}
 
 	return s
 }

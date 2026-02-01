@@ -6,6 +6,7 @@ package companion
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 )
 
@@ -77,6 +78,34 @@ const (
 	PlatformAPI      Platform = "api"
 )
 
+// DurationMs is a time.Duration that serializes to milliseconds in JSON.
+type DurationMs time.Duration
+
+// MarshalJSON converts duration to milliseconds for JSON.
+func (d DurationMs) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.FormatInt(time.Duration(d).Milliseconds(), 10)), nil
+}
+
+// UnmarshalJSON converts milliseconds from JSON to duration.
+func (d *DurationMs) UnmarshalJSON(data []byte) error {
+	ms, err := strconv.ParseInt(string(data), 10, 64)
+	if err != nil {
+		return err
+	}
+	*d = DurationMs(time.Duration(ms) * time.Millisecond)
+	return nil
+}
+
+// Milliseconds returns the duration as milliseconds.
+func (d DurationMs) Milliseconds() int64 {
+	return time.Duration(d).Milliseconds()
+}
+
+// FromDuration converts a time.Duration to DurationMs.
+func FromDuration(d time.Duration) DurationMs {
+	return DurationMs(d)
+}
+
 // SessionEvent represents an event that occurred during an Agent session.
 type SessionEvent struct {
 	ID        string           `json:"id"`
@@ -94,9 +123,9 @@ type SessionEvent struct {
 	Security   *SecurityEvent   `json:"security,omitempty"`
 
 	// Metadata
-	Duration time.Duration `json:"duration,omitempty"`
-	Status   string        `json:"status"`
-	Error    string        `json:"error,omitempty"`
+	Duration DurationMs `json:"duration,omitempty"`
+	Status   string     `json:"status"`
+	Error    string     `json:"error,omitempty"`
 }
 
 // Session represents an Agent session being monitored.
@@ -108,7 +137,7 @@ type Session struct {
 	Status      SessionStatus `json:"status"`
 	StartedAt   time.Time     `json:"started_at"`
 	EndedAt     *time.Time    `json:"ended_at,omitempty"`
-	Duration    time.Duration `json:"duration,omitempty"`
+	Duration    DurationMs    `json:"duration,omitempty"`
 	EventCount  int           `json:"event_count"`
 	ThreatLevel ThreatLevel   `json:"threat_level"`
 	ThreatScore int           `json:"threat_score"`
@@ -143,7 +172,7 @@ type ToolCallEvent struct {
 	ToolID      string                 `json:"tool_id"`
 	Input       map[string]interface{} `json:"input"`
 	Output      interface{}            `json:"output,omitempty"`
-	Duration    time.Duration          `json:"duration"`
+	Duration    DurationMs             `json:"duration"`
 	Status      string                 `json:"status"` // pending, running, completed, failed
 	SandboxUsed bool                   `json:"sandbox_used"`
 	Resources   *ResourceUsage         `json:"resources,omitempty"`
@@ -151,17 +180,17 @@ type ToolCallEvent struct {
 
 // LLMRequestEvent represents an LLM API request event.
 type LLMRequestEvent struct {
-	Provider       string        `json:"provider"` // openai, anthropic, ollama, etc.
-	Model          string        `json:"model"`
-	PromptTokens   int           `json:"prompt_tokens"`
-	CompletionTokens int         `json:"completion_tokens"`
-	TotalTokens    int           `json:"total_tokens"`
-	Duration       time.Duration `json:"duration"`
-	Status         string        `json:"status"`
-	Error          string        `json:"error,omitempty"`
-	Temperature    float64       `json:"temperature,omitempty"`
-	MaxTokens      int           `json:"max_tokens,omitempty"`
-	StopReason     string        `json:"stop_reason,omitempty"`
+	Provider         string     `json:"provider"` // openai, anthropic, ollama, etc.
+	Model            string     `json:"model"`
+	PromptTokens     int        `json:"prompt_tokens"`
+	CompletionTokens int        `json:"completion_tokens"`
+	TotalTokens      int        `json:"total_tokens"`
+	Duration         DurationMs `json:"duration"`
+	Status           string     `json:"status"`
+	Error            string     `json:"error,omitempty"`
+	Temperature      float64    `json:"temperature,omitempty"`
+	MaxTokens        int        `json:"max_tokens,omitempty"`
+	StopReason       string     `json:"stop_reason,omitempty"`
 }
 
 // SecurityEvent represents a security-related event.
@@ -177,10 +206,10 @@ type SecurityEvent struct {
 
 // ResourceUsage represents resource consumption during execution.
 type ResourceUsage struct {
-	CPUTime    time.Duration `json:"cpu_time"`
-	MemoryPeak int64         `json:"memory_peak"` // bytes
-	IORead     int64         `json:"io_read"`     // bytes
-	IOWrite    int64         `json:"io_write"`    // bytes
+	CPUTime    DurationMs `json:"cpu_time"`
+	MemoryPeak int64      `json:"memory_peak"` // bytes
+	IORead     int64      `json:"io_read"`     // bytes
+	IOWrite    int64      `json:"io_write"`    // bytes
 }
 
 // Alert represents a security or operational alert.
@@ -205,7 +234,7 @@ type FlowNode struct {
 	Type      string                 `json:"type"` // message, tool_call, llm_request, security_check
 	Label     string                 `json:"label"`
 	Timestamp time.Time              `json:"timestamp"`
-	Duration  time.Duration          `json:"duration,omitempty"`
+	Duration  DurationMs             `json:"duration,omitempty"`
 	Status    string                 `json:"status"`
 	Data      map[string]interface{} `json:"data,omitempty"`
 	Position  *Position              `json:"position,omitempty"`
@@ -234,27 +263,27 @@ type FlowGraph struct {
 
 // Stats represents companion statistics.
 type Stats struct {
-	ActiveSessions   int            `json:"active_sessions"`
-	TotalSessions    int            `json:"total_sessions"`
-	TotalEvents      int            `json:"total_events"`
-	TotalAlerts      int            `json:"total_alerts"`
-	UnackedAlerts    int            `json:"unacked_alerts"`
-	SessionsByPlatform map[Platform]int `json:"sessions_by_platform"`
-	ThreatsByLevel   map[ThreatLevel]int `json:"threats_by_level"`
-	EventsByType     map[SessionEventType]int `json:"events_by_type"`
-	AvgSessionDuration time.Duration `json:"avg_session_duration"`
-	LastUpdated      time.Time      `json:"last_updated"`
+	ActiveSessions     int                      `json:"active_sessions"`
+	TotalSessions      int                      `json:"total_sessions"`
+	TotalEvents        int                      `json:"total_events"`
+	TotalAlerts        int                      `json:"total_alerts"`
+	UnackedAlerts      int                      `json:"unacked_alerts"`
+	SessionsByPlatform map[Platform]int         `json:"sessions_by_platform"`
+	ThreatsByLevel     map[ThreatLevel]int      `json:"threats_by_level"`
+	EventsByType       map[SessionEventType]int `json:"events_by_type"`
+	AvgSessionDuration DurationMs               `json:"avg_session_duration"`
+	LastUpdated        time.Time                `json:"last_updated"`
 }
 
 // DailyStats represents daily aggregated statistics.
 type DailyStats struct {
-	Date             string         `json:"date"` // YYYY-MM-DD
-	TotalSessions    int            `json:"total_sessions"`
-	TotalEvents      int            `json:"total_events"`
-	TotalAlerts      int            `json:"total_alerts"`
+	Date               string           `json:"date"` // YYYY-MM-DD
+	TotalSessions      int              `json:"total_sessions"`
+	TotalEvents        int              `json:"total_events"`
+	TotalAlerts        int              `json:"total_alerts"`
 	SessionsByPlatform map[Platform]int `json:"sessions_by_platform"`
-	ThreatsByLevel   map[ThreatLevel]int `json:"threats_by_level"`
-	AvgSessionDuration time.Duration `json:"avg_session_duration"`
+	ThreatsByLevel     map[ThreatLevel]int `json:"threats_by_level"`
+	AvgSessionDuration DurationMs       `json:"avg_session_duration"`
 }
 
 // ListOptions contains options for listing resources.

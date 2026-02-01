@@ -83,11 +83,43 @@ func (m *SherpaDownloadManager) clearState() {
 	os.Remove(m.stateFilePath())
 }
 
-// IsModelComplete checks if a model has been fully downloaded.
+// IsModelComplete checks if a model has been fully downloaded by checking actual files.
 func (m *SherpaDownloadManager) IsModelComplete(modelType string) bool {
-	markerPath := m.completeMarkerPath(modelType)
-	_, err := os.Stat(markerPath)
-	return err == nil
+	// Get model directory
+	modelDirs := map[string]string{
+		"piper-en":     "vits-piper-en_US-lessac-medium",
+		"piper-en-hfc": "vits-piper-en_US-hfc_female-medium",
+		"piper-de":     "vits-piper-de_DE-thorsten-medium",
+		"piper-es":     "vits-piper-es_ES-davefx-medium",
+	}
+
+	dir, ok := modelDirs[modelType]
+	if !ok {
+		return false
+	}
+
+	modelPath := filepath.Join(m.ModelDir, dir)
+
+	// Piper models have different naming: {voice}.onnx instead of model.onnx
+	modelFiles := map[string]string{
+		"piper-en":     "en_US-lessac-medium.onnx",
+		"piper-en-hfc": "en_US-hfc_female-medium.onnx",
+		"piper-de":     "de_DE-thorsten-medium.onnx",
+		"piper-es":     "es_ES-davefx-medium.onnx",
+	}
+	onnxFile := "model.onnx"
+	if f, ok := modelFiles[modelType]; ok {
+		onnxFile = f
+	}
+
+	// Check if required files exist
+	requiredFiles := []string{onnxFile, "tokens.txt"}
+	for _, file := range requiredFiles {
+		if _, err := os.Stat(filepath.Join(modelPath, file)); os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
 }
 
 // markComplete creates a completion marker for a model.
@@ -129,8 +161,7 @@ func (m *SherpaDownloadManager) Download(ctx context.Context, modelType string) 
 	// Get package name for model type
 	packageName, ok := sherpaModelPackages[modelType]
 	if !ok {
-		packageName = sherpaModelPackages["kokoro-en"]
-		modelType = "kokoro-en"
+		return fmt.Errorf("unknown model type: %s", modelType)
 	}
 
 	// Download URL
@@ -516,9 +547,15 @@ func (p *SherpaProvider) DownloadModel(ctx context.Context) error {
 	p.modelReady = p.checkModelReady()
 	p.mu.Unlock()
 
-	// Initialize TTS if model is ready
+	// Pre-initialize TTS engine after download completes
 	if p.modelReady {
-		return p.initTTS()
+		go func() {
+			if err := p.initTTS(); err != nil {
+				fmt.Printf("Failed to initialize TTS after download: %v\n", err)
+			} else {
+				fmt.Println("TTS engine initialized after download")
+			}
+		}()
 	}
 
 	return nil

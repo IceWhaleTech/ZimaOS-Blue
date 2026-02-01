@@ -98,23 +98,23 @@ export const ttsApi = {
   // Sherpa model management (native Go, no Python dependency)
   sherpa: {
     // Get Sherpa model status
-    getStatus: () => api.get<SherpaModelStatus>('/tts/sherpa/status'),
+    getStatus: () => api.get<SherpaModelStatus>('/speech/tts/status'),
 
     // Start downloading Sherpa model
     downloadModel: (modelType = 'kokoro-en') =>
-      api.post<{ status: string; message: string; model_type: string }>('/tts/sherpa/download', {
+      api.post<{ status: string; message: string; model_type: string }>('/speech/tts/download', {
         model_type: modelType,
       }),
 
     // Delete Sherpa model
-    deleteModel: () => api.delete<{ status: string; message: string }>('/tts/sherpa/model'),
+    deleteModel: () => api.delete<{ status: string; message: string }>('/speech/tts/model'),
 
     // Get available models
-    getAvailableModels: () => api.get<{ models: SherpaAvailableModel[] }>('/tts/sherpa/models'),
+    getAvailableModels: () => api.get<{ models: SherpaAvailableModel[] }>('/speech/tts/models'),
 
     // Switch to a different model
     switchModel: (modelType: string) =>
-      api.post<{ status: string; message: string }>('/tts/sherpa/switch', {
+      api.post<{ status: string; message: string }>('/speech/tts/switch', {
         model_type: modelType,
       }),
   },

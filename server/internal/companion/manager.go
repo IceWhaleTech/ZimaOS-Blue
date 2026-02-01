@@ -116,7 +116,7 @@ func (m *Manager) EndSession(ctx context.Context, id string) error {
 	now := time.Now()
 	session.Status = SessionStatusEnded
 	session.EndedAt = &now
-	session.Duration = now.Sub(session.StartedAt)
+	session.Duration = FromDuration(now.Sub(session.StartedAt))
 
 	// Update storage
 	if err := m.storage.UpdateSession(ctx, session); err != nil {
@@ -235,12 +235,12 @@ func (m *Manager) GetStats(ctx context.Context) (*Stats, error) {
 		stats.ThreatsByLevel[session.ThreatLevel]++
 		stats.TotalEvents += session.EventCount
 		if session.Duration > 0 {
-			totalDuration += session.Duration
+			totalDuration += time.Duration(session.Duration)
 		}
 	}
 
 	if total > 0 {
-		stats.AvgSessionDuration = totalDuration / time.Duration(total)
+		stats.AvgSessionDuration = FromDuration(totalDuration / time.Duration(total))
 	}
 
 	// Count unacknowledged alerts

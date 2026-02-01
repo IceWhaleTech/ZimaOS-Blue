@@ -26,9 +26,27 @@ type CCCache struct {
 	evictions int64
 	bypasses  int64 // Requests that bypassed cache (streaming, etc.)
 
+	// Persistence
+	statsStore StatsStore
+
 	// Cleanup
 	cleanupTicker *time.Ticker
 	stopCleanup   chan struct{}
+}
+
+// StatsStore interface for persisting cache statistics
+type StatsStore interface {
+	SaveCacheStats(stats *CacheStats) error
+	LoadCacheStats() (*CacheStats, error)
+}
+
+// CacheStats represents persistable cache statistics
+type CacheStats struct {
+	Hits      int64     `json:"hits"`
+	Misses    int64     `json:"misses"`
+	Evictions int64     `json:"evictions"`
+	Bypasses  int64     `json:"bypasses"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // CCCacheEntry represents a cached response
@@ -65,14 +83,47 @@ func NewCCCache(config *CacheConfig) *CCCache {
 	return cache
 }
 
-// cleanupLoop periodically removes expired entries
+// SetStatsStore sets the stats persistence store and loads existing stats
+func (c *CCCache) SetStatsStore(store StatsStore) {
+	c.statsStore = store
+	// Load existing stats
+	if stats, err := store.LoadCacheStats(); err == nil && stats != nil {
+		atomic.StoreInt64(&c.hits, stats.Hits)
+		atomic.StoreInt64(&c.misses, stats.Misses)
+		atomic.StoreInt64(&c.evictions, stats.Evictions)
+		atomic.StoreInt64(&c.bypasses, stats.Bypasses)
+	}
+}
+
+// SaveStats persists current stats to the store
+func (c *CCCache) SaveStats() error {
+	if c.statsStore == nil {
+		return nil
+	}
+	stats := &CacheStats{
+		Hits:      atomic.LoadInt64(&c.hits),
+		Misses:    atomic.LoadInt64(&c.misses),
+		Evictions: atomic.LoadInt64(&c.evictions),
+		Bypasses:  atomic.LoadInt64(&c.bypasses),
+		UpdatedAt: time.Now(),
+	}
+	return c.statsStore.SaveCacheStats(stats)
+}
+
+// cleanupLoop periodically removes expired entries and saves stats
 func (c *CCCache) cleanupLoop() {
+	statsTicker := time.NewTicker(5 * time.Minute) // Save stats every 5 minutes
+	defer statsTicker.Stop()
+
 	for {
 		select {
 		case <-c.cleanupTicker.C:
 			c.cleanup()
+		case <-statsTicker.C:
+			c.SaveStats()
 		case <-c.stopCleanup:
 			c.cleanupTicker.Stop()
+			c.SaveStats() // Save stats on shutdown
 			return
 		}
 	}

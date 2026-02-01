@@ -645,21 +645,21 @@ func main() {
 	// Wait for all parallel initializations to complete
 	initPool.Wait()
 
-	// Initialize Sherpa providers for local speech model management
-	sherpaTTSProvider := tts.NewSherpaProvider(&tts.SherpaConfig{
-		ModelDir:      filepath.Join(dataDir, "sherpa-tts"),
-		ModelType:     "kokoro",
-		DefaultVoice:  "af",
-		DefaultFormat: tts.FormatWAV,
-		MaxTextLength: 5000,
-	})
-	logger.Info().Msg("Sherpa TTS provider initialized")
-
-	sherpaASRProvider := stt.NewSherpaProvider(&stt.SherpaConfig{
-		ModelDir:  filepath.Join(dataDir, "sherpa-asr"),
-		ModelType: "whisper-tiny",
-	})
-	logger.Info().Msg("Sherpa ASR provider initialized")
+	// Get Sherpa providers from the services (they share the same instance)
+	var sherpaTTSProvider *tts.SherpaProvider
+	var sherpaASRProvider *stt.SherpaProvider
+	if ttsService != nil {
+		sherpaTTSProvider = ttsService.GetSherpaProvider()
+		if sherpaTTSProvider != nil {
+			logger.Info().Msg("Using Sherpa TTS provider from TTS service")
+		}
+	}
+	if sttService != nil {
+		sherpaASRProvider = sttService.GetSherpaProvider()
+		if sherpaASRProvider != nil {
+			logger.Info().Msg("Using Sherpa ASR provider from STT service")
+		}
+	}
 
 	// Register deferred cleanup for metrics services
 	if metricsCollector != nil {

@@ -125,3 +125,15 @@ func (s *service) ListProviders() []ProviderType {
 func (s *service) GetDefaultProvider() ProviderType {
 	return s.defaultProvider
 }
+
+// GetSherpaProvider returns the Sherpa ASR provider if available.
+func (s *service) GetSherpaProvider() *SherpaProvider {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if p, ok := s.providers[ProviderSherpa]; ok {
+		if sp, ok := p.(*SherpaProvider); ok {
+			return sp
+		}
+	}
+	return nil
+}

@@ -1437,7 +1437,7 @@ func (h *ChatHandler) emitLLMRequestEvent(ctx context.Context, sessionID, provid
 	llmEvent := &companion.LLMRequestEvent{
 		Provider: providerName,
 		Model:    model,
-		Duration: duration,
+		Duration: companion.FromDuration(duration),
 	}
 
 	if resp != nil {
@@ -1457,7 +1457,7 @@ func (h *ChatHandler) emitLLMRequestEvent(ctx context.Context, sessionID, provid
 		EventType:  companion.EventLLMRequest,
 		Platform:   companion.PlatformWeb,
 		LLMRequest: llmEvent,
-		Duration:   duration,
+		Duration:   companion.FromDuration(duration),
 	}
 	_ = h.companionManager.EmitEvent(ctx, event)
 }

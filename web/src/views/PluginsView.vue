@@ -13,6 +13,8 @@ const activeMainTab = ref<'skill' | 'store' | 'tool'>('skill')
 // Upload modal state
 const showUploadModal = ref(false)
 const uploadType = ref<'skill' | 'plugin'>('skill')
+const installMethod = ref<'url' | 'file'>('url')
+const installUrl = ref('')
 const uploadFile = ref<File | null>(null)
 const uploading = ref(false)
 const uploadError = ref('')
@@ -42,6 +44,8 @@ function setActiveTab(tabId: 'skill' | 'store' | 'tool') {
 
 function openUploadModal(type: 'skill' | 'plugin') {
   uploadType.value = type
+  installMethod.value = 'url'
+  installUrl.value = ''
   uploadFile.value = null
   uploadError.value = ''
   showUploadModal.value = true
@@ -67,18 +71,29 @@ function handleDragOver(event: DragEvent) {
   event.preventDefault()
 }
 
-async function uploadSkill() {
-  if (!uploadFile.value) return
-
+async function installSkill() {
   uploading.value = true
   uploadError.value = ''
 
   try {
-    await skillStore.uploadSkill(uploadFile.value)
+    if (installMethod.value === 'url') {
+      if (!installUrl.value.trim()) {
+        uploadError.value = t('plugins.urlRequired')
+        return
+      }
+      await skillStore.installFromURL({ url: installUrl.value.trim() })
+    } else {
+      if (!uploadFile.value) {
+        uploadError.value = t('plugins.fileRequired')
+        return
+      }
+      await skillStore.uploadSkill(uploadFile.value)
+    }
     showUploadModal.value = false
+    installUrl.value = ''
     uploadFile.value = null
   } catch (err) {
-    uploadError.value = err instanceof Error ? err.message : t('plugins.uploadFailed')
+    uploadError.value = err instanceof Error ? err.message : t('plugins.installFailed')
   } finally {
     uploading.value = false
   }
@@ -135,32 +150,71 @@ async function uploadSkill() {
     <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
       <div class="modal">
         <div class="modal-header">
-          <h2>{{ uploadType === 'skill' ? t('plugins.uploadSkillTitle') : t('plugins.uploadPluginTitle') }}</h2>
+          <h2>{{ t('plugins.installSkillTitle') }}</h2>
           <button class="modal-close" @click="showUploadModal = false">×</button>
         </div>
         <div class="modal-body">
-          <!-- Drop Zone -->
-          <div
-            class="upload-dropzone"
-            :class="{ 'has-file': uploadFile }"
-            @drop="handleDrop"
-            @dragover="handleDragOver"
-          >
+          <!-- Install Method Tabs -->
+          <div class="install-method-tabs">
+            <button
+              :class="['method-tab', { active: installMethod === 'url' }]"
+              @click="installMethod = 'url'"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              {{ t('plugins.installFromUrl') }}
+            </button>
+            <button
+              :class="['method-tab', { active: installMethod === 'file' }]"
+              @click="installMethod = 'file'"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17,8 12,3 7,8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              {{ t('plugins.uploadFile') }}
+            </button>
+          </div>
+
+          <!-- URL Input -->
+          <div v-if="installMethod === 'url'" class="url-input-section">
+            <label>{{ t('plugins.skillUrlLabel') }}</label>
             <input
-              type="file"
-              accept=".zip,.tar.gz,.tgz"
-              class="file-input"
-              @change="handleFileSelect"
+              v-model="installUrl"
+              type="url"
+              :placeholder="t('plugins.skillUrlPlaceholder')"
+              class="url-input"
+              @keyup.enter="installSkill"
             />
-            <svg v-if="!uploadFile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="file-icon">
-              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p v-if="!uploadFile">{{ t('plugins.dropFileHere') }}</p>
-            <p v-else class="file-name">{{ uploadFile.name }}</p>
-            <span class="upload-hint">{{ t('plugins.supportedFormats') }}: .zip, .tar.gz</span>
+            <p class="url-hint">{{ t('plugins.skillUrlHint') }}</p>
+          </div>
+
+          <!-- Drop Zone (File Upload) -->
+          <div v-else>
+            <div
+              class="upload-dropzone"
+              :class="{ 'has-file': uploadFile }"
+              @drop="handleDrop"
+              @dragover="handleDragOver"
+            >
+              <input
+                type="file"
+                accept=".zip,.tar.gz,.tgz"
+                class="file-input"
+                @change="handleFileSelect"
+              />
+              <svg v-if="!uploadFile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="file-icon">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p v-if="!uploadFile">{{ t('plugins.dropFileHere') }}</p>
+              <p v-else class="file-name">{{ uploadFile.name }}</p>
+              <span class="upload-hint">{{ t('plugins.supportedFormats') }}: .zip, .tar.gz</span>
+            </div>
           </div>
 
           <!-- Error -->
@@ -181,11 +235,11 @@ async function uploadSkill() {
           <button class="btn-cancel" @click="showUploadModal = false">{{ t('common.cancel') }}</button>
           <button
             class="btn-confirm"
-            :disabled="!uploadFile || uploading"
-            @click="uploadSkill"
+            :disabled="(installMethod === 'url' ? !installUrl.trim() : !uploadFile) || uploading"
+            @click="installSkill"
           >
             <span v-if="uploading" class="spinner"></span>
-            {{ uploading ? t('plugins.uploading') : t('plugins.upload') }}
+            {{ uploading ? t('plugins.installing') : t('plugins.install') }}
           </button>
         </div>
       </div>
@@ -375,6 +429,76 @@ async function uploadSkill() {
 
 .modal-body {
   padding: 20px;
+}
+
+.install-method-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.method-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.method-tab:hover {
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.method-tab.active {
+  background: var(--primary-light, rgba(99, 102, 241, 0.1));
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.method-tab svg {
+  width: 20px;
+  height: 20px;
+}
+
+.url-input-section {
+  margin-bottom: 16px;
+}
+
+.url-input-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.url-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.url-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.url-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .modal-footer {

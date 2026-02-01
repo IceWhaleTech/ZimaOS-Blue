@@ -125,6 +125,9 @@ func (h *Handler) DownloadSherpaModel(c echo.Context) error {
 		if err := h.sherpaProvider.GetDownloadManager().Download(ctx, req.ModelType); err != nil {
 			// Log error
 			_ = err
+		} else {
+			// Refresh model status after successful download
+			h.sherpaProvider.RefreshModelStatus()
 		}
 	}()
 
