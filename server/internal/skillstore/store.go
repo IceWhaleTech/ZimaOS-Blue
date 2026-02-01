@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -293,12 +294,13 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 
 	// Filter by categories
 	if len(opts.Categories) > 0 {
-		placeholders := make([]string, len(opts.Categories))
+		// Support multi-category matching (category field is comma-separated)
+		catConditions := make([]string, len(opts.Categories))
 		for i, cat := range opts.Categories {
-			placeholders[i] = "?"
-			args = append(args, cat)
+			catConditions[i] = "(s.category = ? OR s.category LIKE ? OR s.category LIKE ? OR s.category LIKE ?)"
+			args = append(args, cat, cat+",%", "%,"+cat+",%", "%,"+cat)
 		}
-		conditions = append(conditions, fmt.Sprintf("s.category IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, "("+strings.Join(catConditions, " OR ")+")")
 	}
 
 	// Filter by sources
@@ -422,12 +424,24 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		results = append(results, SearchResult{Skill: skill, Score: score})
 	}
 
+	// Determine next cursor and has_more
+	var nextCursor string
+	hasMore := false
+	if len(results) > 0 {
+		hasMore = int64(offset+len(results)) < total
+		if hasMore {
+			nextCursor = results[len(results)-1].Skill.ID
+		}
+	}
+
 	return &SearchResponse{
 		Skills:     results,
 		Total:      total,
 		Page:       opts.Page,
 		PageSize:   opts.PageSize,
 		TotalPages: totalPages,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	}, nil
 }
 
@@ -484,23 +498,38 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 	return skills, total, nil
 }
 
-// GetCategories returns all unique categories.
+// GetCategories returns all unique categories (parsed from comma-separated field).
 func (s *Store) GetCategories(ctx context.Context) ([]string, error) {
-	query := "SELECT DISTINCT category FROM skills WHERE category != '' ORDER BY category"
+	query := "SELECT category FROM skills WHERE category != ''"
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var categories []string
+	// Use map to deduplicate categories
+	categorySet := make(map[string]struct{})
 	for rows.Next() {
 		var cat string
 		if err := rows.Scan(&cat); err != nil {
 			return nil, err
 		}
+		// Split comma-separated categories
+		for _, c := range strings.Split(cat, ",") {
+			trimmed := strings.TrimSpace(c)
+			if trimmed != "" {
+				categorySet[trimmed] = struct{}{}
+			}
+		}
+	}
+
+	// Convert to sorted slice
+	categories := make([]string, 0, len(categorySet))
+	for cat := range categorySet {
 		categories = append(categories, cat)
 	}
+	// Sort alphabetically
+	sort.Strings(categories)
 	return categories, nil
 }
 

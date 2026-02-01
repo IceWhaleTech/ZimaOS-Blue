@@ -94,6 +94,8 @@ export interface SearchParams {
   sort_order?: 'asc' | 'desc'
   page?: number
   page_size?: number
+  cursor?: string
+  count?: number
 }
 
 export interface SearchResult {
@@ -129,6 +131,8 @@ export interface SearchResponse {
   page: number
   page_size: number
   total_pages: number
+  next_cursor?: string
+  has_more: boolean
 }
 
 export interface SyncStatus {

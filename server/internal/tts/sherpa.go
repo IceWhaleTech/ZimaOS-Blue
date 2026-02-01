@@ -1,35 +1,38 @@
 package tts
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/bzip2"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 )
 
-// SherpaProvider implements the Provider interface using sherpa-onnx.
-// It supports multiple TTS models: Kokoro, VITS, Piper, Matcha, etc.
-// Note: Full TTS synthesis requires sherpa-onnx native library to be installed.
+// SherpaProvider implements the Provider interface using sherpa-onnx CLI.
 type SherpaProvider struct {
 	modelDir      string
-	modelType     string // "kokoro", "vits", "piper", "matcha"
+	modelType     string
 	defaultVoice  string
 	defaultFormat AudioFormat
 	maxTextLength int
 	modelReady    bool
 	mu            sync.RWMutex
 	downloadMgr   *SherpaDownloadManager
+	sampleRate    int
 }
 
 // SherpaConfig holds the configuration for the Sherpa TTS provider.
 type SherpaConfig struct {
 	ModelDir      string
-	ModelType     string // "kokoro", "vits", "piper", "matcha"
+	ModelType     string
 	DefaultVoice  string
 	DefaultFormat AudioFormat
 	MaxTextLength int
@@ -54,12 +57,10 @@ type SherpaDownloadProgress struct {
 	StartedAt  time.Time `json:"started_at"`
 }
 
-// Model download URLs
 const (
 	SherpaModelBaseURL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
 )
 
-// Available model packages
 var sherpaModelPackages = map[string]string{
 	"kokoro-en":    "kokoro-en-v0_19.tar.bz2",
 	"kokoro-multi": "kokoro-multi-lang-v1_0.tar.bz2",
@@ -67,7 +68,6 @@ var sherpaModelPackages = map[string]string{
 	"vits-zh":      "vits-zh-aishell3.tar.bz2",
 }
 
-// NewSherpaProvider creates a new Sherpa TTS provider.
 func NewSherpaProvider(cfg *SherpaConfig) *SherpaProvider {
 	modelDir := cfg.ModelDir
 	if modelDir == "" {
@@ -82,7 +82,7 @@ func NewSherpaProvider(cfg *SherpaConfig) *SherpaProvider {
 
 	defaultVoice := cfg.DefaultVoice
 	if defaultVoice == "" {
-		defaultVoice = "af" // American female for Kokoro
+		defaultVoice = "0"
 	}
 
 	defaultFormat := cfg.DefaultFormat
@@ -101,82 +101,62 @@ func NewSherpaProvider(cfg *SherpaConfig) *SherpaProvider {
 		defaultVoice:  defaultVoice,
 		defaultFormat: defaultFormat,
 		maxTextLength: maxTextLength,
+		sampleRate:    22050,
 	}
 
-	p.downloadMgr = &SherpaDownloadManager{
-		ModelDir: modelDir,
-	}
-
-	// Check if model is already downloaded and initialize
+	p.downloadMgr = &SherpaDownloadManager{ModelDir: modelDir}
 	p.modelReady = p.checkModelReady()
-	if p.modelReady {
-		p.initTTS()
-	}
 
 	return p
 }
 
-// Name returns the provider name.
 func (p *SherpaProvider) Name() string {
 	return fmt.Sprintf("Sherpa TTS (%s)", p.modelType)
 }
 
-// Type returns the provider type.
 func (p *SherpaProvider) Type() ProviderType {
 	return ProviderSherpa
 }
 
-// SupportedFormats returns the supported audio formats.
 func (p *SherpaProvider) SupportedFormats() []AudioFormat {
-	return []AudioFormat{FormatWAV, FormatMP3}
+	return []AudioFormat{FormatWAV}
 }
 
-// MaxTextLength returns the maximum text length.
 func (p *SherpaProvider) MaxTextLength() int {
 	return p.maxTextLength
 }
 
-// IsModelReady returns true if the model is downloaded and ready.
 func (p *SherpaProvider) IsModelReady() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.modelReady
 }
 
-// checkModelReady checks if required model files exist and download is complete.
 func (p *SherpaProvider) checkModelReady() bool {
 	modelPath := p.getModelPath()
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		return false
 	}
-	// Also check for completion marker to ensure download was successful
 	if p.downloadMgr != nil && !p.downloadMgr.IsModelComplete(p.modelType) {
-		// Model directory exists but no completion marker - might be partial download
-		// Check if it's an old installation (before completion markers were added)
-		// by verifying essential files exist
 		return p.verifyModelFiles()
 	}
 	return true
 }
 
-// verifyModelFiles checks if essential model files exist (for backward compatibility).
 func (p *SherpaProvider) verifyModelFiles() bool {
 	modelPath := p.getModelPath()
-	// Check for common model files that should exist
 	essentialFiles := []string{"model.onnx", "tokens.txt"}
 	for _, file := range essentialFiles {
 		if _, err := os.Stat(filepath.Join(modelPath, file)); os.IsNotExist(err) {
 			return false
 		}
 	}
-	// If essential files exist, create completion marker for future checks
 	if p.downloadMgr != nil {
 		p.downloadMgr.markComplete(p.modelType)
 	}
 	return true
 }
 
-// getModelPath returns the path to the model directory based on model type.
 func (p *SherpaProvider) getModelPath() string {
 	switch p.modelType {
 	case "kokoro":
@@ -192,101 +172,100 @@ func (p *SherpaProvider) getModelPath() string {
 	}
 }
 
-// initTTS initializes the sherpa-onnx TTS engine.
-// Note: This is a placeholder. Full implementation requires sherpa-onnx native library.
-func (p *SherpaProvider) initTTS() error {
-	// Placeholder - sherpa-onnx native library integration would go here
-	// For now, we just verify the model files exist
-	return nil
+func (p *SherpaProvider) getTTSExePath() string {
+	binDir := filepath.Join(p.modelDir, "bin")
+	if runtime.GOOS == "windows" {
+		return filepath.Join(binDir, "sherpa-onnx-offline-tts.exe")
+	}
+	return filepath.Join(binDir, "sherpa-onnx-offline-tts")
 }
 
-// Close releases resources.
-func (p *SherpaProvider) Close() {
-	// Placeholder - cleanup would go here when using native library
-}
+func (p *SherpaProvider) Close() {}
 
-// Synthesize synthesizes text to speech.
-// Note: Full TTS synthesis requires sherpa-onnx native library to be installed.
 func (p *SherpaProvider) Synthesize(ctx context.Context, req *SynthesizeRequest) (*SynthesizeResponse, error) {
 	if !p.IsModelReady() {
-		return nil, fmt.Errorf("model not downloaded. Please download the model first")
+		return nil, fmt.Errorf("TTS model not ready. Please download a model from Settings > Speech")
 	}
 
 	if len(req.Text) > p.maxTextLength {
 		return nil, ErrTextTooLong
 	}
 
-	// TODO: Implement actual TTS synthesis using sherpa-onnx native library
-	// For now, return an error indicating the feature is not yet available
-	return nil, fmt.Errorf("TTS synthesis not yet implemented. Model files are ready at: %s", p.getModelPath())
-}
-
-// voiceToSpeakerID converts voice name to speaker ID.
-func (p *SherpaProvider) voiceToSpeakerID(voice string) int {
-	// Kokoro voice mapping
-	voiceMap := map[string]int{
-		"af":         0, // American female (default)
-		"af_bella":   1,
-		"af_sarah":   2,
-		"am_adam":    3,
-		"am_michael": 4,
-		"bf_emma":    5,
-		"bf_isabella": 6,
-		"bm_george":  7,
-		"bm_lewis":   8,
+	// Ensure CLI tool exists
+	if err := ensureSherpaLibraries(p.modelDir); err != nil {
+		return nil, fmt.Errorf("failed to setup sherpa: %w", err)
 	}
 
-	if sid, ok := voiceMap[voice]; ok {
-		return sid
+	exePath := p.getTTSExePath()
+	if _, err := os.Stat(exePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("TTS executable not found: %s", exePath)
 	}
-	return 0 // Default to first voice
-}
 
-// samplesToWAV converts float32 samples to WAV format.
-func samplesToWAV(samples []float32, sampleRate int) ([]byte, error) {
-	buf := new(bytes.Buffer)
+	modelPath := p.getModelPath()
 
-	// WAV header
-	numSamples := len(samples)
-	dataSize := numSamples * 2 // 16-bit samples
-	fileSize := 36 + dataSize
+	// Create temp output file
+	tmpFile, err := os.CreateTemp("", "tts-*.wav")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpFile.Close()
+	outputPath := tmpFile.Name()
+	defer os.Remove(outputPath)
 
-	// RIFF header
-	buf.WriteString("RIFF")
-	binary.Write(buf, binary.LittleEndian, uint32(fileSize))
-	buf.WriteString("WAVE")
-
-	// fmt chunk
-	buf.WriteString("fmt ")
-	binary.Write(buf, binary.LittleEndian, uint32(16))        // chunk size
-	binary.Write(buf, binary.LittleEndian, uint16(1))         // audio format (PCM)
-	binary.Write(buf, binary.LittleEndian, uint16(1))         // num channels
-	binary.Write(buf, binary.LittleEndian, uint32(sampleRate)) // sample rate
-	binary.Write(buf, binary.LittleEndian, uint32(sampleRate*2)) // byte rate
-	binary.Write(buf, binary.LittleEndian, uint16(2))         // block align
-	binary.Write(buf, binary.LittleEndian, uint16(16))        // bits per sample
-
-	// data chunk
-	buf.WriteString("data")
-	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
-
-	// Convert float32 samples to int16
-	for _, sample := range samples {
-		// Clamp to [-1, 1]
-		if sample > 1.0 {
-			sample = 1.0
-		} else if sample < -1.0 {
-			sample = -1.0
+	// Build command args based on model type
+	var args []string
+	switch p.modelType {
+	case "kokoro", "kokoro-multi":
+		args = []string{
+			"--kokoro-model=" + filepath.Join(modelPath, "model.onnx"),
+			"--kokoro-voices=" + filepath.Join(modelPath, "voices.bin"),
+			"--kokoro-tokens=" + filepath.Join(modelPath, "tokens.txt"),
+			"--kokoro-data-dir=" + filepath.Join(modelPath, "espeak-ng-data"),
+			"--sid=0",
+			"--output-filename=" + outputPath,
+			"--text=" + req.Text,
 		}
-		// Convert to int16
-		intSample := int16(sample * 32767)
-		binary.Write(buf, binary.LittleEndian, intSample)
+	case "piper":
+		args = []string{
+			"--vits-model=" + filepath.Join(modelPath, "en_US-lessac-medium.onnx"),
+			"--vits-tokens=" + filepath.Join(modelPath, "tokens.txt"),
+			"--vits-data-dir=" + filepath.Join(modelPath, "espeak-ng-data"),
+			"--output-filename=" + outputPath,
+			"--text=" + req.Text,
+		}
+	case "vits-zh":
+		args = []string{
+			"--vits-model=" + filepath.Join(modelPath, "model.onnx"),
+			"--vits-tokens=" + filepath.Join(modelPath, "tokens.txt"),
+			"--vits-lexicon=" + filepath.Join(modelPath, "lexicon.txt"),
+			"--output-filename=" + outputPath,
+			"--text=" + req.Text,
+		}
+	default:
+		return nil, fmt.Errorf("unsupported model type: %s", p.modelType)
 	}
 
-	return buf.Bytes(), nil
+	// Run TTS
+	cmd := exec.CommandContext(ctx, exePath, args...)
+	cmd.Dir = filepath.Dir(exePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("TTS failed: %w, output: %s", err, string(output))
+	}
+
+	// Read output file
+	wavData, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read output: %w", err)
+	}
+
+	return &SynthesizeResponse{
+		Audio:       io.NopCloser(bytes.NewReader(wavData)),
+		ContentType: "audio/wav",
+		Format:      FormatWAV,
+	}, nil
 }
 
-// SynthesizeStream synthesizes text with streaming audio output.
 func (p *SherpaProvider) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, callback StreamCallback) error {
 	resp, err := p.Synthesize(ctx, req)
 	if err != nil {
@@ -309,54 +288,36 @@ func (p *SherpaProvider) SynthesizeStream(ctx context.Context, req *SynthesizeRe
 			return fmt.Errorf("failed to read audio: %w", err)
 		}
 	}
-
 	return nil
 }
 
-// ListVoices returns available voices.
 func (p *SherpaProvider) ListVoices(ctx context.Context) ([]Voice, error) {
 	switch p.modelType {
 	case "kokoro", "kokoro-multi":
 		return []Voice{
-			{ID: "af", Name: "American Female", Language: "en-US", Gender: "female", Description: "Default American female voice"},
-			{ID: "af_bella", Name: "Bella", Language: "en-US", Gender: "female", Description: "American female - Bella"},
-			{ID: "af_sarah", Name: "Sarah", Language: "en-US", Gender: "female", Description: "American female - Sarah"},
-			{ID: "am_adam", Name: "Adam", Language: "en-US", Gender: "male", Description: "American male - Adam"},
-			{ID: "am_michael", Name: "Michael", Language: "en-US", Gender: "male", Description: "American male - Michael"},
-			{ID: "bf_emma", Name: "Emma", Language: "en-GB", Gender: "female", Description: "British female - Emma"},
-			{ID: "bf_isabella", Name: "Isabella", Language: "en-GB", Gender: "female", Description: "British female - Isabella"},
-			{ID: "bm_george", Name: "George", Language: "en-GB", Gender: "male", Description: "British male - George"},
-			{ID: "bm_lewis", Name: "Lewis", Language: "en-GB", Gender: "male", Description: "British male - Lewis"},
+			{ID: "0", Name: "Default", Language: "en-US", Gender: "female"},
 		}, nil
 	case "piper":
-		return []Voice{
-			{ID: "lessac", Name: "Lessac", Language: "en-US", Gender: "neutral", Description: "English US Lessac voice"},
-		}, nil
+		return []Voice{{ID: "0", Name: "Lessac", Language: "en-US", Gender: "neutral"}}, nil
 	case "vits-zh":
-		return []Voice{
-			{ID: "0", Name: "Speaker 0", Language: "zh-CN", Gender: "female", Description: "Chinese female voice"},
-		}, nil
+		return []Voice{{ID: "0", Name: "Speaker 0", Language: "zh-CN", Gender: "female"}}, nil
 	default:
 		return []Voice{}, nil
 	}
 }
 
-// GetModelDir returns the model directory path.
 func (p *SherpaProvider) GetModelDir() string {
 	return p.modelDir
 }
 
-// GetDownloadManager returns the download manager.
 func (p *SherpaProvider) GetDownloadManager() *SherpaDownloadManager {
 	return p.downloadMgr
 }
 
-// SwitchModel switches to a different TTS model.
 func (p *SherpaProvider) SwitchModel(modelType string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Map model type to internal type
 	internalType := modelType
 	switch modelType {
 	case "kokoro-en":
@@ -365,27 +326,195 @@ func (p *SherpaProvider) SwitchModel(modelType string) error {
 		internalType = "piper"
 	}
 
-	// Check if the model is downloaded (either by marker or by verifying files)
 	oldModelType := p.modelType
 	p.modelType = internalType
 
-	// Check if model files exist
 	p.mu.Unlock()
 	ready := p.checkModelReady()
 	p.mu.Lock()
 
 	if !ready {
-		// Restore old model type
 		p.modelType = oldModelType
 		return fmt.Errorf("model %s is not downloaded", modelType)
 	}
 
 	p.modelReady = ready
+	return nil
+}
 
-	// Re-initialize TTS with new model
-	p.mu.Unlock()
-	err := p.initTTS()
+type TTSModelInfo struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Languages   []string `json:"languages"`
+	Size        string   `json:"size"`
+	Downloaded  bool     `json:"downloaded"`
+}
+
+func (p *SherpaProvider) ListModels() []TTSModelInfo {
+	models := []TTSModelInfo{
+		{ID: "kokoro-en", Name: "Kokoro English", Description: "High-quality English TTS", Languages: []string{"en-US", "en-GB"}, Size: "~350MB"},
+		{ID: "kokoro-multi", Name: "Kokoro Multilingual", Description: "English and Chinese TTS", Languages: []string{"en-US", "zh-CN"}, Size: "~400MB"},
+		{ID: "piper-en", Name: "Piper English", Description: "Fast English TTS", Languages: []string{"en-US"}, Size: "~60MB"},
+		{ID: "vits-zh", Name: "VITS Chinese", Description: "Chinese TTS", Languages: []string{"zh-CN"}, Size: "~100MB"},
+	}
+
+	for i, model := range models {
+		var checkPath string
+		switch model.ID {
+		case "kokoro-en":
+			checkPath = filepath.Join(p.modelDir, "kokoro-en-v0_19")
+		case "kokoro-multi":
+			checkPath = filepath.Join(p.modelDir, "kokoro-multi-lang-v1_0")
+		case "piper-en":
+			checkPath = filepath.Join(p.modelDir, "vits-piper-en_US-lessac-medium")
+		case "vits-zh":
+			checkPath = filepath.Join(p.modelDir, "vits-zh-aishell3")
+		}
+		if _, err := os.Stat(checkPath); err == nil {
+			models[i].Downloaded = true
+		}
+	}
+
+	return models
+}
+
+func (p *SherpaProvider) DeleteModel(modelType string) error {
+	var modelPath string
+	switch modelType {
+	case "kokoro-en":
+		modelPath = filepath.Join(p.modelDir, "kokoro-en-v0_19")
+	case "kokoro-multi":
+		modelPath = filepath.Join(p.modelDir, "kokoro-multi-lang-v1_0")
+	case "piper-en":
+		modelPath = filepath.Join(p.modelDir, "vits-piper-en_US-lessac-medium")
+	case "vits-zh":
+		modelPath = filepath.Join(p.modelDir, "vits-zh-aishell3")
+	default:
+		return fmt.Errorf("unknown model type: %s", modelType)
+	}
+
+	if err := os.RemoveAll(modelPath); err != nil {
+		return fmt.Errorf("failed to delete model: %w", err)
+	}
+
 	p.mu.Lock()
+	if p.modelType == modelType || (modelType == "kokoro-en" && p.modelType == "kokoro") {
+		p.modelReady = false
+	}
+	p.mu.Unlock()
 
-	return err
+	return nil
+}
+
+var sherpaLibURLs = map[string]map[string][]string{
+	"windows": {
+		"amd64": {"https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-win-x64-shared.tar.bz2"},
+	},
+	"linux": {
+		"amd64": {"https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-linux-x64-shared.tar.bz2"},
+		"arm64": {"https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-linux-aarch64-shared.tar.bz2"},
+	},
+	"darwin": {
+		"amd64": {"https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-osx-x86_64-shared.tar.bz2"},
+		"arm64": {"https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.23/sherpa-onnx-v1.12.23-osx-arm64-shared.tar.bz2"},
+	},
+}
+
+func ensureSherpaLibraries(modelDir string) error {
+	binDir := filepath.Join(modelDir, "bin")
+	libDir := filepath.Join(modelDir, "lib")
+
+	// Check if CLI tool exists
+	var exeName string
+	if runtime.GOOS == "windows" {
+		exeName = "sherpa-onnx-offline-tts.exe"
+	} else {
+		exeName = "sherpa-onnx-offline-tts"
+	}
+
+	if _, err := os.Stat(filepath.Join(binDir, exeName)); err == nil {
+		return nil
+	}
+
+	urls, ok := sherpaLibURLs[runtime.GOOS]
+	if !ok {
+		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
+	archURLs, ok := urls[runtime.GOARCH]
+	if !ok {
+		return fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
+	}
+
+	os.MkdirAll(binDir, 0755)
+	os.MkdirAll(libDir, 0755)
+
+	for _, url := range archURLs {
+		if err := downloadAndExtractSherpa(url, modelDir); err != nil {
+			continue
+		}
+		return nil
+	}
+
+	return fmt.Errorf("failed to download sherpa")
+}
+
+func downloadAndExtractSherpa(url, modelDir string) error {
+	resp, err := http.DefaultClient.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("download failed: %s", resp.Status)
+	}
+
+	bzr := bzip2.NewReader(resp.Body)
+	tr := tar.NewReader(bzr)
+
+	binDir := filepath.Join(modelDir, "bin")
+	libDir := filepath.Join(modelDir, "lib")
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		name := filepath.Base(header.Name)
+		dir := filepath.Dir(header.Name)
+
+		var outPath string
+		if filepath.Base(dir) == "bin" {
+			outPath = filepath.Join(binDir, name)
+		} else if filepath.Base(dir) == "lib" {
+			outPath = filepath.Join(libDir, name)
+		} else {
+			continue
+		}
+
+		outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(outFile, tr)
+		outFile.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func areSherpaLibrariesPresent(libDir string) bool {
+	return false // Force re-check via ensureSherpaLibraries
 }

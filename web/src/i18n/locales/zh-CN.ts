@@ -453,8 +453,9 @@ export default {
     // Tab names
     tab: {
       general: '通用',
-      llm: 'LLM',
+      llm: '大语言模型',
       network: '网络',
+      speech: '语音',
       metrics: '指标',
       config: '配置',
       backup: '备份',
@@ -766,6 +767,9 @@ export default {
     loading: '加载备份中...',
     restoringWarning: '正在恢复备份，请勿关闭本页面。',
     noBackupsHint: '创建备份以保护您的数据',
+    creatingBackup: '正在创建备份...',
+    processing: '处理中...',
+    files: '个文件',
   },
   memory: {
     title: '记忆管理',
@@ -1122,6 +1126,18 @@ export default {
       refresh: '刷新',
       details: '详情',
     },
+    // Sort options
+    sort: {
+      downloads: '下载量',
+      rating: '评分',
+      updated: '最近更新',
+      name: '名称',
+    },
+    // Direct translations
+    install: '安装',
+    installed: '已安装',
+    downloads: '下载量',
+    rating: '评分',
     // Status
     status: {
       builtin: '内置',
@@ -1501,6 +1517,11 @@ export default {
   },
   security: {
     title: '安全中心',
+    tabs: {
+      overview: '概览',
+      monitoring: '监控',
+      events: '事件',
+    },
     // Status messages for simplified view
     statusSecure: '系统安全',
     statusWarning: '发现警告',
@@ -1890,6 +1911,19 @@ export default {
     toggleFailed: '切换接入失败',
     fillRequiredFields: '请先填写必填字段',
     viewDocs: '查看文档',
+    // 验证消息 (来自后端 message_key)
+    validation: {
+      testSuccess: '连接成功',
+      invalidConfig: '配置无效',
+      connectionFailed: '连接失败',
+      authFailed: '认证失败',
+      tokenInvalid: '令牌无效',
+      tokenExpired: '令牌已过期',
+      permissionDenied: '权限不足',
+      networkError: '网络错误',
+      timeout: '连接超时',
+      serverError: '服务器错误',
+    },
     // 接入描述
     telegramOpenChat: '打开机器人会话',
     whatsappOpenChat: '打开 WhatsApp 会话',
@@ -1958,7 +1992,7 @@ export default {
     placeholderTenantId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx（可选）',
     placeholderServerUrl: 'https://mattermost.example.com',
     placeholderBotAccessToken: '机器人访问令牌',
-    placeholderServiceAccountJson: '{"type": "service_account", ...}',
+    placeholderServiceAccountJson: '在此粘贴服务账号 JSON',
     placeholderFeishuAppId: 'cli_xxxxxxxxxx',
     placeholderAppSecret: '应用密钥',
     placeholderVerificationToken: '验证令牌',
@@ -1971,7 +2005,7 @@ export default {
     placeholderAgentId: '1000001',
     placeholderSecret: '密钥',
     placeholderMatrixHomeserver: 'https://matrix.org',
-    placeholderMatrixUserId: '@bot:matrix.org',
+    placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: '访问令牌',
     placeholderBlueBubblesServerUrl: 'http://localhost:1234',
     placeholderServerPassword: '服务器密码',
@@ -2057,7 +2091,7 @@ export default {
       features: {
         title: '可监控内容：',
         sessions: '活跃和历史 AI Agent 会话',
-        events: '实时事件，包括消息、工具调用和 LLM 请求',
+        events: '实时事件，包括消息、工具调用和大语言模型请求',
         security: '安全威胁和异常检测',
         replay: '会话回放，用于调试和审计',
       },
@@ -2113,7 +2147,7 @@ export default {
     metadata: '元数据',
     messageCount: '消息数',
     toolCallCount: '工具调用数',
-    llmCallCount: 'LLM 调用数',
+    llmCallCount: '大语言模型调用数',
     totalTokens: '总 Token 数',
     deleteSessionConfirm: '确定要删除此会话吗？此操作不可撤销。',
     // 视图模式
@@ -2220,8 +2254,11 @@ export default {
       message_recieved: '收到消息', // 拼写别名
       message_sent: '发送消息',
       tool_call: '工具调用',
-      llm_request: 'LLM 请求',
+      llm_request: '大语言模型请求',
       security_threat: '安全威胁',
+      sandbox_exec: '沙箱执行',
+      error: '错误',
+      unknown: '未知',
     },
     // 流程查看器
     flow: {
@@ -2242,13 +2279,13 @@ export default {
         messageIn: '接收消息',
         messageOut: '发送消息',
         toolCall: '工具调用',
-        llmRequest: 'LLM 请求',
+        llmRequest: '大语言模型请求',
         securityCheck: '安全检查',
         security: '安全',
         sandbox: '沙箱',
         // snake_case aliases for API compatibility
         tool_call: '工具调用',
-        llm_request: 'LLM 请求',
+        llm_request: '大语言模型请求',
         security_check: '安全检查',
       },
     },
@@ -2263,7 +2300,7 @@ export default {
       chars: '{count} 字符',
       toolCall: '工具调用',
       sandbox: '沙箱',
-      llmRequest: 'LLM 请求',
+      llmRequest: '大语言模型请求',
       securityCheck: '安全检查',
       tokensIn: '输入',
       tokensOut: '输出',
@@ -2302,7 +2339,7 @@ export default {
       message_received: '收到消息',
       message_sent: '发送消息',
       tool_call: '工具调用',
-      llm_request: 'LLM 请求',
+      llm_request: '大语言模型请求',
       security_threat: '安全威胁',
     },
     // 加载更多
@@ -2393,6 +2430,25 @@ export default {
       allCategories: '所有分类',
       allSources: '所有来源',
     },
+    // 排序
+    sort: {
+      downloads: '下载量',
+      stars: '星标数',
+      updated: '最近更新',
+      name: '名称',
+    },
+    // 直接翻译
+    install: '安装',
+    installed: '已安装',
+    downloads: '下载量',
+    rating: '评分',
+    reviews: '评论',
+    noSkillsFound: '未找到技能',
+    allLoaded: '已加载全部 {count} 个技能',
+    fetchError: '获取技能失败',
+    installError: '安装技能失败',
+    uninstallError: '卸载技能失败',
+    confirmUninstall: '确定要卸载 "{name}" 吗？',
     // 操作
     actions: {
       refresh: '刷新',
@@ -2729,7 +2785,7 @@ export default {
     },
   },
   providerSettings: {
-    title: 'LLM 提供商配置',
+    title: '大语言模型提供商配置',
     selectProvider: '选择提供商',
     loadError: '加载提供商设置失败',
     saveError: '保存提供商设置失败',
@@ -2815,7 +2871,7 @@ export default {
     openIn: '在 {browser} 中打开',
   },
   providerPool: {
-    description: '管理 LLM 提供商、API 密钥与模型路由',
+    description: '管理大语言模型提供商、API 密钥与模型路由',
     models: '模型',
     addCustom: '添加自定义',
     addCustomProvider: '添加自定义提供商',
@@ -3270,5 +3326,49 @@ export default {
     reconnecting: '正在重新连接服务器...',
     retry: '重试',
     reconnected: '连接已恢复',
+  },
+  speech: {
+    status: '语音状态',
+    asrStatus: '语音识别',
+    ttsStatus: '语音合成',
+    ready: '就绪',
+    notReady: '未就绪',
+    currentASRModel: '当前 ASR 模型',
+    currentTTSModel: '当前 TTS 模型',
+    editBeforeSend: '发送前编辑',
+    asrModels: '语音识别模型',
+    ttsModels: '语音合成模型',
+    downloading: '下载中...',
+    resumeSupported: '支持断点续传 - 中断后可继续下载',
+    download: '下载',
+    use: '使用',
+    inUse: '使用中',
+    noModels: '暂无可用模型',
+    info: '语音模型在本地设备上运行。下载模型以启用语音输入和语音合成功能。',
+    fetchError: '获取语音状态失败',
+    downloadError: '下载模型失败',
+    switchError: '切换模型失败',
+    deleteError: '删除模型失败',
+    confirmDelete: '确定要删除此模型吗？',
+    asr: {
+      title: '语音识别 (ASR)',
+      description: '使用本地 AI 模型将语音转换为文字',
+    },
+    tts: {
+      title: '语音合成 (TTS)',
+      description: '使用本地 AI 模型将文字转换为自然语音',
+    },
+    prompt: {
+      asrTitle: '需要语音识别模型',
+      asrDescription: '要使用语音输入，请先下载语音识别模型。',
+      ttsTitle: '需要语音合成模型',
+      ttsDescription: '要播放语音，请先下载语音合成模型。',
+    },
+    downloadAndUse: '下载并使用',
+    streaming: '流式',
+    ttsSettings: '语音合成设置',
+    speechSpeed: '语速',
+    autoPlayTTS: '自动播放语音',
+    autoPlayTTSDesc: '助手回复时自动播放语音',
   },
 }

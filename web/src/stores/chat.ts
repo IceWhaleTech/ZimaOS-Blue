@@ -244,14 +244,9 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    // Build display content for user message (show attachment info)
+    // Build display content for user message
+    // Don't add attachment names to content - they're shown in the attachment preview
     let displayContent = content
-    if (attachments.length > 0) {
-      const attachmentNames = attachments.map(a => a.name).join(', ')
-      if (!displayContent) {
-        displayContent = `[${attachmentNames}]`
-      }
-    }
 
     // Add user message to local state immediately
     const userMessage: Message = {

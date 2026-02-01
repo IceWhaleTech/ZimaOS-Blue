@@ -35,6 +35,14 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	asr.POST("/switch", h.SwitchASRModel)
 	asr.DELETE("/model", h.DeleteASRModel)
 
+	// TTS model management (Sherpa)
+	tts := g.Group("/tts")
+	tts.GET("/status", h.GetTTSStatus)
+	tts.GET("/models", h.ListTTSModels)
+	tts.POST("/download", h.DownloadTTSModel)
+	tts.POST("/switch", h.SwitchTTSModel)
+	tts.DELETE("/model", h.DeleteTTSModel)
+
 	// Transcription with edit support
 	g.POST("/transcribe", h.Transcribe)
 	g.POST("/confirm", h.ConfirmTranscription)
@@ -144,6 +152,114 @@ func (h *Handler) DeleteASRModel(c echo.Context) error {
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Sherpa ASR provider not configured",
+		})
+	}
+
+	modelType := c.QueryParam("model_type")
+	if err := provider.DeleteModel(modelType); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "deleted",
+		"message": "Model deleted",
+	})
+}
+
+// GetTTSStatus returns the TTS model status.
+func (h *Handler) GetTTSStatus(c echo.Context) error {
+	provider := h.service.GetTTSProvider()
+	if provider == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"ready":    false,
+			"provider": "none",
+			"message":  "Sherpa TTS provider not configured",
+		})
+	}
+
+	status := provider.GetModelStatus()
+	return c.JSON(http.StatusOK, status)
+}
+
+// ListTTSModels returns available TTS models.
+func (h *Handler) ListTTSModels(c echo.Context) error {
+	provider := h.service.GetTTSProvider()
+	if provider == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"models": []interface{}{},
+		})
+	}
+
+	models := provider.ListModels()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"models": models,
+	})
+}
+
+// DownloadTTSModel starts downloading a TTS model.
+func (h *Handler) DownloadTTSModel(c echo.Context) error {
+	provider := h.service.GetTTSProvider()
+	if provider == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Sherpa TTS provider not configured",
+		})
+	}
+
+	var req DownloadRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request",
+		})
+	}
+
+	// Start download in background
+	go func() {
+		ctx := context.Background()
+		provider.GetDownloadManager().Download(ctx, req.ModelType)
+	}()
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloading",
+		"message": "Download started for model: " + req.ModelType,
+	})
+}
+
+// SwitchTTSModel switches to a different TTS model.
+func (h *Handler) SwitchTTSModel(c echo.Context) error {
+	provider := h.service.GetTTSProvider()
+	if provider == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Sherpa TTS provider not configured",
+		})
+	}
+
+	var req SwitchRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request",
+		})
+	}
+
+	if err := provider.SwitchModel(req.ModelType); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "switched",
+		"message": "Switched to model: " + req.ModelType,
+	})
+}
+
+// DeleteTTSModel deletes a downloaded TTS model.
+func (h *Handler) DeleteTTSModel(c echo.Context) error {
+	provider := h.service.GetTTSProvider()
+	if provider == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Sherpa TTS provider not configured",
 		})
 	}
 

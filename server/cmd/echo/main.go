@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -558,10 +559,19 @@ func main() {
 
 	initPool.Go(func() {
 		// TTS service (Text-to-Speech)
+		// Use Sherpa as default provider for local TTS (no external service required)
 		var err error
 		ttsService, err = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderEdge,
+			DefaultProvider: tts.ProviderSherpa,
 			Providers: []tts.ProviderConfig{
+				{
+					Type:          tts.ProviderSherpa,
+					Enabled:       true,
+					BaseURL:       filepath.Join(dataDir, "sherpa-tts"), // Model directory
+					DefaultVoice:  "kokoro",                             // Model type
+					DefaultFormat: tts.FormatWAV,
+					MaxTextLength: 5000,
+				},
 				{
 					Type:    tts.ProviderEdge,
 					Enabled: true,
@@ -635,6 +645,22 @@ func main() {
 	// Wait for all parallel initializations to complete
 	initPool.Wait()
 
+	// Initialize Sherpa providers for local speech model management
+	sherpaTTSProvider := tts.NewSherpaProvider(&tts.SherpaConfig{
+		ModelDir:      filepath.Join(dataDir, "sherpa-tts"),
+		ModelType:     "kokoro",
+		DefaultVoice:  "af",
+		DefaultFormat: tts.FormatWAV,
+		MaxTextLength: 5000,
+	})
+	logger.Info().Msg("Sherpa TTS provider initialized")
+
+	sherpaASRProvider := stt.NewSherpaProvider(&stt.SherpaConfig{
+		ModelDir:  filepath.Join(dataDir, "sherpa-asr"),
+		ModelType: "whisper-tiny",
+	})
+	logger.Info().Msg("Sherpa ASR provider initialized")
+
 	// Register deferred cleanup for metrics services
 	if metricsCollector != nil {
 		defer metricsCollector.Stop()
@@ -677,7 +703,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -721,8 +747,12 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
 	e := srv.Echo()
+
+	// Initialize connection manager and add middleware for tracking all connections
+	connManager := connection.NewManager(10000, 5*time.Second)
+	e.Use(connManager.Middleware())
 
 	// Preview mode routes (no auth required - for preview mode detection and upgrade)
 	previewModeService := preview.NewModeService(userService)
@@ -853,6 +883,30 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register skill routes (skills and skill store)
 	skillHandler := server.NewSkillHandler(skillRegistry)
 
+	// Initialize skill store for database persistence (v0.10.15)
+	skillStoreDb, err := skillstore.NewStore(db)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize skill store, skill store features will be disabled")
+	} else {
+		skillHandler.SetStore(skillStoreDb)
+		logger.Info().Msg("Skill store initialized")
+
+		// Initialize sync service for periodic skill updates
+		syncConfig := skillstore.DefaultSyncServiceConfig()
+		syncService := skillstore.NewSyncService(skillStoreDb, syncConfig, slog.Default())
+		skillHandler.SetSyncService(syncService)
+
+		// Start sync service (will sync on startup and periodically)
+		syncService.Start(lm.Context())
+		logger.Info().Msg("Skill sync service started (will fetch skills on startup)")
+
+		// Register shutdown hook for sync service
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			syncService.Stop()
+			return nil
+		})
+	}
+
 	// Initialize featured skills loader (v0.10.8)
 	featuredDataPath := filepath.Join(dataDir, "featured_skills.json")
 	featuredLoader := skillstore.NewFeaturedSkillsLoader(featuredDataPath)
@@ -886,8 +940,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	securityGroup := protected.Group("/security")
 	securityHandler.RegisterRoutes(securityGroup)
 
-	// Register connection monitoring routes (protected)
-	connManager := connection.NewManager(10000, 5*time.Second)
+	// Register connection monitoring routes (protected) - uses connManager from middleware setup
 	connHandler := connection.NewHandler(connManager)
 	connGroup := protected.Group("/connections")
 	connHandler.RegisterRoutes(connGroup)
@@ -928,12 +981,12 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Register unified speech routes (ASR + TTS) - /api/v1/speech/*
-	speechService := speech.NewService(&speech.Config{
+	speechService := speech.NewServiceWithProviders(&speech.Config{
 		ASR: speech.ASRConfig{
 			Enabled:        true,
 			EditBeforeSend: true,
 		},
-	}, sttService, ttsService)
+	}, sttService, ttsService, sherpaASRProvider, sherpaTTSProvider)
 	speechHandler := speech.NewHandler(speechService)
 	speechGroup := v1.Group("/speech")
 	speechHandler.RegisterRoutes(speechGroup)
@@ -1000,6 +1053,17 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		// Set provider pool on chat handler for auto-selecting providers
 		chatHandler.SetProviderPool(providerPool)
 
+		// Initialize shared cache (cc-cache) for both proxy and chat
+		// This is done here so both proxy and chat can share the same cache instance
+		var sharedCache *proxy.CCCache
+		cacheConfig := proxy.DefaultCacheConfig()
+		if cfg.Proxy != nil && cfg.Proxy.Cache != nil {
+			cacheConfig = cfg.Proxy.Cache
+		}
+		sharedCache = proxy.NewCCCache(cacheConfig)
+		chatHandler.SetCache(sharedCache)
+		logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Shared cache (cc-cache) initialized for chat")
+
 		providerPoolHandler := providerpool.NewHandler(providerPool)
 		providersGroup := protected.Group("/providers")
 		providerPoolHandler.RegisterRoutes(providersGroup)
@@ -1040,6 +1104,16 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			proxyConnPool := proxy.NewConnectionPool(&cfg.Proxy.Connection)
 			proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 			proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+
+			// Use shared cache for proxy (same instance as chat)
+			proxyHandler.SetCache(sharedCache)
+			logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Proxy using shared cache (cc-cache)")
+
+			// Register cache API routes - /api/v1/proxy/cache/*
+			cacheAPIHandler := proxy.NewCacheAPIHandler(sharedCache, cacheConfig)
+			proxyCacheGroup := v1.Group("/proxy/cache")
+			cacheAPIHandler.RegisterRoutes(proxyCacheGroup)
+			logger.Info().Msg("Proxy cache API routes registered")
 
 			// Set Provider Pool for API key lookup
 			if providerPool != nil {

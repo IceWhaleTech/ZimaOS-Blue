@@ -29,7 +29,7 @@ const ideScanStates = ref<IDEScanState[]>([
   { ide_type: 'claude-code', ide_name: 'Claude Code', status: 'pending' },
   { ide_type: 'cursor', ide_name: 'Cursor', status: 'pending' },
   { ide_type: 'windsurf', ide_name: 'Windsurf', status: 'pending' },
-  { ide_type: 'continue', ide_name: 'Continue', status: 'pending' },
+  { ide_type: 'kiro', ide_name: 'Kiro', status: 'pending' },
   { ide_type: 'copilot', ide_name: 'GitHub Copilot', status: 'pending' },
   { ide_type: 'trae', ide_name: 'Trae', status: 'pending' },
   { ide_type: 'qoder', ide_name: 'Qoder', status: 'pending' },
@@ -47,7 +47,7 @@ const ideLogos: Record<string, string> = {
   'antigravity': '/icons/ide/antigravity.svg',
   'qoder': '/icons/ide/qoder.svg',
   'trae': '/icons/ide/trae.svg',
-  'continue': '/icons/ide/continue.png',
+  'kiro': '/icons/ide/kiro.svg',
   'copilot': '/icons/ide/copilot.svg',
 }
 
@@ -59,7 +59,7 @@ const ideIcons: Record<string, string> = {
   'antigravity': '🚀',
   'qoder': '💻',
   'trae': '🔧',
-  'continue': '▶️',
+  'kiro': '🔷',
   'copilot': '🐙',
 }
 

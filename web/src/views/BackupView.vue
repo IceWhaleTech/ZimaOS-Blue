@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { backupApi } from '@/api'
-import type { BackupInfo } from '@/api'
+import type { BackupInfo, BackupProgress } from '@/api'
 
 const { t } = useI18n()
 
@@ -10,10 +10,43 @@ const loading = ref(false)
 const backups = ref<BackupInfo[]>([])
 const creating = ref(false)
 const restoring = ref<string | null>(null)
+const progress = ref<BackupProgress | null>(null)
+let progressInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   await loadBackups()
+  await checkProgress()
 })
+
+onUnmounted(() => {
+  if (progressInterval) {
+    clearInterval(progressInterval)
+  }
+})
+
+async function checkProgress() {
+  try {
+    const res = await backupApi.getProgress()
+    progress.value = res.data
+    if (res.data.in_progress) {
+      creating.value = res.data.operation === 'backup'
+      restoring.value = res.data.operation === 'restore' ? 'in_progress' : null
+      if (!progressInterval) {
+        progressInterval = setInterval(checkProgress, 1000)
+      }
+    } else {
+      creating.value = false
+      restoring.value = null
+      if (progressInterval) {
+        clearInterval(progressInterval)
+        progressInterval = null
+      }
+      progress.value = null
+    }
+  } catch {
+    progress.value = null
+  }
+}
 
 async function loadBackups() {
   try {
@@ -30,28 +63,53 @@ async function loadBackups() {
 async function createBackup() {
   try {
     creating.value = true
+    progressInterval = setInterval(checkProgress, 1000)
     await backupApi.create()
     await loadBackups()
   } catch {
     // Handle error
   } finally {
     creating.value = false
+    if (progressInterval) {
+      clearInterval(progressInterval)
+      progressInterval = null
+    }
+    progress.value = null
   }
 }
 
 async function restoreBackup(id: string) {
   const backup = backups.value.find((b) => b.id === id)
-  const dateStr = backup ? new Date(backup.created_at).toLocaleString() : id
+  const dateStr = backup ? formatBackupDate(backup.created_at) : id
   if (!confirm(t('backup.confirmRestore', { date: dateStr }))) return
   try {
     restoring.value = id
+    // Start progress polling for restore
+    progressInterval = setInterval(checkProgress, 1000)
     await backupApi.restore(id)
+    // Restore completed - reload backups and show success
+    await loadBackups()
     alert(t('backup.restoreSuccess'))
   } catch {
     alert(t('backup.restoreFailed'))
   } finally {
     restoring.value = null
+    if (progressInterval) {
+      clearInterval(progressInterval)
+      progressInterval = null
+    }
+    progress.value = null
   }
+}
+
+function formatBackupDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
 async function deleteBackup(id: string) {
@@ -84,6 +142,8 @@ function onBackupDownload(_id: string) {
       :backups="backups"
       :loading="loading"
       :restoring="restoring"
+      :creating="creating"
+      :progress="progress"
       @create="onBackupCreate"
       @restore="restoreBackup"
       @delete="deleteBackup"

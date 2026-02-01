@@ -607,8 +607,9 @@ func (h *ChannelConfigHandler) TestConnection(c echo.Context) error {
 	result := h.factory.ValidateConnection(c.Request().Context(), req.Type, req.Config)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": result.Success,
-		"message": result.Message,
-		"details": result.Details,
+		"success":     result.Success,
+		"message":     result.Message,
+		"message_key": result.MessageKey,
+		"details":     result.Details,
 	})
 }

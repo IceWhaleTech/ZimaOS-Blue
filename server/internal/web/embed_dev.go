@@ -25,7 +25,7 @@ func IsEmbedded() bool {
 // RegisterStaticRoutes sets up a reverse proxy to the Vite dev server for development.
 func RegisterStaticRoutes(e *echo.Echo) {
 	// Proxy to Vite dev server
-	viteURL, _ := url.Parse("http://localhost:5173")
+	viteURL, _ := url.Parse("http://localhost:3000")
 	proxy := httputil.NewSingleHostReverseProxy(viteURL)
 
 	// Proxy all non-API routes to Vite

@@ -228,6 +228,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  cursor: pointer;
 }
 
 .item-card::before {

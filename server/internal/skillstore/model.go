@@ -13,7 +13,7 @@ type Skill struct {
 	Summary     string    `json:"summary" db:"summary"`           // Short description
 	Description string    `json:"description" db:"description"`   // Full description (from detail page)
 	Author      string    `json:"author" db:"author"`             // Author name
-	Category    string    `json:"category" db:"category"`         // Category
+	Category    string    `json:"category" db:"category"`         // Categories (comma-separated for multiple)
 	Tags        string    `json:"tags" db:"tags"`                 // Comma-separated tags
 	SourceID    string    `json:"source_id" db:"source_id"`       // Source identifier (e.g., "clawhub")
 	SourceName  string    `json:"source_name" db:"source_name"`   // Source display name
@@ -64,6 +64,8 @@ type SearchOptions struct {
 	SortOrder  string   `json:"sort_order"`  // "asc" or "desc"
 	Page       int      `json:"page"`        // Page number (1-based)
 	PageSize   int      `json:"page_size"`   // Items per page
+	Cursor     string   `json:"cursor"`      // Cursor for infinite scroll (skill ID)
+	Count      int      `json:"count"`       // Number of items to fetch (for cursor-based)
 }
 
 // DefaultSearchOptions returns default search options.
@@ -83,4 +85,6 @@ type SearchResponse struct {
 	Page       int            `json:"page"`
 	PageSize   int            `json:"page_size"`
 	TotalPages int            `json:"total_pages"`
+	NextCursor string         `json:"next_cursor,omitempty"` // Cursor for next page
+	HasMore    bool           `json:"has_more"`              // Whether there are more results
 }

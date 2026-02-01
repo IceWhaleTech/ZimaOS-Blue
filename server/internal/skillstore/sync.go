@@ -374,88 +374,159 @@ type ClawHubSkill struct {
 	} `json:"latestVersion"`
 }
 
-// fetchClawHubSkills fetches all skills from ClawHub with pagination.
+// fetchClawHubSkills fetches all skills from ClawHub with pagination and retry.
 func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([]*Skill, error) {
 	var allSkills []*Skill
 	baseURL := source.URL + "/api/v1/skills"
-	maxPages := 100       // Safety limit
-	pageSize := 24        // ClawHub returns 24 items per page
-	emptyPageCount := 0   // Track consecutive empty pages
-	maxEmptyPages := 2    // Stop after 2 consecutive empty pages
+	maxPages := 100           // Safety limit
+	pageSize := 24            // ClawHub returns 24 items per page
+	maxRetries := 3           // Max retries per page
+	baseBackoff := time.Second
+	pageDelay := 200 * time.Millisecond // Rate limiting between pages
+
+	if s.logger != nil {
+		s.logger.Info("starting skill sync from ClawHub", "source", source.ID, "url", baseURL)
+	}
 
 	for page := 1; page <= maxPages; page++ {
 		select {
 		case <-ctx.Done():
 			if len(allSkills) > 0 {
+				if s.logger != nil {
+					s.logger.Info("sync cancelled, returning partial results", "skills_fetched", len(allSkills))
+				}
 				return allSkills, nil
 			}
 			return nil, ctx.Err()
 		default:
 		}
 
-		// Build URL with page parameter
-		apiURL := fmt.Sprintf("%s?page=%d", baseURL, page)
-
-		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
-		if err != nil {
-			if len(allSkills) > 0 {
-				return allSkills, nil // Return what we have
-			}
-			return nil, err
-		}
-
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			if len(allSkills) > 0 {
+		// Rate limiting between pages (skip for first page)
+		if page > 1 {
+			select {
+			case <-ctx.Done():
 				return allSkills, nil
+			case <-time.After(pageDelay):
 			}
-			return nil, err
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			if len(allSkills) > 0 {
-				return allSkills, nil
-			}
-			return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			if len(allSkills) > 0 {
-				return allSkills, nil
-			}
-			return nil, err
-		}
-
+		// Fetch page with retry
 		var apiResp ClawHubAPIResponse
-		if err := json.Unmarshal(body, &apiResp); err != nil {
-			if len(allSkills) > 0 {
-				return allSkills, nil
+		var lastErr error
+		for retry := 0; retry < maxRetries; retry++ {
+			if retry > 0 {
+				// Exponential backoff: 1s, 2s, 4s
+				backoff := baseBackoff * time.Duration(1<<retry)
+				select {
+				case <-ctx.Done():
+					if len(allSkills) > 0 {
+						return allSkills, nil
+					}
+					return nil, ctx.Err()
+				case <-time.After(backoff):
+				}
+				if s.logger != nil {
+					s.logger.Warn("retrying page fetch", "page", page, "retry", retry+1, "backoff", backoff, "error", lastErr)
+				}
 			}
-			return nil, err
+
+			apiURL := fmt.Sprintf("%s?page=%d", baseURL, page)
+			req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			resp, err := s.httpClient.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("API returned status %d", resp.StatusCode)
+				// For 429 (rate limit), use longer backoff
+				if resp.StatusCode == 429 {
+					backoff := baseBackoff * time.Duration(1<<(retry+2)) // 4s, 8s, 16s
+					select {
+					case <-ctx.Done():
+						return allSkills, nil
+					case <-time.After(backoff):
+					}
+				}
+				continue
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			if err := json.Unmarshal(body, &apiResp); err != nil {
+				lastErr = err
+				continue
+			}
+
+			lastErr = nil
+			break
 		}
 
-		// Check if page is empty
-		if len(apiResp.Items) == 0 {
-			emptyPageCount++
-			if emptyPageCount >= maxEmptyPages {
-				break
+		// If all retries failed, return what we have or error
+		if lastErr != nil {
+			if len(allSkills) > 0 {
+				if s.logger != nil {
+					s.logger.Warn("page fetch failed after retries, returning partial results", "page", page, "error", lastErr, "skills_fetched", len(allSkills))
+				}
+				return allSkills, nil
 			}
-			continue
+			return nil, lastErr
 		}
-		emptyPageCount = 0 // Reset counter on non-empty page
+
+		// Empty page means we've reached the end
+		if len(apiResp.Items) == 0 {
+			if s.logger != nil {
+				s.logger.Info("reached empty page, sync complete", "page", page, "total_skills", len(allSkills))
+			}
+			break
+		}
+
+		// Log progress every 5 pages
+		if s.logger != nil && page%5 == 0 {
+			s.logger.Info("sync progress", "page", page, "skills_fetched", len(allSkills)+len(apiResp.Items))
+		}
 
 		// Convert to local skill format
 		now := time.Now()
 		for _, item := range apiResp.Items {
+			// Extract categories from tags (up to 3 tags as categories)
+			category := "skill"
+			if item.Tags.Latest != "" {
+				tags := strings.Split(item.Tags.Latest, ",")
+				var categories []string
+				maxCategories := 3
+				for i, tag := range tags {
+					if i >= maxCategories {
+						break
+					}
+					trimmed := strings.TrimSpace(tag)
+					if trimmed != "" {
+						categories = append(categories, strings.ToLower(trimmed))
+					}
+				}
+				if len(categories) > 0 {
+					category = strings.Join(categories, ",")
+				}
+			}
+
 			skill := &Skill{
 				ID:          item.Slug,
 				Name:        item.DisplayName,
 				Version:     item.LatestVersion.Version,
 				Summary:     item.Summary,
-				Category:    "skill",
+				Category:    category,
 				SourceID:    source.ID,
 				SourceName:  source.Name,
 				Homepage:    fmt.Sprintf("%s/skills/%s", source.URL, item.Slug),
@@ -518,7 +589,7 @@ type ClawHubSkillDetail struct {
 		Username string `json:"username"`
 		Name     string `json:"name"`
 	} `json:"author"`
-	Tags []string `json:"tags"`
+	Tags  []string `json:"tags"`
 	Stats struct {
 		Stars     int `json:"stars"`
 		Downloads int `json:"downloads"`

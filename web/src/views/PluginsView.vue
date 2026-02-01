@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { SkillTab, ToolTab } from '@/components/extensions'
+import { SkillTab, SkillStoreTab, ToolTab } from '@/components/extensions'
 import { useSkillStore } from '@/stores/skill'
 
 const { t } = useI18n()
 const skillStore = useSkillStore()
 
 // Main tab state
-const activeMainTab = ref<'skill' | 'tool'>('skill')
+const activeMainTab = ref<'skill' | 'store' | 'tool'>('skill')
 
 // Upload modal state
 const showUploadModal = ref(false)
@@ -25,13 +25,18 @@ const tabs = computed(() => [
     icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   },
   {
+    id: 'store' as const,
+    label: t('skillStore.title'),
+    icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z',
+  },
+  {
     id: 'tool' as const,
     label: t('extensions.tools'),
     icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   },
 ])
 
-function setActiveTab(tabId: 'skill' | 'tool') {
+function setActiveTab(tabId: 'skill' | 'store' | 'tool') {
   activeMainTab.value = tabId
 }
 
@@ -121,6 +126,7 @@ async function uploadSkill() {
     <div class="tab-content">
       <Transition name="tab-fade" mode="out-in">
         <SkillTab v-if="activeMainTab === 'skill'" key="skill" />
+        <SkillStoreTab v-else-if="activeMainTab === 'store'" key="store" />
         <ToolTab v-else key="tool" />
       </Transition>
     </div>

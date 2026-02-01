@@ -152,6 +152,7 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills.GET("/local", h.ListLocalSkills)       // New: List local skills
 	skills.POST("/local/scan", h.ScanLocalSkills) // New: Scan local skills
 	skills.GET("/verify/:id", h.VerifySkill)      // New: Verify skill visibility
+	skills.POST("/upload", h.UploadSkill)         // Upload skill package
 
 	// Skill store routes
 	store := g.Group("/skill-store")
@@ -267,6 +268,79 @@ func (h *SkillHandler) DisableSkill(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "skill disabled",
+	})
+}
+
+// UploadSkill handles skill package upload
+// TODO: Full implementation requires skill package format specification
+func (h *SkillHandler) UploadSkill(c echo.Context) error {
+	// Get uploaded file
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "no file uploaded",
+		})
+	}
+
+	// Open the file
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "failed to open uploaded file",
+		})
+	}
+	defer src.Close()
+
+	// Read file content
+	content, err := io.ReadAll(src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "failed to read uploaded file",
+		})
+	}
+
+	// Try to parse as JSON manifest
+	var manifest skill.Manifest
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "invalid skill manifest: " + err.Error(),
+		})
+	}
+
+	// Validate manifest
+	if manifest.ID == "" || manifest.Name == "" {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "skill manifest must have id and name",
+		})
+	}
+
+	// Check if already installed
+	if h.registry.Get(manifest.ID) != nil {
+		return c.JSON(http.StatusConflict, map[string]interface{}{
+			"success": false,
+			"message": "skill already installed",
+		})
+	}
+
+	// For now, return not implemented as skills require executable code
+	// Full implementation would need to:
+	// 1. Extract skill package (zip/tar)
+	// 2. Validate skill structure
+	// 3. Copy to skills directory
+	// 4. Load and register the skill
+	return c.JSON(http.StatusNotImplemented, map[string]interface{}{
+		"success": false,
+		"message": "skill upload not yet implemented - use install from URL instead",
+		"skill": map[string]string{
+			"id":      manifest.ID,
+			"name":    manifest.Name,
+			"version": manifest.Version,
+		},
 	})
 }
 
@@ -1322,12 +1396,24 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 		}
 	}
 
+	// Parse cursor-based pagination
+	opts.Cursor = c.QueryParam("cursor")
+	if count := c.QueryParam("count"); count != "" {
+		if v, err := strconv.Atoi(count); err == nil {
+			opts.Count = v
+		}
+	}
+
 	// Set defaults
 	if opts.Page < 1 {
 		opts.Page = 1
 	}
 	if opts.PageSize < 1 || opts.PageSize > 100 {
 		opts.PageSize = 24
+	}
+	// Use count for cursor-based pagination
+	if opts.Cursor != "" && opts.Count > 0 {
+		opts.PageSize = opts.Count
 	}
 
 	result, err := h.store.Search(c.Request().Context(), opts)

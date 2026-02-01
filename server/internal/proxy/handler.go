@@ -27,6 +27,7 @@ type ProxyHandler struct {
 	connPool     *ConnectionPool        // HTTP connection pool
 	failover     *FailoverHandler       // Failover handler
 	providerPool *providerpool.Pool     // Provider Pool for routing and API keys
+	cache        *CCCache               // Response cache (cc-cache)
 }
 
 // NewProxyHandler creates a new proxy handler
@@ -44,19 +45,47 @@ func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 	ph.providerPool = pool
 }
 
+// SetCache sets the response cache for the proxy handler.
+// This should be called during server initialization.
+func (ph *ProxyHandler) SetCache(cache *CCCache) {
+	ph.cache = cache
+}
+
+// GetCache returns the cache instance for external access (e.g., API handlers).
+func (ph *ProxyHandler) GetCache() *CCCache {
+	return ph.cache
+}
+
 // ServeHTTP implements http.Handler.
 // Routes requests through Provider Pool to get the best provider and API key.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Read request body for model extraction
+	// Read request body for model extraction and cache key
 	bodyBytes, _ := io.ReadAll(r.Body)
 	r.Body.Close()
 
-	// Extract model from request body
+	// Extract model and check for streaming
 	model := ""
+	isStreaming := false
 	var reqBody map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &reqBody); err == nil {
 		if m, ok := reqBody["model"].(string); ok {
 			model = m
+		}
+		if stream, ok := reqBody["stream"].(bool); ok {
+			isStreaming = stream
+		}
+	}
+
+	// Try cache lookup (only for non-streaming requests)
+	if ph.cache != nil && !isStreaming {
+		cacheKey := ph.cache.GenerateKey(r, bodyBytes)
+		if entry, ok := ph.cache.Get(cacheKey); ok && entry != nil {
+			// Cache hit - return cached response
+			w.Header().Set("X-Cache", "HIT")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(entry.StatusCode)
+			w.Write(entry.Body)
+			return
 		}
 	}
 
@@ -76,8 +105,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Copy response to client
-	ph.copyResponse(w, resp)
+	// Copy response to client (and cache if applicable)
+	ph.copyResponseWithCache(w, resp, r, bodyBytes, isStreaming)
 }
 
 // routeRequest uses Provider Pool Router to select provider and get API key.
@@ -150,6 +179,49 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response)
 	} else {
 		io.Copy(w, resp.Body)
 	}
+}
+
+// copyResponseWithCache copies response to client and caches if applicable
+func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.Response, r *http.Request, reqBody []byte, isStreaming bool) {
+	// Copy headers
+	copyHeaders(w.Header(), resp.Header)
+
+	// Check if this is a streaming response
+	if isStreamingResponse(resp) || isStreaming {
+		w.Header().Set("X-Cache", "BYPASS")
+		w.WriteHeader(resp.StatusCode)
+		ph.copyStreamingResponse(w, resp)
+		return
+	}
+
+	// Read response body for caching
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		w.Header().Set("X-Cache", "MISS")
+		w.WriteHeader(resp.StatusCode)
+		return
+	}
+
+	// Cache the response if cache is enabled
+	if ph.cache != nil && resp.StatusCode == http.StatusOK {
+		cacheKey := ph.cache.GenerateKey(r, reqBody)
+		// Extract model from request for cache metadata
+		model := ""
+		var reqMap map[string]interface{}
+		if json.Unmarshal(reqBody, &reqMap) == nil {
+			if m, ok := reqMap["model"].(string); ok {
+				model = m
+			}
+		}
+		ph.cache.Set(cacheKey, respBody, resp.StatusCode, resp.Header, "", model)
+		w.Header().Set("X-Cache", "MISS")
+	} else {
+		w.Header().Set("X-Cache", "BYPASS")
+	}
+
+	// Write response
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 // copyStreamingResponse handles SSE streaming responses

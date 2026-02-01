@@ -7,6 +7,8 @@ const { t } = useI18n()
 
 const stats = ref<CacheStats | null>(null)
 const loading = ref(false)
+const toggling = ref(false)
+const clearing = ref(false)
 
 const hitRate = computed(() => {
   if (!stats.value) return 0
@@ -27,13 +29,85 @@ async function fetchStats() {
   }
 }
 
+async function toggleCache() {
+  if (!stats.value || toggling.value) return
+  toggling.value = true
+  try {
+    await proxyCacheApi.updateConfig({ enabled: !stats.value.enabled })
+    await fetchStats()
+  } catch {
+    // Ignore errors
+  } finally {
+    toggling.value = false
+  }
+}
+
+async function clearCache() {
+  if (clearing.value) return
+  if (!confirm(t('cache.confirmClear'))) return
+  clearing.value = true
+  try {
+    await proxyCacheApi.clearCache()
+    await fetchStats()
+  } catch {
+    // Ignore errors
+  } finally {
+    clearing.value = false
+  }
+}
+
 onMounted(fetchStats)
 
 defineExpose({ refresh: fetchStats })
 </script>
 
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="space-y-4">
+    <!-- Header with title and actions -->
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('cache.proxyCache') }}</h3>
+      <div class="flex items-center gap-3">
+        <!-- Toggle switch -->
+        <label class="flex items-center gap-2 cursor-pointer">
+          <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('cache.enabled') }}</span>
+          <button
+            type="button"
+            :disabled="toggling"
+            @click="toggleCache"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              stats?.enabled ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600',
+              toggling ? 'opacity-50 cursor-not-allowed' : ''
+            ]"
+          >
+            <span
+              :class="[
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                stats?.enabled ? 'translate-x-6' : 'translate-x-1'
+              ]"
+            />
+          </button>
+        </label>
+        <!-- Clear button -->
+        <button
+          @click="clearCache"
+          :disabled="clearing || !stats?.enabled"
+          class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {{ clearing ? t('common.loading') : t('cache.clear') }}
+        </button>
+        <!-- Refresh button -->
+        <button
+          @click="fetchStats"
+          :disabled="loading"
+          class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50 transition-colors"
+        >
+          {{ t('common.refresh') }}
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Cache Entries Card -->
     <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
@@ -126,6 +200,7 @@ defineExpose({ refresh: fetchStats })
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
         <span>TTL: {{ stats?.ttl_seconds ? Math.round(stats.ttl_seconds / 60) + 'm' : '-' }}</span>
       </div>
+    </div>
     </div>
   </div>
 </template>

@@ -10,6 +10,8 @@ import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegment
 import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import { voiceApi, playAudioFromBase64 } from '@/api/voice'
+import { speechApi } from '@/api/speech'
+import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 
 const { t } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -45,6 +47,9 @@ const copyState = ref<'idle' | 'copied'>('idle')
 const isSpeaking = ref(false)
 const ttsError = ref<string | null>(null)
 let currentAudio: HTMLAudioElement | null = null
+
+// TTS model download prompt
+const showTTSDownloadPrompt = ref(false)
 
 // Attachment preview state
 const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
@@ -277,6 +282,15 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
 }
 
 // TTS playback function
+async function checkTTSModelReady(): Promise<boolean> {
+  try {
+    const res = await speechApi.getTTSStatus()
+    return res.data?.ready ?? false
+  } catch {
+    return true // Assume ready if check fails
+  }
+}
+
 async function handlePlayTTS() {
   if (isSpeaking.value) {
     // Stop current playback
@@ -285,6 +299,13 @@ async function handlePlayTTS() {
       currentAudio = null
     }
     isSpeaking.value = false
+    return
+  }
+
+  // Check if TTS model is ready
+  const ready = await checkTTSModelReady()
+  if (!ready) {
+    showTTSDownloadPrompt.value = true
     return
   }
 
@@ -306,7 +327,9 @@ async function handlePlayTTS() {
       return
     }
 
-    const response = await voiceApi.synthesize(textContent)
+    // Get speech speed from settings
+    const speed = parseFloat(localStorage.getItem('tts-speech-speed') || '1.0')
+    const response = await voiceApi.synthesize(textContent, undefined, undefined, speed)
     if (response.data.audio) {
       await playAudioFromBase64(response.data.audio, response.data.content_type)
     }
@@ -391,6 +414,20 @@ function decodeTextContent(base64Data: string): string {
       return atob(base64Data)
     }
   }
+}
+
+// Check if content is a placeholder pattern (should not be displayed)
+// Matches: [CONTINUE], [filename.txt], [Attachments:...], etc.
+function isPlaceholderContent(content: string): boolean {
+  if (!content) return true
+  const trimmed = content.trim()
+  // Check if entire content is a single bracketed placeholder
+  if (trimmed.startsWith('[') && trimmed.endsWith(']') && !trimmed.includes('\n')) {
+    return true
+  }
+  // Check for specific patterns
+  if (trimmed.startsWith('[Attachments:')) return true
+  return false
 }
 
 // Get file icon based on extension
@@ -546,8 +583,15 @@ function closeAttachmentPreview() {
                 </div>
               </div>
             </div>
-            <!-- Text content -->
-            <span v-if="message.content && !message.content.startsWith('[Attachments:')">{{ message.content }}</span>
+            <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
+            <span v-if="message.content && !isPlaceholderContent(message.content)">{{ message.content }}</span>
+            <!-- Show continue icon when content is [CONTINUE] and no attachments -->
+            <span v-else-if="message.content === '[CONTINUE]' && (!message.attachments || message.attachments.length === 0)" class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="text-sm">{{ t('chat.continueGenerating') }}</span>
+            </span>
           </div>
           <!-- Copy button for user message -->
           <button
@@ -730,6 +774,13 @@ function closeAttachmentPreview() {
         </div>
       </div>
     </Teleport>
+
+    <!-- TTS Model Download Prompt -->
+    <ModelDownloadPrompt
+      v-model:model-visible="showTTSDownloadPrompt"
+      type="tts"
+      @downloaded="handlePlayTTS"
+    />
   </div>
 </template>
 

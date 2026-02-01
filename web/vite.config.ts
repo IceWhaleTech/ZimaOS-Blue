@@ -165,8 +165,8 @@ export default defineConfig({
   },
   // Optimize dependencies
   optimizeDeps: {
-    include: ['vue', 'vue-router', 'pinia', 'axios'],
-    exclude: ['@vue-flow/core', 'mermaid'],
+    include: ['vue', 'vue-router', 'pinia', 'axios', 'mermaid'],
+    exclude: ['@vue-flow/core'],
   },
   test: {
     globals: true,

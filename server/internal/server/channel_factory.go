@@ -160,9 +160,10 @@ func (f *ChannelFactory) createZalo(cfg *ChannelConfig) (channel.Channel, error)
 
 // ValidationResult represents the result of a connection validation.
 type ValidationResult struct {
-	Success bool                   `json:"success"`
-	Message string                 `json:"message"`
-	Details map[string]interface{} `json:"details,omitempty"`
+	Success    bool                   `json:"success"`
+	Message    string                 `json:"message"`
+	MessageKey string                 `json:"message_key,omitempty"`
+	Details    map[string]interface{} `json:"details,omitempty"`
 }
 
 // ValidateConnection tests a channel connection without creating a full channel instance.
@@ -205,8 +206,9 @@ func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType str
 	}
 
 	return ValidationResult{
-		Success: result.Success,
-		Message: message,
-		Details: result.Data,
+		Success:    result.Success,
+		Message:    message,
+		MessageKey: result.MessageKey,
+		Details:    result.Data,
 	}
 }

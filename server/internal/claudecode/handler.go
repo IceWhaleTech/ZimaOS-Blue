@@ -72,26 +72,38 @@ type ValidateResponse struct {
 
 // ConfigResponse is the response for GET /api/v1/claudecode/config
 type ConfigResponse struct {
-	Enabled        bool   `json:"enabled"`
-	DefaultModel   string `json:"default_model"`
-	SandboxEnabled bool   `json:"sandbox_enabled"`
-	NetworkEnabled bool   `json:"network_enabled"`
+	Enabled            bool                      `json:"enabled"`
+	DefaultModel       string                    `json:"default_model"`
+	SandboxEnabled     bool                      `json:"sandbox_enabled"`
+	NetworkEnabled     bool                      `json:"network_enabled"`
+	WhitelistEnabled   bool                      `json:"whitelist_enabled"`
+	DirectoryWhitelist []DirectoryWhitelistEntry `json:"directory_whitelist,omitempty"`
+}
+
+// DirectoryWhitelistEntry represents a whitelisted directory
+type DirectoryWhitelistEntry struct {
+	Path  string `json:"path"`
+	Alias string `json:"alias,omitempty"`
 }
 
 // ConfigRequest is the request for PUT /api/v1/claudecode/config
 type ConfigRequest struct {
-	Enabled        *bool   `json:"enabled,omitempty"`
-	DefaultModel   *string `json:"default_model,omitempty"`
-	SandboxEnabled *bool   `json:"sandbox_enabled,omitempty"`
-	NetworkEnabled *bool   `json:"network_enabled,omitempty"`
+	Enabled            *bool                      `json:"enabled,omitempty"`
+	DefaultModel       *string                    `json:"default_model,omitempty"`
+	SandboxEnabled     *bool                      `json:"sandbox_enabled,omitempty"`
+	NetworkEnabled     *bool                      `json:"network_enabled,omitempty"`
+	WhitelistEnabled   *bool                      `json:"whitelist_enabled,omitempty"`
+	DirectoryWhitelist *[]DirectoryWhitelistEntry `json:"directory_whitelist,omitempty"`
 }
 
 // ClaudeCodePersistentConfig is the configuration saved to disk
 type ClaudeCodePersistentConfig struct {
-	Enabled        bool   `json:"enabled"`
-	DefaultModel   string `json:"default_model"`
-	SandboxEnabled bool   `json:"sandbox_enabled"`
-	NetworkEnabled bool   `json:"network_enabled"`
+	Enabled            bool                      `json:"enabled"`
+	DefaultModel       string                    `json:"default_model"`
+	SandboxEnabled     bool                      `json:"sandbox_enabled"`
+	NetworkEnabled     bool                      `json:"network_enabled"`
+	WhitelistEnabled   bool                      `json:"whitelist_enabled"`
+	DirectoryWhitelist []DirectoryWhitelistEntry `json:"directory_whitelist,omitempty"`
 }
 
 // Handler handles Claude Code CLI version management API endpoints.
@@ -359,10 +371,12 @@ func (h *Handler) Validate(c echo.Context) error {
 func (h *Handler) GetConfig(c echo.Context) error {
 	h.configMu.RLock()
 	resp := ConfigResponse{
-		Enabled:        h.config.Enabled,
-		DefaultModel:   h.config.DefaultModel,
-		SandboxEnabled: h.config.SandboxEnabled,
-		NetworkEnabled: h.config.NetworkEnabled,
+		Enabled:            h.config.Enabled,
+		DefaultModel:       h.config.DefaultModel,
+		SandboxEnabled:     h.config.SandboxEnabled,
+		NetworkEnabled:     h.config.NetworkEnabled,
+		WhitelistEnabled:   h.config.WhitelistEnabled,
+		DirectoryWhitelist: h.config.DirectoryWhitelist,
 	}
 	h.configMu.RUnlock()
 
@@ -392,6 +406,12 @@ func (h *Handler) SetConfig(c echo.Context) error {
 	if req.NetworkEnabled != nil {
 		h.config.NetworkEnabled = *req.NetworkEnabled
 	}
+	if req.WhitelistEnabled != nil {
+		h.config.WhitelistEnabled = *req.WhitelistEnabled
+	}
+	if req.DirectoryWhitelist != nil {
+		h.config.DirectoryWhitelist = *req.DirectoryWhitelist
+	}
 	h.configMu.Unlock()
 
 	// Save to disk
@@ -404,10 +424,12 @@ func (h *Handler) SetConfig(c echo.Context) error {
 	// Return updated config
 	h.configMu.RLock()
 	resp := ConfigResponse{
-		Enabled:        h.config.Enabled,
-		DefaultModel:   h.config.DefaultModel,
-		SandboxEnabled: h.config.SandboxEnabled,
-		NetworkEnabled: h.config.NetworkEnabled,
+		Enabled:            h.config.Enabled,
+		DefaultModel:       h.config.DefaultModel,
+		SandboxEnabled:     h.config.SandboxEnabled,
+		NetworkEnabled:     h.config.NetworkEnabled,
+		WhitelistEnabled:   h.config.WhitelistEnabled,
+		DirectoryWhitelist: h.config.DirectoryWhitelist,
 	}
 	h.configMu.RUnlock()
 

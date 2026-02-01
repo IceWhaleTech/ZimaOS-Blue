@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -223,6 +225,7 @@ type ChatHandler struct {
 	metricsRecorder   MetricsRecorder
 	companionManager  *companion.Manager
 	promptGuard       *promptguard.Detector
+	cache             *proxy.CCCache
 	convToSession     map[string]string
 	convMu            sync.RWMutex
 }
@@ -268,6 +271,11 @@ func (h *ChatHandler) SetPromptGuard(detector *promptguard.Detector) {
 // SetProviderPool sets the provider pool for auto-selecting providers.
 func (h *ChatHandler) SetProviderPool(pool *providerpool.Pool) {
 	h.providerPool = pool
+}
+
+// SetCache sets the response cache for caching non-streaming responses.
+func (h *ChatHandler) SetCache(cache *proxy.CCCache) {
+	h.cache = cache
 }
 
 // getCompanionSessionID returns the companion session ID for a conversation.
@@ -404,13 +412,22 @@ func (h *ChatHandler) GetMessages(c echo.Context) error {
 	return c.JSON(http.StatusOK, messages)
 }
 
+// MessageAttachment represents a file or image attachment.
+type MessageAttachment struct {
+	Type     string `json:"type"`      // "image" or "file"
+	Name     string `json:"name"`      // filename
+	MimeType string `json:"mime_type"` // MIME type
+	Data     string `json:"data"`      // base64 encoded content
+}
+
 // SendMessageRequest represents a request to send a message.
 type SendMessageRequest struct {
-	Message     string  `json:"message"`
-	Provider    string  `json:"provider"`
-	Model       string  `json:"model"`
-	Temperature float64 `json:"temperature,omitempty"`
-	MaxTokens   int     `json:"max_tokens,omitempty"`
+	Message     string              `json:"message"`
+	Provider    string              `json:"provider"`
+	Model       string              `json:"model"`
+	Temperature float64             `json:"temperature,omitempty"`
+	MaxTokens   int                 `json:"max_tokens,omitempty"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
 }
 
 // SendMessageResponse represents a response from sending a message.
@@ -429,8 +446,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
-	if req.Message == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "message is required")
+	// Allow empty message if attachments are provided
+	if req.Message == "" && len(req.Attachments) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "message or attachments required")
 	}
 
 	// Check for prompt injection
@@ -522,6 +540,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	startTime := time.Now()
 	resp, err := provider.Chat(c.Request().Context(), chatReq)
 	latencyMs := float64(time.Since(startTime).Milliseconds())
+
+	// Emit LLM request event to companion
+	if h.companionManager != nil {
+		sessionID := h.getCompanionSessionID(convID)
+		if sessionID != "" {
+			h.emitLLMRequestEvent(c.Request().Context(), sessionID, req.Provider, model, resp, err, time.Duration(latencyMs)*time.Millisecond)
+		}
+	}
 
 	// Record metrics
 	if h.metricsRecorder != nil {
@@ -677,6 +703,11 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 
 // StreamMessage sends a message and streams the response.
 func (h *ChatHandler) StreamMessage(c echo.Context) error {
+	// Record cache bypass for streaming request
+	if h.cache != nil {
+		h.cache.RecordBypass()
+	}
+
 	convID := c.Param("id")
 
 	var req SendMessageRequest
@@ -684,8 +715,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
-	if req.Message == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "message is required")
+	// Allow empty message if attachments are provided
+	if req.Message == "" && len(req.Attachments) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "message or attachments required")
 	}
 
 	// Check for prompt injection
@@ -728,10 +760,20 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 	}
 
-	// Store user message
+	// Store user message with attachments
+	var memoryAttachments []memory.MessageAttachment
+	for _, att := range req.Attachments {
+		memoryAttachments = append(memoryAttachments, memory.MessageAttachment{
+			Type:     att.Type,
+			Name:     att.Name,
+			MimeType: att.MimeType,
+			Data:     att.Data,
+		})
+	}
 	_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-		Role:    "user",
-		Content: req.Message,
+		Role:        "user",
+		Content:     req.Message,
+		Attachments: memoryAttachments,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message: "+err.Error())
@@ -757,6 +799,38 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		llmMessages[i] = llm.Message{
 			Role:    llm.Role(msg.Role),
 			Content: msg.Content,
+		}
+	}
+
+	// Add attachments to the last user message (current request) as ContentParts
+	if len(req.Attachments) > 0 && len(llmMessages) > 0 {
+		lastIdx := len(llmMessages) - 1
+		if llmMessages[lastIdx].Role == llm.RoleUser {
+			// Build content parts: text first, then attachments
+			contentParts := []llm.ContentPart{}
+			if llmMessages[lastIdx].Content != "" {
+				contentParts = append(contentParts, llm.ContentPart{
+					Type: "text",
+					Text: llmMessages[lastIdx].Content,
+				})
+			}
+			for _, att := range req.Attachments {
+				if att.Type == "image" {
+					contentParts = append(contentParts, llm.ContentPart{
+						Type:      "image",
+						MediaType: att.MimeType,
+						Data:      att.Data,
+					})
+				} else {
+					// For files, add as text content with filename prefix
+					contentParts = append(contentParts, llm.ContentPart{
+						Type: "text",
+						Text: fmt.Sprintf("\n\n[File: %s]\n%s", att.Name, decodeBase64Content(att.Data)),
+					})
+				}
+			}
+			llmMessages[lastIdx].ContentParts = contentParts
+			llmMessages[lastIdx].Content = "" // Clear content when using ContentParts
 		}
 	}
 
@@ -943,6 +1017,21 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Generate title for new conversations
 			// Pass AI response to check for markdown heading as title
 			go h.generateConversationTitle(convID, req.Message, fullContent, "en")
+
+			// Emit LLM request event to companion for streaming
+			if h.companionManager != nil {
+				sessionID := h.getCompanionSessionID(convID)
+				if sessionID != "" {
+					llmResp := &llm.ChatResponse{
+						Usage: llm.Usage{
+							PromptTokens:     totalInputTokens,
+							CompletionTokens: totalOutputTokens,
+							TotalTokens:      totalInputTokens + totalOutputTokens,
+						},
+					}
+					h.emitLLMRequestEvent(context.Background(), sessionID, providerName, model, llmResp, nil, time.Duration(latencyMs)*time.Millisecond)
+				}
+			}
 		}
 
 		return nil
@@ -1165,6 +1254,15 @@ func extractMarkdownHeading(content string) string {
 	return sanitizeTitle(title)
 }
 
+// decodeBase64Content decodes base64 content to string for text files.
+func decodeBase64Content(data string) string {
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return "[Unable to decode file content]"
+	}
+	return string(decoded)
+}
+
 // sanitizeTitle removes newlines and extra whitespace from a title.
 func sanitizeTitle(s string) string {
 	var result []rune
@@ -1326,6 +1424,40 @@ func (h *ChatHandler) emitMessageEvent(ctx context.Context, sessionID, content, 
 			Direction: direction,
 			Content:   content,
 		},
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// emitLLMRequestEvent emits an LLM request event to the companion system.
+func (h *ChatHandler) emitLLMRequestEvent(ctx context.Context, sessionID, providerName, model string, resp *llm.ChatResponse, err error, duration time.Duration) {
+	if h.companionManager == nil {
+		return
+	}
+
+	llmEvent := &companion.LLMRequestEvent{
+		Provider: providerName,
+		Model:    model,
+		Duration: duration,
+	}
+
+	if resp != nil {
+		llmEvent.PromptTokens = resp.Usage.PromptTokens
+		llmEvent.CompletionTokens = resp.Usage.CompletionTokens
+		llmEvent.TotalTokens = resp.Usage.TotalTokens
+		llmEvent.Status = "success"
+	}
+
+	if err != nil {
+		llmEvent.Status = "error"
+		llmEvent.Error = err.Error()
+	}
+
+	event := &companion.SessionEvent{
+		SessionID:  sessionID,
+		EventType:  companion.EventLLMRequest,
+		Platform:   companion.PlatformWeb,
+		LLMRequest: llmEvent,
+		Duration:   duration,
 	}
 	_ = h.companionManager.EmitEvent(ctx, event)
 }

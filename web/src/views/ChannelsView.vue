@@ -15,7 +15,7 @@ import {
 } from '@/api/remote-access'
 import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 interface ChannelFieldDef {
   key: string
@@ -528,7 +528,14 @@ async function testConnection(channelId: string) {
     })
 
     const data = await response.json()
-    testResult.value = { channelId, success: data.success, message: data.message }
+    // Use message_key for i18n translation if available, fallback to message
+    let message = data.message
+    if (data.message_key) {
+      const i18nKey = `channels.validation.${data.message_key}`
+      // Check if translation exists, otherwise use original message
+      message = te(i18nKey) ? t(i18nKey) : data.message
+    }
+    testResult.value = { channelId, success: data.success, message }
 
     // Update status based on test result
     if (data.success) {

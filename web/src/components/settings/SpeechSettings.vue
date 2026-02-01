@@ -21,6 +21,20 @@ const currentASRModel = computed(() => status.value?.asr?.model_type ?? '')
 const currentTTSModel = computed(() => status.value?.tts?.model_type ?? '')
 const editBeforeSend = computed(() => status.value?.asr?.edit_before_send ?? false)
 
+// TTS speech speed
+const speechSpeed = ref(parseFloat(localStorage.getItem('tts-speech-speed') || '1.0'))
+
+// Auto-play TTS for assistant responses
+const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') === 'true')
+
+function saveSpeechSpeed() {
+  localStorage.setItem('tts-speech-speed', speechSpeed.value.toString())
+}
+
+function saveAutoPlayTTS() {
+  localStorage.setItem('tts-auto-play', autoPlayTTS.value.toString())
+}
+
 async function fetchStatus() {
   loading.value = true
   error.value = null
@@ -229,12 +243,12 @@ onMounted(() => {
       <div v-if="asrDownloading" class="mb-4">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
-          <span class="text-sm font-medium text-gray-900 dark:text-white">{{ asrDownloadProgress }}%</span>
+          <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(asrDownloadProgress) }}%</span>
         </div>
         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
           <div
             class="bg-blue-500 h-2 rounded-full transition-all duration-300"
-            :style="{ width: `${asrDownloadProgress}%` }"
+            :style="{ width: `${Math.floor(asrDownloadProgress)}%` }"
           ></div>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('speech.resumeSupported') }}</p>
@@ -304,12 +318,12 @@ onMounted(() => {
       <div v-if="ttsDownloading" class="mb-4">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
-          <span class="text-sm font-medium text-gray-900 dark:text-white">{{ ttsDownloadProgress }}%</span>
+          <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(ttsDownloadProgress) }}%</span>
         </div>
         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
           <div
             class="bg-green-500 h-2 rounded-full transition-all duration-300"
-            :style="{ width: `${ttsDownloadProgress}%` }"
+            :style="{ width: `${Math.floor(ttsDownloadProgress)}%` }"
           ></div>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('speech.resumeSupported') }}</p>
@@ -366,6 +380,54 @@ onMounted(() => {
 
         <div v-if="ttsModels.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
           {{ t('speech.noModels') }}
+        </div>
+      </div>
+    </div>
+
+    <!-- TTS Settings -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        {{ t('speech.ttsSettings') }}
+      </h3>
+
+      <div class="space-y-4">
+        <!-- Auto-play TTS -->
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-gray-900 dark:text-white">{{ t('speech.autoPlayTTS') }}</span>
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('speech.autoPlayTTSDesc') }}</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              v-model="autoPlayTTS"
+              type="checkbox"
+              class="sr-only peer"
+              @change="saveAutoPlayTTS"
+            />
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/20 dark:peer-focus:ring-accent/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+          </label>
+        </div>
+
+        <!-- Speech Speed -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-600 dark:text-gray-400">{{ t('speech.speechSpeed') }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">{{ speechSpeed.toFixed(1) }}x</span>
+          </div>
+          <input
+            v-model="speechSpeed"
+            type="range"
+            min="0.5"
+            max="2.0"
+            step="0.1"
+            class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-accent"
+            @change="saveSpeechSpeed"
+          />
+          <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+            <span>0.5x</span>
+            <span>1.0x</span>
+            <span>2.0x</span>
+          </div>
         </div>
       </div>
     </div>

@@ -80,17 +80,17 @@ if errorlevel 1 exit /b 1
 call :install_deps
 if errorlevel 1 exit /b 1
 
-:: Start server in background
-echo [INFO] Starting Go server...
-start "ZimaOS-Echo Server" cmd /c "cd /d "%PROJECT_ROOT%server" && go run ./cmd/echo"
+:: Start Vite dev server in background FIRST (Go server proxies to it)
+echo [INFO] Starting Vite dev server...
+start "ZimaOS-Echo Web" cmd /c "cd /d "%PROJECT_ROOT%web" && npm run dev"
 
-:: Wait for server to start
+:: Wait for Vite to start
 timeout /t 3 /nobreak >nul
 
-:: Start web in foreground
-echo [INFO] Starting web dev server...
-cd /d "%PROJECT_ROOT%web"
-call npm run dev
+:: Start Go server in foreground (dev mode - proxies to Vite)
+echo [INFO] Starting Go server (dev mode)...
+cd /d "%PROJECT_ROOT%server"
+go run -tags dev ./cmd/echo
 goto :eof
 
 :server
@@ -99,7 +99,7 @@ if errorlevel 1 exit /b 1
 
 echo [INFO] Starting Go server...
 cd /d "%PROJECT_ROOT%server"
-go run ./cmd/echo
+go run  -tags dev ./cmd/echo
 goto :eof
 
 :web

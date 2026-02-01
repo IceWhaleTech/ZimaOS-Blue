@@ -9,6 +9,15 @@ import SessionDetail from '@/components/companion/SessionDetail.vue'
 
 const { t, te } = useI18n()
 
+// Tab definitions
+type TabId = 'overview' | 'monitoring'
+const activeTab = ref<TabId>('overview')
+
+const tabs: { id: TabId; labelKey: string; icon: string }[] = [
+  { id: 'overview', labelKey: 'security.tabs.overview', icon: 'shield' },
+  { id: 'monitoring', labelKey: 'security.tabs.monitoring', icon: 'activity' },
+]
+
 /** Backend English details string -> security.scan.detailMessages key (for i18n). */
 const DETAIL_MESSAGE_KEYS: Record<string, string> = {
   'Threat detector is not initialized': 'threat_detector_not_initialized',
@@ -312,7 +321,6 @@ const companionError = ref('')
 const companionHasMore = ref(false)
 const companionOffset = ref(0)
 const companionLimit = 10
-const companionExpanded = ref(false)
 
 async function fetchCompanionSessions(append = false) {
   companionLoading.value = true
@@ -420,8 +428,41 @@ onUnmounted(() => {
     <!-- Header with Title -->
     <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ t('security.title') }}</h1>
 
-    <!-- Security Status Banner -->
-    <div class="mb-6">
+    <!-- Tab Navigation -->
+    <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
+      <nav class="flex space-x-4" aria-label="Tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          @click="activeTab = tab.id"
+          :class="[
+            'px-4 py-2 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-2',
+            activeTab === tab.id
+              ? 'bg-white dark:bg-slate-800 text-accent border-b-2 border-accent -mb-px'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700/50'
+          ]"
+        >
+          <!-- Shield icon for Overview -->
+          <svg v-if="tab.icon === 'shield'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <!-- Activity icon for Monitoring -->
+          <svg v-else-if="tab.icon === 'activity'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <!-- List icon for Events -->
+          <svg v-else-if="tab.icon === 'list'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+          </svg>
+          {{ t(tab.labelKey) }}
+        </button>
+      </nav>
+    </div>
+
+    <!-- Tab Content: Overview -->
+    <div v-show="activeTab === 'overview'">
+      <!-- Security Status Banner -->
+      <div class="mb-6">
       <div
 :class="[
         'rounded-lg p-4 flex items-center justify-between',
@@ -485,8 +526,8 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Security Scan Card -->
-    <div class="glass-card p-6">
+      <!-- Security Scan Card -->
+      <div class="glass-card p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('security.scan.title') }}</h3>
@@ -689,10 +730,12 @@ onUnmounted(() => {
         </template>
         </div>
       </div>
+      </div>
     </div>
 
-    <!-- Connection Monitoring Section -->
-    <div class="mt-6">
+    <!-- Tab Content: Monitoring -->
+    <div v-show="activeTab === 'monitoring'">
+            <!-- Connection Monitoring Section -->
       <div class="glass-card p-6">
         <!-- Header with toggle -->
         <div class="flex items-center justify-between mb-4">
@@ -810,11 +853,9 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- AI Agent Monitoring Section (Companion) -->
-    <div class="mt-6">
-      <div class="glass-card p-6">
+      <!-- AI Agent Session Monitoring Section (Companion) -->
+      <div class="glass-card p-6 mt-6">
         <!-- Header with toggle -->
         <div class="flex items-center justify-between mb-4">
           <div>
@@ -825,28 +866,13 @@ onUnmounted(() => {
               {{ t('companion.description') }}
             </p>
           </div>
-          <div class="flex items-center gap-2">
-            <button
-              @click="fetchCompanionSessions(); fetchCompanionStats()"
-              :disabled="companionLoading"
-              class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
-            >
-              {{ t('common.refresh') }}
-            </button>
-            <button
-              @click="companionExpanded = !companionExpanded"
-              class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-            >
-              <svg
-                :class="['w-5 h-5 text-gray-500 transition-transform', companionExpanded ? 'rotate-180' : '']"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
+          <button
+            @click="fetchCompanionSessions(); fetchCompanionStats()"
+            :disabled="companionLoading"
+            class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+          >
+            {{ t('common.refresh') }}
+          </button>
         </div>
 
         <!-- Stats Summary -->
@@ -878,35 +904,34 @@ onUnmounted(() => {
           {{ companionError }}
         </div>
 
-        <!-- Expanded Content -->
-        <div v-show="companionExpanded" class="border-t border-gray-200 dark:border-gray-700 pt-4">
-          <div class="flex gap-4" style="height: 400px;">
-            <!-- Session List -->
-            <div class="w-1/2 overflow-y-auto border-r border-gray-200 dark:border-gray-700 pr-4">
-              <SessionList
-                :sessions="companionSessions"
-                :loading="companionLoading"
-                :has-more="companionHasMore"
-                :selected-id="selectedSession?.id"
-                @select="selectSession"
-                @load-more="loadMoreSessions"
-              />
-            </div>
-
-            <!-- Session Detail -->
-            <div class="w-1/2 overflow-y-auto">
-              <SessionDetail
-                v-if="selectedSession"
-                :session="selectedSession"
-                @close="closeSessionDetail"
-              />
-              <div v-else class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-                {{ t('companion.selectSession') }}
-              </div>
-            </div>
-          </div>
+        <!-- Session List (full width, no expand toggle needed) -->
+        <div class="max-h-[500px] overflow-y-auto">
+          <SessionList
+            :sessions="companionSessions"
+            :loading="companionLoading"
+            :has-more="companionHasMore"
+            :selected-id="selectedSession?.id"
+            @select="selectSession"
+            @load-more="loadMoreSessions"
+          />
         </div>
       </div>
     </div>
+
+    <!-- Session Detail Modal -->
+    <Teleport to="body">
+      <div
+        v-if="selectedSession"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+        @click.self="closeSessionDetail"
+      >
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+          <SessionDetail
+            :session="selectedSession"
+            @close="closeSessionDetail"
+          />
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -31,9 +31,9 @@ const dragStart = ref({ x: 0, y: 0 })
 const hoveredNode = ref<SessionEvent | null>(null)
 
 // Node dimensions
-const NODE_WIDTH = 280
+const NODE_WIDTH = 360
 const NODE_HEIGHT = 72
-const NODE_MARGIN_X = 60
+const NODE_MARGIN_X = 40
 const NODE_MARGIN_Y = 24
 const BORDER_RADIUS = 12
 
@@ -92,23 +92,23 @@ const canvasHeight = computed(() => {
 function getNodeLabel(event: SessionEvent): string {
   switch (event.event_type) {
     case 'message_received':
-      return event.message?.content?.substring(0, 40) || 'Message Received'
+      return event.message?.content?.substring(0, 40) || t('companion.eventType.message_received')
     case 'message_sent':
-      return event.message?.content?.substring(0, 40) || 'Message Sent'
+      return event.message?.content?.substring(0, 40) || t('companion.eventType.message_sent')
     case 'tool_call':
-      return event.tool_call?.toolName || 'Tool Call'
+      return event.tool_call?.toolName || t('companion.eventType.tool_call')
     case 'llm_request':
-      return `${event.llm_request?.provider || 'LLM'}: ${event.llm_request?.model || 'Request'}`
+      return `${event.llm_request?.provider || 'LLM'}: ${event.llm_request?.model || t('companion.eventType.llm_request')}`
     case 'security_threat':
-      return `Security: ${event.security?.threatTypes?.join(', ') || 'Threat'}`
+      return `${t('companion.eventType.security_threat')}: ${event.security?.threatTypes?.join(', ') || ''}`
     case 'session_start':
-      return 'Session Started'
+      return t('companion.eventType.session_start')
     case 'session_end':
-      return 'Session Ended'
+      return t('companion.eventType.session_end')
     case 'sandbox_exec':
-      return 'Sandbox Execution'
+      return t('companion.eventType.sandbox_exec')
     default:
-      return event.event_type || 'Unknown'
+      return event.event_type || t('companion.eventType.unknown')
   }
 }
 
@@ -116,7 +116,7 @@ function getNodeSubtitle(event: SessionEvent): string {
   switch (event.event_type) {
     case 'message_received':
     case 'message_sent':
-      return `${event.message?.length || 0} chars`
+      return `${event.message?.content?.length || 0} chars`
     case 'tool_call':
       return event.tool_call?.status || ''
     case 'llm_request':
@@ -304,9 +304,8 @@ function draw() {
   // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Apply transform
+  // Apply transform for panning only (scaling is handled by CSS)
   ctx.save()
-  ctx.scale(scale.value, scale.value)
   ctx.translate(offsetX.value, offsetY.value)
 
   // Draw connectors first (behind nodes)
@@ -330,6 +329,7 @@ function draw() {
 
 // Find node at position
 function findNodeAtPosition(x: number, y: number): CanvasNode | null {
+  // Adjust for CSS scaling and panning
   const adjustedX = x / scale.value - offsetX.value
   const adjustedY = y / scale.value - offsetY.value
 
@@ -444,13 +444,14 @@ watch(() => props.events.length, (newLen, oldLen) => {
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-hidden bg-gray-50 dark:bg-gray-900 rounded-lg">
+  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 rounded-lg">
     <!-- Canvas -->
     <canvas
       ref="canvasRef"
       class="cursor-grab active:cursor-grabbing"
-      :width="canvasWidth * scale"
-      :height="canvasHeight * scale"
+      :width="canvasWidth"
+      :height="canvasHeight"
+      :style="{ width: canvasWidth * scale + 'px', height: canvasHeight * scale + 'px' }"
     />
 
     <!-- Empty state -->

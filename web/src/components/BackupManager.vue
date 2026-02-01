@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { BackupInfo } from '@/api'
+import type { BackupInfo, BackupProgress } from '@/api'
 
 const { t } = useI18n()
 
@@ -23,11 +23,15 @@ const props = withDefaults(
     backups?: BackupInfo[]
     loading?: boolean
     restoring?: boolean
+    creating?: boolean
+    progress?: BackupProgress | null
   }>(),
   {
     backups: () => [],
     loading: false,
     restoring: false,
+    creating: false,
+    progress: null,
   }
 )
 
@@ -68,14 +72,19 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
+function formatBackupName(backup: BackupDisplay): string {
+  // Format as date string instead of showing UUID
+  return formatDate(backup.createdAt)
+}
+
 function formatDate(date: Date): string {
-  return new Date(date).toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
 function getTypeColor(type: BackupType): string {
@@ -150,9 +159,41 @@ function confirmDelete(backup: BackupDisplay) {
 
     <!-- Restore in progress banner -->
     <div v-if="restoring" class="px-6 py-3 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 mb-2">
         <div class="animate-spin h-5 w-5 border-2 border-yellow-600 border-t-transparent rounded-full"></div>
         <span class="text-yellow-800 dark:text-yellow-200">{{ t('backup.restoringWarning') }}</span>
+      </div>
+      <div v-if="progress && progress.operation === 'restore'">
+        <div class="flex items-center justify-between text-sm text-yellow-700 dark:text-yellow-300 mb-1">
+          <span>{{ progress.current_file || t('backup.processing') }}</span>
+          <span>{{ progress.progress }}%</span>
+        </div>
+        <div class="h-2 bg-yellow-200 dark:bg-yellow-800 rounded-full overflow-hidden">
+          <div class="h-full bg-yellow-500 transition-all duration-300" :style="{ width: `${progress.progress}%` }"></div>
+        </div>
+        <div class="flex items-center justify-between text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+          <span>{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span>
+          <span>{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Creating backup progress banner -->
+    <div v-if="creating && progress" class="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+      <div class="flex items-center gap-3 mb-2">
+        <div class="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+        <span class="text-blue-800 dark:text-blue-200">{{ t('backup.creatingBackup') }}</span>
+      </div>
+      <div class="flex items-center justify-between text-sm text-blue-700 dark:text-blue-300 mb-1">
+        <span>{{ progress.current_file || t('backup.processing') }}</span>
+        <span>{{ progress.progress }}%</span>
+      </div>
+      <div class="h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+        <div class="h-full bg-blue-500 transition-all duration-300" :style="{ width: `${progress.progress}%` }"></div>
+      </div>
+      <div class="flex items-center justify-between text-xs text-blue-600 dark:text-blue-400 mt-1">
+        <span>{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span>
+        <span>{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span>
       </div>
     </div>
 
@@ -178,7 +219,7 @@ function confirmDelete(backup: BackupDisplay) {
         <div class="flex items-start justify-between">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-medium text-gray-900 dark:text-white">{{ backup.name }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatBackupName(backup) }}</span>
               <span
                 class="px-2 py-0.5 text-xs font-medium rounded-full"
                 :class="getTypeColor(backup.type)"
@@ -196,8 +237,7 @@ function confirmDelete(backup: BackupDisplay) {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getStatusIcon(backup.status)" />
               </svg>
             </div>
-            <div class="mt-1 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-              <span>{{ formatDate(backup.createdAt) }}</span>
+            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               <span>{{ formatSize(backup.size) }}</span>
             </div>
             <p v-if="backup.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">

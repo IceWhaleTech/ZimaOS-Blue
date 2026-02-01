@@ -2,7 +2,9 @@
 import { ref, computed, onUnmounted, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
+import { speechApi } from '@/api/speech'
 import ImagePreview from '@/components/chat/ImagePreview.vue'
+import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 
 const { t } = useI18n()
 
@@ -50,6 +52,10 @@ const isRecording = ref(false)
 const isTranscribing = ref(false)
 const recorder = ref<AudioRecorder | null>(null)
 const voiceError = ref<string | null>(null)
+
+// Model download prompt state
+const showASRDownloadPrompt = ref(false)
+const asrModelReady = ref(true) // Assume ready until checked
 
 const maxSize = computed(() => props.maxFileSize || 10 * 1024 * 1024) // 10MB default
 const allowedMimeTypes = computed(() => props.allowedTypes || [
@@ -248,8 +254,24 @@ function getFileIcon(type: string): string {
 }
 
 // Voice recording functions
+async function checkASRModelReady(): Promise<boolean> {
+  try {
+    const res = await speechApi.getASRStatus()
+    return res.data?.ready ?? false
+  } catch {
+    return true // Assume ready if check fails
+  }
+}
+
 async function startRecording() {
   if (props.disabled || props.streaming) return
+
+  // Check if ASR model is ready
+  const ready = await checkASRModelReady()
+  if (!ready) {
+    showASRDownloadPrompt.value = true
+    return
+  }
 
   voiceError.value = null
   recorder.value = new AudioRecorder()
@@ -424,6 +446,13 @@ defineExpose({ focus, setInput })
       v-model="showImagePreview"
       :src="previewImageSrc"
       :alt="previewImageAlt"
+    />
+
+    <!-- ASR Model Download Prompt -->
+    <ModelDownloadPrompt
+      v-model:model-visible="showASRDownloadPrompt"
+      type="asr"
+      @downloaded="startRecording"
     />
 
     <!-- Attachments preview -->

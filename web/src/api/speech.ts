@@ -119,19 +119,19 @@ export const speechApi = {
   deleteASRModel: (modelType?: string) =>
     api.delete<{ status: string; message: string }>(`/speech/asr/model${modelType ? `?model_type=${modelType}` : ''}`),
 
-  // TTS model management (Sherpa)
-  getTTSStatus: () => api.get<TTSStatus>('/tts/sherpa/status'),
+  // TTS model management (Sherpa) - unified under /speech/tts/*
+  getTTSStatus: () => api.get<TTSStatus>('/speech/tts/status'),
 
-  listTTSModels: () => api.get<{ models: TTSModel[] }>('/tts/sherpa/models'),
+  listTTSModels: () => api.get<{ models: TTSModel[] }>('/speech/tts/models'),
 
   downloadTTSModel: (modelType: string) =>
-    api.post<{ status: string; message: string }>('/tts/sherpa/download', { model_type: modelType }),
+    api.post<{ status: string; message: string }>('/speech/tts/download', { model_type: modelType }),
 
   switchTTSModel: (modelType: string) =>
-    api.post<{ status: string; message: string }>('/tts/sherpa/switch', { model_type: modelType }),
+    api.post<{ status: string; message: string }>('/speech/tts/switch', { model_type: modelType }),
 
   deleteTTSModel: (modelType?: string) =>
-    api.delete<{ status: string; message: string }>(`/tts/sherpa/model${modelType ? `?model_type=${modelType}` : ''}`),
+    api.delete<{ status: string; message: string }>(`/speech/tts/model${modelType ? `?model_type=${modelType}` : ''}`),
 
   // Transcription with edit support
   transcribe: async (audio: Blob, format: string, language?: string): Promise<TranscriptionResult> => {
