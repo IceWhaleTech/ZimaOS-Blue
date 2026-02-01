@@ -25,7 +25,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            server_port: std::sync::Mutex::new(8080),
+            server_port: std::sync::Mutex::new(23456),
             server_running: std::sync::Mutex::new(false),
         }
     }
@@ -64,16 +64,16 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
             .ok();
 
         // Start server via FFI
-        echo_ffi::start_server(8080, data_dir.as_deref())?;
+        echo_ffi::start_server(23456, data_dir.as_deref())?;
 
         // Update app state
         if let Some(state) = app.try_state::<AppState>() {
-            *state.server_port.lock().unwrap() = 8080;
+            *state.server_port.lock().unwrap() = 23456;
             *state.server_running.lock().unwrap() = true;
         }
 
         // Wait for server to be ready
-        let url = "http://localhost:8080/api/v1/health";
+        let url = "http://localhost:23456/api/v1/health";
         for i in 0..30 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             if reqwest::get(url).await.is_ok() {
@@ -224,7 +224,7 @@ pub fn run() {
                 let port = if let Some(state) = app_handle.try_state::<AppState>() {
                     *state.server_port.lock().unwrap()
                 } else {
-                    8080
+                    23456
                 };
 
                 // Navigate the main window to the Go server URL and show it

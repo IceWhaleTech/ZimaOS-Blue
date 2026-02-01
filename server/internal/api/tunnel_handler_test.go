@@ -28,7 +28,7 @@ func setupTunnelHandler(t *testing.T) (*TunnelHandler, *echo.Echo) {
 	}
 	t.Cleanup(func() { repo.Close() })
 
-	h := NewTunnelHandler(repo, 8080)
+	h := NewTunnelHandler(repo, 23456)
 
 	e := echo.New()
 	h.RegisterRoutes(e)
@@ -138,7 +138,7 @@ func TestTunnelHandler_StopTunnel_NoActiveTunnel(t *testing.T) {
 func TestTunnelHandler_StartTunnel_InvalidProvider(t *testing.T) {
 	_, e := setupTunnelHandler(t)
 
-	body := `{"provider": "invalid_provider", "port": 8080}`
+	body := `{"provider": "invalid_provider", "port": 23456}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/tunnel/start", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

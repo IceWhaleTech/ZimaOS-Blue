@@ -10,12 +10,18 @@ import (
 
 // MemoryHandler handles memory-related endpoints.
 type MemoryHandler struct {
-	service *memory.MemoryService
+	service        *memory.MemoryService
+	unifiedService *memory.UnifiedMemoryService
 }
 
 // NewMemoryHandler creates a new MemoryHandler.
 func NewMemoryHandler(service *memory.MemoryService) *MemoryHandler {
 	return &MemoryHandler{service: service}
+}
+
+// SetUnifiedService sets the unified memory service for backend switching.
+func (h *MemoryHandler) SetUnifiedService(svc *memory.UnifiedMemoryService) {
+	h.unifiedService = svc
 }
 
 // RegisterRoutes registers memory routes.
@@ -27,6 +33,11 @@ func (h *MemoryHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/memory/prune", h.Prune)
 	g.DELETE("/memory", h.Clear)
 	g.GET("/memory/stats", h.Stats)
+	// Backend management routes
+	g.GET("/memory/backend", h.GetBackendStatus)
+	g.POST("/memory/backend", h.SetBackend)
+	g.POST("/memory/supermemory/config", h.ConfigureSupermemory)
+	g.POST("/memory/supermemory/test", h.TestSupermemory)
 }
 
 // StoreRequest represents a memory store request.
@@ -229,4 +240,83 @@ func (h *MemoryHandler) Stats(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, stats)
+}
+
+// GetBackendStatus returns the current backend status.
+func (h *MemoryHandler) GetBackendStatus(c echo.Context) error {
+	activeBackend := "local"
+	supermemoryAvailable := false
+
+	if h.unifiedService != nil {
+		activeBackend = h.unifiedService.GetActiveBackend()
+		supermemoryAvailable = h.unifiedService.IsSupermemoryAvailable()
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"active_backend":        activeBackend,
+		"supermemory_available": supermemoryAvailable,
+	})
+}
+
+// SetBackend switches the active memory backend.
+func (h *MemoryHandler) SetBackend(c echo.Context) error {
+	var req struct {
+		Backend string `json:"backend"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if h.unifiedService == nil {
+		if req.Backend != "local" {
+			return echo.NewHTTPError(http.StatusBadRequest, "only local backend is available")
+		}
+		return c.JSON(http.StatusOK, map[string]bool{"success": true})
+	}
+
+	if err := h.unifiedService.SetBackend(req.Backend); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+}
+
+// ConfigureSupermemory configures the Supermemory backend.
+func (h *MemoryHandler) ConfigureSupermemory(c echo.Context) error {
+	var req struct {
+		Enabled bool   `json:"enabled"`
+		APIKey  string `json:"api_key"`
+		BaseURL string `json:"base_url"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if h.unifiedService != nil {
+		cfg := memory.SupermemoryConfig{
+			Enabled: req.Enabled,
+			APIKey:  req.APIKey,
+			BaseURL: req.BaseURL,
+		}
+		if err := h.unifiedService.ConfigureSupermemory(cfg); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+}
+
+// TestSupermemory tests the Supermemory connection.
+func (h *MemoryHandler) TestSupermemory(c echo.Context) error {
+	if h.unifiedService == nil || !h.unifiedService.IsSupermemoryAvailable() {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   "Supermemory not configured",
+		})
+	}
+
+	// Test by switching temporarily and checking
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
 }

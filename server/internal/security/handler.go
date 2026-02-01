@@ -1,12 +1,19 @@
 package security
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 )
 
 // Session represents a user session for security tracking.
@@ -74,6 +81,11 @@ type SecurityScanItem struct {
 	Description string `json:"description"`
 	Status      string `json:"status"` // passed, warning, failed
 	Details     string `json:"details,omitempty"`
+	Risk        string `json:"risk,omitempty"`        // Why this is a security concern
+	Impact      string `json:"impact,omitempty"`      // What could happen if exploited
+	Remediation string `json:"remediation,omitempty"` // How to fix the issue
+	AutoFixable bool   `json:"auto_fixable,omitempty"`
+	FixAction   string `json:"fix_action,omitempty"`
 }
 
 // SecurityScanResult represents the result of a security scan.
@@ -94,20 +106,30 @@ type ScanSummary struct {
 // Handler handles security-related API endpoints.
 type Handler struct {
 	detector   *ThreatDetector
+	scanner    *SecurityScanner
+	storage    *Storage
 	mu         sync.RWMutex
 	sessions   map[string]*Session
 	blockedIPs map[string]*BlockedIP
 	events     []SecurityEvent
 	settings   SecuritySettings
+	dataDir    string // Data directory for system checks
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for security scan results
+	scanCache *cache.GenericCache[string]
 }
 
 // NewHandler creates a new security handler.
 func NewHandler(detector *ThreatDetector) *Handler {
-	return &Handler{
+	h := &Handler{
 		detector:   detector,
 		sessions:   make(map[string]*Session),
 		blockedIPs: make(map[string]*BlockedIP),
 		events:     make([]SecurityEvent, 0),
+		dataDir:    "./data", // Default data directory
 		settings: SecuritySettings{
 			PasswordMinLength:        12,
 			PasswordRequireUppercase: true,
@@ -120,6 +142,41 @@ func NewHandler(detector *ThreatDetector) *Handler {
 			MFARequired:              false,
 			APIRateLimit:             100,
 		},
+		scanCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 30 * time.Second, // Cache scan results for 30s
+		}, "security_scan"),
+	}
+	// Initialize scanner with default config
+	h.scanner = NewSecurityScanner(h, nil)
+	return h
+}
+
+// SetDataDir sets the data directory for system checks.
+func (h *Handler) SetDataDir(dataDir string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.dataDir = dataDir
+}
+
+// SetStorage sets the storage backend for persistence.
+func (h *Handler) SetStorage(storage *Storage) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.storage = storage
+
+	// Load persisted data
+	if storage != nil {
+		h.blockedIPs = storage.GetBlockedIPs()
+		events, _, _ := storage.GetEvents(1000, 0, "")
+		h.events = events
+	}
+}
+
+// SetScannerConfig updates the scanner configuration.
+func (h *Handler) SetScannerConfig(config *ScannerConfig) {
+	if h.scanner != nil {
+		h.scanner.SetConfig(config)
 	}
 }
 
@@ -267,6 +324,86 @@ func (h *Handler) GetStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+// GetEventStats handles GET /api/v1/security/events/stats
+// Returns aggregated event statistics for the specified period (day, week, month).
+func (h *Handler) GetEventStats(c echo.Context) error {
+	period := c.QueryParam("period")
+	if period == "" {
+		period = "week"
+	}
+
+	// If storage is available, use it for more comprehensive stats
+	if h.storage != nil {
+		stats, err := h.storage.GetEventStats(period)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get event stats")
+		}
+		return c.JSON(http.StatusOK, stats)
+	}
+
+	// Fallback to in-memory stats
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	now := time.Now()
+	var startDate time.Time
+
+	switch period {
+	case "day":
+		startDate = now.AddDate(0, 0, -1)
+	case "week":
+		startDate = now.AddDate(0, 0, -7)
+	case "month":
+		startDate = now.AddDate(0, -1, 0)
+	default:
+		startDate = now.AddDate(0, 0, -7)
+		period = "week"
+	}
+
+	stats := map[string]interface{}{
+		"period":      period,
+		"start_date":  startDate,
+		"end_date":    now,
+		"total_count": 0,
+		"by_type":     make(map[string]int),
+		"by_day":      []map[string]interface{}{},
+	}
+
+	byType := stats["by_type"].(map[string]int)
+	dayMap := make(map[string]map[string]int)
+
+	for _, event := range h.events {
+		if event.Timestamp.Before(startDate) {
+			continue
+		}
+		stats["total_count"] = stats["total_count"].(int) + 1
+		byType[event.Type]++
+
+		dayKey := event.Timestamp.Format("2006-01-02")
+		if _, ok := dayMap[dayKey]; !ok {
+			dayMap[dayKey] = make(map[string]int)
+		}
+		dayMap[dayKey][event.Type]++
+	}
+
+	// Convert day map to sorted slice
+	byDay := []map[string]interface{}{}
+	for day, types := range dayMap {
+		total := 0
+		for _, count := range types {
+			total += count
+		}
+		byDay = append(byDay, map[string]interface{}{
+			"date":    day,
+			"count":   total,
+			"by_type": types,
+		})
+	}
+	stats["by_day"] = byDay
+
+	return c.JSON(http.StatusOK, stats)
+}
+
 // ListBlockedIPs handles GET /api/v1/security/blocked-ips
 func (h *Handler) ListBlockedIPs(c echo.Context) error {
 	h.mu.RLock()
@@ -310,6 +447,13 @@ func (h *Handler) BlockIP(c echo.Context) error {
 
 	h.blockedIPs[req.IPAddress] = blocked
 
+	// Persist to storage if available
+	if h.storage != nil {
+		go func() {
+			_ = h.storage.SaveBlockedIP(blocked)
+		}()
+	}
+
 	return c.JSON(http.StatusOK, blocked)
 }
 
@@ -328,6 +472,14 @@ func (h *Handler) UnblockIP(c echo.Context) error {
 	}
 
 	delete(h.blockedIPs, ip)
+
+	// Persist to storage if available
+	if h.storage != nil {
+		go func() {
+			_ = h.storage.RemoveBlockedIP(ip)
+		}()
+	}
+
 	return c.JSON(http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -335,6 +487,18 @@ func (h *Handler) UnblockIP(c echo.Context) error {
 func (h *Handler) GetThreatStats(c echo.Context) error {
 	stats := h.detector.GetStats()
 	return c.JSON(http.StatusOK, stats)
+}
+
+// GetThreatTrend handles GET /api/v1/security/threats/trend
+// Returns threat trend data for the specified period (day, week, month).
+func (h *Handler) GetThreatTrend(c echo.Context) error {
+	period := c.QueryParam("period")
+	if period == "" {
+		period = "week"
+	}
+
+	trend := h.detector.GetThreatTrend(period)
+	return c.JSON(http.StatusOK, trend)
 }
 
 // GetRecentThreats handles GET /api/v1/security/threats
@@ -349,6 +513,111 @@ func (h *Handler) GetRecentThreats(c echo.Context) error {
 
 	threats := h.detector.GetRecentThreats(limit)
 	return c.JSON(http.StatusOK, threats)
+}
+
+// ExportThreats handles GET /api/v1/security/threats/export
+// Exports threat data as CSV for reporting purposes.
+func (h *Handler) ExportThreats(c echo.Context) error {
+	format := c.QueryParam("format")
+	if format == "" {
+		format = "csv"
+	}
+
+	period := c.QueryParam("period")
+	limitStr := c.QueryParam("limit")
+	limit := 1000
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	threats := h.detector.GetRecentThreats(limit)
+
+	// Filter by period if specified
+	if period != "" {
+		now := time.Now()
+		var cutoff time.Time
+		switch period {
+		case "day":
+			cutoff = now.AddDate(0, 0, -1)
+		case "week":
+			cutoff = now.AddDate(0, 0, -7)
+		case "month":
+			cutoff = now.AddDate(0, -1, 0)
+		}
+		filtered := make([]ThreatEvent, 0)
+		for _, t := range threats {
+			if t.Timestamp.After(cutoff) {
+				filtered = append(filtered, t)
+			}
+		}
+		threats = filtered
+	}
+
+	if format == "csv" {
+		// Generate CSV
+		c.Response().Header().Set("Content-Type", "text/csv")
+		c.Response().Header().Set("Content-Disposition", "attachment; filename=threat_report.csv")
+
+		// Write CSV header
+		csv := "ID,Type,Severity,Source,IP Address,User ID,Description,Blocked,Timestamp\n"
+
+		// Write data rows
+		for _, t := range threats {
+			blocked := "false"
+			if t.Blocked {
+				blocked = "true"
+			}
+			// Escape fields that might contain commas
+			desc := escapeCSV(t.Description)
+			csv += t.ID + "," +
+				string(t.Type) + "," +
+				string(t.Severity) + "," +
+				escapeCSV(t.Source) + "," +
+				t.IPAddress + "," +
+				t.UserID + "," +
+				desc + "," +
+				blocked + "," +
+				t.Timestamp.Format(time.RFC3339) + "\n"
+		}
+
+		return c.String(http.StatusOK, csv)
+	}
+
+	// Default to JSON
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"threats":     threats,
+		"total":       len(threats),
+		"exported_at": time.Now(),
+	})
+}
+
+// escapeCSV escapes a string for CSV format.
+func escapeCSV(s string) string {
+	if s == "" {
+		return ""
+	}
+	// If contains comma, quote, or newline, wrap in quotes and escape quotes
+	needsQuotes := false
+	for _, c := range s {
+		if c == ',' || c == '"' || c == '\n' || c == '\r' {
+			needsQuotes = true
+			break
+		}
+	}
+	if needsQuotes {
+		escaped := ""
+		for _, c := range s {
+			if c == '"' {
+				escaped += "\"\""
+			} else {
+				escaped += string(c)
+			}
+		}
+		return "\"" + escaped + "\""
+	}
+	return s
 }
 
 // ScanInput handles POST /api/v1/security/scan
@@ -393,26 +662,45 @@ func (h *Handler) ScanInput(c echo.Context) error {
 // RunSecurityScan handles GET /api/v1/security/scan/run
 // This endpoint performs a comprehensive security scan of the system.
 func (h *Handler) RunSecurityScan(c echo.Context) error {
-	items := h.performSecurityScan()
-
-	// Calculate summary
-	summary := ScanSummary{Total: len(items)}
-	for _, item := range items {
-		switch item.Status {
-		case "passed":
-			summary.Passed++
-		case "warning":
-			summary.Warnings++
-		case "failed":
-			summary.Failed++
-		}
+	// Try cache first
+	cacheKey := "security_scan_result"
+	if cached, ok := h.scanCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
 	}
 
-	return c.JSON(http.StatusOK, SecurityScanResult{
-		Items:     items,
-		Summary:   summary,
-		Timestamp: time.Now(),
+	// Use singleflight to deduplicate concurrent scan requests
+	result, _, _ := h.sfGroup.Do("run_security_scan", func() (interface{}, error) {
+		var items []SecurityScanItem
+		if h.scanner != nil {
+			items = h.scanner.RunFullScan()
+		} else {
+			items = h.performSecurityScan()
+		}
+
+		summary := ScanSummary{Total: len(items)}
+		for _, item := range items {
+			switch item.Status {
+			case "passed":
+				summary.Passed++
+			case "warning":
+				summary.Warnings++
+			case "failed":
+				summary.Failed++
+			}
+		}
+
+		scanResult := SecurityScanResult{
+			Items:     items,
+			Summary:   summary,
+			Timestamp: time.Now(),
+		}
+
+		// Cache the result
+		h.scanCache.Put(cacheKey, scanResult)
+		return scanResult, nil
 	})
+
+	return c.JSON(http.StatusOK, result)
 }
 
 // performSecurityScan performs actual security checks.
@@ -458,6 +746,9 @@ func (h *Handler) checkPasswordPolicy() []SecurityScanItem {
 		Category:    "auth",
 		Name:        "Password Minimum Length",
 		Description: "Check if password minimum length meets security requirements",
+		Risk:        "Short passwords are vulnerable to brute force attacks",
+		Impact:      "Attackers could guess user passwords and gain unauthorized access",
+		Remediation: "Set minimum password length to 12 or more characters in Settings > Security",
 	}
 	if h.settings.PasswordMinLength >= 12 {
 		item.Status = "passed"
@@ -465,9 +756,13 @@ func (h *Handler) checkPasswordPolicy() []SecurityScanItem {
 	} else if h.settings.PasswordMinLength >= 8 {
 		item.Status = "warning"
 		item.Details = "Password minimum length is " + strconv.Itoa(h.settings.PasswordMinLength) + " characters, recommend 12+"
+		item.AutoFixable = true
+		item.FixAction = "set_password_min_length_12"
 	} else {
 		item.Status = "failed"
 		item.Details = "Password minimum length is too short: " + strconv.Itoa(h.settings.PasswordMinLength)
+		item.AutoFixable = true
+		item.FixAction = "set_password_min_length_12"
 	}
 	items = append(items, item)
 
@@ -477,6 +772,9 @@ func (h *Handler) checkPasswordPolicy() []SecurityScanItem {
 		Category:    "auth",
 		Name:        "Password Complexity",
 		Description: "Check if password complexity requirements are enabled",
+		Risk:        "Simple passwords without mixed characters are easier to crack",
+		Impact:      "Dictionary attacks and rainbow table attacks become more effective",
+		Remediation: "Enable all complexity requirements: uppercase, lowercase, numbers, and special characters",
 	}
 	complexityScore := 0
 	if h.settings.PasswordRequireUppercase {
@@ -497,9 +795,13 @@ func (h *Handler) checkPasswordPolicy() []SecurityScanItem {
 	} else if complexityScore >= 3 {
 		item.Status = "warning"
 		item.Details = "Some password complexity requirements are disabled"
+		item.AutoFixable = true
+		item.FixAction = "enable_password_complexity"
 	} else {
 		item.Status = "failed"
 		item.Details = "Password complexity requirements are insufficient"
+		item.AutoFixable = true
+		item.FixAction = "enable_password_complexity"
 	}
 	items = append(items, item)
 
@@ -861,9 +1163,81 @@ func (h *Handler) checkDataProtection() []SecurityScanItem {
 	return items
 }
 
+// checkDataDirectory checks data directory and subdirectories.
+func (h *Handler) checkDataDirectory() []SecurityScanItem {
+	items := []SecurityScanItem{}
+
+	// Directories to check
+	dirs := []struct {
+		name string
+		path string
+	}{
+		{"data", h.dataDir},
+		{"backups", filepath.Join(h.dataDir, "backups")},
+		{"security", filepath.Join(h.dataDir, "security")},
+	}
+
+	for _, dir := range dirs {
+		item := SecurityScanItem{
+			ID:          fmt.Sprintf("system_dir_%s", dir.name),
+			Category:    "system",
+			Name:        fmt.Sprintf("Directory: %s", dir.name),
+			Description: fmt.Sprintf("Check if %s directory exists and is accessible", dir.name),
+		}
+
+		info, err := os.Stat(dir.path)
+		if os.IsNotExist(err) {
+			item.Status = "warning"
+			item.Details = fmt.Sprintf("Directory %s does not exist", dir.path)
+			item.AutoFixable = true
+			item.FixAction = fmt.Sprintf("create_directory:%s", dir.path)
+			items = append(items, item)
+			continue
+		}
+		if err != nil {
+			item.Status = "failed"
+			item.Details = fmt.Sprintf("Cannot access directory: %v", err)
+			items = append(items, item)
+			continue
+		}
+
+		if !info.IsDir() {
+			item.Status = "failed"
+			item.Details = fmt.Sprintf("Path %s is not a directory", dir.path)
+			items = append(items, item)
+			continue
+		}
+
+		// Check write permission
+		testFile := filepath.Join(dir.path, ".write_test")
+		f, err := os.Create(testFile)
+		if err != nil {
+			item.Status = "warning"
+			item.Details = fmt.Sprintf("Directory %s is not writable", dir.path)
+			item.AutoFixable = runtime.GOOS != "windows"
+			if item.AutoFixable {
+				item.FixAction = fmt.Sprintf("fix_permission:%s", dir.path)
+			}
+			items = append(items, item)
+			continue
+		}
+		f.Close()
+		os.Remove(testFile)
+
+		item.Status = "passed"
+		item.Details = fmt.Sprintf("Directory %s is accessible and writable", dir.name)
+		items = append(items, item)
+	}
+
+	return items
+}
+
 // checkSystemSecurity checks system-level security.
 func (h *Handler) checkSystemSecurity() []SecurityScanItem {
 	items := []SecurityScanItem{}
+
+	// Check data directory
+	items = append(items, h.checkDataDirectory()...)
 
 	// File Permissions
 	item := SecurityScanItem{
@@ -912,6 +1286,291 @@ func (h *Handler) checkSystemSecurity() []SecurityScanItem {
 	return items
 }
 
+// FixScanIssueRequest represents a request to fix a scan issue.
+type FixScanIssueRequest struct {
+	FixAction string `json:"fix_action"`
+}
+
+// FixScanIssueResponse represents the response from fixing a scan issue.
+type FixScanIssueResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
+}
+
+// FixPreviewRequest represents a request to preview a fix.
+type FixPreviewRequest struct {
+	FixAction string `json:"fix_action"`
+}
+
+// FixPreviewResponse represents the preview of what a fix will do.
+type FixPreviewResponse struct {
+	FixAction   string   `json:"fix_action"`
+	Description string   `json:"description"`
+	Changes     []string `json:"changes"`
+	Reversible  bool     `json:"reversible"`
+	Warning     string   `json:"warning,omitempty"`
+}
+
+// PreviewScanFix handles POST /api/v1/security/scan/preview
+// This endpoint previews what a fix will do without applying it.
+func (h *Handler) PreviewScanFix(c echo.Context) error {
+	var req FixPreviewRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	if req.FixAction == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "fix_action is required"})
+	}
+
+	preview := h.getFixPreview(req.FixAction)
+	return c.JSON(http.StatusOK, preview)
+}
+
+// getFixPreview returns a preview of what a fix action will do.
+func (h *Handler) getFixPreview(fixAction string) FixPreviewResponse {
+	preview := FixPreviewResponse{
+		FixAction:  fixAction,
+		Reversible: true,
+	}
+
+	// Parse action type and path for actions like "fix_permission:./data"
+	actionType := fixAction
+	actionPath := ""
+	if idx := indexOf(fixAction, ":"); idx > 0 {
+		actionType = fixAction[:idx]
+		actionPath = fixAction[idx+1:]
+	}
+
+	switch actionType {
+	case "fix_permission":
+		preview.Description = "Fix directory permissions"
+		preview.Changes = []string{
+			fmt.Sprintf("Set permissions for %s to 0750 (rwxr-x---)", actionPath),
+			"Owner: read, write, execute",
+			"Group: read, execute",
+			"Others: no access",
+		}
+		preview.Warning = "This change cannot be automatically reversed"
+		preview.Reversible = false
+
+	case "set_password_min_length_12":
+		preview.Description = "Increase minimum password length to 12 characters"
+		preview.Changes = []string{
+			"Update password_min_length from current value to 12",
+			"New passwords will require at least 12 characters",
+			"Existing passwords are not affected until changed",
+		}
+
+	case "enable_password_complexity":
+		preview.Description = "Enable all password complexity requirements"
+		preview.Changes = []string{
+			"Enable uppercase letter requirement",
+			"Enable lowercase letter requirement",
+			"Enable number requirement",
+			"Enable special character requirement",
+		}
+
+	case "set_lockout_threshold_5":
+		preview.Description = "Set account lockout threshold to 5 attempts"
+		preview.Changes = []string{
+			"Update max_login_attempts to 5",
+			"Accounts will lock after 5 failed login attempts",
+		}
+
+	case "enable_account_lockout":
+		preview.Description = "Enable account lockout protection"
+		preview.Changes = []string{
+			"Set max_login_attempts to 5",
+			"Set lockout_duration_minutes to 15",
+			"Accounts will lock after 5 failed attempts for 15 minutes",
+		}
+
+	case "enable_prompt_guard":
+		preview.Description = "Enable prompt injection protection"
+		preview.Changes = []string{
+			"Enable PromptGuard AI security feature",
+			"All AI prompts will be scanned for injection attempts",
+		}
+		preview.Warning = "May slightly increase AI response latency"
+
+	case "enable_ai_output_validation":
+		preview.Description = "Enable AI output validation"
+		preview.Changes = []string{
+			"Enable validation of AI-generated content",
+			"Potentially harmful outputs will be filtered",
+		}
+
+	case "enable_sensitive_data_filtering":
+		preview.Description = "Enable sensitive data filtering"
+		preview.Changes = []string{
+			"Enable automatic PII detection and redaction",
+			"Sensitive data will be filtered from AI context",
+		}
+
+	case "enable_rate_limiting":
+		preview.Description = "Enable API rate limiting"
+		preview.Changes = []string{
+			"Enable rate limiting at 100 requests/second per client",
+			"Excessive requests will receive 429 Too Many Requests",
+		}
+
+	case "restrict_cors":
+		preview.Description = "Restrict CORS to specific origins"
+		preview.Changes = []string{
+			"Disable allow-all-origins CORS policy",
+			"Only configured origins will be allowed",
+		}
+		preview.Warning = "Ensure your frontend origins are configured before applying"
+
+	case "enable_sandbox":
+		preview.Description = "Enable sandbox execution"
+		preview.Changes = []string{
+			"Enable code execution sandboxing",
+			"Untrusted code will run in isolated environment",
+		}
+
+	case "set_sandbox_memory_limit":
+		preview.Description = "Set sandbox memory limit"
+		preview.Changes = []string{
+			"Set memory limit to 512 MB for sandboxed execution",
+			"Processes exceeding limit will be terminated",
+		}
+
+	case "set_sandbox_timeout":
+		preview.Description = "Set sandbox execution timeout"
+		preview.Changes = []string{
+			"Set execution timeout to 30 seconds",
+			"Long-running processes will be terminated",
+		}
+
+	case "disable_sandbox_network":
+		preview.Description = "Disable network access in sandbox"
+		preview.Changes = []string{
+			"Disable network access for sandboxed code",
+			"Sandboxed processes cannot make network requests",
+		}
+
+	default:
+		preview.Description = "Unknown fix action"
+		preview.Changes = []string{"No preview available for this action"}
+		preview.Reversible = false
+	}
+
+	return preview
+}
+
+// FixScanIssue handles POST /api/v1/security/scan/fix
+// This endpoint attempts to fix a detected issue.
+func (h *Handler) FixScanIssue(c echo.Context) error {
+	var req FixScanIssueRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, FixScanIssueResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+	}
+
+	if req.FixAction == "" {
+		return c.JSON(http.StatusBadRequest, FixScanIssueResponse{
+			Success: false,
+			Message: "fix_action is required",
+		})
+	}
+
+	// Parse fix action
+	// Format: "action_type:path" e.g., "create_directory:/path/to/dir"
+	var actionType, actionPath string
+	if idx := indexOf(req.FixAction, ":"); idx > 0 {
+		actionType = req.FixAction[:idx]
+		actionPath = req.FixAction[idx+1:]
+	} else {
+		actionType = req.FixAction
+	}
+
+	var result FixScanIssueResponse
+	result.Success = false
+
+	switch actionType {
+	case "create_directory":
+		if actionPath == "" {
+			result.Message = "Directory path is required"
+			return c.JSON(http.StatusBadRequest, result)
+		}
+		err := os.MkdirAll(actionPath, 0750)
+		if err != nil {
+			result.Message = fmt.Sprintf("Failed to create directory: %v", err)
+			return c.JSON(http.StatusInternalServerError, result)
+		}
+		result.Success = true
+		result.Message = fmt.Sprintf("Successfully created directory: %s", actionPath)
+		result.Details = "Created with permissions 0750"
+
+	case "fix_permission":
+		if actionPath == "" {
+			result.Message = "Path is required"
+			return c.JSON(http.StatusBadRequest, result)
+		}
+		if runtime.GOOS == "windows" {
+			result.Message = "Permission fixes are not supported on Windows"
+			return c.JSON(http.StatusUnprocessableEntity, result)
+		}
+		err := os.Chmod(actionPath, 0750)
+		if err != nil {
+			result.Message = fmt.Sprintf("Failed to fix permissions: %v", err)
+			result.Details = "You may need to run with elevated privileges"
+			return c.JSON(http.StatusInternalServerError, result)
+		}
+		result.Success = true
+		result.Message = fmt.Sprintf("Successfully fixed permissions for: %s", actionPath)
+		result.Details = "Set permissions to 0750 (rwxr-x---)"
+
+	case "set_password_min_length_12":
+		h.settings.PasswordMinLength = 12
+		result.Success = true
+		result.Message = "Password minimum length set to 12 characters"
+		result.Details = "New passwords will require at least 12 characters"
+
+	case "enable_password_complexity":
+		h.settings.PasswordRequireUppercase = true
+		h.settings.PasswordRequireLowercase = true
+		h.settings.PasswordRequireNumbers = true
+		h.settings.PasswordRequireSpecial = true
+		result.Success = true
+		result.Message = "All password complexity requirements enabled"
+		result.Details = "Passwords now require uppercase, lowercase, numbers, and special characters"
+
+	case "set_lockout_threshold_5":
+		h.settings.MaxLoginAttempts = 5
+		result.Success = true
+		result.Message = "Account lockout threshold set to 5 attempts"
+
+	case "enable_account_lockout":
+		h.settings.MaxLoginAttempts = 5
+		h.settings.LockoutDurationMinutes = 15
+		result.Success = true
+		result.Message = "Account lockout enabled"
+		result.Details = "Accounts will lock after 5 failed attempts for 15 minutes"
+
+	default:
+		result.Message = fmt.Sprintf("Unknown fix action: %s", actionType)
+		return c.JSON(http.StatusBadRequest, result)
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+// indexOf returns the index of the first occurrence of substr in s, or -1 if not found.
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
 // RegisterRoutes registers the security routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Sessions
@@ -925,6 +1584,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// Events
 	g.GET("/events", h.GetEvents)
+	g.GET("/events/stats", h.GetEventStats)
 
 	// Stats
 	g.GET("/stats", h.GetStats)
@@ -936,11 +1596,79 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// Threats
 	g.GET("/threats/stats", h.GetThreatStats)
+	g.GET("/threats/trend", h.GetThreatTrend)
 	g.GET("/threats", h.GetRecentThreats)
+	g.GET("/threats/export", h.ExportThreats)
 	g.POST("/scan", h.ScanInput)
 
 	// Security Scan
 	g.GET("/scan/run", h.RunSecurityScan)
+	g.POST("/scan/preview", h.PreviewScanFix)
+	g.POST("/scan/fix", h.FixScanIssue)
+
+	// CORS Configuration
+	g.GET("/cors", h.GetCORSConfig)
+	g.PUT("/cors", h.UpdateCORSConfig)
+
+	// TLS Configuration
+	g.GET("/tls", h.GetTLSConfig)
+	g.POST("/tls/upload", h.UploadTLSCert)
+	g.POST("/tls/self-signed", h.GenerateSelfSignedCert)
+	g.POST("/tls/parse", h.ParseCertificate)
+	g.POST("/tls/reload", h.ReloadTLSCert)
+	g.PUT("/tls/settings", h.UpdateTLSSettings)
+	g.GET("/tls/acme", h.GetACMEStatus)
+	g.POST("/tls/acme", h.RequestACMECert)
+}
+
+// CORSConfigResponse represents the CORS configuration response.
+type CORSConfigResponse struct {
+	AllowedOrigins  []string `json:"allowed_origins"`
+	DynamicOrigins  []string `json:"dynamic_origins"`
+	AllowLocalhost  bool     `json:"allow_localhost"`
+}
+
+// CORSConfigRequest represents the CORS configuration update request.
+type CORSConfigRequest struct {
+	AddOrigins    []string `json:"add_origins,omitempty"`
+	RemoveOrigins []string `json:"remove_origins,omitempty"`
+}
+
+// GetCORSConfig handles GET /api/v1/security/cors
+func (h *Handler) GetCORSConfig(c echo.Context) error {
+	return c.JSON(http.StatusOK, CORSConfigResponse{
+		AllowedOrigins:  GetDefaultAllowedOrigins(),
+		DynamicOrigins:  GetDynamicOriginsDefault(),
+		AllowLocalhost:  true,
+	})
+}
+
+// UpdateCORSConfig handles PUT /api/v1/security/cors
+func (h *Handler) UpdateCORSConfig(c echo.Context) error {
+	var req CORSConfigRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	// Add new origins
+	for _, origin := range req.AddOrigins {
+		if origin != "" {
+			AddDynamicOriginDefault(origin)
+		}
+	}
+
+	// Remove origins
+	for _, origin := range req.RemoveOrigins {
+		if origin != "" {
+			RemoveDynamicOriginDefault(origin)
+		}
+	}
+
+	return c.JSON(http.StatusOK, CORSConfigResponse{
+		AllowedOrigins:  GetDefaultAllowedOrigins(),
+		DynamicOrigins:  GetDynamicOriginsDefault(),
+		AllowLocalhost:  true,
+	})
 }
 
 // AddEvent adds a security event (for use by other packages).
@@ -953,6 +1681,13 @@ func (h *Handler) AddEvent(event SecurityEvent) {
 	// Keep only last 1000 events
 	if len(h.events) > 1000 {
 		h.events = h.events[len(h.events)-1000:]
+	}
+
+	// Persist to storage if available
+	if h.storage != nil {
+		go func() {
+			_ = h.storage.SaveEvent(&event)
+		}()
 	}
 }
 
@@ -980,4 +1715,231 @@ func (h *Handler) IsIPBlocked(ip string) bool {
 	}
 
 	return true
+}
+
+// TLSConfigResponse represents the TLS configuration response.
+type TLSConfigResponse struct {
+	Enabled      bool             `json:"enabled"`
+	Port         int              `json:"port"`
+	HasCert      bool             `json:"has_cert"`
+	CertInfo     *CertificateInfo `json:"cert_info,omitempty"`
+	AutoCert     bool             `json:"auto_cert"`
+	ACMEProvider string           `json:"acme_provider,omitempty"`
+	ACMEDomains  []string         `json:"acme_domains,omitempty"`
+	SelfSigned   bool             `json:"self_signed"`
+	HTTPSOnly    bool             `json:"https_only"`
+	HTTPSPort    int              `json:"https_port"`
+}
+
+// TLSUploadRequest represents a certificate upload request.
+type TLSUploadRequest struct {
+	CertPEM string `json:"cert_pem"`
+	KeyPEM  string `json:"key_pem"`
+}
+
+// TLSSelfSignedRequest represents a self-signed certificate generation request.
+type TLSSelfSignedRequest struct {
+	Domains   []string `json:"domains"`
+	ValidDays int      `json:"valid_days"`
+}
+
+// GetTLSConfig handles GET /api/v1/security/tls
+func (h *Handler) GetTLSConfig(c echo.Context) error {
+	tlsManager := GetGlobalTLSManager()
+	certInfo := tlsManager.GetCertificateInfo()
+
+	return c.JSON(http.StatusOK, TLSConfigResponse{
+		Enabled:   certInfo != nil,
+		Port:      tlsManager.GetHTTPSPort(),
+		HasCert:   certInfo != nil,
+		CertInfo:  certInfo,
+		HTTPSOnly: tlsManager.IsHTTPSOnly(),
+		HTTPSPort: tlsManager.GetHTTPSPort(),
+	})
+}
+
+// UploadTLSCert handles POST /api/v1/security/tls/upload
+func (h *Handler) UploadTLSCert(c echo.Context) error {
+	var req TLSUploadRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	if req.CertPEM == "" || req.KeyPEM == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Certificate and key are required"})
+	}
+
+	tlsManager := GetGlobalTLSManager()
+	if err := tlsManager.SaveCertificate([]byte(req.CertPEM), []byte(req.KeyPEM)); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// Add domains to CORS
+	certInfo := tlsManager.GetCertificateInfo()
+	if certInfo != nil {
+		for _, domain := range certInfo.Domains {
+			AddDynamicOriginDefault("https://" + domain)
+		}
+	}
+
+	return c.JSON(http.StatusOK, TLSConfigResponse{
+		Enabled:  true,
+		Port:     8443,
+		HasCert:  true,
+		CertInfo: certInfo,
+	})
+}
+
+// GenerateSelfSignedCert handles POST /api/v1/security/tls/self-signed
+func (h *Handler) GenerateSelfSignedCert(c echo.Context) error {
+	var req TLSSelfSignedRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	if len(req.Domains) == 0 {
+		req.Domains = []string{"localhost"}
+	}
+	if req.ValidDays <= 0 {
+		req.ValidDays = 365
+	}
+
+	tlsManager := GetGlobalTLSManager()
+	if err := tlsManager.GenerateSelfSigned(req.Domains, req.ValidDays); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Add domains to CORS
+	certInfo := tlsManager.GetCertificateInfo()
+	if certInfo != nil {
+		for _, domain := range certInfo.Domains {
+			if domain != "localhost" && domain != "127.0.0.1" {
+				AddDynamicOriginDefault("https://" + domain)
+			}
+		}
+	}
+
+	return c.JSON(http.StatusOK, TLSConfigResponse{
+		Enabled:    true,
+		Port:       8443,
+		HasCert:    true,
+		CertInfo:   certInfo,
+		SelfSigned: true,
+	})
+}
+
+// ParseCertificate handles POST /api/v1/security/tls/parse
+func (h *Handler) ParseCertificate(c echo.Context) error {
+	var req struct {
+		CertPEM string `json:"cert_pem"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	certInfo, err := ParseCertificateFromPEM([]byte(req.CertPEM))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, certInfo)
+}
+
+// ACMERequest represents an ACME certificate request.
+type ACMERequest struct {
+	Email    string   `json:"email"`
+	Domains  []string `json:"domains"`
+	Provider string   `json:"provider"` // letsencrypt, zerossl
+}
+
+// GetACMEStatus handles GET /api/v1/security/tls/acme
+func (h *Handler) GetACMEStatus(c echo.Context) error {
+	tlsManager := GetGlobalTLSManager()
+	status := tlsManager.GetACMEStatus()
+	return c.JSON(http.StatusOK, status)
+}
+
+// RequestACMECert handles POST /api/v1/security/tls/acme
+func (h *Handler) RequestACMECert(c echo.Context) error {
+	var req ACMERequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	if req.Email == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Email is required"})
+	}
+	if len(req.Domains) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "At least one domain is required"})
+	}
+	if req.Provider == "" {
+		req.Provider = "letsencrypt"
+	}
+
+	tlsManager := GetGlobalTLSManager()
+	err := tlsManager.RequestACMECertificate(&ACMEConfig{
+		Email:    req.Email,
+		Domains:  req.Domains,
+		Provider: req.Provider,
+	})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Add domains to CORS
+	for _, domain := range req.Domains {
+		AddDynamicOriginDefault("https://" + domain)
+	}
+
+	status := tlsManager.GetACMEStatus()
+	return c.JSON(http.StatusOK, status)
+}
+
+// ReloadTLSCert handles POST /api/v1/security/tls/reload
+// Hot-reload certificate from files without restarting the server.
+func (h *Handler) ReloadTLSCert(c echo.Context) error {
+	tlsManager := GetGlobalTLSManager()
+	if err := tlsManager.ReloadCertificate(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	certInfo := tlsManager.GetCertificateInfo()
+	return c.JSON(http.StatusOK, TLSConfigResponse{
+		Enabled:   certInfo != nil,
+		Port:      tlsManager.GetHTTPSPort(),
+		HasCert:   certInfo != nil,
+		CertInfo:  certInfo,
+		HTTPSOnly: tlsManager.IsHTTPSOnly(),
+		HTTPSPort: tlsManager.GetHTTPSPort(),
+	})
+}
+
+// TLSSettingsRequest represents TLS settings update request.
+type TLSSettingsRequest struct {
+	HTTPSOnly bool `json:"https_only"`
+	HTTPSPort int  `json:"https_port"`
+}
+
+// UpdateTLSSettings handles PUT /api/v1/security/tls/settings
+func (h *Handler) UpdateTLSSettings(c echo.Context) error {
+	var req TLSSettingsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	tlsManager := GetGlobalTLSManager()
+	tlsManager.SetHTTPSOnly(req.HTTPSOnly)
+	if req.HTTPSPort > 0 {
+		tlsManager.SetHTTPSPort(req.HTTPSPort)
+	}
+
+	certInfo := tlsManager.GetCertificateInfo()
+	return c.JSON(http.StatusOK, TLSConfigResponse{
+		Enabled:   certInfo != nil,
+		Port:      tlsManager.GetHTTPSPort(),
+		HasCert:   certInfo != nil,
+		CertInfo:  certInfo,
+		HTTPSOnly: tlsManager.IsHTTPSOnly(),
+		HTTPSPort: tlsManager.GetHTTPSPort(),
+	})
 }

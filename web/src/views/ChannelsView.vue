@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef, triggerRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getChannelIconOrDefault } from '@/utils/channelIcons'
+import { getChannelIconOrDefault, getTunnelProviderIcon } from '@/utils/channelIcons'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 import {
   getRemoteAccessStatus,
@@ -39,6 +39,11 @@ interface ChannelDef {
   hintKey?: string
   docUrl?: string
   fields: ChannelFieldDef[]
+  // Message statistics
+  messagesReceived?: number
+  messagesSent?: number
+  lastMessageAt?: string
+  lastReplyAt?: string
 }
 
 const loading = ref(false)
@@ -56,6 +61,7 @@ const remoteAccessExpanded = ref(false)
 const tunnelProviders = ref<TunnelProvider[]>([])
 const selectedProvider = ref<string>('localhost_run')
 const ngrokAuthtoken = ref<string>('')
+const ngrokDomain = ref<string>('')
 const cloudflareToken = ref<string>('')
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
@@ -433,6 +439,11 @@ async function loadChannelConfigs() {
           localChannel.enabled = serverChannel.enabled
           localChannel.status = serverChannel.status
           localChannel.lastError = serverChannel.last_error
+          // Update message statistics
+          localChannel.messagesReceived = serverChannel.messages_received
+          localChannel.messagesSent = serverChannel.messages_sent
+          localChannel.lastMessageAt = serverChannel.last_message_at
+          localChannel.lastReplyAt = serverChannel.last_reply_at
           // Update field values
           for (const field of localChannel.fields) {
             if (serverChannel.config && serverChannel.config[field.key]) {
@@ -560,6 +571,9 @@ async function loadRemoteAccessStatus() {
         if (configRes.data.config.ngrok_authtoken) {
           ngrokAuthtoken.value = configRes.data.config.ngrok_authtoken
         }
+        if (configRes.data.config.ngrok_domain) {
+          ngrokDomain.value = configRes.data.config.ngrok_domain
+        }
         if (configRes.data.config.cloudflare_token) {
           cloudflareToken.value = configRes.data.config.cloudflare_token
         }
@@ -601,10 +615,13 @@ async function handleRemoteAccessStart() {
 
   try {
     // Save token to config if provided
-    if (currentProviderToken.value) {
+    if (currentProviderToken.value || (selectedProvider.value === 'ngrok' && ngrokDomain.value)) {
       const configUpdate: Record<string, string> = { default_provider: selectedProvider.value }
       if (selectedProvider.value === 'ngrok') {
         configUpdate.ngrok_authtoken = ngrokAuthtoken.value
+        if (ngrokDomain.value) {
+          configUpdate.ngrok_domain = ngrokDomain.value
+        }
       } else if (selectedProvider.value === 'cloudflare') {
         configUpdate.cloudflare_token = cloudflareToken.value
       }
@@ -615,7 +632,8 @@ async function handleRemoteAccessStart() {
       selectedProvider.value,
       undefined,
       selectedProvider.value === 'ngrok' ? ngrokAuthtoken.value : undefined,
-      selectedProvider.value === 'cloudflare' ? cloudflareToken.value : undefined
+      selectedProvider.value === 'cloudflare' ? cloudflareToken.value : undefined,
+      selectedProvider.value === 'ngrok' ? ngrokDomain.value : undefined
     )
     if (response.data.success) {
       // Update from response and fetch latest status (URL may be in status; ensure UI updates)
@@ -647,6 +665,30 @@ async function handleRemoteAccessStart() {
 }
 
 async function handleRemoteAccessStop() {
+  // Check if current host matches the tunnel URL
+  const tunnelUrl = tunnelStatus.value?.url
+  let isAccessingViaTunnel = false
+
+  if (tunnelUrl) {
+    try {
+      const tunnelHost = new URL(tunnelUrl).host
+      isAccessingViaTunnel = window.location.host === tunnelHost
+    } catch {
+      // Invalid URL, ignore
+    }
+  }
+
+  // Show confirmation dialog
+  const confirmMessage = isAccessingViaTunnel
+    ? t('remoteAccess.disconnectConfirmMessageSameHost')
+    : t('remoteAccess.disconnectConfirmMessage')
+
+  const confirmed = window.confirm(`${t('remoteAccess.disconnectConfirmTitle')}\n\n${confirmMessage}`)
+
+  if (!confirmed) {
+    return
+  }
+
   try {
     await stopRemoteAccess()
     stopRemoteAccessPolling()
@@ -822,15 +864,28 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 <button
                   v-for="provider in tunnelProviders"
                   :key="provider.id"
-                  class="p-3 rounded-lg border-2 text-left transition-colors"
+                  class="p-3 rounded-lg border-2 text-left transition-colors flex items-center gap-3"
                   :class="selectedProvider === provider.id
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
                   @click="selectedProvider = provider.id"
                 >
-                  <div class="font-medium text-gray-900 dark:text-white text-sm">{{ provider.name }}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {{ provider.requires_key ? t('remoteAccess.requiresKey') : t('remoteAccess.noKeyRequired') }}
+                  <img
+                    v-if="getTunnelProviderIcon(provider.id)"
+                    :src="getTunnelProviderIcon(provider.id)"
+                    :alt="provider.name"
+                    class="w-6 h-6 shrink-0 rounded object-contain"
+                  />
+                  <div v-else class="w-6 h-6 shrink-0 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                    </svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-gray-900 dark:text-white text-sm">{{ provider.name }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {{ provider.requires_key ? t('remoteAccess.requiresKey') : t('remoteAccess.noKeyRequired') }}
+                    </div>
                   </div>
                 </button>
               </div>
@@ -860,6 +915,26 @@ watch(() => tunnelStatus.value?.active, (active) => {
               </a>
             </div>
 
+            <!-- ngrok Custom Domain Input -->
+            <div v-if="selectedProvider === 'ngrok'" class="space-y-2">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('remoteAccess.ngrokDomain') }}
+                <span class="text-gray-400 text-xs ml-1">({{ t('common.optional') }})</span>
+              </label>
+              <input
+                v-model="ngrokDomain"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('remoteAccess.ngrokDomainHint') }}
+                <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">
+                  {{ t('remoteAccess.ngrokClaimDomain') }}
+                </a>
+              </p>
+            </div>
+
             <button
               class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
@@ -887,33 +962,13 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 <p class="text-gray-600 dark:text-gray-400">{{ t('remoteAccess.connecting') }}</p>
               </div>
             </div>
-            <!-- Antivirus Warning -->
-            <div class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-4 border border-amber-200 dark:border-amber-800">
-              <div class="flex items-start gap-3">
-                <svg class="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div>
-                  <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
-                    {{ t('remoteAccess.antivirusWarningTitle') }}
-                  </p>
-                  <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                    {{ t('remoteAccess.antivirusWarningDesc') }}
-                  </p>
-                  <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
-                    <li>{{ t('remoteAccess.antivirusHint1') }}</li>
-                    <li>{{ t('remoteAccess.antivirusHint2') }}</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
             <!-- Diagnostics and Logs (available during connecting) -->
-            <TunnelStatus :status="tunnelStatus || { active: false, connecting: true }" />
+            <TunnelStatus :status="tunnelStatus || { active: false, connecting: true }" @disconnect="handleRemoteAccessStop" />
           </div>
 
           <!-- Connected State -->
           <div v-else-if="remoteAccessState === 'connected' && tunnelStatus" class="space-y-4">
-            <TunnelStatus :status="tunnelStatus" />
+            <TunnelStatus :status="tunnelStatus" @disconnect="handleRemoteAccessStop" />
           </div>
 
           <!-- Error State -->
@@ -935,7 +990,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
               {{ t('common.retry') }}
             </button>
             <!-- Diagnostics and Logs (available during error) -->
-            <TunnelStatus :status="tunnelStatus || { active: false }" />
+            <TunnelStatus :status="tunnelStatus || { active: false }" @disconnect="handleRemoteAccessStop" />
           </div>
         </div>
       </div>

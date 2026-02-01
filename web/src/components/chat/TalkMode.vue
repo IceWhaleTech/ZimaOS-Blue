@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AudioRecorder, voiceApi, VoiceWebSocket, playAudioFromBase64 } from '@/api/voice'
+import { AudioRecorder, VoiceWebSocket, playAudioFromBase64 } from '@/api/voice'
 import type { VoiceSessionState } from '@/api/voice'
-
+import { speechApi } from '@/api/speech'
+import TranscriptionEditor from './TranscriptionEditor.vue'
 const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: boolean
   conversationId?: string
+  editBeforeSend?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,21 +30,22 @@ const error = ref<string | null>(null)
 const transcript = ref('')
 const response = ref('')
 
+// Edit before send state
+const showTranscriptionEditor = ref(false)
+const pendingTranscription = ref('')
+const transcriptionLanguage = ref('')
+const transcriptionConfidence = ref(0)
+
 // Audio visualization
 const audioLevel = ref(0)
 const audioLevelInterval = ref<number | null>(null)
 
+// Audio recording for local ASR
+const recordedChunks = ref<Blob[]>([])
+
 // WebSocket and recorder instances
 let voiceWs: VoiceWebSocket | null = null
 let recorder: AudioRecorder | null = null
-
-// Session state
-const sessionState = computed<VoiceSessionState>(() => {
-  if (isSpeaking.value) return 'speaking'
-  if (isProcessing.value) return 'processing'
-  if (isListening.value) return 'listening'
-  return 'idle'
-})
 
 // Connect to voice WebSocket
 async function connect() {
@@ -128,9 +131,15 @@ async function startListening() {
   if (isListening.value || isSpeaking.value) return
 
   error.value = null
+  recordedChunks.value = []
   recorder = new AudioRecorder()
 
   recorder.onDataAvailable = async (data: Blob) => {
+    // Collect chunks for local ASR in walkie-talkie mode
+    if (talkMode.value === 'walkie-talkie' && props.editBeforeSend) {
+      recordedChunks.value.push(data)
+    }
+
     if (voiceWs?.isConnected) {
       // Convert blob to base64 and send
       const reader = new FileReader()
@@ -161,13 +170,58 @@ async function startListening() {
 }
 
 // Stop listening
-function stopListening() {
+async function stopListening() {
   if (recorder) {
     recorder.stop()
     recorder = null
   }
   isListening.value = false
   stopAudioLevelMonitor()
+
+  // In walkie-talkie mode with edit-before-send, transcribe locally
+  if (talkMode.value === 'walkie-talkie' && props.editBeforeSend && recordedChunks.value.length > 0) {
+    await transcribeLocally()
+  }
+  recordedChunks.value = []
+}
+
+// Transcribe audio locally using Sherpa ASR
+async function transcribeLocally() {
+  if (recordedChunks.value.length === 0) return
+
+  isProcessing.value = true
+  error.value = null
+
+  try {
+    const audioBlob = new Blob(recordedChunks.value, { type: 'audio/webm' })
+    const result = await speechApi.transcribe(audioBlob, 'webm')
+
+    if (result.text) {
+      pendingTranscription.value = result.text
+      transcriptionLanguage.value = result.language || ''
+      transcriptionConfidence.value = result.confidence || 0
+      showTranscriptionEditor.value = true
+    }
+  } catch (e) {
+    console.error('Local transcription failed:', e)
+    error.value = t('chat.talkMode.transcriptionError')
+  } finally {
+    isProcessing.value = false
+  }
+}
+
+// Handle transcription confirmation
+function handleTranscriptionConfirm(text: string) {
+  transcript.value = text
+  emit('transcript', text)
+  showTranscriptionEditor.value = false
+  pendingTranscription.value = ''
+}
+
+// Handle transcription cancel
+function handleTranscriptionCancel() {
+  showTranscriptionEditor.value = false
+  pendingTranscription.value = ''
 }
 
 // Toggle listening (for walkie-talkie mode)
@@ -385,6 +439,16 @@ onUnmounted(() => {
               <p class="text-sm text-gray-900 dark:text-white">{{ response }}</p>
             </div>
           </div>
+
+          <!-- Transcription Editor (for edit-before-send) -->
+          <TranscriptionEditor
+            v-model:visible="showTranscriptionEditor"
+            :text="pendingTranscription"
+            :language="transcriptionLanguage"
+            :confidence="transcriptionConfidence"
+            @confirm="handleTranscriptionConfirm"
+            @cancel="handleTranscriptionCancel"
+          />
 
           <!-- Error message -->
           <div

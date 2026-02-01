@@ -25,6 +25,11 @@ interface ChannelDef {
   hintKey?: string
   docUrl?: string
   fields: ChannelFieldDef[]
+  // Message statistics
+  messagesReceived?: number
+  messagesSent?: number
+  lastMessageAt?: string
+  lastReplyAt?: string
 }
 
 const props = defineProps<{
@@ -115,6 +120,23 @@ function handleFieldInput(fieldIndex: number, event: Event) {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement
   emit('updateField', fieldIndex, target.value)
 }
+
+// Format relative time
+function formatRelativeTime(dateStr: string | undefined): string {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+
+  if (diffSec < 60) return t('channels.justNow')
+  if (diffMin < 60) return t('channels.minutesAgo', { n: diffMin })
+  if (diffHour < 24) return t('channels.hoursAgo', { n: diffHour })
+  return t('channels.daysAgo', { n: diffDay })
+}
 </script>
 
 <template>
@@ -172,6 +194,122 @@ function handleFieldInput(fieldIndex: number, event: Event) {
       v-if="expanded"
       class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50"
     >
+      <!-- Runtime Statistics (when enabled) -->
+      <template v-if="channel.enabled">
+        <!-- Connection Status -->
+        <div class="mb-4 p-3 rounded-lg" :class="{
+          'bg-green-50 dark:bg-green-900/20': channel.status === 'connected',
+          'bg-yellow-50 dark:bg-yellow-900/20': channel.status === 'connecting',
+          'bg-red-50 dark:bg-red-900/20': channel.status === 'error',
+          'bg-gray-100 dark:bg-gray-700/50': channel.status === 'disconnected'
+        }">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full" :class="statusColor"></span>
+            <span class="text-sm font-medium" :class="{
+              'text-green-700 dark:text-green-400': channel.status === 'connected',
+              'text-yellow-700 dark:text-yellow-400': channel.status === 'connecting',
+              'text-red-700 dark:text-red-400': channel.status === 'error',
+              'text-gray-600 dark:text-gray-400': channel.status === 'disconnected'
+            }">{{ statusText }}</span>
+          </div>
+          <p v-if="channel.lastError" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ channel.lastError }}</p>
+        </div>
+
+        <!-- Statistics Grid -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ channel.messagesReceived ?? 0 }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('channels.messagesReceived') }}</div>
+          </div>
+          <div class="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ channel.messagesSent ?? 0 }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('channels.messagesSent') }}</div>
+          </div>
+        </div>
+
+        <!-- Last Activity -->
+        <div class="space-y-2 mb-4">
+          <div class="flex justify-between text-sm">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('channels.lastMessageReceived') }}</span>
+            <span class="text-gray-900 dark:text-white">{{ formatRelativeTime(channel.lastMessageAt) }}</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('channels.lastReplySent') }}</span>
+            <span class="text-gray-900 dark:text-white">{{ formatRelativeTime(channel.lastReplyAt) }}</span>
+          </div>
+        </div>
+
+        <!-- Quick Links (when enabled) -->
+        <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <a
+            v-if="channel.docUrl"
+            :href="channel.docUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            {{ t('channels.viewDocs') }}
+          </a>
+          <!-- Feishu Open Bot Chat Link -->
+          <a
+            v-if="feishuAppId"
+            :href="`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {{ t('channels.feishuOpenChat') }}
+          </a>
+          <!-- Telegram Open Bot Chat Link -->
+          <a
+            v-if="telegramBotUsername"
+            :href="`https://t.me/${telegramBotUsername}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {{ t('channels.telegramOpenChat') }}
+          </a>
+          <!-- DingTalk Open Bot Chat Link -->
+          <a
+            v-if="dingtalkRobotCode"
+            :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {{ t('channels.dingtalkOpenChat') }}
+          </a>
+          <!-- WhatsApp Open Chat Link -->
+          <a
+            v-if="whatsappPhoneNumber"
+            :href="`https://wa.me/${whatsappPhoneNumber}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {{ t('channels.whatsappOpenChat') }}
+          </a>
+        </div>
+      </template>
+
+      <!-- Configuration Form (when disabled) -->
+      <template v-else>
       <!-- Hint -->
       <p v-if="translatedChannel.hint" class="text-xs text-gray-500 dark:text-gray-400 mb-4 flex items-start gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -189,7 +327,7 @@ function handleFieldInput(fieldIndex: number, event: Event) {
           </label>
           <textarea
             v-if="field.type === 'textarea'"
-            :value="channel.fields[fieldIndex].value"
+            :value="channel.fields[fieldIndex]?.value"
             :name="field.key"
             :placeholder="field.placeholder"
             rows="4"
@@ -198,7 +336,7 @@ function handleFieldInput(fieldIndex: number, event: Event) {
           />
           <PasswordInput
             v-else-if="field.type === 'password'"
-            :model-value="channel.fields[fieldIndex].value"
+            :model-value="channel.fields[fieldIndex]?.value ?? ''"
             :name="field.key"
             :placeholder="field.placeholder"
             class="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -206,7 +344,7 @@ function handleFieldInput(fieldIndex: number, event: Event) {
           />
           <input
             v-else
-            :value="channel.fields[fieldIndex].value"
+            :value="channel.fields[fieldIndex]?.value"
             :name="field.key"
             :type="field.type"
             :placeholder="field.placeholder"
@@ -311,6 +449,7 @@ function handleFieldInput(fieldIndex: number, event: Event) {
           {{ t('channels.whatsappOpenChat') }}
         </a>
       </div>
+      </template>
     </div>
   </div>
 </template>

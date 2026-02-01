@@ -16,12 +16,21 @@ const (
 	RoleTool      Role = "tool"
 )
 
+// ContentPart represents a part of a multimodal message content.
+type ContentPart struct {
+	Type      string `json:"type"`                 // "text" or "image"
+	Text      string `json:"text,omitempty"`       // for text type
+	MediaType string `json:"media_type,omitempty"` // for image type (e.g., "image/jpeg")
+	Data      string `json:"data,omitempty"`       // base64 encoded data for image type
+}
+
 // Message represents a chat message.
 type Message struct {
-	Role       Role       `json:"role"`
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Role         Role          `json:"role"`
+	Content      string        `json:"content"`
+	ContentParts []ContentPart `json:"content_parts,omitempty"` // for multimodal messages
+	ToolCalls    []ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID   string        `json:"tool_call_id,omitempty"`
 }
 
 // Tool represents a function/tool that can be called by the LLM.

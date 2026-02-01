@@ -5,9 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
-	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
+	"github.com/labstack/echo/v4"
 )
 
 // Handler handles preview mode HTTP requests.
@@ -143,11 +144,16 @@ func (h *Handler) GetPresetQuestions(c echo.Context) error {
 			lang = acceptLang[:2]
 		}
 	}
-	// Normalize language code
-	if lang == "zh" || lang == "zh-CN" || lang == "zh-TW" || lang == "zh-Hans" || lang == "zh-Hant" {
+	// Normalize language code (support zh, en, ja, ko; others fallback to en)
+	switch {
+	case lang == "zh" || strings.HasPrefix(lang, "zh"):
 		lang = "zh"
-	} else {
-		lang = "en" // default to English
+	case lang == "ja" || strings.HasPrefix(lang, "ja"):
+		lang = "ja"
+	case lang == "ko" || strings.HasPrefix(lang, "ko"):
+		lang = "ko"
+	default:
+		lang = "en"
 	}
 
 	questions := h.questionsService.GetPresetQuestions(count, lang)

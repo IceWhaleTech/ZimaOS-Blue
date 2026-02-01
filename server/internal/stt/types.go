@@ -36,6 +36,8 @@ const (
 	ProviderGoogleSTT ProviderType = "google_stt"
 	// ProviderAzureSTT is Azure Speech Services.
 	ProviderAzureSTT ProviderType = "azure_stt"
+	// ProviderSherpa is local Sherpa-ONNX ASR.
+	ProviderSherpa ProviderType = "sherpa"
 )
 
 // AudioFormat represents the audio format.
@@ -129,6 +131,8 @@ type ProviderConfig struct {
 	BaseURL string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
 	// Model is the model to use.
 	Model string `json:"model,omitempty" yaml:"model,omitempty"`
+	// ModelDir is the directory for local models (Sherpa).
+	ModelDir string `json:"model_dir,omitempty" yaml:"model_dir,omitempty"`
 	// DefaultLanguage is the default language.
 	DefaultLanguage string `json:"default_language,omitempty" yaml:"default_language,omitempty"`
 	// MaxDuration is the maximum audio duration.

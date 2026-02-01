@@ -158,6 +158,9 @@ async function loadLocaleMessages(locale: LocaleKey): Promise<void> {
 }
 
 export async function setLocale(locale: LocaleKey): Promise<void> {
+  // Always ensure fallback locale is fully loaded so missing keys in other locales
+  // cleanly fall back to English instead of showing raw translation keys.
+  await loadLocaleMessages('en-US')
   await loadLocaleMessages(locale)
   ;(i18n.global.locale as { value: string }).value = locale
   localStorage.setItem(LOCALE_KEY, locale)

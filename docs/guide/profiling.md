@@ -39,10 +39,10 @@ Capture a 30-second CPU profile:
 
 ```bash
 # Using curl
-curl -o cpu.prof http://localhost:8080/debug/pprof/profile?seconds=30
+curl -o cpu.prof http://localhost:23456/debug/pprof/profile?seconds=30
 
 # Using go tool
-go tool pprof http://localhost:8080/debug/pprof/profile?seconds=30
+go tool pprof http://localhost:23456/debug/pprof/profile?seconds=30
 ```
 
 Analyze the profile:
@@ -61,10 +61,10 @@ go tool pprof cpu.prof
 Capture heap profile:
 
 ```bash
-curl -o heap.prof http://localhost:8080/debug/pprof/heap
+curl -o heap.prof http://localhost:23456/debug/pprof/heap
 
 # Or directly analyze
-go tool pprof http://localhost:8080/debug/pprof/heap
+go tool pprof http://localhost:23456/debug/pprof/heap
 ```
 
 Common analysis commands:
@@ -82,13 +82,13 @@ Check for goroutine leaks:
 
 ```bash
 # Get goroutine dump
-curl http://localhost:8080/debug/pprof/goroutine?debug=1
+curl http://localhost:23456/debug/pprof/goroutine?debug=1
 
 # Full stack traces
-curl http://localhost:8080/debug/pprof/goroutine?debug=2
+curl http://localhost:23456/debug/pprof/goroutine?debug=2
 
 # Analyze with pprof
-go tool pprof http://localhost:8080/debug/pprof/goroutine
+go tool pprof http://localhost:23456/debug/pprof/goroutine
 ```
 
 ### Blocking Profile
@@ -99,7 +99,7 @@ Identify blocking operations:
 # Enable block profiling first (in code or config)
 # runtime.SetBlockProfileRate(1)
 
-curl -o block.prof http://localhost:8080/debug/pprof/block
+curl -o block.prof http://localhost:23456/debug/pprof/block
 go tool pprof block.prof
 ```
 
@@ -111,7 +111,7 @@ Find mutex bottlenecks:
 # Enable mutex profiling first
 # runtime.SetMutexProfileFraction(1)
 
-curl -o mutex.prof http://localhost:8080/debug/pprof/mutex
+curl -o mutex.prof http://localhost:23456/debug/pprof/mutex
 go tool pprof mutex.prof
 ```
 
@@ -140,7 +140,7 @@ Generate flame graph:
 go install github.com/uber/go-torch@latest
 
 # Generate flame graph
-go-torch -u http://localhost:8080/debug/pprof/profile
+go-torch -u http://localhost:23456/debug/pprof/profile
 ```
 
 ## Continuous Profiling
@@ -154,8 +154,8 @@ For production monitoring, consider:
 # Save profiles every hour
 while true; do
     timestamp=$(date +%Y%m%d_%H%M%S)
-    curl -o "heap_${timestamp}.prof" http://localhost:8080/debug/pprof/heap
-    curl -o "goroutine_${timestamp}.prof" http://localhost:8080/debug/pprof/goroutine
+    curl -o "heap_${timestamp}.prof" http://localhost:23456/debug/pprof/heap
+    curl -o "goroutine_${timestamp}.prof" http://localhost:23456/debug/pprof/goroutine
     sleep 3600
 done
 ```
@@ -166,10 +166,10 @@ Monitor key metrics:
 
 ```bash
 # Get current goroutine count
-curl -s http://localhost:8080/debug/pprof/goroutine?debug=1 | head -1
+curl -s http://localhost:23456/debug/pprof/goroutine?debug=1 | head -1
 
 # Get heap stats
-curl -s http://localhost:8080/debug/pprof/heap?debug=1 | grep -E "^#"
+curl -s http://localhost:23456/debug/pprof/heap?debug=1 | grep -E "^#"
 ```
 
 ## Best Practices
@@ -221,7 +221,7 @@ go tool pprof -base=baseline.prof current.prof
 1. Get goroutine count over time
 2. Identify stuck goroutines:
    ```bash
-   curl http://localhost:8080/debug/pprof/goroutine?debug=2 | grep -A 10 "goroutine"
+   curl http://localhost:23456/debug/pprof/goroutine?debug=2 | grep -A 10 "goroutine"
    ```
 
 ### High CPU Usage
@@ -237,7 +237,7 @@ go tool pprof -base=baseline.prof current.prof
 
 1. Enable tracing:
    ```bash
-   curl -o trace.out http://localhost:8080/debug/pprof/trace?seconds=5
+   curl -o trace.out http://localhost:23456/debug/pprof/trace?seconds=5
    go tool trace trace.out
    ```
 2. Analyze request latency in trace viewer

@@ -56,6 +56,28 @@ export default {
     security: 'Sikkerhed',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Alle',
+      overview: 'Oversigt',
+      system: 'System',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Systemstatus',
+      uptime: 'Oppetid',
+      memoryUsage: 'Hukommelsesforbrug',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Failover-status',
+      cpuChart: 'CPU-forbrug',
+      memoryChart: 'Hukommelsesforbrug',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap-hukommelse',
+      systemInfo: 'Systeminformation',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Færdigheder',
@@ -580,6 +602,7 @@ export default {
         system: 'System',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimum adgangskodelængde',
           description: 'Tjek om minimum adgangskodelængde opfylder sikkerhedskravene',

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -128,7 +129,7 @@ func (l *SQLiteLogger) worker() {
 		}
 		if err := l.writeBatch(batch); err != nil {
 			// Log error but don't fail
-			fmt.Printf("audit: failed to write batch: %v\n", err)
+			log.Printf("[WARN] audit: failed to write batch: %v", err)
 		}
 		batch = batch[:0]
 	}

@@ -22,7 +22,7 @@
   },
   "ports": [
     {
-      "container": 8080,
+      "container": 23456,
       "host": 8765,
       "protocol": "tcp",
       "description": "Web UI and API"
@@ -43,7 +43,7 @@
   "environment": [
     {
       "name": "ECHO_SERVER_PORT",
-      "value": "8080",
+      "value": "23456",
       "description": "Server port"
     },
     {

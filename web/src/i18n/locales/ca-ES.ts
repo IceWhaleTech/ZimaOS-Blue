@@ -56,6 +56,28 @@ export default {
     security: 'Seguretat',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Totes',
+      overview: 'Resum',
+      system: 'Sistema',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Estat del sistema',
+      uptime: 'Temps en funcionament',
+      memoryUsage: 'Ús de memòria',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Estat de failover',
+      cpuChart: 'Ús de CPU',
+      memoryChart: 'Ús de memòria',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Memòria heap',
+      systemInfo: 'Informació del sistema',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Habilitats',
@@ -580,6 +602,7 @@ export default {
         system: 'Sistema',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Longitud mínima de contrasenya',
           description: 'Comprovar si la longitud mínima de contrasenya compleix els requisits de seguretat',

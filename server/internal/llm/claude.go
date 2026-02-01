@@ -88,6 +88,14 @@ type claudeContent struct {
 	Input     map[string]interface{} `json:"input,omitempty"`
 	ToolUseID string                 `json:"tool_use_id,omitempty"`
 	Content   string                 `json:"content,omitempty"`
+	// Image support
+	Source *claudeImageSource `json:"source,omitempty"`
+}
+
+type claudeImageSource struct {
+	Type      string `json:"type"`       // "base64"
+	MediaType string `json:"media_type"` // e.g., "image/jpeg"
+	Data      string `json:"data"`       // base64 encoded image data
 }
 
 type claudeTool struct {
@@ -655,8 +663,33 @@ func (p *ClaudeProvider) convertRequest(req ChatRequest) claudeRequest {
 				}
 			}
 		} else {
-			claudeMsg.Content = []claudeContent{
-				{Type: "text", Text: msg.Content},
+			// Handle regular message or multimodal message
+			if len(msg.ContentParts) > 0 {
+				// Multimodal message with content parts
+				claudeMsg.Content = make([]claudeContent, 0, len(msg.ContentParts))
+				for _, part := range msg.ContentParts {
+					switch part.Type {
+					case "text":
+						claudeMsg.Content = append(claudeMsg.Content, claudeContent{
+							Type: "text",
+							Text: part.Text,
+						})
+					case "image":
+						claudeMsg.Content = append(claudeMsg.Content, claudeContent{
+							Type: "image",
+							Source: &claudeImageSource{
+								Type:      "base64",
+								MediaType: part.MediaType,
+								Data:      part.Data,
+							},
+						})
+					}
+				}
+			} else {
+				// Simple text message
+				claudeMsg.Content = []claudeContent{
+					{Type: "text", Text: msg.Content},
+				}
 			}
 		}
 

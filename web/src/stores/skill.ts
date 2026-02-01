@@ -153,17 +153,19 @@ export const useSkillStore = defineStore('skill', () => {
       loading.value = true
       error.value = null
       const response = await skillApi.browse(params)
+      const data = response.data
       // Handle both paginated response (object with skills array) and legacy array response
-      if (response.data && 'skills' in response.data) {
-        remoteSkills.value = response.data.skills || []
+      if (data && typeof data === 'object' && 'skills' in data) {
+        remoteSkills.value = data.skills || []
         // Update pagination state
-        currentPage.value = response.data.page || 1
-        totalPages.value = response.data.total_pages || 1
-        totalSkills.value = response.data.total || 0
-        pageSize.value = response.data.page_size || 24
-      } else if (Array.isArray(response.data)) {
-        remoteSkills.value = response.data
-        totalSkills.value = response.data.length
+        currentPage.value = data.page || 1
+        totalPages.value = data.total_pages || 1
+        totalSkills.value = data.total || 0
+        pageSize.value = data.page_size || 24
+      } else if (Array.isArray(data)) {
+        const arr = data as RemoteSkill[]
+        remoteSkills.value = arr
+        totalSkills.value = arr.length
         totalPages.value = 1
         currentPage.value = 1
       } else {
@@ -339,6 +341,26 @@ export const useSkillStore = defineStore('skill', () => {
     error.value = null
   }
 
+  async function uploadSkill(file: File) {
+    try {
+      loading.value = true
+      error.value = null
+      const response = await skillApi.upload(file)
+      if (response.data.success) {
+        // Refresh local skills to show the newly uploaded skill
+        await fetchSkills()
+      } else if (response.data.message) {
+        throw new Error(response.data.message)
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to upload skill'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     // State
     skills,
@@ -381,6 +403,7 @@ export const useSkillStore = defineStore('skill', () => {
     fetchFeaturedSkills,
     fetchLocalSkills,
     scanLocalSkills,
+    uploadSkill,
     clearError,
   }
 })

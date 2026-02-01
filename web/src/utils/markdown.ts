@@ -60,7 +60,7 @@ function detectLanguage(lang: string): string {
 }
 
 // Simple syntax highlighting for common languages
-function highlightCode(code: string, language: string): string {
+export function highlightCode(code: string, language: string): string {
   const escaped = escapeHtml(code)
 
   // Keywords for common languages

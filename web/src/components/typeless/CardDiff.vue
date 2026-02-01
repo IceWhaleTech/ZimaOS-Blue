@@ -1,12 +1,27 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { TypelessCardDiff } from '@/types/typeless'
+import { useFullscreen } from '@/composables/useFullscreen'
 
 const props = defineProps<{
   card: TypelessCardDiff
 }>()
 
+const { openFullscreen } = useFullscreen()
 const viewMode = ref<'split' | 'unified'>(props.card.viewMode ?? 'unified')
+
+function handleDoubleClick() {
+  openFullscreen({
+    type: 'diff',
+    title: props.card.title || props.card.filename,
+    language: props.card.language,
+    content: '', // Not used for diff
+    oldCode: props.card.oldCode,
+    newCode: props.card.newCode,
+    oldLabel: props.card.oldLabel,
+    newLabel: props.card.newLabel,
+  })
+}
 
 const oldLines = computed(() => props.card.oldCode.split('\n'))
 const newLines = computed(() => props.card.newCode.split('\n'))
@@ -145,7 +160,7 @@ function getLinePrefix(type: string): string {
 </script>
 
 <template>
-  <div class="diff-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="diff-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800" @dblclick="handleDoubleClick">
     <!-- Header -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-3">
@@ -162,19 +177,21 @@ function getLinePrefix(type: string): string {
           <span class="text-green-600 dark:text-green-400">+{{ stats.added }}</span>
           <span class="text-red-600 dark:text-red-400">-{{ stats.removed }}</span>
         </div>
+        <!-- Fullscreen hint -->
+        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
         <!-- View mode toggle -->
         <div class="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <button
             class="px-3 py-1 text-xs font-medium transition-colors"
             :class="viewMode === 'unified' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'"
-            @click="viewMode = 'unified'"
+            @click.stop="viewMode = 'unified'"
           >
             Unified
           </button>
           <button
             class="px-3 py-1 text-xs font-medium transition-colors"
             :class="viewMode === 'split' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'"
-            @click="viewMode = 'split'"
+            @click.stop="viewMode = 'split'"
           >
             Split
           </button>

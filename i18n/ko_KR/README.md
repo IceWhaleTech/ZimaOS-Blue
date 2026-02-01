@@ -181,7 +181,7 @@ dev.bat
 ```
 
 - 프론트엔드: `http://localhost:3000`
-- 백엔드: `http://localhost:8080`
+- 백엔드: `http://localhost:23456`
 
 ### 빌드 명령
 

@@ -102,7 +102,7 @@ start_server() {
         go build -o echo ./cmd/echo
         success "Server built successfully"
 
-        info "Starting server on http://localhost:8080"
+        info "Starting server on http://localhost:23456"
         ./echo
     fi
 }
@@ -132,7 +132,7 @@ start_all() {
     echo -e "${CYAN}  ZimaOS-Echo Development Environment${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo ""
-    echo -e "  Backend:  ${YELLOW}http://localhost:8080${NC}"
+    echo -e "  Backend:  ${YELLOW}http://localhost:23456${NC}"
     echo -e "  Frontend: ${YELLOW}http://localhost:3000${NC}"
     echo ""
     if command_exists air; then
@@ -226,7 +226,7 @@ prd_run() {
     success "Web assets copied to server/internal/web/dist"
 
     # Start server (production mode, no -tags dev, serves embedded frontend)
-    info "Starting Go server (production mode, http://localhost:8080)..."
+    info "Starting Go server (production mode, http://localhost:23456)..."
     cd "$PROJECT_ROOT/server"
     go run ./cmd/echo
 }

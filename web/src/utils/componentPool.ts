@@ -98,6 +98,8 @@ class ComponentPool {
       choice: () => import('@/components/typeless/CardChoice.vue'),
       'collapsible-code': () => import('@/components/typeless/CardCollapsibleCode.vue'),
       diff: () => import('@/components/typeless/CardDiff.vue'),
+      video: () => import('@/components/typeless/CardVideo.vue'),
+      mermaid: () => import('@/components/typeless/CardMermaid.vue'),
     }
 
     const loader = componentMap[cardType]

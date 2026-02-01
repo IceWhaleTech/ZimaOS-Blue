@@ -181,7 +181,7 @@ dev.bat
 ```
 
 - Фронтенд: `http://localhost:3000`
-- Бэкенд: `http://localhost:8080`
+- Бэкенд: `http://localhost:23456`
 
 ### Команды сборки
 

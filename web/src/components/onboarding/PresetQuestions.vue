@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { previewApi, type PresetQuestion } from '@/api/preview'
+import { previewApi, type PresetQuestion, type PresetQuestionAttachment } from '@/api/preview'
 import PresetQuestionCard from './PresetQuestionCard.vue'
+import type { FileAttachment } from '@/components/ChatInput.vue'
 
 const { t, locale } = useI18n()
 
 const emit = defineEmits<{
-  select: [text: string]
+  select: [text: string, attachments?: FileAttachment[]]
 }>()
 
 const questions = ref<PresetQuestion[]>([])
@@ -18,7 +19,84 @@ const refreshing = ref(false)
 function getLangCode(): string {
   const lang = locale.value
   if (lang.startsWith('zh')) return 'zh'
+  if (lang.startsWith('ja')) return 'ja'
+  if (lang.startsWith('ko')) return 'ko'
   return 'en'
+}
+
+// Map of placeholder names to real sample file paths
+const sampleFilePaths: Record<string, { path: string; mimeType: string }> = {
+  'sample-image': { path: '/samples/landscape.jpg', mimeType: 'image/jpeg' },
+  'sample-photo': { path: '/samples/room.jpg', mimeType: 'image/jpeg' },
+  'sample-scene': { path: '/samples/cityscape.jpg', mimeType: 'image/jpeg' },
+  'sample-chart': { path: '/samples/chart.png', mimeType: 'image/png' },
+  'sample-text-image': { path: '/samples/invoice.jpg', mimeType: 'image/jpeg' },
+  'sample-code': { path: '/samples/hello.py', mimeType: 'text/x-python' },
+  'sample-document': { path: '/samples/report.txt', mimeType: 'text/plain' },
+  'sample-csv': { path: '/samples/sales_data.csv', mimeType: 'text/csv' },
+  'sample-json': { path: '/samples/config.json', mimeType: 'application/json' },
+  'sample-js': { path: '/samples/buggy_calculator.js', mimeType: 'text/javascript' },
+}
+
+// Fetch a real sample file from the public folder
+async function fetchSampleFile(placeholder: string): Promise<{ blob: Blob; preview?: string } | null> {
+  const fileInfo = sampleFilePaths[placeholder]
+  if (!fileInfo) return null
+
+  try {
+    const response = await fetch(fileInfo.path)
+    if (!response.ok) return null
+
+    const blob = await response.blob()
+
+    // Generate preview for images
+    let preview: string | undefined
+    if (fileInfo.mimeType.startsWith('image/')) {
+      preview = URL.createObjectURL(blob)
+    }
+
+    return { blob, preview }
+  } catch (error) {
+    console.error(`Failed to fetch sample file: ${placeholder}`, error)
+    return null
+  }
+}
+
+// Convert preset question attachments to FileAttachment format
+async function convertAttachments(presetAttachments?: PresetQuestionAttachment[]): Promise<FileAttachment[]> {
+  if (!presetAttachments || presetAttachments.length === 0) {
+    console.log('[PresetQuestions] No attachments to convert')
+    return []
+  }
+
+  console.log('[PresetQuestions] Converting attachments:', presetAttachments)
+  const attachments: FileAttachment[] = []
+
+  for (const att of presetAttachments) {
+    console.log('[PresetQuestions] Processing attachment:', att.placeholder, att.name)
+    if (!att.placeholder) continue
+    // Try to fetch real sample file first
+    const sampleFile = await fetchSampleFile(att.placeholder)
+
+    if (sampleFile) {
+      const file = new File([sampleFile.blob], att.name, { type: att.mime_type })
+      console.log('[PresetQuestions] Created file:', att.name, 'size:', file.size)
+
+      attachments.push({
+        id: Math.random().toString(36).substring(2, 15),
+        file,
+        name: att.name,
+        size: file.size,
+        type: att.mime_type,
+        preview: sampleFile.preview,
+      })
+    } else {
+      console.warn('[PresetQuestions] Failed to fetch sample file for placeholder:', att.placeholder)
+    }
+  }
+
+  console.log('[PresetQuestions] Final attachments count:', attachments.length)
+  return attachments
 }
 
 async function fetchQuestions() {
@@ -45,8 +123,9 @@ async function refreshQuestions() {
   }
 }
 
-function handleQuestionClick(question: PresetQuestion) {
-  emit('select', question.text)
+async function handleQuestionClick(question: PresetQuestion) {
+  const attachments = await convertAttachments(question.attachments)
+  emit('select', question.text, attachments.length > 0 ? attachments : undefined)
 }
 
 onMounted(() => {

@@ -2,11 +2,12 @@
 import { computed, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
+import { cardActionApi } from '@/api/chat'
 import { renderMarkdown, copyCodeToClipboard } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
-import type { TypelessCard } from '@/types/typeless'
+import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import { voiceApi, playAudioFromBase64 } from '@/api/voice'
 
@@ -20,14 +21,22 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   contextmenu: [event: MouseEvent, messageId: string]
+  cardAction: [conversationId: string, messageId: string, cardId: string, actionId: string, actionLabel?: string]
 }>()
 
 const chatStore = useChatStore()
+
+// Card action state
+const cardActionLoading = ref<string | null>(null) // cardId that is loading
+const cardActionError = ref<string | null>(null)
 
 const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
 const isSelected = computed(() => chatStore.selectedMessageIds.has(props.message.id))
 const isMultiSelectMode = computed(() => chatStore.isMultiSelectMode)
+
+// Check if user message has attachments
+const hasAttachments = computed(() => isUser.value && props.message.attachments && props.message.attachments.length > 0)
 
 // Copy button state
 const copyState = ref<'idle' | 'copied'>('idle')
@@ -37,32 +46,59 @@ const isSpeaking = ref(false)
 const ttsError = ref<string | null>(null)
 let currentAudio: HTMLAudioElement | null = null
 
+// Attachment preview state
+const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
+
+// Helper to strip markdown heading from first line if present
+function stripFirstLineHeading(content: string): string {
+  const lines = content.split('\n')
+  const firstLine = lines[0]?.trim() || ''
+  if (firstLine.startsWith('#')) {
+    // Remove the first line (markdown heading used as title)
+    return lines.slice(1).join('\n').trimStart()
+  }
+  return content
+}
+
 const renderedContent = computed(() => {
   if (isUser.value) {
     return props.message.content
   }
-  return renderMarkdown(props.message.content)
+  // Strip first line if it's a markdown heading (used as conversation title)
+  const content = stripFirstLineHeading(props.message.content)
+  return renderMarkdown(content)
 })
 
 // Parse typeless cards from assistant messages
 // Use incremental parsing for streaming messages, regular parsing for completed messages
 const parsedContent = computed(() => {
-  if (isUser.value || !hasTypelessCards(props.message.content)) {
+  const content = isUser.value ? props.message.content : stripFirstLineHeading(props.message.content)
+  if (isUser.value || !hasTypelessCards(content)) {
     return null
   }
   // Use incremental parsing for streaming to avoid re-parsing entire content
+  // Pass conversation_id to ensure cache key uniqueness across conversations
   if (props.isStreaming) {
-    return parseTypelessContentIncremental(props.message.content, props.message.id)
+    return parseTypelessContentIncremental(content, props.message.id, props.message.conversation_id)
   }
-  return parseTypelessContent(props.message.content)
+  return parseTypelessContent(content)
 })
 
-// Get content segments (text and cards interleaved)
+// Get content segments (text and cards interleaved) with unique keys
 const contentSegments = computed(() => {
   if (!parsedContent.value) {
     return null
   }
-  return splitIntoSegments(parsedContent.value.text, parsedContent.value.cards)
+  const segments = splitIntoSegments(parsedContent.value.text, parsedContent.value.cards)
+  // Add unique keys to each segment for proper Vue reactivity
+  // Include conversation_id to ensure uniqueness across different conversations
+  const convId = props.message.conversation_id || 'unknown'
+  return segments.map((segment, index) => ({
+    ...segment,
+    key: segment.type === 'card'
+      ? `${convId}-${props.message.id}-card-${(segment.content as TypelessCard).id || index}`
+      : `${convId}-${props.message.id}-text-${index}`
+  }))
 })
 
 // Check if message has typeless cards
@@ -160,13 +196,85 @@ async function handleCopyMessage() {
 
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
-  clearIncrementalState(props.message.id)
+  clearIncrementalState(props.message.id, props.message.conversation_id)
   // Stop any playing audio
   if (currentAudio) {
     currentAudio.pause()
     currentAudio = null
   }
 })
+
+// Handle card action (button click)
+async function handleCardAction(actionId: string, cardId?: string) {
+  if (!cardId) return
+
+  // Find the action label from the card
+  let actionLabel: string | undefined
+  const card = parsedContent.value?.cards.find(c => c.id === cardId) as TypelessCardAction | undefined
+  if (card?.type === 'action') {
+    const action = card.actions?.find(a => a.id === actionId)
+    actionLabel = action?.label
+  }
+
+  cardActionLoading.value = cardId
+  cardActionError.value = null
+
+  try {
+    await cardActionApi.submit(props.message.conversation_id, props.message.id, {
+      card_id: cardId,
+      action_id: actionId,
+      action_label: actionLabel,
+    })
+    // Emit event to parent for potential UI updates
+    emit('cardAction', props.message.conversation_id, props.message.id, cardId, actionId, actionLabel)
+  } catch (error) {
+    console.error('Card action failed:', error)
+    cardActionError.value = error instanceof Error ? error.message : 'Action failed'
+  } finally {
+    cardActionLoading.value = null
+  }
+}
+
+// Handle card selection (choice card)
+async function handleCardSelect(cardId: string, selectedIds: string[], otherText?: string) {
+  if (!cardId) return
+
+  // Find the choice card
+  const choiceCard = parsedContent.value?.cards.find(c => c.id === cardId) as TypelessCardChoice | undefined
+  if (!choiceCard) return
+
+  // Build form data with selections
+  const formData: Record<string, unknown> = {
+    selected_ids: selectedIds,
+  }
+  if (otherText) {
+    formData.other_text = otherText
+  }
+
+  // Get selected labels for the action label
+  const selectedLabels = selectedIds
+    .map(id => choiceCard.options?.find(o => o.id === id)?.label)
+    .filter(Boolean)
+    .join(', ')
+
+  cardActionLoading.value = cardId
+  cardActionError.value = null
+
+  try {
+    await cardActionApi.submit(props.message.conversation_id, props.message.id, {
+      card_id: cardId,
+      action_id: 'select',
+      action_label: selectedLabels || otherText || 'Selection',
+      form_data: formData,
+    })
+    emit('cardAction', props.message.conversation_id, props.message.id, cardId, 'select', selectedLabels)
+  } catch (error) {
+    console.error('Card selection failed:', error)
+    cardActionError.value = error instanceof Error ? error.message : 'Selection failed'
+  } finally {
+    cardActionLoading.value = null
+  }
+}
 
 // TTS playback function
 async function handlePlayTTS() {
@@ -209,6 +317,139 @@ async function handlePlayTTS() {
     isSpeaking.value = false
     currentAudio = null
   }
+}
+
+// Open attachment preview modal
+function openAttachmentPreview(attachment: { type: string; name: string; mime_type: string; data: string }) {
+  if (attachment.type === 'image') {
+    previewAttachment.value = {
+      type: 'image',
+      src: `data:${attachment.mime_type};base64,${attachment.data}`,
+      name: attachment.name,
+    }
+  } else if (attachment.type === 'file') {
+    // For text files, decode and show content
+    if (isTextMimeType(attachment.mime_type)) {
+      try {
+        const content = decodeTextContent(attachment.data)
+        previewAttachment.value = {
+          type: 'text',
+          src: '',
+          name: attachment.name,
+          content: content,
+        }
+      } catch {
+        previewAttachment.value = {
+          type: 'file',
+          src: '',
+          name: attachment.name,
+        }
+      }
+    } else {
+      previewAttachment.value = {
+        type: 'file',
+        src: '',
+        name: attachment.name,
+      }
+    }
+  }
+}
+
+// Check if MIME type is text-based
+function isTextMimeType(mimeType: string): boolean {
+  const textTypes = [
+    'text/plain', 'text/html', 'text/css', 'text/javascript',
+    'text/csv', 'text/xml', 'text/markdown',
+    'application/json', 'application/xml', 'application/javascript',
+    'application/x-javascript', 'application/typescript',
+    'application/x-yaml', 'application/yaml',
+  ]
+  if (textTypes.includes(mimeType)) return true
+  if (mimeType.startsWith('text/')) return true
+  if (mimeType.includes('+xml') || mimeType.includes('+json')) return true
+  return false
+}
+
+// Decode text content with encoding detection
+function decodeTextContent(base64Data: string): string {
+  try {
+    // First try UTF-8 decoding
+    const utf8Content = atob(base64Data)
+    // Check if it looks like valid UTF-8 (no replacement characters after decode)
+    const decoder = new TextDecoder('utf-8', { fatal: true })
+    const bytes = Uint8Array.from(utf8Content, c => c.charCodeAt(0))
+    return decoder.decode(bytes)
+  } catch {
+    // If UTF-8 fails, try GBK/GB2312 (common on Windows Chinese systems)
+    try {
+      const binaryString = atob(base64Data)
+      const bytes = Uint8Array.from(binaryString, c => c.charCodeAt(0))
+      const decoder = new TextDecoder('gbk')
+      return decoder.decode(bytes)
+    } catch {
+      // Fallback to raw decode
+      return atob(base64Data)
+    }
+  }
+}
+
+// Get file icon based on extension
+function getFileIcon(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  const iconMap: Record<string, string> = {
+    // Documents
+    'pdf': '📄',
+    'doc': '📝',
+    'docx': '📝',
+    'txt': '📄',
+    'md': '📝',
+    'rtf': '📝',
+    // Spreadsheets
+    'xls': '📊',
+    'xlsx': '📊',
+    'csv': '📊',
+    // Code
+    'js': '💻',
+    'ts': '💻',
+    'py': '🐍',
+    'java': '☕',
+    'go': '🔷',
+    'rs': '🦀',
+    'c': '💻',
+    'cpp': '💻',
+    'h': '💻',
+    'html': '🌐',
+    'css': '🎨',
+    'json': '📋',
+    'xml': '📋',
+    'yaml': '📋',
+    'yml': '📋',
+    // Archives
+    'zip': '📦',
+    'rar': '📦',
+    '7z': '📦',
+    'tar': '📦',
+    'gz': '📦',
+    // Media
+    'mp3': '🎵',
+    'wav': '🎵',
+    'mp4': '🎬',
+    'avi': '🎬',
+    'mkv': '🎬',
+    // Images (shouldn't reach here but just in case)
+    'png': '🖼️',
+    'jpg': '🖼️',
+    'jpeg': '🖼️',
+    'gif': '🖼️',
+    'svg': '🖼️',
+    'webp': '🖼️',
+  }
+  return iconMap[ext] || '📎'
+}
+
+// Close attachment preview modal
+function closeAttachmentPreview() {
+  previewAttachment.value = null
 }
 </script>
 
@@ -279,7 +520,34 @@ async function handlePlayTTS() {
           class="user-message-wrapper relative"
         >
           <div class="user-message chat-user-bubble px-4 py-2 inline-block">
-            {{ message.content }}
+            <!-- Attachments display inside bubble -->
+            <div v-if="hasAttachments" class="mb-2 flex flex-wrap gap-2">
+              <div
+                v-for="(attachment, index) in message.attachments"
+                :key="index"
+                class="attachment-preview rounded-lg overflow-hidden border border-gray-300 dark:border-white/20 cursor-pointer hover:opacity-90 transition-opacity bg-white/90 dark:bg-white/10"
+                @click="openAttachmentPreview(attachment)"
+              >
+                <!-- Image attachment -->
+                <img
+                  v-if="attachment.type === 'image'"
+                  :src="`data:${attachment.mime_type};base64,${attachment.data}`"
+                  :alt="attachment.name"
+                  class="max-w-[200px] max-h-[150px] object-cover"
+                  :title="attachment.name"
+                />
+                <!-- File attachment with icon -->
+                <div
+                  v-else
+                  class="flex items-center gap-2 px-3 py-2"
+                >
+                  <span class="text-lg">{{ getFileIcon(attachment.name) }}</span>
+                  <span class="text-sm text-gray-700 dark:text-white/90 max-w-[150px] truncate">{{ attachment.name }}</span>
+                </div>
+              </div>
+            </div>
+            <!-- Text content -->
+            <span v-if="message.content && !message.content.startsWith('[Attachments:')">{{ message.content }}</span>
           </div>
           <!-- Copy button for user message -->
           <button
@@ -343,7 +611,7 @@ async function handlePlayTTS() {
             @click="handleCopyClick"
           >
             <template v-if="hasCards && contentSegments">
-              <template v-for="(segment, index) in contentSegments" :key="index">
+              <template v-for="segment in contentSegments" :key="segment.key">
                 <div
                   v-if="segment.type === 'text'"
                   class="prose-content"
@@ -351,8 +619,11 @@ async function handlePlayTTS() {
                 />
                 <TypelessCardComponent
                   v-else
+                  :key="segment.key"
                   :card="segment.content as TypelessCard"
                   class="my-3 -mx-1"
+                  @action="handleCardAction"
+                  @select="handleCardSelect"
                 />
               </template>
             </template>
@@ -414,6 +685,51 @@ async function handlePlayTTS() {
         U
       </div>
     </div>
+
+    <!-- Attachment Preview Modal -->
+    <Teleport to="body">
+      <div
+        v-if="previewAttachment"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+        @click.self="closeAttachmentPreview"
+      >
+        <div class="relative max-w-[90vw] max-h-[90vh]">
+          <button
+            class="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
+            @click="closeAttachmentPreview"
+          >
+            <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <!-- Image preview -->
+          <img
+            v-if="previewAttachment.type === 'image'"
+            :src="previewAttachment.src"
+            :alt="previewAttachment.name"
+            class="max-w-full max-h-[85vh] object-contain rounded-lg"
+          />
+          <!-- Text file preview -->
+          <div
+            v-else-if="previewAttachment.type === 'text'"
+            class="bg-gray-900 rounded-lg p-4 max-w-[80vw] max-h-[80vh] overflow-auto"
+          >
+            <pre class="text-sm text-gray-100 whitespace-pre-wrap font-mono">{{ previewAttachment.content }}</pre>
+          </div>
+          <!-- Generic file preview -->
+          <div
+            v-else
+            class="bg-gray-800 rounded-lg p-8 flex flex-col items-center gap-4"
+          >
+            <svg class="w-16 h-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span class="text-gray-300">{{ t('chat.filePreviewNotSupported') }}</span>
+          </div>
+          <p class="text-center text-white text-sm mt-2">{{ previewAttachment.name }}</p>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

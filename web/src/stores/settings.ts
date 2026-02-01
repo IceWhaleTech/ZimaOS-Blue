@@ -282,6 +282,14 @@ export const useSettingsStore = defineStore('settings', () => {
     error.value = null
   }
 
+  function resetToDefaults() {
+    temperature.value = 0.7
+    maxTokens.value = 2048
+    themeStyle.value = 'default'
+    // Clear stored settings
+    localStorage.removeItem(STORAGE_KEY)
+  }
+
   return {
     // State
     providers,
@@ -312,5 +320,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setMaxTokens,
     setThemeStyle,
     clearError,
+    resetToDefaults,
   }
 })

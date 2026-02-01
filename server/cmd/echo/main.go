@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	concpool "github.com/sourcegraph/conc/pool"
 	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/a2ui"
 	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
@@ -27,6 +27,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/connection"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/formfiller"
@@ -51,6 +52,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
@@ -145,6 +147,11 @@ func loadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderReg
 		Int("total_enabled", len(providers)).
 		Int("registered", registeredCount).
 		Msg("Loaded providers from Provider Pool")
+}
+
+// runServer is the main server entry point, called by cobra commands
+func runServer() {
+	main()
 }
 
 func main() {
@@ -429,8 +436,6 @@ func main() {
 		haHandler          *homeassistant.Handler
 		browserService     *browser.RodService
 		browserHandler     *browser.Handler
-		a2uiManager        *a2ui.Manager
-		a2uiHandler        *a2ui.Handler
 		sttService         stt.Service
 		ttsService         tts.Service
 		voiceHandler       *voice.Handler
@@ -446,14 +451,11 @@ func main() {
 		ngrokRepo          *ngrok.Repository
 	)
 
-	var initWg sync.WaitGroup
-	var initMu sync.Mutex
-	initErrors := make([]error, 0)
+	// Use conc/pool for safer parallel initialization with automatic panic recovery
+	initPool := concpool.New().WithMaxGoroutines(20)
 
 	// Group 1: Independent services (no dependencies on each other)
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Metrics collector (collect every 5 seconds, keep 10 minutes of history)
 		metricsCollector = metrics.NewCollector(5*time.Second, 120)
 		metricsCollector.Start()
@@ -463,11 +465,9 @@ func main() {
 		metricsWriter = metrics.NewMetricsWriter(nil, metricsConfig)
 		metricsWriter.Start()
 		logger.Info().Msg("Metrics services initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Backup manager
 		var err error
 		backupManager, err = backup.NewManager(backup.Config{
@@ -476,35 +476,27 @@ func main() {
 			Path:          filepath.Join(dataDir, "backups"),
 		}, dataDir, dataDir)
 		if err != nil {
-			initMu.Lock()
-			initErrors = append(initErrors, fmt.Errorf("backup manager: %w", err))
-			initMu.Unlock()
+			logger.Warn().Err(err).Msg("Failed to initialize backup manager")
 			return
 		}
 		backupHandler = backup.NewHandler(backupManager)
 		logger.Info().Msg("Backup manager initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Security threat detector
 		threatDetector = security.NewThreatDetector()
 		securityHandler = security.NewHandler(threatDetector)
 		logger.Info().Msg("Security handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// MFA handler
 		mfaHandler = mfa.NewHandler(nil, nil)
 		logger.Info().Msg("MFA handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Sandbox manager
 		var err error
 		sandboxManager, err = sandbox.NewManager(nil)
@@ -514,11 +506,9 @@ func main() {
 		}
 		sandboxHandler = sandbox.NewHandler(sandboxManager)
 		logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Cron service
 		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
 		cronService.RegisterBuiltinHandlers()
@@ -527,20 +517,16 @@ func main() {
 			logger.Warn().Err(err).Msg("Failed to start cron service")
 		}
 		logger.Info().Msg("Cron service initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Home Assistant service
 		haService = homeassistant.NewHAService()
 		haHandler = homeassistant.NewHandler(haService)
 		logger.Info().Msg("Home Assistant handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Browser automation service
 		var err error
 		browserService, err = browser.NewService(nil)
@@ -550,20 +536,9 @@ func main() {
 		}
 		browserHandler = browser.NewHandler(browserService)
 		logger.Info().Msg("Browser automation handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		// A2UI manager
-		a2uiManager = a2ui.NewManager(zapLogger)
-		a2uiHandler = a2ui.NewHandler(a2uiManager)
-		logger.Info().Msg("A2UI handler initialized")
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// STT service (Speech-to-Text)
 		var err error
 		sttService, err = stt.NewService(&stt.ServiceConfig{
@@ -579,11 +554,9 @@ func main() {
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize STT service, voice transcription will be disabled")
 		}
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// TTS service (Text-to-Speech)
 		var err error
 		ttsService, err = tts.NewService(&tts.ServiceConfig{
@@ -603,11 +576,9 @@ func main() {
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize TTS service, voice synthesis will be disabled")
 		}
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Workflow repository (depends on db)
 		var err error
 		workflowRepo, err = workflow.NewRepository(db)
@@ -622,11 +593,9 @@ func main() {
 		}
 		workflowHandler = workflow.NewHandler(workflowService)
 		logger.Info().Msg("Workflow handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Form filler store
 		var err error
 		formfillerStore, err = formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
@@ -636,11 +605,9 @@ func main() {
 		}
 		formfillerHandler = formfiller.NewHandler(formfillerStore)
 		logger.Info().Msg("Form filler handler initialized")
-	}()
+	})
 
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
+	initPool.Go(func() {
 		// Companion service (Echo Companion - real-time AI Agent monitoring)
 		companionConfig := companion.DefaultConfig()
 		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
@@ -663,10 +630,10 @@ func main() {
 		lm.RegisterShutdownHook(func(ctx context.Context) error {
 			return companionStreamer.Stop()
 		})
-	}()
+	})
 
 	// Wait for all parallel initializations to complete
-	initWg.Wait()
+	initPool.Wait()
 
 	// Register deferred cleanup for metrics services
 	if metricsCollector != nil {
@@ -674,14 +641,6 @@ func main() {
 	}
 	if metricsWriter != nil {
 		defer metricsWriter.Stop()
-	}
-
-	// Check for fatal errors
-	if len(initErrors) > 0 {
-		for _, err := range initErrors {
-			logger.Error().Err(err).Msg("Initialization error")
-		}
-		logger.Fatal().Msg("Failed to initialize required services")
 	}
 
 	// Initialize voice service (depends on STT and TTS)
@@ -718,7 +677,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, a2uiHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -762,7 +721,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, a2uiHandler *a2ui.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service) {
 	e := srv.Echo()
 
 	// Preview mode routes (no auth required - for preview mode detection and upgrade)
@@ -870,6 +829,27 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register backup routes
 	backupHandler.RegisterRoutes(v1)
 
+	// Initialize and register memory handler (vector store for AI memory)
+	var memoryHandler *server.MemoryHandler
+	vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
+	vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
+		DBPath:       vectorDbPath,
+		EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
+		MaxChunks:    10000,
+		EnableFTS:    true,
+	})
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize vector store, memory features disabled")
+	} else {
+		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
+		memoryService := memory.NewMemoryService(hybridSearcher)
+		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
+		memoryHandler = server.NewMemoryHandler(memoryService)
+		memoryHandler.SetUnifiedService(unifiedService)
+		memoryHandler.RegisterRoutes(v1)
+		logger.Info().Msg("Memory handler initialized")
+	}
+
 	// Register skill routes (skills and skill store)
 	skillHandler := server.NewSkillHandler(skillRegistry)
 
@@ -906,6 +886,12 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	securityGroup := protected.Group("/security")
 	securityHandler.RegisterRoutes(securityGroup)
 
+	// Register connection monitoring routes (protected)
+	connManager := connection.NewManager(10000, 5*time.Second)
+	connHandler := connection.NewHandler(connManager)
+	connGroup := protected.Group("/connections")
+	connHandler.RegisterRoutes(connGroup)
+
 	// Register sandbox routes (protected)
 	if sandboxHandler != nil {
 		sandboxGroup := protected.Group("/sandbox")
@@ -929,10 +915,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		browserHandler.RegisterRoutes(browserGroup)
 	}
 
-	// Register A2UI routes (protected) - /api/a2ui/*
-	a2uiGroup := apiProtected.Group("/a2ui")
-	a2uiHandler.RegisterRoutes(a2uiGroup)
-
 	// Register workflow routes - /api/v1/workflows/*
 	if workflowHandler != nil {
 		workflowHandler.RegisterRoutes(e)
@@ -944,6 +926,18 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		voiceHandler.RegisterRoutes(voiceGroup)
 		logger.Info().Msg("Voice routes registered")
 	}
+
+	// Register unified speech routes (ASR + TTS) - /api/v1/speech/*
+	speechService := speech.NewService(&speech.Config{
+		ASR: speech.ASRConfig{
+			Enabled:        true,
+			EditBeforeSend: true,
+		},
+	}, sttService, ttsService)
+	speechHandler := speech.NewHandler(speechService)
+	speechGroup := v1.Group("/speech")
+	speechHandler.RegisterRoutes(speechGroup)
+	logger.Info().Msg("Speech routes registered")
 
 	// Register form filler routes (protected) - /api/v1/formfiller/*
 	if formfillerHandler != nil {
@@ -961,7 +955,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
 	// Also register multi-provider tunnel routes - /api/v1/tunnel/*
-	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokRepo)
+	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokRepo, cfg.Server.Port)
 	remoteAccessHandler.RegisterRoutes(e)
 	tunnelHandler := networkapi.NewTunnelHandler(ngrokRepo, cfg.Server.Port)
 	tunnelHandler.RegisterRoutes(e)
@@ -1046,6 +1040,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			proxyConnPool := proxy.NewConnectionPool(&cfg.Proxy.Connection)
 			proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 			proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+
+			// Set Provider Pool for API key lookup
+			if providerPool != nil {
+				proxyHandler.SetProviderPool(providerPool)
+			}
 
 			// Create /v1 group (no /api prefix - OpenAI-compatible)
 			v1ProxyGroup := e.Group("/v1")

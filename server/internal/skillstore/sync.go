@@ -14,14 +14,15 @@ import (
 
 // SyncService handles periodic synchronization of skills from remote sources.
 type SyncService struct {
-	store      *Store
-	httpClient *http.Client
-	sources    map[string]*Source
-	mu         sync.RWMutex
-	stopCh     chan struct{}
-	wg         sync.WaitGroup
-	interval   time.Duration
-	logger     *slog.Logger
+	store         *Store
+	httpClient    *http.Client
+	sources       map[string]*Source
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
+	interval      time.Duration
+	logger        *slog.Logger
+	readmeFetcher *ReadmeFetcher
 }
 
 // Source represents a skill source configuration.
@@ -68,6 +69,9 @@ func NewSyncService(store *Store, config SyncServiceConfig, log *slog.Logger) *S
 		logger:   log,
 	}
 
+	// Initialize README fetcher
+	svc.readmeFetcher = NewReadmeFetcher(store, log)
+
 	// Register default sources
 	svc.RegisterSource(&Source{
 		ID:          "clawhub",
@@ -109,6 +113,11 @@ func (s *SyncService) GetSources() []*Source {
 
 // Start starts the periodic sync service.
 func (s *SyncService) Start(ctx context.Context) {
+	// Start README fetcher
+	if s.readmeFetcher != nil {
+		s.readmeFetcher.Start(ctx)
+	}
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -120,6 +129,11 @@ func (s *SyncService) Start(ctx context.Context) {
 func (s *SyncService) Stop() {
 	close(s.stopCh)
 	s.wg.Wait()
+
+	// Stop README fetcher
+	if s.readmeFetcher != nil {
+		s.readmeFetcher.Stop()
+	}
 }
 
 // run is the main sync loop.
@@ -172,7 +186,19 @@ func (s *SyncService) SyncSource(ctx context.Context, sourceID string) error {
 		return fmt.Errorf("source not found: %s", sourceID)
 	}
 
-	// Note: Removed daily sync check - now syncs every hour
+	// Check if already synced today (24-hour rate limiting)
+	synced, err := s.hasSyncedToday(ctx, sourceID)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("failed to check sync status, proceeding with sync", "source", sourceID, "error", err)
+		}
+	} else if synced {
+		if s.logger != nil {
+			s.logger.Info("source already synced today, skipping", "source", sourceID)
+		}
+		return nil
+	}
+
 	return s.doSync(ctx, source)
 }
 
@@ -242,6 +268,14 @@ func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 		return err
 	}
 
+	// Generate dedup keys and deduplicate
+	for _, skill := range skills {
+		if skill.DedupKey == "" {
+			skill.DedupKey = GenerateDedupKey(skill.Name, skill.Author)
+		}
+	}
+	skills = DeduplicateSkills(skills)
+
 	// Save skills to database
 	if err := s.store.UpsertSkillBatch(ctx, skills); err != nil {
 		status.Status = "failed"
@@ -249,6 +283,11 @@ func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 		status.SyncDuration = duration
 		s.store.UpdateSyncStatus(ctx, status)
 		return err
+	}
+
+	// Enqueue skills for README fetching (background)
+	if s.readmeFetcher != nil {
+		s.readmeFetcher.EnqueueBatch(skills)
 	}
 
 	// Update status to success
@@ -423,6 +462,7 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 				DownloadURL: fmt.Sprintf("%s/skills/%s", source.URL, item.Slug),
 				Stars:       item.Stats.Stars,
 				Downloads:   item.Stats.Downloads,
+				Reviews:     item.Stats.Comments,
 				Versions:    item.Stats.Versions,
 				Changelog:   item.LatestVersion.Changelog,
 				UpdatedAt:   now,

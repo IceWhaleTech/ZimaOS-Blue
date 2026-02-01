@@ -56,6 +56,28 @@ export default {
     security: 'Sikkerhet',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Alle',
+      overview: 'Oversikt',
+      system: 'System',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Systemstatus',
+      uptime: 'Oppetid',
+      memoryUsage: 'Minnebruk',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Failover-status',
+      cpuChart: 'CPU-bruk',
+      memoryChart: 'Minnebruk',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap-minne',
+      systemInfo: 'Systeminformasjon',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Ferdigheter',
@@ -580,6 +602,7 @@ export default {
         system: 'System',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimum passordlengde',
           description: 'Sjekk om minimum passordlengde oppfyller sikkerhetskravene',

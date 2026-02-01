@@ -42,12 +42,16 @@ type Channel struct {
 	bot      *tgbotapi.BotAPI
 	messages chan channel.Message
 
-	mu          sync.RWMutex
-	status      channel.Status
-	connectedAt *time.Time
-	lastError   string
-	lastErrorAt *time.Time
-	msgCount    atomic.Int64
+	mu            sync.RWMutex
+	status        channel.Status
+	connectedAt   *time.Time
+	lastError     string
+	lastErrorAt   *time.Time
+	msgCount      atomic.Int64
+	msgsReceived  atomic.Int64
+	msgsSent      atomic.Int64
+	lastMessageAt *time.Time
+	lastReplyAt   *time.Time
 
 	// Command handlers
 	commandHandlers  map[string]CommandHandler
@@ -226,6 +230,11 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 	// Convert to unified message format
 	channelMsg := c.convertMessage(msg)
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &now
+	c.mu.Unlock()
 
 	select {
 	case c.messages <- channelMsg:
@@ -349,6 +358,11 @@ func (c *Channel) handleCommand(msg *tgbotapi.Message) {
 		channelMsg.Metadata["command"] = cmd
 		channelMsg.Metadata["command_args"] = args
 		c.msgCount.Add(1)
+		c.msgsReceived.Add(1)
+		now := time.Now()
+		c.mu.Lock()
+		c.lastMessageAt = &now
+		c.mu.Unlock()
 
 		select {
 		case c.messages <- channelMsg:
@@ -586,6 +600,13 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
+	// Update sent message stats
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+
 	return nil
 }
 
@@ -656,15 +677,19 @@ func (c *Channel) Info() channel.Info {
 	defer c.mu.RUnlock()
 
 	info := channel.Info{
-		Name:         "telegram",
-		Type:         "telegram",
-		Status:       c.status,
-		Enabled:      c.config.Enabled,
-		ConnectedAt:  c.connectedAt,
-		LastError:    c.lastError,
-		LastErrorAt:  c.lastErrorAt,
-		MessageCount: c.msgCount.Load(),
-		Metadata:     make(map[string]interface{}),
+		Name:             "telegram",
+		Type:             "telegram",
+		Status:           c.status,
+		Enabled:          c.config.Enabled,
+		ConnectedAt:      c.connectedAt,
+		LastError:        c.lastError,
+		LastErrorAt:      c.lastErrorAt,
+		MessageCount:     c.msgCount.Load(),
+		MessagesReceived: c.msgsReceived.Load(),
+		MessagesSent:     c.msgsSent.Load(),
+		LastMessageAt:    c.lastMessageAt,
+		LastReplyAt:      c.lastReplyAt,
+		Metadata:         make(map[string]interface{}),
 	}
 
 	if c.bot != nil {

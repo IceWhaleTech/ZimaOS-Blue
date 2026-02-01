@@ -280,17 +280,33 @@ func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) (
 			return nil, ErrNoAPIKey
 		}
 		models, fetchErr = d.fetchOpenAIModels(ctx, provider, apiKey)
+		// Set API format for built-in OpenAI-compatible providers
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatOpenAI
+		}
 	case "anthropic":
 		// Anthropic doesn't have a models endpoint, use built-in
 		models = GetBuiltinModels("anthropic")
+		// Set API format for Anthropic
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatAnthropic
+		}
 	case "google":
 		if apiKey == nil {
 			return nil, ErrNoAPIKey
 		}
 		models, fetchErr = d.fetchGoogleModels(ctx, provider, apiKey)
+		// Set API format for Google
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatGoogle
+		}
 	case "ollama":
 		// Ollama doesn't require API key
 		models, fetchErr = d.fetchOllamaModels(ctx, provider)
+		// Set API format for Ollama
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatOllama
+		}
 	default:
 		// For custom providers, try multiple API formats
 		models, fetchErr = d.fetchCustomProviderModels(ctx, provider, apiKey)
@@ -304,6 +320,7 @@ func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) (
 }
 
 // fetchCustomProviderModels tries multiple API formats for custom providers
+// It also detects and updates the provider's APIFormat if not already set
 func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider *Provider, apiKey *APIKey) ([]*Model, error) {
 	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
 	var errors []string
@@ -311,6 +328,11 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 	// Strategy 1: Try OpenAI-compatible endpoints
 	models, err := d.fetchOpenAIModels(ctx, provider, apiKey)
 	if err == nil && len(models) > 0 {
+		// Auto-detect API format
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatOpenAI
+			d.registry.Update(provider) // Save detected format
+		}
 		return models, nil
 	}
 	if err != nil {
@@ -327,6 +349,11 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 		// Mark models with provider ID
 		for _, m := range models {
 			m.ProviderID = provider.ID
+		}
+		// Auto-detect API format
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatOllama
+			d.registry.Update(provider) // Save detected format
 		}
 		return models, nil
 	}

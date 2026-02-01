@@ -132,8 +132,9 @@ type OllamaEmbeddingConfig struct {
 
 // MemoryConfig holds memory system configuration.
 type MemoryConfig struct {
-	VectorStore VectorStoreConfig `mapstructure:"vector_store"`
-	Search      MemorySearchConfig `mapstructure:"search"`
+	VectorStore  VectorStoreConfig  `mapstructure:"vector_store"`
+	Search       MemorySearchConfig `mapstructure:"search"`
+	Supermemory  SupermemoryConfig  `mapstructure:"supermemory"`
 }
 
 // VectorStoreConfig holds vector store configuration.
@@ -149,4 +150,11 @@ type MemorySearchConfig struct {
 	KeywordWeight float64 `mapstructure:"keyword_weight"`
 	MinScore      float64 `mapstructure:"min_score"`
 	MaxResults    int     `mapstructure:"max_results"`
+}
+
+// SupermemoryConfig holds Supermemory API configuration.
+type SupermemoryConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	APIKey  string `mapstructure:"api_key"`
+	BaseURL string `mapstructure:"base_url"`
 }

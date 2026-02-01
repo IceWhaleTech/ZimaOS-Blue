@@ -41,8 +41,12 @@ func (s *Store) initSchema() error {
 		download_url TEXT,
 		stars INTEGER DEFAULT 0,
 		downloads INTEGER DEFAULT 0,
+		reviews INTEGER DEFAULT 0,
+		rating REAL DEFAULT 0.0,
 		versions INTEGER DEFAULT 0,
 		changelog TEXT,
+		readme TEXT,
+		dedup_key TEXT,
 		installed INTEGER DEFAULT 0,
 		enabled INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -60,26 +64,27 @@ func (s *Store) initSchema() error {
 		author,
 		category,
 		tags,
+		readme,
 		content='skills',
 		content_rowid='rowid'
 	);
 
 	-- Triggers to keep FTS in sync
 	CREATE TRIGGER IF NOT EXISTS skills_ai AFTER INSERT ON skills BEGIN
-		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags)
-		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags);
+		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
 	END;
 
 	CREATE TRIGGER IF NOT EXISTS skills_ad AFTER DELETE ON skills BEGIN
-		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags)
-		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags);
+		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
 	END;
 
 	CREATE TRIGGER IF NOT EXISTS skills_au AFTER UPDATE ON skills BEGIN
-		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags)
-		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags);
-		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags)
-		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags);
+		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
+		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
 	END;
 
 	-- Sync status table
@@ -102,6 +107,8 @@ func (s *Store) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_skills_downloads ON skills(downloads DESC);
 	CREATE INDEX IF NOT EXISTS idx_skills_updated ON skills(updated_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_skills_installed ON skills(installed);
+	CREATE INDEX IF NOT EXISTS idx_skills_dedup_key ON skills(dedup_key);
+	CREATE INDEX IF NOT EXISTS idx_skills_rating ON skills(rating DESC);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -114,8 +121,9 @@ func (s *Store) UpsertSkill(ctx context.Context, skill *Skill) error {
 	INSERT INTO skills (
 		id, name, version, summary, description, author, category, tags,
 		source_id, source_name, homepage, download_url, stars, downloads,
-		versions, changelog, installed, enabled, created_at, updated_at, synced_at, search_content
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		reviews, rating, versions, changelog, readme, dedup_key,
+		installed, enabled, created_at, updated_at, synced_at, search_content
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		name = excluded.name,
 		version = excluded.version,
@@ -129,8 +137,12 @@ func (s *Store) UpsertSkill(ctx context.Context, skill *Skill) error {
 		download_url = excluded.download_url,
 		stars = excluded.stars,
 		downloads = excluded.downloads,
+		reviews = excluded.reviews,
+		rating = excluded.rating,
 		versions = excluded.versions,
 		changelog = excluded.changelog,
+		readme = excluded.readme,
+		dedup_key = excluded.dedup_key,
 		updated_at = excluded.updated_at,
 		synced_at = excluded.synced_at,
 		search_content = excluded.search_content
@@ -143,8 +155,8 @@ func (s *Store) UpsertSkill(ctx context.Context, skill *Skill) error {
 		skill.ID, skill.Name, skill.Version, skill.Summary, skill.Description,
 		skill.Author, skill.Category, skill.Tags, skill.SourceID, skill.SourceName,
 		skill.Homepage, skill.DownloadURL, skill.Stars, skill.Downloads,
-		skill.Versions, skill.Changelog, skill.Installed, skill.Enabled,
-		skill.CreatedAt, skill.UpdatedAt, skill.SyncedAt, searchContent,
+		skill.Reviews, skill.Rating, skill.Versions, skill.Changelog, skill.Readme, skill.DedupKey,
+		skill.Installed, skill.Enabled, skill.CreatedAt, skill.UpdatedAt, skill.SyncedAt, searchContent,
 	)
 	return err
 }
@@ -161,8 +173,9 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, skills []*Skill) error {
 	INSERT INTO skills (
 		id, name, version, summary, description, author, category, tags,
 		source_id, source_name, homepage, download_url, stars, downloads,
-		versions, changelog, installed, enabled, created_at, updated_at, synced_at, search_content
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		reviews, rating, versions, changelog, readme, dedup_key,
+		installed, enabled, created_at, updated_at, synced_at, search_content
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		name = excluded.name,
 		version = excluded.version,
@@ -176,8 +189,12 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, skills []*Skill) error {
 		download_url = excluded.download_url,
 		stars = excluded.stars,
 		downloads = excluded.downloads,
+		reviews = excluded.reviews,
+		rating = excluded.rating,
 		versions = excluded.versions,
 		changelog = excluded.changelog,
+		readme = excluded.readme,
+		dedup_key = excluded.dedup_key,
 		updated_at = excluded.updated_at,
 		synced_at = excluded.synced_at,
 		search_content = excluded.search_content
@@ -193,8 +210,8 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, skills []*Skill) error {
 			skill.ID, skill.Name, skill.Version, skill.Summary, skill.Description,
 			skill.Author, skill.Category, skill.Tags, skill.SourceID, skill.SourceName,
 			skill.Homepage, skill.DownloadURL, skill.Stars, skill.Downloads,
-			skill.Versions, skill.Changelog, skill.Installed, skill.Enabled,
-			skill.CreatedAt, skill.UpdatedAt, skill.SyncedAt, searchContent,
+			skill.Reviews, skill.Rating, skill.Versions, skill.Changelog, skill.Readme, skill.DedupKey,
+			skill.Installed, skill.Enabled, skill.CreatedAt, skill.UpdatedAt, skill.SyncedAt, searchContent,
 		)
 		if err != nil {
 			return err
@@ -209,20 +226,28 @@ func (s *Store) GetSkill(ctx context.Context, id string) (*Skill, error) {
 	query := `
 	SELECT id, name, version, summary, description, author, category, tags,
 		source_id, source_name, homepage, download_url, stars, downloads,
-		versions, changelog, installed, enabled, created_at, updated_at, synced_at
+		reviews, rating, versions, changelog, readme, dedup_key,
+		installed, enabled, created_at, updated_at, synced_at
 	FROM skills WHERE id = ?
 	`
 
 	skill := &Skill{}
+	var readme, dedupKey sql.NullString
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
 		&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
 		&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-		&skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
-		&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
+		&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &readme, &dedupKey,
+		&skill.Installed, &skill.Enabled, &skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if readme.Valid {
+		skill.Readme = readme.String
+	}
+	if dedupKey.Valid {
+		skill.DedupKey = dedupKey.String
 	}
 	return skill, err
 }
@@ -351,7 +376,8 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		selectQuery = fmt.Sprintf(`
 			SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
 				s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
-				s.versions, s.changelog, s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at,
+				s.reviews, s.rating, s.versions, s.changelog, s.installed, s.enabled,
+				s.created_at, s.updated_at, s.synced_at,
 				%s
 			%s %s
 			ORDER BY %s
@@ -362,7 +388,8 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		selectQuery = fmt.Sprintf(`
 			SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
 				s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
-				s.versions, s.changelog, s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at,
+				s.reviews, s.rating, s.versions, s.changelog, s.installed, s.enabled,
+				s.created_at, s.updated_at, s.synced_at,
 				%s
 			%s %s
 			ORDER BY %s
@@ -386,7 +413,7 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
 			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
 			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
+			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
 			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt, &score,
 		)
 		if err != nil {
@@ -425,7 +452,8 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 	query := `
 	SELECT id, name, version, summary, description, author, category, tags,
 		source_id, source_name, homepage, download_url, stars, downloads,
-		versions, changelog, installed, enabled, created_at, updated_at, synced_at
+		reviews, rating, versions, changelog, installed, enabled,
+		created_at, updated_at, synced_at
 	FROM skills WHERE source_id = ?
 	ORDER BY downloads DESC
 	LIMIT ? OFFSET ?
@@ -444,7 +472,7 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
 			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
 			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
+			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
 			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
 		)
 		if err != nil {
@@ -566,6 +594,13 @@ func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
 	return err
 }
 
+// UpdateReadme updates the readme content for a skill.
+func (s *Store) UpdateReadme(ctx context.Context, id string, readme string) error {
+	query := "UPDATE skills SET readme = ?, updated_at = ? WHERE id = ?"
+	_, err := s.db.ExecContext(ctx, query, readme, time.Now(), id)
+	return err
+}
+
 // DeleteBySource deletes all skills from a source.
 func (s *Store) DeleteBySource(ctx context.Context, sourceID string) (int64, error) {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM skills WHERE source_id = ?", sourceID)
@@ -573,6 +608,88 @@ func (s *Store) DeleteBySource(ctx context.Context, sourceID string) (int64, err
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// GetPopular returns the most popular skills by downloads.
+func (s *Store) GetPopular(ctx context.Context, limit int) ([]*Skill, error) {
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	query := `
+	SELECT id, name, version, summary, description, author, category, tags,
+		source_id, source_name, homepage, download_url, stars, downloads,
+		reviews, rating, versions, changelog, installed, enabled,
+		created_at, updated_at, synced_at
+	FROM skills
+	ORDER BY downloads DESC
+	LIMIT ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var skills []*Skill
+	for rows.Next() {
+		skill := &Skill{}
+		err := rows.Scan(
+			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
+			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
+			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
+			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
+			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		skills = append(skills, skill)
+	}
+
+	return skills, nil
+}
+
+// GetRecent returns the most recently updated skills.
+func (s *Store) GetRecent(ctx context.Context, limit int) ([]*Skill, error) {
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	query := `
+	SELECT id, name, version, summary, description, author, category, tags,
+		source_id, source_name, homepage, download_url, stars, downloads,
+		reviews, rating, versions, changelog, installed, enabled,
+		created_at, updated_at, synced_at
+	FROM skills
+	ORDER BY updated_at DESC
+	LIMIT ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var skills []*Skill
+	for rows.Next() {
+		skill := &Skill{}
+		err := rows.Scan(
+			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
+			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
+			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
+			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
+			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		skills = append(skills, skill)
+	}
+
+	return skills, nil
 }
 
 // buildSearchContent creates searchable content from a skill.

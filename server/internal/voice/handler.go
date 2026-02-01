@@ -18,6 +18,11 @@ func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
 }
 
+// Service returns the voice service.
+func (h *Handler) Service() Service {
+	return h.service
+}
+
 // RegisterRoutes registers the voice routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/transcribe", h.Transcribe)

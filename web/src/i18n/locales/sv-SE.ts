@@ -56,6 +56,28 @@ export default {
     security: 'Säkerhet',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Alla',
+      overview: 'Översikt',
+      system: 'System',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Systemstatus',
+      uptime: 'Uptid',
+      memoryUsage: 'Minnesanvändning',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Failover-status',
+      cpuChart: 'CPU-användning',
+      memoryChart: 'Minnesanvändning',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap-minne',
+      systemInfo: 'Systeminformation',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Färdigheter',
@@ -596,6 +618,7 @@ export default {
         system: 'System',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimallängd för lösenord',
           description: 'Kontrollera om minimallängden för lösenord uppfyller säkerhetskraven',

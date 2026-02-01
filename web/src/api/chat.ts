@@ -35,6 +35,15 @@ export interface Message {
   provider?: string
   model?: string
   stats?: MessageStats
+  // Attachments for user messages (for display purposes)
+  attachments?: MessageAttachment[]
+}
+
+export interface MessageAttachment {
+  type: 'image' | 'file'
+  name: string
+  mime_type: string
+  data: string // base64 encoded
 }
 
 export interface SendMessageRequest {
@@ -43,6 +52,7 @@ export interface SendMessageRequest {
   model: string
   temperature?: number
   max_tokens?: number
+  attachments?: MessageAttachment[]
 }
 
 export interface SendMessageResponse {
@@ -117,4 +127,30 @@ export const messageApi = {
 // Tool API
 export const toolApi = {
   list: () => api.get<ToolDefinition[]>('/tools'),
+}
+
+// Card Action API - For Typeless card interactions
+export interface CardActionRequest {
+  card_id: string
+  action_id: string
+  action_label?: string
+  form_data?: Record<string, unknown>
+}
+
+export interface CardActionResponse {
+  success: boolean
+  message_id?: string
+  error?: string
+}
+
+export const cardActionApi = {
+  /**
+   * Submit a card action (button click, choice selection, form submit)
+   * This will trigger the agent to continue the conversation
+   */
+  submit: (conversationId: string, messageId: string, request: CardActionRequest) =>
+    api.post<CardActionResponse>(
+      `/conversations/${conversationId}/messages/${messageId}/card-action`,
+      request
+    ),
 }

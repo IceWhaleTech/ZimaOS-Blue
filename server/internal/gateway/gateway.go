@@ -3,6 +3,8 @@ package gateway
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 )
 
 // MessageType represents the type of gateway message.
@@ -109,9 +112,8 @@ func NewGateway(cfg Config, logger *zap.Logger) *Gateway {
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  cfg.ReadBufferSize,
 			WriteBufferSize: cfg.WriteBufferSize,
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins (configure in production)
-			},
+			// Security fix: Use origin checker instead of allowing all origins
+			CheckOrigin: security.CheckOriginDefault,
 		},
 		connections: make(map[string]*Connection),
 		handlers:    make(map[string]RequestHandler),
@@ -403,7 +405,7 @@ type Connection struct {
 // NewConnection creates a new connection.
 func NewConnection(ws *websocket.Conn, cfg Config, logger *zap.Logger) *Connection {
 	conn := &Connection{
-		ID:          fmt.Sprintf("conn_%d", time.Now().UnixNano()),
+		ID:          generateSecureConnectionID(),
 		ws:          ws,
 		config:      cfg,
 		logger:      logger,
@@ -417,6 +419,17 @@ func NewConnection(ws *websocket.Conn, cfg Config, logger *zap.Logger) *Connecti
 	go conn.sendLoop()
 
 	return conn
+}
+
+// generateSecureConnectionID generates a cryptographically secure connection ID.
+// Security fix: Use crypto/rand instead of time-based IDs to prevent enumeration attacks.
+func generateSecureConnectionID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based ID if crypto/rand fails (should never happen)
+		return fmt.Sprintf("conn_%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("conn_%s", hex.EncodeToString(b))
 }
 
 // Send sends a message to the connection.

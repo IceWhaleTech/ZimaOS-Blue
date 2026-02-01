@@ -13,6 +13,9 @@ const emit = defineEmits<{
   select: [cardId: string, selectedIds: string[], otherText?: string]
 }>()
 
+// Check if card is streaming (incomplete)
+const isStreaming = computed(() => props.card._streaming === true)
+
 // Check if card can be rendered functionally (simple cards)
 const isFunctional = computed(() => canRenderFunctionally(props.card))
 
@@ -66,14 +69,21 @@ function handleAction(actionId: string, cardId?: string) {
   }
 }
 
-function handleSelect(_selectedIds: string[], _otherText?: string) {
-  // Emit selection event if needed
+function handleSelect(selectedIds: string[], otherText?: string) {
+  // Emit selection event with card ID
+  emit('select', props.card.id || '', selectedIds, otherText)
 }
 </script>
 
 <template>
-  <div class="typeless-card my-3">
-    <!-- Functional rendering for simple cards (table, code, list, info, quote, alert) -->
+  <div class="typeless-card my-3 relative" :class="{ 'opacity-80': isStreaming }">
+    <!-- Streaming indicator for incomplete cards -->
+    <div v-if="isStreaming" class="absolute top-2 right-2 z-10">
+      <div class="w-2 h-2 bg-accent rounded-full animate-pulse" />
+    </div>
+
+    <!-- Functional rendering for simple cards (table, code, list, info, quote, alert, terminal) -->
+    <!-- Dynamic components: progress, action, result, detection, chart, gallery, file, link, metric, comparison, steps, map, weather, profile, countdown, rating, accordion, audio, choice, collapsible-code, diff, video -->
     <div v-if="isFunctional" v-html="functionalHtml" />
 
     <!-- Loading state -->

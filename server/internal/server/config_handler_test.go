@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 )
 
 func TestConfigHandler_Reload(t *testing.T) {
@@ -32,7 +32,7 @@ func TestConfigHandler_Reload(t *testing.T) {
 		cfg := &config.Config{
 			Server: config.ServerConfig{
 				Host: "0.0.0.0",
-				Port: 8080,
+				Port: 23456,
 			},
 			Worker: config.WorkerConfig{
 				PoolSize: 10,
@@ -78,7 +78,7 @@ func TestConfigHandler_Status(t *testing.T) {
 		cfg := &config.Config{
 			Server: config.ServerConfig{
 				Host: "0.0.0.0",
-				Port: 8080,
+				Port: 23456,
 			},
 			Worker: config.WorkerConfig{
 				PoolSize: 10,

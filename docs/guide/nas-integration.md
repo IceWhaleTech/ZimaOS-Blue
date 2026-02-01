@@ -37,7 +37,7 @@ docker pull icewhale/zimaos-echo:latest
 docker run -d \
   --name zimaos-echo \
   --restart unless-stopped \
-  -p 8765:8080 \
+  -p 8765:23456 \
   -v /DATA/AppData/zimaos-echo/data:/app/data \
   -v /DATA/AppData/zimaos-echo/config:/app/config \
   -e TZ=$(cat /etc/timezone) \
@@ -57,7 +57,7 @@ Edit `/DATA/AppData/zimaos-echo/config/config.yaml`:
 
 ```yaml
 server:
-  port: 8080
+  port: 23456
 
 zimaos:
   enabled: true
@@ -90,7 +90,7 @@ llm:
 4. Go to **Image** → Select the image → **Run**
 5. Configure:
    - **Container Name**: zimaos-echo
-   - **Port Settings**: Local 8765 → Container 8080
+   - **Port Settings**: Local 8765 → Container 23456
    - **Volume**: `/docker/zimaos-echo` → `/app/data`
    - **Environment**: `TZ=Your/Timezone`
 
@@ -106,7 +106,7 @@ services:
     container_name: zimaos-echo
     restart: unless-stopped
     ports:
-      - "8765:8080"
+      - "8765:23456"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
@@ -161,7 +161,7 @@ services:
     container_name: zimaos-echo
     restart: always
     ports:
-      - "8765:8080"
+      - "8765:23456"
     volumes:
       - /share/Container/zimaos-echo/data:/app/data
       - /share/Container/zimaos-echo/config:/app/config
@@ -184,7 +184,7 @@ mkdir -p /share/Container/zimaos-echo/{data,config}
 docker run -d \
   --name zimaos-echo \
   --restart always \
-  -p 8765:8080 \
+  -p 8765:23456 \
   -v /share/Container/zimaos-echo/data:/app/data \
   -v /share/Container/zimaos-echo/config:/app/config \
   -e TZ=America/New_York \
@@ -223,7 +223,7 @@ TrueNAS SCALE uses Kubernetes, making app deployment straightforward.
    - **Application Name**: zimaos-echo
    - **Image Repository**: icewhale/zimaos-echo
    - **Image Tag**: latest
-   - **Container Port**: 8080
+   - **Container Port**: 23456
    - **Node Port**: 8765
 
 3. Add Storage:
@@ -255,7 +255,7 @@ TrueNAS CORE uses FreeBSD jails. Use a Linux jail or VM:
 3. Configure:
    - **Name**: zimaos-echo
    - **Repository**: icewhale/zimaos-echo:latest
-   - **Port Mapping**: 8765 → 8080
+   - **Port Mapping**: 8765 → 23456
    - **Path Mapping**: `/mnt/user/appdata/zimaos-echo` → `/app/data`
 
 ### Docker Compose (via Compose Manager)
@@ -271,7 +271,7 @@ services:
     container_name: zimaos-echo
     restart: unless-stopped
     ports:
-      - "8765:8080"
+      - "8765:23456"
     volumes:
       - /mnt/user/appdata/zimaos-echo/data:/app/data
       - /mnt/user/appdata/zimaos-echo/config:/app/config
@@ -306,7 +306,7 @@ sudo chown -R $USER:$USER /opt/zimaos-echo
 docker run -d \
   --name zimaos-echo \
   --restart unless-stopped \
-  -p 8765:8080 \
+  -p 8765:23456 \
   -v /opt/zimaos-echo/data:/app/data \
   -v /opt/zimaos-echo/config:/app/config \
   -e TZ=$(cat /etc/timezone) \
@@ -325,14 +325,14 @@ services:
     container_name: zimaos-echo
     restart: unless-stopped
     ports:
-      - "8765:8080"
+      - "8765:23456"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
     environment:
       - TZ=${TZ:-UTC}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:23456/health"]
       interval: 30s
       timeout: 10s
       retries: 3

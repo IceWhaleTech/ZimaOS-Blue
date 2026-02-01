@@ -56,6 +56,28 @@ export default {
     security: 'Biztonság',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Összes',
+      overview: 'Áttekintés',
+      system: 'Rendszer',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Rendszerállapot',
+      uptime: 'Üzemidő',
+      memoryUsage: 'Memóriahasználat',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Failover állapot',
+      cpuChart: 'CPU-használat',
+      memoryChart: 'Memóriahasználat',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap memória',
+      systemInfo: 'Rendszerinformáció',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Képességek',
@@ -580,6 +602,7 @@ export default {
         system: 'Rendszer',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Jelszó minimális hossza',
           description: 'Ellenőrizze, hogy a jelszó minimális hossza megfelel-e a biztonsági követelményeknek',

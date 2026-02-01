@@ -32,12 +32,12 @@ systemctl status zimaos-echo
 Get-Service ZimaOS-Echo
 ```
 
-Access the dashboard at `http://localhost:8080`
+Access the dashboard at `http://localhost:23456`
 
 ## Health Check
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 Expected response:

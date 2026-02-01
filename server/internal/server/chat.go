@@ -146,15 +146,24 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 		}
 	}
 
-	// Create an OpenAI-compatible provider with the pool configuration
-	// All custom providers use OpenAI-compatible API format
-	return llm.NewCustomProvider(apiKey, poolProvider.BaseURL), nil
+	// Create LLM provider based on API format
+	switch poolProvider.APIFormat {
+	case providerpool.APIFormatAnthropic:
+		return llm.NewClaudeProvider(apiKey, poolProvider.BaseURL), nil
+	case providerpool.APIFormatOllama:
+		return llm.NewOllamaProvider(poolProvider.BaseURL), nil
+	default:
+		// Default to OpenAI-compatible format (covers OpenAI, Google, and custom providers)
+		return llm.NewCustomProvider(apiKey, poolProvider.BaseURL), nil
+	}
 }
 
 // getDefaultProvider returns the best available provider from the pool.
 // It selects the first enabled provider with the highest priority and creates
 // a dynamic LLM provider instance using the pool configuration.
 // Falls back to the legacy provider registry if no pool is configured.
+// Note: This function no longer fetches models to avoid I/O overhead.
+// The caller should use req.Model directly if available.
 func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error) {
 	// Try provider pool first
 	if h.providerPool != nil {
@@ -172,13 +181,9 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 			// Create LLM provider from pool configuration
 			provider, err := h.getProviderFromPool(poolProvider.ID)
 			if err == nil {
-				// Get first available model from pool's model discovery
-				model := ""
-				models, _ := h.providerPool.Discovery.GetModels(poolProvider.ID)
-				if len(models) > 0 {
-					model = models[0].ID
-				}
-				return provider, poolProvider.ID, model, nil
+				// Return empty model - caller will use req.Model if available
+				// This avoids expensive GetModels() call on every request
+				return provider, poolProvider.ID, "", nil
 			}
 		}
 	}
@@ -455,7 +460,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
-	// Override model if specified in request
+	// Use model from request if specified
 	if req.Model != "" {
 		model = req.Model
 	}
@@ -710,7 +715,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
-	// Override model if specified in request
+	// Use model from request if specified
 	if req.Model != "" {
 		model = req.Model
 	}

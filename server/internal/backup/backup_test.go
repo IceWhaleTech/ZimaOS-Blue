@@ -454,3 +454,147 @@ func TestManagerLoadBackups(t *testing.T) {
 		t.Errorf("expected ID %s, got %s", info.ID, loaded.ID)
 	}
 }
+
+// TestBackupWithLargeFile tests backup with a large file to ensure LimitReader works correctly
+func TestBackupWithLargeFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	os.MkdirAll(dataDir, 0755)
+
+	// Create a larger test file (1MB)
+	largeData := make([]byte, 1024*1024)
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+	os.WriteFile(filepath.Join(dataDir, "large.bin"), largeData, 0644)
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	// Create backup - should not fail with "write too long" error
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	// Verify backup
+	if err := m.Verify(info.ID); err != nil {
+		t.Errorf("backup verification failed: %v", err)
+	}
+
+	// Restore and verify content
+	restoreDir := filepath.Join(tmpDir, "restore")
+	os.MkdirAll(restoreDir, 0755)
+
+	m2, err := NewManager(cfg, restoreDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create restore manager: %v", err)
+	}
+	m2.mu.Lock()
+	m2.backups[info.ID] = info
+	m2.mu.Unlock()
+
+	result, err := m2.Restore(context.Background(), info.ID, DefaultRestoreOptions())
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("restore not successful: %v", result.Errors)
+	}
+
+	// Verify restored content matches original
+	restoredData, err := os.ReadFile(filepath.Join(restoreDir, "large.bin"))
+	if err != nil {
+		t.Fatalf("failed to read restored file: %v", err)
+	}
+	if len(restoredData) != len(largeData) {
+		t.Errorf("restored file size mismatch: expected %d, got %d", len(largeData), len(restoredData))
+	}
+	for i := range largeData {
+		if restoredData[i] != largeData[i] {
+			t.Errorf("content mismatch at byte %d", i)
+			break
+		}
+	}
+}
+
+// TestBackupFileSizeConsistency tests that backup handles file size correctly
+// This is a regression test for the "archive/tar: write too long" bug
+func TestBackupFileSizeConsistency(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	os.MkdirAll(dataDir, 0755)
+
+	// Create multiple files of varying sizes
+	testFiles := map[string]int{
+		"small.txt":  100,
+		"medium.bin": 10 * 1024,
+		"large.dat":  100 * 1024,
+	}
+
+	for name, size := range testFiles {
+		data := make([]byte, size)
+		for i := range data {
+			data[i] = byte(i % 256)
+		}
+		if err := os.WriteFile(filepath.Join(dataDir, name), data, 0644); err != nil {
+			t.Fatalf("failed to create test file %s: %v", name, err)
+		}
+	}
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	// Create backup
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	// List files in backup
+	files, err := m.ListFiles(info.ID)
+	if err != nil {
+		t.Fatalf("failed to list files: %v", err)
+	}
+
+	// Verify all test files are in backup
+	fileCount := 0
+	for _, f := range files {
+		for name := range testFiles {
+			if filepath.Base(f) == name {
+				fileCount++
+				break
+			}
+		}
+	}
+	if fileCount != len(testFiles) {
+		t.Errorf("expected %d test files in backup, found %d", len(testFiles), fileCount)
+	}
+
+	// Verify backup integrity
+	if err := m.Verify(info.ID); err != nil {
+		t.Errorf("backup verification failed: %v", err)
+	}
+}

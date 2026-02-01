@@ -11,9 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
-	"github.com/labstack/echo/v4"
 )
 
 // SkillSource represents an external skill source
@@ -46,30 +49,50 @@ type RemoteSkill struct {
 
 // SkillHandler handles skill-related HTTP requests
 type SkillHandler struct {
-	registry        *skill.Registry
-	store           *skillstore.Store              // Local database store for skills
-	syncService     *skillstore.SyncService        // Sync service for periodic updates
-	featuredLoader  *skillstore.FeaturedSkillsLoader // Featured skills fallback
-	localScanner    *skillstore.LocalSkillScanner    // Local skill discovery
-	sources         map[string]*SkillSource
-	remoteSkills    map[string]*RemoteSkill
-	mu              sync.RWMutex
-	httpClient      *http.Client
-	useMockData     bool // When true, return mock data if API fails; when false, return error
+	registry            *skill.Registry
+	store               *skillstore.Store                // Local database store for skills
+	syncService         *skillstore.SyncService          // Sync service for periodic updates
+	featuredLoader      *skillstore.FeaturedSkillsLoader // Featured skills fallback
+	localScanner        *skillstore.LocalSkillScanner    // Local skill discovery
+	sources             map[string]*SkillSource
+	remoteSkills        map[string]*RemoteSkill
+	mu                  sync.RWMutex
+	httpClient          *http.Client
+	useMockData         bool // When true, return mock data if API fails; when false, return error
 	useFeaturedFallback bool // When true, use featured skills as fallback on API failure
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for frequently accessed data
+	browseCache    *cache.GenericCache[string]
+	statsCache     *cache.GenericCache[string]
+	categoriesCache *cache.GenericCache[string]
 }
 
 // NewSkillHandler creates a new skill handler
 func NewSkillHandler(registry *skill.Registry) *SkillHandler {
 	h := &SkillHandler{
-		registry:            registry,
-		sources:             make(map[string]*SkillSource),
-		remoteSkills:        make(map[string]*RemoteSkill),
+		registry:     registry,
+		sources:      make(map[string]*SkillSource),
+		remoteSkills: make(map[string]*RemoteSkill),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second, // Per-request timeout
 		},
 		useMockData:         false, // Default to not using mock data in production
 		useFeaturedFallback: true,  // Default to using featured skills as fallback
+		browseCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    200,
+			DefaultTTL: 60 * time.Second, // Skills list changes infrequently
+		}, "skill_browse"),
+		statsCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 30 * time.Second,
+		}, "skill_stats"),
+		categoriesCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 60 * time.Second,
+		}, "skill_categories"),
 	}
 
 	// Register default sources
@@ -136,16 +159,18 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	store.POST("/sources", h.AddSource)
 	store.DELETE("/sources/:id", h.RemoveSource)
 	store.GET("/browse", h.BrowseSkills)
-	store.GET("/featured", h.GetFeaturedSkills)  // New: Get featured skills
-	store.GET("/search", h.SearchSkills)         // Full-text search
-	store.GET("/categories", h.GetCategories)    // Get all categories
-	store.GET("/stats", h.GetStats)              // Get statistics
-	store.GET("/sync-status", h.GetSyncStatus)   // Get sync status
+	store.GET("/featured", h.GetFeaturedSkills) // New: Get featured skills
+	store.GET("/search", h.SearchSkills)        // Full-text search
+	store.GET("/categories", h.GetCategories)   // Get all categories
+	store.GET("/popular", h.GetPopularSkills)   // Get popular skills by downloads
+	store.GET("/recent", h.GetRecentSkills)     // Get recently updated skills
+	store.GET("/stats", h.GetStats)             // Get statistics
+	store.GET("/sync-status", h.GetSyncStatus)  // Get sync status
 	store.POST("/install/:id", h.InstallSkill)
 	store.POST("/install-url", h.InstallFromURL) // New: Install from URL
 	store.POST("/uninstall/:id", h.UninstallSkill)
 	store.POST("/refresh", h.RefreshSources)
-	store.POST("/sync", h.TriggerSync)           // Trigger manual sync
+	store.POST("/sync", h.TriggerSync) // Trigger manual sync
 }
 
 // SkillResponse represents a skill in API responses
@@ -603,6 +628,7 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 // UninstallSkill uninstalls a skill
 func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 	id := c.Param("id")
+	ctx := c.Request().Context()
 
 	info := h.registry.GetInfo(id)
 	if info == nil {
@@ -622,6 +648,12 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
+	}
+
+	// Update installed status in database
+	if h.store != nil {
+		// Ignore error - skill is already unregistered from memory
+		_ = h.store.SetInstalled(ctx, id, false)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -824,10 +856,10 @@ type ClawHubSkill struct {
 func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource) ([]*RemoteSkill, error) {
 	var allSkills []*RemoteSkill
 	baseURL := source.URL + "/api/v1/skills"
-	maxPages := 100       // Limit to prevent infinite loops
-	pageSize := 24        // ClawHub returns 24 items per page
-	emptyPageCount := 0   // Track consecutive empty pages
-	maxEmptyPages := 2    // Stop after 2 consecutive empty pages
+	maxPages := 100     // Limit to prevent infinite loops
+	_ = 24              // ClawHub returns 24 items per page (for reference)
+	emptyPageCount := 0 // Track consecutive empty pages
+	maxEmptyPages := 2  // Stop after 2 consecutive empty pages
 
 	for page := 1; page <= maxPages; page++ {
 		// Check if context is cancelled (timeout)
@@ -851,6 +883,7 @@ func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource
 
 		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 		if err != nil {
+			fmt.Printf("[ClawHub] Failed to create request: %v\n", err)
 			if h.useMockData && len(allSkills) == 0 {
 				return h.getMockClawHubSkills(source), nil
 			}
@@ -861,56 +894,23 @@ func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 
-		resp, err := h.httpClient.Do(req)
-		if err != nil {
-			if h.useMockData && len(allSkills) == 0 {
-				return h.getMockClawHubSkills(source), nil
-			}
-			if len(allSkills) > 0 {
-				return allSkills, nil
-			}
-			// If context cancelled, try featured fallback
-			if ctx.Err() != nil && h.useFeaturedFallback && h.featuredLoader != nil {
-				return h.getFeaturedSkillsFallback(), nil
-			}
-			return nil, fmt.Errorf("failed to fetch skills from %s: %w", source.Name, err)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			if h.useMockData && len(allSkills) == 0 {
-				return h.getMockClawHubSkills(source), nil
-			}
-			if len(allSkills) > 0 {
-				return allSkills, nil
-			}
-			return nil, fmt.Errorf("API returned status %d from %s", resp.StatusCode, source.Name)
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			if len(allSkills) > 0 {
-				return allSkills, nil
-			}
-			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-
 		// Parse ClawHub API response
 		var apiResp ClawHubAPIResponse
-		if err := json.Unmarshal(body, &apiResp); err != nil {
-			if h.useMockData && len(allSkills) == 0 {
-				return h.getMockClawHubSkills(source), nil
+		resp, err := h.httpClient.Do(req)
+		if err == nil {
+			if resp.StatusCode != http.StatusOK {
+				fmt.Printf("[ClawHub] API returned status %d from %s\n", resp.StatusCode, source.Name)
+				resp.Body.Close()
 			}
-			if len(allSkills) > 0 {
-				return allSkills, nil
-			}
-			return nil, fmt.Errorf("failed to parse skills response: %w", err)
-		}
 
-		// Debug: Log pagination info
-		fmt.Printf("[ClawHub] Page %d: fetched %d items, total so far=%d\n",
-			page, len(apiResp.Items), len(allSkills)+len(apiResp.Items))
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			_ = json.Unmarshal(body, &apiResp)
+
+			// Debug: Log pagination info
+			fmt.Printf("[ClawHub] Page %d: fetched %d items, total so far=%d\n",
+				page, len(apiResp.Items), len(allSkills)+len(apiResp.Items))
+		}
 
 		// Check if page is empty
 		if len(apiResp.Items) == 0 {
@@ -926,12 +926,6 @@ func (h *SkillHandler) fetchFromClawHub(ctx context.Context, source *SkillSource
 		// Convert ClawHub skills to RemoteSkill format
 		for _, item := range apiResp.Items {
 			allSkills = append(allSkills, h.convertClawHubSkill(item, source))
-		}
-
-		// If we got fewer items than page size, we've reached the last page
-		if len(apiResp.Items) < pageSize {
-			fmt.Printf("[ClawHub] Last page reached (got %d items < %d). Total skills: %d\n", len(apiResp.Items), pageSize, len(allSkills))
-			break
 		}
 	}
 
@@ -1354,14 +1348,30 @@ func (h *SkillHandler) GetCategories(c echo.Context) error {
 		})
 	}
 
-	categories, err := h.store.GetCategories(c.Request().Context())
+	// Try cache first
+	cacheKey := "skill_categories"
+	if cached, ok := h.categoriesCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
+	}
+
+	// Use singleflight to deduplicate concurrent requests
+	result, err, _ := h.sfGroup.Do("get_skill_categories", func() (interface{}, error) {
+		categories, err := h.store.GetCategories(c.Request().Context())
+		if err != nil {
+			return nil, err
+		}
+		// Cache the result
+		h.categoriesCache.Put(cacheKey, categories)
+		return categories, nil
+	})
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Sprintf("failed to get categories: %v", err),
 		})
 	}
 
-	return c.JSON(http.StatusOK, categories)
+	return c.JSON(http.StatusOK, result)
 }
 
 // GetStats returns skill statistics
@@ -1372,14 +1382,80 @@ func (h *SkillHandler) GetStats(c echo.Context) error {
 		})
 	}
 
-	stats, err := h.store.GetStats(c.Request().Context())
+	// Try cache first
+	cacheKey := "skill_stats"
+	if cached, ok := h.statsCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
+	}
+
+	// Use singleflight to deduplicate concurrent requests
+	result, err, _ := h.sfGroup.Do("get_skill_stats", func() (interface{}, error) {
+		stats, err := h.store.GetStats(c.Request().Context())
+		if err != nil {
+			return nil, err
+		}
+		// Cache the result
+		h.statsCache.Put(cacheKey, stats)
+		return stats, nil
+	})
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Sprintf("failed to get stats: %v", err),
 		})
 	}
 
-	return c.JSON(http.StatusOK, stats)
+	return c.JSON(http.StatusOK, result)
+}
+
+// GetPopularSkills returns the most popular skills by downloads
+func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
+	if h.store == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "skill store not initialized",
+		})
+	}
+
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
+			limit = v
+		}
+	}
+
+	skills, err := h.store.GetPopular(c.Request().Context(), limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to get popular skills: %v", err),
+		})
+	}
+
+	return c.JSON(http.StatusOK, skills)
+}
+
+// GetRecentSkills returns the most recently updated skills
+func (h *SkillHandler) GetRecentSkills(c echo.Context) error {
+	if h.store == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "skill store not initialized",
+		})
+	}
+
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 100 {
+			limit = v
+		}
+	}
+
+	skills, err := h.store.GetRecent(c.Request().Context(), limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to get recent skills: %v", err),
+		})
+	}
+
+	return c.JSON(http.StatusOK, skills)
 }
 
 // GetSyncStatus returns the synchronization status for all sources
@@ -1552,9 +1628,9 @@ func (h *SkillHandler) VerifySkill(c echo.Context) error {
 	skill := h.registry.Get(id)
 	if skill == nil {
 		return c.JSON(http.StatusNotFound, map[string]interface{}{
-			"id":       id,
-			"visible":  false,
-			"error":    "skill not found in registry",
+			"id":      id,
+			"visible": false,
+			"error":   "skill not found in registry",
 		})
 	}
 

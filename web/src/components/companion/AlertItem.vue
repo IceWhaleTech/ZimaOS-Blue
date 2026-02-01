@@ -95,7 +95,7 @@ function formatTime(timestamp: string): string {
             {{ alert.severity }}
           </span>
           <span class="text-xs text-gray-500 dark:text-gray-400">
-            {{ formatTime(alert.createdAt) }}
+            {{ formatTime(alert.timestamp) }}
           </span>
           <span
             v-if="alert.acknowledged"
@@ -114,10 +114,10 @@ function formatTime(timestamp: string): string {
         </p>
 
         <!-- Session Link -->
-        <div v-if="alert.sessionId" class="mt-2 flex items-center gap-2">
+        <div v-if="alert.session_id" class="mt-2 flex items-center gap-2">
           <button
             class="text-xs text-accent hover:underline flex items-center gap-1"
-            @click="emit('viewSession', alert.sessionId)"
+            @click="emit('viewSession', alert.session_id)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -128,8 +128,8 @@ function formatTime(timestamp: string): string {
         </div>
 
         <!-- Acked info -->
-        <div v-if="alert.acknowledged && alert.ackedBy" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('companion.ackedBy') }}: {{ alert.ackedBy }}
+        <div v-if="alert.acknowledged && alert.acked_by" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('companion.ackedBy') }}: {{ alert.acked_by }}
         </div>
       </div>
 

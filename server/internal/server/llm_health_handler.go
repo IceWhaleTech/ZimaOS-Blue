@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 )
 
@@ -13,6 +15,14 @@ import (
 type LLMHealthHandler struct {
 	chainManager *llm.ModelChainManager
 	registry     *llm.ProviderRegistry
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for frequently accessed data
+	healthCache    *cache.GenericCache[string]
+	providersCache *cache.GenericCache[string]
+	chainsCache    *cache.GenericCache[string]
 }
 
 // NewLLMHealthHandler creates a new LLMHealthHandler.
@@ -20,6 +30,18 @@ func NewLLMHealthHandler(chainManager *llm.ModelChainManager, registry *llm.Prov
 	return &LLMHealthHandler{
 		chainManager: chainManager,
 		registry:     registry,
+		healthCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 5 * time.Second, // Health status changes frequently
+		}, "llm_health"),
+		providersCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 30 * time.Second, // Providers list is relatively static
+		}, "llm_providers"),
+		chainsCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    20,
+			DefaultTTL: 30 * time.Second, // Chains config is relatively static
+		}, "llm_chains"),
 	}
 }
 
@@ -158,19 +180,32 @@ func (h *LLMHealthHandler) ListProviders(c echo.Context) error {
 		return c.JSON(http.StatusOK, []LLMProviderInfo{})
 	}
 
-	providers := h.registry.List()
-	result := make([]LLMProviderInfo, 0, len(providers))
-
-	for _, name := range providers {
-		provider := h.registry.Get(name)
-		if provider == nil {
-			continue
-		}
-		result = append(result, LLMProviderInfo{
-			Name:   name,
-			Models: provider.Models(),
-		})
+	// Try cache first
+	cacheKey := "llm_providers"
+	if cached, ok := h.providersCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
 	}
+
+	// Use singleflight to deduplicate concurrent requests
+	result, _, _ := h.sfGroup.Do("list_providers", func() (interface{}, error) {
+		providers := h.registry.List()
+		providerList := make([]LLMProviderInfo, 0, len(providers))
+
+		for _, name := range providers {
+			provider := h.registry.Get(name)
+			if provider == nil {
+				continue
+			}
+			providerList = append(providerList, LLMProviderInfo{
+				Name:   name,
+				Models: provider.Models(),
+			})
+		}
+
+		// Cache the result
+		h.providersCache.Put(cacheKey, providerList)
+		return providerList, nil
+	})
 
 	return c.JSON(http.StatusOK, result)
 }
@@ -199,36 +234,49 @@ func (h *LLMHealthHandler) ListChains(c echo.Context) error {
 		return c.JSON(http.StatusOK, []ChainInfo{})
 	}
 
-	chainNames := h.chainManager.ListChains()
-	defaultChain := h.chainManager.GetDefaultChain()
-
-	result := make([]ChainInfo, 0, len(chainNames))
-	for _, name := range chainNames {
-		chain, ok := h.chainManager.GetChain(name)
-		if !ok {
-			continue
-		}
-
-		info := ChainInfo{
-			Name:        chain.Name(),
-			Description: chain.Description(),
-			Default:     defaultChain != nil && chain.Name() == defaultChain.Name(),
-			Models:      make([]ChainModelInfo, 0),
-		}
-
-		for _, m := range chain.GetModels() {
-			info.Models = append(info.Models, ChainModelInfo{
-				Provider:   m.Provider,
-				Model:      m.Model,
-				Priority:   m.Priority,
-				Weight:     m.Weight,
-				MaxRetries: m.MaxRetries,
-				TimeoutMs:  m.Timeout.Milliseconds(),
-			})
-		}
-
-		result = append(result, info)
+	// Try cache first
+	cacheKey := "llm_chains"
+	if cached, ok := h.chainsCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
 	}
+
+	// Use singleflight to deduplicate concurrent requests
+	result, _, _ := h.sfGroup.Do("list_chains", func() (interface{}, error) {
+		chainNames := h.chainManager.ListChains()
+		defaultChain := h.chainManager.GetDefaultChain()
+
+		chainList := make([]ChainInfo, 0, len(chainNames))
+		for _, name := range chainNames {
+			chain, ok := h.chainManager.GetChain(name)
+			if !ok {
+				continue
+			}
+
+			info := ChainInfo{
+				Name:        chain.Name(),
+				Description: chain.Description(),
+				Default:     defaultChain != nil && chain.Name() == defaultChain.Name(),
+				Models:      make([]ChainModelInfo, 0),
+			}
+
+			for _, m := range chain.GetModels() {
+				info.Models = append(info.Models, ChainModelInfo{
+					Provider:   m.Provider,
+					Model:      m.Model,
+					Priority:   m.Priority,
+					Weight:     m.Weight,
+					MaxRetries: m.MaxRetries,
+					TimeoutMs:  m.Timeout.Milliseconds(),
+				})
+			}
+
+			chainList = append(chainList, info)
+		}
+
+		// Cache the result
+		h.chainsCache.Put(cacheKey, chainList)
+		return chainList, nil
+	})
 
 	return c.JSON(http.StatusOK, result)
 }

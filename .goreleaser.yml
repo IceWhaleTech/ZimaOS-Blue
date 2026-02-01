@@ -131,7 +131,7 @@ release:
     ./zimaos-echo
     ```
 
-    Then open http://localhost:8080 in your browser.
+    Then open http://localhost:23456 in your browser.
 
 # Announce release (optional, can be enabled later)
 # announce:

@@ -36,7 +36,7 @@ docker logs -f zimaos-echo
 ### 健康检查
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 预期响应：
@@ -56,10 +56,10 @@ curl http://localhost:8080/health
 
 **解决方案：**
 ```bash
-# 查找使用 8080 端口的进程
-sudo lsof -i :8080
+# 查找使用 23456 端口的进程
+sudo lsof -i :23456
 # 或
-sudo netstat -tlnp | grep 8080
+sudo netstat -tlnp | grep 23456
 
 # 终止该进程或更改 Echo 的端口
 # 在 config.yaml 中：
@@ -76,7 +76,7 @@ server:
 # 创建最小配置
 cat > /etc/echo/config.yaml << 'EOF'
 server:
-  port: 8080
+  port: 23456
 llm:
   default_provider: "ollama"
   providers:
@@ -133,12 +133,12 @@ sudo chmod +x /usr/local/bin/echo
 **解决方案：**
 ```bash
 # 获取新令牌
-curl -X POST http://localhost:8080/api/v1/auth/login \
+curl -X POST http://localhost:23456/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin"}'
 
 # 或使用刷新令牌
-curl -X POST http://localhost:8080/api/v1/auth/refresh \
+curl -X POST http://localhost:23456/api/v1/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refresh_token":"your-refresh-token"}'
 ```
@@ -153,7 +153,7 @@ curl -X POST http://localhost:8080/api/v1/auth/refresh \
 # 应该是：ek_xxxxx...
 
 # 检查密钥是否具有所需的权限范围
-curl http://localhost:8080/api/v1/apikeys \
+curl http://localhost:23456/api/v1/apikeys \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -164,7 +164,7 @@ curl http://localhost:8080/api/v1/apikeys \
 **解决方案：**
 ```bash
 # 检查用户的角色和权限
-curl http://localhost:8080/api/v1/auth/me \
+curl http://localhost:23456/api/v1/auth/me \
   -H "Authorization: Bearer <token>"
 
 # 更新用户角色（仅管理员）
@@ -372,7 +372,7 @@ profiling:
   endpoint_prefix: "/debug/pprof"
 
 # 获取 CPU 分析
-curl http://localhost:8080/debug/pprof/profile?seconds=30 > cpu.prof
+curl http://localhost:23456/debug/pprof/profile?seconds=30 > cpu.prof
 go tool pprof cpu.prof
 ```
 
@@ -430,7 +430,7 @@ server:
 **Nginx 配置：**
 ```nginx
 location /api/v1/ws/ {
-    proxy_pass http://localhost:8080;
+    proxy_pass http://localhost:23456;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -529,7 +529,7 @@ df -h
 sudo netstat -tlnp | grep echo
 
 # 测试连接
-curl -v http://localhost:8080/health
+curl -v http://localhost:23456/health
 
 # DNS 解析
 nslookup api.openai.com

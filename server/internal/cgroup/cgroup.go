@@ -166,7 +166,8 @@ func (m *Manager) Apply() error {
 	}
 
 	// Create cgroup directory if it doesn't exist
-	if err := os.MkdirAll(m.cgroupDir, 0755); err != nil {
+	// Security: Use 0700 to restrict access to cgroup controls
+	if err := os.MkdirAll(m.cgroupDir, 0700); err != nil {
 		return fmt.Errorf("failed to create cgroup directory: %w", err)
 	}
 

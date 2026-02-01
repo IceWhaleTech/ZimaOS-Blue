@@ -9,7 +9,7 @@ Default location: `/opt/zimaos-echo/config/config.yaml`
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: "30s"
   write_timeout: "30s"
   idle_timeout: "120s"
@@ -31,7 +31,7 @@ All configuration options can be overridden with environment variables using the
 | Config Key | Environment Variable | Default |
 |------------|---------------------|---------|
 | `server.host` | `ECHO_SERVER_HOST` | `0.0.0.0` |
-| `server.port` | `ECHO_SERVER_PORT` | `8080` |
+| `server.port` | `ECHO_SERVER_PORT` | `23456` |
 | `log.level` | `ECHO_LOG_LEVEL` | `info` |
 | `log.format` | `ECHO_LOG_FORMAT` | `json` |
 | `worker.pool_size` | `ECHO_WORKER_POOL_SIZE` | `10` |
@@ -55,7 +55,7 @@ The IP address to bind to.
 
 ### `server.port`
 
-The port number to listen on. Default: `8080`
+The port number to listen on. Default: `23456`
 
 ### `server.read_timeout`
 
@@ -128,7 +128,7 @@ Options:
 ```yaml
 server:
   host: "127.0.0.1"
-  port: 8080
+  port: 23456
 
 log:
   level: "debug"
@@ -144,7 +144,7 @@ worker:
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: "60s"
   write_timeout: "60s"
 

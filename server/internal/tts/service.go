@@ -66,6 +66,21 @@ func createProvider(cfg ProviderConfig) (Provider, error) {
 			DefaultVoice:  cfg.DefaultVoice,
 			DefaultFormat: cfg.DefaultFormat,
 		}), nil
+	case ProviderSherpa:
+		return NewSherpaProvider(&SherpaConfig{
+			ModelDir:      cfg.BaseURL, // Reuse BaseURL field for model directory
+			ModelType:     cfg.DefaultVoice, // Reuse DefaultVoice for model type (kokoro, piper, etc.)
+			DefaultFormat: cfg.DefaultFormat,
+			MaxTextLength: cfg.MaxTextLength,
+		}), nil
+	case ProviderKokoro:
+		// Legacy: redirect to Sherpa provider with kokoro model
+		return NewSherpaProvider(&SherpaConfig{
+			ModelDir:      cfg.BaseURL,
+			ModelType:     "kokoro",
+			DefaultFormat: cfg.DefaultFormat,
+			MaxTextLength: cfg.MaxTextLength,
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}

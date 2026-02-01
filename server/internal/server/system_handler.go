@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sysinfo"
@@ -19,6 +22,12 @@ type SystemHandler struct {
 	gitCommit    string
 	dataDir      string
 	serverConfig *config.ServerConfig
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for expensive system info collection
+	sysInfoCache *cache.GenericCache[string]
 }
 
 // NewSystemHandler creates a new system handler
@@ -28,6 +37,10 @@ func NewSystemHandler(version, buildTime, gitCommit, dataDir string) *SystemHand
 		buildTime: buildTime,
 		gitCommit: gitCommit,
 		dataDir:   dataDir,
+		sysInfoCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 5 * time.Second, // System info can change, short TTL
+		}, "system_info"),
 	}
 }
 
@@ -39,6 +52,10 @@ func NewSystemHandlerWithConfig(version, buildTime, gitCommit, dataDir string, s
 		gitCommit:    gitCommit,
 		dataDir:      dataDir,
 		serverConfig: serverConfig,
+		sysInfoCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 5 * time.Second, // System info can change, short TTL
+		}, "system_info_detailed"),
 	}
 }
 
@@ -78,7 +95,25 @@ func (h *SystemHandler) GetInfo(c echo.Context) error {
 	}
 
 	if detailed {
-		info.System = sysinfo.Collect()
+		// Try cache first for expensive sysinfo.Collect()
+		cacheKey := "detailed_sysinfo"
+		if cached, ok := h.sysInfoCache.Get(cacheKey); ok {
+			if sysInfo, ok := cached.(*sysinfo.Info); ok {
+				info.System = sysInfo
+				return c.JSON(http.StatusOK, info)
+			}
+		}
+
+		// Use singleflight to deduplicate concurrent requests
+		result, _, _ := h.sfGroup.Do("collect_sysinfo", func() (interface{}, error) {
+			sysInfo := sysinfo.Collect()
+			h.sysInfoCache.Put(cacheKey, sysInfo)
+			return sysInfo, nil
+		})
+
+		if result != nil {
+			info.System = result.(*sysinfo.Info)
+		}
 	}
 
 	return c.JSON(http.StatusOK, info)
@@ -197,7 +232,7 @@ type SecurityConfigResponse struct {
 func (h *SystemHandler) GetConfig(c echo.Context) error {
 	// Get configured values or defaults
 	host := "0.0.0.0"
-	port := 8080
+	port := 23456
 	portAutoFallback := true
 
 	if h.serverConfig != nil {

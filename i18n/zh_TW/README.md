@@ -181,7 +181,7 @@ dev.bat
 ```
 
 - 前端：`http://localhost:3000`
-- 後端：`http://localhost:8080`
+- 後端：`http://localhost:23456`
 
 ### 建置指令
 

@@ -2,20 +2,34 @@ package server
 
 import (
 	"net/http"
+	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
 )
 
 // PluginStoreHandler handles plugin store HTTP requests
 type PluginStoreHandler struct {
 	store *plugin.Store
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for frequently accessed data
+	pluginsCache *cache.GenericCache[string]
 }
 
 // NewPluginStoreHandler creates a new plugin store handler
 func NewPluginStoreHandler(store *plugin.Store) *PluginStoreHandler {
 	return &PluginStoreHandler{
 		store: store,
+		pluginsCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    100,
+			DefaultTTL: 60 * time.Second, // Plugin list changes infrequently
+		}, "plugin_store"),
 	}
 }
 
@@ -109,33 +123,50 @@ func (h *PluginStoreHandler) RemoveSource(c echo.Context) error {
 
 // BrowsePlugins returns all available plugins from the store
 func (h *PluginStoreHandler) BrowsePlugins(c echo.Context) error {
-	plugins, err := h.store.ListPlugins(c.Request().Context())
+	// Try cache first
+	cacheKey := "plugin_list"
+	if cached, ok := h.pluginsCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
+	}
+
+	// Use singleflight to deduplicate concurrent requests
+	result, err, _ := h.sfGroup.Do("browse_plugins", func() (interface{}, error) {
+		plugins, err := h.store.ListPlugins(c.Request().Context())
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert to response format
+		response := make([]RemotePluginResponse, 0, len(plugins))
+		for _, p := range plugins {
+			response = append(response, RemotePluginResponse{
+				ID:          p.ID,
+				Name:        p.Name,
+				Version:     p.Version,
+				Description: p.Description,
+				Author:      p.Author,
+				Type:        "js", // Default type for extensions
+				SourceID:    string(p.Source),
+				SourceName:  "Extensions",
+				DownloadURL: p.DownloadURL,
+				Homepage:    p.RepoURL,
+				Downloads:   p.Downloads,
+				Installed:   p.Installed,
+			})
+		}
+
+		// Cache the result
+		h.pluginsCache.Put(cacheKey, response)
+		return response, nil
+	})
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
 	}
 
-	// Convert to response format
-	response := make([]RemotePluginResponse, 0, len(plugins))
-	for _, p := range plugins {
-		response = append(response, RemotePluginResponse{
-			ID:          p.ID,
-			Name:        p.Name,
-			Version:     p.Version,
-			Description: p.Description,
-			Author:      p.Author,
-			Type:        "js", // Default type for extensions
-			SourceID:    string(p.Source),
-			SourceName:  "Extensions",
-			DownloadURL: p.DownloadURL,
-			Homepage:    p.RepoURL,
-			Downloads:   p.Downloads,
-			Installed:   p.Installed,
-		})
-	}
-
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, result)
 }
 
 // InstallPlugin installs a plugin from the store

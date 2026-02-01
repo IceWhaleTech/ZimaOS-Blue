@@ -80,7 +80,7 @@ docker pull icewhaletech/zimaos-echo:latest
 # Run container
 docker run -d \
   --name zimaos-echo \
-  -p 8080:8080 \
+  -p 23456:23456 \
   -v /path/to/config:/etc/zimaos-echo \
   -v /path/to/data:/var/lib/zimaos-echo \
   icewhaletech/zimaos-echo:latest
@@ -97,7 +97,7 @@ services:
     container_name: zimaos-echo
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "23456:23456"
     volumes:
       - ./config:/etc/zimaos-echo
       - ./data:/var/lib/zimaos-echo
@@ -119,7 +119,7 @@ Coming soon - one-click installation from ZimaOS App Store.
 | `ECHO_CONFIG_PATH` | Config file path | `/etc/zimaos-echo/config.yaml` |
 | `ECHO_DATA_PATH` | Data directory | `/var/lib/zimaos-echo` |
 | `ECHO_LOG_LEVEL` | Log level | `info` |
-| `ECHO_HTTP_PORT` | HTTP port | `8080` |
+| `ECHO_HTTP_PORT` | HTTP port | `23456` |
 | `ECHO_API_KEY` | API key for LLM provider | - |
 
 ### Config File
@@ -129,7 +129,7 @@ Coming soon - one-click installation from ZimaOS App Store.
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: 30s
   write_timeout: 30s
 
@@ -163,7 +163,7 @@ server {
     server_name echo.example.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:23456;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -179,7 +179,7 @@ server {
 
 ```caddyfile
 echo.example.com {
-    reverse_proxy localhost:8080
+    reverse_proxy localhost:23456
 }
 ```
 
@@ -204,13 +204,13 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 ### Health Check
 
 ```bash
-curl http://localhost:8080/api/v1/health
+curl http://localhost:23456/api/v1/health
 ```
 
 ### Prometheus Metrics
 
 ```bash
-curl http://localhost:8080/metrics
+curl http://localhost:23456/metrics
 ```
 
 ### Logs
@@ -228,13 +228,13 @@ docker logs -f zimaos-echo
 ### Create Backup
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/backup
+curl -X POST http://localhost:23456/api/v1/backup
 ```
 
 ### Restore from Backup
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/backup/{id}/restore
+curl -X POST http://localhost:23456/api/v1/backup/{id}/restore
 ```
 
 ## Troubleshooting
@@ -248,14 +248,14 @@ curl -X POST http://localhost:8080/api/v1/backup/{id}/restore
 ### High Memory Usage
 
 1. Check cache size in config
-2. Review goroutine count: `curl http://localhost:8080/debug/pprof/goroutine?debug=1`
+2. Review goroutine count: `curl http://localhost:23456/debug/pprof/goroutine?debug=1`
 3. Enable memory profiling
 
 ### Connection Issues
 
 1. Verify firewall rules
-2. Check port availability: `netstat -tlnp | grep 8080`
-3. Test connectivity: `curl -v http://localhost:8080/api/v1/health`
+2. Check port availability: `netstat -tlnp | grep 23456`
+3. Test connectivity: `curl -v http://localhost:23456/api/v1/health`
 
 ## Upgrading
 

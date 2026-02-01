@@ -1,18 +1,76 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { securityApi } from '@/api/security'
-import { useCompanionStore } from '@/stores/companion'
-import { useCompanionStream } from '@/composables/useCompanionStream'
-import type { CompanionSession, ThreatLevel, Platform } from '@/api/companion'
+import { securityApi, type SecurityScanItem } from '@/api/security'
+import { companionApi, type CompanionSession, type Stats as CompanionStats } from '@/api/companion'
+import { getActiveConnections, getConnectionStats, type Connection, type ConnectionStats } from '@/api/connections'
+import SessionList from '@/components/companion/SessionList.vue'
+import SessionDetail from '@/components/companion/SessionDetail.vue'
+import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 
-const { t } = useI18n()
-const companionStore = useCompanionStore()
+const { t, te } = useI18n()
 
-// WebSocket stream for Companion
-const { isConnected, eventCount } = useCompanionStream({
-  autoConnect: true,
-})
+// Tab state
+type TabType = 'overview' | 'monitoring' | 'events'
+const activeTab = ref<TabType>('overview')
+
+/** Backend English details string -> security.scan.detailMessages key (for i18n). */
+const DETAIL_MESSAGE_KEYS: Record<string, string> = {
+  'Threat detector is not initialized': 'threat_detector_not_initialized',
+  'XSS pattern detection is enabled in threat detector': 'xss_detection_enabled',
+  'SQL injection pattern detection is enabled': 'sql_injection_enabled',
+  'Command injection pattern detection is enabled': 'command_injection_enabled',
+  'Prompt injection detection is active': 'prompt_injection_active',
+  'Prompt injection protection is disabled. Enable PromptGuard for AI security.': 'prompt_injection_disabled',
+  'AI output validation is enabled': 'ai_output_validation_enabled',
+  'AI output validation is disabled. Consider enabling for safer AI operations.': 'ai_output_validation_disabled',
+  'Model whitelist is enabled but no models are configured': 'model_whitelist_no_models',
+  'Model whitelist is disabled. All models are accessible. Consider enabling for production.': 'model_whitelist_disabled',
+  'Sensitive data filtering is enabled': 'sensitive_data_filtering_enabled',
+  'Sensitive data filtering is disabled. PII may be exposed to AI models.': 'sensitive_data_filtering_disabled',
+  'Rate limiting is disabled. API is vulnerable to abuse and DoS attacks.': 'rate_limiting_disabled',
+  'CORS allows all origins in production. This is a security risk.': 'cors_all_origins_production',
+  'CORS allows all origins. Acceptable for development, but restrict in production.': 'cors_all_origins_dev',
+  'CORS is configured with no external origins allowed': 'cors_no_external_origins',
+  'TLS is enabled with minimum version TLS 1.2': 'tls_12_min',
+  'TLS is enabled but allows older versions. Recommend TLS 1.2 minimum.': 'tls_older_versions',
+  'TLS is disabled in production. All traffic is unencrypted.': 'tls_disabled_production',
+  'TLS is disabled. Enable for production deployment.': 'tls_disabled_enable',
+  'Server is accessible on localhost': 'server_localhost',
+  'Could not verify server binding': 'server_binding_unknown',
+  'Sandbox execution is enabled': 'sandbox_enabled',
+  'Sandbox is disabled. Code execution is not isolated.': 'sandbox_disabled',
+  'No memory limit configured for sandbox': 'no_memory_limit',
+  'No execution timeout configured': 'no_timeout_configured',
+  'Network access is disabled in sandbox': 'network_disabled_sandbox',
+  'Network access is enabled in sandbox. Consider disabling for better isolation.': 'network_enabled_sandbox',
+  'Data directory has restricted permissions': 'data_dir_restricted',
+  'Data directory may have overly permissive access': 'data_dir_permissive',
+  'Could not verify data directory permissions': 'data_dir_unknown',
+  'Debug mode is enabled in production. This exposes sensitive information.': 'debug_production',
+  'Debug mode is enabled. Disable before production deployment.': 'debug_enabled',
+  'Debug mode is disabled': 'debug_disabled',
+  'Detailed error messages are exposed in production. This may leak sensitive information.': 'error_exposed_production',
+  'Detailed error messages are exposed. Disable before production deployment.': 'error_exposed',
+  'Error details are hidden from responses': 'error_hidden',
+  'Sensitive error data may be logged. Ensure log access is restricted.': 'error_log_restrict',
+  'Sensitive error data is filtered from logs': 'error_filtered_logs',
+  'Running in production mode': 'running_production',
+  'Running in staging mode': 'running_staging',
+}
+
+/** Use translated details when key exists (item id+status or detailMessages map), else API details. */
+function getItemDetails(item: ScanItem): string | undefined {
+  if (!item.details) return undefined
+  const itemKey = `security.scan.items.${item.id}.details.${item.status}`
+  if (te(itemKey)) return t(itemKey)
+  const msgKey = DETAIL_MESSAGE_KEYS[item.details]
+  if (msgKey) {
+    const fullKey = `security.scan.detailMessages.${msgKey}`
+    if (te(fullKey)) return t(fullKey)
+  }
+  return item.details
+}
 
 // Security scan data
 interface ScanItem {
@@ -22,6 +80,11 @@ interface ScanItem {
   description: string
   status: 'pending' | 'scanning' | 'passed' | 'warning' | 'failed'
   details?: string
+  risk?: string        // Why this is a security concern
+  impact?: string      // What could happen if exploited
+  remediation?: string // How to fix the issue
+  auto_fixable?: boolean
+  fix_action?: string
 }
 
 const isScanning = ref(false)
@@ -29,6 +92,29 @@ const scanProgress = ref(0)
 const scanResults = ref<ScanItem[]>([])
 const scanCompleted = ref(false)
 const scanResultsExpanded = ref(true)
+const fixingItem = ref<string | null>(null) // ID of item being fixed
+const expandedItemId = ref<string | null>(null) // ID of expanded item for details
+
+// Fix preview dialog state
+const showFixPreview = ref(false)
+const fixPreviewItem = ref<ScanItem | null>(null)
+
+function openFixPreview(item: ScanItem) {
+  fixPreviewItem.value = item
+  showFixPreview.value = true
+}
+
+function closeFixPreview() {
+  showFixPreview.value = false
+  fixPreviewItem.value = null
+}
+
+async function handleFixConfirm(fixAction: string) {
+  const item = fixPreviewItem.value
+  if (!item) return
+  closeFixPreview()
+  await fixScanIssue(item)
+}
 
 // Check if scan should run (once per day)
 function shouldRunScan(): boolean {
@@ -77,22 +163,6 @@ function loadCachedScanResults() {
   }
 }
 
-onMounted(async () => {
-  // Load cached results first
-  loadCachedScanResults()
-
-  // Auto-start security scan only if 24 hours have passed
-  if (shouldRunScan()) {
-    startSecurityScan()
-  }
-  // Load companion data
-  await Promise.all([
-    companionStore.fetchStats(),
-    companionStore.fetchSessions(),
-    companionStore.fetchAlerts(),
-  ])
-})
-
 // Start security scan
 async function startSecurityScan() {
   if (isScanning.value) return
@@ -113,6 +183,7 @@ async function startSecurityScan() {
 
     for (let i = 0; i < totalItems; i++) {
       const apiItem = apiItems[i]
+      if (!apiItem) continue
 
       // Add item with scanning status first
       const scanItem: ScanItem = {
@@ -121,18 +192,29 @@ async function startSecurityScan() {
         name: apiItem.name,
         description: apiItem.description,
         status: 'scanning',
+        auto_fixable: apiItem.auto_fixable,
+        fix_action: apiItem.fix_action,
       }
       scanResults.value.push(scanItem)
 
       // Brief delay for animation
       await new Promise(resolve => setTimeout(resolve, delayPerItem))
 
-      // Update with actual result
+      // Update with actual result including risk/impact/remediation
       scanItem.status = apiItem.status as ScanItem['status']
       scanItem.details = apiItem.details || t(`security.scan.check${apiItem.status.charAt(0).toUpperCase() + apiItem.status.slice(1)}`)
+      scanItem.risk = apiItem.risk
+      scanItem.impact = apiItem.impact
+      scanItem.remediation = apiItem.remediation
 
       scanProgress.value = Math.round(((i + 1) / totalItems) * 100)
     }
+
+    // Sort results: failed first, then warnings, then passed
+    scanResults.value.sort((a, b) => {
+      const statusOrder: Record<string, number> = { failed: 0, warning: 1, passed: 2, scanning: 3, pending: 4 }
+      return (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
+    })
   } catch (error) {
     console.error('Security scan failed:', error)
     // Fallback to showing error state
@@ -159,6 +241,47 @@ async function startSecurityScan() {
   }
 }
 
+// Fix a scan issue
+async function fixScanIssue(item: ScanItem) {
+  if (!item.auto_fixable || !item.fix_action || fixingItem.value) return
+
+  fixingItem.value = item.id
+
+  try {
+    const response = await securityApi.fixScanIssue(item.fix_action)
+    if (response.data.success) {
+      // Update item status
+      item.status = 'passed'
+      item.details = response.data.message
+      item.auto_fixable = false
+      item.fix_action = undefined
+      // Save updated results
+      saveScanTimestamp()
+    } else {
+      item.details = response.data.message
+    }
+  } catch (error: unknown) {
+    console.error('Failed to fix issue:', error)
+    const errorMessage = error instanceof Error ? error.message : t('security.scan.fixError')
+    item.details = errorMessage
+  } finally {
+    fixingItem.value = null
+  }
+}
+
+// Count of fixable issues
+const fixableCount = computed(() => {
+  return scanResults.value.filter(r => r.auto_fixable && (r.status === 'warning' || r.status === 'failed')).length
+})
+
+// Fix all fixable issues
+async function fixAllIssues() {
+  const fixableItems = scanResults.value.filter(r => r.auto_fixable && (r.status === 'warning' || r.status === 'failed'))
+  for (const item of fixableItems) {
+    await fixScanIssue(item)
+  }
+}
+
 // Get scan summary
 const scanSummary = computed(() => {
   const passed = scanResults.value.filter(r => r.status === 'passed').length
@@ -182,18 +305,18 @@ function getCategoryLabel(category: string): string {
 }
 
 // Get scan item name with i18n
-function getScanItemName(id: string): string {
-  const key = `security.scan.items.${id}.name`
+function getScanItemName(item: ScanItem): string {
+  const key = `security.scan.items.${item.id}.name`
   const translated = t(key)
-  // If translation key doesn't exist, return the key itself (fallback)
-  return translated === key ? id : translated
+  // If translation key doesn't exist, fall back to API-provided name (or id)
+  return translated === key ? (item.name || item.id) : translated
 }
 
 // Get scan item description with i18n
-function getScanItemDescription(id: string): string {
-  const key = `security.scan.items.${id}.description`
+function getScanItemDescription(item: ScanItem): string {
+  const key = `security.scan.items.${item.id}.description`
   const translated = t(key)
-  return translated === key ? '' : translated
+  return translated === key ? (item.description || '') : translated
 }
 
 // Get scan item status icon and color
@@ -215,128 +338,116 @@ const securityStatus = computed(() => {
   return 'passed'
 })
 
-// Companion computed
-const stats = computed(() => companionStore.stats)
-const sessions = computed(() => companionStore.sortedSessions.slice(0, 5)) // Show latest 5
-const alerts = computed(() => companionStore.alerts.slice(0, 5)) // Show latest 5
-const realtimeEvents = computed(() => companionStore.realtimeEvents.slice(0, 10)) // Show latest 10
-const unackedAlerts = computed(() => companionStore.unacknowledgedAlerts)
-
-// Session detail
+// Companion monitoring state
+const companionSessions = ref<CompanionSession[]>([])
+const companionStats = ref<CompanionStats | null>(null)
 const selectedSession = ref<CompanionSession | null>(null)
-const showSessionDetail = ref(false)
+const companionLoading = ref(false)
+const companionError = ref('')
+const companionHasMore = ref(false)
+const companionOffset = ref(0)
+const companionLimit = 10
+const companionExpanded = ref(false)
+
+async function fetchCompanionSessions(append = false) {
+  companionLoading.value = true
+  companionError.value = ''
+  try {
+    const res = await companionApi.listSessions({ offset: companionOffset.value, limit: companionLimit })
+    if (append) {
+      companionSessions.value = [...companionSessions.value, ...(res.data.sessions || [])]
+    } else {
+      companionSessions.value = res.data.sessions || []
+    }
+    companionHasMore.value = (res.data.sessions?.length || 0) >= companionLimit
+  } catch {
+    companionError.value = t('companion.fetchError')
+  } finally {
+    companionLoading.value = false
+  }
+}
+
+async function fetchCompanionStats() {
+  try {
+    const res = await companionApi.getStats()
+    companionStats.value = res.data
+  } catch {
+    // Ignore stats error
+  }
+}
+
+function loadMoreSessions() {
+  companionOffset.value += companionLimit
+  fetchCompanionSessions(true)
+}
 
 function selectSession(session: CompanionSession) {
   selectedSession.value = session
-  showSessionDetail.value = true
-  companionStore.fetchSession(session.id)
-  companionStore.fetchSessionEvents(session.id)
 }
 
 function closeSessionDetail() {
-  showSessionDetail.value = false
   selectedSession.value = null
-  companionStore.clearCurrentSession()
 }
 
-async function deleteSession(sessionId: string) {
-  if (!confirm(t('companion.deleteSessionConfirm'))) return
+// Connection monitoring state
+const connections = ref<Connection[]>([])
+const connectionStats = ref<ConnectionStats | null>(null)
+const connectionLoading = ref(false)
+const connectionExpanded = ref(false)
+
+async function fetchConnections() {
+  connectionLoading.value = true
   try {
-    await companionStore.deleteSession(sessionId)
-    closeSessionDetail()
-  } catch (e) {
-    console.error('Failed to delete session:', e)
+    const [connResponse, statsResponse] = await Promise.all([
+      getActiveConnections(),
+      getConnectionStats()
+    ])
+    connections.value = connResponse.connections || []
+    connectionStats.value = statsResponse
+  } catch {
+    // Ignore error
+  } finally {
+    connectionLoading.value = false
   }
 }
 
-async function acknowledgeAlert(alertId: string) {
-  await companionStore.acknowledgeAlert(alertId)
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-function getThreatColor(level: ThreatLevel): string {
-  const colors: Record<ThreatLevel, string> = {
-    none: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
-    low: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300',
-    medium: 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300',
-    high: 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300',
-    critical: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300',
+let companionRefreshInterval: ReturnType<typeof setInterval> | null = null
+let connectionRefreshInterval: ReturnType<typeof setInterval> | null = null
+
+onMounted(async () => {
+  // Load cached results first
+  loadCachedScanResults()
+
+  // Auto-start security scan only if 24 hours have passed
+  if (shouldRunScan()) {
+    startSecurityScan()
   }
-  return colors[level] || colors.none
-}
 
-function getStatusColor(status: string): string {
-  const colors: Record<string, string> = {
-    active: 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300',
-    idle: 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300',
-    ended: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
-    error: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300',
-  }
-  return colors[status] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-}
+  // Fetch companion data
+  fetchCompanionSessions()
+  fetchCompanionStats()
+  companionRefreshInterval = setInterval(() => {
+    fetchCompanionStats()
+  }, 30000)
 
-function getPlatformIcon(platform: Platform): string {
-  const icons: Record<Platform, string> = {
-    whatsapp: 'W', telegram: 'T', discord: 'D', slack: 'S',
-    matrix: 'M', feishu: 'F', web: 'W', api: 'A',
-  }
-  return icons[platform] || '?'
-}
+  // Fetch connection data
+  fetchConnections()
+  connectionRefreshInterval = setInterval(fetchConnections, 5000)
+})
 
-function getEventTypeIcon(type: string): string {
-  const icons: Record<string, string> = {
-    session_start: '▶', session_end: '■', message_received: '←',
-    message_sent: '→', tool_call: '⚙', llm_request: '🤖',
-    security_threat: '⚠', error: '✕',
-  }
-  return icons[type] || '•'
-}
+onUnmounted(() => {
+  if (companionRefreshInterval) clearInterval(companionRefreshInterval)
+  if (connectionRefreshInterval) clearInterval(connectionRefreshInterval)
+})
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${(ms / 60000).toFixed(1)}m`
-}
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-
-  if (diffSec < 60) {
-    return t('companion.justNow')
-  } else if (diffMin < 60) {
-    return t('companion.minutesAgo', { n: diffMin })
-  } else if (diffHour < 24) {
-    return t('companion.hoursAgo', { n: diffHour })
-  } else {
-    return formatDate(dateStr)
-  }
-}
-
-// Get alert title with i18n support for demo mode
-function getAlertTitle(title: string): string {
-  if (companionStore.isDemoMode) {
-    const key = `companion.demo.alertTitles.${title}`
-    const translated = t(key)
-    return translated !== key ? translated : title
-  }
-  return title
-}
-
-// Get alert description with i18n support for demo mode
-function getAlertDescription(description: string): string {
-  if (companionStore.isDemoMode && description === 'demoDescription') {
-    return t('companion.demo.alertDescription')
-  }
-  return description
-}
 </script>
 
 <template>
@@ -344,7 +455,28 @@ function getAlertDescription(description: string): string {
     <!-- Header with Title -->
     <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ t('security.title') }}</h1>
 
-    <!-- Security Status Banner -->
+    <!-- Tabs -->
+    <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
+      <nav class="flex gap-4" aria-label="Tabs">
+        <button
+          v-for="tab in (['overview', 'monitoring', 'events'] as const)"
+          :key="tab"
+          :class="[
+            'py-2 px-1 border-b-2 font-medium text-sm transition-colors',
+            activeTab === tab
+              ? 'border-accent text-accent'
+              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+          ]"
+          @click="activeTab = tab"
+        >
+          {{ t(`security.tabs.${tab}`) }}
+        </button>
+      </nav>
+    </div>
+
+    <!-- Overview Tab -->
+    <div v-show="activeTab === 'overview'">
+      <!-- Security Status Banner -->
     <div class="mb-6">
       <div
 :class="[
@@ -416,25 +548,40 @@ function getAlertDescription(description: string): string {
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('security.scan.title') }}</h3>
           <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('security.scan.description') }}</p>
         </div>
-        <button
-          :disabled="isScanning"
-          :class="[
-            'px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2',
-            isScanning
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-accent hover:bg-accent/90'
-          ]"
-          @click="startSecurityScan"
-        >
-          <svg v-if="isScanning" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
-          {{ isScanning ? t('security.scan.scanning') : t('security.scan.startScan') }}
-        </button>
+        <div class="flex items-center gap-2">
+          <!-- Fix All Button -->
+          <button
+            v-if="fixableCount > 0 && !isScanning"
+            :disabled="!!fixingItem"
+            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50"
+            @click="fixAllIssues"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            {{ t('security.scan.fixAll') }} ({{ fixableCount }})
+          </button>
+          <!-- Scan Button -->
+          <button
+            :disabled="isScanning"
+            :class="[
+              'px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2',
+              isScanning
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-accent hover:bg-accent/90'
+            ]"
+            @click="startSecurityScan"
+          >
+            <svg v-if="isScanning" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            {{ isScanning ? t('security.scan.scanning') : t('security.scan.startScan') }}
+          </button>
+        </div>
       </div>
 
       <!-- Progress Bar -->
@@ -495,7 +642,7 @@ function getAlertDescription(description: string): string {
         <template v-for="(item, index) in scanResults" :key="item.id">
           <!-- Category Header -->
           <div
-            v-if="index === 0 || scanResults[index - 1].category !== item.category"
+            v-if="index === 0 || scanResults[index - 1]?.category !== item.category"
             class="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider pt-3 pb-1"
           >
             {{ getCategoryLabel(item.category) }}
@@ -503,420 +650,370 @@ function getAlertDescription(description: string): string {
           <!-- Scan Item -->
           <div
             :class="[
-              'flex items-center gap-3 py-2 px-3 rounded-lg transition-all duration-200',
-              item.status === 'scanning' ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
+              'rounded-lg transition-all duration-200 cursor-pointer',
+              item.status === 'scanning' ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-700/50',
+              expandedItemId === item.id ? 'bg-gray-50 dark:bg-slate-700/50' : ''
             ]"
+            @click="expandedItemId = expandedItemId === item.id ? null : item.id"
           >
-            <!-- Status Icon -->
-            <div :class="['flex-shrink-0', getScanStatusClass(item.status)]">
-              <svg v-if="item.status === 'passed'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <svg v-else-if="item.status === 'warning'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <svg v-else-if="item.status === 'failed'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <svg v-else-if="item.status === 'scanning'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="9" stroke-width="2" />
-              </svg>
+            <div class="flex items-center gap-3 py-2 px-3">
+              <!-- Status Icon -->
+              <div :class="['flex-shrink-0', getScanStatusClass(item.status)]">
+                <svg v-if="item.status === 'passed'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <svg v-else-if="item.status === 'warning'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <svg v-else-if="item.status === 'failed'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <svg v-else-if="item.status === 'scanning'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle cx="12" cy="12" r="9" stroke-width="2" />
+                </svg>
+              </div>
+              <!-- Item Info -->
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ getScanItemName(item) }}</div>
+                <div class="text-xs text-gray-500 dark:text-slate-400 truncate">{{ getScanItemDescription(item) }}</div>
+              </div>
+              <!-- Status Badge & Expand Icon -->
+              <div v-if="item.status !== 'pending'" class="flex-shrink-0 flex items-center gap-2">
+                <span
+                  :class="[
+                    'px-2 py-0.5 text-xs rounded-full font-medium',
+                    item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
+                    item.status === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
+                    item.status === 'failed' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' :
+                    'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+                  ]"
+                >
+                  {{ item.status === 'scanning' ? t('security.scan.checking') :
+                     item.status === 'passed' ? t('security.scan.passed') :
+                     item.status === 'warning' ? t('security.scan.warnings') :
+                     item.status === 'failed' ? t('security.scan.failed') : item.status }}
+                </span>
+                <!-- Fix Button -->
+                <button
+                  v-if="item.auto_fixable && (item.status === 'warning' || item.status === 'failed')"
+                  :disabled="fixingItem === item.id"
+                  class="px-2 py-0.5 text-xs rounded-full font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
+                  @click.stop="fixScanIssue(item)"
+                >
+                  <span v-if="fixingItem === item.id" class="flex items-center gap-1">
+                    <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </span>
+                  <span v-else>{{ t('security.scan.fix') }}</span>
+                </button>
+                <!-- Expand Icon -->
+                <svg
+                  v-if="item.status !== 'scanning' && (item.risk || item.impact || item.remediation || item.details)"
+                  :class="['w-4 h-4 text-gray-400 transition-transform', expandedItemId === item.id ? 'rotate-180' : '']"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
-            <!-- Item Info -->
-            <div class="flex-1 min-w-0">
-              <div class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ getScanItemName(item.id) }}</div>
-              <div class="text-xs text-gray-500 dark:text-slate-400 truncate">{{ getScanItemDescription(item.id) }}</div>
-            </div>
-            <!-- Status Badge -->
-            <div v-if="item.status !== 'pending'" class="flex-shrink-0">
-              <span
-                :class="[
-                  'px-2 py-0.5 text-xs rounded-full font-medium',
-                  item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
-                  item.status === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
-                  item.status === 'failed' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' :
-                  'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
-                ]"
-              >
-                {{ item.status === 'scanning' ? t('security.scan.checking') :
-                   item.status === 'passed' ? t('security.scan.passed') :
-                   item.status === 'warning' ? t('security.scan.warnings') :
-                   item.status === 'failed' ? t('security.scan.failed') : item.status }}
-              </span>
+            <!-- Expanded Details -->
+            <div
+              v-if="expandedItemId === item.id && (item.risk || item.impact || item.remediation || item.details)"
+              class="px-3 pb-3 pt-1 ml-8 border-l-2 border-gray-200 dark:border-slate-600"
+            >
+              <div v-if="getItemDetails(item)" class="text-xs text-gray-600 dark:text-slate-300 mb-2">
+                <span class="font-medium">{{ t('security.scan.details') }}:</span> {{ getItemDetails(item) }}
+              </div>
+              <div v-if="item.risk" class="text-xs text-gray-600 dark:text-slate-300 mb-2">
+                <span class="font-medium text-orange-600 dark:text-orange-400">{{ t('security.scan.risk') }}:</span> {{ item.risk }}
+              </div>
+              <div v-if="item.impact" class="text-xs text-gray-600 dark:text-slate-300 mb-2">
+                <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ item.impact }}
+              </div>
+              <div v-if="item.remediation" class="text-xs text-gray-600 dark:text-slate-300">
+                <span class="font-medium text-green-600 dark:text-green-400">{{ t('security.scan.remediation') }}:</span> {{ item.remediation }}
+              </div>
             </div>
           </div>
         </template>
         </div>
       </div>
     </div>
-
-    <!-- Companion Monitoring Section -->
-    <div class="mt-6 space-y-6">
-      <!-- Empty State with Demo -->
-      <div v-if="!companionStore.isDemoMode && sessions.length === 0 && !companionStore.loading" class="glass-card p-8">
-        <div class="text-center max-w-2xl mx-auto">
-          <!-- Icon -->
-          <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <!-- Title -->
-          <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">{{ t('companion.demo.title') }}</h3>
-          <!-- Description -->
-          <p class="text-gray-600 dark:text-gray-400 mb-6">{{ t('companion.demo.description') }}</p>
-          <!-- Features -->
-          <div class="text-left bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 mb-6">
-            <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">{{ t('companion.demo.features.title') }}</h4>
-            <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-              <li class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                {{ t('companion.demo.features.sessions') }}
-              </li>
-              <li class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                {{ t('companion.demo.features.events') }}
-              </li>
-              <li class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                {{ t('companion.demo.features.security') }}
-              </li>
-              <li class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                {{ t('companion.demo.features.replay') }}
-              </li>
-            </ul>
-          </div>
-          <!-- Platforms -->
-          <p class="text-xs text-gray-500 dark:text-gray-500 mb-6">{{ t('companion.demo.platforms') }}</p>
-          <!-- Demo Button -->
-          <button
-            class="px-6 py-3 bg-accent hover:bg-accent/90 text-white font-medium rounded-lg transition-colors inline-flex items-center gap-2"
-            @click="companionStore.startDemo()"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {{ t('companion.demo.runDemo') }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Demo Mode Banner -->
-      <div v-if="companionStore.isDemoMode" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-3 h-3 bg-amber-500 rounded-full animate-pulse" />
-          <span class="text-amber-800 dark:text-amber-200 font-medium">{{ t('companion.demo.running') }}</span>
-        </div>
-        <button
-          class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors"
-          @click="companionStore.stopDemo()"
-        >
-          {{ t('companion.demo.stopDemo') }}
-        </button>
-      </div>
-
-      <!-- Companion Stats Cards (show when has data or demo mode) -->
-      <div v-if="companionStore.isDemoMode || sessions.length > 0 || companionStore.loading" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div class="glass-card p-4">
-          <div class="flex items-center gap-2 mb-1">
-            <span :class="['w-2 h-2 rounded-full', isConnected() ? 'bg-green-500 animate-pulse' : 'bg-gray-400']" />
-            <span class="text-xs text-gray-500 dark:text-slate-400">{{ isConnected() ? t('companion.connected') : t('companion.disconnected') }}</span>
-          </div>
-          <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ stats?.activeSessions || 0 }}</div>
-          <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('companion.activeSessions') }}</div>
-        </div>
-        <div class="glass-card p-4">
-          <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ stats?.totalSessions || 0 }}</div>
-          <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('companion.totalSessions') }}</div>
-        </div>
-        <div class="glass-card p-4">
-          <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">{{ stats?.totalEvents || 0 }}</div>
-          <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('companion.totalEvents') }}</div>
-        </div>
-        <div class="glass-card p-4">
-          <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">{{ stats?.totalAlerts || 0 }}</div>
-          <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('companion.totalAlerts') }}</div>
-        </div>
-        <div class="glass-card p-4">
-          <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ unackedAlerts.length }}</div>
-          <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('companion.unackedAlerts') }}</div>
-        </div>
-        <div class="glass-card p-4">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ eventCount }}</div>
-          <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('companion.realtimeEvents') }}</div>
-        </div>
-      </div>
-
-      <!-- Two Column Layout: Sessions & Alerts (show when has data or demo mode) -->
-      <div v-if="companionStore.isDemoMode || sessions.length > 0 || companionStore.loading" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Recent Sessions -->
-        <div class="glass-card p-4">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('companion.sessions') }}</h3>
-          <div v-if="companionStore.loading" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('common.loading') }}</div>
-          <div v-else-if="sessions.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('companion.noSessions') }}</div>
-          <div v-else class="space-y-2">
-            <div v-for="session in sessions" :key="session.id" class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" @click="selectSession(session)">
-              <div class="flex items-center justify-between mb-1">
-                <div class="flex items-center gap-2">
-                  <span class="w-6 h-6 flex items-center justify-center bg-gray-200 dark:bg-slate-600 rounded text-xs font-bold">{{ getPlatformIcon(session.platform) }}</span>
-                  <span class="text-sm font-medium text-gray-900 dark:text-white">{{ session.id.slice(0, 8) }}...</span>
-                </div>
-                <div class="flex items-center gap-1">
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getStatusColor(session.status)]">{{ session.status }}</span>
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(session.threat_level)]">{{ session.threat_level }}</span>
-                </div>
-              </div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ session.event_count }} {{ t('companion.events') }} · {{ formatDate(session.started_at) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Recent Alerts -->
-        <div class="glass-card p-4">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            {{ t('companion.alerts.label') }}
-            <span v-if="unackedAlerts.length > 0" class="ml-2 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">{{ unackedAlerts.length }}</span>
-          </h3>
-          <div v-if="companionStore.loadingAlerts" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('common.loading') }}</div>
-          <div v-else-if="alerts.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('companion.noAlerts') }}</div>
-          <div v-else class="space-y-2">
-            <div v-for="alert in alerts" :key="alert.id" :class="['p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg', alert.acknowledged ? 'opacity-60' : '']">
-              <div class="flex items-start justify-between mb-1">
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ getAlertTitle(alert.title) }}</div>
-                  <div class="text-xs text-gray-500 dark:text-slate-400 truncate">{{ getAlertDescription(alert.description) }}</div>
-                </div>
-                <div class="flex items-center gap-1 ml-2">
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', alert.severity === 'critical' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : alert.severity === 'error' ? 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300' : alert.severity === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300']">{{ t(`companion.alerts.${alert.severity}`) }}</span>
-                  <button v-if="!alert.acknowledged" class="px-1.5 py-0.5 bg-accent hover:bg-accent-hover text-white text-xs rounded transition-colors" @click.stop="acknowledgeAlert(alert.id)">{{ t('companion.acknowledge') }}</button>
-                </div>
-              </div>
-              <div class="text-xs text-gray-400 dark:text-slate-500">{{ formatDate(alert.createdAt) }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Realtime Events (show when has data or demo mode) -->
-      <div v-if="companionStore.isDemoMode || sessions.length > 0 || companionStore.loading" class="glass-card p-4">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          {{ t('companion.realtime') }}
-          <span v-if="isConnected()" class="ml-2 w-2 h-2 bg-green-500 rounded-full inline-block animate-pulse" />
-        </h3>
-        <div v-if="realtimeEvents.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('companion.waitingForEvents') }}</div>
-        <div v-else class="space-y-2 max-h-96 overflow-y-auto">
-          <div v-for="event in realtimeEvents" :key="event.id" class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg text-sm">
-            <!-- Header: Event type, session, time -->
-            <div class="flex items-center gap-2 mb-2">
-              <span class="text-base">{{ getEventTypeIcon(event.eventType) }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType.replace(/_/g, ' ') }}</span>
-              <span v-if="event.security" :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(event.security.threatLevel)]">
-                {{ event.security.threatLevel }}
-              </span>
-              <span class="text-xs text-gray-400 dark:text-slate-500">{{ event.sessionId.slice(0, 8) }}...</span>
-              <span class="ml-auto text-xs text-gray-400 dark:text-slate-500 whitespace-nowrap">{{ formatRelativeTime(event.timestamp) }}</span>
-            </div>
-            <!-- Event Content -->
-            <div class="pl-6 space-y-1">
-              <!-- Security Event Details -->
-              <div v-if="event.security" class="text-xs">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="text-gray-500 dark:text-slate-400">{{ t('companion.security.score') }}:</span>
-                  <span class="font-medium" :class="event.security.threatScore >= 75 ? 'text-red-600 dark:text-red-400' : event.security.threatScore >= 50 ? 'text-orange-600 dark:text-orange-400' : event.security.threatScore >= 25 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'">{{ event.security.threatScore }}/100</span>
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.security.action === 'blocked' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : event.security.action === 'filtered' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' : 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300']">{{ event.security.action }}</span>
-                </div>
-                <div v-if="event.security.threatTypes?.length" class="text-gray-600 dark:text-slate-300">
-                  <span class="text-gray-500 dark:text-slate-400">{{ t('companion.security.threatTypes') }}:</span>
-                  {{ event.security.threatTypes.map(type => type.replace(/_/g, ' ')).join(', ') }}
-                </div>
-                <div v-if="event.security.details" class="text-gray-500 dark:text-slate-400 mt-1 truncate" :title="event.security.details">
-                  {{ event.security.details }}
-                </div>
-              </div>
-              <!-- Message Event Details -->
-              <div v-else-if="event.message" class="text-xs">
-                <div class="flex items-center gap-2">
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.message.direction === 'inbound' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300']">
-                    {{ event.message.direction === 'inbound' ? '← ' + t('companion.eventDetails.received') : '→ ' + t('companion.eventDetails.sent') }}
-                  </span>
-                  <span class="text-gray-500 dark:text-slate-400">{{ event.message.contentType }}</span>
-                  <span class="text-gray-400 dark:text-slate-500">{{ event.message.length }} chars</span>
-                </div>
-                <div v-if="event.message.content" class="text-gray-600 dark:text-slate-300 mt-1 truncate" :title="event.message.content">
-                  {{ event.message.content }}
-                </div>
-              </div>
-              <!-- Tool Call Event Details -->
-              <div v-else-if="event.toolCall" class="text-xs">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ event.toolCall.toolName }}</span>
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.toolCall.status === 'success' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' : event.toolCall.status === 'error' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300']">{{ event.toolCall.status }}</span>
-                  <span v-if="event.toolCall.sandboxUsed" class="px-1.5 py-0.5 rounded text-xs font-medium bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-300">sandbox</span>
-                  <span class="text-gray-400 dark:text-slate-500">{{ formatDuration(event.toolCall.duration) }}</span>
-                </div>
-                <div v-if="event.toolCall.inputPreview" class="text-gray-500 dark:text-slate-400 mt-1 truncate" :title="event.toolCall.inputPreview">
-                  {{ t('companion.eventDetails.input') }}: {{ event.toolCall.inputPreview }}
-                </div>
-              </div>
-              <!-- LLM Request Event Details -->
-              <div v-else-if="event.llmRequest" class="text-xs">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ event.llmRequest.provider }}/{{ event.llmRequest.model }}</span>
-                  <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', event.llmRequest.status === 'success' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300']">{{ event.llmRequest.status }}</span>
-                  <span class="text-gray-400 dark:text-slate-500">{{ formatDuration(event.llmRequest.duration) }}</span>
-                </div>
-                <div class="text-gray-500 dark:text-slate-400 mt-1">
-                  {{ t('companion.eventDetails.tokens') }}: {{ event.llmRequest.promptTokens }} → {{ event.llmRequest.completionTokens }} ({{ event.llmRequest.totalTokens }} total)
-                </div>
-              </div>
-              <!-- Error Event Details -->
-              <div v-else-if="event.error" class="text-xs text-red-600 dark:text-red-400">
-                {{ event.error }}
-              </div>
-              <!-- Generic Event (session_start, session_end, etc.) -->
-              <div v-else class="text-xs text-gray-500 dark:text-slate-400">
-                {{ event.platform }} · {{ event.userId.slice(0, 8) }}...
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
     </div>
 
-    <!-- Session Detail Modal -->
-    <div v-if="showSessionDetail && selectedSession" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="closeSessionDetail">
-      <div class="bg-white dark:bg-slate-800 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+    <!-- Monitoring Tab -->
+    <div v-show="activeTab === 'monitoring'">
+      <!-- Connection Monitoring Section -->
+    <div class="mt-6">
+      <div class="glass-card p-6">
+        <!-- Header with toggle -->
+        <div class="flex items-center justify-between mb-4">
           <div>
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ t('companion.sessionDetail') }}</h2>
-            <p class="text-sm text-gray-500 dark:text-slate-400 font-mono">{{ selectedSession.id }}</p>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('connections.activeConnections') }}
+            </h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              {{ t('connections.description') }}
+            </p>
           </div>
           <div class="flex items-center gap-2">
             <button
-              class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 rounded-lg transition-colors"
-              @click="deleteSession(selectedSession.id)"
+              @click="fetchConnections()"
+              :disabled="connectionLoading"
+              class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
             >
-              {{ t('common.delete') }}
+              {{ t('common.refresh') }}
             </button>
-            <button class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors" @click="closeSessionDetail">
-              <span class="text-xl">&times;</span>
+            <button
+              @click="connectionExpanded = !connectionExpanded"
+              class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+            >
+              <svg
+                :class="['w-5 h-5 text-gray-500 transition-transform', connectionExpanded ? 'rotate-180' : '']"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
             </button>
           </div>
         </div>
-        <div class="flex-1 overflow-y-auto p-4">
-          <!-- Basic Info -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.platform') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.platform }}</div>
+
+        <!-- Stats Summary -->
+        <div v-if="connectionStats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="text-lg font-bold text-gray-900 dark:text-white">{{ connectionStats.total_connections ?? 0 }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('connections.total') }}</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex items-center justify-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+              <span class="text-lg font-bold text-blue-600 dark:text-blue-400">{{ connectionStats.active_http ?? 0 }}</span>
             </div>
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.statusLabel') }}</div>
-              <span :class="['px-2 py-0.5 rounded text-xs font-medium', getStatusColor(selectedSession.status)]">{{ selectedSession.status }}</span>
+            <div class="text-xs text-gray-500 dark:text-gray-400">HTTP</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex items-center justify-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-green-500"></span>
+              <span class="text-lg font-bold text-green-600 dark:text-green-400">{{ connectionStats.active_websocket ?? 0 }}</span>
             </div>
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.threatLevel') }}</div>
-              <span :class="['px-2 py-0.5 rounded text-xs font-medium', getThreatColor(selectedSession.threat_level)]">{{ selectedSession.threat_level }}</span>
+            <div class="text-xs text-gray-500 dark:text-gray-400">WebSocket</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex items-center justify-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+              <span class="text-lg font-bold text-purple-600 dark:text-purple-400">{{ connectionStats.active_sse ?? 0 }}</span>
             </div>
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.events') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.event_count }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">SSE</div>
+          </div>
+        </div>
+
+        <!-- Expanded Content -->
+        <div v-show="connectionExpanded" class="border-t border-gray-200 dark:border-gray-700 pt-4">
+          <!-- Traffic Stats -->
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ formatBytes(connectionStats?.total_bytes_sent ?? 0) }}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('connections.bytesSent') }}</div>
+            </div>
+            <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ formatBytes(connectionStats?.total_bytes_recv ?? 0) }}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('connections.bytesRecv') }}</div>
             </div>
           </div>
 
-          <!-- Extended Info -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 p-3 bg-gray-50 dark:bg-slate-700/30 rounded-lg">
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.threatScore') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white">{{ selectedSession.threat_score }}/100</div>
+          <!-- Connection List -->
+          <div class="max-h-64 overflow-y-auto space-y-2">
+            <div v-if="connections.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
+              {{ t('connections.noConnections') }}
             </div>
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.userId') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white truncate" :title="selectedSession.user_id">{{ selectedSession.user_id }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.startedAt') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white">{{ formatDate(selectedSession.started_at) }}</div>
-            </div>
-            <div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('companion.duration') }}</div>
-              <div class="font-medium text-gray-900 dark:text-white">{{ formatDuration(selectedSession.duration) }}</div>
-            </div>
-          </div>
-
-          <!-- Metadata -->
-          <div v-if="selectedSession.metadata" class="mb-4 p-3 bg-gray-50 dark:bg-slate-700/30 rounded-lg">
-            <h4 class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">{{ t('companion.metadata') }}</h4>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-              <div>
-                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.messageCount') }}:</span>
-                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.message_count || 0 }}</span>
+            <div
+              v-for="conn in connections"
+              :key="conn.id"
+              class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+            >
+              <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-2">
+                  <span :class="['w-2 h-2 rounded-full', conn.status === 'active' ? 'bg-green-500' : 'bg-gray-400']"></span>
+                  <span :class="[
+                    'px-2 py-0.5 rounded text-xs font-medium uppercase',
+                    conn.type === 'http' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' :
+                    conn.type === 'websocket' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
+                    'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
+                  ]">
+                    {{ conn.type }}
+                  </span>
+                  <span class="text-xs font-mono text-gray-600 dark:text-gray-300 truncate max-w-[200px]">
+                    {{ conn.method }} {{ conn.path }}
+                  </span>
+                </div>
               </div>
-              <div>
-                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.toolCallCount') }}:</span>
-                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.tool_call_count || 0 }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.llmCallCount') }}:</span>
-                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.llm_call_count || 0 }}</span>
-              </div>
-              <div>
-                <span class="text-gray-500 dark:text-slate-400">{{ t('companion.totalTokens') }}:</span>
-                <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ selectedSession.metadata.total_tokens || 0 }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Event History -->
-          <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('companion.eventHistory') }}</h3>
-          <div v-if="companionStore.loadingEvents" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('common.loading') }}</div>
-          <div v-else-if="companionStore.sessionEvents.length === 0" class="text-center py-4 text-gray-500 dark:text-slate-400">{{ t('companion.noEvents') }}</div>
-          <div v-else class="space-y-2 max-h-64 overflow-y-auto">
-            <div v-for="event in companionStore.sessionEvents" :key="event.id" class="p-2 bg-gray-50 dark:bg-slate-700/50 rounded text-sm">
-              <div class="flex items-center gap-2 mb-1">
-                <span>{{ getEventTypeIcon(event.eventType) }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ event.eventType?.replace(/_/g, ' ') || 'Unknown' }}</span>
-                <span v-if="event.status" :class="['px-1.5 py-0.5 rounded text-xs', event.status === 'success' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300']">{{ event.status }}</span>
-                <span class="ml-auto text-xs text-gray-400 dark:text-slate-500">{{ formatDate(event.timestamp) }}</span>
-              </div>
-              <!-- Event Details -->
-              <div v-if="event.message" class="pl-6 text-xs text-gray-600 dark:text-slate-300">
-                <span :class="event.message.direction === 'inbound' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'">
-                  {{ event.message.direction === 'inbound' ? '←' : '→' }}
-                </span>
-                {{ event.message.contentType }} ({{ event.message.length }} chars)
-              </div>
-              <div v-if="event.toolCall" class="pl-6 text-xs text-gray-600 dark:text-slate-300">
-                {{ event.toolCall.toolName }} - {{ event.toolCall.status }} ({{ event.toolCall.duration }}ms)
-              </div>
-              <div v-if="event.llmRequest" class="pl-6 text-xs text-gray-600 dark:text-slate-300">
-                {{ event.llmRequest.provider }}/{{ event.llmRequest.model }} - {{ event.llmRequest.totalTokens }} tokens
-              </div>
-              <div v-if="event.security" class="pl-6 text-xs">
-                <span :class="getThreatColor(event.security.threatLevel)">{{ event.security.threatLevel }}</span>
-                <span class="text-gray-500 dark:text-slate-400 ml-2">{{ event.security.action }}</span>
-              </div>
-              <div v-if="event.error" class="pl-6 text-xs text-red-600 dark:text-red-400">
-                {{ event.error }}
+              <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                <span>{{ conn.client_ip }}</span>
+                <span>{{ formatBytes(conn.bytes_sent) }} ↑</span>
+                <span>{{ formatBytes(conn.bytes_recv) }} ↓</span>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- AI Agent Monitoring Section (Companion) -->
+    <div class="mt-6">
+      <div class="glass-card p-6">
+        <!-- Header with toggle -->
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('companion.title') }}
+            </h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              {{ t('companion.description') }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              @click="fetchCompanionSessions(); fetchCompanionStats()"
+              :disabled="companionLoading"
+              class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              {{ t('common.refresh') }}
+            </button>
+            <button
+              @click="companionExpanded = !companionExpanded"
+              class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+            >
+              <svg
+                :class="['w-5 h-5 text-gray-500 transition-transform', companionExpanded ? 'rotate-180' : '']"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div v-if="companionStats" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="text-lg font-bold text-green-600 dark:text-green-400">{{ companionStats.active_sessions }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.activeSessions') }}</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="text-lg font-bold text-blue-600 dark:text-blue-400">{{ companionStats.total_sessions }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalSessions') }}</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="text-lg font-bold text-purple-600 dark:text-purple-400">{{ companionStats.total_events }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalEvents') }}</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="text-lg font-bold text-orange-600 dark:text-orange-400">{{ companionStats.total_alerts }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalAlerts') }}</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="text-lg font-bold text-red-600 dark:text-red-400">{{ companionStats.unacked_alerts }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.unackedAlerts') }}</div>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div v-if="companionError" class="p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg mb-4">
+          {{ companionError }}
+        </div>
+
+        <!-- Expanded Content -->
+        <div v-show="companionExpanded" class="border-t border-gray-200 dark:border-gray-700 pt-4">
+          <!-- Session List Only -->
+          <div class="max-h-96 overflow-y-auto">
+            <SessionList
+              :sessions="companionSessions"
+              :loading="companionLoading"
+              :has-more="companionHasMore"
+              :selected-id="selectedSession?.id"
+              @select="selectSession"
+              @load-more="loadMoreSessions"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Session Detail Modal -->
+    <Transition
+      enter-active-class="transition-opacity duration-200"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-200"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="selectedSession"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click.self="closeSessionDetail"
+      >
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+          <!-- Modal Header -->
+          <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('companion.sessionDetail') }}
+            </h2>
+            <button
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              @click="closeSessionDetail"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <!-- Modal Content -->
+          <div class="flex-1 overflow-y-auto p-6">
+            <SessionDetail
+              :session="selectedSession"
+              :modal-mode="true"
+              @close="closeSessionDetail"
+            />
+          </div>
+        </div>
+      </div>
+    </Transition>
+    </div>
+
+    <!-- Events Tab -->
+    <div v-show="activeTab === 'events'">
+      <div class="glass-card p-6">
+        <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+          <svg class="mx-auto h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+          </svg>
+          <p>{{ t('security.events.comingSoon') }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fix Preview Dialog -->
+    <FixPreviewDialog
+      :visible="showFixPreview"
+      :item="fixPreviewItem as SecurityScanItem | null"
+      @close="closeFixPreview"
+      @confirm="handleFixConfirm"
+    />
   </div>
 </template>

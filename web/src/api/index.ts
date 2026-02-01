@@ -18,6 +18,8 @@ export * from './security'
 export * from './companion'
 export * from './claudecode'
 export * from './service'
+export * from './userdata'
+export * from './proxyCache'
 
 export interface HealthStatus {
   status: string
@@ -85,9 +87,23 @@ export const configApi = {
   triggerReload: () => api.post<{ success: boolean; message: string }>('/config/reload'),
 }
 
+export interface BackupProgress {
+  in_progress: boolean
+  operation: 'backup' | 'restore' | ''
+  progress: number // 0-100
+  current_file: string
+  files_processed: number
+  total_files: number
+  bytes_processed: number
+  total_bytes: number
+  started_at: string
+  error?: string
+}
+
 export const backupApi = {
   list: () => api.get<BackupInfo[]>('/backup'),
-  create: () => api.post<BackupInfo>('/backup'),
-  restore: (id: string) => api.post<{ success: boolean; message: string }>(`/backup/${id}/restore`),
+  create: () => api.post<BackupInfo>('/backup', {}, { timeout: 0 }), // No timeout for backup
+  restore: (id: string) => api.post<{ success: boolean; message: string }>(`/backup/${id}/restore`, {}, { timeout: 0 }), // No timeout for restore
   delete: (id: string) => api.delete<{ success: boolean }>(`/backup/${id}`),
+  getProgress: () => api.get<BackupProgress>('/backup/progress'),
 }

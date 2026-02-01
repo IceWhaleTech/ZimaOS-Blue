@@ -42,6 +42,20 @@ const (
 	ProviderStatusError ProviderStatus = "error"
 )
 
+// APIFormat represents the API format used by a provider
+type APIFormat string
+
+const (
+	// APIFormatOpenAI represents OpenAI-compatible API format (default)
+	APIFormatOpenAI APIFormat = "openai"
+	// APIFormatAnthropic represents Anthropic Claude API format
+	APIFormatAnthropic APIFormat = "anthropic"
+	// APIFormatOllama represents Ollama API format
+	APIFormatOllama APIFormat = "ollama"
+	// APIFormatGoogle represents Google AI API format
+	APIFormatGoogle APIFormat = "google"
+)
+
 // Provider represents an LLM provider configuration
 type Provider struct {
 	ID          string           `json:"id"`
@@ -52,6 +66,7 @@ type Provider struct {
 	Status      ProviderStatus   `json:"status"`
 	BaseURL     string           `json:"base_url,omitempty"`
 	APIVersion  string           `json:"api_version,omitempty"` // e.g., "v1", "2024-01"
+	APIFormat   APIFormat        `json:"api_format,omitempty"`  // openai, anthropic, ollama, google (auto-detected if empty)
 
 	// Authentication
 	APIKeys []APIKey     `json:"api_keys,omitempty"`

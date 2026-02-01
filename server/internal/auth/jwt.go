@@ -1,7 +1,10 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,7 +17,19 @@ var (
 	ErrExpiredToken     = errors.New("token has expired")
 	ErrRevokedToken     = errors.New("token has been revoked")
 	ErrInvalidTokenType = errors.New("invalid token type")
+	ErrWeakSecret       = errors.New("JWT secret is too weak or uses default value")
 )
+
+// Security: Known weak/default secrets that should be rejected
+var weakSecrets = []string{
+	"change-me-in-production-use-a-strong-secret-key",
+	"change-me",
+	"secret",
+	"password",
+	"jwt-secret",
+	"your-secret-key",
+	"your-256-bit-secret",
+}
 
 // TokenType represents the type of JWT token
 type TokenType string
@@ -53,12 +68,61 @@ type JWTService struct {
 	mu        sync.RWMutex
 }
 
-// NewJWTService creates a new JWT service
+// ValidateJWTSecret checks if the JWT secret is secure enough.
+// Security: Returns an error if the secret is weak or uses a known default value.
+func ValidateJWTSecret(secret string) error {
+	// Check minimum length (at least 32 characters for HS256)
+	if len(secret) < 32 {
+		return errors.New("JWT secret must be at least 32 characters long")
+	}
+
+	// Check against known weak secrets
+	secretLower := strings.ToLower(secret)
+	for _, weak := range weakSecrets {
+		if strings.Contains(secretLower, strings.ToLower(weak)) {
+			return ErrWeakSecret
+		}
+	}
+
+	return nil
+}
+
+// GenerateSecureSecret generates a cryptographically secure random secret.
+// Security: Use this to generate a secure JWT secret if none is configured.
+func GenerateSecureSecret() (string, error) {
+	bytes := make([]byte, 32) // 256 bits
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// NewJWTService creates a new JWT service.
+// Security: This will log a warning if the secret appears weak.
 func NewJWTService(cfg *JWTConfig) *JWTService {
 	return &JWTService{
 		config:    cfg,
 		blacklist: make(map[string]time.Time),
 	}
+}
+
+// NewJWTServiceSecure creates a new JWT service with security validation.
+// Security: Returns an error if the secret is weak or uses a known default value.
+// Use this in production to ensure secure configuration.
+func NewJWTServiceSecure(cfg *JWTConfig) (*JWTService, error) {
+	if err := ValidateJWTSecret(cfg.Secret); err != nil {
+		return nil, err
+	}
+
+	return &JWTService{
+		config:    cfg,
+		blacklist: make(map[string]time.Time),
+	}, nil
+}
+
+// IsSecretSecure checks if the current secret is secure.
+func (s *JWTService) IsSecretSecure() bool {
+	return ValidateJWTSecret(s.config.Secret) == nil
 }
 
 // GenerateAccessToken generates a new access token

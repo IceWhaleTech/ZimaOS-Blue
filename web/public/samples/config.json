@@ -1,0 +1,47 @@
+{
+  "application": {
+    "name": "MyApp",
+    "version": "2.1.0",
+    "environment": "production"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000,
+    "timeout": 30000,
+    "maxConnections": 100
+  },
+  "database": {
+    "type": "postgresql",
+    "host": "localhost",
+    "port": 5432,
+    "name": "myapp_db",
+    "pool": {
+      "min": 5,
+      "max": 20,
+      "idleTimeout": 10000
+    }
+  },
+  "cache": {
+    "enabled": true,
+    "type": "redis",
+    "host": "localhost",
+    "port": 6379,
+    "ttl": 3600
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "outputs": ["console", "file"],
+    "file": {
+      "path": "/var/log/myapp/app.log",
+      "maxSize": "100MB",
+      "maxFiles": 5
+    }
+  },
+  "features": {
+    "darkMode": true,
+    "notifications": true,
+    "analytics": false,
+    "betaFeatures": ["newDashboard", "advancedSearch"]
+  }
+}

@@ -32,12 +32,12 @@ systemctl status zimaos-echo
 Get-Service ZimaOS-Echo
 ```
 
-访问仪表板：`http://localhost:8080`
+访问仪表板：`http://localhost:23456`
 
 ## 健康检查
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 预期响应：

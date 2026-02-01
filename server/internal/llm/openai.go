@@ -227,9 +227,21 @@ type openAIStreamOptions struct {
 
 type openAIMessage struct {
 	Role       string           `json:"role"`
-	Content    string           `json:"content"`
+	Content    interface{}      `json:"content"` // string or []openAIContentPart for vision
 	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+// openAIContentPart represents a content part for vision API
+type openAIContentPart struct {
+	Type     string              `json:"type"` // "text" or "image_url"
+	Text     string              `json:"text,omitempty"`
+	ImageURL *openAIImageURL     `json:"image_url,omitempty"`
+}
+
+type openAIImageURL struct {
+	URL    string `json:"url"`    // data:image/jpeg;base64,... or URL
+	Detail string `json:"detail,omitempty"` // "low", "high", or "auto"
 }
 
 type openAITool struct {
@@ -717,22 +729,53 @@ func (p *OpenAIProvider) sendOpenAITextChunks(ctx context.Context, ch chan<- Str
 func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 	messages := make([]openAIMessage, len(req.Messages))
 	for i, msg := range req.Messages {
-		messages[i] = openAIMessage{
+		oaiMsg := openAIMessage{
 			Role:       string(msg.Role),
-			Content:    msg.Content,
 			ToolCallID: msg.ToolCallID,
 		}
+
+		// Handle multimodal content
+		if len(msg.ContentParts) > 0 {
+			// Build content parts array for vision API
+			contentParts := make([]openAIContentPart, 0, len(msg.ContentParts))
+			for _, part := range msg.ContentParts {
+				switch part.Type {
+				case "text":
+					contentParts = append(contentParts, openAIContentPart{
+						Type: "text",
+						Text: part.Text,
+					})
+				case "image":
+					// Convert to data URL format
+					dataURL := "data:" + part.MediaType + ";base64," + part.Data
+					contentParts = append(contentParts, openAIContentPart{
+						Type: "image_url",
+						ImageURL: &openAIImageURL{
+							URL:    dataURL,
+							Detail: "auto",
+						},
+					})
+				}
+			}
+			oaiMsg.Content = contentParts
+		} else {
+			// Simple text content
+			oaiMsg.Content = msg.Content
+		}
+
 		if len(msg.ToolCalls) > 0 {
-			messages[i].ToolCalls = make([]openAIToolCall, len(msg.ToolCalls))
+			oaiMsg.ToolCalls = make([]openAIToolCall, len(msg.ToolCalls))
 			for j, tc := range msg.ToolCalls {
-				messages[i].ToolCalls[j] = openAIToolCall{
+				oaiMsg.ToolCalls[j] = openAIToolCall{
 					ID:   tc.ID,
 					Type: "function",
 				}
-				messages[i].ToolCalls[j].Function.Name = tc.Name
-				messages[i].ToolCalls[j].Function.Arguments = tc.Arguments
+				oaiMsg.ToolCalls[j].Function.Name = tc.Name
+				oaiMsg.ToolCalls[j].Function.Arguments = tc.Arguments
 			}
 		}
+
+		messages[i] = oaiMsg
 	}
 
 	openAIReq := openAIRequest{

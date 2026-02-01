@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onUnmounted, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
 import ImagePreview from '@/components/chat/ImagePreview.vue'
@@ -35,6 +35,11 @@ const cameraInputRef = ref<HTMLInputElement | null>(null)
 const attachments = ref<FileAttachment[]>([])
 const dragOver = ref(false)
 
+// Mobile menu state
+const isMobile = ref(false)
+const showMobileMenu = ref(false)
+const mobileMenuRef = ref<HTMLDivElement | null>(null)
+
 // Image preview state
 const showImagePreview = ref(false)
 const previewImageSrc = ref('')
@@ -58,6 +63,11 @@ const allowedMimeTypes = computed(() => props.allowedTypes || [
 
 const canSend = computed(() =>
   (message.value.trim().length > 0 || attachments.value.length > 0) && !props.disabled
+)
+
+// Shorter placeholder for mobile
+const placeholder = computed(() =>
+  isMobile.value ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 )
 
 function generateId(): string {
@@ -310,6 +320,55 @@ onUnmounted(() => {
   if (recorder.value) {
     recorder.value.stop()
   }
+  window.removeEventListener('resize', checkMobile)
+  document.removeEventListener('click', handleClickOutside)
+})
+
+// Check if mobile
+function checkMobile() {
+  isMobile.value = window.innerWidth < 640
+  if (!isMobile.value) {
+    showMobileMenu.value = false
+  }
+}
+
+// Handle click outside mobile menu
+function handleClickOutside(event: MouseEvent) {
+  if (mobileMenuRef.value && !mobileMenuRef.value.contains(event.target as Node)) {
+    showMobileMenu.value = false
+  }
+}
+
+// Toggle mobile menu
+function toggleMobileMenu() {
+  showMobileMenu.value = !showMobileMenu.value
+}
+
+// Mobile menu action handlers
+function handleMobileAttachment() {
+  showMobileMenu.value = false
+  openFileDialog()
+}
+
+function handleMobileCamera() {
+  showMobileMenu.value = false
+  openCameraDialog()
+}
+
+function handleMobileVoice() {
+  showMobileMenu.value = false
+  toggleRecording()
+}
+
+function handleMobileTalkMode() {
+  showMobileMenu.value = false
+  emit('openTalkMode')
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  document.addEventListener('click', handleClickOutside)
 })
 
 function focus() {
@@ -434,8 +493,103 @@ defineExpose({ focus, setInput })
     </div>
 
     <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Mobile: Collapsed menu button -->
+      <div v-if="isMobile" ref="mobileMenuRef" class="relative">
+        <button
+          :disabled="disabled || streaming"
+          class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          :class="{ 'bg-accent/20 text-accent': showMobileMenu }"
+          :title="t('chat.moreActions')"
+          @click.stop="toggleMobileMenu"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 6v.01M12 12v.01M12 18v.01"
+            />
+          </svg>
+        </button>
+
+        <!-- Mobile menu dropdown -->
+        <Transition
+          enter-active-class="transition ease-out duration-200"
+          enter-from-class="opacity-0 translate-y-2"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition ease-in duration-150"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 translate-y-2"
+        >
+          <div
+            v-if="showMobileMenu"
+            class="absolute bottom-full left-0 mb-2 w-48 glass-card rounded-xl shadow-lg border border-white/10 overflow-hidden z-50"
+          >
+            <button
+              :disabled="disabled || streaming"
+              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+              @click="handleMobileAttachment"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              <span class="text-sm">{{ t('chat.attachFile') }}</span>
+            </button>
+
+            <button
+              :disabled="disabled || streaming"
+              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+              @click="handleMobileCamera"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span class="text-sm">{{ t('chat.takePhoto') }}</span>
+            </button>
+
+            <button
+              :disabled="disabled || streaming || isTranscribing"
+              class="w-full px-4 py-3 flex items-center gap-3 transition-colors disabled:opacity-50"
+              :class="isRecording
+                ? 'bg-red-500/20 text-red-400'
+                : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10'"
+              @click="handleMobileVoice"
+            >
+              <svg v-if="isTranscribing" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              <span class="text-sm">{{ isRecording ? t('chat.stopRecording') : t('chat.startRecording') }}</span>
+            </button>
+
+            <button
+              :disabled="disabled || streaming"
+              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+              @click="handleMobileTalkMode"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              <span class="text-sm">{{ t('chat.talkMode.title') }}</span>
+            </button>
+          </div>
+        </Transition>
+      </div>
+
+      <!-- Desktop: Individual buttons -->
       <!-- Attachment button -->
       <button
+        v-if="!isMobile"
         :disabled="disabled || streaming"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.attachFile')"
@@ -457,8 +611,9 @@ defineExpose({ focus, setInput })
         </svg>
       </button>
 
-      <!-- Camera button (mobile-friendly) -->
+      <!-- Camera button (desktop) -->
       <button
+        v-if="!isMobile"
         :disabled="disabled || streaming"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.takePhoto')"
@@ -486,8 +641,9 @@ defineExpose({ focus, setInput })
         </svg>
       </button>
 
-      <!-- Voice input button -->
+      <!-- Voice input button (desktop) -->
       <button
+        v-if="!isMobile"
         :disabled="disabled || streaming || isTranscribing"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :class="isRecording
@@ -523,8 +679,9 @@ defineExpose({ focus, setInput })
         </svg>
       </button>
 
-      <!-- Talk Mode button -->
+      <!-- Talk Mode button (desktop) -->
       <button
+        v-if="!isMobile"
         :disabled="disabled || streaming"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.talkMode.title')"
@@ -551,8 +708,8 @@ defineExpose({ focus, setInput })
           ref="textareaRef"
           v-model="message"
           :disabled="disabled || streaming"
-          :placeholder="t('chat.inputPlaceholder')"
-          class="w-full glass-input text-gray-900 dark:text-white px-4 py-2.5 sm:py-3 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+          :placeholder="placeholder"
+          class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 sm:px-4 sm:py-3 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
           rows="1"
           @keydown="handleKeydown"
           @input="handleInput"

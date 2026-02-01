@@ -44,7 +44,7 @@ type ClientConfig struct {
 // DefaultConfig returns the default OIDC configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		Issuer:                 "http://localhost:8080",
+		Issuer:                 "http://localhost:23456",
 		SigningKeyPath:         "./keys/oidc.key",
 		SigningKeyRotationDays: 90,
 		AccessTokenTTL:         time.Hour,

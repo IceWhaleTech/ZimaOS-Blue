@@ -15,20 +15,23 @@ import (
 type RemoteAccessHandler struct {
 	tunnelManager *ngrok.TunnelManager
 	repository    *ngrok.Repository
+	serverPort    int
 }
 
 // NewRemoteAccessHandler creates a new remote access handler.
-func NewRemoteAccessHandler(tm *ngrok.TunnelManager) *RemoteAccessHandler {
+func NewRemoteAccessHandler(tm *ngrok.TunnelManager, serverPort int) *RemoteAccessHandler {
 	return &RemoteAccessHandler{
 		tunnelManager: tm,
+		serverPort:    serverPort,
 	}
 }
 
 // NewRemoteAccessHandlerWithRepo creates a new remote access handler with repository.
-func NewRemoteAccessHandlerWithRepo(tm *ngrok.TunnelManager, repo *ngrok.Repository) *RemoteAccessHandler {
+func NewRemoteAccessHandlerWithRepo(tm *ngrok.TunnelManager, repo *ngrok.Repository, serverPort int) *RemoteAccessHandler {
 	return &RemoteAccessHandler{
 		tunnelManager: tm,
 		repository:    repo,
+		serverPort:    serverPort,
 	}
 }
 
@@ -81,9 +84,9 @@ func (h *RemoteAccessHandler) StartRemoteAccess(c echo.Context) error {
 		})
 	}
 
-	// Default port
+	// Default port - use server's actual listening port
 	if req.Port == 0 {
-		req.Port = 8080
+		req.Port = h.serverPort
 	}
 
 	// Check if already running

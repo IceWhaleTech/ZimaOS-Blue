@@ -47,6 +47,7 @@ export interface RemoteTool {
   stars?: number
   downloads?: number
   installed: boolean
+  builtin?: boolean
 }
 
 export interface ToolStoreItem {

@@ -40,7 +40,7 @@ func (m *LocalhostRunManager) Start(ctx context.Context, cfg *Config) error {
 
 	port := cfg.Port
 	if port == 0 {
-		port = 8080
+		port = 23456
 	}
 
 	// Create cancellable context

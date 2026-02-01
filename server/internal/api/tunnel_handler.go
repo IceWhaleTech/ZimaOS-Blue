@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tunnel"
 )
 
@@ -38,10 +39,16 @@ func NewTunnelHandler(repo *ngrok.Repository, serverPort int) *TunnelHandler {
 	h.managers[tunnel.ProviderCloudflare] = tunnel.NewCloudflareManager()
 
 	// Log tunnel URL when available (format: "Tunnel URL: http://bore.pub:2877")
+	// Also register the URL as an allowed CORS origin
 	for _, m := range h.managers {
 		m.SetOnURLChange(func(url string) {
-			if h.repository != nil && url != "" {
-				h.repository.AddLog(context.Background(), "", "url", fmt.Sprintf("Tunnel URL: %s", url), nil)
+			if url != "" {
+				// Log the URL
+				if h.repository != nil {
+					h.repository.AddLog(context.Background(), "", "url", fmt.Sprintf("Tunnel URL: %s", url), nil)
+				}
+				// Add to CORS allowed origins
+				security.AddDynamicOriginDefault(url)
 			}
 		})
 	}

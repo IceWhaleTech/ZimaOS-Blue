@@ -16,13 +16,15 @@ import (
 type SDKRemoteAccessHandler struct {
 	tunnelManager *ngrok.SDKTunnelManager
 	repository    *ngrok.Repository
+	serverPort    int
 }
 
 // NewSDKRemoteAccessHandler creates a new SDK-based remote access handler.
-func NewSDKRemoteAccessHandler(tm *ngrok.SDKTunnelManager, repo *ngrok.Repository) *SDKRemoteAccessHandler {
+func NewSDKRemoteAccessHandler(tm *ngrok.SDKTunnelManager, repo *ngrok.Repository, serverPort int) *SDKRemoteAccessHandler {
 	return &SDKRemoteAccessHandler{
 		tunnelManager: tm,
 		repository:    repo,
+		serverPort:    serverPort,
 	}
 }
 
@@ -59,9 +61,9 @@ func (h *SDKRemoteAccessHandler) StartRemoteAccess(c echo.Context) error {
 		})
 	}
 
-	// Default port
+	// Default port - use server's actual listening port
 	if req.Port == 0 {
-		req.Port = 8080
+		req.Port = h.serverPort
 	}
 
 	// Start tunnel

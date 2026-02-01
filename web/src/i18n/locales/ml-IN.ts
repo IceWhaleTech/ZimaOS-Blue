@@ -56,6 +56,28 @@ export default {
     security: 'സുരക്ഷ',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'എല്ലാം',
+      overview: 'അവലോകനം',
+      system: 'സിസ്റ്റം',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'സിസ്റ്റം നില',
+      uptime: 'പ്രവർത്തന സമയം',
+      memoryUsage: 'മെമ്മറി ഉപയോഗം',
+      goroutines: 'Goroutines',
+      failoverStatus: 'ഫെയിൽഓവർ നില',
+      cpuChart: 'CPU ഉപയോഗം',
+      memoryChart: 'മെമ്മറി ഉപയോഗം',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap മെമ്മറി',
+      systemInfo: 'സിസ്റ്റം വിവരം',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'കഴിവുകൾ',
@@ -580,6 +602,7 @@ export default {
         system: 'സിസ്റ്റം',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'പാസ്‌വേഡ് ഏറ്റവും കുറഞ്ഞ നീളം',
           description: 'പാസ്‌വേഡ് ഏറ്റവും കുറഞ്ഞ നീളം സുരക്ഷാ ആവശ്യകതകൾ പാലിക്കുന്നുണ്ടോ എന്ന് പരിശോധിക്കുക',

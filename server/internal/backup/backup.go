@@ -55,6 +55,77 @@ type Manager struct {
 
 	mu      sync.RWMutex
 	backups map[string]*BackupInfo
+
+	// Progress tracking
+	progressMu sync.RWMutex
+	progress   *Progress
+}
+
+// Progress tracks the current backup/restore operation
+type Progress struct {
+	InProgress     bool      `json:"in_progress"`
+	Operation      string    `json:"operation"` // "backup" or "restore"
+	ProgressPct    int       `json:"progress"`  // 0-100
+	CurrentFile    string    `json:"current_file"`
+	FilesProcessed int       `json:"files_processed"`
+	TotalFiles     int       `json:"total_files"`
+	BytesProcessed int64     `json:"bytes_processed"`
+	TotalBytes     int64     `json:"total_bytes"`
+	StartedAt      time.Time `json:"started_at"`
+	Error          string    `json:"error,omitempty"`
+}
+
+// GetProgress returns the current progress
+func (m *Manager) GetProgress() *Progress {
+	m.progressMu.RLock()
+	defer m.progressMu.RUnlock()
+	if m.progress == nil {
+		return &Progress{InProgress: false}
+	}
+	// Return a copy
+	p := *m.progress
+	return &p
+}
+
+func (m *Manager) startProgress(operation string) {
+	m.progressMu.Lock()
+	defer m.progressMu.Unlock()
+	m.progress = &Progress{
+		InProgress: true,
+		Operation:  operation,
+		StartedAt:  time.Now(),
+	}
+}
+
+func (m *Manager) updateProgress(currentFile string, filesProcessed, totalFiles int, bytesProcessed, totalBytes int64) {
+	m.progressMu.Lock()
+	defer m.progressMu.Unlock()
+	if m.progress == nil {
+		return
+	}
+	m.progress.CurrentFile = currentFile
+	m.progress.FilesProcessed = filesProcessed
+	m.progress.TotalFiles = totalFiles
+	m.progress.BytesProcessed = bytesProcessed
+	m.progress.TotalBytes = totalBytes
+	if totalFiles > 0 {
+		m.progress.ProgressPct = (filesProcessed * 100) / totalFiles
+	} else if totalBytes > 0 {
+		m.progress.ProgressPct = int((bytesProcessed * 100) / totalBytes)
+	}
+}
+
+func (m *Manager) endProgress(err error) {
+	m.progressMu.Lock()
+	defer m.progressMu.Unlock()
+	if m.progress == nil {
+		return
+	}
+	m.progress.InProgress = false
+	m.progress.ProgressPct = 100
+	if err != nil {
+		m.progress.Error = err.Error()
+	}
 }
 
 // NewManager creates a new backup manager
@@ -67,7 +138,8 @@ func NewManager(cfg Config, dataDir, configDir string) (*Manager, error) {
 	}
 
 	// Ensure backup directory exists
-	if err := os.MkdirAll(cfg.Path, 0755); err != nil {
+	// Security: Use 0700 to prevent other users from reading backup files
+	if err := os.MkdirAll(cfg.Path, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
@@ -90,6 +162,12 @@ func NewManager(cfg Config, dataDir, configDir string) (*Manager, error) {
 func (m *Manager) Create(ctx context.Context, backupType BackupType) (*BackupInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Start progress tracking
+	m.startProgress("backup")
+	defer func() {
+		// Will be called with nil if successful
+	}()
 
 	id := uuid.New().String()
 	timestamp := time.Now()
@@ -172,6 +250,9 @@ func (m *Manager) Create(ctx context.Context, backupType BackupType) (*BackupInf
 	if err := m.saveMetadata(info); err != nil {
 		return nil, fmt.Errorf("failed to save metadata: %w", err)
 	}
+
+	// End progress tracking
+	m.endProgress(nil)
 
 	return info, nil
 }
@@ -285,76 +366,137 @@ func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]s
 		return nil // Directory doesn't exist, skip
 	}
 
-	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+	// Directories and files to exclude from backup
+	excludeDirs := map[string]bool{
+		"backups":     true, // Backup directory itself
+		"tts_models":  true, // TTS model files (large, can be re-downloaded)
+		"sherpa-onnx": true, // Sherpa ONNX models
+		"models":      true, // Generic models directory
+	}
+	excludeExtensions := map[string]bool{
+		".onnx": true, // ONNX model files
+		".bin":  true, // Binary model files (often large)
+	}
+
+	// Use queue-based iteration instead of recursive walk
+	queue := []string{srcDir}
+	filesProcessed := 0
+
+	for len(queue) > 0 {
+		currentDir := queue[0]
+		queue = queue[1:]
+
+		entries, err := os.ReadDir(currentDir)
 		if err != nil {
-			return err
+			continue // Skip directories we can't read
 		}
 
-		// Skip symbolic links to avoid issues
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil
-		}
+		for _, entry := range entries {
+			// Skip excluded directories
+			if entry.IsDir() && excludeDirs[entry.Name()] {
+				continue
+			}
 
-		// Skip special files (devices, sockets, etc.)
-		if !info.Mode().IsRegular() && !info.IsDir() {
-			return nil
-		}
+			path := filepath.Join(currentDir, entry.Name())
 
-		// Get relative path
-		relPath, err := filepath.Rel(srcDir, path)
-		if err != nil {
-			return err
-		}
-
-		// For regular files, read content first to get accurate size
-		// This prevents "write too long" errors when file changes during backup
-		if info.Mode().IsRegular() {
-			file, err := os.Open(path)
+			info, err := entry.Info()
 			if err != nil {
-				// Skip files we can't open (permission issues, etc.)
-				return nil
+				continue // Skip files we can't stat
 			}
-			defer file.Close()
 
-			// Read file content into memory (for small files) or get accurate size
-			content, err := io.ReadAll(file)
+			// Skip symbolic links to avoid issues
+			if info.Mode()&os.ModeSymlink != 0 {
+				continue
+			}
+
+			// Skip special files (devices, sockets, etc.)
+			if !info.Mode().IsRegular() && !info.IsDir() {
+				continue
+			}
+
+			// Skip files with excluded extensions
+			if info.Mode().IsRegular() {
+				ext := filepath.Ext(entry.Name())
+				if excludeExtensions[ext] {
+					continue
+				}
+			}
+
+			// Get relative path
+			relPath, err := filepath.Rel(srcDir, path)
 			if err != nil {
-				// Skip files we can't read
-				return nil
+				continue
 			}
 
-			// Create header with accurate size
-			header := &tar.Header{
-				Name:    filepath.Join(prefix, relPath),
-				Mode:    int64(info.Mode().Perm()),
-				Size:    int64(len(content)),
-				ModTime: info.ModTime(),
-			}
-			*files = append(*files, header.Name)
+			// Update progress
+			filesProcessed++
+			m.updateProgress(relPath, filesProcessed, 0, 0, 0)
 
-			if err := tw.WriteHeader(header); err != nil {
-				return err
-			}
+			if info.IsDir() {
+				// Add directory to queue for processing
+				queue = append(queue, path)
 
-			if _, err := tw.Write(content); err != nil {
-				return err
-			}
-		} else if info.IsDir() {
-			// Handle directories
-			header, err := tar.FileInfoHeader(info, "")
-			if err != nil {
-				return err
-			}
-			header.Name = filepath.Join(prefix, relPath)
-			*files = append(*files, header.Name)
+				// Handle directories
+				header, err := tar.FileInfoHeader(info, "")
+				if err != nil {
+					continue
+				}
+				header.Name = filepath.Join(prefix, relPath)
+				*files = append(*files, header.Name)
 
-			if err := tw.WriteHeader(header); err != nil {
-				return err
+				if err := tw.WriteHeader(header); err != nil {
+					return err
+				}
+			} else if info.Mode().IsRegular() {
+				// For regular files, stream content directly to tar writer
+				file, err := os.Open(path)
+				if err != nil {
+					continue // Skip files we can't open
+				}
+
+				// Get current file size
+				stat, err := file.Stat()
+				if err != nil {
+					file.Close()
+					continue
+				}
+				fileSize := stat.Size()
+
+				header := &tar.Header{
+					Name:    filepath.Join(prefix, relPath),
+					Mode:    int64(info.Mode().Perm()),
+					Size:    fileSize,
+					ModTime: stat.ModTime(),
+				}
+				*files = append(*files, header.Name)
+
+				if err := tw.WriteHeader(header); err != nil {
+					file.Close()
+					return err
+				}
+
+				// Stream file content directly to tar writer
+				// Use LimitReader to prevent writing more than declared size
+				// This handles the case where file grows during backup
+				written, err := io.Copy(tw, io.LimitReader(file, fileSize))
+				file.Close()
+
+				if err != nil {
+					return fmt.Errorf("failed to write file %s: %w", path, err)
+				}
+
+				// If file was truncated during copy, pad with zeros
+				if written < fileSize {
+					padding := make([]byte, fileSize-written)
+					if _, err := tw.Write(padding); err != nil {
+						return fmt.Errorf("failed to pad file %s: %w", path, err)
+					}
+				}
 			}
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 func (m *Manager) calculateChecksum(path string) (string, error) {

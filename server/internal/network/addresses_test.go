@@ -5,7 +5,7 @@ import (
 )
 
 func TestAddressDetector_GetAddresses(t *testing.T) {
-	detector := NewAddressDetector(8080)
+	detector := NewAddressDetector(23456)
 
 	addresses, err := detector.GetAddresses()
 	if err != nil {
@@ -17,14 +17,14 @@ func TestAddressDetector_GetAddresses(t *testing.T) {
 		t.Error("Local address should not be empty")
 	}
 
-	expectedLocal := "http://localhost:8080"
+	expectedLocal := "http://localhost:23456"
 	if addresses.Local != expectedLocal {
 		t.Errorf("Expected local address %s, got %s", expectedLocal, addresses.Local)
 	}
 
 	// Port should be set
-	if addresses.Port != 8080 {
-		t.Errorf("Expected port 8080, got %d", addresses.Port)
+	if addresses.Port != 23456 {
+		t.Errorf("Expected port 23456, got %d", addresses.Port)
 	}
 
 	// Preferred should be set

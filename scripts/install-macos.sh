@@ -119,7 +119,7 @@ download_and_install() {
         sudo tee "$INSTALL_DIR/config/config.yaml" > /dev/null << 'EOF'
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: "30s"
   write_timeout: "30s"
   idle_timeout: "120s"
@@ -205,8 +205,8 @@ print_success() {
     echo -e "${GREEN}║       Installation Complete!              ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════╝${NC}"
     echo ""
-    echo "  Dashboard: http://localhost:8080"
-    echo "  Health:    http://localhost:8080/health"
+    echo "  Dashboard: http://localhost:23456"
+    echo "  Health:    http://localhost:23456/health"
     echo ""
     echo "  Commands:"
     echo "    launchctl list | grep echo           - Check status"

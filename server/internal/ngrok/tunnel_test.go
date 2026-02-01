@@ -54,7 +54,7 @@ func TestTunnelManager_Start_NgrokNotInstalled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := tm.Start(ctx, 8080, "")
+	err := tm.Start(ctx, 23456, "")
 	if err == nil {
 		t.Error("Start() should return error when ngrok not installed")
 	}

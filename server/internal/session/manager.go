@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -79,7 +80,7 @@ func (m *SessionManager) GetOrCreate(id SessionID) (*Session, error) {
 	if m.store != nil && m.config.Persistence.Enabled {
 		if err := m.store.Save(session); err != nil {
 			// Log error but don't fail
-			fmt.Printf("failed to persist new session: %v\n", err)
+			log.Printf("[WARN] failed to persist new session: %v", err)
 		}
 	}
 
@@ -108,7 +109,7 @@ func (m *SessionManager) AddMessage(id SessionID, msg context.Message) error {
 	if m.compactor != nil && m.compactor.ShouldCompact(session) {
 		go func() {
 			if _, err := m.Compact(id); err != nil {
-				fmt.Printf("auto-compaction failed: %v\n", err)
+				log.Printf("[WARN] auto-compaction failed: %v", err)
 			}
 		}()
 	}
@@ -308,7 +309,7 @@ func (m *SessionManager) Stop() error {
 		m.mu.RLock()
 		for _, session := range m.sessions {
 			if err := m.store.Save(session); err != nil {
-				fmt.Printf("failed to persist session on stop: %v\n", err)
+				log.Printf("[WARN] failed to persist session on stop: %v", err)
 			}
 		}
 		m.mu.RUnlock()
@@ -354,7 +355,7 @@ func (m *SessionManager) runAutoCompaction() {
 
 	for _, session := range sessionsToCompact {
 		if _, err := m.Compact(session.ID); err != nil {
-			fmt.Printf("auto-compaction failed for %s: %v\n", session.ID.String(), err)
+			log.Printf("[WARN] auto-compaction failed for %s: %v", session.ID.String(), err)
 		}
 	}
 }
@@ -397,13 +398,13 @@ func (m *SessionManager) runCleanup() {
 
 	for _, id := range toArchive {
 		if err := m.Archive(id); err != nil {
-			fmt.Printf("failed to archive session %s: %v\n", id.String(), err)
+			log.Printf("[WARN] failed to archive session %s: %v", id.String(), err)
 		}
 	}
 
 	for _, id := range toDelete {
 		if err := m.Delete(id); err != nil {
-			fmt.Printf("failed to delete session %s: %v\n", id.String(), err)
+			log.Printf("[WARN] failed to delete session %s: %v", id.String(), err)
 		}
 	}
 }
@@ -440,7 +441,7 @@ func (m *SessionManager) runPersist() {
 
 	for _, session := range sessions {
 		if err := m.store.Save(session); err != nil {
-			fmt.Printf("failed to persist session %s: %v\n", session.ID.String(), err)
+			log.Printf("[WARN] failed to persist session %s: %v", session.ID.String(), err)
 		}
 	}
 }

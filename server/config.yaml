@@ -2,7 +2,7 @@
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   port_auto_fallback: true  # Auto fallback to random port if configured port is in use
 
 log:
@@ -25,12 +25,12 @@ proxy:
 
     providers:
       - name: "anthropic"
-        endpoint: "https://api.anthropic.com/v1/messages"  # Cursor proxy endpoint (with /v1)
+        endpoint: "https://api.anthropic.com"  # Base URL only, path handled by converter
         api_key: ""  # Empty = pass-through client's Authorization header
         priority: 1
         weight: 100
         enabled: true
-        health_check: "/chat/completions"
+        health_check: "/v1/messages"
 
       - name: "openai"
         endpoint: "https://api.openai.com"
@@ -39,6 +39,14 @@ proxy:
         weight: 80
         enabled: true
         health_check: "/v1/models"
+
+      - name: "gemini"
+        endpoint: "https://generativelanguage.googleapis.com"  # Google AI Studio
+        api_key: ""  # Get from https://aistudio.google.com/apikey
+        priority: 3
+        weight: 70
+        enabled: false  # Enable after setting API key
+        health_check: "/v1beta/models"
 
     # Failover configuration
     failover:
@@ -67,6 +75,46 @@ proxy:
     enabled: true
     interval: "30s"
     timeout: "10s"
+
+  # =============================================================================
+  # cc-cache: Response Caching (v0.10.13+)
+  # =============================================================================
+  # Intelligent caching for LLM API responses to reduce latency and costs
+  # =============================================================================
+  cache:
+    enabled: true  # Master switch, default: true
+
+    # Storage settings
+    storage_type: "memory"  # memory, disk, multilevel
+    storage_path: ""        # Path for disk cache (empty = ./data/cache)
+
+    # Cache limits
+    max_size: 10000         # Max cache entries
+    max_entry_size: 1048576 # Max size per entry (1MB)
+    max_memory_mb: 256      # Max memory usage
+    ttl: "30m"              # Default TTL for cache entries
+
+    # Cache behavior
+    cacheable_status_codes: [200]
+    cacheable_methods: ["POST"]  # LLM APIs use POST
+    skip_streaming: true         # Don't cache streaming responses
+
+    # Cache key settings
+    key_include_headers: []      # Headers to include in cache key
+    key_ignore_params: []        # Query params to ignore
+
+    # Semantic caching (experimental)
+    semantic_cache:
+      enabled: false             # Requires embedding provider
+      similarity_threshold: 0.95
+      embedding_provider: ""
+      embedding_model: ""
+
+    # Cache warming (experimental)
+    warming:
+      enabled: false
+      interval: "5m"
+      max_requests: 100
 
 # =============================================================================
 # Claude Code CLI Configuration

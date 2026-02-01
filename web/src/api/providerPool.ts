@@ -13,6 +13,7 @@ export interface ModelParams {
 
 export type ProviderLocation = 'cloud' | 'local'
 export type RoutingMode = 'auto' | 'cloud' | 'local'
+export type APIFormat = 'openai' | 'anthropic' | 'ollama' | 'google' | ''
 
 export interface Provider {
   id: string
@@ -23,6 +24,7 @@ export interface Provider {
   status: 'active' | 'inactive' | 'error'
   base_url?: string
   api_version?: string
+  api_format?: APIFormat
   api_keys?: APIKey[]
   priority: number
   model_params?: ModelParams
@@ -99,10 +101,53 @@ export interface IDEInfo {
   version?: string
   config_path: string
   proxy_url?: string
+  api_key?: string // Masked key for display
   connected: boolean
   models?: string[]
   last_checked: string
   error?: string
+  usage?: IDEUsageInfo
+}
+
+export interface IDEScanResult {
+  ide_type: string
+  ide_name: string
+  found: boolean
+  config_path?: string
+  searched_paths?: string[]
+  error?: string
+}
+
+export interface IDEUsageInfo {
+  total_tokens?: number
+  input_tokens?: number
+  output_tokens?: number
+  total_requests?: number
+  estimated_cost?: number
+  remaining_credits?: number
+  usage_limit?: number
+  usage_period?: string
+  last_updated?: string
+}
+
+export interface ImportConfig {
+  ide_type: string
+  ide_name: string
+  api_key?: string // Masked
+  base_url?: string
+  models?: string[]
+  provider?: string
+  config_path?: string
+  env_var?: string
+  source: 'config' | 'env' | 'cc-switch'
+}
+
+export interface EnvHint {
+  ide: string
+  name: string
+  env_vars: string[]
+  provider: string
+  detected: boolean
 }
 
 export interface ModelPricing {
@@ -249,10 +294,22 @@ export const providerPoolApi = {
 
   // IDE operations
   scanIDEs: () =>
-    api.get<{ ides: IDEInfo[]; total: number }>('/ide/scan'),
+    api.get<{ ides: IDEInfo[]; scan_results: IDEScanResult[]; total: number }>('/ide/scan'),
 
   connectIDE: (ideType: string) =>
     api.post<IDEInfo>(`/ide/${ideType}/connect`),
+
+  getImportableConfigs: () =>
+    api.get<{ configs: ImportConfig[]; total: number }>('/ide/importable'),
+
+  importIDEConfig: (ideType: string) =>
+    api.post<{ message: string; provider_id: string; ide_type: string }>(`/ide/import/${ideType}`),
+
+  importFromCCSwitch: (output: string) =>
+    api.post<{ config: ImportConfig; message: string }>('/ide/import-cc-switch', { output }),
+
+  getEnvHints: () =>
+    api.get<{ hints: EnvHint[] }>('/ide/env-hints'),
 
   // Pricing operations
   getPricingConfig: () =>

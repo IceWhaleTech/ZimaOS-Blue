@@ -4,12 +4,23 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
 )
+
+// PendingRestore represents a pending restore operation that will be applied on restart
+type PendingRestore struct {
+	BackupID   string `json:"backup_id"`
+	BackupPath string `json:"backup_path"`
+	StagingDir string `json:"staging_dir"`
+	CreatedAt  string `json:"created_at"`
+}
 
 // RestoreOptions configures restore behavior
 type RestoreOptions struct {
@@ -21,17 +32,24 @@ type RestoreOptions struct {
 	RestoreData bool
 	// DryRun only validates without actually restoring
 	DryRun bool
-	// SkipVerify skips checksum verification (use with caution)
+	// SkipVerify skips checksum verification
+	// Security: This option is deprecated and will log a warning.
+	// Checksum verification is critical for detecting tampered backups.
 	SkipVerify bool
+	// RequireRestart if true, stages the restore for next restart instead of immediate restore
+	// This is the recommended approach for hot recovery to avoid database lock issues
+	RequireRestart bool
 }
 
 // DefaultRestoreOptions returns default restore options
+// Security: SkipVerify defaults to false to ensure backup integrity
 func DefaultRestoreOptions() RestoreOptions {
 	return RestoreOptions{
 		OverwriteExisting: true,
 		RestoreConfig:     true,
 		RestoreData:       true,
 		DryRun:            false,
+		SkipVerify:        false, // Security: Always verify by default
 	}
 }
 
@@ -45,6 +63,12 @@ type RestoreResult struct {
 
 // Restore restores a backup
 func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (*RestoreResult, error) {
+	// Security: Log warning if verification is skipped
+	if opts.SkipVerify {
+		// Note: In production, consider rejecting this entirely or requiring admin confirmation
+		fmt.Println("[SECURITY WARNING] Backup verification skipped - this may restore tampered data")
+	}
+
 	// Verify backup first (unless skipped)
 	if !opts.SkipVerify {
 		if err := m.Verify(id); err != nil {
@@ -126,6 +150,16 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 
 		targetPath := filepath.Join(targetDir, relPath)
 
+		// Security: Validate that the target path is within the expected directory
+		// This prevents path traversal attacks via malicious backup files
+		absTargetDir, _ := filepath.Abs(targetDir)
+		absTargetPath, _ := filepath.Abs(targetPath)
+		if !strings.HasPrefix(absTargetPath, absTargetDir) {
+			result.Errors = append(result.Errors, fmt.Sprintf("security: path traversal detected for %s", relPath))
+			result.FilesSkipped++
+			continue
+		}
+
 		// Check if file exists
 		if !opts.OverwriteExisting {
 			if _, err := os.Stat(targetPath); err == nil {
@@ -148,13 +182,20 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 			}
 		} else {
 			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			// Security: Use 0700 for directories containing restored files
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0700); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("failed to create parent directory for %s: %v", targetPath, err))
 				continue
 			}
 
+			// Security: Sanitize file mode - don't allow setuid/setgid/sticky bits
+			fileMode := os.FileMode(header.Mode) & 0777
+			if fileMode > 0700 {
+				fileMode = 0600 // Default to owner-only for sensitive files
+			}
+
 			// Create file
-			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileMode)
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("failed to create file %s: %v", targetPath, err))
 				continue
@@ -173,6 +214,22 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 
 	if len(result.Errors) > 0 {
 		result.Success = false
+	}
+
+	// Clean up WAL files for all restored databases
+	// This is critical to prevent "database disk image is malformed" errors
+	// when restoring a database that was using WAL mode
+	if !opts.DryRun && result.Success {
+		if opts.RestoreData {
+			if err := database.CleanAllWALFilesInDir(m.dataDir); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to clean WAL files in data dir: %v", err))
+			}
+		}
+		if opts.RestoreConfig {
+			if err := database.CleanAllWALFilesInDir(m.configDir); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to clean WAL files in config dir: %v", err))
+			}
+		}
 	}
 
 	return result, nil
@@ -232,12 +289,19 @@ func (m *Manager) RestoreFile(ctx context.Context, id string, filePath string, t
 		}
 
 		// Ensure parent directory exists
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		// Security: Use 0700 for directories
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0700); err != nil {
 			return fmt.Errorf("failed to create parent directory: %w", err)
 		}
 
+		// Security: Sanitize file mode
+		fileMode := os.FileMode(header.Mode) & 0777
+		if fileMode > 0700 {
+			fileMode = 0600
+		}
+
 		// Create file
-		outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+		outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileMode)
 		if err != nil {
 			return fmt.Errorf("failed to create file: %w", err)
 		}
@@ -262,4 +326,110 @@ func (m *Manager) ListFiles(id string) ([]string, error) {
 	}
 
 	return info.Files, nil
+}
+
+// pendingRestoreFile is the filename for pending restore marker
+const pendingRestoreFile = "pending_restore.json"
+
+// StageRestore prepares a backup for restore on next restart.
+// This is the recommended approach for hot recovery to avoid database lock issues.
+// The actual restore will happen when ApplyPendingRestore is called during startup.
+func (m *Manager) StageRestore(ctx context.Context, id string) (*PendingRestore, error) {
+	// Verify backup first
+	if err := m.Verify(id); err != nil {
+		return nil, fmt.Errorf("backup verification failed: %w", err)
+	}
+
+	m.mu.RLock()
+	info, ok := m.backups[id]
+	m.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("backup not found: %s", id)
+	}
+
+	// Create pending restore marker
+	pending := &PendingRestore{
+		BackupID:   id,
+		BackupPath: info.Path,
+		StagingDir: "", // Direct restore from backup file
+		CreatedAt:  info.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	// Write pending restore marker
+	markerPath := filepath.Join(m.dataDir, pendingRestoreFile)
+	data, err := json.MarshalIndent(pending, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal pending restore: %w", err)
+	}
+
+	if err := os.WriteFile(markerPath, data, 0600); err != nil {
+		return nil, fmt.Errorf("failed to write pending restore marker: %w", err)
+	}
+
+	return pending, nil
+}
+
+// HasPendingRestore checks if there is a pending restore operation
+func (m *Manager) HasPendingRestore() bool {
+	markerPath := filepath.Join(m.dataDir, pendingRestoreFile)
+	_, err := os.Stat(markerPath)
+	return err == nil
+}
+
+// GetPendingRestore returns the pending restore info if any
+func (m *Manager) GetPendingRestore() (*PendingRestore, error) {
+	markerPath := filepath.Join(m.dataDir, pendingRestoreFile)
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read pending restore marker: %w", err)
+	}
+
+	var pending PendingRestore
+	if err := json.Unmarshal(data, &pending); err != nil {
+		return nil, fmt.Errorf("failed to parse pending restore marker: %w", err)
+	}
+
+	return &pending, nil
+}
+
+// ApplyPendingRestore applies a pending restore operation.
+// This should be called during startup BEFORE opening any databases.
+func (m *Manager) ApplyPendingRestore(ctx context.Context) (*RestoreResult, error) {
+	pending, err := m.GetPendingRestore()
+	if err != nil {
+		return nil, err
+	}
+	if pending == nil {
+		return nil, nil // No pending restore
+	}
+
+	// Perform the actual restore
+	opts := DefaultRestoreOptions()
+	opts.OverwriteExisting = true
+
+	result, err := m.Restore(ctx, pending.BackupID, opts)
+
+	// Clear the pending restore marker regardless of result
+	// to prevent infinite restore loops on failure
+	markerPath := filepath.Join(m.dataDir, pendingRestoreFile)
+	os.Remove(markerPath)
+
+	if err != nil {
+		return result, fmt.Errorf("failed to apply pending restore: %w", err)
+	}
+
+	return result, nil
+}
+
+// CancelPendingRestore cancels a pending restore operation
+func (m *Manager) CancelPendingRestore() error {
+	markerPath := filepath.Join(m.dataDir, pendingRestoreFile)
+	if err := os.Remove(markerPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to cancel pending restore: %w", err)
+	}
+	return nil
 }

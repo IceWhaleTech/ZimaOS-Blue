@@ -181,7 +181,7 @@ dev.bat
 ```
 
 - ฟรอนต์เอนด์: `http://localhost:3000`
-- แบ็กเอนด์: `http://localhost:8080`
+- แบ็กเอนด์: `http://localhost:23456`
 
 ### คำสั่งบิลด์
 

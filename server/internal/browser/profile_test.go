@@ -384,7 +384,7 @@ func TestProfile_WithProxy(t *testing.T) {
 		ID:   "proxy-test",
 		Name: "Proxy Test",
 		Proxy: &ProxyConfig{
-			Server:   "http://proxy.example.com:8080",
+			Server:   "http://proxy.example.com:23456",
 			Username: "user",
 			Password: "pass",
 			Bypass:   []string{"localhost", "127.0.0.1"},
@@ -394,7 +394,7 @@ func TestProfile_WithProxy(t *testing.T) {
 	if profile.Proxy == nil {
 		t.Fatal("expected non-nil proxy config")
 	}
-	if profile.Proxy.Server != "http://proxy.example.com:8080" {
+	if profile.Proxy.Server != "http://proxy.example.com:23456" {
 		t.Errorf("expected proxy server, got '%s'", profile.Proxy.Server)
 	}
 }

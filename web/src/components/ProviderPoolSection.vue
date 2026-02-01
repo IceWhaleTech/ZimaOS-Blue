@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
+import IDEDiscovery from '@/components/IDEDiscovery.vue'
 import type { Provider, Model } from '@/api/providerPool'
 
 const { t } = useI18n()
@@ -16,11 +17,12 @@ const showKeyModal = ref(false)
 const showPricingModal = ref(false)
 const showParamsModal = ref(false)
 const showAllowedModelsModal = ref(false)
+const showIDEDiscoveryModal = ref(false)
 const testingProvider = ref<string | null>(null)
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
-const activeTab = ref<'all' | 'builtin' | 'custom' | 'ide'>('all')
+const activeTab = ref<'all' | 'builtin' | 'ide' | 'custom'>('all')
 const iconInput = ref<HTMLInputElement | null>(null)
 const uploadingIcon = ref(false)
 
@@ -34,6 +36,7 @@ const newProvider = ref({
   base_url: '',
   priority: 50,
   location: 'cloud' as 'cloud' | 'local',
+  api_format: '' as '' | 'openai' | 'anthropic' | 'ollama',
 })
 
 // New API key form
@@ -178,6 +181,14 @@ async function loadPricingData() {
   }
 }
 
+function handleIDEImportSuccess(providerId: string) {
+  // Refresh providers after successful import
+  loadData()
+  notification.success(t('ideDiscovery.importSuccess', { ide: 'IDE', provider: providerId }))
+  // Switch to the provider that was imported
+  store.selectProvider(providerId)
+}
+
 async function toggleProvider(provider: Provider) {
   try {
     if (provider.enabled) {
@@ -236,7 +247,7 @@ async function addCustomProvider() {
       type: 'custom',
     })
     showAddModal.value = false
-    newProvider.value = { name: '', base_url: '', priority: 50, location: 'cloud' }
+    newProvider.value = { name: '', base_url: '', priority: 50, location: 'cloud', api_format: '' }
   } catch (e) {
     console.error('Failed to add provider:', e)
   }
@@ -608,19 +619,21 @@ onMounted(() => {
       <div>
         <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('providerPool.description') }}</p>
       </div>
-      <button
-        class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
-        @click="showAddModal = true"
-      >
-        <span>+</span>
-        {{ t('providerPool.addCustom') }}
-      </button>
+      <div class="flex gap-2">
+        <button
+          class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
+          @click="showAddModal = true"
+        >
+          <span>+</span>
+          {{ t('providerPool.addCustom') }}
+        </button>
+      </div>
     </div>
 
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
       <button
-        v-for="tab in ['all', 'builtin', 'custom', 'ide'] as const"
+        v-for="tab in ['all', 'builtin', 'ide', 'custom'] as const"
         :key="tab"
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
@@ -632,7 +645,7 @@ onMounted(() => {
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'all' ? store.providers.length : tab === 'builtin' ? store.builtinProviders.length : tab === 'custom' ? store.customProviders.length : store.ideProviders.length }})
+          ({{ tab === 'all' ? store.providers.length : tab === 'builtin' ? store.builtinProviders.length : tab === 'ide' ? store.ideProviders.length : store.customProviders.length }})
         </span>
       </button>
     </div>
@@ -667,6 +680,22 @@ onMounted(() => {
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Provider Cards -->
       <div class="space-y-2 max-h-[480px] overflow-y-auto">
+        <!-- IDE Tab Empty State -->
+        <div v-if="activeTab === 'ide' && filteredProviders.length === 0 && !searchQuery" class="text-center py-8">
+          <div class="text-4xl mb-4">🔍</div>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            {{ t('ideDiscovery.noIDEsFound') }}
+          </h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            {{ t('ideDiscovery.noConfigsHint') }}
+          </p>
+          <button
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+            @click="showIDEDiscoveryModal = true"
+          >
+            {{ t('ideDiscovery.scan') }}
+          </button>
+        </div>
         <!-- Drag hint -->
         <p v-if="filteredProviders.length > 1 && !searchQuery" class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1084,6 +1113,19 @@ onMounted(() => {
             </div>
             <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.locationHint') }}</p>
           </div>
+          <div>
+            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiFormat') }}</label>
+            <select
+              v-model="newProvider.api_format"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">{{ t('providerPool.apiFormatAuto') }}</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="ollama">Ollama</option>
+            </select>
+            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiFormatHint') }}</p>
+          </div>
           <div class="flex justify-end gap-3 mt-6">
             <button
               type="button"
@@ -1123,7 +1165,7 @@ onMounted(() => {
             <input
               v-model="newKey.label"
               type="text"
-              placeholder="Primary, Backup, etc."
+              :placeholder="t('providerPool.keyLabelPlaceholder')"
               class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -1162,11 +1204,11 @@ onMounted(() => {
             />
           </div>
           <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">Provider ID ({{ t('common.optional') }})</label>
+            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.providerId') }} ({{ t('common.optional') }})</label>
             <input
               v-model="pricingForm.providerId"
               type="text"
-              placeholder="openai, anthropic, etc."
+              :placeholder="t('providerPool.modelIdPlaceholder')"
               class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -1369,6 +1411,32 @@ onMounted(() => {
           >
             {{ savingAllowedModels ? t('common.saving') : t('common.save') }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- IDE Discovery Modal -->
+    <div
+      v-if="showIDEDiscoveryModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      @click.self="showIDEDiscoveryModal = false"
+    >
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-600 flex-shrink-0">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('ideDiscovery.title') }}
+          </h2>
+          <button
+            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            @click="showIDEDiscoveryModal = false"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <IDEDiscovery @import-success="handleIDEImportSuccess" />
         </div>
       </div>
     </div>

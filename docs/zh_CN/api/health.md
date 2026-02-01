@@ -9,7 +9,7 @@
 ### 请求
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 ### 响应
@@ -49,7 +49,7 @@ Kubernetes 存活探针端点。如果服务存活则返回 200。
 ### 请求
 
 ```bash
-curl http://localhost:8080/health/live
+curl http://localhost:23456/health/live
 ```
 
 ### 响应
@@ -67,7 +67,7 @@ curl http://localhost:8080/health/live
 livenessProbe:
   httpGet:
     path: /health/live
-    port: 8080
+    port: 23456
   initialDelaySeconds: 5
   periodSeconds: 10
 ```
@@ -81,7 +81,7 @@ Kubernetes 就绪探针端点。如果服务准备好接受流量则返回 200�
 ### 请求
 
 ```bash
-curl http://localhost:8080/health/ready
+curl http://localhost:23456/health/ready
 ```
 
 ### 响应
@@ -106,7 +106,7 @@ curl http://localhost:8080/health/ready
 readinessProbe:
   httpGet:
     path: /health/ready
-    port: 8080
+    port: 23456
   initialDelaySeconds: 5
   periodSeconds: 5
 ```
@@ -120,7 +120,7 @@ readinessProbe:
 ### 请求
 
 ```bash
-curl http://localhost:8080/api/v1/workers/stats
+curl http://localhost:23456/api/v1/workers/stats
 ```
 
 ### 响应

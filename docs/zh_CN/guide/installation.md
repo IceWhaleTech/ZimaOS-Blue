@@ -68,7 +68,7 @@ services:
     image: icewhaletech/zimaos-echo:latest
     container_name: zimaos-echo
     ports:
-      - "8080:8080"
+      - "23456:23456"
     volumes:
       - ./config:/app/config
       - ./data:/app/data
@@ -97,7 +97,7 @@ docker-compose logs -f
 ```bash
 docker run -d \
   --name zimaos-echo \
-  -p 8080:8080 \
+  -p 23456:23456 \
   -v $(pwd)/config:/app/config \
   -v $(pwd)/data:/app/data \
   -e JWT_SECRET=your-secret-key \
@@ -163,7 +163,7 @@ mkdir -p /etc/echo
 cat > /etc/echo/config.yaml << 'EOF'
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
 
 llm:
   default_provider: "ollama"
@@ -324,7 +324,7 @@ llm:
 
 ```bash
 # 检查是否运行
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 
 # 预期响应
 {"status":"ok","version":"0.5.0"}
@@ -335,19 +335,19 @@ curl http://localhost:8080/health
 打开浏览器并导航到：
 
 ```
-http://localhost:8080
+http://localhost:23456
 ```
 
 ### 测试 API
 
 ```bash
 # 获取认证令牌（如果启用了认证）
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:23456/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin"}' | jq -r '.token')
 
 # 测试聊天端点
-curl -X POST http://localhost:8080/api/v1/chat \
+curl -X POST http://localhost:23456/api/v1/chat \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message":"你好，Echo！"}'
@@ -424,7 +424,7 @@ sudo journalctl -u echo -f
 ```
 
 常见问题：
-- 端口 8080 已被占用：在配置中更改端口
+- 端口 23456 已被占用：在配置中更改端口
 - 缺少 JWT_SECRET：设置环境变量
 - 权限被拒绝：检查文件权限
 

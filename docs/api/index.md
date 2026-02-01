@@ -5,7 +5,7 @@ ZimaOS Echo provides a RESTful API for monitoring and management.
 ## Base URL
 
 ```
-http://localhost:8080
+http://localhost:23456
 ```
 
 ## Endpoints

@@ -14,7 +14,7 @@
 # 服务器配置
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: 30s
   write_timeout: 30s
 
@@ -146,7 +146,7 @@ database:
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
 | `ECHO_HOST` | 服务器主机 | `0.0.0.0` |
-| `ECHO_PORT` | 服务器端口 | `8080` |
+| `ECHO_PORT` | 服务器端口 | `23456` |
 | `JWT_SECRET` | JWT 签名密钥 | (必需) |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | - |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | - |
@@ -170,7 +170,7 @@ llm:
 | 选项 | 类型 | 默认值 | 描述 |
 |------|------|--------|------|
 | `host` | string | `0.0.0.0` | 监听地址 |
-| `port` | int | `8080` | 监听端口 |
+| `port` | int | `23456` | 监听端口 |
 | `read_timeout` | duration | `30s` | 请求读取超时 |
 | `write_timeout` | duration | `30s` | 响应写入超时 |
 
@@ -289,7 +289,7 @@ llm:
 
 ```yaml
 server:
-  port: 8080
+  port: 23456
 
 llm:
   default_provider: "ollama"
@@ -307,7 +307,7 @@ auth:
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: 60s
   write_timeout: 120s
 
@@ -341,7 +341,7 @@ logging:
 
 ```yaml
 server:
-  port: 8080
+  port: 23456
 
 llm:
   default_provider: "ollama"

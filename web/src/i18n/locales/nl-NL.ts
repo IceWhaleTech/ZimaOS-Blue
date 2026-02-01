@@ -56,6 +56,28 @@ export default {
     security: 'Beveiliging',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Alle',
+      overview: 'Overzicht',
+      system: 'Systeem',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Systeemstatus',
+      uptime: 'Uptime',
+      memoryUsage: 'Geheugengebruik',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Failover-status',
+      cpuChart: 'CPU-gebruik',
+      memoryChart: 'Geheugengebruik',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap-geheugen',
+      systemInfo: 'Systeeminformatie',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Vaardigheden',
@@ -596,6 +618,7 @@ export default {
         system: 'Systeem',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimale wachtwoordlengte',
           description: 'Controleren of de minimale wachtwoordlengte voldoet aan de beveiligingsvereisten',

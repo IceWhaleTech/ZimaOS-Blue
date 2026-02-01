@@ -21,8 +21,12 @@ type Skill struct {
 	DownloadURL string    `json:"download_url" db:"download_url"` // Download URL
 	Stars       int       `json:"stars" db:"stars"`               // Star count
 	Downloads   int       `json:"downloads" db:"downloads"`       // Download count
+	Reviews     int       `json:"reviews" db:"reviews"`           // Review/comment count
+	Rating      float64   `json:"rating" db:"rating"`             // Average rating (0-5)
 	Versions    int       `json:"versions" db:"versions"`         // Number of versions
 	Changelog   string    `json:"changelog" db:"changelog"`       // Latest changelog
+	Readme      string    `json:"readme,omitempty" db:"readme"`   // Full README/homepage content
+	DedupKey    string    `json:"dedup_key" db:"dedup_key"`       // Deduplication key (name:author normalized)
 	Installed   bool      `json:"installed" db:"installed"`       // Whether installed locally
 	Enabled     bool      `json:"enabled" db:"enabled"`           // Whether enabled
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`     // First seen timestamp

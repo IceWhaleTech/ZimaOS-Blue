@@ -32,7 +32,7 @@ sudo mkdir -p /etc/zimaos-echo
 sudo cat > /etc/zimaos-echo/config.yaml << 'EOF'
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
 
 log:
   level: "info"
@@ -71,7 +71,7 @@ sudo systemctl start zimaos-echo
 ```bash
 docker run -d \
   --name zimaos-echo \
-  -p 8080:8080 \
+  -p 23456:23456 \
   -v /path/to/config:/etc/zimaos-echo \
   zimaos/echo:latest
 ```
@@ -84,7 +84,7 @@ services:
   echo:
     image: zimaos/echo:latest
     ports:
-      - "8080:8080"
+      - "23456:23456"
     volumes:
       - ./config:/etc/zimaos-echo
       - ./data:/var/lib/zimaos-echo

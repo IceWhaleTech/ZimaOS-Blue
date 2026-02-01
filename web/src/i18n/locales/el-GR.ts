@@ -56,6 +56,28 @@ export default {
     security: 'Ασφάλεια',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Όλα',
+      overview: 'Επισκόπηση',
+      system: 'Σύστημα',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Κατάσταση συστήματος',
+      uptime: 'Χρόνος λειτουργίας',
+      memoryUsage: 'Χρήση μνήμης',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Κατάσταση failover',
+      cpuChart: 'Χρήση CPU',
+      memoryChart: 'Χρήση μνήμης',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Μνήμη heap',
+      systemInfo: 'Πληροφορίες συστήματος',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Δεξιότητες',
@@ -580,6 +602,7 @@ export default {
         system: 'Σύστημα',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Ελάχιστο μήκος κωδικού',
           description: 'Ελέγξτε αν το ελάχιστο μήκος κωδικού πληροί τις απαιτήσεις ασφαλείας',

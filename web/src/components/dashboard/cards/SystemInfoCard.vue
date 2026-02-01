@@ -19,17 +19,11 @@ function formatDate(dateStr: string | undefined): string {
 </script>
 
 <template>
-  <div class="grid grid-cols-3 gap-3">
+  <div class="grid grid-cols-2 gap-3">
     <!-- Version -->
     <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-white dark:bg-gray-800">
       <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('system.version') }}</p>
       <p class="text-base font-semibold text-gray-900 dark:text-white">{{ systemStore.health?.version || '-' }}</p>
-    </div>
-
-    <!-- Go Version -->
-    <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-white dark:bg-gray-800">
-      <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('system.goVersion') }}</p>
-      <p class="text-base font-semibold text-gray-900 dark:text-white">{{ systemStore.health?.go_version || '-' }}</p>
     </div>
 
     <!-- Timestamp -->

@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { claudeCodeApi } from '@/api/claudecode'
-import type { ClaudeCodeVersionResponse, CheckUpdateResponse, ClaudeCodeConfigResponse } from '@/api/claudecode'
+import type { ClaudeCodeVersionResponse, CheckUpdateResponse, ClaudeCodeConfigResponse, DirectoryWhitelistEntry } from '@/api/claudecode'
 
 const { t } = useI18n()
 
@@ -19,11 +19,24 @@ const downloading = ref(false)
 const togglingEnabled = ref(false)
 const togglingSandbox = ref(false)
 const togglingNetwork = ref(false)
+const togglingWhitelist = ref(false)
+
+// Collapsible state - expand when enabled
+const isExpanded = ref(false)
 
 const versionInfo = ref<ClaudeCodeVersionResponse | null>(null)
 const updateInfo = ref<CheckUpdateResponse | null>(null)
 const configInfo = ref<ClaudeCodeConfigResponse | null>(null)
 const error = ref<string | null>(null)
+
+// Directory whitelist state
+const savingWhitelist = ref(false)
+const newDirPath = ref('')
+const newDirAlias = ref('')
+const editingIndex = ref<number | null>(null)
+const editPath = ref('')
+const editAlias = ref('')
+const isWhitelistExpanded = ref(false)
 
 // Computed properties
 const sourceLabel = computed(() => {
@@ -60,6 +73,22 @@ const isInstalled = computed(() => {
 
 const isEnabled = computed(() => {
   return configInfo.value?.enabled && isInstalled.value
+})
+
+const isWhitelistEnabled = computed(() => {
+  return configInfo.value?.whitelist_enabled ?? false
+})
+
+// Computed: check if update is available
+const hasUpdate = computed(() => {
+  if (!versionInfo.value?.active_version) return false
+  const latestVer = updateInfo.value?.latest_version || versionInfo.value?.latest_version
+  if (!latestVer) return false
+  return latestVer !== versionInfo.value.active_version
+})
+
+const latestVersionDisplay = computed(() => {
+  return updateInfo.value?.latest_version || versionInfo.value?.latest_version || null
 })
 
 onMounted(async () => {
@@ -129,6 +158,107 @@ async function toggleNetwork() {
     emit('status-change', t('claudecode.toggleError'))
   } finally {
     togglingNetwork.value = false
+  }
+}
+
+async function toggleWhitelist() {
+  if (!configInfo.value) return
+  try {
+    togglingWhitelist.value = true
+    error.value = null
+    const newWhitelistEnabled = !configInfo.value.whitelist_enabled
+    const response = await claudeCodeApi.setConfig({ whitelist_enabled: newWhitelistEnabled })
+    configInfo.value = response.data
+    emit('status-change', newWhitelistEnabled ? t('claudecode.whitelistEnabled') : t('claudecode.whitelistDisabled'))
+  } catch (_e) {
+    error.value = t('claudecode.toggleError')
+    emit('status-change', t('claudecode.toggleError'))
+  } finally {
+    togglingWhitelist.value = false
+  }
+}
+
+// Directory whitelist functions
+async function addDirectory() {
+  if (!configInfo.value || !newDirPath.value.trim()) return
+  try {
+    savingWhitelist.value = true
+    error.value = null
+    const currentList = configInfo.value.directory_whitelist || []
+    const newEntry: DirectoryWhitelistEntry = {
+      path: newDirPath.value.trim(),
+      alias: newDirAlias.value.trim() || undefined,
+    }
+    const response = await claudeCodeApi.setConfig({
+      directory_whitelist: [...currentList, newEntry],
+    })
+    configInfo.value = response.data
+    newDirPath.value = ''
+    newDirAlias.value = ''
+    emit('status-change', t('claudecode.directoryAdded'))
+  } catch (_e) {
+    error.value = t('claudecode.directoryAddError')
+    emit('status-change', t('claudecode.directoryAddError'))
+  } finally {
+    savingWhitelist.value = false
+  }
+}
+
+async function removeDirectory(index: number) {
+  if (!configInfo.value) return
+  try {
+    savingWhitelist.value = true
+    error.value = null
+    const currentList = [...(configInfo.value.directory_whitelist || [])]
+    currentList.splice(index, 1)
+    const response = await claudeCodeApi.setConfig({
+      directory_whitelist: currentList,
+    })
+    configInfo.value = response.data
+    emit('status-change', t('claudecode.directoryRemoved'))
+  } catch (_e) {
+    error.value = t('claudecode.directoryRemoveError')
+    emit('status-change', t('claudecode.directoryRemoveError'))
+  } finally {
+    savingWhitelist.value = false
+  }
+}
+
+function startEditDirectory(index: number) {
+  const entry = configInfo.value?.directory_whitelist?.[index]
+  if (!entry) return
+  editingIndex.value = index
+  editPath.value = entry.path
+  editAlias.value = entry.alias || ''
+}
+
+function cancelEditDirectory() {
+  editingIndex.value = null
+  editPath.value = ''
+  editAlias.value = ''
+}
+
+async function saveEditDirectory() {
+  if (!configInfo.value || editingIndex.value === null || !editPath.value.trim()) return
+  try {
+    savingWhitelist.value = true
+    error.value = null
+    const currentList = [...(configInfo.value.directory_whitelist || [])]
+    currentList[editingIndex.value] = {
+      path: editPath.value.trim(),
+      alias: editAlias.value.trim() || undefined,
+    }
+    const response = await claudeCodeApi.setConfig({
+      directory_whitelist: currentList,
+    })
+    configInfo.value = response.data
+    cancelEditDirectory()
+    emit('status-change', t('claudecode.directoryUpdated'))
+  } catch (_e) {
+    error.value = t('claudecode.directoryUpdateError')
+    emit('status-change', t('claudecode.directoryUpdateError'))
+  } finally {
+    savingWhitelist.value = false
   }
 }
 
@@ -257,30 +387,45 @@ function formatDate(dateStr?: string) {
 <template>
   <section class="mb-6 sm:mb-8">
     <!-- Header with Toggle -->
-    <div class="flex items-center justify-between mb-3 sm:mb-4">
-      <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-        <span class="truncate">{{ t('claudecode.title') }}</span>
-      </h2>
-      <!-- Main Toggle -->
-      <button
-        :disabled="togglingEnabled || loading"
-        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        :class="isEnabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
-        role="switch"
-        :aria-checked="isEnabled ? 'true' : 'false'"
-        @click="toggleEnabled"
-      >
-        <span
-          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-          :class="isEnabled ? 'translate-x-5' : 'translate-x-0'"
-        />
-      </button>
-    </div>
+    <div class="glass-card">
+      <div class="flex items-center justify-between p-4 cursor-pointer" @click="isExpanded = !isExpanded">
+        <div class="flex items-center gap-3">
+          <!-- Expand/Collapse Arrow -->
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5 text-gray-400 transition-transform duration-200"
+            :class="{ 'rotate-90': isExpanded }"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">{{ t('claudecode.title') }}</h2>
+        </div>
+        <!-- Main Toggle -->
+        <button
+          :disabled="togglingEnabled || loading"
+          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="isEnabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+          role="switch"
+          :aria-checked="isEnabled ? 'true' : 'false'"
+          @click.stop="toggleEnabled"
+        >
+          <span
+            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+            :class="isEnabled ? 'translate-x-5' : 'translate-x-0'"
+          />
+        </button>
+      </div>
 
-    <div class="glass-card p-4 sm:p-6">
+      <!-- Collapsible Content -->
+      <Transition name="collapse">
+        <div v-show="isExpanded" class="border-t border-gray-200 dark:border-slate-600">
+          <div class="p-4 sm:p-6">
       <!-- Loading state -->
       <div v-if="loading" class="text-gray-500 dark:text-slate-400 text-center py-4">
         {{ t('common.loading') }}
@@ -378,65 +523,224 @@ function formatDate(dateStr?: string) {
             </span>
           </div>
 
-          <!-- Sandbox Toggle -->
-          <div class="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-            <div class="flex items-center gap-3">
-              <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.sandboxMode') }}</span>
-              <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.sandboxModeDesc') }}</span>
+          <!-- Sandbox Toggle with Collapsible Content -->
+          <div class="mb-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg overflow-hidden">
+            <div class="flex items-center justify-between p-3">
+              <div class="flex items-center gap-3">
+                <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.sandboxMode') }}</span>
+                <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.sandboxModeDesc') }}</span>
+              </div>
+              <button
+                :disabled="togglingSandbox || !isInstalled"
+                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                :class="configInfo?.sandbox_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+                role="switch"
+                :aria-checked="configInfo?.sandbox_enabled ? 'true' : 'false'"
+                @click="toggleSandbox"
+              >
+                <span
+                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="configInfo?.sandbox_enabled ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
             </div>
-            <button
-              :disabled="togglingSandbox || !isInstalled"
-              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              :class="configInfo?.sandbox_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
-              role="switch"
-              :aria-checked="configInfo?.sandbox_enabled ? 'true' : 'false'"
-              @click="toggleSandbox"
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="configInfo?.sandbox_enabled ? 'translate-x-5' : 'translate-x-0'"
-              />
-            </button>
+
+            <!-- Sandbox nested content (only shown when sandbox is enabled) -->
+            <Transition name="collapse">
+              <div v-if="configInfo?.sandbox_enabled" class="border-t border-gray-200 dark:border-slate-600 p-3 space-y-3">
+                <!-- Network Access Toggle -->
+                <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-lg">
+                  <div class="flex items-center gap-3">
+                    <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.networkAccess') }}</span>
+                    <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.networkAccessDesc') }}</span>
+                  </div>
+                  <button
+                    :disabled="togglingNetwork || !isInstalled"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    :class="configInfo?.network_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+                    role="switch"
+                    :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
+                    @click="toggleNetwork"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      :class="configInfo?.network_enabled ? 'translate-x-5' : 'translate-x-0'"
+                    />
+                  </button>
+                </div>
+
+                <!-- Directory Whitelist with Toggle -->
+                <div class="bg-white dark:bg-slate-800 rounded-lg overflow-hidden">
+                  <div class="flex items-center justify-between p-3 cursor-pointer" @click="isWhitelistExpanded = !isWhitelistExpanded">
+                    <div class="flex items-center gap-3">
+                      <!-- Expand/Collapse Arrow -->
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-4 w-4 text-gray-400 transition-transform duration-200"
+                        :class="{ 'rotate-90': isWhitelistExpanded }"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.directoryWhitelist') }}</span>
+                      <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.directoryWhitelistDesc') }}</span>
+                    </div>
+                    <button
+                      :disabled="togglingWhitelist || !isInstalled"
+                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cta focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="isWhitelistEnabled ? 'bg-cta' : 'bg-gray-200 dark:bg-slate-600'"
+                      role="switch"
+                      :aria-checked="isWhitelistEnabled ? 'true' : 'false'"
+                      @click.stop="toggleWhitelist"
+                    >
+                      <span
+                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                        :class="isWhitelistEnabled ? 'translate-x-5' : 'translate-x-0'"
+                      />
+                    </button>
+                  </div>
+
+                  <!-- Directory Whitelist Content (shown when expanded) -->
+                  <Transition name="collapse">
+                    <div v-if="isWhitelistExpanded" class="border-t border-gray-200 dark:border-slate-600 p-3">
+                      <!-- Existing directories list -->
+                      <div v-if="configInfo?.directory_whitelist?.length" class="space-y-2 mb-3">
+                        <div
+                          v-for="(entry, index) in configInfo.directory_whitelist"
+                          :key="index"
+                          class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-slate-600"
+                        >
+                          <!-- View mode -->
+                          <template v-if="editingIndex !== index">
+                            <div class="flex-1 min-w-0">
+                              <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                </svg>
+                                <span v-if="entry.alias" class="text-sm font-medium text-gray-900 dark:text-white">{{ entry.alias }}</span>
+                                <span class="text-sm text-gray-600 dark:text-slate-300 font-mono truncate" :class="{ 'text-gray-400 dark:text-slate-500': entry.alias }">{{ entry.path }}</span>
+                              </div>
+                            </div>
+                            <button
+                              class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 transition-colors"
+                              :title="t('common.edit')"
+                              @click="startEditDirectory(index)"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              :disabled="savingWhitelist"
+                              class="p-1.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors disabled:opacity-50"
+                              :title="t('common.delete')"
+                              @click="removeDirectory(index)"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </template>
+
+                          <!-- Edit mode -->
+                          <template v-else>
+                            <div class="flex-1 flex flex-col sm:flex-row gap-2">
+                              <input
+                                v-model="editPath"
+                                type="text"
+                                class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-accent focus:border-accent"
+                                :placeholder="t('claudecode.directoryPathPlaceholder')"
+                              />
+                              <input
+                                v-model="editAlias"
+                                type="text"
+                                class="sm:w-32 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-accent focus:border-accent"
+                                :placeholder="t('claudecode.directoryAliasPlaceholder')"
+                              />
+                            </div>
+                            <button
+                              :disabled="savingWhitelist || !editPath.trim()"
+                              class="p-1.5 text-green-500 hover:text-green-600 dark:hover:text-green-400 transition-colors disabled:opacity-50"
+                              :title="t('common.save')"
+                              @click="saveEditDirectory"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 transition-colors"
+                              :title="t('common.cancel')"
+                              @click="cancelEditDirectory"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </template>
+                        </div>
+                      </div>
+
+                      <!-- Empty state -->
+                      <div v-else class="text-center py-4 text-gray-500 dark:text-slate-400 text-sm">
+                        {{ t('claudecode.noDirectoriesWhitelisted') }}
+                      </div>
+
+                      <!-- Add new directory form -->
+                      <div class="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-200 dark:border-slate-600">
+                        <input
+                          v-model="newDirPath"
+                          type="text"
+                          class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-accent"
+                          :placeholder="t('claudecode.directoryPathPlaceholder')"
+                          @keyup.enter="addDirectory"
+                        />
+                        <input
+                          v-model="newDirAlias"
+                          type="text"
+                          class="sm:w-32 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-accent"
+                          :placeholder="t('claudecode.directoryAliasPlaceholder')"
+                          @keyup.enter="addDirectory"
+                        />
+                        <button
+                          :disabled="savingWhitelist || !newDirPath.trim()"
+                          class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                          @click="addDirectory"
+                        >
+                          <svg v-if="savingWhitelist" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                          </svg>
+                          {{ t('common.add') }}
+                        </button>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
+              </div>
+            </Transition>
           </div>
 
-          <!-- Network Access Toggle (only shown when sandbox is enabled) -->
-          <div v-if="configInfo?.sandbox_enabled" class="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg ml-4">
-            <div class="flex items-center gap-3">
-              <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.networkAccess') }}</span>
-              <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.networkAccessDesc') }}</span>
-            </div>
-            <button
-              :disabled="togglingNetwork || !isInstalled"
-              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              :class="configInfo?.network_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
-              role="switch"
-              :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
-              @click="toggleNetwork"
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="configInfo?.network_enabled ? 'translate-x-5' : 'translate-x-0'"
-              />
-            </button>
-          </div>
-
-          <!-- Version Details -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-              <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('claudecode.activeVersion') }}</p>
-              <p class="text-gray-900 dark:text-white font-mono">{{ versionInfo.active_version || '-' }}</p>
-            </div>
-            <div class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-              <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('claudecode.platform') }}</p>
-              <p class="text-gray-900 dark:text-white font-mono">{{ versionInfo.platform }}</p>
-            </div>
-            <div v-if="versionInfo.system_version" class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-              <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('claudecode.systemVersion') }}</p>
-              <p class="text-gray-900 dark:text-white font-mono">{{ versionInfo.system_version }}</p>
-            </div>
-            <div v-if="versionInfo.embedded_version" class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
-              <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('claudecode.embeddedVersion') }}</p>
-              <p class="text-gray-900 dark:text-white font-mono">{{ versionInfo.embedded_version }}</p>
+          <!-- Version Details - Simplified -->
+          <div class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3 mb-4">
+            <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('claudecode.version') }}</p>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-gray-900 dark:text-white font-mono">{{ versionInfo.active_version || '-' }}</span>
+              <a
+                v-if="hasUpdate && latestVersionDisplay"
+                href="https://docs.anthropic.com/en/docs/claude-code"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-mono transition-colors"
+                :title="t('claudecode.viewDocs')"
+              >
+                ({{ latestVersionDisplay }} {{ t('claudecode.available') }})
+              </a>
             </div>
           </div>
 
@@ -520,6 +824,42 @@ function formatDate(dateStr?: string) {
           </div>
         </template>
       </div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </section>
 </template>
+
+<style scoped>
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+  border: 1px solid rgb(229, 231, 235);
+}
+
+:root.dark .glass-card {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgb(51, 65, 85);
+}
+
+/* Collapse transition */
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 2000px;
+}
+</style>

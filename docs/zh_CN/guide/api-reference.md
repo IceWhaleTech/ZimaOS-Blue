@@ -7,7 +7,7 @@
 ## 基础 URL
 
 ```
-http://localhost:8080/api/v1
+http://localhost:23456/api/v1
 ```
 
 ## 认证
@@ -857,13 +857,13 @@ X-RateLimit-Reset: 1705312800
 连接以接收实时聊天更新。
 
 ```
-ws://localhost:8080/api/v1/ws/chat
+ws://localhost:23456/api/v1/ws/chat
 ```
 
 **认证：** 将令牌作为查询参数包含：
 
 ```
-ws://localhost:8080/api/v1/ws/chat?token=<jwt-token>
+ws://localhost:23456/api/v1/ws/chat?token=<jwt-token>
 ```
 
 **消息格式：**
@@ -903,7 +903,7 @@ import (
 )
 
 func main() {
-    client := echo.NewClient("http://localhost:8080", "your-api-key")
+    client := echo.NewClient("http://localhost:23456", "your-api-key")
 
     resp, err := client.Chat("你好，Echo！")
     if err != nil {
@@ -919,7 +919,7 @@ func main() {
 ```python
 from echo_sdk import EchoClient
 
-client = EchoClient("http://localhost:8080", api_key="your-api-key")
+client = EchoClient("http://localhost:23456", api_key="your-api-key")
 
 response = client.chat("你好，Echo！")
 print(response.message)
@@ -930,7 +930,7 @@ print(response.message)
 ```javascript
 import { EchoClient } from '@zimaos/echo-sdk';
 
-const client = new EchoClient('http://localhost:8080', {
+const client = new EchoClient('http://localhost:23456', {
   apiKey: 'your-api-key'
 });
 

@@ -83,11 +83,11 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:23456',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:23456',
         changeOrigin: true,
       },
     },
@@ -142,6 +142,18 @@ export default defineConfig({
           if (id.includes('node_modules/axios')) {
             return 'http'
           }
+          // Mermaid and its dependencies - keep together to avoid circular dep issues
+          if (id.includes('node_modules/mermaid') ||
+              id.includes('node_modules/d3') ||
+              id.includes('node_modules/dagre') ||
+              id.includes('node_modules/elkjs') ||
+              id.includes('node_modules/cytoscape') ||
+              id.includes('node_modules/dompurify') ||
+              id.includes('node_modules/khroma') ||
+              id.includes('node_modules/lodash') ||
+              id.includes('node_modules/stylis')) {
+            return 'mermaid'
+          }
           // Other vendor libraries
           if (id.includes('node_modules')) {
             return 'vendor'
@@ -153,7 +165,7 @@ export default defineConfig({
   // Optimize dependencies
   optimizeDeps: {
     include: ['vue', 'vue-router', 'pinia', 'axios'],
-    exclude: ['@vue-flow/core'],
+    exclude: ['@vue-flow/core', 'mermaid'],
   },
   test: {
     globals: true,

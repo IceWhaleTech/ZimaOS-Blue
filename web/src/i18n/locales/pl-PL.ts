@@ -56,6 +56,28 @@ export default {
     security: 'Bezpieczeństwo',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Wszystko',
+      overview: 'Przegląd',
+      system: 'System',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Status systemu',
+      uptime: 'Czas działania',
+      memoryUsage: 'Użycie pamięci',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Status failoveru',
+      cpuChart: 'Użycie CPU',
+      memoryChart: 'Użycie pamięci',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Pamięć heap',
+      systemInfo: 'Informacje o systemie',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Umiejętności',
@@ -596,6 +618,7 @@ export default {
         system: 'System',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimalna długość hasła',
           description: 'Sprawdź, czy minimalna długość hasła spełnia wymagania bezpieczeństwa',

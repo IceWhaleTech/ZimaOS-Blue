@@ -24,7 +24,7 @@ describe('Clipboard Parser', () => {
     })
 
     it('should handle URLs with ports', () => {
-      expect(getUrlProbability('http://localhost:8080')).toBeGreaterThan(0.5)
+      expect(getUrlProbability('http://localhost:23456')).toBeGreaterThan(0.5)
       expect(getUrlProbability('https://api.example.com:443/v1')).toBeGreaterThanOrEqual(0.7)
     })
 
@@ -234,9 +234,9 @@ url: 'https://api.example.com'`
       })
 
       it('should handle colons in URL values', () => {
-        const data = `endpoint: https://api.example.com:8080/v1`
+        const data = `endpoint: https://api.example.com:23456/v1`
         const result = parseClipboardData(data)
-        expect(result['endpoint']).toBe('https://api.example.com:8080/v1')
+        expect(result['endpoint']).toBe('https://api.example.com:23456/v1')
       })
     })
 

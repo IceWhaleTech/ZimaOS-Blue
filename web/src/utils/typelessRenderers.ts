@@ -12,9 +12,10 @@ import type {
   TypelessCardInfo,
   TypelessCardQuote,
   TypelessCardAlert,
+  TypelessCardTerminal,
   ListItem,
 } from '@/types/typeless'
-import { parseInline } from './markdown'
+import { parseInline, highlightCode } from './markdown'
 
 // ============================================================================
 // Render Cache - LRU cache for rendered card HTML
@@ -36,8 +37,8 @@ class RenderCache {
   }
 
   private generateKey(card: TypelessCard): string {
-    // Use card id if available, otherwise hash the content
-    if (card.id) return `${card.type}:${card.id}`
+    // Always hash the full card content to avoid collisions between cards
+    // with the same ID from different messages
     return `${card.type}:${this.hashCard(card)}`
   }
 
@@ -107,6 +108,7 @@ export const FUNCTIONAL_CARD_TYPES = new Set([
   'info',
   'quote',
   'alert',
+  'terminal',
 ])
 
 // Card types that require Vue components (complex interactivity, async loading, etc.)
@@ -132,6 +134,7 @@ export const COMPONENT_CARD_TYPES = new Set([
   'audio',     // Has audio player
   'collapsible-code', // Has expand/collapse state
   'diff',      // Complex highlighting
+  'mermaid',   // Mermaid diagram rendering
 ])
 
 /**
@@ -170,6 +173,9 @@ export function renderCardToHtml(card: TypelessCard): string {
       break
     case 'alert':
       html = renderAlert(card as TypelessCardAlert)
+      break
+    case 'terminal':
+      html = renderTerminal(card as TypelessCardTerminal)
       break
     default:
       html = `<div class="text-red-500">Unknown card type: ${card.type}</div>`
@@ -256,20 +262,26 @@ function renderCode(card: TypelessCardCode): string {
     ? languageNames[card.language.toLowerCase()] || card.language
     : 'Text'
 
-  const lines = card.code.split('\n')
+  // Normalize language for highlighting
+  const langForHighlight = card.language?.toLowerCase() || ''
+
   // Disable line numbers for plain text (no language specified)
   const isPlainText = !card.language
   const showLineNumbers = !isPlainText && card.showLineNumbers !== false
   const highlightLines = new Set(card.highlightLines || [])
 
-  const linesHtml = lines.map((line, index) => {
+  // Apply syntax highlighting to the entire code block
+  const highlightedCode = card.language ? highlightCode(card.code, langForHighlight) : escapeHtml(card.code)
+  const highlightedLines = highlightedCode.split('\n')
+
+  const linesHtml = highlightedLines.map((line, index) => {
     const lineNum = index + 1
     const highlighted = highlightLines.has(lineNum) ? ' bg-yellow-500/20' : ''
     const lineNumHtml = showLineNumbers
       ? `<span class="inline-block w-8 text-right mr-4 text-gray-500 select-none">${lineNum}</span>`
       : ''
     // Add newline at the end for proper copying
-    const lineContent = index < lines.length - 1 ? `${escapeHtml(line)}\n` : escapeHtml(line)
+    const lineContent = index < highlightedLines.length - 1 ? `${line}\n` : line
     return `<span class="block${highlighted}">${lineNumHtml}${lineContent}</span>`
   }).join('')
 
@@ -284,29 +296,39 @@ function renderCode(card: TypelessCardCode): string {
   // Generate unique ID for copy functionality
   const codeId = `code-${card.id || Math.random().toString(36).substr(2, 9)}`
 
-  return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-    <div class="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-center gap-3">
-        <div class="flex gap-1.5">
-          <div class="w-3 h-3 rounded-full bg-red-500"></div>
-          <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
-          <div class="w-3 h-3 rounded-full bg-green-500"></div>
+  // Data for fullscreen
+  const fullscreenData = JSON.stringify({
+    title: titleOrFilename || langDisplay,
+    language: card.language,
+    content: card.code,
+  }).replace(/"/g, '&quot;')
+
+  return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('code', '${fullscreenData.replace(/'/g, "\\'")}')">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex items-center gap-2">
+        <div class="flex gap-1">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
         </div>
         ${titleHtml}
         ${langBadge}
       </div>
-      <button
-        class="typeless-copy-btn flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-        data-code-id="${codeId}"
-        onclick="window.__typelessCopyCode && window.__typelessCopyCode('${codeId}')"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-        <span>Copy</span>
-      </button>
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
+        <button
+          class="typeless-copy-btn flex items-center p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          data-code-id="${codeId}"
+          onclick="event.stopPropagation(); window.__typelessCopyCode && window.__typelessCopyCode('${codeId}')"
+          title="Copy"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+      </div>
     </div>
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto cursor-pointer" title="Double-click to view fullscreen">
       <pre class="p-4 text-sm leading-relaxed" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;"><code id="${codeId}" class="text-gray-800 dark:text-gray-100">${linesHtml}</code></pre>
     </div>
   </div>`
@@ -365,29 +387,57 @@ function renderList(card: TypelessCardList): string {
 
   // Checklist variant
   if (card.variant === 'checklist') {
+    // Count completed items for progress display
+    const totalItems = card.items.length
+    const completedItems = card.items.filter(item => item.checked).length
+    const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
+
+    // Progress header
+    const progressHtml = `<div class="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${completedItems}/${totalItems} completed</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full ${completedItems === totalItems ? 'bg-green-500' : 'bg-blue-500'} rounded-full transition-all duration-300" style="width: ${progressPercent}%"></div>
+        </div>
+        <span class="text-xs text-gray-500 dark:text-gray-400">${progressPercent}%</span>
+      </div>
+    </div>`
+
     const itemsHtml = card.items.map((item, index) => {
       const checked = item.checked || false
-      const checkboxClass = checked
-        ? 'bg-blue-500 border-blue-500'
-        : 'border-gray-300 dark:border-gray-600'
+      const checkboxBg = checked
+        ? 'bg-green-500 border-green-500'
+        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600'
       const checkIcon = checked
         ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
           </svg>`
         : ''
-      const textClass = checked ? 'line-through text-gray-400 dark:text-gray-500' : ''
+      const textClass = checked
+        ? 'line-through text-gray-400 dark:text-gray-500'
+        : 'text-gray-700 dark:text-gray-300'
+      const rowBg = checked
+        ? 'bg-green-50/50 dark:bg-green-900/10'
+        : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
 
-      return `<li class="flex items-center gap-3" data-item-index="${index}">
-        <div class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${checkboxClass}">
+      return `<li class="flex items-center gap-3 px-4 py-2.5 ${rowBg} transition-colors" data-item-index="${index}">
+        <div class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${checkboxBg} transition-colors">
           ${checkIcon}
         </div>
-        <span class="flex-1 text-gray-700 dark:text-gray-300 transition-colors ${textClass}">${parseInline(item.content)}</span>
+        <span class="flex-1 text-sm ${textClass} transition-colors">${parseInline(item.content)}</span>
+        ${checked ? '<span class="text-xs text-green-500 dark:text-green-400">✓</span>' : ''}
       </li>`
     }).join('')
 
     return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
       ${titleHtml}
-      <ul class="p-4 space-y-2">
+      ${progressHtml}
+      <ul class="divide-y divide-gray-100 dark:divide-gray-700/50">
         ${itemsHtml}
       </ul>
     </div>`
@@ -532,10 +582,187 @@ function renderAlert(card: TypelessCardAlert): string {
 }
 
 /**
+ * Render terminal card with ANSI color support
+ */
+function renderTerminal(card: TypelessCardTerminal): string {
+  // ANSI color code to inline style mapping
+  const ansiColorStyles: Record<number, string> = {
+    // Standard colors (foreground)
+    30: 'color: #1f2937',      // black
+    31: 'color: #dc2626',      // red
+    32: 'color: #16a34a',      // green
+    33: 'color: #ca8a04',      // yellow
+    34: 'color: #2563eb',      // blue
+    35: 'color: #9333ea',      // purple/magenta
+    36: 'color: #0891b2',      // cyan
+    37: 'color: #e5e7eb',      // white/light gray
+    // Bright colors (foreground)
+    90: 'color: #6b7280',      // bright black (gray)
+    91: 'color: #ef4444',      // bright red
+    92: 'color: #22c55e',      // bright green
+    93: 'color: #eab308',      // bright yellow
+    94: 'color: #3b82f6',      // bright blue
+    95: 'color: #a855f7',      // bright purple
+    96: 'color: #06b6d4',      // bright cyan
+    97: 'color: #ffffff',      // bright white
+    // Background colors
+    40: 'background-color: #000000',
+    41: 'background-color: #dc2626',
+    42: 'background-color: #16a34a',
+    43: 'background-color: #ca8a04',
+    44: 'background-color: #2563eb',
+    45: 'background-color: #9333ea',
+    46: 'background-color: #0891b2',
+    47: 'background-color: #e5e7eb',
+    // Bright background colors
+    100: 'background-color: #374151',
+    101: 'background-color: #ef4444',
+    102: 'background-color: #22c55e',
+    103: 'background-color: #eab308',
+    104: 'background-color: #3b82f6',
+    105: 'background-color: #a855f7',
+    106: 'background-color: #06b6d4',
+    107: 'background-color: #ffffff',
+  }
+
+  // Text style codes
+  const ansiStyleMap: Record<number, string> = {
+    1: 'font-weight: bold',
+    2: 'opacity: 0.75',        // Dim
+    3: 'font-style: italic',
+    4: 'text-decoration: underline',
+    9: 'text-decoration: line-through',
+  }
+
+  // Parse ANSI escape codes and convert to HTML spans with inline styles
+  function parseAnsiToHtml(text: string): string {
+    const ansiRegex = /\x1b\[([0-9;]*)m/g
+    let result = ''
+    let lastIndex = 0
+    let currentStyles: string[] = []
+    let match
+
+    while ((match = ansiRegex.exec(text)) !== null) {
+      // Add text before this escape sequence
+      if (match.index > lastIndex) {
+        const segmentText = escapeHtml(text.slice(lastIndex, match.index))
+        if (segmentText) {
+          if (currentStyles.length > 0) {
+            result += `<span style="${currentStyles.join('; ')}">${segmentText}</span>`
+          } else {
+            result += segmentText
+          }
+        }
+      }
+
+      // Parse the escape codes
+      const codes = (match[1] || '').split(';').map(c => parseInt(c, 10) || 0)
+
+      for (const code of codes) {
+        if (code === 0) {
+          // Reset all
+          currentStyles = []
+        } else if (ansiColorStyles[code]) {
+          // Remove existing color/bg style of same type
+          const isBg = code >= 40
+          currentStyles = currentStyles.filter(s => {
+            if (isBg) return !s.startsWith('background-color')
+            return !s.startsWith('color')
+          })
+          currentStyles.push(ansiColorStyles[code])
+        } else if (ansiStyleMap[code]) {
+          if (!currentStyles.includes(ansiStyleMap[code])) {
+            currentStyles.push(ansiStyleMap[code])
+          }
+        }
+      }
+
+      lastIndex = match.index + match[0].length
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      const segmentText = escapeHtml(text.slice(lastIndex))
+      if (currentStyles.length > 0) {
+        result += `<span style="${currentStyles.join('; ')}">${segmentText}</span>`
+      } else {
+        result += segmentText
+      }
+    }
+
+    return result
+  }
+
+  // Strip ANSI codes for plain text (used for copying)
+  function stripAnsi(text: string): string {
+    return text.replace(/\x1b\[[0-9;]*m/g, '')
+  }
+
+  const titleHtml = card.title
+    ? `<span class="text-sm text-gray-400">${escapeHtml(card.title)}</span>`
+    : ''
+
+  const promptHtml = card.showPrompt && card.prompt
+    ? `<span style="color: #22c55e">${escapeHtml(card.prompt)}</span>`
+    : ''
+
+  // Parse content with ANSI codes
+  const parsedContent = parseAnsiToHtml(card.content)
+
+  // Generate unique ID for copy functionality
+  const terminalId = `terminal-${card.id || Math.random().toString(36).substr(2, 9)}`
+  const plainContent = stripAnsi(card.content)
+
+  // Theme classes
+  const themeClass = card.theme === 'light' ? 'bg-gray-100' : 'bg-gray-900'
+  const textClass = card.theme === 'light' ? 'text-gray-900' : 'text-gray-100'
+
+  // Max height style
+  const maxHeightStyle = card.maxHeight ? `max-height: ${card.maxHeight}px;` : ''
+
+  // Data for fullscreen
+  const fullscreenData = JSON.stringify({
+    title: card.title || 'Terminal',
+    content: plainContent,
+  }).replace(/"/g, '&quot;')
+
+  return `<div class="terminal-card rounded-lg border border-gray-700 overflow-hidden" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('terminal', '${fullscreenData.replace(/'/g, "\\'")}')">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+      <div class="flex items-center gap-2">
+        <div class="flex gap-1">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+        </div>
+        ${titleHtml}
+        <span class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">Terminal</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
+        <button
+          class="typeless-copy-btn flex items-center p-1 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+          data-terminal-id="${terminalId}"
+          data-terminal-content="${escapeHtml(plainContent).replace(/"/g, '&quot;')}"
+          onclick="event.stopPropagation(); window.__typelessCopyTerminal && window.__typelessCopyTerminal('${terminalId}')"
+          title="Copy"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="overflow-auto ${themeClass} cursor-pointer" style="${maxHeightStyle}" title="Double-click to view fullscreen">
+      <pre id="${terminalId}" class="p-4 text-sm leading-relaxed ${textClass}" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace; white-space: pre-wrap; word-wrap: break-word;">${promptHtml}${parsedContent}</pre>
+    </div>
+  </div>`
+}
+
+/**
  * Initialize copy code functionality (call once on app mount)
  */
 export function initTypelessCopyHandler(): void {
-  // Add global copy handler
+  // Add global copy handler for code
   (window as unknown as { __typelessCopyCode?: (codeId: string) => void }).__typelessCopyCode = async (codeId: string) => {
     const codeElement = document.getElementById(codeId)
     if (!codeElement) return
@@ -549,7 +776,7 @@ export function initTypelessCopyHandler(): void {
       const btn = document.querySelector(`[data-code-id="${codeId}"]`)
       if (btn) {
         const originalHtml = btn.innerHTML
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg><span>Copied!</span>`
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`
         setTimeout(() => {
           btn.innerHTML = originalHtml
         }, 2000)
@@ -557,5 +784,43 @@ export function initTypelessCopyHandler(): void {
     } catch (err) {
       console.error('Failed to copy code:', err)
     }
+  }
+
+  // Add global copy handler for terminal
+  (window as unknown as { __typelessCopyTerminal?: (terminalId: string) => void }).__typelessCopyTerminal = async (terminalId: string) => {
+    const btn = document.querySelector(`[data-terminal-id="${terminalId}"]`)
+    if (!btn) return
+
+    try {
+      // Get plain content from data attribute (ANSI codes already stripped)
+      const content = btn.getAttribute('data-terminal-content') || ''
+      // Decode HTML entities
+      const textarea = document.createElement('textarea')
+      textarea.innerHTML = content
+      const plainText = textarea.value
+
+      await navigator.clipboard.writeText(plainText)
+
+      // Update button
+      const originalHtml = btn.innerHTML
+      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`
+      setTimeout(() => {
+        btn.innerHTML = originalHtml
+      }, 2000)
+    } catch (err) {
+      console.error('Failed to copy terminal content:', err)
+    }
+  }
+
+  // Add global fullscreen handler for code/terminal cards
+  // This is called from the ondblclick handler in the rendered HTML
+  // The actual fullscreen state is managed by the useFullscreen composable
+  // which is imported by the FullscreenModal component
+  (window as unknown as { __typelessOpenFullscreen?: (type: string, dataJson: string) => void }).__typelessOpenFullscreen = (type: string, dataJson: string) => {
+    // Dispatch a custom event that the FullscreenModal component listens to
+    const event = new CustomEvent('typeless-fullscreen', {
+      detail: { type, dataJson },
+    })
+    window.dispatchEvent(event)
   }
 }

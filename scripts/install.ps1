@@ -137,7 +137,7 @@ function New-DefaultConfig {
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: "30s"
   write_timeout: "30s"
   idle_timeout: "120s"
@@ -303,7 +303,7 @@ function Add-FirewallRule {
             -Description "Allow ZimaOS-Echo web interface" `
             -Direction Inbound `
             -Protocol TCP `
-            -LocalPort 8080 `
+            -LocalPort 23456 `
             -Action Allow `
             -Profile Any | Out-Null
         Write-Info "Firewall rule added"
@@ -363,9 +363,9 @@ function Write-Success {
     Write-Host "╚═══════════════════════════════════════════╝" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Dashboard: " -NoNewline
-    Write-Host "http://${ip}:8080" -ForegroundColor Cyan
+    Write-Host "http://${ip}:23456" -ForegroundColor Cyan
     Write-Host "  Health:    " -NoNewline
-    Write-Host "http://${ip}:8080/health" -ForegroundColor Cyan
+    Write-Host "http://${ip}:23456/health" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Service Commands:" -ForegroundColor Yellow
     Write-Host "    Get-Service ZimaOS-Echo              - Check status"

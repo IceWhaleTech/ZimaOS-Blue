@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,11 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
-)
-
-// Common errors
-var (
-	ErrNotFound = errors.New("not found")
 )
 
 // ToolCall represents a tool call made by the LLM.
@@ -45,18 +39,27 @@ type Conversation struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// MessageAttachment represents an attachment in a message.
+type MessageAttachment struct {
+	Type     string `json:"type"`      // "image" or "file"
+	Name     string `json:"name"`      // filename
+	MimeType string `json:"mime_type"` // MIME type
+	Data     string `json:"data"`      // base64 encoded data
+}
+
 // Message represents a chat message.
 type Message struct {
-	ID             string        `json:"id"`
-	ConversationID string        `json:"conversation_id"`
-	Role           string        `json:"role"`
-	Content        string        `json:"content"`
-	ToolCalls      []ToolCall    `json:"tool_calls,omitempty"`
-	ToolCallID     string        `json:"tool_call_id,omitempty"`
-	Provider       string        `json:"provider,omitempty"`
-	Model          string        `json:"model,omitempty"`
-	Stats          *MessageStats `json:"stats,omitempty"`
-	CreatedAt      time.Time     `json:"created_at"`
+	ID             string              `json:"id"`
+	ConversationID string              `json:"conversation_id"`
+	Role           string              `json:"role"`
+	Content        string              `json:"content"`
+	ToolCalls      []ToolCall          `json:"tool_calls,omitempty"`
+	ToolCallID     string              `json:"tool_call_id,omitempty"`
+	Provider       string              `json:"provider,omitempty"`
+	Model          string              `json:"model,omitempty"`
+	Stats          *MessageStats       `json:"stats,omitempty"`
+	Attachments    []MessageAttachment `json:"attachments,omitempty"`
+	CreatedAt      time.Time           `json:"created_at"`
 }
 
 // Store provides conversation storage using SQLite.
@@ -141,6 +144,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE messages ADD COLUMN provider TEXT",
 		"ALTER TABLE messages ADD COLUMN model TEXT",
 		"ALTER TABLE messages ADD COLUMN stats TEXT",
+		"ALTER TABLE messages ADD COLUMN attachments TEXT",
 	}
 
 	for _, migration := range migrations {
@@ -298,9 +302,18 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 		}
 	}
 
+	var attachmentsJSON []byte
+	if len(msg.Attachments) > 0 {
+		var err error
+		attachmentsJSON, err = json.Marshal(msg.Attachments)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal attachments: %w", err)
+		}
+	}
+
 	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.Provider, msg.Model, statsJSON, msg.CreatedAt,
+		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.Provider, msg.Model, statsJSON, attachmentsJSON, msg.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add message: %w", err)
@@ -315,7 +328,7 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 // GetMessages retrieves messages for a conversation.
 func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, attachments, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
 		conversationID, limit, offset,
 	)
 	if err != nil {
@@ -331,8 +344,9 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 		var provider sql.NullString
 		var model sql.NullString
 		var statsJSON sql.NullString
+		var attachmentsJSON sql.NullString
 
-		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &provider, &model, &statsJSON, &msg.CreatedAt); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &provider, &model, &statsJSON, &attachmentsJSON, &msg.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 
@@ -358,6 +372,12 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 			msg.Stats = &MessageStats{}
 			if err := json.Unmarshal([]byte(statsJSON.String), msg.Stats); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
+			}
+		}
+
+		if attachmentsJSON.Valid && attachmentsJSON.String != "" {
+			if err := json.Unmarshal([]byte(attachmentsJSON.String), &msg.Attachments); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal attachments: %w", err)
 			}
 		}
 

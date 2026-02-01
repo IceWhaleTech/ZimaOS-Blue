@@ -68,7 +68,7 @@ echo ========================================
 echo   ZimaOS-Echo Development Environment
 echo ========================================
 echo.
-echo   Backend:  http://localhost:8080
+echo   Backend:  http://localhost:23456
 echo   Frontend: http://localhost:3000
 echo.
 
@@ -183,7 +183,7 @@ if errorlevel 1 (
 echo [OK] Web assets copied to server\internal\web\dist
 
 :: Start server (production mode, no -tags dev, serves embedded frontend)
-echo [INFO] Starting Go server (production mode, http://localhost:8080)...
+echo [INFO] Starting Go server (production mode, http://localhost:23456)...
 cd /d "%PROJECT_ROOT%server"
 go run ./cmd/echo
 goto :eof

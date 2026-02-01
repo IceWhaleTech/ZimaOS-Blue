@@ -8,8 +8,8 @@ set -e
 
 # Configuration
 SERVICE_NAME="${SERVICE_NAME:-zimaos-echo}"
-HEALTH_URL="${HEALTH_URL:-http://localhost:8080/health}"
-METRICS_URL="${METRICS_URL:-http://localhost:8080/metrics}"
+HEALTH_URL="${HEALTH_URL:-http://localhost:23456/health}"
+METRICS_URL="${METRICS_URL:-http://localhost:23456/metrics}"
 DURATION_HOURS="${DURATION_HOURS:-168}"  # 7 days default
 CHECK_INTERVAL="${CHECK_INTERVAL:-60}"   # seconds
 REPORT_INTERVAL="${REPORT_INTERVAL:-3600}"  # hourly reports

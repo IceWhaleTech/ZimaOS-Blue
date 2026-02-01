@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/orca-zhang/ecache"
+	ecache2 "github.com/orca-zhang/ecache2"
+	"github.com/orca-zhang/ecache2/stats"
 )
 
 // ECache wraps ecache.Cache with the Cache interface.
@@ -284,4 +286,112 @@ func (c *ECache2) Stats() CacheStats {
 // Close closes the cache and releases resources.
 func (c *ECache2) Close() error {
 	return nil
+}
+
+// GenericCache is a generic cache using ecache2 with type-safe keys.
+// K can be string, int, int64, uint64, etc.
+type GenericCache[K ecache2.Hashable] struct {
+	cache  *ecache2.Cache[K]
+	config Config
+	pool   string
+}
+
+// NewGenericCache creates a new generic cache with LRU-2 mode.
+func NewGenericCache[K ecache2.Hashable](config Config) *GenericCache[K] {
+	if config.MaxSize <= 0 {
+		config.MaxSize = 1000
+	}
+
+	bucketCount := 16
+	bucketSize := config.MaxSize / bucketCount
+	if bucketSize < 10 {
+		bucketSize = 10
+	}
+
+	ttl := config.DefaultTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+
+	return &GenericCache[K]{
+		cache:  ecache2.NewLRUCache[K](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4)),
+		config: config,
+	}
+}
+
+// NewGenericCacheWithStats creates a new generic cache with stats tracking.
+// Only works with string keys due to stats plugin limitation.
+func NewGenericCacheWithStats(config Config, poolName string) *GenericCache[string] {
+	if config.MaxSize <= 0 {
+		config.MaxSize = 1000
+	}
+
+	bucketCount := 16
+	bucketSize := config.MaxSize / bucketCount
+	if bucketSize < 10 {
+		bucketSize = 10
+	}
+
+	ttl := config.DefaultTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+
+	cache := ecache2.NewLRUCache[string](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4))
+
+	// Bind stats
+	stats.Bind(poolName, cache)
+
+	return &GenericCache[string]{
+		cache:  cache,
+		config: config,
+		pool:   poolName,
+	}
+}
+
+// Get retrieves a value from the cache.
+func (c *GenericCache[K]) Get(key K) (interface{}, bool) {
+	return c.cache.Get(key)
+}
+
+// GetInt64 retrieves an int64 value from the cache.
+func (c *GenericCache[K]) GetInt64(key K) (int64, bool) {
+	return c.cache.GetInt64(key)
+}
+
+// Put stores a value in the cache.
+func (c *GenericCache[K]) Put(key K, value interface{}) {
+	c.cache.Put(key, value)
+}
+
+// PutInt64 stores an int64 value in the cache.
+func (c *GenericCache[K]) PutInt64(key K, value int64) {
+	c.cache.PutInt64(key, value)
+}
+
+// Del removes a key from the cache.
+func (c *GenericCache[K]) Del(key K) {
+	c.cache.Del(key)
+}
+
+// Stats returns cache statistics from the stats plugin.
+func (c *GenericCache[K]) Stats() CacheStats {
+	if c.pool == "" {
+		return CacheStats{Capacity: int64(c.config.MaxSize)}
+	}
+
+	v, ok := stats.Stats().Load(c.pool)
+	if !ok {
+		return CacheStats{Capacity: int64(c.config.MaxSize)}
+	}
+
+	node := v.(*stats.StatsNode)
+	return CacheStats{
+		Hits:     int64(node.GetHit),
+		Misses:   int64(node.GetMiss),
+		Sets:     int64(node.Added + node.Updated),
+		Deletes:  int64(node.DelHit),
+		Capacity: int64(c.config.MaxSize),
+		HitRate:  node.HitRate() * 100,
+	}
 }

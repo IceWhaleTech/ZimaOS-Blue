@@ -56,6 +56,28 @@ export default {
     security: 'Zabezpečení',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Vše',
+      overview: 'Přehled',
+      system: 'Systém',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Stav systému',
+      uptime: 'Doba provozu',
+      memoryUsage: 'Využití paměti',
+      goroutines: 'Goroutiny',
+      failoverStatus: 'Stav failoveru',
+      cpuChart: 'Využití CPU',
+      memoryChart: 'Využití paměti',
+      goroutinesChart: 'Goroutiny',
+      heapChart: 'Paměť heap',
+      systemInfo: 'Informace o systému',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Dovednosti',
@@ -596,6 +618,7 @@ export default {
         system: 'Systém',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimální délka hesla',
           description: 'Zkontrolovat, zda minimální délka hesla splňuje bezpečnostní požadavky',

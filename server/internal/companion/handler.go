@@ -8,12 +8,22 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 )
 
 // Handler handles REST API requests for the companion service.
 type Handler struct {
 	manager *Manager
 	storage Storage
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for frequently accessed data (using ecache2 generic cache)
+	statsCache   *cache.GenericCache[string]
+	sessionCache *cache.GenericCache[string]
 }
 
 // NewHandler creates a new REST API handler.
@@ -21,6 +31,14 @@ func NewHandler(manager *Manager, storage Storage) *Handler {
 	return &Handler{
 		manager: manager,
 		storage: storage,
+		statsCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    50,
+			DefaultTTL: 5 * time.Second,
+		}, "companion_stats"),
+		sessionCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    200,
+			DefaultTTL: 10 * time.Second,
+		}, "companion_sessions"),
 	}
 }
 
@@ -255,12 +273,31 @@ func (h *Handler) BulkAcknowledgeAlerts(c echo.Context) error {
 
 // GetStats handles GET /api/v1/companion/stats
 func (h *Handler) GetStats(c echo.Context) error {
-	stats, err := h.manager.GetStats(c.Request().Context())
+	ctx := c.Request().Context()
+
+	// Try cache first
+	cacheKey := "companion_stats"
+	if cached, ok := h.statsCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
+	}
+
+	// Use singleflight to deduplicate concurrent requests
+	result, err, _ := h.sfGroup.Do("get_stats", func() (interface{}, error) {
+		stats, err := h.manager.GetStats(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Cache the result
+		h.statsCache.Put(cacheKey, stats)
+		return stats, nil
+	})
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, stats)
+	return c.JSON(http.StatusOK, result)
 }
 
 // Export handles GET /api/v1/companion/export

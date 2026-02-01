@@ -252,28 +252,42 @@ func (s *LocalSkillScanner) Scan() error {
 		return nil
 	}
 
-	// Walk the directory
-	err := filepath.Walk(s.basePath, func(path string, info os.FileInfo, err error) error {
+	// Use queue-based iteration instead of recursive walk
+	queue := []string{s.basePath}
+
+	for len(queue) > 0 {
+		currentDir := queue[0]
+		queue = queue[1:]
+
+		entries, err := os.ReadDir(currentDir)
 		if err != nil {
-			return nil // Skip errors
+			continue // Skip directories we can't read
 		}
 
-		// Look for SKILL.md files
-		if info.IsDir() || info.Name() != "SKILL.md" {
-			return nil
+		for _, entry := range entries {
+			path := filepath.Join(currentDir, entry.Name())
+
+			if entry.IsDir() {
+				queue = append(queue, path)
+				continue
+			}
+
+			// Look for SKILL.md files
+			if entry.Name() != "SKILL.md" {
+				continue
+			}
+
+			skill, err := s.parseSkillFile(path)
+			if err != nil {
+				// Log error but continue scanning
+				continue
+			}
+
+			s.skills[skill.ID] = skill
 		}
+	}
 
-		skill, err := s.parseSkillFile(path)
-		if err != nil {
-			// Log error but continue scanning
-			return nil
-		}
-
-		s.skills[skill.ID] = skill
-		return nil
-	})
-
-	return err
+	return nil
 }
 
 // parseSkillFile parses a SKILL.md file

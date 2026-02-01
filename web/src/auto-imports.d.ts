@@ -18,12 +18,14 @@ declare global {
   const defineComponent: typeof import('vue').defineComponent
   const defineStore: typeof import('pinia').defineStore
   const effectScope: typeof import('vue').effectScope
+  const fullscreenContent: typeof import('./composables/useFullscreen').fullscreenContent
   const getActivePinia: typeof import('pinia').getActivePinia
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const h: typeof import('vue').h
   const inject: typeof import('vue').inject
+  const isFullscreen: typeof import('./composables/useFullscreen').isFullscreen
   const isProxy: typeof import('vue').isProxy
   const isReactive: typeof import('vue').isReactive
   const isReadonly: typeof import('vue').isReadonly
@@ -86,6 +88,7 @@ declare global {
   const useDebounce: typeof import('@vueuse/core').useDebounce
   const useEventListener: typeof import('@vueuse/core').useEventListener
   const useFormFillerWidget: typeof import('./composables/useFormFillerWidget').useFormFillerWidget
+  const useFullscreen: typeof import('./composables/useFullscreen').useFullscreen
   const useGateway: typeof import('./composables/useGateway').useGateway
   const useGlobalShortcuts: typeof import('./composables/useKeyboardShortcuts').useGlobalShortcuts
   const useId: typeof import('vue').useId
@@ -126,14 +129,14 @@ declare global {
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, ShallowRef, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
-  export type { A2UIWebSocketConfig } from './composables/useA2UI'
-  import('./composables/useA2UI')
-  // @ts-ignore
   export type { UseCompanionStreamOptions } from './composables/useCompanionStream'
   import('./composables/useCompanionStream')
   // @ts-ignore
   export type { FillHistoryEntry, WidgetPosition, WidgetState } from './composables/useFormFillerWidget'
   import('./composables/useFormFillerWidget')
+  // @ts-ignore
+  export type { FullscreenContent } from './composables/useFullscreen'
+  import('./composables/useFullscreen')
   // @ts-ignore
   export type { KeyboardShortcut } from './composables/useKeyboardShortcuts'
   import('./composables/useKeyboardShortcuts')
@@ -143,6 +146,9 @@ declare global {
   // @ts-ignore
   export type { Platform } from './composables/useTauri'
   import('./composables/useTauri')
+  // @ts-ignore
+  export type { EventState, EventStateTransition, TrackedEvent } from './stores/companion'
+  import('./stores/companion')
   // @ts-ignore
   export type { NotificationType, Notification } from './stores/notification'
   import('./stores/notification')
@@ -170,12 +176,14 @@ declare module 'vue' {
     readonly defineComponent: UnwrapRef<typeof import('vue')['defineComponent']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
+    readonly fullscreenContent: UnwrapRef<typeof import('./composables/useFullscreen')['fullscreenContent']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
+    readonly isFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['isFullscreen']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
@@ -222,7 +230,6 @@ declare module 'vue' {
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly unref: UnwrapRef<typeof import('vue')['unref']>
-    readonly useA2UIWebSocket: UnwrapRef<typeof import('./composables/useA2UI')['useA2UIWebSocket']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
     readonly useAuthStore: UnwrapRef<typeof import('./stores/auth')['useAuthStore']>
     readonly useAutoReplyStore: UnwrapRef<typeof import('./stores/autoreply')['useAutoReplyStore']>
@@ -238,6 +245,7 @@ declare module 'vue' {
     readonly useDebounce: UnwrapRef<typeof import('@vueuse/core')['useDebounce']>
     readonly useEventListener: UnwrapRef<typeof import('@vueuse/core')['useEventListener']>
     readonly useFormFillerWidget: UnwrapRef<typeof import('./composables/useFormFillerWidget')['useFormFillerWidget']>
+    readonly useFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['useFullscreen']>
     readonly useGateway: UnwrapRef<typeof import('./composables/useGateway')['useGateway']>
     readonly useGlobalShortcuts: UnwrapRef<typeof import('./composables/useKeyboardShortcuts')['useGlobalShortcuts']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>

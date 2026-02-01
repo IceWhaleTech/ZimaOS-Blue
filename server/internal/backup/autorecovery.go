@@ -1,0 +1,195 @@
+package backup
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+)
+
+// AutoRecoveryResult contains information about an auto-recovery operation.
+type AutoRecoveryResult struct {
+	// Recovered indicates if recovery was performed
+	Recovered bool `json:"recovered"`
+	// BackupID is the ID of the backup used for recovery
+	BackupID string `json:"backup_id,omitempty"`
+	// BackupTime is the timestamp of the backup used
+	BackupTime time.Time `json:"backup_time,omitempty"`
+	// Error contains any error message
+	Error string `json:"error,omitempty"`
+	// FilesRecovered is the number of files recovered
+	FilesRecovered int `json:"files_recovered,omitempty"`
+	// DatabasesChecked lists the databases that were checked
+	DatabasesChecked []string `json:"databases_checked,omitempty"`
+	// CorruptedDatabases lists the databases that were found corrupted
+	CorruptedDatabases []string `json:"corrupted_databases,omitempty"`
+}
+
+// CheckAndAutoRecover checks database integrity and automatically recovers from backup if corrupted.
+// This should be called during application startup before opening databases.
+func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*AutoRecoveryResult, error) {
+	result := &AutoRecoveryResult{
+		DatabasesChecked: make([]string, 0),
+	}
+
+	// Check each database for corruption
+	var corruptedDBs []string
+	for _, dbPath := range dbPaths {
+		result.DatabasesChecked = append(result.DatabasesChecked, dbPath)
+
+		// First, try to clean WAL files if they exist
+		// This can sometimes fix "database disk image is malformed" errors
+		if err := database.CleanWALFiles(dbPath); err != nil {
+			// Log but continue - this is not fatal
+			fmt.Printf("Warning: failed to clean WAL files for %s: %v\n", dbPath, err)
+		}
+
+		// Check database integrity
+		if err := database.QuickCheckDatabase(dbPath); err != nil {
+			corruptedDBs = append(corruptedDBs, dbPath)
+			result.CorruptedDatabases = append(result.CorruptedDatabases, dbPath)
+		}
+	}
+
+	// If no corruption found, return early
+	if len(corruptedDBs) == 0 {
+		return result, nil
+	}
+
+	// Find the most recent valid backup
+	backups := m.List()
+	if len(backups) == 0 {
+		result.Error = "database corruption detected but no backups available for recovery"
+		return result, fmt.Errorf("%s", result.Error)
+	}
+
+	// Sort backups by creation time (newest first)
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].CreatedAt.After(backups[j].CreatedAt)
+	})
+
+	// Try to restore from the most recent valid backup
+	var lastErr error
+	for _, backup := range backups {
+		// Verify backup integrity first
+		if err := m.Verify(backup.ID); err != nil {
+			// If checksum mismatch, try to repair it first
+			// This can happen if the backup was created but metadata wasn't updated properly
+			if repairErr := m.RepairChecksum(backup.ID); repairErr == nil {
+				// Retry verification after repair
+				if verifyErr := m.Verify(backup.ID); verifyErr != nil {
+					lastErr = verifyErr
+					continue
+				}
+			} else {
+				lastErr = err
+				continue
+			}
+		}
+
+		// Perform restore
+		opts := DefaultRestoreOptions()
+		opts.OverwriteExisting = true
+
+		restoreResult, err := m.Restore(ctx, backup.ID, opts)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if restoreResult.Success {
+			result.Recovered = true
+			result.BackupID = backup.ID
+			result.BackupTime = backup.CreatedAt
+			result.FilesRecovered = restoreResult.FilesRestored
+			return result, nil
+		}
+
+		lastErr = fmt.Errorf("restore completed with errors: %v", restoreResult.Errors)
+	}
+
+	result.Error = fmt.Sprintf("failed to recover from any backup: %v", lastErr)
+	return result, fmt.Errorf("%s", result.Error)
+}
+
+// CheckDatabaseHealth checks the health of all databases in the data directory.
+// Returns a list of corrupted database paths.
+func (m *Manager) CheckDatabaseHealth(ctx context.Context) ([]string, error) {
+	var corrupted []string
+
+	// Find all .db files in data directory
+	pattern := filepath.Join(m.dataDir, "*.db")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find database files: %w", err)
+	}
+
+	for _, dbPath := range matches {
+		if err := database.QuickCheckDatabase(dbPath); err != nil {
+			corrupted = append(corrupted, dbPath)
+		}
+	}
+
+	return corrupted, nil
+}
+
+// GetLatestBackup returns the most recent backup, or nil if no backups exist.
+func (m *Manager) GetLatestBackup() *BackupInfo {
+	backups := m.List()
+	if len(backups) == 0 {
+		return nil
+	}
+
+	// List already returns sorted by creation time (newest first)
+	return backups[0]
+}
+
+// RecoverFromLatestBackup attempts to recover from the most recent valid backup.
+func (m *Manager) RecoverFromLatestBackup(ctx context.Context) (*AutoRecoveryResult, error) {
+	result := &AutoRecoveryResult{}
+
+	backups := m.List()
+	if len(backups) == 0 {
+		result.Error = "no backups available for recovery"
+		return result, fmt.Errorf("%s", result.Error)
+	}
+
+	// Try each backup starting from the most recent
+	for _, backup := range backups {
+		// Verify backup integrity
+		if err := m.Verify(backup.ID); err != nil {
+			// If checksum mismatch, try to repair it first
+			if repairErr := m.RepairChecksum(backup.ID); repairErr == nil {
+				// Retry verification after repair
+				if verifyErr := m.Verify(backup.ID); verifyErr != nil {
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		// Perform restore
+		opts := DefaultRestoreOptions()
+		opts.OverwriteExisting = true
+
+		restoreResult, err := m.Restore(ctx, backup.ID, opts)
+		if err != nil {
+			continue
+		}
+
+		if restoreResult.Success {
+			result.Recovered = true
+			result.BackupID = backup.ID
+			result.BackupTime = backup.CreatedAt
+			result.FilesRecovered = restoreResult.FilesRestored
+			return result, nil
+		}
+	}
+
+	result.Error = "failed to recover from any available backup"
+	return result, fmt.Errorf("%s", result.Error)
+}

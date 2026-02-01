@@ -8,10 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/labstack/echo/v4"
 )
 
 // Test ChatHandler creation
@@ -368,7 +368,7 @@ func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
 	registry := llm.NewProviderRegistry()
 	// Use CustomProvider which has Name() = "custom"
 	// Provider Pool IDs that don't match known mappings will map to "custom"
-	customProvider := llm.NewCustomProvider("test-key", "http://localhost:8080")
+	customProvider := llm.NewCustomProvider("test-key", "http://localhost:23456")
 	registry.Register(customProvider)
 
 	toolRegistry := tools.NewRegistry()
@@ -404,8 +404,8 @@ func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
 
 // MockMetricsRecorder implements MetricsRecorder for testing
 type MockMetricsRecorder struct {
-	APICalls    []MockAPICallRecord
-	SpeedCalls  []MockSpeedRecord
+	APICalls   []MockAPICallRecord
+	SpeedCalls []MockSpeedRecord
 }
 
 type MockAPICallRecord struct {
@@ -723,8 +723,8 @@ func TestChatHandlerGetMessagesWithStats(t *testing.T) {
 // Test token estimation functions
 func TestEstimateTokens(t *testing.T) {
 	tests := []struct {
-		name     string
-		text     string
+		name      string
+		text      string
 		minTokens int
 		maxTokens int
 	}{
@@ -788,9 +788,9 @@ func TestIsCJK(t *testing.T) {
 		{' ', false},
 		{'中', true},
 		{'国', true},
-		{'あ', true},  // Hiragana
-		{'ア', true},  // Katakana
-		{'한', true},  // Hangul
+		{'あ', true}, // Hiragana
+		{'ア', true}, // Katakana
+		{'한', true}, // Hangul
 	}
 
 	for _, tt := range tests {

@@ -18,7 +18,7 @@ const serveoHost = "serveo.net:22"
 // Returns the public URL, a cleanup function, and an error.
 func startServeoNativeSSH(ctx context.Context, port int, subdomain string) (url string, cleanup func(), err error) {
 	if port == 0 {
-		port = 8080
+		port = 23456
 	}
 	// Serveo with subdomain: we know the URL. Without subdomain we cannot get it from protocol.
 	if subdomain == "" {

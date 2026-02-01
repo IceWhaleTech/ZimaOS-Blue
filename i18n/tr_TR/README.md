@@ -181,7 +181,7 @@ dev.bat
 ```
 
 - Ön Uç: `http://localhost:3000`
-- Arka Uç: `http://localhost:8080`
+- Arka Uç: `http://localhost:23456`
 
 ### Derleme Komutları
 

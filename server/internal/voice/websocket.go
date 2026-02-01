@@ -11,14 +11,14 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 )
 
+// Security fix: Use origin checker instead of allowing all origins
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024 * 16,
 	WriteBufferSize: 1024 * 16,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for development
-	},
+	CheckOrigin:     security.CheckOriginDefault,
 }
 
 // WSHandler handles WebSocket connections for voice streaming.

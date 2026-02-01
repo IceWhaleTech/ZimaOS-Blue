@@ -2,11 +2,14 @@ package providerpool
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool/ide"
 )
 
@@ -215,11 +218,28 @@ func (p *Pool) initBuiltinProviders() {
 // Handler provides HTTP handlers for the provider pool API
 type Handler struct {
 	pool *Pool
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for frequently accessed data (using ecache2 generic cache)
+	modelsCache *cache.GenericCache[string]
+	ideCache    *cache.GenericCache[string]
 }
 
 // NewHandler creates a new Handler
 func NewHandler(pool *Pool) *Handler {
-	return &Handler{pool: pool}
+	return &Handler{
+		pool: pool,
+		modelsCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    100,
+			DefaultTTL: 30 * time.Second,
+		}, "providerpool_models"),
+		ideCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    50,
+			DefaultTTL: 10 * time.Second,
+		}, "providerpool_ide"),
+	}
 }
 
 // RegisterRoutes registers all API routes on an Echo group
@@ -261,6 +281,10 @@ func (h *Handler) RegisterModelRoutes(g *echo.Group) {
 func (h *Handler) RegisterIDERoutes(g *echo.Group) {
 	g.GET("/scan", h.ScanIDEs)
 	g.POST("/:type/connect", h.ConnectIDE)
+	g.GET("/importable", h.GetImportableConfigs)
+	g.POST("/import/:type", h.ImportIDEConfig)
+	g.POST("/import-cc-switch", h.ImportFromCCSwitch)
+	g.GET("/env-hints", h.GetEnvHints)
 }
 
 // RegisterPricingRoutes registers pricing management routes on a separate group
@@ -444,12 +468,21 @@ func (h *Handler) TestProvider(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	checker := NewHTTPHealthChecker(10 * time.Second)
-	result := checker.Check(c.Request().Context(), provider)
+	// Use singleflight to deduplicate concurrent test requests for the same provider
+	key := fmt.Sprintf("test_provider:%s", id)
+	result, err, _ := h.sfGroup.Do(key, func() (interface{}, error) {
+		checker := NewHTTPHealthChecker(10 * time.Second)
+		return checker.Check(c.Request().Context(), provider), nil
+	})
 
-	h.pool.Registry.SetHealth(id, result)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 
-	return c.JSON(http.StatusOK, result)
+	healthResult := result.(*HealthCheckResult)
+	h.pool.Registry.SetHealth(id, healthResult)
+
+	return c.JSON(http.StatusOK, healthResult)
 }
 
 // UpdateModelParams updates model parameters for a provider
@@ -696,11 +729,17 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 func (h *Handler) FetchProviderModels(c echo.Context) error {
 	id := c.Param("id")
 
-	models, err := h.pool.Discovery.FetchModels(c.Request().Context(), id)
+	// Use singleflight to deduplicate concurrent requests for the same provider
+	key := fmt.Sprintf("fetch_models:%s", id)
+	result, err, _ := h.sfGroup.Do(key, func() (interface{}, error) {
+		return h.pool.Discovery.FetchModels(c.Request().Context(), id)
+	})
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	models := result.([]*Model)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"models": models,
 		"total":  len(models),
@@ -827,17 +866,42 @@ func (h *Handler) GetProviderUsage(c echo.Context) error {
 
 // IDE handlers
 
-// ScanIDEs scans for available IDEs
+// ScanIDEs scans for available IDEs and returns all results (including not found)
 func (h *Handler) ScanIDEs(c echo.Context) error {
-	ides, err := h.pool.IDEDiscovery.Scan(c.Request().Context())
+	ctx := c.Request().Context()
+
+	// Try cache first
+	cacheKey := "ide_scan_results"
+	if cached, ok := h.ideCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
+	}
+
+	// Use singleflight to deduplicate concurrent scan requests
+	result, err, _ := h.sfGroup.Do("scan_ides", func() (interface{}, error) {
+		results, err := h.pool.IDEDiscovery.ScanAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		ides := h.pool.IDEDiscovery.GetDiscovered()
+
+		response := map[string]interface{}{
+			"ides":         ides,
+			"scan_results": results,
+			"total":        len(ides),
+		}
+
+		// Cache the result
+		h.ideCache.Put(cacheKey, response)
+
+		return response, nil
+	})
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"ides":  ides,
-		"total": len(ides),
-	})
+	return c.JSON(http.StatusOK, result)
 }
 
 // ConnectIDE connects to an IDE
@@ -850,6 +914,166 @@ func (h *Handler) ConnectIDE(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, info)
+}
+
+// GetImportableConfigs returns all IDE configurations that can be imported
+func (h *Handler) GetImportableConfigs(c echo.Context) error {
+	configs, err := h.pool.IDEDiscovery.GetImportableConfigs(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"configs": configs,
+		"total":   len(configs),
+	})
+}
+
+// ImportIDEConfig imports configuration from a specific IDE
+func (h *Handler) ImportIDEConfig(c echo.Context) error {
+	ideType := ide.IDEType(c.Param("type"))
+
+	// Get the real API key
+	apiKey, err := h.pool.IDEDiscovery.GetRealAPIKey(ideType)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	// Determine provider ID based on IDE type
+	providerID := getProviderIDForIDE(ideType)
+
+	// Add API key to the provider
+	key := &APIKey{
+		Key:     apiKey,
+		Label:   "Imported from " + string(ideType),
+		KeyHash: HashAPIKey(apiKey),
+		Enabled: true,
+	}
+
+	if err := h.pool.Registry.AddAPIKey(providerID, key); err != nil {
+		// If provider doesn't exist, try to enable it first
+		if err == ErrProviderNotFound {
+			// Try to enable the builtin provider
+			if enableErr := h.pool.Registry.Enable(providerID); enableErr != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "provider not found: " + providerID})
+			}
+			// Retry adding the key
+			if err = h.pool.Registry.AddAPIKey(providerID, key); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		} else {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	// Enable the provider
+	h.pool.Registry.Enable(providerID)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":     "configuration imported successfully",
+		"provider_id": providerID,
+		"ide_type":    ideType,
+	})
+}
+
+// ImportFromCCSwitch imports configuration from Claude Code's cc switch output
+func (h *Handler) ImportFromCCSwitch(c echo.Context) error {
+	var req struct {
+		Output string `json:"output"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Output == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "output is required"})
+	}
+
+	config, err := h.pool.IDEDiscovery.ImportFromClaudeCodeSwitch(req.Output)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"config":  config,
+		"message": "configuration parsed successfully",
+	})
+}
+
+// GetEnvHints returns environment variable hints for IDE configuration
+func (h *Handler) GetEnvHints(c echo.Context) error {
+	claudeKey, _ := ide.GetAPIKeyFromEnv(ide.IDETypeClaudeCode)
+	cursorKey, _ := ide.GetAPIKeyFromEnv(ide.IDETypeCursor)
+	windsurfKey, _ := ide.GetAPIKeyFromEnv(ide.IDETypeWindsurf)
+	qoderKey, _ := ide.GetAPIKeyFromEnv(ide.IDETypeQoder)
+	traeKey, _ := ide.GetAPIKeyFromEnv(ide.IDETypeTRAE)
+	antigravityKey, _ := ide.GetAPIKeyFromEnv(ide.IDETypeAntigravity)
+
+	hints := []map[string]interface{}{
+		{
+			"ide":      "claude-code",
+			"name":     "Claude Code",
+			"env_vars": []string{"ANTHROPIC_API_KEY", "CLAUDE_API_KEY"},
+			"provider": "anthropic",
+			"detected": claudeKey != "",
+		},
+		{
+			"ide":      "cursor",
+			"name":     "Cursor",
+			"env_vars": []string{"CURSOR_API_KEY", "OPENAI_API_KEY"},
+			"provider": "openai",
+			"detected": cursorKey != "",
+		},
+		{
+			"ide":      "windsurf",
+			"name":     "Windsurf",
+			"env_vars": []string{"WINDSURF_API_KEY", "OPENAI_API_KEY"},
+			"provider": "openai",
+			"detected": windsurfKey != "",
+		},
+		{
+			"ide":      "qoder",
+			"name":     "Qoder",
+			"env_vars": []string{"QODER_API_KEY", "OPENAI_API_KEY"},
+			"provider": "openai",
+			"detected": qoderKey != "",
+		},
+		{
+			"ide":      "trae",
+			"name":     "TRAE",
+			"env_vars": []string{"TRAE_API_KEY"},
+			"provider": "custom",
+			"detected": traeKey != "",
+		},
+		{
+			"ide":      "antigravity",
+			"name":     "Antigravity",
+			"env_vars": []string{"ANTIGRAVITY_API_KEY", "GOOGLE_API_KEY"},
+			"provider": "google",
+			"detected": antigravityKey != "",
+		},
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"hints": hints,
+	})
+}
+
+// getProviderIDForIDE returns the provider ID for an IDE type
+func getProviderIDForIDE(ideType ide.IDEType) string {
+	switch ideType {
+	case ide.IDETypeClaudeCode:
+		return "anthropic"
+	case ide.IDETypeCursor, ide.IDETypeWindsurf, ide.IDETypeQoder, ide.IDETypeKiro:
+		return "openai"
+	case ide.IDETypeAntigravity:
+		return "google"
+	case ide.IDETypeTRAE:
+		return "custom"
+	case ide.IDETypeCopilot:
+		return "github"
+	}
+	return "openai"
 }
 
 // Pricing handlers

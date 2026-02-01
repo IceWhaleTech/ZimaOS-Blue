@@ -22,6 +22,11 @@ const (
 	IDETypeAntigravity IDEType = "antigravity"
 	IDETypeCursor      IDEType = "cursor"
 	IDETypeWindsurf    IDEType = "windsurf"
+	IDETypeClaudeCode  IDEType = "claude-code"
+	IDETypeQoder       IDEType = "qoder"
+	IDETypeTRAE        IDEType = "trae"
+	IDETypeKiro        IDEType = "kiro"
+	IDETypeCopilot     IDEType = "copilot"
 )
 
 // IDEInfo contains information about a discovered IDE
@@ -31,10 +36,26 @@ type IDEInfo struct {
 	Version     string    `json:"version,omitempty"`
 	ConfigPath  string    `json:"config_path"`
 	ProxyURL    string    `json:"proxy_url,omitempty"`
+	APIKey      string    `json:"api_key,omitempty"` // Masked key for display
 	Connected   bool      `json:"connected"`
 	Models      []string  `json:"models,omitempty"`
 	LastChecked time.Time `json:"last_checked"`
 	Error       string    `json:"error,omitempty"`
+	// Usage information
+	Usage *IDEUsageInfo `json:"usage,omitempty"`
+}
+
+// IDEUsageInfo contains usage information for an IDE
+type IDEUsageInfo struct {
+	TotalTokens      int64     `json:"total_tokens,omitempty"`
+	InputTokens      int64     `json:"input_tokens,omitempty"`
+	OutputTokens     int64     `json:"output_tokens,omitempty"`
+	TotalRequests    int64     `json:"total_requests,omitempty"`
+	EstimatedCost    float64   `json:"estimated_cost,omitempty"`
+	RemainingCredits float64   `json:"remaining_credits,omitempty"`
+	UsageLimit       float64   `json:"usage_limit,omitempty"`
+	UsagePeriod      string    `json:"usage_period,omitempty"` // "daily", "monthly", etc.
+	LastUpdated      time.Time `json:"last_updated,omitempty"`
 }
 
 // Discovery handles IDE provider discovery
@@ -56,13 +77,32 @@ func NewDiscovery(timeout time.Duration) *Discovery {
 	}
 }
 
+// ScanResult contains the result of scanning for an IDE
+type ScanResult struct {
+	IDEType       IDEType  `json:"ide_type"`
+	IDEName       string   `json:"ide_name"`
+	Found         bool     `json:"found"`
+	ConfigPath    string   `json:"config_path,omitempty"`
+	SearchedPaths []string `json:"searched_paths,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
 // Scan scans for all supported IDEs
 func (d *Discovery) Scan(ctx context.Context) ([]*IDEInfo, error) {
 	var results []*IDEInfo
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	ideTypes := []IDEType{IDETypeAntigravity, IDETypeCursor, IDETypeWindsurf}
+	ideTypes := []IDEType{
+		IDETypeAntigravity,
+		IDETypeCursor,
+		IDETypeWindsurf,
+		IDETypeClaudeCode,
+		IDETypeQoder,
+		IDETypeTRAE,
+		IDETypeKiro,
+		IDETypeCopilot,
+	}
 
 	for _, ideType := range ideTypes {
 		wg.Add(1)
@@ -86,6 +126,90 @@ func (d *Discovery) Scan(ctx context.Context) ([]*IDEInfo, error) {
 
 	wg.Wait()
 	return results, nil
+}
+
+// ScanAll scans for all supported IDEs and returns results for all (including not found)
+func (d *Discovery) ScanAll(ctx context.Context) ([]*ScanResult, error) {
+	var results []*ScanResult
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	ideTypes := []IDEType{
+		IDETypeAntigravity,
+		IDETypeCursor,
+		IDETypeWindsurf,
+		IDETypeClaudeCode,
+		IDETypeQoder,
+		IDETypeTRAE,
+		IDETypeKiro,
+		IDETypeCopilot,
+	}
+
+	for _, ideType := range ideTypes {
+		wg.Add(1)
+		go func(t IDEType) {
+			defer wg.Done()
+
+			result := &ScanResult{
+				IDEType: t,
+				IDEName: getIDEName(t),
+			}
+
+			// Get searched paths
+			result.SearchedPaths = getSearchedPaths(t)
+
+			info, err := d.scanIDE(ctx, t)
+			if err != nil {
+				result.Found = false
+				result.Error = err.Error()
+			} else {
+				result.Found = true
+				result.ConfigPath = info.ConfigPath
+
+				d.mu.Lock()
+				d.discovered[t] = info
+				d.mu.Unlock()
+			}
+
+			mu.Lock()
+			results = append(results, result)
+			mu.Unlock()
+		}(ideType)
+	}
+
+	wg.Wait()
+	return results, nil
+}
+
+// getSearchedPaths returns the paths that will be searched for an IDE
+func getSearchedPaths(ideType IDEType) []string {
+	var paths []string
+
+	switch ideType {
+	case IDETypeAntigravity:
+		paths = getAntigravityPaths()
+	case IDETypeCursor:
+		paths = getCursorPaths()
+	case IDETypeWindsurf:
+		paths = getWindsurfPaths()
+	case IDETypeClaudeCode:
+		paths = getClaudeCodePaths()
+	case IDETypeQoder:
+		paths = getQoderPaths()
+	case IDETypeTRAE:
+		paths = getTRAEPaths()
+	case IDETypeKiro:
+		paths = getKiroPaths()
+	case IDETypeCopilot:
+		paths = getCopilotPaths()
+	}
+
+	// Expand paths for display
+	expanded := make([]string, 0, len(paths))
+	for _, p := range paths {
+		expanded = append(expanded, expandPath(p))
+	}
+	return expanded
 }
 
 // GetDiscovered returns all discovered IDEs
@@ -229,6 +353,16 @@ func getIDEName(ideType IDEType) string {
 		return "Cursor"
 	case IDETypeWindsurf:
 		return "Windsurf"
+	case IDETypeClaudeCode:
+		return "Claude Code"
+	case IDETypeQoder:
+		return "Qoder"
+	case IDETypeTRAE:
+		return "TRAE"
+	case IDETypeKiro:
+		return "Kiro"
+	case IDETypeCopilot:
+		return "GitHub Copilot"
 	default:
 		return string(ideType)
 	}
@@ -245,6 +379,16 @@ func findConfigPath(ideType IDEType) string {
 		paths = getCursorPaths()
 	case IDETypeWindsurf:
 		paths = getWindsurfPaths()
+	case IDETypeClaudeCode:
+		paths = getClaudeCodePaths()
+	case IDETypeQoder:
+		paths = getQoderPaths()
+	case IDETypeTRAE:
+		paths = getTRAEPaths()
+	case IDETypeKiro:
+		paths = getKiroPaths()
+	case IDETypeCopilot:
+		paths = getCopilotPaths()
 	}
 
 	for _, path := range paths {
@@ -275,6 +419,14 @@ func findProxyURL(ideType IDEType, configPath string) string {
 		return proxyURL
 	}
 
+	// Look for base_url or api_url
+	if baseURL, ok := config["base_url"].(string); ok {
+		return baseURL
+	}
+	if apiURL, ok := config["api_url"].(string); ok {
+		return apiURL
+	}
+
 	// Try common local ports based on IDE type
 	switch ideType {
 	case IDETypeAntigravity:
@@ -283,6 +435,16 @@ func findProxyURL(ideType IDEType, configPath string) string {
 		return tryPorts([]int{9999, 9998, 9997})
 	case IDETypeWindsurf:
 		return tryPorts([]int{9800, 9801, 9802})
+	case IDETypeClaudeCode:
+		return tryPorts([]int{9000, 9001, 9002, 23456})
+	case IDETypeQoder:
+		return tryPorts([]int{9500, 9501, 9502})
+	case IDETypeTRAE:
+		return tryPorts([]int{9600, 9601, 9602})
+	case IDETypeKiro:
+		return tryPorts([]int{65432, 65433})
+	case IDETypeCopilot:
+		return tryPorts([]int{9700, 9701})
 	}
 
 	return ""
@@ -372,6 +534,120 @@ func getWindsurfPaths() []string {
 	return nil
 }
 
+// getClaudeCodePaths returns possible config paths for Claude Code CLI
+func getClaudeCodePaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"~/.claude/settings.json",
+			"~/.claude/config.json",
+			"~/.config/claude/settings.json",
+		}
+	case "linux":
+		return []string{
+			"~/.claude/settings.json",
+			"~/.claude/config.json",
+			"~/.config/claude/settings.json",
+		}
+	case "windows":
+		return []string{
+			"%USERPROFILE%/.claude/settings.json",
+			"%APPDATA%/claude/settings.json",
+			"%LOCALAPPDATA%/claude/settings.json",
+		}
+	}
+	return nil
+}
+
+// getQoderPaths returns possible config paths for Qoder
+func getQoderPaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"~/Library/Application Support/Qoder/config.json",
+			"~/.qoder/config.json",
+			"~/.config/qoder/config.json",
+		}
+	case "linux":
+		return []string{
+			"~/.config/qoder/config.json",
+			"~/.qoder/config.json",
+		}
+	case "windows":
+		return []string{
+			"%APPDATA%/Qoder/config.json",
+			"%LOCALAPPDATA%/Qoder/config.json",
+		}
+	}
+	return nil
+}
+
+// getTRAEPaths returns possible config paths for TRAE (ByteDance)
+func getTRAEPaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"~/Library/Application Support/TRAE/config.json",
+			"~/.trae/config.json",
+			"~/.config/trae/config.json",
+		}
+	case "linux":
+		return []string{
+			"~/.config/trae/config.json",
+			"~/.trae/config.json",
+		}
+	case "windows":
+		return []string{
+			"%APPDATA%/TRAE/config.json",
+			"%LOCALAPPDATA%/TRAE/config.json",
+		}
+	}
+	return nil
+}
+
+// getKiroPaths returns possible config paths for Kiro
+func getKiroPaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"~/.kiro/config.json",
+			"~/Library/Application Support/Kiro/config.json",
+		}
+	case "linux":
+		return []string{
+			"~/.kiro/config.json",
+			"~/.config/kiro/config.json",
+		}
+	case "windows":
+		return []string{
+			"%USERPROFILE%/.kiro/config.json",
+			"%APPDATA%/Kiro/config.json",
+		}
+	}
+	return nil
+}
+
+// getCopilotPaths returns possible config paths for GitHub Copilot
+func getCopilotPaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"~/.config/github-copilot/hosts.json",
+			"~/Library/Application Support/GitHub Copilot/hosts.json",
+		}
+	case "linux":
+		return []string{
+			"~/.config/github-copilot/hosts.json",
+		}
+	case "windows":
+		return []string{
+			"%LOCALAPPDATA%/github-copilot/hosts.json",
+			"%APPDATA%/GitHub Copilot/hosts.json",
+		}
+	}
+	return nil
+}
+
 // expandPath expands ~ and environment variables in a path
 func expandPath(path string) string {
 	// Expand ~
@@ -386,4 +662,257 @@ func expandPath(path string) string {
 	path = os.ExpandEnv(path)
 
 	return path
+}
+
+// ExtractAPIKey extracts API key from IDE config (returns masked version for display)
+func (d *Discovery) ExtractAPIKey(ideType IDEType, configPath string) (key string, masked string) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", ""
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return "", ""
+	}
+
+	// Try different key names based on IDE type
+	keyNames := []string{"api_key", "apiKey", "key", "anthropic_api_key", "openai_api_key"}
+
+	for _, keyName := range keyNames {
+		if apiKey, ok := config[keyName].(string); ok && apiKey != "" {
+			return apiKey, maskAPIKey(apiKey)
+		}
+	}
+
+	// For Claude Code, check nested structure
+	if ideType == IDETypeClaudeCode {
+		if providers, ok := config["providers"].(map[string]interface{}); ok {
+			if anthropic, ok := providers["anthropic"].(map[string]interface{}); ok {
+				if apiKey, ok := anthropic["api_key"].(string); ok && apiKey != "" {
+					return apiKey, maskAPIKey(apiKey)
+				}
+			}
+		}
+	}
+
+	return "", ""
+}
+
+// maskAPIKey masks an API key for display (shows first 4 and last 4 characters)
+func maskAPIKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:4] + "..." + key[len(key)-4:]
+}
+
+// GetAPIKeyFromEnv gets API key from environment variables for an IDE
+func GetAPIKeyFromEnv(ideType IDEType) (key string, envVar string) {
+	envVars := getEnvVarsForIDE(ideType)
+	for _, env := range envVars {
+		if val := os.Getenv(env); val != "" {
+			return val, env
+		}
+	}
+	return "", ""
+}
+
+// getEnvVarsForIDE returns environment variable names to check for an IDE
+func getEnvVarsForIDE(ideType IDEType) []string {
+	switch ideType {
+	case IDETypeClaudeCode:
+		return []string{"ANTHROPIC_API_KEY", "CLAUDE_API_KEY"}
+	case IDETypeCursor:
+		return []string{"CURSOR_API_KEY", "OPENAI_API_KEY"}
+	case IDETypeWindsurf:
+		return []string{"WINDSURF_API_KEY", "OPENAI_API_KEY"}
+	case IDETypeAntigravity:
+		return []string{"ANTIGRAVITY_API_KEY", "GOOGLE_API_KEY"}
+	case IDETypeQoder:
+		return []string{"QODER_API_KEY", "OPENAI_API_KEY"}
+	case IDETypeTRAE:
+		return []string{"TRAE_API_KEY"}
+	case IDETypeKiro:
+		return []string{"CONTINUE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+	case IDETypeCopilot:
+		return []string{"GITHUB_TOKEN", "COPILOT_TOKEN"}
+	}
+	return nil
+}
+
+// ImportConfig represents configuration that can be imported from an IDE
+type ImportConfig struct {
+	IDEType    IDEType  `json:"ide_type"`
+	IDEName    string   `json:"ide_name"`
+	APIKey     string   `json:"api_key,omitempty"`
+	BaseURL    string   `json:"base_url,omitempty"`
+	Models     []string `json:"models,omitempty"`
+	Provider   string   `json:"provider,omitempty"` // "anthropic", "openai", etc.
+	ConfigPath string   `json:"config_path,omitempty"`
+	EnvVar     string   `json:"env_var,omitempty"` // Which env var the key came from
+	Source     string   `json:"source"`            // "config", "env", "cc-switch"
+}
+
+// GetImportableConfigs returns all configurations that can be imported
+func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, error) {
+	var configs []*ImportConfig
+
+	// Scan all IDEs
+	ides, err := d.Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ide := range ides {
+		config := &ImportConfig{
+			IDEType:    ide.Type,
+			IDEName:    ide.Name,
+			BaseURL:    ide.ProxyURL,
+			Models:     ide.Models,
+			ConfigPath: ide.ConfigPath,
+			Source:     "config",
+		}
+
+		// Try to get API key from config
+		key, masked := d.ExtractAPIKey(ide.Type, ide.ConfigPath)
+		if key != "" {
+			config.APIKey = masked // Only return masked version
+		}
+
+		// Determine provider type
+		config.Provider = getProviderForIDE(ide.Type)
+
+		configs = append(configs, config)
+	}
+
+	// Also check environment variables
+	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeQoder, IDETypeTRAE} {
+		if key, envVar := GetAPIKeyFromEnv(ideType); key != "" {
+			// Check if we already have this IDE from config
+			found := false
+			for _, c := range configs {
+				if c.IDEType == ideType {
+					if c.APIKey == "" {
+						c.APIKey = maskAPIKey(key)
+						c.EnvVar = envVar
+						c.Source = "env"
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				configs = append(configs, &ImportConfig{
+					IDEType:  ideType,
+					IDEName:  getIDEName(ideType),
+					APIKey:   maskAPIKey(key),
+					EnvVar:   envVar,
+					Provider: getProviderForIDE(ideType),
+					Source:   "env",
+				})
+			}
+		}
+	}
+
+	return configs, nil
+}
+
+// getProviderForIDE returns the LLM provider type for an IDE
+func getProviderForIDE(ideType IDEType) string {
+	switch ideType {
+	case IDETypeClaudeCode:
+		return "anthropic"
+	case IDETypeCursor, IDETypeWindsurf, IDETypeQoder, IDETypeKiro:
+		return "openai"
+	case IDETypeAntigravity:
+		return "google"
+	case IDETypeTRAE:
+		return "custom"
+	case IDETypeCopilot:
+		return "github"
+	}
+	return "openai"
+}
+
+// ImportFromClaudeCodeSwitch imports configuration from Claude Code's cc switch command output
+// The cc switch command outputs provider configurations that can be parsed
+func (d *Discovery) ImportFromClaudeCodeSwitch(switchOutput string) (*ImportConfig, error) {
+	// Parse the cc switch output format
+	// Expected format varies, but typically includes provider info and API key
+	lines := strings.Split(switchOutput, "\n")
+
+	config := &ImportConfig{
+		IDEType: IDETypeClaudeCode,
+		IDEName: "Claude Code",
+		Source:  "cc-switch",
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Look for API key patterns
+		if strings.Contains(line, "api_key") || strings.Contains(line, "API_KEY") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[1])
+				key = strings.Trim(key, "\"'")
+				if key != "" {
+					config.APIKey = maskAPIKey(key)
+				}
+			}
+		}
+
+		// Look for base URL
+		if strings.Contains(line, "base_url") || strings.Contains(line, "BASE_URL") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				url := strings.TrimSpace(parts[1])
+				url = strings.Trim(url, "\"'")
+				if url != "" {
+					config.BaseURL = url
+				}
+			}
+		}
+
+		// Look for provider
+		if strings.Contains(line, "provider") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				provider := strings.TrimSpace(parts[1])
+				provider = strings.Trim(provider, "\"'")
+				if provider != "" {
+					config.Provider = provider
+				}
+			}
+		}
+	}
+
+	if config.APIKey == "" && config.BaseURL == "" {
+		return nil, fmt.Errorf("no valid configuration found in cc switch output")
+	}
+
+	return config, nil
+}
+
+// GetRealAPIKey returns the actual (unmasked) API key for import
+// This should only be called when actually importing the configuration
+func (d *Discovery) GetRealAPIKey(ideType IDEType) (string, error) {
+	// First try environment variable
+	if key, _ := GetAPIKeyFromEnv(ideType); key != "" {
+		return key, nil
+	}
+
+	// Then try config file
+	configPath := findConfigPath(ideType)
+	if configPath == "" {
+		return "", fmt.Errorf("config path not found for %s", ideType)
+	}
+
+	key, _ := d.ExtractAPIKey(ideType, configPath)
+	if key == "" {
+		return "", fmt.Errorf("no API key found for %s", ideType)
+	}
+
+	return key, nil
 }

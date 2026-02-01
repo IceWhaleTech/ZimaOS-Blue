@@ -5,10 +5,13 @@ hero:
   name: ZimaOS Echo
   text: NAS 原生 Agent 运行时
   tagline: 轻量、高性能的 AI Agent 运行时，专为低功耗 NAS 设备优化
+  image:
+    src: /logo.svg
+    alt: ZimaOS Echo
   actions:
     - theme: brand
       text: 快速开始
-      link: /zh/guide/getting-started
+      link: /zh_CN/guide/getting-started
     - theme: alt
       text: GitHub
       link: https://github.com/IceWhaleTech/ZimaOS-Echo/server
@@ -42,7 +45,7 @@ cd ZimaOS-Echo
 make build && ./dist/zimaos-echo server
 ```
 
-更多方式见 [安装指南](guide/installation.md)。
+更多方式见 [安装指南](/zh_CN/guide/installation.md)。
 
 ## 什么是 ZimaOS Echo？
 
@@ -52,3 +55,22 @@ ZimaOS Echo 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感
 - **长期稳定性**：专为 24/7 不间断运行设计
 - **简单部署**：一键安装，集成 systemd
 - **现代前端**：Vue 3 仪表板用于监控和管理
+
+## 架构
+
+```
+┌─────────────────────────────────────────────────┐
+│                  ZimaOS-Echo                     │
+├─────────────────────────────────────────────────┤
+│  Vue 3 前端  │  REST API  │  WebSocket          │
+├─────────────────────────────────────────────────┤
+│              核心运行时 (Go)                     │
+│  事件循环 │ 工作池 │ 配置 │ 日志                  │
+├─────────────────────────────────────────────────┤
+│              Agent 运行时                        │
+│  LLM 提供商 │ 工具 │ 记忆 │ 上下文                │
+├─────────────────────────────────────────────────┤
+│              数据层                              │
+│  SQLite │ BoltDB │ 文件                         │
+└─────────────────────────────────────────────────┘
+```

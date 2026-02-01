@@ -5,7 +5,7 @@ This document provides a comprehensive reference for the ZimaOS Echo REST API.
 ## Base URL
 
 ```
-http://localhost:8080/api
+http://localhost:23456/api
 ```
 
 ## Authentication
@@ -559,12 +559,12 @@ Response includes pagination metadata:
 ### Chat WebSocket
 
 ```
-ws://localhost:8080/ws/chat
+ws://localhost:23456/ws/chat
 ```
 
 Connect with token:
 ```javascript
-const ws = new WebSocket('ws://localhost:8080/ws/chat?token=<jwt-token>');
+const ws = new WebSocket('ws://localhost:23456/ws/chat?token=<jwt-token>');
 ```
 
 Message format:

@@ -1,19 +1,26 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import type { BackupInfo } from '@/api'
 
-export interface Backup {
+const { t } = useI18n()
+
+type BackupType = 'full' | 'config' | 'data'
+type BackupStatus = 'completed' | 'in_progress' | 'failed'
+
+interface BackupDisplay {
   id: string
   name: string
   createdAt: Date
   size: number
-  type: 'full' | 'config' | 'data'
-  status: 'completed' | 'in_progress' | 'failed'
+  type: BackupType
+  status: BackupStatus
   description?: string
 }
 
 const props = withDefaults(
   defineProps<{
-    backups?: Backup[]
+    backups?: BackupInfo[]
     loading?: boolean
     restoring?: boolean
   }>(),
@@ -25,21 +32,34 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  create: [type: Backup['type'], name: string]
+  create: [type: BackupType, name: string]
   restore: [id: string]
   delete: [id: string]
   download: [id: string]
 }>()
 
 const showCreateModal = ref(false)
-const newBackupType = ref<Backup['type']>('full')
+const newBackupType = ref<BackupType>('full')
 const newBackupName = ref('')
 
-const sortedBackups = computed(() => {
-  return [...props.backups].sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  )
-})
+function mapToDisplay(b: BackupInfo): BackupDisplay {
+  const type = (b.type === 'full' || b.type === 'config' || b.type === 'data' ? b.type : 'full') as BackupType
+  return {
+    id: b.id,
+    name: b.id,
+    createdAt: new Date(b.created_at),
+    size: b.size_bytes ?? 0,
+    type,
+    status: 'completed' as BackupStatus,
+    description: undefined,
+  }
+}
+
+const displayBackups = computed(() => (props.backups ?? []).map(mapToDisplay))
+
+const sortedBackups = computed(() =>
+  [...displayBackups.value].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+)
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -58,7 +78,7 @@ function formatDate(date: Date): string {
   })
 }
 
-function getTypeColor(type: Backup['type']): string {
+function getTypeColor(type: BackupType): string {
   switch (type) {
     case 'full':
       return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
@@ -69,7 +89,7 @@ function getTypeColor(type: Backup['type']): string {
   }
 }
 
-function getStatusColor(status: Backup['status']): string {
+function getStatusColor(status: BackupStatus): string {
   switch (status) {
     case 'completed':
       return 'text-green-600 dark:text-green-400'
@@ -80,7 +100,7 @@ function getStatusColor(status: Backup['status']): string {
   }
 }
 
-function getStatusIcon(status: Backup['status']): string {
+function getStatusIcon(status: BackupStatus): string {
   switch (status) {
     case 'completed':
       return 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'
@@ -103,14 +123,14 @@ function closeModal() {
   newBackupName.value = ''
 }
 
-function confirmRestore(backup: Backup) {
-  if (confirm(`Are you sure you want to restore from "${backup.name}"? This will overwrite current data.`)) {
+function confirmRestore(backup: BackupDisplay) {
+  if (confirm(t('backup.confirmRestore', { date: formatDate(backup.createdAt) }))) {
     emit('restore', backup.id)
   }
 }
 
-function confirmDelete(backup: Backup) {
-  if (confirm(`Are you sure you want to delete "${backup.name}"? This action cannot be undone.`)) {
+function confirmDelete(backup: BackupDisplay) {
+  if (confirm(t('backup.confirmDelete'))) {
     emit('delete', backup.id)
   }
 }
@@ -119,12 +139,12 @@ function confirmDelete(backup: Backup) {
 <template>
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Backup & Restore</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
       <button
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
         @click="showCreateModal = true"
       >
-        Create Backup
+        {{ t('backup.create') }}
       </button>
     </div>
 
@@ -132,21 +152,21 @@ function confirmDelete(backup: Backup) {
     <div v-if="restoring" class="px-6 py-3 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
       <div class="flex items-center gap-3">
         <div class="animate-spin h-5 w-5 border-2 border-yellow-600 border-t-transparent rounded-full"></div>
-        <span class="text-yellow-800 dark:text-yellow-200">Restore in progress... Please do not close this page.</span>
+        <span class="text-yellow-800 dark:text-yellow-200">{{ t('backup.restoringWarning') }}</span>
       </div>
     </div>
 
     <div v-if="loading" class="p-6 text-center">
       <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">Loading backups...</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.loading') }}</p>
     </div>
 
-    <div v-else-if="backups.length === 0" class="p-6 text-center">
+    <div v-else-if="displayBackups.length === 0" class="p-6 text-center">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
       </svg>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">No backups yet</p>
-      <p class="text-sm text-gray-400 dark:text-gray-500">Create a backup to protect your data</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.noBackups') }}</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500">{{ t('backup.noBackupsHint') }}</p>
     </div>
 
     <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -163,7 +183,7 @@ function confirmDelete(backup: Backup) {
                 class="px-2 py-0.5 text-xs font-medium rounded-full"
                 :class="getTypeColor(backup.type)"
               >
-                {{ backup.type }}
+                {{ t('backup.types.' + backup.type) }}
               </span>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -229,13 +249,13 @@ function confirmDelete(backup: Backup) {
       >
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Create Backup</h3>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('backup.create') }}</h3>
           </div>
 
           <div class="p-6 space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Backup Name (optional)
+                {{ t('backup.nameOptional') }}
               </label>
               <input
                 v-model="newBackupName"
@@ -245,48 +265,9 @@ function confirmDelete(backup: Backup) {
               />
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Backup Type
-              </label>
-              <div class="space-y-2">
-                <label class="flex items-start gap-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <input
-                    v-model="newBackupType"
-                    type="radio"
-                    value="full"
-                    class="mt-0.5"
-                  />
-                  <div>
-                    <span class="font-medium text-gray-900 dark:text-white">Full Backup</span>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Includes all data, configuration, and conversation history</p>
-                  </div>
-                </label>
-                <label class="flex items-start gap-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <input
-                    v-model="newBackupType"
-                    type="radio"
-                    value="config"
-                    class="mt-0.5"
-                  />
-                  <div>
-                    <span class="font-medium text-gray-900 dark:text-white">Configuration Only</span>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Includes settings and provider configuration</p>
-                  </div>
-                </label>
-                <label class="flex items-start gap-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <input
-                    v-model="newBackupType"
-                    type="radio"
-                    value="data"
-                    class="mt-0.5"
-                  />
-                  <div>
-                    <span class="font-medium text-gray-900 dark:text-white">Data Only</span>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Includes conversation history and user data</p>
-                  </div>
-                </label>
-              </div>
+            <div class="p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div class="font-medium text-gray-900 dark:text-white">{{ t('backup.fullBackup') }}</div>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ t('backup.fullBackupDesc') }}</p>
             </div>
           </div>
 
@@ -295,13 +276,13 @@ function confirmDelete(backup: Backup) {
               class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               @click="closeModal"
             >
-              Cancel
+              {{ t('common.cancel') }}
             </button>
             <button
               class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
               @click="handleCreate"
             >
-              Create Backup
+              {{ t('backup.create') }}
             </button>
           </div>
         </div>

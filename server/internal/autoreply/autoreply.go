@@ -3,6 +3,8 @@ package autoreply
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"regexp"
@@ -83,6 +85,17 @@ func DefaultConfig() Config {
 	}
 }
 
+// generateSecureRuleID generates a cryptographically secure rule ID.
+// Security: Use crypto/rand instead of math/rand for unpredictable IDs.
+func generateSecureRuleID() string {
+	b := make([]byte, 8)
+	if _, err := cryptorand.Read(b); err != nil {
+		// Fallback to time-based ID if crypto/rand fails (should never happen)
+		return fmt.Sprintf("rule_%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("rule_%s", hex.EncodeToString(b))
+}
+
 // Service manages auto-reply rules.
 type Service struct {
 	config Config
@@ -129,8 +142,8 @@ func (s *Service) Create(name string, triggerType TriggerType, triggerValue stri
 		}
 	}
 
-	// Generate ID
-	id := fmt.Sprintf("rule_%d_%d", time.Now().UnixNano(), rand.Intn(10000))
+	// Generate ID using crypto/rand for security
+	id := generateSecureRuleID()
 
 	rule := &Rule{
 		ID:            id,

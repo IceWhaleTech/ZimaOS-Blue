@@ -6,6 +6,8 @@ import type {
   TypelessCardGallery,
   TypelessCardLink,
   TypelessCardFile,
+  TypelessCardTerminal,
+  TypelessCardMermaid,
   GalleryImage,
   ListItem,
   ParsedContent,
@@ -133,17 +135,23 @@ const incrementalStates = new Map<string, IncrementalParseState>()
 /**
  * Parse content incrementally (for streaming messages)
  * Only re-parses the new portion of content when possible
+ * @param content - The message content to parse
+ * @param messageId - The message ID
+ * @param conversationId - The conversation ID (optional, for cache key uniqueness)
  */
 export function parseTypelessContentIncremental(
   content: string,
-  messageId: string
+  messageId: string,
+  conversationId?: string
 ): ParsedContent {
-  const state = incrementalStates.get(messageId)
+  // Use conversation_id + message_id as cache key to avoid cross-conversation cache collisions
+  const cacheKey = conversationId ? `${conversationId}:${messageId}` : messageId
+  const state = incrementalStates.get(cacheKey)
 
   // If no previous state or content doesn't start with previous content, do full parse
   if (!state || !content.startsWith(state.lastContent)) {
-    const result = parseTypelessContentInternal(content, 0)
-    incrementalStates.set(messageId, {
+    const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
+    incrementalStates.set(cacheKey, {
       lastContent: content,
       lastResult: result,
       lastCardIndex: result.cards.length,
@@ -155,11 +163,13 @@ export function parseTypelessContentIncremental(
   const newContent = content.slice(state.lastContent.length)
 
   // If new content is small, just return cached result (debounce)
-  if (newContent.length < 10) {
+  // But if we have a streaming card, always re-parse to update it
+  const hasStreamingCard = state.lastResult.cards.some((c) => (c as TypelessCard & { _streaming?: boolean })._streaming)
+  if (newContent.length < 10 && !hasStreamingCard) {
     return state.lastResult
   }
 
-  // Check if new content might contain new cards
+  // Check if new content might contain new cards or update streaming cards
   const mightHaveNewCards =
     newContent.includes('```') ||
     newContent.includes('|') ||
@@ -167,7 +177,8 @@ export function parseTypelessContentIncremental(
     newContent.includes('* ') ||
     newContent.includes('1. ') ||
     newContent.includes('![') ||
-    newContent.includes('http')
+    newContent.includes('http') ||
+    hasStreamingCard // Always re-parse if we have a streaming card
 
   if (!mightHaveNewCards) {
     // Just update text, no new cards
@@ -175,7 +186,7 @@ export function parseTypelessContentIncremental(
       text: state.lastResult.text + newContent,
       cards: state.lastResult.cards,
     }
-    incrementalStates.set(messageId, {
+    incrementalStates.set(cacheKey, {
       lastContent: content,
       lastResult: updatedResult,
       lastCardIndex: state.lastCardIndex,
@@ -183,9 +194,9 @@ export function parseTypelessContentIncremental(
     return updatedResult
   }
 
-  // Need to re-parse (new cards might be present)
-  const result = parseTypelessContentInternal(content, 0)
-  incrementalStates.set(messageId, {
+  // Need to re-parse (new cards might be present or streaming card updated)
+  const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
+  incrementalStates.set(cacheKey, {
     lastContent: content,
     lastResult: result,
     lastCardIndex: result.cards.length,
@@ -195,9 +206,16 @@ export function parseTypelessContentIncremental(
 
 /**
  * Clear incremental parse state for a message
+ * @param messageId - The message ID
+ * @param conversationId - The conversation ID (optional, for cache key uniqueness)
  */
-export function clearIncrementalState(messageId: string): void {
-  incrementalStates.delete(messageId)
+export function clearIncrementalState(messageId: string, conversationId?: string): void {
+  const cacheKey = conversationId ? `${conversationId}:${messageId}` : messageId
+  incrementalStates.delete(cacheKey)
+  // Also try to delete with just messageId for backwards compatibility
+  if (conversationId) {
+    incrementalStates.delete(messageId)
+  }
 }
 
 /**
@@ -205,6 +223,22 @@ export function clearIncrementalState(messageId: string): void {
  */
 export function clearAllIncrementalStates(): void {
   incrementalStates.clear()
+}
+
+/**
+ * Clear all incremental parse states for a specific conversation
+ * @param conversationId - The conversation ID to clear states for
+ */
+export function clearConversationIncrementalStates(conversationId: string): void {
+  const keysToDelete: string[] = []
+  for (const key of incrementalStates.keys()) {
+    if (key.startsWith(`${conversationId}:`)) {
+      keysToDelete.push(key)
+    }
+  }
+  for (const key of keysToDelete) {
+    incrementalStates.delete(key)
+  }
 }
 
 /**
@@ -225,14 +259,102 @@ export function parseTypelessContent(content: string): ParsedContent {
 }
 
 /**
+ * Try to parse potentially incomplete JSON by adding missing closing brackets/braces.
+ * This is useful for streaming scenarios where JSON arrives incrementally.
+ */
+function tryParseIncompleteJSON(jsonStr: string): unknown | null {
+  // First try normal parse
+  try {
+    return JSON.parse(jsonStr)
+  } catch {
+    // Try to fix incomplete JSON
+  }
+
+  // Count opening and closing brackets/braces
+  let braceCount = 0
+  let bracketCount = 0
+  let inString = false
+  let escapeNext = false
+
+  for (const char of jsonStr) {
+    if (escapeNext) {
+      escapeNext = false
+      continue
+    }
+    if (char === '\\') {
+      escapeNext = true
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+
+    if (char === '{') braceCount++
+    else if (char === '}') braceCount--
+    else if (char === '[') bracketCount++
+    else if (char === ']') bracketCount--
+  }
+
+  // If we're in a string, close it
+  let fixedJson = jsonStr
+  if (inString) {
+    fixedJson += '"'
+  }
+
+  // Add missing closing brackets and braces
+  while (bracketCount > 0) {
+    fixedJson += ']'
+    bracketCount--
+  }
+  while (braceCount > 0) {
+    fixedJson += '}'
+    braceCount--
+  }
+
+  // Try to parse the fixed JSON
+  try {
+    return JSON.parse(fixedJson)
+  } catch {
+    // Still failed, try more aggressive fixes
+  }
+
+  // Try removing trailing incomplete property
+  // e.g., {"type": "progress", "title": "Test", "pro  -> {"type": "progress", "title": "Test"}
+  const lastCommaIndex = fixedJson.lastIndexOf(',')
+  if (lastCommaIndex > 0) {
+    const beforeComma = fixedJson.slice(0, lastCommaIndex)
+    // Count braces after removing trailing content
+    let bc = 0, bk = 0
+    for (const char of beforeComma) {
+      if (char === '{') bc++
+      else if (char === '}') bc--
+      else if (char === '[') bk++
+      else if (char === ']') bk--
+    }
+    let truncated = beforeComma
+    while (bk > 0) { truncated += ']'; bk-- }
+    while (bc > 0) { truncated += '}'; bc-- }
+    try {
+      return JSON.parse(truncated)
+    } catch {
+      // Give up
+    }
+  }
+
+  return null
+}
+
+/**
  * Internal parsing function (no caching)
  */
-function parseTypelessContentInternal(content: string, startCardIndex: number): ParsedContent {
+function parseTypelessContentInternal(content: string, startCardIndex: number, isStreaming = false): ParsedContent {
   const cards: TypelessCard[] = []
   let text = content
   const cardIndex = { value: startCardIndex }
 
-  // Find all typeless blocks first
+  // Find all complete typeless blocks first
   const regex = new RegExp(
     `${escapeRegex(TYPELESS_MARKER_START)}\\s*([\\s\\S]*?)\\s*${escapeRegex(TYPELESS_MARKER_END)}`,
     'g'
@@ -268,6 +390,37 @@ function parseTypelessContentInternal(content: string, startCardIndex: number): 
     }
   }
 
+  // During streaming, also try to parse incomplete typeless blocks
+  // Look for blocks that start with marker but don't have closing marker yet
+  if (isStreaming) {
+    const incompleteRegex = new RegExp(
+      `${escapeRegex(TYPELESS_MARKER_START)}\\s*([\\s\\S]*)$`
+    )
+    const incompleteMatch = incompleteRegex.exec(content)
+    if (incompleteMatch && incompleteMatch[1]) {
+      const jsonStr = incompleteMatch[1].trim()
+      // Only try to parse if it looks like JSON (starts with {)
+      if (jsonStr.startsWith('{')) {
+        const partialCard = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
+        if (partialCard && typeof partialCard.type === 'string') {
+          // Mark as streaming/incomplete
+          partialCard._streaming = true
+          if (!partialCard.id) {
+            partialCard.id = `card-streaming-${cardIndex.value++}`
+          }
+          cards.push(partialCard)
+
+          // Mark for replacement with placeholder
+          replacements.push({
+            start: incompleteMatch.index,
+            end: content.length,
+            placeholder: `[[TYPELESS_CARD:${partialCard.id}]]`,
+          })
+        }
+      }
+    }
+  }
+
   // Replace card blocks with placeholders (in reverse order to preserve indices)
   for (let i = replacements.length - 1; i >= 0; i--) {
     const replacement = replacements[i]
@@ -278,7 +431,9 @@ function parseTypelessContentInternal(content: string, startCardIndex: number): 
   }
 
   // Parse markdown elements and convert to cards
-  // Order matters: code blocks first (to avoid parsing code content), then tables, then lists, then images, then files, then links
+  // Order matters: terminal blocks first, then mermaid blocks, then code blocks (to avoid parsing code content), then tables, then lists, then images, then files, then links
+  text = parseTerminalBlocks(text, cards, cardIndex)
+  text = parseMermaidBlocks(text, cards, cardIndex)
   text = parseMarkdownCodeBlocks(text, cards, cardIndex)
   text = parseMarkdownTables(text, cards, cardIndex)
   text = parseMarkdownLists(text, cards, cardIndex)
@@ -298,8 +453,18 @@ export function hasTypelessCards(content: string): boolean {
     return true
   }
 
-  // Check for markdown code blocks (but not typeless blocks)
-  if (/```(?!typeless)[a-z]*\n[\s\S]*?```/i.test(content)) {
+  // Check for terminal blocks
+  if (/```(terminal|console|shell-output|ansi|cli-output)\n[\s\S]*?```/i.test(content)) {
+    return true
+  }
+
+  // Check for mermaid blocks
+  if (/```mermaid\n[\s\S]*?```/i.test(content)) {
+    return true
+  }
+
+  // Check for markdown code blocks (but not typeless, terminal, or mermaid blocks)
+  if (/```(?!typeless|terminal|console|shell-output|ansi|cli-output|mermaid)[a-z]*\n[\s\S]*?```/i.test(content)) {
     return true
   }
 
@@ -498,6 +663,69 @@ function parseMarkdownTables(content: string, cards: TypelessCard[], cardIndex: 
 }
 
 /**
+ * Parse terminal/console output blocks and convert to CardTerminal
+ * Supports: ```terminal, ```console, ```shell-output, ```ansi
+ * These blocks preserve ANSI escape codes for colored output
+ */
+function parseTerminalBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+  const lines = content.split('\n')
+  const result: string[] = []
+  let inTerminalBlock = false
+  let terminalContent: string[] = []
+  let terminalType = ''
+
+  // Terminal block markers
+  const terminalMarkers = ['terminal', 'console', 'shell-output', 'ansi', 'cli-output']
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line === undefined) continue
+
+    // Check for terminal block start
+    if (line.startsWith('```')) {
+      const lang = line.slice(3).trim().toLowerCase()
+
+      if (!inTerminalBlock && terminalMarkers.includes(lang)) {
+        inTerminalBlock = true
+        terminalType = lang
+        terminalContent = []
+        continue
+      }
+
+      if (inTerminalBlock && line.trim() === '```') {
+        // End of terminal block - create card
+        const card: TypelessCardTerminal = {
+          type: 'terminal',
+          id: `md-terminal-${cardIndex.value++}`,
+          content: terminalContent.join('\n'),
+          title: terminalType === 'terminal' ? 'Terminal' : terminalType.charAt(0).toUpperCase() + terminalType.slice(1),
+          theme: 'dark',
+        }
+        cards.push(card)
+        result.push(`[[TYPELESS_CARD:${card.id}]]`)
+        inTerminalBlock = false
+        terminalType = ''
+        continue
+      }
+    }
+
+    if (inTerminalBlock) {
+      terminalContent.push(line)
+    } else {
+      result.push(line)
+    }
+  }
+
+  // Handle unclosed terminal block (streaming)
+  if (inTerminalBlock && terminalContent.length > 0) {
+    result.push('```' + terminalType)
+    result.push(...terminalContent)
+  }
+
+  return result.join('\n')
+}
+
+/**
  * Parse markdown code blocks and convert to CardCode
  */
 function parseMarkdownCodeBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
@@ -560,6 +788,7 @@ function parseMarkdownLists(content: string, cards: TypelessCard[], cardIndex: {
   let inList = false
   let listItems: ListItem[] = []
   let isOrdered = false
+  let isChecklist = false
   let currentIndentLevel = 0
   let parentStack: ListItem[] = []
 
@@ -570,6 +799,7 @@ function parseMarkdownLists(content: string, cards: TypelessCard[], cardIndex: {
         id: `md-list-${cardIndex.value++}`,
         items: listItems,
         ordered: isOrdered,
+        variant: isChecklist ? 'checklist' : 'default',
       }
       cards.push(card)
       result.push(`[[TYPELESS_CARD:${card.id}]]`)
@@ -577,6 +807,7 @@ function parseMarkdownLists(content: string, cards: TypelessCard[], cardIndex: {
     listItems = []
     inList = false
     isOrdered = false
+    isChecklist = false
     currentIndentLevel = 0
     parentStack = []
   }
@@ -585,26 +816,48 @@ function parseMarkdownLists(content: string, cards: TypelessCard[], cardIndex: {
     const line = lines[i]
     if (line === undefined) continue
 
-    // Check for unordered list item
-    const ulMatch = line.match(/^(\s*)[-*+]\s+(.+)$/)
+    // Check for checkbox list item: - [ ] or - [x] or - [X]
+    const checkboxMatch = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.+)$/)
+    // Check for unordered list item (but not checkbox)
+    const ulMatch = !checkboxMatch ? line.match(/^(\s*)[-*+]\s+(.+)$/) : null
     // Check for ordered list item
     const olMatch = line.match(/^(\s*)\d+\.\s+(.+)$/)
 
-    if (ulMatch || olMatch) {
-      const match = ulMatch || olMatch
-      if (!match) continue
-      const indent = match[1]?.length ?? 0
-      const itemContent = match[2] ?? ''
-      const itemIsOrdered = !!olMatch
+    if (checkboxMatch || ulMatch || olMatch) {
+      let indent: number
+      let itemContent: string
+      let itemIsOrdered = false
+      let itemIsCheckbox = false
+      let itemChecked = false
+
+      if (checkboxMatch) {
+        indent = checkboxMatch[1]?.length ?? 0
+        itemChecked = checkboxMatch[2]?.toLowerCase() === 'x'
+        itemContent = checkboxMatch[3] ?? ''
+        itemIsCheckbox = true
+      } else if (ulMatch) {
+        indent = ulMatch[1]?.length ?? 0
+        itemContent = ulMatch[2] ?? ''
+      } else if (olMatch) {
+        indent = olMatch[1]?.length ?? 0
+        itemContent = olMatch[2] ?? ''
+        itemIsOrdered = true
+      } else {
+        continue
+      }
 
       if (!inList) {
         inList = true
         isOrdered = itemIsOrdered
+        isChecklist = itemIsCheckbox
         currentIndentLevel = indent
         parentStack = []
       }
 
-      const newItem: ListItem = { content: itemContent }
+      const newItem: ListItem = {
+        content: itemContent,
+        checked: itemIsCheckbox ? itemChecked : undefined,
+      }
 
       // Handle nested lists
       if (indent > currentIndentLevel) {
@@ -855,6 +1108,62 @@ function parseFilePaths(content: string, cards: TypelessCard[], cardIndex: { val
     } else {
       result.push(line)
     }
+  }
+
+  return result.join('\n')
+}
+
+/**
+ * Parse mermaid code blocks and convert to CardMermaid
+ * Supports: ```mermaid
+ * Handles flowcharts, mindmaps, sequence diagrams, etc.
+ */
+function parseMermaidBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+  const lines = content.split('\n')
+  const result: string[] = []
+  let inMermaidBlock = false
+  let mermaidContent: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line === undefined) continue
+
+    // Check for mermaid block start
+    if (line.startsWith('```')) {
+      const lang = line.slice(3).trim().toLowerCase()
+
+      if (!inMermaidBlock && lang === 'mermaid') {
+        inMermaidBlock = true
+        mermaidContent = []
+        continue
+      }
+
+      if (inMermaidBlock && line.trim() === '```') {
+        // End of mermaid block - create card
+        const code = mermaidContent.join('\n')
+        const card: TypelessCardMermaid = {
+          type: 'mermaid',
+          id: `md-mermaid-${cardIndex.value++}`,
+          code,
+        }
+        cards.push(card)
+        result.push(`[[TYPELESS_CARD:${card.id}]]`)
+        inMermaidBlock = false
+        continue
+      }
+    }
+
+    if (inMermaidBlock) {
+      mermaidContent.push(line)
+    } else {
+      result.push(line)
+    }
+  }
+
+  // Handle unclosed mermaid block (streaming)
+  if (inMermaidBlock && mermaidContent.length > 0) {
+    result.push('```mermaid')
+    result.push(...mermaidContent)
   }
 
   return result.join('\n')

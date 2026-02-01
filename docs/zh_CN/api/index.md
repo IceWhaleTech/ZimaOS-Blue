@@ -5,7 +5,7 @@ ZimaOS Echo 提供 RESTful API 用于监控和管理。
 ## 基础 URL
 
 ```
-http://localhost:8080
+http://localhost:23456
 ```
 
 ## 端点

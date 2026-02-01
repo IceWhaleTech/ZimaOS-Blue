@@ -1,4 +1,4 @@
-import { defineStore, storeToRefs } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, apiKeyApi } from '@/api/auth'
 import { permissionsApi, type PagePermission } from '@/api/users'

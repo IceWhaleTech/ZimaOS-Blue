@@ -9,7 +9,7 @@ Returns comprehensive health information about the service.
 ### Request
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 ### Response
@@ -49,7 +49,7 @@ Kubernetes liveness probe endpoint. Returns 200 if the service is alive.
 ### Request
 
 ```bash
-curl http://localhost:8080/health/live
+curl http://localhost:23456/health/live
 ```
 
 ### Response
@@ -67,7 +67,7 @@ curl http://localhost:8080/health/live
 livenessProbe:
   httpGet:
     path: /health/live
-    port: 8080
+    port: 23456
   initialDelaySeconds: 5
   periodSeconds: 10
 ```
@@ -81,7 +81,7 @@ Kubernetes readiness probe endpoint. Returns 200 if the service is ready to acce
 ### Request
 
 ```bash
-curl http://localhost:8080/health/ready
+curl http://localhost:23456/health/ready
 ```
 
 ### Response
@@ -106,7 +106,7 @@ curl http://localhost:8080/health/ready
 readinessProbe:
   httpGet:
     path: /health/ready
-    port: 8080
+    port: 23456
   initialDelaySeconds: 5
   periodSeconds: 5
 ```
@@ -120,7 +120,7 @@ Returns worker pool statistics.
 ### Request
 
 ```bash
-curl http://localhost:8080/api/v1/workers/stats
+curl http://localhost:23456/api/v1/workers/stats
 ```
 
 ### Response

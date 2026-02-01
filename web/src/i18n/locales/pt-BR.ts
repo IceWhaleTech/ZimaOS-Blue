@@ -1168,6 +1168,7 @@ export default {
         system: 'Sistema',
       },
       items: {
+        ...enUS.security.scan.items,
         // Autenticação
         auth_password_length: {
           name: 'Comprimento mínimo da senha',

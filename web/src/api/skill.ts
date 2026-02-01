@@ -38,6 +38,7 @@ export interface RemoteSkill {
   name: string
   version: string
   description: string
+  summary?: string
   author?: string
   category?: string
   tags?: string[]
@@ -48,7 +49,17 @@ export interface RemoteSkill {
   source_url?: string
   stars?: number
   downloads?: number
+  reviews?: number
+  rating?: number
+  versions?: number
+  changelog?: string
+  readme?: string
+  dedup_key?: string
   installed: boolean
+  builtin?: boolean
+  created_at?: string
+  updated_at?: string
+  synced_at?: string
 }
 
 export interface LocalSkill {
@@ -63,6 +74,7 @@ export interface LocalSkill {
   discovered_at: string
   last_modified: string
   installed: boolean
+  builtin?: boolean
 }
 
 export interface BrowseParams {
@@ -71,6 +83,63 @@ export interface BrowseParams {
   search?: string
   page?: number
   page_size?: number
+}
+
+export interface SearchParams {
+  q?: string
+  categories?: string
+  sources?: string
+  min_stars?: number
+  sort_by?: 'relevance' | 'stars' | 'downloads' | 'updated' | 'name'
+  sort_order?: 'asc' | 'desc'
+  page?: number
+  page_size?: number
+}
+
+export interface SearchResult {
+  id: string
+  name: string
+  version: string
+  summary: string
+  description: string
+  author: string
+  category: string
+  tags: string
+  source_id: string
+  source_name: string
+  homepage: string
+  download_url: string
+  stars: number
+  downloads: number
+  reviews: number
+  rating: number
+  versions: number
+  changelog: string
+  installed: boolean
+  enabled: boolean
+  created_at: string
+  updated_at: string
+  synced_at: string
+  score: number
+}
+
+export interface SearchResponse {
+  skills: SearchResult[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export interface SyncStatus {
+  id: number
+  source_id: string
+  last_sync_at: string
+  skill_count: number
+  sync_duration_ms: number
+  status: 'success' | 'failed' | 'in_progress' | 'pending'
+  error_message?: string
+  next_sync_at: string
 }
 
 export interface BrowseResponse {
@@ -157,8 +226,31 @@ export const skillApi = {
   sync: (sourceId?: string) =>
     api.post<{ success: boolean; message: string }>('/skill-store/sync', null, { params: sourceId ? { source: sourceId } : undefined }),
 
+  // Upload skill package
+  upload: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<{ success: boolean; message?: string; skill?: { id: string; name: string; version: string } }>('/skills/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   // Stats and categories
   categories: () => api.get<string[]>('/skill-store/categories'),
 
   stats: () => api.get<{ total_skills: number; installed: number; by_source: Record<string, number> }>('/skill-store/stats'),
+
+  // Search (v0.10.14)
+  search: (params?: SearchParams) =>
+    api.get<SearchResponse>('/skill-store/search', { params }),
+
+  // Popular and recent (v0.10.14)
+  popular: (limit?: number) =>
+    api.get<RemoteSkill[]>('/skill-store/popular', { params: limit ? { limit } : undefined }),
+
+  recent: (limit?: number) =>
+    api.get<RemoteSkill[]>('/skill-store/recent', { params: limit ? { limit } : undefined }),
+
+  // Sync status (v0.10.14)
+  syncStatus: () => api.get<SyncStatus[]>('/skill-store/sync-status'),
 }

@@ -329,31 +329,49 @@ func (c *DiskCache) readFromDisk(path string) (interface{}, error) {
 
 // loadIndex loads the cache index from disk.
 func (c *DiskCache) loadIndex() error {
-	// Walk the cache directory
-	err := filepath.Walk(c.config.Path, func(path string, info os.FileInfo, err error) error {
+	// Use queue-based iteration instead of recursive walk
+	queue := []string{c.config.Path}
+
+	for len(queue) > 0 {
+		currentDir := queue[0]
+		queue = queue[1:]
+
+		entries, err := os.ReadDir(currentDir)
 		if err != nil {
-			return nil // Skip errors
+			continue // Skip directories we can't read
 		}
 
-		if info.IsDir() || filepath.Ext(path) != ".cache" {
-			return nil
+		for _, entry := range entries {
+			path := filepath.Join(currentDir, entry.Name())
+
+			if entry.IsDir() {
+				queue = append(queue, path)
+				continue
+			}
+
+			if filepath.Ext(path) != ".cache" {
+				continue
+			}
+
+			info, err := entry.Info()
+			if err != nil {
+				continue // Skip files we can't stat
+			}
+
+			// We don't have the original key, so we use the path as key
+			// This is a limitation - in production, you'd want to store metadata
+			e := &diskEntry{
+				Key:       path,
+				Path:      path,
+				Size:      info.Size(),
+				CreatedAt: info.ModTime(),
+			}
+			c.index[path] = e
+			c.diskSize += info.Size()
 		}
+	}
 
-		// We don't have the original key, so we use the path as key
-		// This is a limitation - in production, you'd want to store metadata
-		entry := &diskEntry{
-			Key:       path,
-			Path:      path,
-			Size:      info.Size(),
-			CreatedAt: info.ModTime(),
-		}
-		c.index[path] = entry
-		c.diskSize += info.Size()
-
-		return nil
-	})
-
-	return err
+	return nil
 }
 
 // evictOldest removes the oldest entry.

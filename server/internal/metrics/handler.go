@@ -2,18 +2,45 @@ package metrics
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/singleflight"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 )
+
+// CacheStatsProvider provides cache statistics
+type CacheStatsProvider interface {
+	Stats() map[string]interface{}
+}
 
 // Handler handles metrics API endpoints.
 type Handler struct {
-	writer *MetricsWriter
+	writer        *MetricsWriter
+	cacheProvider CacheStatsProvider
+
+	// singleflight for deduplicating concurrent requests
+	sfGroup singleflight.Group
+
+	// cache for frequently accessed data (using ecache2 generic cache)
+	metricsCache *cache.GenericCache[string]
 }
 
 // NewHandler creates a new metrics handler.
 func NewHandler(writer *MetricsWriter) *Handler {
-	return &Handler{writer: writer}
+	return &Handler{
+		writer: writer,
+		metricsCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    100,
+			DefaultTTL: 3 * time.Second,
+		}, "metrics"),
+	}
+}
+
+// SetCacheProvider sets the cache stats provider
+func (h *Handler) SetCacheProvider(provider CacheStatsProvider) {
+	h.cacheProvider = provider
 }
 
 // GetCallStats handles GET /api/v1/metrics/calls
@@ -222,26 +249,62 @@ func (h *Handler) GetPricingForModel(c echo.Context) error {
 	return c.JSON(http.StatusOK, pricing)
 }
 
+// GetCacheStats handles GET /api/v1/metrics/cache
+func (h *Handler) GetCacheStats(c echo.Context) error {
+	if h.cacheProvider == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"enabled":     false,
+			"entries":     0,
+			"max_entries": 0,
+			"hits":        0,
+			"misses":      0,
+			"evictions":   0,
+			"bypasses":    0,
+			"hit_rate":    0,
+		})
+	}
+
+	return c.JSON(http.StatusOK, h.cacheProvider.Stats())
+}
+
 // GetSummary handles GET /api/v1/metrics/summary
 func (h *Handler) GetSummary(c echo.Context) error {
-	callStats := h.writer.GetCallStats()
-	tokenUsage := h.writer.GetTokenUsage()
-	latencyStats := h.writer.GetLatencyStats()
-	speedStats := h.writer.GetSpeedStats()
-	systemMetrics := h.writer.GetSystemMetrics()
-
-	summary := map[string]interface{}{
-		"calls":   callStats,
-		"tokens":  tokenUsage,
-		"latency": latencyStats,
-		"speed":   speedStats,
+	// Try cache first
+	cacheKey := "metrics_summary"
+	if cached, ok := h.metricsCache.Get(cacheKey); ok {
+		return c.JSON(http.StatusOK, cached)
 	}
 
-	if systemMetrics != nil {
-		summary["system"] = systemMetrics
-	}
+	// Use singleflight to deduplicate concurrent requests
+	result, _, _ := h.sfGroup.Do("get_summary", func() (interface{}, error) {
+		callStats := h.writer.GetCallStats()
+		tokenUsage := h.writer.GetTokenUsage()
+		latencyStats := h.writer.GetLatencyStats()
+		speedStats := h.writer.GetSpeedStats()
+		systemMetrics := h.writer.GetSystemMetrics()
 
-	return c.JSON(http.StatusOK, summary)
+		summary := map[string]interface{}{
+			"calls":   callStats,
+			"tokens":  tokenUsage,
+			"latency": latencyStats,
+			"speed":   speedStats,
+		}
+
+		if systemMetrics != nil {
+			summary["system"] = systemMetrics
+		}
+
+		// Add cache stats if available
+		if h.cacheProvider != nil {
+			summary["cache"] = h.cacheProvider.Stats()
+		}
+
+		// Cache the result
+		h.metricsCache.Put(cacheKey, summary)
+		return summary, nil
+	})
+
+	return c.JSON(http.StatusOK, result)
 }
 
 // GetAll handles GET /api/v1/metrics/all - aggregated metrics endpoint
@@ -342,6 +405,11 @@ func (h *Handler) GetAll(c echo.Context) error {
 		"pricing":          pricing,
 	}
 
+	// Add cache stats if available
+	if h.cacheProvider != nil {
+		response["cache"] = h.cacheProvider.Stats()
+	}
+
 	return c.JSON(http.StatusOK, response)
 }
 
@@ -387,6 +455,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Pricing
 	g.GET("/pricing", h.GetPricing)
 	g.GET("/pricing/:model", h.GetPricingForModel)
+
+	// Cache (cc-cache)
+	g.GET("/cache", h.GetCacheStats)
 
 	// Admin
 	g.POST("/reset", h.ResetMetrics)

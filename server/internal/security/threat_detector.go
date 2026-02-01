@@ -352,3 +352,184 @@ func randomString(n int) string {
 	}
 	return string(b)
 }
+
+// ThreatTrendPoint represents a single point in the threat trend.
+type ThreatTrendPoint struct {
+	Timestamp  time.Time      `json:"timestamp"`
+	Date       string         `json:"date"`
+	Hour       int            `json:"hour,omitempty"`
+	Total      int            `json:"total"`
+	Blocked    int            `json:"blocked"`
+	BySeverity map[string]int `json:"by_severity"`
+	ByType     map[string]int `json:"by_type"`
+}
+
+// ThreatTrend represents threat trend data over time.
+type ThreatTrend struct {
+	Period     string             `json:"period"` // "day", "week", "month"
+	StartDate  time.Time          `json:"start_date"`
+	EndDate    time.Time          `json:"end_date"`
+	Points     []ThreatTrendPoint `json:"points"`
+	TotalCount int                `json:"total_count"`
+	Summary    ThreatTrendSummary `json:"summary"`
+}
+
+// ThreatTrendSummary provides summary statistics for the trend.
+type ThreatTrendSummary struct {
+	TotalThreats   int            `json:"total_threats"`
+	BlockedThreats int            `json:"blocked_threats"`
+	BySeverity     map[string]int `json:"by_severity"`
+	ByType         map[string]int `json:"by_type"`
+	PeakHour       int            `json:"peak_hour"`
+	PeakDay        string         `json:"peak_day"`
+	TrendDirection string         `json:"trend_direction"` // "increasing", "decreasing", "stable"
+}
+
+// GetThreatTrend returns threat trend data for the specified period.
+func (td *ThreatDetector) GetThreatTrend(period string) *ThreatTrend {
+	td.mu.RLock()
+	defer td.mu.RUnlock()
+
+	now := time.Now()
+	var startDate time.Time
+	var groupByHour bool
+
+	switch period {
+	case "day":
+		startDate = now.AddDate(0, 0, -1)
+		groupByHour = true
+	case "week":
+		startDate = now.AddDate(0, 0, -7)
+		groupByHour = false
+	case "month":
+		startDate = now.AddDate(0, -1, 0)
+		groupByHour = false
+	default:
+		startDate = now.AddDate(0, 0, -7)
+		period = "week"
+		groupByHour = false
+	}
+
+	trend := &ThreatTrend{
+		Period:    period,
+		StartDate: startDate,
+		EndDate:   now,
+		Points:    []ThreatTrendPoint{},
+		Summary: ThreatTrendSummary{
+			BySeverity: make(map[string]int),
+			ByType:     make(map[string]int),
+		},
+	}
+
+	// Group events by time period
+	pointMap := make(map[string]*ThreatTrendPoint)
+	hourCounts := make(map[int]int)
+	dayCounts := make(map[string]int)
+
+	for _, event := range td.events {
+		if event.Timestamp.Before(startDate) {
+			continue
+		}
+
+		trend.TotalCount++
+		trend.Summary.TotalThreats++
+		if event.Blocked {
+			trend.Summary.BlockedThreats++
+		}
+		trend.Summary.BySeverity[string(event.Severity)]++
+		trend.Summary.ByType[string(event.Type)]++
+
+		// Track peak hour and day
+		hour := event.Timestamp.Hour()
+		hourCounts[hour]++
+		dayKey := event.Timestamp.Format("2006-01-02")
+		dayCounts[dayKey]++
+
+		// Group key
+		var key string
+		if groupByHour {
+			key = event.Timestamp.Format("2006-01-02-15")
+		} else {
+			key = event.Timestamp.Format("2006-01-02")
+		}
+
+		if _, ok := pointMap[key]; !ok {
+			pointMap[key] = &ThreatTrendPoint{
+				Timestamp:  event.Timestamp.Truncate(time.Hour),
+				Date:       event.Timestamp.Format("2006-01-02"),
+				Hour:       event.Timestamp.Hour(),
+				BySeverity: make(map[string]int),
+				ByType:     make(map[string]int),
+			}
+		}
+
+		point := pointMap[key]
+		point.Total++
+		if event.Blocked {
+			point.Blocked++
+		}
+		point.BySeverity[string(event.Severity)]++
+		point.ByType[string(event.Type)]++
+	}
+
+	// Find peak hour and day
+	maxHourCount := 0
+	for hour, count := range hourCounts {
+		if count > maxHourCount {
+			maxHourCount = count
+			trend.Summary.PeakHour = hour
+		}
+	}
+
+	maxDayCount := 0
+	for day, count := range dayCounts {
+		if count > maxDayCount {
+			maxDayCount = count
+			trend.Summary.PeakDay = day
+		}
+	}
+
+	// Convert map to sorted slice
+	keys := make([]string, 0, len(pointMap))
+	for k := range pointMap {
+		keys = append(keys, k)
+	}
+	// Sort keys
+	for i := 0; i < len(keys)-1; i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[i] > keys[j] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+
+	for _, k := range keys {
+		trend.Points = append(trend.Points, *pointMap[k])
+	}
+
+	// Determine trend direction
+	if len(trend.Points) >= 2 {
+		firstHalf := 0
+		secondHalf := 0
+		mid := len(trend.Points) / 2
+		for i, p := range trend.Points {
+			if i < mid {
+				firstHalf += p.Total
+			} else {
+				secondHalf += p.Total
+			}
+		}
+		// Compare with 20% threshold (multiply by 5 and compare with 6x to avoid float)
+		if secondHalf*5 > firstHalf*6 {
+			trend.Summary.TrendDirection = "increasing"
+		} else if firstHalf*5 > secondHalf*6 {
+			trend.Summary.TrendDirection = "decreasing"
+		} else {
+			trend.Summary.TrendDirection = "stable"
+		}
+	} else {
+		trend.Summary.TrendDirection = "stable"
+	}
+
+	return trend
+}

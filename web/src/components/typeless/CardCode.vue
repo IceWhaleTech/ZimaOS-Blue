@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { TypelessCardCode } from '@/types/typeless'
+import { highlightCode } from '@/utils/markdown'
 
 const props = defineProps<{
   card: TypelessCardCode
@@ -20,9 +21,12 @@ async function copyCode() {
   }
 }
 
-function getLines(): string[] {
-  return props.card.code.split('\n')
-}
+// Get highlighted lines with syntax coloring
+const highlightedLines = computed(() => {
+  const lang = props.card.language?.toLowerCase() || ''
+  const highlighted = lang ? highlightCode(props.card.code, lang) : props.card.code
+  return highlighted.split('\n')
+})
 
 function isHighlighted(lineNumber: number): boolean {
   return props.card.highlightLines?.includes(lineNumber) ?? false
@@ -61,13 +65,13 @@ function getLanguageDisplay(): string {
 <template>
   <div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-900">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-      <div class="flex items-center gap-3">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+      <div class="flex items-center gap-2">
         <!-- Window controls -->
-        <div class="flex gap-1.5">
-          <div class="w-3 h-3 rounded-full bg-red-500" />
-          <div class="w-3 h-3 rounded-full bg-yellow-500" />
-          <div class="w-3 h-3 rounded-full bg-green-500" />
+        <div class="flex gap-1">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500" />
+          <div class="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+          <div class="w-2.5 h-2.5 rounded-full bg-green-500" />
         </div>
         <!-- Filename or title -->
         <span v-if="card.filename || card.title" class="text-sm text-gray-400">
@@ -80,7 +84,8 @@ function getLanguageDisplay(): string {
       </div>
       <!-- Copy button -->
       <button
-        class="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+        class="flex items-center p-1 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+        title="Copy"
         @click="copyCode"
       >
         <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -94,19 +99,18 @@ function getLanguageDisplay(): string {
         <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
         </svg>
-        <span>{{ copied ? 'Copied!' : 'Copy' }}</span>
       </button>
     </div>
 
     <!-- Code content -->
     <div class="overflow-x-auto">
-      <pre class="p-4 text-sm leading-relaxed"><code class="text-gray-100"><template v-for="(line, index) in getLines()" :key="index"><span
+      <pre class="p-4 text-sm leading-relaxed"><code class="text-gray-100"><template v-for="(line, index) in highlightedLines" :key="index"><span
             class="inline-block w-full"
             :class="{ 'bg-yellow-500/20': isHighlighted(index + 1) }"
           ><span
-              v-if="card.showLineNumbers !== false"
+              v-if="card.showLineNumbers !== false && card.language"
               class="inline-block w-8 text-right mr-4 text-gray-500 select-none"
-            >{{ index + 1 }}</span>{{ line }}
+            >{{ index + 1 }}</span><span v-html="line"></span>
 </span></template></code></pre>
     </div>
   </div>

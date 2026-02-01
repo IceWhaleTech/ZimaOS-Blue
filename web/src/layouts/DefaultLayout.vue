@@ -5,6 +5,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import FormFillerWidget from '@/components/formfiller/FormFillerWidget.vue'
 import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingModal.vue'
+import FullscreenModal from '@/components/typeless/FullscreenModal.vue'
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 import { usePreviewStore } from '@/stores/preview'
 import { storeToRefs } from 'pinia'
@@ -53,5 +54,7 @@ onUnmounted(() => {
     <FormFillerWidget />
     <!-- Preview mode onboarding tooltip -->
     <PreviewOnboardingModal v-if="isPreviewMode" />
+    <!-- Fullscreen modal for code/diff/terminal cards -->
+    <FullscreenModal />
   </div>
 </template>

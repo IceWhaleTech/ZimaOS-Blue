@@ -77,14 +77,18 @@ func (h *ChannelHandler) GetChannelStatus(c echo.Context) error {
 
 	info := ch.Info()
 	status := map[string]interface{}{
-		"name":          info.Name,
-		"type":          info.Type,
-		"status":        info.Status,
-		"enabled":       info.Enabled,
-		"connected_at":  info.ConnectedAt,
-		"last_error":    info.LastError,
-		"last_error_at": info.LastErrorAt,
-		"message_count": info.MessageCount,
+		"name":              info.Name,
+		"type":              info.Type,
+		"status":            info.Status,
+		"enabled":           info.Enabled,
+		"connected_at":      info.ConnectedAt,
+		"last_error":        info.LastError,
+		"last_error_at":     info.LastErrorAt,
+		"message_count":     info.MessageCount,
+		"messages_received": info.MessagesReceived,
+		"messages_sent":     info.MessagesSent,
+		"last_message_at":   info.LastMessageAt,
+		"last_reply_at":     info.LastReplyAt,
 	}
 
 	return c.JSON(http.StatusOK, status)
@@ -261,11 +265,59 @@ func (h *ChannelConfigHandler) SetFactory(factory *ChannelFactory) {
 	h.factory = factory
 }
 
-// ListChannelConfigs lists all channel configurations.
+// ChannelConfigResponse represents a channel config with runtime stats.
+type ChannelConfigResponse struct {
+	ID               string            `json:"id"`
+	Enabled          bool              `json:"enabled"`
+	Status           string            `json:"status"`
+	Config           map[string]string `json:"config"`
+	LastError        string            `json:"last_error,omitempty"`
+	MessagesReceived int64             `json:"messages_received,omitempty"`
+	MessagesSent     int64             `json:"messages_sent,omitempty"`
+	LastMessageAt    *string           `json:"last_message_at,omitempty"`
+	LastReplyAt      *string           `json:"last_reply_at,omitempty"`
+}
+
+// ListChannelConfigs lists all channel configurations with runtime stats.
 func (h *ChannelConfigHandler) ListChannelConfigs(c echo.Context) error {
 	configs := h.store.List()
+	responses := make([]*ChannelConfigResponse, 0, len(configs))
+
+	for _, cfg := range configs {
+		resp := &ChannelConfigResponse{
+			ID:        cfg.ID,
+			Enabled:   cfg.Enabled,
+			Status:    cfg.Status,
+			Config:    cfg.Config,
+			LastError: cfg.LastError,
+		}
+
+		// Merge runtime stats from channel manager if available
+		if h.manager != nil {
+			if ch, exists := h.manager.Get(cfg.ID); exists {
+				info := ch.Info()
+				resp.Status = string(info.Status)
+				resp.MessagesReceived = info.MessagesReceived
+				resp.MessagesSent = info.MessagesSent
+				if info.LastMessageAt != nil {
+					t := info.LastMessageAt.Format("2006-01-02T15:04:05Z07:00")
+					resp.LastMessageAt = &t
+				}
+				if info.LastReplyAt != nil {
+					t := info.LastReplyAt.Format("2006-01-02T15:04:05Z07:00")
+					resp.LastReplyAt = &t
+				}
+				if info.LastError != "" {
+					resp.LastError = info.LastError
+				}
+			}
+		}
+
+		responses = append(responses, resp)
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"channels": configs,
+		"channels": responses,
 	})
 }
 
@@ -517,4 +569,46 @@ func (h *ChannelConfigHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/channels/:id", h.GetChannelConfig)
 	g.PUT("/channels/:id", h.UpdateChannelConfig)
 	g.POST("/channels/:id/toggle", h.ToggleChannel)
+	g.POST("/setup/test-connection", h.TestConnection)
+}
+
+// TestConnectionRequest represents a request to test a channel connection.
+type TestConnectionRequest struct {
+	Type   string            `json:"type"`
+	Config map[string]string `json:"config"`
+}
+
+// TestConnection tests a channel connection without saving configuration.
+func (h *ChannelConfigHandler) TestConnection(c echo.Context) error {
+	var req TestConnectionRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "Invalid request body",
+		})
+	}
+
+	if req.Type == "" {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "Channel type is required",
+		})
+	}
+
+	// Use the channel factory to validate the connection
+	if h.factory == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+			"success": false,
+			"message": "Channel factory not initialized",
+		})
+	}
+
+	// Test the connection using the factory's validator
+	result := h.factory.ValidateConnection(c.Request().Context(), req.Type, req.Config)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": result.Success,
+		"message": result.Message,
+		"details": result.Details,
+	})
 }

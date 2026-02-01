@@ -1168,6 +1168,7 @@ export default {
         system: 'Система',
       },
       items: {
+        ...enUS.security.scan.items,
         // Аутентификация
         auth_password_length: {
           name: 'Минимальная длина пароля',

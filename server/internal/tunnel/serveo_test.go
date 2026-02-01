@@ -48,7 +48,7 @@ func TestServeoManager_Stop_WhenNotRunning(t *testing.T) {
 func TestServeoManager_Start_EmptySubdomainFails(t *testing.T) {
 	m := NewServeoManager()
 	ctx := context.Background()
-	cfg := &Config{Port: 8080, Subdomain: ""}
+	cfg := &Config{Port: 23456, Subdomain: ""}
 	err := m.Start(ctx, cfg)
 	if err == nil {
 		t.Fatal("Start() with empty subdomain should return error")
@@ -65,7 +65,7 @@ func TestServeoManager_Start_AlreadyRunning(t *testing.T) {
 	m := NewServeoManager()
 	ctx := context.Background()
 	// Use exec path (non-Windows) or native path with subdomain so Start is attempted.
-	cfg := &Config{Port: 8080, Subdomain: "echo-alreadyrunning"}
+	cfg := &Config{Port: 23456, Subdomain: "echo-alreadyrunning"}
 	err := m.Start(ctx, cfg)
 	if err != nil {
 		// In CI we may get dial/listen errors; then we can't test "already running".

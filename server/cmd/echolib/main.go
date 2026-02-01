@@ -22,7 +22,6 @@ import (
 	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/a2ui"
 	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
@@ -349,8 +348,6 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		haHandler          *homeassistant.Handler
 		browserService     *browser.RodService
 		browserHandler     *browser.Handler
-		a2uiManager        *a2ui.Manager
-		a2uiHandler        *a2ui.Handler
 		sttService         stt.Service
 		ttsService         tts.Service
 		voiceHandler       *voice.Handler
@@ -433,13 +430,6 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		if browserService != nil {
 			browserHandler = browser.NewHandler(browserService)
 		}
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		a2uiManager = a2ui.NewManager(zapLogger)
-		a2uiHandler = a2ui.NewHandler(a2uiManager)
 	}()
 
 	initWg.Add(1)
@@ -679,11 +669,6 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	if browserHandler != nil {
 		browserGroup := apiProtected.Group("/browser")
 		browserHandler.RegisterRoutes(browserGroup)
-	}
-
-	if a2uiHandler != nil {
-		a2uiGroup := apiProtected.Group("/a2ui")
-		a2uiHandler.RegisterRoutes(a2uiGroup)
 	}
 
 	if workflowHandler != nil {

@@ -199,7 +199,7 @@ async function savePort() {
   }
 
   const newPort = parseInt(portInput.value, 10)
-  const currentPort = serverConfig.value?.actual_port || serverConfig.value?.port || 8080
+  const currentPort = serverConfig.value?.actual_port || serverConfig.value?.port || 23456
 
   if (newPort === currentPort) {
     portEditing.value = false

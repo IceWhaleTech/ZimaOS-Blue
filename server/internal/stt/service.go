@@ -66,6 +66,13 @@ func createProvider(cfg ProviderConfig) (Provider, error) {
 			Model:       cfg.Model,
 			MaxDuration: cfg.MaxDuration,
 		}), nil
+	case ProviderSherpa:
+		return NewSherpaProvider(&SherpaConfig{
+			ModelDir:    cfg.ModelDir,
+			ModelType:   cfg.Model,
+			DefaultLang: cfg.DefaultLanguage,
+			MaxDuration: cfg.MaxDuration,
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}

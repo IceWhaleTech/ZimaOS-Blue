@@ -109,6 +109,19 @@ export interface SecurityScanItem {
   description: string
   status: 'passed' | 'warning' | 'failed'
   details?: string
+  risk?: string
+  impact?: string
+  remediation?: string
+  auto_fixable?: boolean
+  fix_action?: string
+}
+
+export interface FixPreviewResponse {
+  fix_action: string
+  description: string
+  changes: string[]
+  reversible: boolean
+  warning?: string
 }
 
 export interface SecurityScanSummary {
@@ -122,6 +135,59 @@ export interface SecurityScanResult {
   items: SecurityScanItem[]
   summary: SecurityScanSummary
   timestamp: string
+}
+
+export interface FixScanIssueResponse {
+  success: boolean
+  message: string
+  details?: string
+}
+
+// CORS configuration types
+export interface CORSConfig {
+  allowed_origins: string[]
+  dynamic_origins: string[]
+  allow_localhost: boolean
+}
+
+export interface CORSConfigUpdate {
+  add_origins?: string[]
+  remove_origins?: string[]
+}
+
+// TLS configuration types
+export interface CertificateInfo {
+  subject: string
+  issuer: string
+  domains: string[]
+  not_before: string
+  not_after: string
+  is_ca: boolean
+  is_self_signed: boolean
+  serial_number: string
+  fingerprint: string
+}
+
+export interface TLSConfig {
+  enabled: boolean
+  port: number
+  has_cert: boolean
+  cert_info?: CertificateInfo
+  auto_cert: boolean
+  acme_provider?: string
+  acme_domains?: string[]
+  self_signed: boolean
+  https_only: boolean
+  https_port: number
+}
+
+export interface ACMEStatus {
+  configured: boolean
+  email: string
+  domains: string[]
+  provider: string
+  cert_info?: CertificateInfo
+  error?: string
 }
 
 // Security API
@@ -169,4 +235,43 @@ export const securityApi = {
   // Security scan
   runSecurityScan: () =>
     api.get<SecurityScanResult>('/security/scan/run'),
+
+  previewScanFix: (fixAction: string) =>
+    api.post<FixPreviewResponse>('/security/scan/preview', { fix_action: fixAction }),
+
+  fixScanIssue: (fixAction: string) =>
+    api.post<FixScanIssueResponse>('/security/scan/fix', { fix_action: fixAction }),
+
+  // CORS configuration
+  getCORSConfig: () =>
+    api.get<CORSConfig>('/security/cors'),
+
+  updateCORSConfig: (config: CORSConfigUpdate) =>
+    api.put<CORSConfig>('/security/cors', config),
+
+  // TLS configuration
+  getTLSConfig: () =>
+    api.get<TLSConfig>('/security/tls'),
+
+  uploadTLSCert: (certPem: string, keyPem: string) =>
+    api.post<TLSConfig>('/security/tls/upload', { cert_pem: certPem, key_pem: keyPem }),
+
+  generateSelfSignedCert: (domains: string[], validDays: number) =>
+    api.post<TLSConfig>('/security/tls/self-signed', { domains, valid_days: validDays }),
+
+  parseCertificate: (certPem: string) =>
+    api.post<CertificateInfo>('/security/tls/parse', { cert_pem: certPem }),
+
+  // ACME certificate
+  getACMEStatus: () =>
+    api.get<ACMEStatus>('/security/tls/acme'),
+
+  requestACMECert: (email: string, domains: string[], provider: string) =>
+    api.post<ACMEStatus>('/security/tls/acme', { email, domains, provider }),
+
+  updateTLSSettings: (httpsOnly: boolean, httpsPort: number) =>
+    api.put<TLSConfig>('/security/tls/settings', { https_only: httpsOnly, https_port: httpsPort }),
+
+  reloadTLSCert: () =>
+    api.post<TLSConfig>('/security/tls/reload'),
 }

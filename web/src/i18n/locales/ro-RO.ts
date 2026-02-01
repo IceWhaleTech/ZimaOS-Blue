@@ -56,6 +56,28 @@ export default {
     security: 'Securitate',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Toate',
+      overview: 'Prezentare generală',
+      system: 'Sistem',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Stare sistem',
+      uptime: 'Timp de funcționare',
+      memoryUsage: 'Utilizare memorie',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Stare failover',
+      cpuChart: 'Utilizare CPU',
+      memoryChart: 'Utilizare memorie',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Memorie heap',
+      systemInfo: 'Informații sistem',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Abilități',
@@ -580,6 +602,7 @@ export default {
         system: 'Sistem',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Lungime minimă parolă',
           description: 'Verificați dacă lungimea minimă a parolei îndeplinește cerințele de securitate',

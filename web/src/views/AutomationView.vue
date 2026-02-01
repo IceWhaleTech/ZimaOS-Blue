@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import api from '@/api/client'
 import { cronApi } from '@/api/cron'
 import { autoReplyApi } from '@/api/autoreply'
 import { workflowApi } from '@/api/workflow'
@@ -25,7 +24,6 @@ const stats = ref({
   autoReply: { rules: 0, enabled: 0, matches: 0 },
   browser: { tasks: 0, running: 0, sessions: 0 },
   workflow: { total: 0, active: 0, executions: 0 },
-  a2ui: { components: 0, canvases: 0 },
   sandbox: { supported: false, running: 0 },
 })
 
@@ -88,15 +86,6 @@ async function fetchStats() {
       stats.value.workflow.active = workflows?.filter((w) => w.status === 'active')?.length || 0
     } catch {
       // Workflow API error
-    }
-
-    // Fetch A2UI stats
-    try {
-      const response = await api.get('/a2ui/canvases', { baseURL: '/api' })
-      const data = response.data
-      stats.value.a2ui.canvases = data?.canvases?.length || data?.count || 0
-    } catch {
-      // A2UI API error
     }
 
     // Fetch Sandbox stats
@@ -349,45 +338,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- A2UI Card -->
-      <div
-        class="glass-card p-6 cursor-pointer hover:scale-[1.02] transition-all duration-200 group"
-        @click="navigateToPage('/a2ui')"
-      >
-        <div class="flex items-start justify-between">
-          <div class="flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-red-500 flex items-center justify-center shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-rose-500 transition-colors">
-                {{ t('automation.tabs.a2ui') }}
-              </h3>
-              <p class="text-sm text-gray-500 dark:text-slate-400">
-                {{ t('automation.tabs.a2uiDesc') }}
-              </p>
-            </div>
-          </div>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 group-hover:text-rose-500 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-
-        <!-- Stats -->
-        <div class="mt-6 grid grid-cols-2 gap-4">
-          <div class="text-center">
-            <div class="text-2xl font-bold text-rose-500">{{ stats.a2ui.canvases }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.canvases') }}</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-rose-500">{{ stats.a2ui.components }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('automation.stats.components') }}</div>
-          </div>
-        </div>
-      </div>
-
       <!-- Sandbox Card -->
       <div
         class="glass-card p-6 cursor-pointer hover:scale-[1.02] transition-all duration-200 group"
@@ -480,15 +430,6 @@ onUnmounted(() => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
           <span>{{ t('automation.actions.createTask') }}</span>
-        </button>
-        <button
-          class="px-4 py-2 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors flex items-center space-x-2"
-          @click="navigateToPage('/a2ui')"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          <span>{{ t('automation.actions.createCanvas') }}</span>
         </button>
       </div>
     </div>

@@ -56,6 +56,28 @@ export default {
     security: 'Sigurnost',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Sve',
+      overview: 'Pregled',
+      system: 'Sustav',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Status sustava',
+      uptime: 'Vrijeme rada',
+      memoryUsage: 'Korištenje memorije',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Failover status',
+      cpuChart: 'Korištenje CPU-a',
+      memoryChart: 'Korištenje memorije',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Heap memorija',
+      systemInfo: 'Informacije o sustavu',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Vještine',
@@ -580,6 +602,7 @@ export default {
         system: 'Sustav',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimalna duljina lozinke',
           description: 'Provjerite zadovoljava li minimalna duljina lozinke sigurnosne zahtjeve',

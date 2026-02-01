@@ -38,9 +38,10 @@ const (
 type BinarySource string
 
 const (
-	BinarySourceEmbedded   BinarySource = "embedded"
-	BinarySourceDownloaded BinarySource = "downloaded"
-	BinarySourceSystem     BinarySource = "system"
+	BinarySourceEmbedded     BinarySource = "embedded"
+	BinarySourceDownloaded   BinarySource = "downloaded"
+	BinarySourceSystem       BinarySource = "system"
+	BinarySourceIDEExtension BinarySource = "ide-extension"
 )
 
 // VersionInfo contains version information about the Claude Code CLI.
@@ -80,8 +81,8 @@ type BinaryManager struct {
 	httpClient      *http.Client
 
 	// Configuration
-	requireLatest   bool // If true, always prefer latest version over system CLI
-	allowSystemCLI  bool // If true, allow using system-installed CLI
+	requireLatest  bool // If true, always prefer latest version over system CLI
+	allowSystemCLI bool // If true, allow using system-installed CLI
 
 	// Cached version info
 	embeddedVersion  string
@@ -89,6 +90,7 @@ type BinaryManager struct {
 	systemVersion    string
 	binaryPath       string
 	source           BinarySource
+	ideName          string // IDE name if source is BinarySourceIDEExtension
 	validated        bool
 }
 
@@ -137,8 +139,9 @@ func (m *BinaryManager) SetDownloadTimeout(timeout time.Duration) {
 // Resolution order:
 // 1. Embedded binary (if available for current platform)
 // 2. Downloaded binary (if exists)
-// 3. System PATH (if allowed and validated)
-// 4. Download from GCS (if none found)
+// 3. IDE extension binary (VS Code, Cursor, etc.)
+// 4. System PATH (if allowed and validated)
+// 5. Download from GCS (if none found)
 //
 // If requireLatest is true, system CLI will only be used if it matches the latest version.
 func (m *BinaryManager) GetBinaryPath() (string, error) {
@@ -183,7 +186,21 @@ func (m *BinaryManager) GetBinaryPath() (string, error) {
 		return binaryPath, nil
 	}
 
-	// Try 3: Check system PATH (if allowed)
+	// Try 3: Check IDE extension paths (VS Code, Cursor, etc.)
+	if idePath, ideName := m.findCLIInIDEExtensions(platform, binaryName); idePath != "" {
+		m.extracted = true
+		m.binaryPath = idePath
+		m.source = BinarySourceIDEExtension
+		m.ideName = ideName
+		// Try to get version from the binary
+		if version, err := m.getVersionFromBinary(idePath); err == nil {
+			m.installedVersion = version
+		}
+		m.validated = true
+		return idePath, nil
+	}
+
+	// Try 4: Check system PATH (if allowed)
 	if m.allowSystemCLI {
 		if systemPath, version, err := m.findAndValidateSystemCLI(binaryName); err == nil {
 			// Check if we require latest version
@@ -205,7 +222,7 @@ func (m *BinaryManager) GetBinaryPath() (string, error) {
 	}
 
 download:
-	// Try 4: Download from GCS
+	// Try 5: Download from GCS
 	if err := m.downloadLatest(platform, binaryPath); err != nil {
 		return "", fmt.Errorf("claude code CLI not found and download failed: %w", err)
 	}
@@ -878,6 +895,254 @@ func getPlatformString() string {
 	}
 
 	return fmt.Sprintf("%s-%s", os, arch)
+}
+
+// bmIDEExtensionInfo contains information about an IDE extension location for BinaryManager.
+type bmIDEExtensionInfo struct {
+	name       string   // IDE name (e.g., "VS Code", "Cursor")
+	baseDirs   []string // Base directories to search (relative to home or absolute)
+	extPattern string   // Extension directory pattern (glob)
+}
+
+// findCLIInIDEExtensions searches for Claude Code CLI in common IDE extension directories.
+func (m *BinaryManager) findCLIInIDEExtensions(platform, binaryName string) (path string, ideName string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", ""
+	}
+
+	// Build the relative path to the binary within the extension
+	// Format: resources/native-binary/<platform>/claude[.exe]
+	binaryRelPath := filepath.Join("resources", "native-binary", platform, binaryName)
+
+	// Define IDE extension locations
+	ideInfos := []bmIDEExtensionInfo{
+		// Cursor (VS Code fork) - most common for Claude Code
+		{
+			name:       "Cursor",
+			baseDirs:   []string{".cursor/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// VS Code
+		{
+			name:       "VS Code",
+			baseDirs:   []string{".vscode/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// VS Code Insiders
+		{
+			name:       "VS Code Insiders",
+			baseDirs:   []string{".vscode-insiders/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// VSCodium
+		{
+			name:       "VSCodium",
+			baseDirs:   []string{".vscode-oss/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Windsurf (Codeium's VS Code fork)
+		{
+			name:       "Windsurf",
+			baseDirs:   []string{".windsurf/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Positron (Posit's VS Code fork for data science)
+		{
+			name:       "Positron",
+			baseDirs:   []string{".positron/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Theia IDE
+		{
+			name:       "Theia",
+			baseDirs:   []string{".theia/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Qodo (formerly Codium AI)
+		{
+			name:       "Qodo",
+			baseDirs:   []string{".qodo/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// TRAE (ByteDance's AI IDE)
+		{
+			name:       "TRAE",
+			baseDirs:   []string{".trae/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Kiro (Amazon's AI IDE)
+		{
+			name:       "Kiro",
+			baseDirs:   []string{".kiro/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Zed Editor
+		{
+			name:       "Zed",
+			baseDirs:   []string{".zed/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Fleet (JetBrains)
+		{
+			name:       "Fleet",
+			baseDirs:   []string{".fleet/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Void (Open source AI IDE)
+		{
+			name:       "Void",
+			baseDirs:   []string{".void/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Melty (AI-native IDE)
+		{
+			name:       "Melty",
+			baseDirs:   []string{".melty/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// PearAI
+		{
+			name:       "PearAI",
+			baseDirs:   []string{".pearai/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Qoder (Chinese AI IDE)
+		{
+			name:       "Qoder",
+			baseDirs:   []string{".qoder/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// MarsCode (ByteDance's Chinese AI IDE)
+		{
+			name:       "MarsCode",
+			baseDirs:   []string{".marscode/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Aide (Open source AI IDE)
+		{
+			name:       "Aide",
+			baseDirs:   []string{".aide/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Augment Code
+		{
+			name:       "Augment",
+			baseDirs:   []string{".augment/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Antigravity (AI IDE with Gemini/Claude integration)
+		{
+			name:       "Antigravity",
+			baseDirs:   []string{".antigravity/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Roo Code (VS Code fork)
+		{
+			name:       "Roo Code",
+			baseDirs:   []string{".roo-code/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+		// Kiro (AI code assistant)
+		{
+			name:       "Kiro",
+			baseDirs:   []string{".kiro/extensions"},
+			extPattern: "anthropic.claude-code-*",
+		},
+	}
+
+	// Add platform-specific paths
+	if runtime.GOOS == "windows" {
+		// Windows: also check AppData locations
+		appData := os.Getenv("APPDATA")
+		localAppData := os.Getenv("LOCALAPPDATA")
+
+		if appData != "" {
+			ideInfos = append(ideInfos,
+				bmIDEExtensionInfo{
+					name:       "VS Code (AppData)",
+					baseDirs:   []string{filepath.Join(appData, "Code", "User", "globalStorage")},
+					extPattern: "anthropic.claude-code-*",
+				},
+			)
+		}
+		if localAppData != "" {
+			ideInfos = append(ideInfos,
+				bmIDEExtensionInfo{
+					name:       "Cursor (LocalAppData)",
+					baseDirs:   []string{filepath.Join(localAppData, "Programs", "cursor", "resources", "app", "extensions")},
+					extPattern: "anthropic.claude-code-*",
+				},
+			)
+		}
+	} else if runtime.GOOS == "darwin" {
+		// macOS: check Application Support
+		ideInfos = append(ideInfos,
+			bmIDEExtensionInfo{
+				name:       "VS Code (macOS)",
+				baseDirs:   []string{"Library/Application Support/Code/User/globalStorage"},
+				extPattern: "anthropic.claude-code-*",
+			},
+			bmIDEExtensionInfo{
+				name:       "Cursor (macOS)",
+				baseDirs:   []string{"Library/Application Support/Cursor/User/globalStorage"},
+				extPattern: "anthropic.claude-code-*",
+			},
+		)
+	} else if runtime.GOOS == "linux" {
+		// Linux: check .config locations
+		ideInfos = append(ideInfos,
+			bmIDEExtensionInfo{
+				name:       "VS Code (Linux)",
+				baseDirs:   []string{".config/Code/User/globalStorage"},
+				extPattern: "anthropic.claude-code-*",
+			},
+			bmIDEExtensionInfo{
+				name:       "Cursor (Linux)",
+				baseDirs:   []string{".config/Cursor/User/globalStorage"},
+				extPattern: "anthropic.claude-code-*",
+			},
+		)
+	}
+
+	// Search each IDE location
+	for _, info := range ideInfos {
+		for _, baseDir := range info.baseDirs {
+			var searchDir string
+			if filepath.IsAbs(baseDir) {
+				searchDir = baseDir
+			} else {
+				searchDir = filepath.Join(home, baseDir)
+			}
+
+			// Find extension directories matching pattern
+			pattern := filepath.Join(searchDir, info.extPattern)
+			matches, err := filepath.Glob(pattern)
+			if err != nil || len(matches) == 0 {
+				continue
+			}
+
+			// Sort matches to get the latest version (assuming version is in directory name)
+			// The glob pattern will match directories like "anthropic.claude-code-2.1.27-win32-x64"
+			// We want the highest version number, so iterate from the end
+			for i := len(matches) - 1; i >= 0; i-- {
+				extDir := matches[i]
+				fullBinaryPath := filepath.Join(extDir, binaryRelPath)
+
+				// Check if binary exists and is executable
+				if stat, err := os.Stat(fullBinaryPath); err == nil && !stat.IsDir() {
+					return fullBinaryPath, info.name
+				}
+			}
+		}
+	}
+
+	return "", ""
+}
+
+// GetIDEName returns the IDE name if the binary was found in an IDE extension.
+func (m *BinaryManager) GetIDEName() string {
+	return m.ideName
 }
 
 // DefaultBinaryManager is the default binary manager instance.

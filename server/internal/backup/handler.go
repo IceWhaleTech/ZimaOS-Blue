@@ -23,11 +23,15 @@ func NewHandler(manager *Manager) *Handler {
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/backup", h.List)
 	g.POST("/backup", h.Create)
+	g.GET("/backup/progress", h.GetProgress)
 	g.GET("/backup/:id", h.Get)
 	g.DELETE("/backup/:id", h.Delete)
 	g.POST("/backup/:id/restore", h.Restore)
+	g.POST("/backup/:id/stage-restore", h.StageRestore) // New: stage for restart
 	g.POST("/backup/:id/verify", h.Verify)
 	g.POST("/backup/:id/repair", h.Repair)
+	g.GET("/backup/pending", h.GetPendingRestore)
+	g.DELETE("/backup/pending", h.CancelPendingRestore)
 }
 
 // List returns all available backups
@@ -213,4 +217,94 @@ func (h *Handler) Repair(c echo.Context) error {
 		"success": true,
 		"message": "Backup checksum repaired successfully",
 	})
+}
+
+// StageRestore stages a backup for restore on next restart.
+// This is the recommended approach for hot recovery to avoid database lock issues.
+func (h *Handler) StageRestore(c echo.Context) error {
+	id := c.Param("id")
+	if id == "" {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"message": "Backup ID is required",
+		})
+	}
+
+	pending, err := h.manager.StageRestore(context.Background(), id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "Failed to stage restore",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":         true,
+		"message":         "Restore staged successfully. Please restart the service to apply.",
+		"pending_restore": pending,
+		"requires_restart": true,
+	})
+}
+
+// GetPendingRestore returns the pending restore info if any
+func (h *Handler) GetPendingRestore(c echo.Context) error {
+	pending, err := h.manager.GetPendingRestore()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "Failed to get pending restore",
+			"error":   err.Error(),
+		})
+	}
+
+	if pending == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":         true,
+			"has_pending":     false,
+			"pending_restore": nil,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":         true,
+		"has_pending":     true,
+		"pending_restore": pending,
+	})
+}
+
+// CancelPendingRestore cancels a pending restore operation
+func (h *Handler) CancelPendingRestore(c echo.Context) error {
+	if err := h.manager.CancelPendingRestore(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "Failed to cancel pending restore",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Pending restore cancelled",
+	})
+}
+
+// ProgressResponse represents the backup/restore progress
+type ProgressResponse struct {
+	InProgress     bool   `json:"in_progress"`
+	Operation      string `json:"operation"` // "backup" or "restore"
+	Progress       int    `json:"progress"`  // 0-100
+	CurrentFile    string `json:"current_file"`
+	FilesProcessed int    `json:"files_processed"`
+	TotalFiles     int    `json:"total_files"`
+	BytesProcessed int64  `json:"bytes_processed"`
+	TotalBytes     int64  `json:"total_bytes"`
+	StartedAt      string `json:"started_at"`
+	Error          string `json:"error,omitempty"`
+}
+
+// GetProgress returns the current backup/restore progress
+func (h *Handler) GetProgress(c echo.Context) error {
+	progress := h.manager.GetProgress()
+	return c.JSON(http.StatusOK, progress)
 }

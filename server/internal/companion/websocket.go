@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 )
 
 // WebSocketHandler handles WebSocket connections for real-time event streaming.
@@ -28,9 +29,8 @@ func NewWebSocketHandler(streamer Streamer, config *Config) *WebSocketHandler {
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  config.WebSocket.ReadBufferSize,
 			WriteBufferSize: config.WebSocket.WriteBufferSize,
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins for now
-			},
+			// Security fix: Use origin checker instead of allowing all origins
+			CheckOrigin: security.CheckOriginDefault,
 		},
 		conns: make(map[*websocket.Conn]context.CancelFunc),
 	}

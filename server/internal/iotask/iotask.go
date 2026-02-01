@@ -381,18 +381,36 @@ func (m *Manager) calculateSize(path string) (int64, int64, error) {
 	var totalSize int64
 	var totalFiles int64
 
-	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+	// Use queue-based iteration instead of recursive walk
+	queue := []string{path}
+
+	for len(queue) > 0 {
+		currentDir := queue[0]
+		queue = queue[1:]
+
+		entries, err := os.ReadDir(currentDir)
 		if err != nil {
-			return err
+			return totalSize, totalFiles, err
 		}
-		if !info.IsDir() {
+
+		for _, entry := range entries {
+			entryPath := filepath.Join(currentDir, entry.Name())
+
+			if entry.IsDir() {
+				queue = append(queue, entryPath)
+				continue
+			}
+
+			info, err := entry.Info()
+			if err != nil {
+				return totalSize, totalFiles, err
+			}
 			totalSize += info.Size()
 			totalFiles++
 		}
-		return nil
-	})
+	}
 
-	return totalSize, totalFiles, err
+	return totalSize, totalFiles, nil
 }
 
 func (m *Manager) copyPath(ctx context.Context, task *Task, src, dst string) error {

@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCompanionStore } from '@/stores/companion'
-import type { CompanionSession, ThreatLevel } from '@/api/companion'
+import type { CompanionSession, ThreatLevel, SessionEvent } from '@/api/companion'
+
+// Lazy load heavy component
+const SessionFlowCanvas = defineAsyncComponent(() => import('./SessionFlowCanvas.vue'))
 
 const { t } = useI18n()
 const companionStore = useCompanionStore()
 
 const props = defineProps<{
   session: CompanionSession
+  modalMode?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
 }>()
+
+// View mode: 'timeline' or 'flow'
+const viewMode = ref<'timeline' | 'flow'>('flow')
+const selectedEventId = ref<string | undefined>(undefined)
 
 // Load session details when session changes
 watch(
@@ -30,6 +38,15 @@ watch(
 
 const events = computed(() => companionStore.sessionEvents)
 const loading = computed(() => companionStore.loadingSession || companionStore.loadingEvents)
+
+// Handle node click in flow canvas
+function handleNodeClick(event: SessionEvent) {
+  selectedEventId.value = event.id
+}
+
+function handleNodeHover(_event: SessionEvent | null) {
+  // Could show additional info on hover
+}
 
 function getThreatColor(level: ThreatLevel): string {
   const colors: Record<ThreatLevel, string> = {
@@ -99,9 +116,9 @@ function formatDuration(ms: number): string {
 </script>
 
 <template>
-  <div class="session-detail bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full">
-    <!-- Header -->
-    <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+  <div :class="['session-detail', modalMode ? '' : 'bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full']">
+    <!-- Header (only show when not in modal mode) -->
+    <div v-if="!modalMode" class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
       <div>
         <h2 class="text-lg font-bold text-gray-900 dark:text-white">
           {{ t('companion.sessionDetail') }}
@@ -118,8 +135,13 @@ function formatDuration(ms: number): string {
       </button>
     </div>
 
+    <!-- Session ID (show in modal mode) -->
+    <div v-if="modalMode" class="mb-4">
+      <p class="text-sm text-gray-500 dark:text-slate-400 font-mono">ID: {{ session.id }}</p>
+    </div>
+
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-4">
+    <div :class="modalMode ? '' : 'flex-1 overflow-y-auto p-4'">
       <!-- Session Info Grid -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
@@ -171,8 +193,55 @@ function formatDuration(ms: number): string {
         <span v-if="session.duration">{{ t('companion.duration') }}: {{ formatDuration(session.duration) }}</span>
       </div>
 
+      <!-- View Mode Toggle -->
+      <div class="flex items-center gap-2 mb-4">
+        <div class="flex bg-gray-100 dark:bg-slate-700 rounded-lg p-1">
+          <button
+            :class="[
+              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+              viewMode === 'flow'
+                ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            ]"
+            @click="viewMode = 'flow'"
+          >
+            <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+            {{ t('companion.viewMode.flow') }}
+          </button>
+          <button
+            :class="[
+              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+              viewMode === 'timeline'
+                ? 'bg-white dark:bg-slate-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            ]"
+            @click="viewMode = 'timeline'"
+          >
+            <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            {{ t('companion.viewMode.timeline') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Flow View -->
+      <div v-if="viewMode === 'flow'" class="mb-6">
+        <div :class="['border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden', modalMode ? 'h-[600px]' : 'h-[400px]']">
+          <SessionFlowCanvas
+            :events="events"
+            :selected-event-id="selectedEventId"
+            :auto-scroll="true"
+            @node-click="handleNodeClick"
+            @node-hover="handleNodeHover"
+          />
+        </div>
+      </div>
+
       <!-- Events Timeline -->
-      <div class="mb-6">
+      <div v-else class="mb-6">
         <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('companion.eventHistory') }}
         </h3>
@@ -191,13 +260,13 @@ function formatDuration(ms: number): string {
             :key="event.id"
             :class="[
               'p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg border-l-4',
-              getEventColor(event.eventType)
+              getEventColor(event.event_type)
             ]"
           >
             <div class="flex items-center gap-2 mb-1">
-              <span class="text-base">{{ getEventIcon(event.eventType) }}</span>
+              <span class="text-base">{{ getEventIcon(event.event_type) }}</span>
               <span class="font-medium text-gray-900 dark:text-white text-sm">
-                {{ t(`companion.eventType.${event.eventType}`) }}
+                {{ t(`companion.eventType.${event.event_type}`) }}
               </span>
               <span
                 v-if="event.status"
@@ -214,7 +283,7 @@ function formatDuration(ms: number): string {
             <div v-if="event.message" class="text-sm text-gray-600 dark:text-slate-300">
               <div class="flex items-center gap-2 mb-1">
                 <span class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 rounded">
-                  {{ event.message.direction }}
+                  {{ t('companion.direction.' + event.message.direction) }}
                 </span>
                 <span class="text-xs text-gray-400">{{ event.message.contentType }}</span>
               </div>
@@ -224,29 +293,29 @@ function formatDuration(ms: number): string {
             </div>
 
             <!-- Tool Call Event -->
-            <div v-if="event.toolCall" class="text-sm text-gray-600 dark:text-slate-300">
+            <div v-if="event.tool_call" class="text-sm text-gray-600 dark:text-slate-300">
               <div class="flex items-center gap-2 mb-1">
-                <span class="font-mono text-xs">{{ event.toolCall.toolName }}</span>
-                <span v-if="event.toolCall.sandboxUsed" class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded">
+                <span class="font-mono text-xs">{{ event.tool_call.toolName }}</span>
+                <span v-if="event.tool_call.sandboxUsed" class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded">
                   sandbox
                 </span>
-                <span class="text-xs text-gray-400">{{ formatDuration(event.toolCall.duration) }}</span>
+                <span class="text-xs text-gray-400">{{ formatDuration(event.tool_call.duration) }}</span>
               </div>
-              <div v-if="event.toolCall.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
-                Input: {{ event.toolCall.inputPreview }}
+              <div v-if="event.tool_call.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
+                Input: {{ event.tool_call.inputPreview }}
               </div>
             </div>
 
             <!-- LLM Request Event -->
-            <div v-if="event.llmRequest" class="text-sm text-gray-600 dark:text-slate-300">
+            <div v-if="event.llm_request" class="text-sm text-gray-600 dark:text-slate-300">
               <div class="flex items-center gap-2 mb-1">
-                <span class="font-mono text-xs">{{ event.llmRequest.provider }}/{{ event.llmRequest.model }}</span>
-                <span class="text-xs text-gray-400">{{ formatDuration(event.llmRequest.duration) }}</span>
+                <span class="font-mono text-xs">{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span>
+                <span class="text-xs text-gray-400">{{ formatDuration(event.llm_request.duration) }}</span>
               </div>
               <div class="flex gap-3 text-xs text-gray-500 dark:text-slate-400">
-                <span>Prompt: {{ event.llmRequest.promptTokens }}</span>
-                <span>Completion: {{ event.llmRequest.completionTokens }}</span>
-                <span>Total: {{ event.llmRequest.totalTokens }}</span>
+                <span>Prompt: {{ event.llm_request.promptTokens }}</span>
+                <span>Completion: {{ event.llm_request.completionTokens }}</span>
+                <span>Total: {{ event.llm_request.totalTokens }}</span>
               </div>
             </div>
 

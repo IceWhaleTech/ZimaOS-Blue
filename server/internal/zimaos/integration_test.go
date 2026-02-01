@@ -12,7 +12,7 @@ import (
 func TestNewIntegration(t *testing.T) {
 	cfg := Config{
 		Enabled:     true,
-		APIEndpoint: "http://localhost:8080",
+		APIEndpoint: "http://localhost:23456",
 		AppID:       "zimaos-echo",
 	}
 
@@ -21,8 +21,8 @@ func TestNewIntegration(t *testing.T) {
 		t.Fatal("Expected integration, got nil")
 	}
 
-	if i.config.APIEndpoint != "http://localhost:8080" {
-		t.Errorf("Expected API endpoint http://localhost:8080, got %s", i.config.APIEndpoint)
+	if i.config.APIEndpoint != "http://localhost:23456" {
+		t.Errorf("Expected API endpoint http://localhost:23456, got %s", i.config.APIEndpoint)
 	}
 }
 
@@ -185,7 +185,7 @@ func TestIntegration_GetApp(t *testing.T) {
 				"name": "App 1",
 				"version": "1.0.0",
 				"status": "running",
-				"port": 8080,
+				"port": 23456,
 				"description": "Test app"
 			}`))
 			return
@@ -212,8 +212,8 @@ func TestIntegration_GetApp(t *testing.T) {
 		t.Errorf("Expected app ID 'app1', got %s", app.ID)
 	}
 
-	if app.Port != 8080 {
-		t.Errorf("Expected port 8080, got %d", app.Port)
+	if app.Port != 23456 {
+		t.Errorf("Expected port 23456, got %d", app.Port)
 	}
 }
 

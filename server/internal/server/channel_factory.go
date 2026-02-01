@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
@@ -12,6 +14,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/slack"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/teams"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/telegram"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/validator"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/wechat"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/zalo"
 )
@@ -153,4 +156,57 @@ func (f *ChannelFactory) createZalo(cfg *ChannelConfig) (channel.Channel, error)
 		SecretKey:    cfg.Config["secret_key"],
 	}
 	return zalo.New(zaloCfg, f.logger), nil
+}
+
+// ValidationResult represents the result of a connection validation.
+type ValidationResult struct {
+	Success bool                   `json:"success"`
+	Message string                 `json:"message"`
+	Details map[string]interface{} `json:"details,omitempty"`
+}
+
+// ValidateConnection tests a channel connection without creating a full channel instance.
+func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType string, config map[string]string) ValidationResult {
+	var v validator.Validator
+
+	switch channelType {
+	case "telegram":
+		v = telegram.NewValidator()
+	case "discord":
+		v = discord.NewValidator()
+	case "feishu":
+		v = feishu.NewValidator()
+	case "slack":
+		v = slack.NewValidator()
+	case "wechat":
+		v = wechat.NewValidator()
+	case "matrix":
+		v = matrix.NewValidator()
+	case "teams":
+		v = teams.NewValidator()
+	case "mattermost":
+		v = mattermost.NewValidator()
+	case "bluebubbles":
+		v = bluebubbles.NewValidator()
+	case "zalo":
+		v = zalo.NewValidator()
+	default:
+		return ValidationResult{
+			Success: false,
+			Message: "Unsupported channel type: " + channelType,
+		}
+	}
+
+	result := v.Validate(ctx, config)
+
+	message := result.MessageKey
+	if result.Error != "" {
+		message = result.Error
+	}
+
+	return ValidationResult{
+		Success: result.Success,
+		Message: message,
+		Details: result.Data,
+	}
 }

@@ -16,6 +16,34 @@ import { companionApi } from '@/api/companion'
 
 const PAGE_SIZE = 50
 
+// Event State Machine Types
+export type EventState = 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'timeout'
+
+export interface EventStateTransition {
+  from: EventState
+  to: EventState
+  timestamp: string
+  reason?: string
+}
+
+export interface TrackedEvent extends SessionEvent {
+  state: EventState
+  transitions: EventStateTransition[]
+  startedAt?: string
+  completedAt?: string
+  bytesTransferred?: number
+}
+
+// Valid state transitions
+const validTransitions: Record<EventState, EventState[]> = {
+  pending: ['running', 'blocked', 'timeout'],
+  running: ['completed', 'failed', 'timeout', 'blocked'],
+  completed: [], // Terminal state
+  failed: ['pending'], // Can retry
+  blocked: ['pending', 'failed'], // Can unblock or fail
+  timeout: ['pending', 'failed'], // Can retry or fail
+}
+
 export const useCompanionStore = defineStore('companion', () => {
   // State
   const sessions = ref<CompanionSession[]>([])
@@ -55,6 +83,113 @@ export const useCompanionStore = defineStore('companion', () => {
   // Real-time events from WebSocket
   const realtimeEvents = ref<SessionEvent[]>([])
   const isStreaming = ref(false)
+
+  // Event State Machine
+  const trackedEvents = ref<Map<string, TrackedEvent>>(new Map())
+  const eventStateListeners = ref<((event: TrackedEvent) => void)[]>([])
+
+  // Event State Machine Functions
+  function canTransition(from: EventState, to: EventState): boolean {
+    return validTransitions[from]?.includes(to) ?? false
+  }
+
+  function trackEvent(event: SessionEvent, initialState: EventState = 'pending'): TrackedEvent {
+    const existing = trackedEvents.value.get(event.id)
+    if (existing) {
+      return existing
+    }
+
+    const tracked: TrackedEvent = {
+      ...event,
+      state: initialState,
+      transitions: [{
+        from: 'pending' as EventState,
+        to: initialState,
+        timestamp: new Date().toISOString(),
+        reason: 'Event created',
+      }],
+      startedAt: initialState === 'running' ? new Date().toISOString() : undefined,
+    }
+
+    trackedEvents.value.set(event.id, tracked)
+    notifyStateListeners(tracked)
+    return tracked
+  }
+
+  function transitionEventState(eventId: string, newState: EventState, reason?: string): boolean {
+    const tracked = trackedEvents.value.get(eventId)
+    if (!tracked) {
+      return false
+    }
+
+    if (!canTransition(tracked.state, newState)) {
+      console.warn(`Invalid state transition: ${tracked.state} -> ${newState} for event ${eventId}`)
+      return false
+    }
+
+    const transition: EventStateTransition = {
+      from: tracked.state,
+      to: newState,
+      timestamp: new Date().toISOString(),
+      reason,
+    }
+
+    tracked.transitions.push(transition)
+    tracked.state = newState
+
+    // Update timing
+    if (newState === 'running' && !tracked.startedAt) {
+      tracked.startedAt = transition.timestamp
+    } else if (newState === 'completed' || newState === 'failed') {
+      tracked.completedAt = transition.timestamp
+    }
+
+    // Update the map to trigger reactivity
+    trackedEvents.value.set(eventId, { ...tracked })
+    notifyStateListeners(tracked)
+
+    return true
+  }
+
+  function updateEventBytes(eventId: string, bytes: number): void {
+    const tracked = trackedEvents.value.get(eventId)
+    if (tracked) {
+      tracked.bytesTransferred = (tracked.bytesTransferred || 0) + bytes
+      trackedEvents.value.set(eventId, { ...tracked })
+    }
+  }
+
+  function getTrackedEvent(eventId: string): TrackedEvent | undefined {
+    return trackedEvents.value.get(eventId)
+  }
+
+  function getEventsByState(state: EventState): TrackedEvent[] {
+    return Array.from(trackedEvents.value.values()).filter(e => e.state === state)
+  }
+
+  function addStateListener(listener: (event: TrackedEvent) => void): () => void {
+    eventStateListeners.value.push(listener)
+    return () => {
+      const index = eventStateListeners.value.indexOf(listener)
+      if (index !== -1) {
+        eventStateListeners.value.splice(index, 1)
+      }
+    }
+  }
+
+  function notifyStateListeners(event: TrackedEvent): void {
+    eventStateListeners.value.forEach(listener => {
+      try {
+        listener(event)
+      } catch (e) {
+        console.error('Error in event state listener:', e)
+      }
+    })
+  }
+
+  function clearTrackedEvents(): void {
+    trackedEvents.value.clear()
+  }
 
   // Computed
   const activeSessions = computed(() =>
@@ -272,7 +407,7 @@ export const useCompanionStore = defineStore('companion', () => {
             alerts.value[index] = {
               ...existingAlert,
               acknowledged: true,
-              ackedAt: now,
+              acked_at: now,
             }
           }
         }
@@ -344,8 +479,18 @@ export const useCompanionStore = defineStore('companion', () => {
       realtimeEvents.value = realtimeEvents.value.slice(0, 100)
     }
 
+    // Track event in state machine
+    const initialState: EventState = event.status === 'success' || event.status === 'completed'
+      ? 'completed'
+      : event.status === 'failed' || event.status === 'error'
+        ? 'failed'
+        : event.status === 'running' || event.status === 'pending'
+          ? event.status as EventState
+          : 'completed'
+    trackEvent(event, initialState)
+
     // Update session in list if it exists
-    const sessionIndex = sessions.value.findIndex((s) => s.id === event.sessionId)
+    const sessionIndex = sessions.value.findIndex((s) => s.id === event.session_id)
     if (sessionIndex !== -1) {
       const session = sessions.value[sessionIndex]
       if (session) {
@@ -360,7 +505,7 @@ export const useCompanionStore = defineStore('companion', () => {
     }
 
     // Update current session events if viewing
-    if (currentSessionId.value === event.sessionId) {
+    if (currentSessionId.value === event.session_id) {
       sessionEvents.value.unshift(event)
     }
   }
@@ -437,12 +582,12 @@ export const useCompanionStore = defineStore('companion', () => {
 
     return {
       id: crypto.randomUUID(),
-      sessionId,
+      session_id: sessionId,
       timestamp: new Date().toISOString(),
-      eventType,
+      event_type: eventType,
       platform: platforms[Math.floor(Math.random() * platforms.length)] ?? 'web',
-      userId: `user-${Math.floor(Math.random() * 1000)}`,
-      tenantId: 'demo-tenant',
+      user_id: `user-${Math.floor(Math.random() * 1000)}`,
+      tenant_id: 'demo-tenant',
       duration: Math.floor(Math.random() * 500) + 50,
       status: 'success',
     }
@@ -462,12 +607,12 @@ export const useCompanionStore = defineStore('companion', () => {
 
     return {
       id: crypto.randomUUID(),
-      sessionId: sessions.value[0]?.id || crypto.randomUUID(),
-      eventId: crypto.randomUUID(),
+      session_id: sessions.value[0]?.id || crypto.randomUUID(),
+      event_id: crypto.randomUUID(),
       title: titleKey, // Use i18n key, will be translated in component
       description: 'demoDescription', // Use i18n key
       severity,
-      createdAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
       acknowledged: false,
     }
   }
@@ -487,16 +632,16 @@ export const useCompanionStore = defineStore('companion', () => {
     totalAlerts.value = demoAlerts.length
 
     stats.value = {
-      activeSessions: demoSessions.filter(s => s.status === 'active').length,
-      totalSessions: demoSessions.length,
-      totalEvents: demoSessions.reduce((sum, s) => sum + s.event_count, 0),
-      totalAlerts: demoAlerts.length,
-      unackedAlerts: demoAlerts.filter(a => !a.acknowledged).length,
-      avgSessionDuration: demoSessions.reduce((sum, s) => sum + s.duration, 0) / demoSessions.length,
-      sessionsByPlatform: {} as Record<Platform, number>,
-      threatsByLevel: { none: 0, low: 0, medium: 0, high: 0, critical: 0 },
-      eventsByType: {} as Record<SessionEventType, number>,
-      lastUpdated: new Date().toISOString(),
+      active_sessions: demoSessions.filter(s => s.status === 'active').length,
+      total_sessions: demoSessions.length,
+      total_events: demoSessions.reduce((sum, s) => sum + s.event_count, 0),
+      total_alerts: demoAlerts.length,
+      unacked_alerts: demoAlerts.filter(a => !a.acknowledged).length,
+      avg_session_duration: demoSessions.reduce((sum, s) => sum + s.duration, 0) / demoSessions.length,
+      sessions_by_platform: {} as Record<Platform, number>,
+      threats_by_level: { none: 0, low: 0, medium: 0, high: 0, critical: 0 },
+      events_by_type: {} as Record<SessionEventType, number>,
+      last_updated: new Date().toISOString(),
     }
 
     // Simulate real-time events
@@ -516,13 +661,13 @@ export const useCompanionStore = defineStore('companion', () => {
         alerts.value.unshift(alert)
         totalAlerts.value++
         if (stats.value) {
-          stats.value.totalAlerts++
+          stats.value.total_alerts++
         }
       }
 
       // Update stats
       if (stats.value) {
-        stats.value.totalEvents++
+        stats.value.total_events++
       }
     }, 2000)
   }
@@ -555,6 +700,7 @@ export const useCompanionStore = defineStore('companion', () => {
     stats,
     realtimeEvents,
     isStreaming,
+    trackedEvents,
 
     // Loading states
     loading,
@@ -607,6 +753,15 @@ export const useCompanionStore = defineStore('companion', () => {
     setAlertFilters,
     clearCurrentSession,
     clearError,
+
+    // Event State Machine
+    trackEvent,
+    transitionEventState,
+    updateEventBytes,
+    getTrackedEvent,
+    getEventsByState,
+    addStateListener,
+    clearTrackedEvents,
 
     // Demo mode
     isDemoMode,

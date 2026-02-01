@@ -52,7 +52,7 @@ Using local models with Ollama is completely free.
 ```bash
 docker run -d \
   --name zimaos-echo \
-  -p 8080:8080 \
+  -p 23456:23456 \
   -v echo-data:/app/data \
   icewhale/zimaos-echo:latest
 ```
@@ -127,7 +127,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/echo.example.com/privkey.pem;
 
     location / {
-        proxy_pass http://localhost:8080;
+        proxy_pass http://localhost:23456;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -349,7 +349,7 @@ backup:
 
 **Manual backup:**
 ```bash
-curl -X POST http://localhost:8080/api/backup/create \
+curl -X POST http://localhost:23456/api/backup/create \
   -H "Authorization: Bearer <token>" \
   -d '{"type": "full"}'
 ```
@@ -357,7 +357,7 @@ curl -X POST http://localhost:8080/api/backup/create \
 ### How do I restore from backup?
 
 ```bash
-curl -X POST http://localhost:8080/api/backup/restore/<backup-id> \
+curl -X POST http://localhost:23456/api/backup/restore/<backup-id> \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -385,7 +385,7 @@ log:
 ### How do I check the service status?
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 ### Where can I get help?

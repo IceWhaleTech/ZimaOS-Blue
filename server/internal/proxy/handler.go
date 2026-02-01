@@ -1,17 +1,32 @@
 package proxy
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 )
 
-// ProxyHandler handles incoming proxy requests
+// ProxyHandler handles incoming proxy requests.
+//
+// Architecture:
+//   Client --[Proxy API Key]--> Proxy --[Provider API Key]--> Upstream (Anthropic/OpenAI)
+//
+// - Proxy API Key: Used by Authenticator to validate client requests (optional)
+// - Provider API Key: Retrieved from Provider Pool to call upstream APIs
+//
+// The Proxy uses Provider Pool's Router to:
+// 1. Select the best provider based on model and routing strategy
+// 2. Get the API key for the selected provider
+// 3. Forward the request to the upstream provider
 type ProxyHandler struct {
-	router   *Router
-	connPool *ConnectionPool
-	failover *FailoverHandler
+	router       *Router                // Legacy router (fallback only)
+	connPool     *ConnectionPool        // HTTP connection pool
+	failover     *FailoverHandler       // Failover handler
+	providerPool *providerpool.Pool     // Provider Pool for routing and API keys
 }
 
 // NewProxyHandler creates a new proxy handler
@@ -23,20 +38,38 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 	}
 }
 
-// ServeHTTP implements http.Handler
+// SetProviderPool sets the Provider Pool for routing and API key lookup.
+// This should be called during server initialization.
+func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
+	ph.providerPool = pool
+}
+
+// ServeHTTP implements http.Handler.
+// Routes requests through Provider Pool to get the best provider and API key.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Select provider based on route
-	provider, err := ph.router.SelectProvider(r)
+	// Read request body for model extraction
+	bodyBytes, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+
+	// Extract model from request body
+	model := ""
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &reqBody); err == nil {
+		if m, ok := reqBody["model"].(string); ok {
+			model = m
+		}
+	}
+
+	// Route through Provider Pool to get provider + API key
+	route, err := ph.routeRequest(model)
 	if err != nil {
-		http.Error(w, "No available provider", http.StatusServiceUnavailable)
+		http.Error(w, "No available provider: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
-	// Forward request with failover
-	resp, err := ph.failover.Execute(r.Context(), provider, func(p *Provider) (*http.Response, error) {
-		return ph.forwardRequest(r, p)
-	})
-
+	// Forward request to selected provider
+	r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+	resp, err := ph.forwardToProvider(r, route)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -47,10 +80,25 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ph.copyResponse(w, resp)
 }
 
-// forwardRequest forwards the request to upstream provider
-func (ph *ProxyHandler) forwardRequest(r *http.Request, provider *Provider) (*http.Response, error) {
+// routeRequest uses Provider Pool Router to select provider and get API key.
+// Returns RouteResult containing Provider info and API key.
+func (ph *ProxyHandler) routeRequest(model string) (*providerpool.RouteResult, error) {
+	if ph.providerPool == nil {
+		return nil, ErrNoAvailableProvider
+	}
+
+	return ph.providerPool.Router.Route(&providerpool.RouteRequest{
+		ModelID: model,
+	})
+}
+
+// forwardToProvider forwards the request to upstream provider using route result.
+// The API key is obtained from Provider Pool, not from config file.
+func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.RouteResult) (*http.Response, error) {
+	provider := route.Provider
+
 	// Parse provider endpoint
-	targetURL, err := url.Parse(provider.Config.Endpoint)
+	targetURL, err := url.Parse(provider.BaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -66,25 +114,25 @@ func (ph *ProxyHandler) forwardRequest(r *http.Request, provider *Provider) (*ht
 		return nil, err
 	}
 
-	// Copy headers
+	// Copy headers (excluding hop-by-hop headers)
 	copyHeaders(req.Header, r.Header)
 
-	// Set/override API key
-	if provider.Config.APIKey != "" {
-		// Determine header based on provider
-		if strings.Contains(provider.Config.Endpoint, "anthropic") {
-			req.Header.Set("x-api-key", provider.Config.APIKey)
+	// Set API key from Provider Pool (not from config file!)
+	// The API key is dynamically managed by Provider Pool
+	if route.APIKey != nil && route.APIKey.Key != "" {
+		if strings.Contains(provider.BaseURL, "anthropic") {
+			req.Header.Set("x-api-key", route.APIKey.Key)
 			req.Header.Set("anthropic-version", "2023-06-01")
 		} else {
-			req.Header.Set("Authorization", "Bearer "+provider.Config.APIKey)
+			req.Header.Set("Authorization", "Bearer "+route.APIKey.Key)
 		}
 	}
 
 	// Set host header
 	req.Host = targetURL.Host
 
-	// Get client and send request
-	client := ph.connPool.GetClient(provider.Config.Name)
+	// Send request using connection pool
+	client := ph.connPool.GetClient(provider.Name)
 	return client.Do(req)
 }
 

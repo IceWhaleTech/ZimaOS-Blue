@@ -99,24 +99,28 @@ class PerformanceMonitor {
    * Log performance summary to console
    */
   logSummary(): void {
-    const grouped = this.metrics.reduce(
+    const metrics = this.metrics ?? []
+    const grouped = metrics.reduce(
       (acc, metric) => {
         if (!acc[metric.name]) {
           acc[metric.name] = []
         }
-        acc[metric.name].push(metric.duration)
+        const arr = acc[metric.name]!
+        arr.push(metric.duration)
         return acc
       },
       {} as Record<string, number[]>
     )
 
     console.group('Performance Summary')
-    Object.entries(grouped).forEach(([name, durations]) => {
-      const avg = durations.reduce((a, b) => a + b, 0) / durations.length
-      const min = Math.min(...durations)
-      const max = Math.max(...durations)
-      console.log(`${name}: avg=${avg.toFixed(2)}ms, min=${min.toFixed(2)}ms, max=${max.toFixed(2)}ms, count=${durations.length}`)
-    })
+    const entries = Object.entries(grouped) as [string, number[]][]
+    for (const [name, list] of entries) {
+      if (list.length === 0) continue
+      const avg = list.reduce((a, b) => a + b, 0) / list.length
+      const min = Math.min(...list)
+      const max = Math.max(...list)
+      console.log(`${name}: avg=${avg.toFixed(2)}ms, min=${min.toFixed(2)}ms, max=${max.toFixed(2)}ms, count=${list.length}`)
+    }
     console.groupEnd()
   }
 }

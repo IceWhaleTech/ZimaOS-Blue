@@ -1306,6 +1306,7 @@ export default {
         system: 'Système',
       },
       items: {
+        ...enUS.security.scan.items,
         // Authentification
         auth_password_length: {
           name: 'Longueur minimale du mot de passe',

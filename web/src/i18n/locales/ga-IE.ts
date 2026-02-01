@@ -56,6 +56,28 @@ export default {
     security: 'Slándáil',
     companion: 'Companion',
   },
+  dashboard: {
+    ...enUS.dashboard,
+    categories: {
+      ...enUS.dashboard.categories,
+      all: 'Gach ceann',
+      overview: 'Forbhreathnú',
+      system: 'Córas',
+    },
+    cards: {
+      ...enUS.dashboard.cards,
+      systemStatus: 'Stádas an chórais',
+      uptime: 'Am oibre',
+      memoryUsage: 'Úsáid cuimhne',
+      goroutines: 'Goroutines',
+      failoverStatus: 'Stádas failover',
+      cpuChart: 'Úsáid CPU',
+      memoryChart: 'Úsáid cuimhne',
+      goroutinesChart: 'Goroutines',
+      heapChart: 'Cuimhne heap',
+      systemInfo: 'Eolas córais',
+    },
+  },
   extensions: {
     ...enUS.extensions,
     skills: 'Scileanna',
@@ -580,6 +602,7 @@ export default {
         system: 'Córas',
       },
       items: {
+        ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Fad íosta pasfhocail',
           description: 'Seiceáil an gcomhlíonann fad íosta pasfhocail na ceanglais slándála',

@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -260,7 +261,7 @@ func (s *WorkflowService) ExecuteWorkflow(ctx context.Context, id string, trigge
 	// Save execution
 	if err := s.repo.SaveExecution(ctx, execution); err != nil {
 		// Log error but don't fail
-		fmt.Printf("failed to save execution: %v\n", err)
+		log.Printf("[WARN] failed to save execution: %v", err)
 	}
 
 	return execution, nil
@@ -471,15 +472,15 @@ func (s *WorkflowService) registerScheduleTrigger(ctx context.Context, workflow 
 		ctx := context.Background()
 		execution, err := s.ExecuteWorkflow(ctx, workflow.ID, triggerData)
 		if err != nil {
-			fmt.Printf("scheduled execution failed for workflow %s: %v\n", workflow.ID, err)
+			log.Printf("[WARN] scheduled execution failed for workflow %s: %v", workflow.ID, err)
 			return
 		}
 
-		fmt.Printf("scheduled execution started for workflow %s: %s\n", workflow.ID, execution.ID)
+		log.Printf("[INFO] scheduled execution started for workflow %s: %s", workflow.ID, execution.ID)
 	})
 
 	if err != nil {
-		fmt.Printf("failed to register cron job for workflow %s: %v\n", workflow.ID, err)
+		log.Printf("[WARN] failed to register cron job for workflow %s: %v", workflow.ID, err)
 		return
 	}
 
@@ -537,9 +538,9 @@ func (s *WorkflowService) StartCleanupJob() {
 		ctx := context.Background()
 		deleted, err := s.CleanupOldExecutions(ctx)
 		if err != nil {
-			fmt.Printf("cleanup job failed: %v\n", err)
+			log.Printf("[WARN] cleanup job failed: %v", err)
 			return
 		}
-		fmt.Printf("cleanup job deleted %d old executions\n", deleted)
+		log.Printf("[INFO] cleanup job deleted %d old executions", deleted)
 	})
 }

@@ -491,7 +491,7 @@ data/formfiller/
 # server/config.yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
 
 log:
   level: "debug"

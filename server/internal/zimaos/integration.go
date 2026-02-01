@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -229,7 +230,7 @@ func (i *Integration) ListFiles(ctx context.Context, path string) ([]FileInfo, e
 func (i *Integration) SendNotification(ctx context.Context, title, message string, level string) error {
 	if !i.IsRunningOnZimaOS() {
 		// Log notification locally
-		fmt.Printf("[%s] %s: %s\n", level, title, message)
+		log.Printf("[%s] %s: %s", level, title, message)
 		return nil
 	}
 

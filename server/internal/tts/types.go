@@ -35,6 +35,10 @@ const (
 	ProviderPiper ProviderType = "piper"
 	// ProviderEdge is Microsoft Edge TTS.
 	ProviderEdge ProviderType = "edge"
+	// ProviderKokoro is local Kokoro TTS (legacy, Python-based).
+	ProviderKokoro ProviderType = "kokoro"
+	// ProviderSherpa is local TTS using sherpa-onnx (native Go, no Python).
+	ProviderSherpa ProviderType = "sherpa"
 )
 
 // AudioFormat represents the output audio format.

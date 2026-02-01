@@ -89,7 +89,7 @@ func TestBoreManager_OnURLChange(t *testing.T) {
 		mu.Unlock()
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	cfg := &Config{Port: 8080}
+	cfg := &Config{Port: 23456}
 	if err := m.Start(ctx, cfg); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

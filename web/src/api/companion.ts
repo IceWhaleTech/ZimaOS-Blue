@@ -15,6 +15,7 @@ export type SessionEventType =
   | 'tool_call'
   | 'llm_request'
   | 'security_threat'
+  | 'sandbox_exec'
   | 'error'
   | 'custom'
 
@@ -80,34 +81,35 @@ export interface SecurityData {
 
 export interface SessionEvent {
   id: string
-  sessionId: string
+  session_id: string
   timestamp: string
-  eventType: SessionEventType
+  event_type: SessionEventType
   platform: Platform
-  userId: string
-  tenantId: string
+  user_id: string
+  tenant_id: string
   duration: number
   status: string
   message?: MessageData
-  toolCall?: ToolCallData
-  llmRequest?: LLMRequestData
+  tool_call?: ToolCallData
+  llm_request?: LLMRequestData
   security?: SecurityData
   error?: string
-  customData?: Record<string, unknown>
+  custom_data?: Record<string, unknown>
 }
 
 export interface Alert {
   id: string
-  sessionId: string
-  eventId: string
+  session_id: string
+  event_id: string
   severity: AlertSeverity
   title: string
   description: string
-  createdAt: string
+  timestamp: string
   acknowledged: boolean
-  ackedAt?: string
-  ackedBy?: string
-  metadata?: Record<string, unknown>
+  acked_at?: string
+  acked_by?: string
+  threat_level?: ThreatLevel
+  details?: Record<string, unknown>
 }
 
 export interface FlowNode {
@@ -135,16 +137,16 @@ export interface FlowGraph {
 }
 
 export interface Stats {
-  activeSessions: number
-  totalSessions: number
-  totalEvents: number
-  totalAlerts: number
-  unackedAlerts: number
-  avgSessionDuration: number
-  sessionsByPlatform: Record<Platform, number>
-  threatsByLevel: Record<ThreatLevel, number>
-  eventsByType: Record<SessionEventType, number>
-  lastUpdated: string
+  active_sessions: number
+  total_sessions: number
+  total_events: number
+  total_alerts: number
+  unacked_alerts: number
+  avg_session_duration: number
+  sessions_by_platform: Record<Platform, number>
+  threats_by_level: Record<ThreatLevel, number>
+  events_by_type: Record<SessionEventType, number>
+  last_updated: string
 }
 
 export interface ListOptions {

@@ -179,9 +179,9 @@ onUnmounted(() => {
                 {{ t('companion.acknowledge') }}
               </button>
               <button
-                v-if="alert.sessionId"
+                v-if="alert.session_id"
                 class="px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-                @click="emit('viewSession', alert.sessionId)"
+                @click="emit('viewSession', alert.session_id)"
               >
                 {{ t('companion.alerts.viewSession') }}
               </button>

@@ -10,10 +10,12 @@ import type { ClaudeCodeConfigResponse } from '@/api/claudecode'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
+import type { FileAttachment } from '@/components/ChatInput.vue'
 import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
 import VirtualScroll from '@/components/VirtualScroll.vue'
 import TalkMode from '@/components/chat/TalkMode.vue'
 import { componentPool } from '@/utils/componentPool'
+import { clearConversationIncrementalStates } from '@/utils/typeless'
 import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 
 const { t } = useI18n()
@@ -153,11 +155,16 @@ watch(
 )
 
 // Close sidebar when selecting conversation on mobile
+// Also clear incremental parse states for the previous conversation
 watch(
   () => chatStore.currentConversationId,
-  () => {
+  (newId, oldId) => {
     if (isMobile.value) {
       showSidebar.value = false
+    }
+    // Clear incremental parse states for the old conversation to free memory
+    if (oldId && oldId !== newId) {
+      clearConversationIncrementalStates(oldId)
     }
   }
 )
@@ -200,12 +207,20 @@ function handleVisibleRangeChange(start: number, _end: number) {
   }
 }
 
-async function handleSend(message: string) {
-  await chatStore.sendMessage(message)
+async function handleSend(message: string, attachments?: FileAttachment[]) {
+  await chatStore.sendMessage(message, attachments)
 }
 
 function handleCancel() {
   chatStore.cancelStreaming()
+}
+
+function handleContinue() {
+  chatStore.continueMessage()
+}
+
+function handleRegenerate() {
+  chatStore.regenerateMessage()
 }
 
 async function handleSelectConversation(id: string) {
@@ -309,9 +324,9 @@ function handleCancelSelection() {
   chatStore.exitMultiSelectMode()
 }
 
-// Handle preset question selection - directly send the message
-async function handlePresetQuestionSelect(text: string) {
-  await handleSend(text)
+// Handle preset question selection - directly send the message with optional attachments
+async function handlePresetQuestionSelect(text: string, attachments?: FileAttachment[]) {
+  await handleSend(text, attachments)
 }
 
 // Fetch Claude Code CLI config
@@ -418,24 +433,24 @@ onUnmounted(() => {
           <span
             v-if="isClaudeCodeEnabled"
             class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0"
-            :title="t('chat.poweredByClaudeCodeDesc')"
+            :title="t('chat.poweredByClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
-            {{ t('chat.poweredByClaudeCode') }}
+            {{ t('chat.poweredByClaudeCode', { name: 'Claude Code CLI' }) }}
           </span>
           <!-- Enable Claude Code CLI prompt -->
           <router-link
             v-else
             to="/settings?tab=claudecode"
             class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
-            :title="t('chat.enableClaudeCodeDesc')"
+            :title="t('chat.enableClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            {{ t('common.enable') }} Claude Code CLI
+            {{ t('chat.enableClaudeCodePrompt', { name: 'Claude Code CLI' }) }}
           </router-link>
         </div>
 
@@ -604,6 +619,7 @@ onUnmounted(() => {
             <template #default="{ index }">
               <ChatMessage
                 v-if="chatStore.messages[index]"
+                :key="`${chatStore.messages[index]!.conversation_id}-${chatStore.messages[index]!.id}`"
                 :message="chatStore.messages[index]!"
                 :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
                 @contextmenu="handleMessageContextMenu"
@@ -615,11 +631,75 @@ onUnmounted(() => {
           <div v-else class="pb-4">
             <ChatMessage
               v-for="(message, index) in chatStore.messages"
-              :key="message.id"
+              :key="`${message.conversation_id}-${message.id}`"
               :message="message"
               :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
               @contextmenu="handleMessageContextMenu"
             />
+          </div>
+
+          <!-- Stream error display (shown in chat area with gray text) -->
+          <div
+            v-if="chatStore.streamError"
+            class="flex justify-center py-4"
+          >
+            <div class="flex items-center gap-2 px-4 py-2 text-gray-400 dark:text-gray-500 text-sm">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span class="break-all">{{ chatStore.streamError }}</span>
+              <button
+                class="ml-2 text-gray-400 hover:text-gray-300 cursor-pointer"
+                @click="chatStore.clearStreamError"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Streaming action buttons -->
+          <div
+            v-if="chatStore.messages.length > 0 && !chatStore.isMultiSelectMode"
+            class="flex justify-center gap-2 py-4"
+          >
+            <!-- Stop button (shown during streaming) -->
+            <button
+              v-if="chatStore.streaming"
+              class="flex items-center gap-2 px-4 py-2 glass-card text-red-400 hover:bg-red-500/10 rounded-lg text-sm transition-colors cursor-pointer"
+              @click="handleCancel"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+              {{ t('chat.stopGenerating') }}
+            </button>
+
+            <!-- Continue and Regenerate buttons (shown when not streaming and last message is from assistant) -->
+            <template v-else-if="chatStore.messages[chatStore.messages.length - 1]?.role === 'assistant'">
+              <button
+                class="flex items-center gap-2 px-4 py-2 glass-card text-gray-600 dark:text-gray-300 hover:bg-white/10 rounded-lg text-sm transition-colors cursor-pointer"
+                :disabled="chatStore.sending"
+                @click="handleContinue"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+                {{ t('chat.continueGenerating') }}
+              </button>
+              <button
+                class="flex items-center gap-2 px-4 py-2 glass-card text-gray-600 dark:text-gray-300 hover:bg-white/10 rounded-lg text-sm transition-colors cursor-pointer"
+                :disabled="chatStore.sending"
+                @click="handleRegenerate"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {{ t('chat.regenerate') }}
+              </button>
+            </template>
           </div>
         </template>
       </div>

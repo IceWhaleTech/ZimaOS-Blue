@@ -222,12 +222,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
-    path: '/a2ui',
-    name: 'A2UI',
-    component: () => import('@/views/A2UIView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
-  },
-  {
     path: '/tenants',
     name: 'Tenants',
     component: () => import('@/views/TenantsView.vue'),

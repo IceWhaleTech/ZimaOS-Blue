@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -82,7 +83,7 @@ func (m *RetentionManager) cleanup() {
 	for {
 		deleted, err := m.deleteBatch(ctx, cutoff)
 		if err != nil {
-			fmt.Printf("audit retention: failed to delete batch: %v\n", err)
+			log.Printf("[WARN] audit retention: failed to delete batch: %v", err)
 			return
 		}
 

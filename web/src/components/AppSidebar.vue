@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
@@ -17,6 +17,38 @@ const { isAdmin } = storeToRefs(authStore)
 // Mobile menu state
 const isOpen = ref(false)
 
+// Collapsed state (desktop only)
+const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
+const isCollapsed = ref(false)
+
+// Keyboard shortcut handler (Alt+B)
+function handleKeydown(e: KeyboardEvent) {
+  if (e.altKey && e.key.toLowerCase() === 'b') {
+    e.preventDefault()
+    toggleCollapse()
+  }
+}
+
+// Load collapsed state from localStorage and setup keyboard listener
+onMounted(() => {
+  const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+  if (saved !== null) {
+    isCollapsed.value = saved === 'true'
+  }
+  // Add keyboard shortcut listener
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+// Toggle collapsed state
+function toggleCollapse() {
+  isCollapsed.value = !isCollapsed.value
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed.value))
+}
+
 // Close menu when route changes
 watch(() => route.path, () => {
   isOpen.value = false
@@ -27,7 +59,9 @@ defineExpose({
   toggle: () => { isOpen.value = !isOpen.value },
   open: () => { isOpen.value = true },
   close: () => { isOpen.value = false },
-  isOpen
+  isOpen,
+  isCollapsed,
+  toggleCollapse
 })
 
 // Check if user has permission for a page
@@ -36,8 +70,17 @@ const hasPermission = (permission?: string) => {
   return authStore.hasPermission(permission)
 }
 
+// Nav item type (adminOnly is optional for future use)
+interface NavItem {
+  name: string
+  path: string
+  icon: string
+  permission: string
+  adminOnly?: boolean
+}
+
 // Define all nav items with their permissions
-const allNavItems = [
+const allNavItems: NavItem[] = [
   {
     name: 'nav.dashboard',
     path: '/',
@@ -110,8 +153,11 @@ const navItems = computed(() => {
 
   <!-- Sidebar -->
   <aside
-    class="glass-sidebar min-h-full flex flex-col fixed lg:relative inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out lg:transform-none"
-    :class="isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+    class="glass-sidebar min-h-full flex flex-col fixed lg:relative inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out lg:transform-none"
+    :class="[
+      isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+      isCollapsed ? 'w-16' : 'w-64'
+    ]"
   >
     <!-- Close button for mobile -->
     <div class="lg:hidden p-3 border-b border-gray-200 dark:border-glass-border flex justify-end">
@@ -130,30 +176,45 @@ const navItems = computed(() => {
         v-for="item in navItems"
         :key="item.path"
         :to="item.path"
-        class="flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all duration-200 cursor-pointer group"
-        :class="
+        class="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 cursor-pointer group"
+        :class="[
           route.path === item.path
             ? 'bg-accent/20 text-accent border border-accent/30'
-            : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white border border-transparent'
-        "
+            : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white border border-transparent',
+          isCollapsed ? 'justify-center' : 'space-x-3'
+        ]"
+        :title="isCollapsed ? item.name : undefined"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5 transition-transform duration-200 group-hover:scale-110"
+          class="h-5 w-5 transition-transform duration-200 group-hover:scale-110 flex-shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon" />
         </svg>
-        <span class="font-medium">{{ item.name }}</span>
+        <span v-if="!isCollapsed" class="font-medium whitespace-nowrap">{{ item.name }}</span>
       </RouterLink>
     </nav>
 
-    <!-- Version at bottom -->
-    <div v-if="health" class="p-3">
-      <div class="px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
-        v{{ health.version }}
+    <!-- Bottom section: Version + Collapse toggle -->
+    <div class="p-3 border-t border-gray-200 dark:border-glass-border">
+      <div class="flex items-center" :class="isCollapsed ? 'justify-center' : 'justify-between'">
+        <!-- Version info -->
+        <div v-if="health" class="text-xs text-gray-500 dark:text-slate-400" :class="{ 'hidden': isCollapsed }">
+          v{{ health.version }}
+        </div>
+        <!-- Collapse toggle button (desktop only) -->
+        <button
+          class="hidden lg:flex p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+          :title="(isCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')) + ' (Alt+B)'"
+          @click="toggleCollapse"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform duration-300" :class="isCollapsed ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
       </div>
     </div>
   </aside>

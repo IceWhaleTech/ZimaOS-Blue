@@ -16,6 +16,7 @@ type ProxyConfig struct {
 	Masking      *MaskingConfig      `json:"masking" yaml:"masking"`
 	ModelRouter  *ModelRouterConfig  `json:"model_router" yaml:"model_router"`   // NEW: Model Router
 	QuotaMonitor *QuotaMonitorConfig `json:"quota_monitor" yaml:"quota_monitor"` // NEW: Quota Monitor
+	Cache        *CacheConfig        `json:"cache" yaml:"cache"`                 // cc-cache: Response caching
 }
 
 // PortConfig port configuration
@@ -87,6 +88,80 @@ type HealthCheckConfig struct {
 	Timeout  time.Duration `json:"timeout" yaml:"timeout"`
 }
 
+// CacheConfig cc-cache configuration for response caching
+type CacheConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"` // Master switch, default: true
+
+	// Storage settings
+	StorageType string `json:"storage_type" yaml:"storage_type"` // memory, disk, multilevel
+	StoragePath string `json:"storage_path" yaml:"storage_path"` // Path for disk cache
+
+	// Cache limits
+	MaxSize       int   `json:"max_size" yaml:"max_size"`             // Max cache entries
+	MaxEntrySize  int   `json:"max_entry_size" yaml:"max_entry_size"` // Max size per entry in bytes
+	MaxMemoryMB   int   `json:"max_memory_mb" yaml:"max_memory_mb"`   // Max memory usage in MB
+	TTL           time.Duration `json:"ttl" yaml:"ttl"`               // Default TTL for cache entries
+
+	// Cache behavior
+	CacheableStatusCodes []int    `json:"cacheable_status_codes" yaml:"cacheable_status_codes"` // Status codes to cache
+	CacheableMethods     []string `json:"cacheable_methods" yaml:"cacheable_methods"`           // HTTP methods to cache
+	SkipStreaming        bool     `json:"skip_streaming" yaml:"skip_streaming"`                 // Skip caching streaming responses
+
+	// Cache key settings
+	KeyIncludeHeaders []string `json:"key_include_headers" yaml:"key_include_headers"` // Headers to include in cache key
+	KeyIgnoreParams   []string `json:"key_ignore_params" yaml:"key_ignore_params"`     // Query params to ignore in cache key
+
+	// Semantic caching (for LLM responses)
+	SemanticCache SemanticCacheConfig `json:"semantic_cache" yaml:"semantic_cache"`
+
+	// Cache warming
+	Warming CacheWarmingConfig `json:"warming" yaml:"warming"`
+}
+
+// SemanticCacheConfig configuration for semantic similarity caching
+type SemanticCacheConfig struct {
+	Enabled           bool    `json:"enabled" yaml:"enabled"`                       // Enable semantic matching
+	SimilarityThreshold float64 `json:"similarity_threshold" yaml:"similarity_threshold"` // 0.0-1.0, higher = stricter
+	EmbeddingProvider string  `json:"embedding_provider" yaml:"embedding_provider"` // Provider for embeddings
+	EmbeddingModel    string  `json:"embedding_model" yaml:"embedding_model"`       // Model for embeddings
+}
+
+// CacheWarmingConfig configuration for cache warming
+type CacheWarmingConfig struct {
+	Enabled     bool          `json:"enabled" yaml:"enabled"`           // Enable cache warming
+	Interval    time.Duration `json:"interval" yaml:"interval"`         // Warming interval
+	MaxRequests int           `json:"max_requests" yaml:"max_requests"` // Max requests per warming cycle
+}
+
+// DefaultCacheConfig returns default cache configuration
+func DefaultCacheConfig() *CacheConfig {
+	return &CacheConfig{
+		Enabled:     true, // Enabled by default
+		StorageType: "memory",
+		StoragePath: "",
+		MaxSize:     10000,
+		MaxEntrySize: 1 << 20, // 1MB
+		MaxMemoryMB:  256,
+		TTL:          30 * time.Minute,
+		CacheableStatusCodes: []int{200},
+		CacheableMethods:     []string{"POST"}, // LLM APIs use POST
+		SkipStreaming:        true,             // Don't cache streaming responses by default
+		KeyIncludeHeaders:    []string{},
+		KeyIgnoreParams:      []string{},
+		SemanticCache: SemanticCacheConfig{
+			Enabled:             false, // Disabled by default (requires embedding provider)
+			SimilarityThreshold: 0.95,
+			EmbeddingProvider:   "",
+			EmbeddingModel:      "",
+		},
+		Warming: CacheWarmingConfig{
+			Enabled:     false,
+			Interval:    5 * time.Minute,
+			MaxRequests: 100,
+		},
+	}
+}
+
 // DefaultProxyConfig returns default proxy configuration
 func DefaultProxyConfig() *ProxyConfig {
 	return &ProxyConfig{
@@ -141,5 +216,6 @@ func DefaultProxyConfig() *ProxyConfig {
 			Interval: 30 * time.Second,
 			Timeout:  10 * time.Second,
 		},
+		Cache: DefaultCacheConfig(),
 	}
 }

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -273,12 +275,27 @@ type CgroupCPUConfig struct {
 }
 
 type ServerConfig struct {
-	Host           string        `mapstructure:"host"`
-	Port           int           `mapstructure:"port"`
-	PortAutoFallback bool        `mapstructure:"port_auto_fallback"` // Auto fallback to random port if configured port is in use
-	ReadTimeout    time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout   time.Duration `mapstructure:"write_timeout"`
-	IdleTimeout    time.Duration `mapstructure:"idle_timeout"`
+	Host             string        `mapstructure:"host"`
+	Port             int           `mapstructure:"port"`
+	PortAutoFallback bool          `mapstructure:"port_auto_fallback"` // Auto fallback to random port if configured port is in use
+	ReadTimeout      time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout     time.Duration `mapstructure:"write_timeout"`
+	IdleTimeout      time.Duration `mapstructure:"idle_timeout"`
+	TLS              TLSConfig     `mapstructure:"tls"`
+}
+
+// TLSConfig holds TLS/HTTPS configuration.
+type TLSConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	Port        int    `mapstructure:"port"`         // HTTPS port, default 443
+	CertFile    string `mapstructure:"cert_file"`    // Path to certificate file
+	KeyFile     string `mapstructure:"key_file"`     // Path to private key file
+	AutoCert    bool   `mapstructure:"auto_cert"`    // Enable automatic certificate via ACME
+	ACMEEmail   string `mapstructure:"acme_email"`   // Email for ACME registration
+	ACMEDomains string `mapstructure:"acme_domains"` // Comma-separated domains for ACME
+	ACMEProvider string `mapstructure:"acme_provider"` // letsencrypt, zerossl, or custom
+	ACMEDir     string `mapstructure:"acme_dir"`     // Directory to store ACME certificates
+	SelfSigned  bool   `mapstructure:"self_signed"`  // Generate self-signed certificate
 }
 
 type LogConfig struct {
@@ -374,9 +391,14 @@ func Load(configPath string) (*Config, error) {
 	} else {
 		v.SetConfigName("config")
 		v.SetConfigType("yaml")
+		// Search order: current dir -> ./config -> /etc/zimaos-echo -> $HOME/.zimaos-echo
 		v.AddConfigPath(".")
 		v.AddConfigPath("./config")
 		v.AddConfigPath("/etc/zimaos-echo")
+		// Add home directory as fallback
+		if home, err := os.UserHomeDir(); err == nil {
+			v.AddConfigPath(filepath.Join(home, ".zimaos-echo"))
+		}
 	}
 
 	// Environment variables
@@ -402,7 +424,7 @@ func Load(configPath string) (*Config, error) {
 func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.host", "0.0.0.0")
-	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.port", 23456)
 	v.SetDefault("server.port_auto_fallback", true)
 	v.SetDefault("server.read_timeout", "30s")
 	v.SetDefault("server.write_timeout", "30s")
@@ -506,7 +528,7 @@ func setDefaults(v *viper.Viper) {
 
 	// OIDC
 	v.SetDefault("security.oidc.enabled", true)
-	v.SetDefault("security.oidc.issuer", "http://localhost:8080")
+	v.SetDefault("security.oidc.issuer", "http://localhost:23456")
 	v.SetDefault("security.oidc.signing_key_path", "./keys/oidc.key")
 	v.SetDefault("security.oidc.signing_key_rotation_days", 90)
 	v.SetDefault("security.oidc.access_token_ttl", "1h")

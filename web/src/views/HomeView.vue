@@ -356,29 +356,6 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-
-        <!-- Runtime Info -->
-        <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.runtimeInfo') }}</h4>
-          <div class="grid md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.goVersion') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.go_version }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.numGoroutines') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.num_goroutine }}</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.heapAlloc') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.alloc_mb }} MB</span>
-            </div>
-            <div>
-              <span class="text-gray-500 dark:text-gray-400">{{ t('system.gcCount') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.runtime.num_gc }}</span>
-            </div>
-          </div>
-        </div>
       </template>
       <div v-else class="glass-card p-6 text-center text-gray-500 dark:text-gray-400">
         {{ t('system.noDetailedInfo') }}

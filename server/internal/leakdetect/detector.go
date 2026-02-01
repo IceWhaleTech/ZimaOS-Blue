@@ -29,36 +29,36 @@ type Detector struct {
 
 // Thresholds defines leak detection thresholds.
 type Thresholds struct {
-	MaxGoroutines       int           `json:"max_goroutines"`
-	MaxOpenFiles        int           `json:"max_open_files"`
-	MaxConnections      int           `json:"max_connections"`
-	GoroutineGrowthRate float64       `json:"goroutine_growth_rate"` // per minute
-	FDGrowthRate        float64       `json:"fd_growth_rate"`        // per minute
-	ConnectionGrowthRate float64      `json:"connection_growth_rate"` // per minute
-	AlertCooldown       time.Duration `json:"alert_cooldown"`
+	MaxGoroutines        int           `json:"max_goroutines"`
+	MaxOpenFiles         int           `json:"max_open_files"`
+	MaxConnections       int           `json:"max_connections"`
+	GoroutineGrowthRate  float64       `json:"goroutine_growth_rate"`  // per minute
+	FDGrowthRate         float64       `json:"fd_growth_rate"`         // per minute
+	ConnectionGrowthRate float64       `json:"connection_growth_rate"` // per minute
+	AlertCooldown        time.Duration `json:"alert_cooldown"`
 }
 
 // Snapshot captures resource usage at a point in time.
 type Snapshot struct {
-	Timestamp      time.Time `json:"timestamp"`
-	Goroutines     int       `json:"goroutines"`
-	OpenFiles      int       `json:"open_files"`
-	Connections    int       `json:"connections"`
-	HeapAlloc      uint64    `json:"heap_alloc"`
-	HeapObjects    uint64    `json:"heap_objects"`
-	StackInUse     uint64    `json:"stack_in_use"`
-	NumGC          uint32    `json:"num_gc"`
+	Timestamp   time.Time `json:"timestamp"`
+	Goroutines  int       `json:"goroutines"`
+	OpenFiles   int       `json:"open_files"`
+	Connections int       `json:"connections"`
+	HeapAlloc   uint64    `json:"heap_alloc"`
+	HeapObjects uint64    `json:"heap_objects"`
+	StackInUse  uint64    `json:"stack_in_use"`
+	NumGC       uint32    `json:"num_gc"`
 }
 
 // Alert represents a leak detection alert.
 type Alert struct {
-	Type        AlertType `json:"type"`
-	Severity    Severity  `json:"severity"`
-	Message     string    `json:"message"`
-	Current     int       `json:"current"`
-	Threshold   int       `json:"threshold"`
-	GrowthRate  float64   `json:"growth_rate,omitempty"`
-	Timestamp   time.Time `json:"timestamp"`
+	Type       AlertType `json:"type"`
+	Severity   Severity  `json:"severity"`
+	Message    string    `json:"message"`
+	Current    int       `json:"current"`
+	Threshold  int       `json:"threshold"`
+	GrowthRate float64   `json:"growth_rate,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 // AlertType represents the type of leak alert.
@@ -85,9 +85,9 @@ func DefaultThresholds() Thresholds {
 		MaxGoroutines:        10000,
 		MaxOpenFiles:         1000,
 		MaxConnections:       500,
-		GoroutineGrowthRate:  100,  // 100 new goroutines per minute
-		FDGrowthRate:         50,   // 50 new FDs per minute
-		ConnectionGrowthRate: 50,   // 50 new connections per minute
+		GoroutineGrowthRate:  100, // 100 new goroutines per minute
+		FDGrowthRate:         50,  // 50 new FDs per minute
+		ConnectionGrowthRate: 50,  // 50 new connections per minute
 		AlertCooldown:        5 * time.Minute,
 	}
 }
@@ -396,7 +396,7 @@ func getConnectionCount() int {
 	count := 0
 
 	// Check common ports
-	ports := []int{80, 443, 8080, 3000, 5432, 3306, 6379}
+	ports := []int{80, 443, 23456, 3000, 5432, 3306, 6379}
 	for _, port := range ports {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 10*time.Millisecond)
 		if err == nil {

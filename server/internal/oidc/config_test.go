@@ -8,8 +8,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
 
-	if config.Issuer != "http://localhost:8080" {
-		t.Errorf("expected issuer http://localhost:8080, got %s", config.Issuer)
+	if config.Issuer != "http://localhost:23456" {
+		t.Errorf("expected issuer http://localhost:23456, got %s", config.Issuer)
 	}
 
 	if config.AccessTokenTTL != time.Hour {

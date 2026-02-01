@@ -37,6 +37,11 @@ export default defineConfig({
               items: [
                 { text: '架构', link: '/zh_CN/guide/architecture' },
                 { text: '部署', link: '/zh_CN/guide/deployment' },
+                { text: '聊天交互流程', link: '/zh_CN/guide/chat-interaction-flow' },
+                { text: '开发者指南', link: '/zh_CN/guide/developer' },
+                { text: '常见问题', link: '/zh_CN/guide/faq' },
+                { text: 'NAS 集成', link: '/zh_CN/guide/nas-integration' },
+                { text: '性能剖析', link: '/zh_CN/guide/profiling' },
               ],
             },
           ],
@@ -78,6 +83,11 @@ export default defineConfig({
           items: [
             { text: 'Architecture', link: '/guide/architecture' },
             { text: 'Deployment', link: '/guide/deployment' },
+            { text: 'Chat Interaction Flow', link: '/guide/chat-interaction-flow' },
+            { text: 'Developer Guide', link: '/guide/developer' },
+            { text: 'FAQ', link: '/guide/faq' },
+            { text: 'NAS Integration', link: '/guide/nas-integration' },
+            { text: 'Performance Profiling', link: '/guide/profiling' },
           ],
         },
       ],

@@ -124,6 +124,14 @@ type Info struct {
 	LastErrorAt *time.Time `json:"last_error_at,omitempty"`
 	// MessageCount is the total number of messages processed.
 	MessageCount int64 `json:"message_count"`
+	// MessagesReceived is the number of messages received from users.
+	MessagesReceived int64 `json:"messages_received"`
+	// MessagesSent is the number of messages sent (replies).
+	MessagesSent int64 `json:"messages_sent"`
+	// LastMessageAt is when the last message was received.
+	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+	// LastReplyAt is when the last reply was sent.
+	LastReplyAt *time.Time `json:"last_reply_at,omitempty"`
 	// Metadata contains channel-specific information.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }

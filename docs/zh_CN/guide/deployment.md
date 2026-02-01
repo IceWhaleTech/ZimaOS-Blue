@@ -80,7 +80,7 @@ docker pull icewhaletech/zimaos-echo:latest
 # 运行容器
 docker run -d \
   --name zimaos-echo \
-  -p 8080:8080 \
+  -p 23456:23456 \
   -v /path/to/config:/etc/zimaos-echo \
   -v /path/to/data:/var/lib/zimaos-echo \
   icewhaletech/zimaos-echo:latest
@@ -97,7 +97,7 @@ services:
     container_name: zimaos-echo
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "23456:23456"
     volumes:
       - ./config:/etc/zimaos-echo
       - ./data:/var/lib/zimaos-echo
@@ -119,7 +119,7 @@ services:
 | `ECHO_CONFIG_PATH` | 配置文件路径 | `/etc/zimaos-echo/config.yaml` |
 | `ECHO_DATA_PATH` | 数据目录 | `/var/lib/zimaos-echo` |
 | `ECHO_LOG_LEVEL` | 日志级别 | `info` |
-| `ECHO_HTTP_PORT` | HTTP 端口 | `8080` |
+| `ECHO_HTTP_PORT` | HTTP 端口 | `23456` |
 | `ECHO_API_KEY` | LLM 提供商的 API 密钥 | - |
 
 ### 配置文件
@@ -129,7 +129,7 @@ services:
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: 30s
   write_timeout: 30s
 
@@ -163,7 +163,7 @@ server {
     server_name echo.example.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:23456;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -179,7 +179,7 @@ server {
 
 ```caddyfile
 echo.example.com {
-    reverse_proxy localhost:8080
+    reverse_proxy localhost:23456
 }
 ```
 
@@ -204,13 +204,13 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 ### 健康检查
 
 ```bash
-curl http://localhost:8080/api/v1/health
+curl http://localhost:23456/api/v1/health
 ```
 
 ### Prometheus 指标
 
 ```bash
-curl http://localhost:8080/metrics
+curl http://localhost:23456/metrics
 ```
 
 ### 日志
@@ -228,13 +228,13 @@ docker logs -f zimaos-echo
 ### 创建备份
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/backup
+curl -X POST http://localhost:23456/api/v1/backup
 ```
 
 ### 从备份恢复
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/backup/{id}/restore
+curl -X POST http://localhost:23456/api/v1/backup/{id}/restore
 ```
 
 ## 故障排除
@@ -248,14 +248,14 @@ curl -X POST http://localhost:8080/api/v1/backup/{id}/restore
 ### 内存使用过高
 
 1. 检查配置中的缓存大小
-2. 查看 goroutine 数量：`curl http://localhost:8080/debug/pprof/goroutine?debug=1`
+2. 查看 goroutine 数量：`curl http://localhost:23456/debug/pprof/goroutine?debug=1`
 3. 启用内存分析
 
 ### 连接问题
 
 1. 验证防火墙规则
-2. 检查端口可用性：`netstat -tlnp | grep 8080`
-3. 测试连接：`curl -v http://localhost:8080/api/v1/health`
+2. 检查端口可用性：`netstat -tlnp | grep 23456`
+3. 测试连接：`curl -v http://localhost:23456/api/v1/health`
 
 ## 升级
 

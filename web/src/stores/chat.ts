@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
-import type { Conversation, Message, SendMessageRequest, MessageStats } from '@/api/chat'
+import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment } from '@/api/chat'
 import { conversationApi, messageApi } from '@/api/chat'
 import { SSEClient } from '@/utils/sse'
 import { useSettingsStore } from './settings'
@@ -22,6 +22,7 @@ export const useChatStore = defineStore('chat', () => {
   const streaming = ref(false)
   const streamingContent = ref('')
   const error = ref<string | null>(null)
+  const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
 
   // Pagination state
@@ -200,7 +201,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessage(content: string) {
+  async function sendMessage(content: string, fileAttachments?: { id: string; file: File; name: string; size: number; type: string; preview?: string }[]) {
     if (!currentConversationId.value) {
       // Use the first part of the message as the conversation title
       const title = content.length > 30 ? content.substring(0, 30) + '...' : content
@@ -210,13 +211,56 @@ export const useChatStore = defineStore('chat', () => {
     const conversationId = currentConversationId.value!
     const settingsStore = useSettingsStore()
 
+    // Convert file attachments to MessageAttachment format (base64)
+    const attachments: MessageAttachment[] = []
+    if (fileAttachments && fileAttachments.length > 0) {
+      for (const attachment of fileAttachments) {
+        // For images, check if preview is a data URL (not blob URL) or read the file
+        let base64Data = ''
+        if (attachment.preview && attachment.preview.startsWith('data:')) {
+          // Remove data URL prefix (e.g., "data:image/png;base64,")
+          base64Data = attachment.preview.split(',')[1] || ''
+        } else {
+          // Read file as base64 (for blob URLs or no preview)
+          base64Data = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const result = reader.result as string
+              resolve(result.split(',')[1] || '')
+            }
+            reader.onerror = () => resolve('')
+            reader.readAsDataURL(attachment.file)
+          })
+        }
+
+        if (base64Data) {
+          attachments.push({
+            type: attachment.type.startsWith('image/') ? 'image' : 'file',
+            name: attachment.name,
+            mime_type: attachment.type,
+            data: base64Data,
+          })
+        }
+      }
+    }
+
+    // Build display content for user message (show attachment info)
+    let displayContent = content
+    if (attachments.length > 0) {
+      const attachmentNames = attachments.map(a => a.name).join(', ')
+      if (!displayContent) {
+        displayContent = `[${attachmentNames}]`
+      }
+    }
+
     // Add user message to local state immediately
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
       conversation_id: conversationId,
       role: 'user',
-      content,
+      content: displayContent,
       created_at: new Date().toISOString(),
+      attachments: attachments.length > 0 ? attachments : undefined,
     }
     messages.value = [...messages.value, userMessage]
 
@@ -226,6 +270,7 @@ export const useChatStore = defineStore('chat', () => {
       model: settingsStore.selectedModel,
       temperature: settingsStore.temperature,
       max_tokens: settingsStore.maxTokens,
+      attachments: attachments.length > 0 ? attachments : undefined,
     }
 
     try {
@@ -264,7 +309,7 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onError: (err) => {
-          error.value = err.message
+          streamError.value = err.message
           // Remove the placeholder message on error
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
         },
@@ -328,6 +373,190 @@ export const useChatStore = defineStore('chat', () => {
     streamingContent.value = ''
   }
 
+  // Continue generating from where it stopped
+  async function continueMessage() {
+    if (!currentConversationId.value || streaming.value || sending.value) return
+
+    const conversationId = currentConversationId.value
+    const settingsStore = useSettingsStore()
+
+    // Get the last assistant message content to continue from
+    const lastMessage = messages.value[messages.value.length - 1]
+    if (!lastMessage || lastMessage.role !== 'assistant') return
+
+    const existingContent = lastMessage.content
+
+    try {
+      sending.value = true
+      streaming.value = true
+      streamingContent.value = existingContent // Start with existing content
+      error.value = null
+
+      const request: SendMessageRequest = {
+        message: '[CONTINUE]', // Special marker for continue
+        provider: settingsStore.selectedProvider,
+        model: settingsStore.selectedModel,
+        temperature: settingsStore.temperature,
+        max_tokens: settingsStore.maxTokens,
+      }
+
+      await sseClient.connect(conversationId, request, {
+        onMessage: (chunk) => {
+          streamingContent.value += chunk.delta
+          // Update the last message
+          const lastIndex = messages.value.length - 1
+          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+            const newMessages = [...messages.value]
+            const currentMsg = newMessages[lastIndex]
+            if (currentMsg) {
+              newMessages[lastIndex] = {
+                ...currentMsg,
+                content: streamingContent.value,
+              }
+              messages.value = newMessages
+            }
+          }
+        },
+        onError: (err) => {
+          error.value = err.message
+        },
+        onBlocked: (message, threatLevel) => {
+          securityBlocked.value = { message, threatLevel }
+        },
+        onComplete: (finalChunk) => {
+          streaming.value = false
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+            const lastIndex = messages.value.length - 1
+            const lastMsg = messages.value[lastIndex]
+            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              newMessages[lastIndex] = {
+                ...lastMsg,
+                content: streamingContent.value,
+                provider: finalChunk.provider,
+                model: finalChunk.model,
+                stats: finalChunk.stats,
+              }
+              messages.value = newMessages
+            }
+          }
+          fetchMessages(conversationId)
+        },
+      })
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to continue message'
+    } finally {
+      sending.value = false
+      streaming.value = false
+      streamingContent.value = ''
+    }
+  }
+
+  // Regenerate the last assistant message
+  async function regenerateMessage() {
+    if (!currentConversationId.value || streaming.value || sending.value) return
+
+    const conversationId = currentConversationId.value
+    const settingsStore = useSettingsStore()
+
+    // Find the last user message to regenerate from
+    let lastUserMessageIndex = -1
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      if (messages.value[i]?.role === 'user') {
+        lastUserMessageIndex = i
+        break
+      }
+    }
+
+    if (lastUserMessageIndex === -1) return
+
+    const lastUserMessage = messages.value[lastUserMessageIndex]
+    if (!lastUserMessage) return
+
+    // Remove the last assistant message if it exists
+    const lastMessage = messages.value[messages.value.length - 1]
+    if (lastMessage?.role === 'assistant') {
+      messages.value = messages.value.slice(0, -1)
+    }
+
+    try {
+      sending.value = true
+      streaming.value = true
+      streamingContent.value = ''
+      error.value = null
+
+      // Add placeholder for new assistant message
+      const assistantMessage: Message = {
+        id: `streaming-${Date.now()}`,
+        conversation_id: conversationId,
+        role: 'assistant',
+        content: '',
+        created_at: new Date().toISOString(),
+      }
+      messages.value = [...messages.value, assistantMessage]
+
+      const request: SendMessageRequest = {
+        message: lastUserMessage.content,
+        provider: settingsStore.selectedProvider,
+        model: settingsStore.selectedModel,
+        temperature: settingsStore.temperature,
+        max_tokens: settingsStore.maxTokens,
+        attachments: lastUserMessage.attachments,
+      }
+
+      await sseClient.connect(conversationId, request, {
+        onMessage: (chunk) => {
+          streamingContent.value += chunk.delta
+          const lastIndex = messages.value.length - 1
+          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+            const newMessages = [...messages.value]
+            const currentMsg = newMessages[lastIndex]
+            if (currentMsg) {
+              newMessages[lastIndex] = {
+                ...currentMsg,
+                content: streamingContent.value,
+              }
+              messages.value = newMessages
+            }
+          }
+        },
+        onError: (err) => {
+          error.value = err.message
+          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+        },
+        onBlocked: (message, threatLevel) => {
+          securityBlocked.value = { message, threatLevel }
+          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+        },
+        onComplete: (finalChunk) => {
+          streaming.value = false
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+            const lastIndex = messages.value.length - 1
+            const lastMsg = messages.value[lastIndex]
+            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              newMessages[lastIndex] = {
+                ...lastMsg,
+                provider: finalChunk.provider,
+                model: finalChunk.model,
+                stats: finalChunk.stats,
+              }
+              messages.value = newMessages
+            }
+          }
+          fetchMessages(conversationId)
+        },
+      })
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to regenerate message'
+      messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+    } finally {
+      sending.value = false
+      streaming.value = false
+      streamingContent.value = ''
+    }
+  }
+
   async function searchConversations(query: string) {
     searchQuery.value = query
 
@@ -364,6 +593,10 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearError() {
     error.value = null
+  }
+
+  function clearStreamError() {
+    streamError.value = null
   }
 
   function clearSecurityBlocked() {
@@ -431,6 +664,24 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function clearAllConversations() {
+    try {
+      // Delete all conversations one by one
+      const ids = conversations.value.map(c => c.id)
+      for (const id of ids) {
+        await conversationApi.delete(id)
+      }
+      conversations.value = []
+      currentConversationId.value = null
+      messages.value = []
+      hasMoreMessages.value = false
+      currentPage.value = 0
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to clear conversations'
+      throw e
+    }
+  }
+
   return {
     // State
     conversations,
@@ -441,6 +692,7 @@ export const useChatStore = defineStore('chat', () => {
     streaming,
     streamingContent,
     error,
+    streamError,
     securityBlocked,
     hasMoreMessages,
     loadingMore,
@@ -462,9 +714,12 @@ export const useChatStore = defineStore('chat', () => {
     loadMoreMessages,
     sendMessage,
     cancelStreaming,
+    continueMessage,
+    regenerateMessage,
     searchConversations,
     clearSearch,
     clearError,
+    clearStreamError,
     clearSecurityBlocked,
     getMessageMetadata,
     toggleMessageSelection,
@@ -474,5 +729,6 @@ export const useChatStore = defineStore('chat', () => {
     enterMultiSelectMode,
     exitMultiSelectMode,
     deleteSelectedMessages,
+    clearAllConversations,
   }
 })

@@ -49,9 +49,9 @@ func DefaultHTTP2Config() HTTP2Config {
 
 // HTTP2Server wraps an HTTP server with HTTP/2 support.
 type HTTP2Server struct {
-	config     HTTP2Config
-	server     *http.Server
-	http2Srv   *http2.Server
+	config   HTTP2Config
+	server   *http.Server
+	http2Srv *http2.Server
 }
 
 // NewHTTP2Server creates a new HTTP/2 enabled server.
@@ -193,7 +193,7 @@ type KeepAliveConfig struct {
 // DefaultServerConfig returns default server configuration.
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Address:           ":8080",
+		Address:           ":23456",
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,

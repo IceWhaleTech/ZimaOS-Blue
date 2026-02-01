@@ -34,7 +34,7 @@ docker logs -f zimaos-echo
 ### Health Check
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:23456/health
 ```
 
 Expected response:
@@ -54,10 +54,10 @@ Expected response:
 
 **Solution:**
 ```bash
-# Find process using port 8080
-sudo lsof -i :8080
+# Find process using port 23456
+sudo lsof -i :23456
 # or
-sudo netstat -tlnp | grep 8080
+sudo netstat -tlnp | grep 23456
 
 # Kill the process or change Echo's port
 # In config.yaml:
@@ -74,7 +74,7 @@ server:
 # Create minimal config
 cat > /etc/echo/config.yaml << 'EOF'
 server:
-  port: 8080
+  port: 23456
 llm:
   default_provider: "ollama"
   providers:
@@ -131,12 +131,12 @@ sudo chmod +x /usr/local/bin/echo
 **Solution:**
 ```bash
 # Get new token
-curl -X POST http://localhost:8080/api/v1/auth/login \
+curl -X POST http://localhost:23456/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin"}'
 
 # Or use refresh token
-curl -X POST http://localhost:8080/api/v1/auth/refresh \
+curl -X POST http://localhost:23456/api/v1/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refresh_token":"your-refresh-token"}'
 ```
@@ -151,7 +151,7 @@ curl -X POST http://localhost:8080/api/v1/auth/refresh \
 # Should be: ek_xxxxx...
 
 # Check if key has required scopes
-curl http://localhost:8080/api/v1/apikeys \
+curl http://localhost:23456/api/v1/apikeys \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -162,7 +162,7 @@ curl http://localhost:8080/api/v1/apikeys \
 **Solution:**
 ```bash
 # Check user's role and permissions
-curl http://localhost:8080/api/v1/auth/me \
+curl http://localhost:23456/api/v1/auth/me \
   -H "Authorization: Bearer <token>"
 
 # Update user role (admin only)
@@ -370,7 +370,7 @@ profiling:
   endpoint_prefix: "/debug/pprof"
 
 # Get CPU profile
-curl http://localhost:8080/debug/pprof/profile?seconds=30 > cpu.prof
+curl http://localhost:23456/debug/pprof/profile?seconds=30 > cpu.prof
 go tool pprof cpu.prof
 ```
 
@@ -428,7 +428,7 @@ server:
 **Nginx config:**
 ```nginx
 location /api/v1/ws/ {
-    proxy_pass http://localhost:8080;
+    proxy_pass http://localhost:23456;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -527,7 +527,7 @@ df -h
 sudo netstat -tlnp | grep echo
 
 # Test connectivity
-curl -v http://localhost:8080/health
+curl -v http://localhost:23456/health
 
 # DNS resolution
 nslookup api.openai.com

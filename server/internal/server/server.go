@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"golang.org/x/net/netutil"
 )
 
@@ -46,10 +47,13 @@ func New(cfg *config.ServerConfig) *Server {
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(zerologMiddleware())
+	// Configure CORS with restricted origins (security fix)
+	// In production, configure specific allowed origins via environment or config
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowOrigins:     security.GetDefaultAllowedOrigins(),
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowCredentials: true,
 	}))
 
 	return &Server{

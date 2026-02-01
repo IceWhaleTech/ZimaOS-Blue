@@ -62,12 +62,20 @@ export interface ClearCacheResponse {
   message: string
 }
 
+// Directory whitelist entry
+export interface DirectoryWhitelistEntry {
+  path: string
+  alias?: string // Optional alias for display
+}
+
 // Config response from GET /api/v1/claudecode/config
 export interface ClaudeCodeConfigResponse {
   enabled: boolean
   default_model: string
   sandbox_enabled: boolean
   network_enabled: boolean
+  whitelist_enabled: boolean
+  directory_whitelist?: DirectoryWhitelistEntry[]
 }
 
 // Config request for PUT /api/v1/claudecode/config
@@ -76,6 +84,8 @@ export interface ClaudeCodeConfigRequest {
   default_model?: string
   sandbox_enabled?: boolean
   network_enabled?: boolean
+  whitelist_enabled?: boolean
+  directory_whitelist?: DirectoryWhitelistEntry[]
 }
 
 // Claude Code CLI API

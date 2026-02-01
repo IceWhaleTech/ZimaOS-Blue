@@ -30,10 +30,14 @@ export type TypelessCardType =
   | 'choice'
   | 'collapsible-code'
   | 'diff'
+  | 'terminal'
+  | 'video'
+  | 'mermaid'
 
 export interface TypelessCardBase {
   type: TypelessCardType
   id?: string
+  _streaming?: boolean // Internal flag for streaming/incomplete cards
 }
 
 // Info Card - Display informational content with optional icon
@@ -451,6 +455,46 @@ export interface TypelessCardDiff extends TypelessCardBase {
   viewMode?: 'split' | 'unified' // Side-by-side or unified view
 }
 
+// Terminal Card - Display terminal/CLI output with ANSI color support
+export interface TypelessCardTerminal extends TypelessCardBase {
+  type: 'terminal'
+  title?: string
+  content: string // Raw terminal output with ANSI escape codes
+  prompt?: string // Optional prompt prefix (e.g., "$ ", "> ")
+  showPrompt?: boolean // Whether to show the prompt
+  maxHeight?: number // Max height in pixels before scrolling
+  theme?: 'dark' | 'light' // Terminal theme
+}
+
+// Video Card - Display video player
+export interface TypelessCardVideo extends TypelessCardBase {
+  type: 'video'
+  title?: string
+  src: string // Video URL
+  poster?: string // Cover/thumbnail image
+  duration?: number // Duration in seconds
+  autoplay?: boolean
+  muted?: boolean
+  loop?: boolean
+  controls?: boolean // Show native controls (default: true)
+  subtitles?: VideoSubtitle[]
+}
+
+export interface VideoSubtitle {
+  src: string // Subtitle file URL (VTT format)
+  label: string // Display label (e.g., "English", "中文")
+  srclang: string // Language code (e.g., "en", "zh")
+  default?: boolean
+}
+
+// Mermaid Card - Display Mermaid diagrams (flowchart, mindmap, sequence, etc.)
+export interface TypelessCardMermaid extends TypelessCardBase {
+  type: 'mermaid'
+  title?: string
+  code: string // Mermaid diagram code
+  theme?: 'default' | 'dark' | 'forest' | 'neutral' // Mermaid theme
+}
+
 // Union type for all card types
 export type TypelessCard =
   | TypelessCardInfo
@@ -480,6 +524,9 @@ export type TypelessCard =
   | TypelessCardChoice
   | TypelessCardCollapsibleCode
   | TypelessCardDiff
+  | TypelessCardTerminal
+  | TypelessCardVideo
+  | TypelessCardMermaid
 
 // Card parsing result
 export interface ParsedContent {

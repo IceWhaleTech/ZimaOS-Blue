@@ -1,0 +1,131 @@
+<script setup lang="ts">
+import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { proxyCacheApi, type CacheStats } from '@/api/proxyCache'
+
+const { t } = useI18n()
+
+const stats = ref<CacheStats | null>(null)
+const loading = ref(false)
+
+const hitRate = computed(() => {
+  if (!stats.value) return 0
+  const total = stats.value.hits + stats.value.misses
+  if (total === 0) return 0
+  return (stats.value.hits / total) * 100
+})
+
+async function fetchStats() {
+  loading.value = true
+  try {
+    const res = await proxyCacheApi.getStats()
+    stats.value = res.data
+  } catch {
+    // Ignore errors
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(fetchStats)
+
+defineExpose({ refresh: fetchStats })
+</script>
+
+<template>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Cache Entries Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.entries') }}</p>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">
+            {{ stats?.entries ?? '-' }}
+          </p>
+        </div>
+        <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+          <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+          </svg>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
+        <span>{{ t('cache.maxEntries') }}: {{ stats?.max_entries ?? 0 }}</span>
+      </div>
+    </div>
+
+    <!-- Hit Rate Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.hitRate') }}</p>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">
+            {{ stats ? hitRate.toFixed(1) + '%' : '-' }}
+          </p>
+        </div>
+        <div class="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
+          <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center text-sm">
+        <span class="text-green-500">{{ stats?.hits ?? 0 }}</span>
+        <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('cache.hits') }}</span>
+        <span class="mx-2 text-gray-400">|</span>
+        <span class="text-orange-500">{{ stats?.misses ?? 0 }}</span>
+        <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('cache.misses') }}</span>
+      </div>
+    </div>
+
+    <!-- Bypasses Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.bypasses') }}</p>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">
+            {{ stats?.bypasses ?? '-' }}
+          </p>
+        </div>
+        <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+          <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
+        <span>{{ t('cache.streamingSkipped') }}</span>
+      </div>
+    </div>
+
+    <!-- Status Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.status') }}</p>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">
+            {{ stats?.enabled ? t('cache.enabled') : t('cache.disabled') }}
+          </p>
+        </div>
+        <div :class="[
+          'p-3 rounded-full',
+          stats?.enabled
+            ? 'bg-green-100 dark:bg-green-900/30'
+            : 'bg-gray-100 dark:bg-gray-700'
+        ]">
+          <svg :class="[
+            'w-6 h-6',
+            stats?.enabled
+              ? 'text-green-600 dark:text-green-400'
+              : 'text-gray-400'
+          ]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
+        <span>TTL: {{ stats?.ttl_seconds ? Math.round(stats.ttl_seconds / 60) + 'm' : '-' }}</span>
+      </div>
+    </div>
+  </div>
+</template>

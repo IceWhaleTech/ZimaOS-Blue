@@ -126,7 +126,7 @@ download_and_install() {
         cat > "$INSTALL_DIR/config/config.yaml" << 'EOF'
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 23456
   read_timeout: "30s"
   write_timeout: "30s"
   idle_timeout: "120s"
@@ -207,8 +207,8 @@ print_success() {
     echo -e "${GREEN}║       Installation Complete!              ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════╝${NC}"
     echo ""
-    echo "  Dashboard: http://${IP}:8080"
-    echo "  Health:    http://${IP}:8080/health"
+    echo "  Dashboard: http://${IP}:23456"
+    echo "  Health:    http://${IP}:23456/health"
     echo ""
     echo "  Commands:"
     echo "    systemctl status zimaos-echo   - Check status"
