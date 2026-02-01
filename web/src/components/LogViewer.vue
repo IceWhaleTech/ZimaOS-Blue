@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface LogEntry {
   id: string
@@ -168,12 +171,12 @@ function toggleLevel(level: string) {
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Log Viewer</h2>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.logViewerTitle') }}</h2>
         <div class="flex items-center gap-2">
           <button
             class="p-2 rounded-lg transition-colors"
             :class="streaming ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'"
-            title="Toggle live streaming"
+            :title="t('common.toggleLiveStreaming')"
             @click="emit('toggleStreaming')"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -182,7 +185,7 @@ function toggleLevel(level: string) {
           </button>
           <button
             class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            title="Refresh"
+            :title="t('common.refresh')"
             @click="emit('refresh')"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -191,7 +194,7 @@ function toggleLevel(level: string) {
           </button>
           <button
             class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            title="Export logs"
+            :title="t('common.exportLogs')"
             @click="emit('export')"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -230,7 +233,7 @@ function toggleLevel(level: string) {
           v-model="sourceFilter"
           class="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
         >
-          <option value="">All sources</option>
+          <option value="">{{ t('common.allSources') }}</option>
           <option v-for="source in sources" :key="source" :value="source">
             {{ source }}
           </option>
@@ -241,7 +244,7 @@ function toggleLevel(level: string) {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search logs..."
+            :placeholder="t('common.searchLogsPlaceholder')"
             class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
           />
         </div>
@@ -253,7 +256,7 @@ function toggleLevel(level: string) {
             type="checkbox"
             class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          Auto-scroll
+          {{ t('common.autoScroll') }}
         </label>
       </div>
     </div>
@@ -329,10 +332,10 @@ function toggleLevel(level: string) {
 
     <!-- Footer -->
     <div class="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-      <span>{{ filteredEntries.length }} of {{ entries.length }} entries</span>
+      <span>{{ t('common.entriesCount', { shown: filteredEntries.length, total: entries.length }) }}</span>
       <span v-if="streaming" class="flex items-center gap-2">
         <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-        Live streaming
+        {{ t('common.liveStreaming') }}
       </span>
     </div>
   </div>

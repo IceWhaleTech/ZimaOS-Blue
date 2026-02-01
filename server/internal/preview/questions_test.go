@@ -128,3 +128,95 @@ func questionsEqual(a, b []PresetQuestion) bool {
 	}
 	return true
 }
+
+// TestLanguageConsistency verifies that all languages have consistent question IDs
+// for questions with attachments (multimodal questions should be available in all languages).
+func TestLanguageConsistency(t *testing.T) {
+	service := NewQuestionsService()
+	languages := []string{"en", "zh", "ja", "ko"}
+
+	// Get all questions for each language
+	questionsByLang := make(map[string][]PresetQuestion)
+	for _, lang := range languages {
+		questionsByLang[lang] = service.GetAllQuestions(lang)
+	}
+
+	// Build a map of question IDs with attachments from English (reference)
+	attachmentQuestionIDs := make(map[string]bool)
+	for _, q := range questionsByLang["en"] {
+		if len(q.Attachments) > 0 {
+			attachmentQuestionIDs[q.ID] = true
+		}
+	}
+
+	// Verify each language has the same attachment questions
+	for _, lang := range languages {
+		if lang == "en" {
+			continue
+		}
+
+		langAttachmentIDs := make(map[string]bool)
+		for _, q := range questionsByLang[lang] {
+			if len(q.Attachments) > 0 {
+				langAttachmentIDs[q.ID] = true
+			}
+		}
+
+		// Check that all English attachment questions exist in this language
+		for id := range attachmentQuestionIDs {
+			if !langAttachmentIDs[id] {
+				t.Errorf("Language %s is missing attachment question ID %s", lang, id)
+			}
+		}
+	}
+}
+
+// TestAllLanguagesHaveQuestions verifies that all supported languages have questions.
+func TestAllLanguagesHaveQuestions(t *testing.T) {
+	service := NewQuestionsService()
+	languages := []string{"en", "zh", "ja", "ko"}
+
+	for _, lang := range languages {
+		questions := service.GetAllQuestions(lang)
+		if len(questions) == 0 {
+			t.Errorf("Language %s has no questions", lang)
+		}
+		if len(questions) < 10 {
+			t.Errorf("Language %s has only %d questions, expected at least 10", lang, len(questions))
+		}
+	}
+}
+
+// TestJapaneseLanguage verifies Japanese questions work correctly.
+func TestJapaneseLanguage(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions := service.GetPresetQuestions(5, "ja")
+
+	if len(questions) == 0 {
+		t.Error("GetPresetQuestions(ja) returned empty list")
+	}
+
+	for _, q := range questions {
+		if q.Text == "" {
+			t.Error("Japanese question has empty text")
+		}
+	}
+}
+
+// TestKoreanLanguage verifies Korean questions work correctly.
+func TestKoreanLanguage(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions := service.GetPresetQuestions(5, "ko")
+
+	if len(questions) == 0 {
+		t.Error("GetPresetQuestions(ko) returned empty list")
+	}
+
+	for _, q := range questions {
+		if q.Text == "" {
+			t.Error("Korean question has empty text")
+		}
+	}
+}

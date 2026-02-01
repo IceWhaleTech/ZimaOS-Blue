@@ -1271,6 +1271,7 @@ export default {
     sourceEmbedded: '내장',
     sourceDownloaded: '다운로드됨',
     sourceSystem: '시스템',
+    version: '버전',
     activeVersion: '현재 버전',
     latestVersion: '최신 버전',
     checkForUpdates: '업데이트 확인',

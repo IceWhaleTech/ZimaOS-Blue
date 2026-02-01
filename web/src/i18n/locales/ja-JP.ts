@@ -1311,6 +1311,7 @@ export default {
     sourceEmbedded: '組み込み',
     sourceDownloaded: 'ダウンロード済み',
     sourceSystem: 'システム',
+    version: 'バージョン',
     activeVersion: '現在のバージョン',
     latestVersion: '最新バージョン',
     checkForUpdates: '更新を確認',

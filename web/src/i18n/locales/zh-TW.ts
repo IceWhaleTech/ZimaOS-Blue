@@ -1376,6 +1376,7 @@ export default {
     sourceEmbedded: '內建',
     sourceDownloaded: '已下載',
     sourceSystem: '系統',
+    version: '版本',
     activeVersion: '目前版本',
     platform: '平台',
     systemVersion: '系統版本',
@@ -1428,6 +1429,8 @@ export default {
     missingSkills: 'Skills（程式碼生成、重構等）',
     missingToolCalling: '進階 Tool Calling 能力',
     missingFileOps: '檔案操作（讀取、寫入、編輯）',
+    viewDocs: '查看文件',
+    available: '可用',
   },
   skillStore: {
     ...enUS.skillStore,

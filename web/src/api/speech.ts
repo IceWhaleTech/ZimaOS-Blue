@@ -11,6 +11,16 @@ export interface ASRModel {
   downloaded: boolean
 }
 
+// TTS Model types
+export interface TTSModel {
+  id: string
+  name: string
+  description: string
+  languages: string[]
+  size: string
+  downloaded: boolean
+}
+
 export interface ASRStatus {
   ready: boolean
   model_dir: string
@@ -21,6 +31,16 @@ export interface ASRStatus {
   has_pending: boolean
   pending_model?: string
   saved_progress?: DownloadProgress
+}
+
+export interface TTSStatus {
+  ready: boolean
+  model_dir: string
+  model_type: string
+  downloading: boolean
+  progress?: DownloadProgress
+  has_pending: boolean
+  pending_model?: string
 }
 
 export interface DownloadProgress {
@@ -46,6 +66,8 @@ export interface SpeechStatus {
     ready: boolean
     provider: string
     model_type?: string
+    downloading?: boolean
+    progress?: DownloadProgress
   }
   asr: {
     ready: boolean
@@ -96,6 +118,20 @@ export const speechApi = {
 
   deleteASRModel: (modelType?: string) =>
     api.delete<{ status: string; message: string }>(`/speech/asr/model${modelType ? `?model_type=${modelType}` : ''}`),
+
+  // TTS model management (Sherpa)
+  getTTSStatus: () => api.get<TTSStatus>('/tts/sherpa/status'),
+
+  listTTSModels: () => api.get<{ models: TTSModel[] }>('/tts/sherpa/models'),
+
+  downloadTTSModel: (modelType: string) =>
+    api.post<{ status: string; message: string }>('/tts/sherpa/download', { model_type: modelType }),
+
+  switchTTSModel: (modelType: string) =>
+    api.post<{ status: string; message: string }>('/tts/sherpa/switch', { model_type: modelType }),
+
+  deleteTTSModel: (modelType?: string) =>
+    api.delete<{ status: string; message: string }>(`/tts/sherpa/model${modelType ? `?model_type=${modelType}` : ''}`),
 
   // Transcription with edit support
   transcribe: async (audio: Blob, format: string, language?: string): Promise<TranscriptionResult> => {

@@ -3,8 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { proxyApi, type Session, type SessionStats } from '@/api/proxy'
 
-// t is available for future i18n use
-const { t: _t } = useI18n()
+const { t } = useI18n()
 
 const sessions = ref<Session[]>([])
 const stats = ref<SessionStats | null>(null)
@@ -64,7 +63,7 @@ async function fetchData() {
     sessions.value = res.data.sessions || []
     stats.value = res.data.stats || null
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to fetch sessions'
+    error.value = e instanceof Error ? e.message : t('common.failedToFetchSessions')
     console.error('Failed to fetch sessions:', e)
   } finally {
     loading.value = false
@@ -122,21 +121,21 @@ onUnmounted(() => {
   <div class="session-monitor">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Session Monitor</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.sessionMonitorTitle') }}</h2>
       <div class="flex items-center gap-2">
         <button
           :class="showActiveOnly ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
           class="px-3 py-1.5 text-sm rounded-md transition-colors"
           @click="toggleActiveFilter"
         >
-          {{ showActiveOnly ? 'Active Only' : 'All Sessions' }}
+          {{ showActiveOnly ? t('common.activeOnly') : t('common.allSessions') }}
         </button>
         <button
           :disabled="loading"
           class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
           @click="fetchData"
         >
-          {{ loading ? 'Refreshing...' : 'Refresh' }}
+          {{ loading ? t('common.refreshing') : t('common.refresh') }}
         </button>
       </div>
     </div>
@@ -155,32 +154,32 @@ onUnmounted(() => {
         <div class="text-2xl font-bold text-green-600 dark:text-green-400">
           {{ activeSessions }}
         </div>
-        <div class="text-sm text-green-600/70 dark:text-green-400/70">Active</div>
+        <div class="text-sm text-green-600/70 dark:text-green-400/70">{{ t('common.active') }}</div>
       </div>
       <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
         <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
           {{ totalSessions }}
         </div>
-        <div class="text-sm text-blue-600/70 dark:text-blue-400/70">Total</div>
+        <div class="text-sm text-blue-600/70 dark:text-blue-400/70">{{ t('common.total') }}</div>
       </div>
       <div class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
         <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
           {{ stats?.avg_duration_ms ? formatDuration(stats.avg_duration_ms) : '-' }}
         </div>
-        <div class="text-sm text-purple-600/70 dark:text-purple-400/70">Avg Duration</div>
+        <div class="text-sm text-purple-600/70 dark:text-purple-400/70">{{ t('common.avgDuration') }}</div>
       </div>
       <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
         <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
           {{ stats?.total_requests ?? 0 }}
         </div>
-        <div class="text-sm text-gray-600/70 dark:text-gray-400/70">Total Requests</div>
+        <div class="text-sm text-gray-600/70 dark:text-gray-400/70">{{ t('common.totalRequests') }}</div>
       </div>
     </div>
 
     <!-- Sessions List -->
     <div class="space-y-2">
       <div v-if="filteredSessions.length === 0 && !loading" class="text-center py-8 text-gray-500 dark:text-gray-400">
-        {{ showActiveOnly ? 'No active sessions' : 'No sessions found' }}
+        {{ showActiveOnly ? t('common.noActiveSessions') : t('common.noSessionsFound') }}
       </div>
 
       <div

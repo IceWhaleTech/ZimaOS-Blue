@@ -1,18 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { securityApi, type SecurityScanItem } from '@/api/security'
+import { securityApi } from '@/api/security'
 import { companionApi, type CompanionSession, type Stats as CompanionStats } from '@/api/companion'
 import { getActiveConnections, getConnectionStats, type Connection, type ConnectionStats } from '@/api/connections'
 import SessionList from '@/components/companion/SessionList.vue'
 import SessionDetail from '@/components/companion/SessionDetail.vue'
-import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 
 const { t, te } = useI18n()
-
-// Tab state
-type TabType = 'overview' | 'monitoring' | 'events'
-const activeTab = ref<TabType>('overview')
 
 /** Backend English details string -> security.scan.detailMessages key (for i18n). */
 const DETAIL_MESSAGE_KEYS: Record<string, string> = {
@@ -94,27 +89,6 @@ const scanCompleted = ref(false)
 const scanResultsExpanded = ref(true)
 const fixingItem = ref<string | null>(null) // ID of item being fixed
 const expandedItemId = ref<string | null>(null) // ID of expanded item for details
-
-// Fix preview dialog state
-const showFixPreview = ref(false)
-const fixPreviewItem = ref<ScanItem | null>(null)
-
-function openFixPreview(item: ScanItem) {
-  fixPreviewItem.value = item
-  showFixPreview.value = true
-}
-
-function closeFixPreview() {
-  showFixPreview.value = false
-  fixPreviewItem.value = null
-}
-
-async function handleFixConfirm(fixAction: string) {
-  const item = fixPreviewItem.value
-  if (!item) return
-  closeFixPreview()
-  await fixScanIssue(item)
-}
 
 // Check if scan should run (once per day)
 function shouldRunScan(): boolean {
@@ -200,21 +174,12 @@ async function startSecurityScan() {
       // Brief delay for animation
       await new Promise(resolve => setTimeout(resolve, delayPerItem))
 
-      // Update with actual result including risk/impact/remediation
+      // Update with actual result
       scanItem.status = apiItem.status as ScanItem['status']
       scanItem.details = apiItem.details || t(`security.scan.check${apiItem.status.charAt(0).toUpperCase() + apiItem.status.slice(1)}`)
-      scanItem.risk = apiItem.risk
-      scanItem.impact = apiItem.impact
-      scanItem.remediation = apiItem.remediation
 
       scanProgress.value = Math.round(((i + 1) / totalItems) * 100)
     }
-
-    // Sort results: failed first, then warnings, then passed
-    scanResults.value.sort((a, b) => {
-      const statusOrder: Record<string, number> = { failed: 0, warning: 1, passed: 2, scanning: 3, pending: 4 }
-      return (statusOrder[a.status] ?? 5) - (statusOrder[b.status] ?? 5)
-    })
   } catch (error) {
     console.error('Security scan failed:', error)
     // Fallback to showing error state
@@ -455,28 +420,7 @@ onUnmounted(() => {
     <!-- Header with Title -->
     <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ t('security.title') }}</h1>
 
-    <!-- Tabs -->
-    <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
-      <nav class="flex gap-4" aria-label="Tabs">
-        <button
-          v-for="tab in (['overview', 'monitoring', 'events'] as const)"
-          :key="tab"
-          :class="[
-            'py-2 px-1 border-b-2 font-medium text-sm transition-colors',
-            activeTab === tab
-              ? 'border-accent text-accent'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          ]"
-          @click="activeTab = tab"
-        >
-          {{ t(`security.tabs.${tab}`) }}
-        </button>
-      </nav>
-    </div>
-
-    <!-- Overview Tab -->
-    <div v-show="activeTab === 'overview'">
-      <!-- Security Status Banner -->
+    <!-- Security Status Banner -->
     <div class="mb-6">
       <div
 :class="[
@@ -746,11 +690,8 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-    </div>
 
-    <!-- Monitoring Tab -->
-    <div v-show="activeTab === 'monitoring'">
-      <!-- Connection Monitoring Section -->
+    <!-- Connection Monitoring Section -->
     <div class="mt-6">
       <div class="glass-card p-6">
         <!-- Header with toggle -->
@@ -939,81 +880,33 @@ onUnmounted(() => {
 
         <!-- Expanded Content -->
         <div v-show="companionExpanded" class="border-t border-gray-200 dark:border-gray-700 pt-4">
-          <!-- Session List Only -->
-          <div class="max-h-96 overflow-y-auto">
-            <SessionList
-              :sessions="companionSessions"
-              :loading="companionLoading"
-              :has-more="companionHasMore"
-              :selected-id="selectedSession?.id"
-              @select="selectSession"
-              @load-more="loadMoreSessions"
-            />
+          <div class="flex gap-4" style="height: 400px;">
+            <!-- Session List -->
+            <div class="w-1/2 overflow-y-auto border-r border-gray-200 dark:border-gray-700 pr-4">
+              <SessionList
+                :sessions="companionSessions"
+                :loading="companionLoading"
+                :has-more="companionHasMore"
+                :selected-id="selectedSession?.id"
+                @select="selectSession"
+                @load-more="loadMoreSessions"
+              />
+            </div>
+
+            <!-- Session Detail -->
+            <div class="w-1/2 overflow-y-auto">
+              <SessionDetail
+                v-if="selectedSession"
+                :session="selectedSession"
+                @close="closeSessionDetail"
+              />
+              <div v-else class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+                {{ t('companion.selectSession') }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Session Detail Modal -->
-    <Transition
-      enter-active-class="transition-opacity duration-200"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition-opacity duration-200"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
-      <div
-        v-if="selectedSession"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        @click.self="closeSessionDetail"
-      >
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-          <!-- Modal Header -->
-          <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('companion.sessionDetail') }}
-            </h2>
-            <button
-              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              @click="closeSessionDetail"
-            >
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <!-- Modal Content -->
-          <div class="flex-1 overflow-y-auto p-6">
-            <SessionDetail
-              :session="selectedSession"
-              :modal-mode="true"
-              @close="closeSessionDetail"
-            />
-          </div>
-        </div>
-      </div>
-    </Transition>
-    </div>
-
-    <!-- Events Tab -->
-    <div v-show="activeTab === 'events'">
-      <div class="glass-card p-6">
-        <div class="text-center py-8 text-gray-500 dark:text-gray-400">
-          <svg class="mx-auto h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-          </svg>
-          <p>{{ t('security.events.comingSoon') }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Fix Preview Dialog -->
-    <FixPreviewDialog
-      :visible="showFixPreview"
-      :item="fixPreviewItem as SecurityScanItem | null"
-      @close="closeFixPreview"
-      @confirm="handleFixConfirm"
-    />
   </div>
 </template>

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { extauthAdminApi, getProviderDisplayName } from '@/api/extauth'
 import type { ProviderConfig, ProviderType, CreateProviderRequest, UpdateProviderRequest } from '@/api/extauth'
+
+const { t } = useI18n()
 
 const providers = ref<ProviderConfig[]>([])
 const loading = ref(false)
@@ -60,7 +63,7 @@ async function loadProviders() {
     const response = await extauthAdminApi.listAllProviders()
     providers.value = response.data.sort((a, b) => a.order - b.order)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load providers'
+    error.value = e instanceof Error ? e.message : t('authProviders.failedToLoadProviders')
   } finally {
     loading.value = false
   }
@@ -135,7 +138,7 @@ async function saveProvider() {
     if (isCreating.value) {
       const response = await extauthAdminApi.createProvider(form.value)
       providers.value = [...providers.value, response.data].sort((a, b) => a.order - b.order)
-      showSuccess('Provider created successfully')
+      showSuccess(t('authProviders.providerCreated'))
     } else {
       const updateData: UpdateProviderRequest = {
         name: form.value.name,
@@ -161,12 +164,12 @@ async function saveProvider() {
       if (index !== -1) {
         providers.value[index] = response.data
       }
-      showSuccess('Provider updated successfully')
+      showSuccess(t('authProviders.providerUpdated'))
     }
 
     closeModal()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to save provider'
+    error.value = e instanceof Error ? e.message : t('authProviders.failedToSaveProvider')
   } finally {
     loading.value = false
   }
@@ -179,23 +182,23 @@ async function toggleProvider(provider: ProviderConfig) {
     if (index !== -1) {
       providers.value[index] = response.data
     }
-    showSuccess(`Provider ${response.data.enabled ? 'enabled' : 'disabled'}`)
+    showSuccess(response.data.enabled ? t('authProviders.providerEnabled') : t('authProviders.providerDisabled'))
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to toggle provider'
+    error.value = e instanceof Error ? e.message : t('authProviders.failedToToggleProvider')
   }
 }
 
 async function deleteProvider(provider: ProviderConfig) {
-  if (!confirm(`Are you sure you want to delete the provider "${provider.name}"? This action cannot be undone.`)) {
+  if (!confirm(t('authProviders.confirmDeleteProvider', { name: provider.name }))) {
     return
   }
 
   try {
     await extauthAdminApi.deleteProvider(provider.id)
     providers.value = providers.value.filter(p => p.id !== provider.id)
-    showSuccess('Provider deleted successfully')
+    showSuccess(t('authProviders.providerDeleted'))
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to delete provider'
+    error.value = e instanceof Error ? e.message : t('authProviders.failedToDeleteProvider')
   }
 }
 
@@ -238,7 +241,7 @@ function updateScope(index: number, value: string) {
 <template>
   <div class="auth-providers-view p-6 max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">Authentication Providers</h1>
+      <h1 class="text-2xl font-bold text-white">{{ t('authProviders.title') }}</h1>
       <button
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="openCreateModal"
@@ -246,7 +249,7 @@ function updateScope(index: number, value: string) {
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
-        Add Provider
+        {{ t('authProviders.addProvider') }}
       </button>
     </div>
 
@@ -268,7 +271,7 @@ function updateScope(index: number, value: string) {
 
     <!-- Loading -->
     <div v-if="loading && providers.length === 0" class="text-gray-400 text-center py-8">
-      Loading providers...
+      {{ t('authProviders.loadingProviders') }}
     </div>
 
     <!-- Empty State -->
@@ -276,13 +279,13 @@ function updateScope(index: number, value: string) {
       <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
       </svg>
-      <h3 class="text-lg font-medium text-white mb-2">No authentication providers configured</h3>
-      <p class="text-gray-400 mb-4">Add an external authentication provider to allow users to sign in with their existing accounts.</p>
+      <h3 class="text-lg font-medium text-white mb-2">{{ t('authProviders.noProviders') }}</h3>
+      <p class="text-gray-400 mb-4">{{ t('authProviders.noProvidersDesc') }}</p>
       <button
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
         @click="openCreateModal"
       >
-        Add Your First Provider
+        {{ t('authProviders.addYourFirstProvider') }}
       </button>
     </div>
 
@@ -315,7 +318,7 @@ function updateScope(index: number, value: string) {
                 <span>Client ID: {{ provider.client_id.substring(0, 20) }}...</span>
               </div>
               <div v-if="provider.issuer_url" class="text-sm text-gray-500 mt-1">
-                Issuer: {{ provider.issuer_url }}
+                {{ t('authProviders.issuer') }}: {{ provider.issuer_url }}
               </div>
             </div>
           </div>
@@ -329,19 +332,19 @@ function updateScope(index: number, value: string) {
                 : 'text-green-400 hover:bg-green-900/20'"
               @click="toggleProvider(provider)"
             >
-              {{ provider.enabled ? 'Disable' : 'Enable' }}
+              {{ provider.enabled ? t('authProviders.disable') : t('common.enable') }}
             </button>
             <button
               class="px-3 py-1.5 text-sm text-blue-400 hover:bg-blue-900/20 rounded-lg transition-colors"
               @click="openEditModal(provider)"
             >
-              Edit
+              {{ t('common.edit') }}
             </button>
             <button
               class="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
               @click="deleteProvider(provider)"
             >
-              Delete
+              {{ t('common.delete') }}
             </button>
           </div>
         </div>
@@ -472,7 +475,7 @@ function updateScope(index: number, value: string) {
                     :value="scope"
                     type="text"
                     class="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., openid, profile, email"
+                    :placeholder="t('authProviders.placeholderScopes')"
                     @input="updateScope(index, ($event.target as HTMLInputElement).value)"
                   />
                   <button
@@ -497,11 +500,11 @@ function updateScope(index: number, value: string) {
                     type="checkbox"
                     class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
                   />
-                  <span class="text-sm text-gray-300">Auto-create users on first login</span>
+                  <span class="text-sm text-gray-300">{{ t('authProviders.autoCreateUser') }}</span>
                 </label>
               </div>
               <div>
-                <label class="block text-sm text-gray-400 mb-2">Default Role</label>
+                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.defaultRole') }}</label>
                 <input
                   v-model="form.default_role"
                   type="text"
@@ -515,15 +518,15 @@ function updateScope(index: number, value: string) {
             <div>
               <div class="flex items-center justify-between mb-2">
                 <label class="text-sm text-gray-400">
-                  Allowed Email Domains
-                  <span class="text-gray-500">(leave empty to allow all)</span>
+                  {{ t('authProviders.allowedEmailDomains') }}
+                  <span class="text-gray-500">{{ t('authProviders.leaveEmptyToAllowAll') }}</span>
                 </label>
                 <button
                   type="button"
                   class="text-xs text-blue-400 hover:text-blue-300"
                   @click="addAllowedDomain"
                 >
-                  + Add Domain
+                  {{ t('authProviders.addDomain') }}
                 </button>
               </div>
               <div class="space-y-2">
@@ -532,7 +535,7 @@ function updateScope(index: number, value: string) {
                     :value="domain"
                     type="text"
                     class="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., company.com"
+                    :placeholder="t('authProviders.placeholderDomain')"
                     @input="updateAllowedDomain(index, ($event.target as HTMLInputElement).value)"
                   />
                   <button
@@ -550,7 +553,7 @@ function updateScope(index: number, value: string) {
 
             <!-- Display Order -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Display Order</label>
+              <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.displayOrder') }}</label>
               <input
                 v-model.number="form.order"
                 type="number"
@@ -566,14 +569,14 @@ function updateScope(index: number, value: string) {
                 :disabled="loading"
                 class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
               >
-                {{ loading ? 'Saving...' : (isCreating ? 'Create Provider' : 'Save Changes') }}
+                {{ loading ? t('common.saving') : (isCreating ? t('authProviders.createProvider') : t('authProviders.saveChanges')) }}
               </button>
               <button
                 type="button"
                 class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
                 @click="closeModal"
               >
-                Cancel
+                {{ t('common.cancel') }}
               </button>
             </div>
           </form>

@@ -36,7 +36,6 @@ const newProvider = ref({
   base_url: '',
   priority: 50,
   location: 'cloud' as 'cloud' | 'local',
-  api_format: '' as '' | 'openai' | 'anthropic' | 'ollama',
 })
 
 // New API key form
@@ -247,7 +246,7 @@ async function addCustomProvider() {
       type: 'custom',
     })
     showAddModal.value = false
-    newProvider.value = { name: '', base_url: '', priority: 50, location: 'cloud', api_format: '' }
+    newProvider.value = { name: '', base_url: '', priority: 50, location: 'cloud' }
   } catch (e) {
     console.error('Failed to add provider:', e)
   }
@@ -1112,19 +1111,6 @@ onMounted(() => {
               </button>
             </div>
             <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.locationHint') }}</p>
-          </div>
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiFormat') }}</label>
-            <select
-              v-model="newProvider.api_format"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">{{ t('providerPool.apiFormatAuto') }}</option>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="ollama">Ollama</option>
-            </select>
-            <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiFormatHint') }}</p>
           </div>
           <div class="flex justify-end gap-3 mt-6">
             <button

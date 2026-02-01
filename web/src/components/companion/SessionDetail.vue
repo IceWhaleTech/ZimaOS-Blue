@@ -12,7 +12,6 @@ const companionStore = useCompanionStore()
 
 const props = defineProps<{
   session: CompanionSession
-  modalMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -116,9 +115,9 @@ function formatDuration(ms: number): string {
 </script>
 
 <template>
-  <div :class="['session-detail', modalMode ? '' : 'bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full']">
-    <!-- Header (only show when not in modal mode) -->
-    <div v-if="!modalMode" class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+  <div class="session-detail bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full">
+    <!-- Header -->
+    <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
       <div>
         <h2 class="text-lg font-bold text-gray-900 dark:text-white">
           {{ t('companion.sessionDetail') }}
@@ -135,13 +134,8 @@ function formatDuration(ms: number): string {
       </button>
     </div>
 
-    <!-- Session ID (show in modal mode) -->
-    <div v-if="modalMode" class="mb-4">
-      <p class="text-sm text-gray-500 dark:text-slate-400 font-mono">ID: {{ session.id }}</p>
-    </div>
-
     <!-- Content -->
-    <div :class="modalMode ? '' : 'flex-1 overflow-y-auto p-4'">
+    <div class="flex-1 overflow-y-auto p-4">
       <!-- Session Info Grid -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
@@ -229,7 +223,7 @@ function formatDuration(ms: number): string {
 
       <!-- Flow View -->
       <div v-if="viewMode === 'flow'" class="mb-6">
-        <div :class="['border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden', modalMode ? 'h-[600px]' : 'h-[400px]']">
+        <div class="h-[500px] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
           <SessionFlowCanvas
             :events="events"
             :selected-event-id="selectedEventId"

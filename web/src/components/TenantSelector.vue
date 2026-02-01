@@ -30,10 +30,10 @@
 
       <div class="dropdown-footer">
         <button class="create-btn" @click="showCreateModal = true">
-          + Create Workspace
+          {{ t('tenants.createWorkspaceButton') }}
         </button>
         <button class="manage-btn" @click="goToManage">
-          Manage Workspaces
+          {{ t('tenants.manageWorkspaces') }}
         </button>
       </div>
     </div>
@@ -47,12 +47,12 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="tenant-name">Name</label>
+            <label for="tenant-name">{{ t('tenants.name') }}</label>
             <input
               id="tenant-name"
               v-model="newTenant.name"
               type="text"
-              placeholder="My Workspace"
+              :placeholder="t('tenants.namePlaceholder')"
               @input="generateSlug"
             />
           </div>
@@ -64,14 +64,14 @@
               type="text"
               placeholder="my-workspace"
             />
-            <p class="hint">URL-friendly identifier (lowercase, no spaces)</p>
+            <p class="hint">{{ t('tenants.slugHint') }}</p>
           </div>
           <div class="form-group">
-            <label for="tenant-description">Description (optional)</label>
+            <label for="tenant-description">{{ t('tenants.description') }} ({{ t('common.optional') }})</label>
             <textarea
               id="tenant-description"
               v-model="newTenant.description"
-              placeholder="What is this workspace for?"
+              :placeholder="t('tenants.descriptionPlaceholder')"
             ></textarea>
           </div>
         </div>
@@ -93,8 +93,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTenantStore } from '@/stores/tenant'
 
+const { t } = useI18n()
 const router = useRouter()
 const tenantStore = useTenantStore()
 
@@ -111,7 +113,7 @@ const newTenant = ref({
 
 const tenants = computed(() => tenantStore.tenants)
 const currentTenantId = computed(() => tenantStore.currentTenantId)
-const currentTenantName = computed(() => tenantStore.currentTenant?.name || 'Select Workspace')
+const currentTenantName = computed(() => tenantStore.currentTenant?.name || t('tenants.selectWorkspace'))
 const currentTenantInitial = computed(() => getInitial(currentTenantName.value))
 
 const canCreate = computed(() => {

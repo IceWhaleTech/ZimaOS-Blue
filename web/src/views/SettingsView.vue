@@ -19,7 +19,6 @@ import LatencyChart from '@/components/metrics/LatencyChart.vue'
 import CacheStats from '@/components/metrics/CacheStats.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
-import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 
 const { t } = useI18n()
@@ -33,7 +32,7 @@ const metricsStore = useMetricsStore()
 const saveStatus = ref<string | null>(null)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'speech' | 'network' | 'metrics' | 'userdata' | 'logs'
+type TabType = 'general' | 'llm' | 'network' | 'metrics' | 'userdata' | 'logs'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 // Timezone
@@ -281,7 +280,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'speech', 'network', 'metrics', 'userdata', 'logs'] as const"
+        v-for="tab in ['general', 'llm', 'network', 'metrics', 'userdata', 'logs'] as const"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
@@ -358,11 +357,6 @@ onMounted(async () => {
 
       <!-- Claude Code CLI Settings -->
       <ClaudeCodeSettings @status-change="showSaveStatus" />
-    </div>
-
-    <!-- Speech Tab -->
-    <div v-if="activeTab === 'speech'">
-      <SpeechSettings />
     </div>
 
     <!-- Network Tab -->

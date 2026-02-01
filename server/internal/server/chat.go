@@ -941,7 +941,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				},
 			})
 			// Generate title for new conversations
-			go h.generateConversationTitle(convID, req.Message, "en")
+			// Pass AI response to check for markdown heading as title
+			go h.generateConversationTitle(convID, req.Message, fullContent, "en")
 		}
 
 		return nil
@@ -982,9 +983,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 // generateConversationTitle generates a title using LLM summarization.
 // Falls back to truncating the user message if LLM is unavailable.
+// If aiResponse starts with a markdown heading (#), use that as the title.
 // targetLang specifies the language for the generated title (e.g., "en", "zh", "ja").
 // This function is safe to call in a goroutine - it recovers from panics.
-func (h *ChatHandler) generateConversationTitle(convID, userMessage, targetLang string) {
+func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse, targetLang string) {
 	// Recover from any panics to prevent crashing the server
 	defer func() {
 		if r := recover(); r != nil {
@@ -992,6 +994,12 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, targetLang 
 			fmt.Printf("panic in generateConversationTitle: %v\n", r)
 		}
 	}()
+
+	// Check if AI response starts with a markdown heading
+	if title := extractMarkdownHeading(aiResponse); title != "" {
+		h.store.UpdateConversationTitle(context.Background(), convID, title)
+		return
+	}
 
 	// If the message is short enough (<=10 runes), use it directly as the title
 	if len([]rune(userMessage)) <= 10 {
@@ -1118,6 +1126,43 @@ func findRuneBoundary(s string, maxLen int) int {
 		}
 	}
 	return -1
+}
+
+// extractMarkdownHeading extracts a title from the first line if it's a markdown heading.
+// Returns empty string if the first line is not a heading.
+func extractMarkdownHeading(content string) string {
+	if content == "" {
+		return ""
+	}
+
+	// Get the first line
+	firstLine := content
+	if idx := strings.Index(content, "\n"); idx != -1 {
+		firstLine = content[:idx]
+	}
+	firstLine = strings.TrimSpace(firstLine)
+
+	// Check if it starts with # (markdown heading)
+	if !strings.HasPrefix(firstLine, "#") {
+		return ""
+	}
+
+	// Remove leading # characters and spaces
+	title := strings.TrimLeft(firstLine, "#")
+	title = strings.TrimSpace(title)
+
+	// Validate: title should not be empty and not too long
+	if title == "" {
+		return ""
+	}
+
+	// Truncate if too long (max 50 characters)
+	titleRunes := []rune(title)
+	if len(titleRunes) > 50 {
+		title = string(titleRunes[:50]) + "..."
+	}
+
+	return sanitizeTitle(title)
 }
 
 // sanitizeTitle removes newlines and extra whitespace from a title.

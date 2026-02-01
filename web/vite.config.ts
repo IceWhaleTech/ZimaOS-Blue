@@ -142,7 +142,8 @@ export default defineConfig({
           if (id.includes('node_modules/axios')) {
             return 'http'
           }
-          // Mermaid and its dependencies - keep together to avoid circular dep issues
+          // Mermaid and ALL its dependencies must be in the same chunk
+          // to avoid "Cannot access 'x' before initialization" errors
           if (id.includes('node_modules/mermaid') ||
               id.includes('node_modules/d3') ||
               id.includes('node_modules/dagre') ||

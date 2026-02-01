@@ -734,7 +734,7 @@ func getEnvVarsForIDE(ideType IDEType) []string {
 	case IDETypeTRAE:
 		return []string{"TRAE_API_KEY"}
 	case IDETypeKiro:
-		return []string{"CONTINUE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+		return []string{"KIRO_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
 	case IDETypeCopilot:
 		return []string{"GITHUB_TOKEN", "COPILOT_TOKEN"}
 	}

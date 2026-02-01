@@ -37,9 +37,9 @@ const newKeyScopes = ref<string[]>(['read'])
 const createdKey = ref<string | null>(null)
 
 const availableScopes = [
-  { id: 'read', label: 'Read', description: 'Read access to resources' },
-  { id: 'write', label: 'Write', description: 'Write access to resources' },
-  { id: 'admin', label: 'Admin', description: 'Administrative access' },
+  { id: 'read', labelKey: 'profile.scopeRead', descKey: 'profile.scopeReadDesc' },
+  { id: 'write', labelKey: 'profile.scopeWrite', descKey: 'profile.scopeWriteDesc' },
+  { id: 'admin', labelKey: 'profile.scopeAdmin', descKey: 'profile.scopeAdminDesc' },
 ]
 
 const sortedKeys = computed(() => {
@@ -49,8 +49,8 @@ const sortedKeys = computed(() => {
 })
 
 function formatDate(date: Date | undefined): string {
-  if (!date) return 'Never'
-  return new Date(date).toLocaleDateString('en-US', {
+  if (!date) return t('profile.expiryNever')
+  return new Date(date).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -85,7 +85,7 @@ function closeModal() {
 }
 
 function confirmRevoke(key: ApiKey) {
-  if (confirm(`Are you sure you want to revoke the API key "${key.name}"? This action cannot be undone.`)) {
+  if (confirm(t('profile.confirmRevokeApiKey', { name: key.name }))) {
     emit('revoke', key.id)
   }
 }
@@ -99,21 +99,21 @@ function confirmRevoke(key: ApiKey) {
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
         @click="showCreateModal = true"
       >
-        Create API Key
+        {{ t('profile.createApiKey') }}
       </button>
     </div>
 
     <div v-if="loading" class="p-6 text-center">
       <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">Loading API keys...</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('profile.loadingApiKeys') }}</p>
     </div>
 
     <div v-else-if="apiKeys.length === 0" class="p-6 text-center">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
       </svg>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">No API keys yet</p>
-      <p class="text-sm text-gray-400 dark:text-gray-500">Create an API key to get started</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('profile.noApiKeysYet') }}</p>
+      <p class="text-sm text-gray-400 dark:text-gray-500">{{ t('profile.getStartedHint') }}</p>
     </div>
 
     <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -127,13 +127,13 @@ function confirmRevoke(key: ApiKey) {
           <div class="flex items-center gap-2">
             <span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span>
             <span v-if="isExpired(key)" class="px-2 py-0.5 text-xs bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded-full">
-              Expired
+              {{ t('profile.expired') }}
             </span>
           </div>
           <div class="mt-1 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
             <span class="font-mono">{{ key.prefix }}...</span>
-            <span>Created {{ formatDate(key.createdAt) }}</span>
-            <span>Last used {{ formatDate(key.lastUsedAt) }}</span>
+            <span>{{ t('profile.created') }} {{ formatDate(key.createdAt) }}</span>
+            <span>{{ t('profile.lastUsed') }} {{ formatDate(key.lastUsedAt) }}</span>
           </div>
           <div class="mt-1 flex gap-1">
             <span
@@ -149,7 +149,7 @@ function confirmRevoke(key: ApiKey) {
           class="ml-4 px-3 py-1.5 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
           @click="confirmRevoke(key)"
         >
-          Revoke
+          {{ t('profile.revoke') }}
         </button>
       </div>
     </div>
@@ -164,7 +164,7 @@ function confirmRevoke(key: ApiKey) {
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ createdKey ? 'API Key Created' : 'Create API Key' }}
+              {{ createdKey ? t('profile.apiKeyCreated') : t('profile.createApiKey') }}
             </h3>
           </div>
 
@@ -172,7 +172,7 @@ function confirmRevoke(key: ApiKey) {
             <template v-if="createdKey">
               <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
                 <p class="text-sm text-yellow-800 dark:text-yellow-200">
-                  Make sure to copy your API key now. You won't be able to see it again!
+                  {{ t('profile.copyApiKeyWarning') }}
                 </p>
               </div>
               <div class="flex items-center gap-2">
@@ -186,7 +186,7 @@ function confirmRevoke(key: ApiKey) {
                   class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                   @click="handleCopyKey"
                 >
-                  Copy
+                  {{ t('profile.copy') }}
                 </button>
               </div>
             </template>
@@ -195,19 +195,19 @@ function confirmRevoke(key: ApiKey) {
               <div class="space-y-4">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Key Name
+                    {{ t('profile.keyName') }}
                   </label>
                   <input
                     v-model="newKeyName"
                     type="text"
-                    placeholder="e.g., Production API Key"
+                    :placeholder="t('profile.apiKeyNamePlaceholder')"
                     class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Scopes
+                    {{ t('profile.scopes') }}
                   </label>
                   <div class="space-y-2">
                     <label
@@ -222,8 +222,8 @@ function confirmRevoke(key: ApiKey) {
                         class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <div>
-                        <span class="font-medium text-gray-900 dark:text-white">{{ scope.label }}</span>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ scope.description }}</p>
+                        <span class="font-medium text-gray-900 dark:text-white">{{ t(scope.labelKey) }}</span>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t(scope.descKey) }}</p>
                       </div>
                     </label>
                   </div>
@@ -245,7 +245,7 @@ function confirmRevoke(key: ApiKey) {
               :disabled="!newKeyName.trim() || newKeyScopes.length === 0"
               @click="handleCreate"
             >
-              Create Key
+              {{ t('profile.createKey') }}
             </button>
           </div>
         </div>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface Connection {
   id: string
@@ -79,19 +82,19 @@ function toggleSort(field: typeof sortBy.value) {
 <template>
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Active Connections</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.activeConnectionsTitle') }}</h2>
       <span class="text-sm text-gray-500 dark:text-gray-400">
-        {{ connections.length }} active
+        {{ t('common.activeCount', { count: connections.length }) }}
       </span>
     </div>
 
     <div v-if="loading" class="p-6 text-center">
       <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">Loading connections...</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingConnections') }}</p>
     </div>
 
     <div v-else-if="connections.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
-      No active connections
+      {{ t('common.noActiveConnections') }}
     </div>
 
     <div v-else class="overflow-x-auto">
@@ -99,30 +102,30 @@ function toggleSort(field: typeof sortBy.value) {
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Type
+              {{ t('common.type') }}
             </th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-              Client IP
+              {{ t('common.clientIp') }}
             </th>
             <th
               class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
               @click="toggleSort('connectedAt')"
             >
-              Connected
+              {{ t('common.connected') }}
               <span v-if="sortBy === 'connectedAt'">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th
               class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
               @click="toggleSort('lastActivity')"
             >
-              Last Activity
+              {{ t('common.lastActivity') }}
               <span v-if="sortBy === 'lastActivity'">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th
               class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-gray-100"
               @click="toggleSort('requestCount')"
             >
-              Requests
+              {{ t('common.requests') }}
               <span v-if="sortBy === 'requestCount'">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
             </th>
           </tr>
@@ -145,10 +148,10 @@ function toggleSort(field: typeof sortBy.value) {
               {{ conn.clientIp }}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-              {{ formatDuration(conn.connectedAt) }} ago
+              {{ formatDuration(conn.connectedAt) }} {{ t('common.ago') }}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-              {{ formatDuration(conn.lastActivity) }} ago
+              {{ formatDuration(conn.lastActivity) }} {{ t('common.ago') }}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
               {{ conn.requestCount }}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick, shallowRef } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, shallowRef, onUnmounted } from 'vue'
 import type { TypelessCardMermaid } from '@/types/typeless'
 
 const props = defineProps<{
@@ -11,7 +11,10 @@ const svgContent = ref('')
 const error = ref<string | null>(null)
 const copied = ref(false)
 const loading = ref(true)
-const mermaidInstance = shallowRef<typeof import('mermaid').default | null>(null)
+// Use shallowRef for the mermaid module to avoid reactivity issues
+const mermaidModule = shallowRef<typeof import('mermaid') | null>(null)
+// Track render count to generate unique IDs
+let renderCount = 0
 
 // Detect diagram type from code
 const diagramType = computed(() => {
@@ -19,7 +22,7 @@ const diagramType = computed(() => {
   if (code.startsWith('flowchart') || code.startsWith('graph')) return 'flowchart'
   if (code.startsWith('mindmap')) return 'mindmap'
   if (code.startsWith('sequencediagram') || code.startsWith('sequence')) return 'sequence'
-  if (code.startsWith('classDiagram') || code.startsWith('class')) return 'class'
+  if (code.startsWith('classdiagram') || code.startsWith('class')) return 'class'
   if (code.startsWith('statediagram') || code.startsWith('state')) return 'state'
   if (code.startsWith('erdiagram') || code.startsWith('er')) return 'er'
   if (code.startsWith('gantt')) return 'gantt'
@@ -57,20 +60,20 @@ const diagramTypeDisplay = computed(() => {
 
 // Initialize mermaid with theme
 async function initMermaid() {
-  if (!mermaidInstance.value) {
-    // Dynamic import to avoid initialization issues
-    const mermaidModule = await import('mermaid')
-    mermaidInstance.value = mermaidModule.default
+  if (!mermaidModule.value) {
+    mermaidModule.value = await import('mermaid')
   }
 
   const isDark = document.documentElement.classList.contains('dark')
   const theme = props.card.theme || (isDark ? 'dark' : 'default')
 
-  mermaidInstance.value.initialize({
+  mermaidModule.value.default.initialize({
     startOnLoad: false,
     theme: theme,
     securityLevel: 'strict',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+    // Suppress errors to prevent console spam
+    suppressErrorRendering: true,
   })
 }
 
@@ -84,15 +87,20 @@ async function renderDiagram() {
   try {
     await initMermaid()
 
-    if (!mermaidInstance.value) {
-      throw new Error('Mermaid failed to load')
-    }
+    // Generate unique ID for this render using timestamp and counter
+    renderCount++
+    const id = `mermaid-${Date.now()}-${renderCount}-${Math.random().toString(36).substring(2, 9)}`
 
-    // Generate unique ID for this render
-    const id = `mermaid-${props.card.id || Math.random().toString(36).substr(2, 9)}`
+    // Clean up any existing SVG elements with old IDs to prevent conflicts
+    const existingSvgs = document.querySelectorAll('[id^="mermaid-"]')
+    existingSvgs.forEach(svg => {
+      if (svg.id !== id && !containerRef.value?.contains(svg)) {
+        svg.remove()
+      }
+    })
 
     // Render the diagram
-    const { svg } = await mermaidInstance.value.render(id, props.card.code)
+    const { svg } = await mermaidModule.value!.default.render(id, props.card.code)
     svgContent.value = svg
   } catch (err) {
     console.error('Mermaid render error:', err)
@@ -120,15 +128,27 @@ watch(() => props.card.theme, () => {
   renderDiagram()
 })
 
-// Watch for code changes
+// Watch for code changes with debounce to prevent rapid re-renders
+let renderTimeout: ReturnType<typeof setTimeout> | null = null
 watch(() => props.card.code, () => {
-  renderDiagram()
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+  }
+  renderTimeout = setTimeout(() => {
+    renderDiagram()
+  }, 100)
 })
 
 onMounted(() => {
   nextTick(() => {
     renderDiagram()
   })
+})
+
+onUnmounted(() => {
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+  }
 })
 </script>
 

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 export interface QuickAction {
   id: string
   label: string
@@ -48,16 +52,16 @@ function handleAction(action: QuickAction) {
 <template>
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.quickActionsTitle') }}</h2>
     </div>
 
     <div v-if="loading" class="p-6 text-center">
       <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">Loading actions...</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingActions') }}</p>
     </div>
 
     <div v-else-if="actions.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
-      No actions available
+      {{ t('common.noActionsAvailable') }}
     </div>
 
     <div v-else class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

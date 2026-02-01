@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface ActivityLogEntry {
   id: string
@@ -70,11 +73,11 @@ function formatTime(date: Date): string {
 <template>
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Recent Activity</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.recentActivityTitle') }}</h2>
       <div class="flex items-center gap-2">
         <button
           class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-          title="Refresh"
+          :title="t('common.refresh')"
           @click="emit('refresh')"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -83,7 +86,7 @@ function formatTime(date: Date): string {
         </button>
         <button
           class="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-          title="Clear"
+          :title="t('common.clear')"
           @click="emit('clear')"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -95,11 +98,11 @@ function formatTime(date: Date): string {
 
     <div v-if="loading" class="p-6 text-center">
       <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">Loading activity...</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingActivity') }}</p>
     </div>
 
     <div v-else-if="entries.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
-      No recent activity
+      {{ t('common.noRecentActivity') }}
     </div>
 
     <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-96 overflow-y-auto">
@@ -134,7 +137,7 @@ function formatTime(date: Date): string {
             </p>
             <details v-if="entry.details" class="mt-1">
               <summary class="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">
-                Details
+                {{ t('common.details') }}
               </summary>
               <pre class="mt-1 text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded overflow-x-auto">{{ JSON.stringify(entry.details, null, 2) }}</pre>
             </details>
@@ -145,7 +148,7 @@ function formatTime(date: Date): string {
 
     <div v-if="entries.length > maxEntries" class="px-6 py-3 border-t border-gray-200 dark:border-gray-700 text-center">
       <span class="text-sm text-gray-500 dark:text-gray-400">
-        Showing {{ maxEntries }} of {{ entries.length }} entries
+        {{ t('common.showingEntries', { shown: maxEntries, total: entries.length }) }}
       </span>
     </div>
   </div>

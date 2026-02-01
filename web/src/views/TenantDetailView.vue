@@ -9,7 +9,7 @@
     </div>
 
     <div v-if="loading" class="loading">Loading...</div>
-    <div v-else-if="!tenant" class="error">Workspace not found</div>
+    <div v-else-if="!tenant" class="error">{{ t('common.workspaceNotFound') }}</div>
     <template v-else>
       <!-- Tabs -->
       <div class="tabs">
