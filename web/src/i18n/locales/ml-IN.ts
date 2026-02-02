@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Microsoft Teams-ഉമായി ബന്ധിപ്പിക്കുക',
     googleChatDesc: 'Google Chat-ഉമായി ബന്ധിപ്പിക്കുക',
     feishuDesc: 'Feishu/Lark Bot-യുമായി ബന്ധിപ്പിക്കുക',
-    feishuHint: 'Feishu Open Platform-ൽ ഒരു ആപ്പ് സൃഷ്ടിച്ച് ഇവന്റ് സബ്സ്ക്രിപ്ഷൻ കോൺഫിഗർ ചെയ്യുക',
+    feishuHint: 'Feishu Open Platform-ൽ ഒരു ബോട്ട് സൃഷ്ടിക്കുക. ആവശ്യം: 1) ഇവന്റുകൾക്കായി "Long Connection" പ്രവർത്തനക്ഷമമാക്കുക; 2) "im.message.receive_v1" ഇവന്റ് സബ്സ്ക്രൈബ് ചെയ്യുക; 3) "im:message:send_as_bot" അനുമതി ചേർക്കുക',
     feishuOpenChat: 'ബോട്ട് ചാറ്റ് തുറക്കുക',
     dingtalkDesc: 'DingTalk Bot-യുമായി ബന്ധിപ്പിക്കുക',
     dingtalkHint: 'DingTalk Developer Platform-ൽ ഒരു റോബോട്ട് സൃഷ്ടിക്കുക',
@@ -968,4 +968,4 @@ export default {
     clearSearch: 'തിരയൽ മായ്ക്കുക',
     allLoaded: 'എല്ലാ {count} സ്കില്ലുകളും ലോഡ് ചെയ്തു',
   },
-}
+} as typeof enUS

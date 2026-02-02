@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Koble til Microsoft Teams',
     googleChatDesc: 'Koble til Google Chat',
     feishuDesc: 'Koble til Feishu/Lark Bot',
-    feishuHint: 'Opprett en app i Feishu Open Platform og konfigurer hendelsesabonnement',
+    feishuHint: 'Opprett en bot i Feishu Open Platform. Påkrevd: 1) Aktiver "Long Connection" for hendelser; 2) Abonner på hendelsen "im.message.receive_v1"; 3) Legg til tillatelse "im:message:send_as_bot"',
     feishuOpenChat: 'Åpne botchat',
     dingtalkDesc: 'Koble til DingTalk Bot',
     dingtalkHint: 'Opprett en robot i DingTalk Developer Platform',
@@ -968,4 +968,4 @@ export default {
     clearSearch: 'Tøm søk',
     allLoaded: 'Alle {count} ferdigheter lastet',
   },
-}
+} as typeof enUS

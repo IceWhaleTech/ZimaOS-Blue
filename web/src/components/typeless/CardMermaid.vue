@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick, shallowRef, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardMermaid } from '@/types/typeless'
 
 const props = defineProps<{
   card: TypelessCardMermaid
 }>()
 
+const { t } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const svgContent = ref('')
 const error = ref<string | null>(null)
@@ -36,26 +38,9 @@ const diagramType = computed(() => {
   return 'diagram'
 })
 
-// Display name for the diagram type
+// Display name for the diagram type (using i18n)
 const diagramTypeDisplay = computed(() => {
-  const typeMap: Record<string, string> = {
-    flowchart: 'Flowchart',
-    mindmap: 'Mindmap',
-    sequence: 'Sequence',
-    class: 'Class Diagram',
-    state: 'State Diagram',
-    er: 'ER Diagram',
-    gantt: 'Gantt Chart',
-    pie: 'Pie Chart',
-    journey: 'User Journey',
-    gitgraph: 'Git Graph',
-    timeline: 'Timeline',
-    quadrant: 'Quadrant Chart',
-    sankey: 'Sankey Diagram',
-    xychart: 'XY Chart',
-    diagram: 'Diagram',
-  }
-  return typeMap[diagramType.value] || 'Diagram'
+  return t(`mermaid.${diagramType.value}`)
 })
 
 // Initialize mermaid with theme
@@ -153,9 +138,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mermaid-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="mermaid-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 flex flex-col h-full">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
       <div class="flex items-center gap-2">
         <!-- Mermaid icon -->
         <svg class="w-4 h-4 text-pink-500" viewBox="0 0 24 24" fill="currentColor">
@@ -173,7 +158,7 @@ onUnmounted(() => {
       <!-- Copy button -->
       <button
         class="flex items-center p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-        title="Copy Mermaid code"
+        :title="t('mermaid.copyCode')"
         @click="copyCode"
       >
         <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -191,9 +176,9 @@ onUnmounted(() => {
     </div>
 
     <!-- Content -->
-    <div ref="containerRef" class="p-4 overflow-auto">
+    <div ref="containerRef" class="flex-1 overflow-auto flex items-center justify-center min-h-[200px]">
       <!-- Error state -->
-      <div v-if="error" class="flex items-center gap-2 text-red-500 dark:text-red-400">
+      <div v-if="error" class="flex items-center gap-2 text-red-500 dark:text-red-400 p-4">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
@@ -208,7 +193,7 @@ onUnmounted(() => {
       <!-- Rendered diagram -->
       <div
         v-else
-        class="mermaid-svg flex justify-center"
+        class="mermaid-svg w-full h-full flex items-center justify-center p-4"
         v-html="svgContent"
       />
     </div>

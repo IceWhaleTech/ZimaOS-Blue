@@ -94,8 +94,8 @@ function handleSelect(selectedIds: string[], otherText?: string) {
 
     <!-- Dynamic component from pool -->
     <component
-      v-else-if="dynamicComponent"
       :is="dynamicComponent"
+      v-else-if="dynamicComponent"
       :card="card"
       @action="handleAction"
       @select="handleSelect"

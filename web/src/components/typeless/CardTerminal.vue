@@ -68,6 +68,7 @@ interface ParsedSegment {
 function parseAnsiToSegments(text: string): ParsedSegment[] {
   const segments: ParsedSegment[] = []
   // Match ANSI escape sequences: ESC[...m
+  // eslint-disable-next-line no-control-regex
   const ansiRegex = /\u001b\[([0-9;]*)m/g
 
   let lastIndex = 0
@@ -132,6 +133,7 @@ function parseAnsiToSegments(text: string): ParsedSegment[] {
 
 // Get plain text without ANSI codes (for copying)
 function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex
   return text.replace(/\u001b\[[0-9;]*m/g, '')
 }
 

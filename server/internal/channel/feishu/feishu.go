@@ -1,28 +1,26 @@
-// Package feishu provides a Feishu/Lark bot channel implementation.
+// Package feishu provides a Feishu/Lark bot channel implementation using official SDK.
 package feishu
 
 import (
-	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 )
 
-// Channel implements the channel.Channel interface for Feishu/Lark.
+// Channel implements the channel.Channel interface for Feishu/Lark using official SDK.
 type Channel struct {
 	config   channel.FeishuConfig
 	logger   *zap.Logger
@@ -35,95 +33,29 @@ type Channel struct {
 	lastErrorAt *time.Time
 	msgCount    atomic.Int64
 
-	tenantAccessToken string
-	tokenExpireTime   time.Time
-	tokenMu           sync.RWMutex
+	// Official SDK client
+	client   *lark.Client
+	wsClient *larkws.Client
 
 	// Bot commands
 	commandHandlers map[string]BotCommandHandler
 	commandMu       sync.RWMutex
+
+	// Message handler for AI processing
+	messageHandler MessageHandler
+
+	// Ensure messages channel is only closed once
+	closeOnce sync.Once
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // BotCommandHandler handles bot commands.
-type BotCommandHandler func(ctx context.Context, cmd string, args string, event *messageEvent) (string, *InteractiveCard, error)
+type BotCommandHandler func(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error)
 
-// InteractiveCard represents a Feishu interactive card.
-type InteractiveCard struct {
-	Config   CardConfig    `json:"config,omitempty"`
-	Header   *CardHeader   `json:"header,omitempty"`
-	Elements []CardElement `json:"elements,omitempty"`
-}
-
-// CardConfig represents card configuration.
-type CardConfig struct {
-	WideScreenMode bool `json:"wide_screen_mode,omitempty"`
-	EnableForward  bool `json:"enable_forward,omitempty"`
-}
-
-// CardHeader represents card header.
-type CardHeader struct {
-	Title    *CardText `json:"title,omitempty"`
-	Template string    `json:"template,omitempty"` // blue, wathet, turquoise, green, yellow, orange, red, carmine, violet, purple, indigo, grey
-}
-
-// CardText represents text in a card.
-type CardText struct {
-	Tag     string `json:"tag"` // plain_text, lark_md
-	Content string `json:"content"`
-}
-
-// CardElement represents an element in a card.
-type CardElement interface {
-	isCardElement()
-}
-
-// DivElement represents a div element.
-type DivElement struct {
-	Tag    string    `json:"tag"` // div
-	Text   *CardText `json:"text,omitempty"`
-	Fields []struct {
-		IsShort bool      `json:"is_short"`
-		Text    *CardText `json:"text"`
-	} `json:"fields,omitempty"`
-}
-
-func (DivElement) isCardElement() {}
-
-// ActionElement represents an action element with buttons.
-type ActionElement struct {
-	Tag     string         `json:"tag"` // action
-	Actions []ActionButton `json:"actions"`
-	Layout  string         `json:"layout,omitempty"` // bisected, trisection, flow
-}
-
-func (ActionElement) isCardElement() {}
-
-// ActionButton represents a button in an action element.
-type ActionButton struct {
-	Tag   string    `json:"tag"` // button
-	Text  *CardText `json:"text"`
-	URL   string    `json:"url,omitempty"`
-	Type  string    `json:"type,omitempty"` // default, primary, danger
-	Value map[string]interface{} `json:"value,omitempty"`
-}
-
-// NoteElement represents a note element.
-type NoteElement struct {
-	Tag      string      `json:"tag"` // note
-	Elements []CardText  `json:"elements"`
-}
-
-func (NoteElement) isCardElement() {}
-
-// HrElement represents a horizontal rule element.
-type HrElement struct {
-	Tag string `json:"tag"` // hr
-}
-
-func (HrElement) isCardElement() {}
+// MessageHandler handles incoming messages and returns AI response.
+type MessageHandler func(ctx context.Context, msg channel.Message) (string, error)
 
 // New creates a new Feishu channel.
 func New(cfg channel.FeishuConfig, logger *zap.Logger) *Channel {
@@ -152,7 +84,12 @@ func (c *Channel) Type() string {
 	return "feishu"
 }
 
-// Start initializes and starts the Feishu bot.
+// SetMessageHandler sets the handler for processing messages.
+func (c *Channel) SetMessageHandler(handler MessageHandler) {
+	c.messageHandler = handler
+}
+
+// Start initializes and starts the Feishu bot with WebSocket long connection.
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()
 	if c.status == channel.StatusConnected || c.status == channel.StatusConnecting {
@@ -164,13 +101,34 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
-	// Get initial tenant access token
-	if err := c.refreshTenantAccessToken(); err != nil {
-		c.setError(fmt.Sprintf("failed to get tenant access token: %v", err))
-		return fmt.Errorf("failed to get Feishu tenant access token: %w", err)
-	}
+	// Create Lark client
+	c.client = lark.NewClient(c.config.AppID, c.config.AppSecret)
 
-	c.logger.Info("feishu tenant access token obtained")
+	// Create event dispatcher with message handler
+	eventDispatcher := dispatcher.NewEventDispatcher(
+		c.config.VerificationToken,
+		c.config.EncryptKey,
+	).OnP2MessageReceiveV1(c.onMessageReceive)
+
+	// Create WebSocket client for long connection
+	c.wsClient = larkws.NewClient(
+		c.config.AppID,
+		c.config.AppSecret,
+		larkws.WithEventHandler(eventDispatcher),
+		larkws.WithLogLevel(larkcore.LogLevelInfo),
+	)
+
+	// Start WebSocket connection in background
+	go func() {
+		c.logger.Info("starting feishu websocket connection")
+		if err := c.wsClient.Start(c.ctx); err != nil {
+			c.logger.Error("feishu websocket error", zap.Error(err))
+			c.setError(fmt.Sprintf("websocket error: %v", err))
+		}
+	}()
+
+	// Wait a moment for connection to establish
+	time.Sleep(500 * time.Millisecond)
 
 	now := time.Now()
 	c.mu.Lock()
@@ -180,250 +138,211 @@ func (c *Channel) Start(ctx context.Context) error {
 	c.lastErrorAt = nil
 	c.mu.Unlock()
 
-	c.logger.Info("feishu channel started")
+	c.logger.Info("feishu channel started with websocket long connection")
 	return nil
 }
 
-// refreshTenantAccessToken refreshes the tenant access token.
-func (c *Channel) refreshTenantAccessToken() error {
-	payload := map[string]string{
-		"app_id":     c.config.AppID,
-		"app_secret": c.config.AppSecret,
+// onMessageReceive handles incoming messages via OnP2MessageReceiveV1.
+func (c *Channel) onMessageReceive(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+	if event == nil || event.Event == nil || event.Event.Message == nil {
+		return nil
 	}
 
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	resp, err := http.Post(
-		"https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-		"application/json",
-		bytes.NewReader(jsonPayload),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to request tenant access token: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		TenantAccessToken string `json:"tenant_access_token"`
-		Expire            int    `json:"expire"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if result.Code != 0 {
-		return fmt.Errorf("Feishu API error: %d - %s", result.Code, result.Msg)
-	}
-
-	c.tokenMu.Lock()
-	c.tenantAccessToken = result.TenantAccessToken
-	c.tokenExpireTime = time.Now().Add(time.Duration(result.Expire-300) * time.Second) // Refresh 5 minutes early
-	c.tokenMu.Unlock()
-
-	return nil
-}
-
-// getTenantAccessToken returns the current tenant access token, refreshing if necessary.
-func (c *Channel) getTenantAccessToken() (string, error) {
-	c.tokenMu.RLock()
-	if time.Now().Before(c.tokenExpireTime) {
-		token := c.tenantAccessToken
-		c.tokenMu.RUnlock()
-		return token, nil
-	}
-	c.tokenMu.RUnlock()
-
-	if err := c.refreshTenantAccessToken(); err != nil {
-		return "", err
-	}
-
-	c.tokenMu.RLock()
-	defer c.tokenMu.RUnlock()
-	return c.tenantAccessToken, nil
-}
-
-// HandleCallback handles incoming Feishu callback requests.
-// This should be called by an HTTP handler.
-func (c *Channel) HandleCallback(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		c.logger.Error("failed to read request body", zap.Error(err))
-		http.Error(w, "Failed to read body", http.StatusBadRequest)
-		return
-	}
-
-	// Check if message is encrypted
-	var encryptedBody struct {
-		Encrypt string `json:"encrypt"`
-	}
-	if err := json.Unmarshal(body, &encryptedBody); err == nil && encryptedBody.Encrypt != "" {
-		// Decrypt the message
-		decrypted, err := c.decryptMessage(encryptedBody.Encrypt)
-		if err != nil {
-			c.logger.Error("failed to decrypt message", zap.Error(err))
-			http.Error(w, "Decryption failed", http.StatusInternalServerError)
-			return
-		}
-		body = []byte(decrypted)
-	}
-
-	// Parse the event
-	var event feishuEvent
-	if err := json.Unmarshal(body, &event); err != nil {
-		c.logger.Error("failed to parse event", zap.Error(err))
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	// Handle URL verification
-	if event.Type == "url_verification" {
-		c.handleURLVerification(w, &event)
-		return
-	}
-
-	// Verify token
-	if event.Token != c.config.VerificationToken {
-		c.logger.Warn("invalid verification token")
-		http.Error(w, "Invalid token", http.StatusForbidden)
-		return
-	}
-
-	// Handle event callback
-	c.handleEventCallback(w, &event)
-}
-
-// feishuEvent represents a Feishu event.
-type feishuEvent struct {
-	Schema    string `json:"schema"`
-	Type      string `json:"type"`
-	Token     string `json:"token"`
-	Challenge string `json:"challenge"`
-	Header    struct {
-		EventID    string `json:"event_id"`
-		EventType  string `json:"event_type"`
-		CreateTime string `json:"create_time"`
-		Token      string `json:"token"`
-		AppID      string `json:"app_id"`
-		TenantKey  string `json:"tenant_key"`
-	} `json:"header"`
-	Event json.RawMessage `json:"event"`
-}
-
-// handleURLVerification handles URL verification requests.
-func (c *Channel) handleURLVerification(w http.ResponseWriter, event *feishuEvent) {
-	response := map[string]string{
-		"challenge": event.Challenge,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
-// handleEventCallback handles event callbacks.
-func (c *Channel) handleEventCallback(w http.ResponseWriter, event *feishuEvent) {
-	switch event.Header.EventType {
-	case "im.message.receive_v1":
-		c.handleMessageEvent(event)
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-// messageEvent represents a message event.
-type messageEvent struct {
-	Sender struct {
-		SenderID struct {
-			UnionID string `json:"union_id"`
-			UserID  string `json:"user_id"`
-			OpenID  string `json:"open_id"`
-		} `json:"sender_id"`
-		SenderType string `json:"sender_type"`
-		TenantKey  string `json:"tenant_key"`
-	} `json:"sender"`
-	Message struct {
-		MessageID   string `json:"message_id"`
-		RootID      string `json:"root_id"`
-		ParentID    string `json:"parent_id"`
-		CreateTime  string `json:"create_time"`
-		ChatID      string `json:"chat_id"`
-		ChatType    string `json:"chat_type"`
-		MessageType string `json:"message_type"`
-		Content     string `json:"content"`
-		Mentions    []struct {
-			Key       string `json:"key"`
-			ID        struct {
-				UnionID string `json:"union_id"`
-				UserID  string `json:"user_id"`
-				OpenID  string `json:"open_id"`
-			} `json:"id"`
-			Name      string `json:"name"`
-			TenantKey string `json:"tenant_key"`
-		} `json:"mentions"`
-	} `json:"message"`
-}
-
-// handleMessageEvent handles message events.
-func (c *Channel) handleMessageEvent(event *feishuEvent) {
-	var msgEvent messageEvent
-	if err := json.Unmarshal(event.Event, &msgEvent); err != nil {
-		c.logger.Error("failed to parse message event", zap.Error(err))
-		return
-	}
+	msg := event.Event.Message
+	sender := event.Event.Sender
 
 	// Parse message content
 	var content string
-	switch msgEvent.Message.MessageType {
+	msgType := ""
+	if msg.MessageType != nil {
+		msgType = *msg.MessageType
+	}
+
+	switch msgType {
 	case "text":
 		var textContent struct {
 			Text string `json:"text"`
 		}
-		if err := json.Unmarshal([]byte(msgEvent.Message.Content), &textContent); err == nil {
-			content = textContent.Text
+		if msg.Content != nil {
+			if err := json.Unmarshal([]byte(*msg.Content), &textContent); err == nil {
+				content = textContent.Text
+			}
 		}
 	default:
-		content = msgEvent.Message.Content
+		if msg.Content != nil {
+			content = *msg.Content
+		}
 	}
 
+	// Get IDs safely
+	chatID := ""
+	if msg.ChatId != nil {
+		chatID = *msg.ChatId
+	}
+	userID := ""
+	if sender != nil && sender.SenderId != nil && sender.SenderId.OpenId != nil {
+		userID = *sender.SenderId.OpenId
+	}
+	messageID := ""
+	if msg.MessageId != nil {
+		messageID = *msg.MessageId
+	}
+
+	c.logger.Info("received message",
+		zap.String("chat_id", chatID),
+		zap.String("user_id", userID),
+		zap.String("content", content),
+		zap.String("msg_type", msgType))
+
 	// Check if this is a command
-	if c.processCommand(content, &msgEvent) {
-		return
+	if c.processCommand(ctx, content, chatID, userID) {
+		return nil
 	}
 
 	// Convert to unified message format
 	channelMsg := channel.Message{
-		ID:          msgEvent.Message.MessageID,
+		ID:          messageID,
 		ChannelName: "feishu",
-		ChatID:      msgEvent.Message.ChatID,
-		UserID:      msgEvent.Sender.SenderID.OpenID,
-		Type:        c.convertMessageType(msgEvent.Message.MessageType),
+		ChatID:      chatID,
+		UserID:      userID,
+		Type:        c.convertMessageType(msgType),
 		Content:     content,
-		Timestamp:   parseFeishuTimestamp(msgEvent.Message.CreateTime),
-		IsGroup:     msgEvent.Message.ChatType == "group",
+		Timestamp:   time.Now(),
+		IsGroup:     msg.ChatType != nil && *msg.ChatType == "group",
 		Metadata: map[string]interface{}{
-			"chat_type":    msgEvent.Message.ChatType,
-			"message_type": msgEvent.Message.MessageType,
-			"tenant_key":   msgEvent.Sender.TenantKey,
+			"msg_type": msgType,
 		},
-	}
-
-	// Handle reply
-	if msgEvent.Message.ParentID != "" {
-		channelMsg.ReplyToID = msgEvent.Message.ParentID
 	}
 
 	c.msgCount.Add(1)
 
-	select {
-	case c.messages <- channelMsg:
-	default:
-		c.logger.Warn("message channel full, dropping message",
-			zap.String("message_id", channelMsg.ID))
+	// If message handler is set, process and reply
+	if c.messageHandler != nil {
+		go func() {
+			response, err := c.messageHandler(c.ctx, channelMsg)
+			if err != nil {
+				c.logger.Error("message handler error", zap.Error(err))
+				response = "处理消息时发生错误，请稍后重试。"
+			}
+			if response != "" {
+				if err := c.SendText(c.ctx, chatID, response); err != nil {
+					c.logger.Error("failed to send response", zap.Error(err))
+				}
+			}
+		}()
+	} else {
+		// Send to message channel for external processing
+		// Check if channel is still connected before sending
+		c.mu.RLock()
+		isConnected := c.status == channel.StatusConnected
+		c.mu.RUnlock()
+
+		if !isConnected {
+			c.logger.Warn("channel not connected, dropping message",
+				zap.String("message_id", messageID))
+			return nil
+		}
+
+		select {
+		case c.messages <- channelMsg:
+		default:
+			c.logger.Warn("message channel full, dropping message",
+				zap.String("message_id", messageID))
+		}
 	}
+
+	return nil
+}
+
+// SendText sends a text message using official SDK.
+func (c *Channel) SendText(ctx context.Context, chatID string, text string) error {
+	content, _ := json.Marshal(map[string]string{"text": text})
+
+	// Determine receive_id_type
+	receiveIDType := "chat_id"
+	if strings.HasPrefix(chatID, "ou_") {
+		receiveIDType = "open_id"
+	} else if strings.HasPrefix(chatID, "on_") {
+		receiveIDType = "union_id"
+	}
+
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(receiveIDType).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			ReceiveId(chatID).
+			MsgType("text").
+			Content(string(content)).
+			Build()).
+		Build()
+
+	resp, err := c.client.Im.V1.Message.Create(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	if !resp.Success() {
+		return fmt.Errorf("feishu API error: %d - %s", resp.Code, resp.Msg)
+	}
+
+	c.logger.Debug("message sent", zap.String("chat_id", chatID))
+	return nil
+}
+
+// Send sends a message through Feishu (implements channel.Channel interface).
+func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	return c.SendText(ctx, msg.ChatID, msg.Content)
+}
+
+// SendCard sends an interactive card message.
+func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) error {
+	receiveIDType := "chat_id"
+	if strings.HasPrefix(chatID, "ou_") {
+		receiveIDType = "open_id"
+	} else if strings.HasPrefix(chatID, "on_") {
+		receiveIDType = "union_id"
+	}
+
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(receiveIDType).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			ReceiveId(chatID).
+			MsgType("interactive").
+			Content(cardJSON).
+			Build()).
+		Build()
+
+	resp, err := c.client.Im.V1.Message.Create(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to send card: %w", err)
+	}
+
+	if !resp.Success() {
+		return fmt.Errorf("feishu API error: %d - %s", resp.Code, resp.Msg)
+	}
+
+	return nil
+}
+
+// Stop gracefully shuts down the channel.
+func (c *Channel) Stop(ctx context.Context) error {
+	c.mu.Lock()
+	if c.status == channel.StatusDisconnected {
+		c.mu.Unlock()
+		return nil
+	}
+	c.status = channel.StatusDisconnected
+	c.mu.Unlock()
+
+	if c.cancel != nil {
+		c.cancel()
+	}
+
+	// Use sync.Once to ensure channel is only closed once
+	c.closeOnce.Do(func() {
+		close(c.messages)
+	})
+	c.logger.Info("feishu channel stopped")
+	return nil
 }
 
 // convertMessageType converts Feishu message type to unified type.
@@ -446,289 +365,12 @@ func (c *Channel) convertMessageType(msgType string) channel.MessageType {
 	}
 }
 
-// decryptMessage decrypts an encrypted message.
-func (c *Channel) decryptMessage(encrypted string) (string, error) {
-	if c.config.EncryptKey == "" {
-		return "", fmt.Errorf("encrypt key not configured")
-	}
-
-	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
-	if err != nil {
-		return "", fmt.Errorf("invalid base64: %w", err)
-	}
-
-	// Generate AES key from encrypt key
-	hash := sha256.Sum256([]byte(c.config.EncryptKey))
-	key := hash[:]
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	if len(ciphertext) < aes.BlockSize {
-		return "", fmt.Errorf("ciphertext too short")
-	}
-
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
-
-	mode := cipher.NewCBCDecrypter(block, iv)
-	mode.CryptBlocks(ciphertext, ciphertext)
-
-	// Remove PKCS7 padding
-	padding := int(ciphertext[len(ciphertext)-1])
-	if padding > aes.BlockSize || padding == 0 {
-		return "", fmt.Errorf("invalid padding")
-	}
-	ciphertext = ciphertext[:len(ciphertext)-padding]
-
-	return string(ciphertext), nil
-}
-
-// Stop gracefully shuts down the channel.
-func (c *Channel) Stop(ctx context.Context) error {
-	c.mu.Lock()
-	if c.status == channel.StatusDisconnected {
-		c.mu.Unlock()
-		return nil
-	}
-	c.status = channel.StatusDisconnected
-	c.mu.Unlock()
-
-	if c.cancel != nil {
-		c.cancel()
-	}
-
-	close(c.messages)
-	c.logger.Info("feishu channel stopped")
-	return nil
-}
-
-// Send sends a message through Feishu.
-func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	token, err := c.getTenantAccessToken()
-	if err != nil {
-		return fmt.Errorf("failed to get tenant access token: %w", err)
-	}
-
-	// Determine message type and content
-	msgType := "text"
-	var content interface{}
-
-	if msg.Format == "interactive" || msg.Format == "card" {
-		msgType = "interactive"
-		content = json.RawMessage(msg.Content)
-	} else {
-		content = map[string]string{
-			"text": msg.Content,
-		}
-	}
-
-	contentJSON, err := json.Marshal(content)
-	if err != nil {
-		return fmt.Errorf("failed to marshal content: %w", err)
-	}
-
-	// Build request payload
-	payload := map[string]interface{}{
-		"receive_id": msg.ChatID,
-		"msg_type":   msgType,
-		"content":    string(contentJSON),
-	}
-
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	// Determine receive_id_type based on chat ID format
-	receiveIDType := "chat_id"
-	if strings.HasPrefix(msg.ChatID, "ou_") {
-		receiveIDType = "open_id"
-	} else if strings.HasPrefix(msg.ChatID, "on_") {
-		receiveIDType = "union_id"
-	}
-
-	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=%s", receiveIDType)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonPayload))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if result.Code != 0 {
-		return fmt.Errorf("Feishu API error: %d - %s", result.Code, result.Msg)
-	}
-
-	return nil
-}
-
-// SendStreaming sends a message with streaming support.
-// Feishu supports card updates for streaming-like behavior.
-func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
-	defer close(done)
-
-	var fullContent strings.Builder
-	var sentMsgID string
-	lastUpdate := time.Now()
-	updateInterval := 500 * time.Millisecond
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case chunk, ok := <-content:
-			if !ok {
-				// Channel closed, send final message
-				if fullContent.Len() > 0 {
-					if sentMsgID != "" {
-						return c.updateMessage(ctx, sentMsgID, fullContent.String())
-					}
-					return c.Send(ctx, channel.OutgoingMessage{
-						ChatID:  chatID,
-						Content: fullContent.String(),
-					})
-				}
-				return nil
-			}
-
-			fullContent.WriteString(chunk)
-
-			// Update message periodically
-			if time.Since(lastUpdate) >= updateInterval {
-				if sentMsgID == "" {
-					// Send initial message
-					msgID, err := c.sendAndGetID(ctx, chatID, fullContent.String())
-					if err != nil {
-						c.logger.Error("failed to send streaming message", zap.Error(err))
-						continue
-					}
-					sentMsgID = msgID
-				} else {
-					// Update existing message
-					if err := c.updateMessage(ctx, sentMsgID, fullContent.String()); err != nil {
-						c.logger.Warn("failed to update streaming message", zap.Error(err))
-					}
-				}
-				lastUpdate = time.Now()
-			}
-		}
-	}
-}
-
-// sendAndGetID sends a message and returns the message ID.
-func (c *Channel) sendAndGetID(ctx context.Context, chatID, content string) (string, error) {
-	token, err := c.getTenantAccessToken()
-	if err != nil {
-		return "", fmt.Errorf("failed to get tenant access token: %w", err)
-	}
-
-	contentJSON, _ := json.Marshal(map[string]string{"text": content})
-	payload := map[string]interface{}{
-		"receive_id": chatID,
-		"msg_type":   "text",
-		"content":    string(contentJSON),
-	}
-
-	jsonPayload, _ := json.Marshal(payload)
-
-	receiveIDType := "chat_id"
-	if strings.HasPrefix(chatID, "ou_") {
-		receiveIDType = "open_id"
-	}
-
-	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=%s", receiveIDType)
-
-	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonPayload))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-		Data struct {
-			MessageID string `json:"message_id"`
-		} `json:"data"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	if result.Code != 0 {
-		return "", fmt.Errorf("Feishu API error: %d - %s", result.Code, result.Msg)
-	}
-
-	return result.Data.MessageID, nil
-}
-
-// updateMessage updates an existing message.
-func (c *Channel) updateMessage(ctx context.Context, messageID, content string) error {
-	token, err := c.getTenantAccessToken()
-	if err != nil {
-		return fmt.Errorf("failed to get tenant access token: %w", err)
-	}
-
-	contentJSON, _ := json.Marshal(map[string]string{"text": content})
-	payload := map[string]interface{}{
-		"msg_type": "text",
-		"content":  string(contentJSON),
-	}
-
-	jsonPayload, _ := json.Marshal(payload)
-
-	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages/%s", messageID)
-
-	req, _ := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewReader(jsonPayload))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	if result.Code != 0 {
-		return fmt.Errorf("Feishu API error: %d - %s", result.Code, result.Msg)
-	}
-
-	return nil
-}
-
 // Info returns current information about the channel.
 func (c *Channel) Info() channel.Info {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	info := channel.Info{
+	return channel.Info{
 		Name:         "feishu",
 		Type:         "feishu",
 		Status:       c.status,
@@ -738,11 +380,10 @@ func (c *Channel) Info() channel.Info {
 		LastErrorAt:  c.lastErrorAt,
 		MessageCount: c.msgCount.Load(),
 		Metadata: map[string]interface{}{
-			"app_id": c.config.AppID,
+			"app_id":     c.config.AppID,
+			"connection": "websocket",
 		},
 	}
-
-	return info
 }
 
 // IsConnected returns true if the channel is connected.
@@ -767,13 +408,6 @@ func (c *Channel) setError(err string) {
 	c.status = channel.StatusError
 }
 
-// parseFeishuTimestamp parses a Feishu timestamp to time.Time.
-func parseFeishuTimestamp(ts string) time.Time {
-	var msec int64
-	fmt.Sscanf(ts, "%d", &msec)
-	return time.UnixMilli(msec)
-}
-
 // RegisterCommand registers a bot command handler.
 func (c *Channel) RegisterCommand(cmd string, handler BotCommandHandler) {
 	c.commandMu.Lock()
@@ -781,78 +415,13 @@ func (c *Channel) RegisterCommand(cmd string, handler BotCommandHandler) {
 	c.commandHandlers[cmd] = handler
 }
 
-// handleHelpCommand handles the /help command.
-func (c *Channel) handleHelpCommand(ctx context.Context, cmd string, args string, event *messageEvent) (string, *InteractiveCard, error) {
-	card := &InteractiveCard{
-		Config: CardConfig{
-			WideScreenMode: true,
-			EnableForward:  true,
-		},
-		Header: &CardHeader{
-			Title:    &CardText{Tag: "plain_text", Content: "📚 帮助信息"},
-			Template: "blue",
-		},
-		Elements: []CardElement{
-			DivElement{
-				Tag: "div",
-				Text: &CardText{
-					Tag:     "lark_md",
-					Content: "**可用命令：**\n\n/start - 开始使用机器人\n/help - 显示帮助信息\n\n**使用方法：**\n直接发送消息即可与 AI 对话。",
-				},
-			},
-		},
-	}
-
-	return "", card, nil
-}
-
-// handleStartCommand handles the /start command.
-func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args string, event *messageEvent) (string, *InteractiveCard, error) {
-	card := &InteractiveCard{
-		Config: CardConfig{
-			WideScreenMode: true,
-			EnableForward:  true,
-		},
-		Header: &CardHeader{
-			Title:    &CardText{Tag: "plain_text", Content: "👋 欢迎使用 ZimaOS Echo"},
-			Template: "green",
-		},
-		Elements: []CardElement{
-			DivElement{
-				Tag: "div",
-				Text: &CardText{
-					Tag:     "lark_md",
-					Content: "我是您的 AI 助手，可以帮助您：\n\n• 回答问题\n• 处理任务\n• 提供建议\n\n直接发送消息开始对话吧！",
-				},
-			},
-			ActionElement{
-				Tag:    "action",
-				Layout: "bisected",
-				Actions: []ActionButton{
-					{
-						Tag:  "button",
-						Text: &CardText{Tag: "plain_text", Content: "📚 查看帮助"},
-						Type: "default",
-						Value: map[string]interface{}{
-							"action": "help",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	return "", card, nil
-}
-
 // processCommand checks if a message is a command and processes it.
-func (c *Channel) processCommand(content string, event *messageEvent) bool {
+func (c *Channel) processCommand(ctx context.Context, content string, chatID string, userID string) bool {
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, "/") {
 		return false
 	}
 
-	// Parse command and arguments
 	parts := strings.SplitN(content, " ", 2)
 	cmd := parts[0]
 	args := ""
@@ -868,173 +437,59 @@ func (c *Channel) processCommand(content string, event *messageEvent) bool {
 		return false
 	}
 
-	c.logger.Debug("processing command",
-		zap.String("command", cmd),
-		zap.String("args", args))
+	c.logger.Debug("processing command", zap.String("command", cmd), zap.String("args", args))
 
-	text, card, err := handler(c.ctx, cmd, args, event)
-	if err != nil {
-		c.logger.Error("command handler error",
-			zap.String("command", cmd),
-			zap.Error(err))
-		text = "处理命令时发生错误，请稍后重试。"
-	}
-
-	// Send response
-	if card != nil {
-		if err := c.SendCard(c.ctx, event.Message.ChatID, card); err != nil {
-			c.logger.Error("failed to send card response",
-				zap.String("command", cmd),
-				zap.Error(err))
+	go func() {
+		response, err := handler(ctx, cmd, args, chatID, userID)
+		if err != nil {
+			c.logger.Error("command handler error", zap.String("command", cmd), zap.Error(err))
+			response = "处理命令时发生错误，请稍后重试。"
 		}
-	} else if text != "" {
-		if err := c.Send(c.ctx, channel.OutgoingMessage{
-			ChatID:  event.Message.ChatID,
-			Content: text,
-		}); err != nil {
-			c.logger.Error("failed to send text response",
-				zap.String("command", cmd),
-				zap.Error(err))
+		if response != "" {
+			if err := c.SendText(ctx, chatID, response); err != nil {
+				c.logger.Error("failed to send command response", zap.Error(err))
+			}
 		}
-	}
+	}()
 
 	return true
 }
 
-// SendCard sends an interactive card message.
-func (c *Channel) SendCard(ctx context.Context, chatID string, card *InteractiveCard) error {
-	token, err := c.getTenantAccessToken()
-	if err != nil {
-		return fmt.Errorf("failed to get tenant access token: %w", err)
-	}
-
-	cardJSON, err := json.Marshal(card)
-	if err != nil {
-		return fmt.Errorf("failed to marshal card: %w", err)
-	}
-
-	payload := map[string]interface{}{
-		"receive_id": chatID,
-		"msg_type":   "interactive",
-		"content":    string(cardJSON),
-	}
-
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	receiveIDType := "chat_id"
-	if strings.HasPrefix(chatID, "ou_") {
-		receiveIDType = "open_id"
-	} else if strings.HasPrefix(chatID, "on_") {
-		receiveIDType = "union_id"
-	}
-
-	url := fmt.Sprintf("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=%s", receiveIDType)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonPayload))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send card: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if result.Code != 0 {
-		return fmt.Errorf("Feishu API error: %d - %s", result.Code, result.Msg)
-	}
-
-	return nil
+// handleHelpCommand handles the /help command.
+func (c *Channel) handleHelpCommand(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error) {
+	return "📚 帮助信息\n\n可用命令：\n/start - 开始使用机器人\n/help - 显示帮助信息\n\n使用方法：\n直接发送消息即可与 AI 对话。", nil
 }
 
-// HandleCardAction handles card action callbacks.
-func (c *Channel) HandleCardAction(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		c.logger.Error("failed to read request body", zap.Error(err))
-		http.Error(w, "Failed to read body", http.StatusBadRequest)
-		return
-	}
+// handleStartCommand handles the /start command.
+func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error) {
+	return "👋 欢迎使用 ZimaOS Echo\n\n我是您的 AI 助手，可以帮助您：\n• 回答问题\n• 处理任务\n• 提供建议\n\n直接发送消息开始对话吧！", nil
+}
 
-	var action struct {
-		OpenID        string `json:"open_id"`
-		UserID        string `json:"user_id"`
-		OpenMessageID string `json:"open_message_id"`
-		TenantKey     string `json:"tenant_key"`
-		Token         string `json:"token"`
-		Action        struct {
-			Value map[string]interface{} `json:"value"`
-			Tag   string                 `json:"tag"`
-		} `json:"action"`
-	}
+// GetClient returns the Lark client for advanced usage.
+func (c *Channel) GetClient() *lark.Client {
+	return c.client
+}
 
-	if err := json.Unmarshal(body, &action); err != nil {
-		c.logger.Error("failed to parse card action", zap.Error(err))
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
+// SendStreaming sends a message with streaming support.
+// For Feishu, we accumulate the content and send as a single message.
+func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
+	defer close(done)
 
-	// Verify token
-	if action.Token != c.config.VerificationToken {
-		c.logger.Warn("invalid verification token in card action")
-		http.Error(w, "Invalid token", http.StatusForbidden)
-		return
-	}
+	var fullContent strings.Builder
 
-	c.logger.Debug("received card action",
-		zap.String("user_id", action.UserID),
-		zap.Any("value", action.Action.Value))
-
-	// Handle built-in actions
-	if actionName, ok := action.Action.Value["action"].(string); ok {
-		switch actionName {
-		case "help":
-			// Trigger help command
-			event := &messageEvent{}
-			event.Message.ChatID = action.OpenID
-			event.Sender.SenderID.OpenID = action.OpenID
-			c.processCommand("/help", event)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case chunk, ok := <-content:
+			if !ok {
+				// Channel closed, send final message
+				if fullContent.Len() > 0 {
+					return c.SendText(ctx, chatID, fullContent.String())
+				}
+				return nil
+			}
+			fullContent.WriteString(chunk)
 		}
 	}
-
-	// Send to message channel for custom handling
-	channelMsg := channel.Message{
-		ID:          action.OpenMessageID,
-		ChannelName: "feishu",
-		ChatID:      action.OpenID,
-		UserID:      action.OpenID,
-		Type:        channel.MessageTypeText,
-		Content:     fmt.Sprintf("%v", action.Action.Value),
-		Timestamp:   time.Now(),
-		IsGroup:     false,
-		Metadata: map[string]interface{}{
-			"is_card_action": true,
-			"action_value":   action.Action.Value,
-			"action_tag":     action.Action.Tag,
-			"message_id":     action.OpenMessageID,
-		},
-	}
-
-	select {
-	case c.messages <- channelMsg:
-	default:
-		c.logger.Warn("message channel full, dropping card action")
-	}
-
-	w.WriteHeader(http.StatusOK)
 }

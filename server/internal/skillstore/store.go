@@ -47,6 +47,7 @@ func (s *Store) initSchema() error {
 		versions INTEGER DEFAULT 0,
 		changelog TEXT,
 		readme TEXT,
+		readme_hash TEXT,
 		dedup_key TEXT,
 		installed INTEGER DEFAULT 0,
 		enabled INTEGER DEFAULT 0,
@@ -113,7 +114,14 @@ func (s *Store) initSchema() error {
 	`
 
 	_, err := s.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migration: add readme_hash column if not exists
+	_, _ = s.db.Exec("ALTER TABLE skills ADD COLUMN readme_hash TEXT")
+
+	return nil
 }
 
 // UpsertSkill inserts or updates a skill.
@@ -628,6 +636,36 @@ func (s *Store) UpdateReadme(ctx context.Context, id string, readme string) erro
 	query := "UPDATE skills SET readme = ?, updated_at = ? WHERE id = ?"
 	_, err := s.db.ExecContext(ctx, query, readme, time.Now(), id)
 	return err
+}
+
+// UpdateReadmeBatch updates readme content for multiple skills in a single transaction.
+// Only updates records where the readme hash has changed.
+func (s *Store) UpdateReadmeBatch(ctx context.Context, updates []readmeUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Only update if hash is different (or was NULL)
+	stmt, err := tx.PrepareContext(ctx, "UPDATE skills SET readme = ?, readme_hash = ?, updated_at = ? WHERE id = ? AND (readme_hash IS NULL OR readme_hash != ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	for _, u := range updates {
+		if _, err := stmt.ExecContext(ctx, u.Readme, u.Hash, now, u.ID, u.Hash); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // DeleteBySource deletes all skills from a source.

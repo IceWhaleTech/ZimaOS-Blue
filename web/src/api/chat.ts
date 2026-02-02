@@ -53,6 +53,7 @@ export interface SendMessageRequest {
   temperature?: number
   max_tokens?: number
   attachments?: MessageAttachment[]
+  regenerate?: boolean  // True if this is a regenerate request
 }
 
 export interface SendMessageResponse {

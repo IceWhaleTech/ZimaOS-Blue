@@ -157,8 +157,9 @@ async function importConfig(ideType: string) {
 
     // Remove from importable list
     importableConfigs.value = importableConfigs.value.filter(c => c.ide_type !== ideType)
-  } catch (e: any) {
-    error.value = e.response?.data?.error || t('ideDiscovery.importError')
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { error?: string } } }
+    error.value = err.response?.data?.error || t('ideDiscovery.importError')
     console.error('Failed to import config:', e)
   } finally {
     importing.value = null
@@ -187,9 +188,9 @@ function getSourceLabel(source: string): string {
         {{ t('ideDiscovery.description') }}
       </p>
       <button
-        @click="startScan"
         :disabled="scanning"
         class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        @click="startScan"
       >
         <svg v-if="scanning" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -353,9 +354,9 @@ function getSourceLabel(source: string): string {
           </div>
 
           <button
-            @click="importConfig(config.ide_type)"
             :disabled="importing === config.ide_type || !config.api_key"
             class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            @click="importConfig(config.ide_type)"
           >
             <svg v-if="importing === config.ide_type" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

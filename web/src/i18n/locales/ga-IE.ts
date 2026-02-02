@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Ceangail le Microsoft Teams',
     googleChatDesc: 'Ceangail le Google Chat',
     feishuDesc: 'Ceangail le Feishu/Lark Bot',
-    feishuHint: 'Cruthaigh aip i Feishu Open Platform agus cumraigh síntiús imeachtaí',
+    feishuHint: 'Cruthaigh bot i Feishu Open Platform. Riachtanach: 1) Cumasaigh "Long Connection" le haghaidh imeachtaí; 2) Liostáil ar an imeacht "im.message.receive_v1"; 3) Cuir cead "im:message:send_as_bot" leis',
     feishuOpenChat: 'Oscail comhrá an bhot',
     dingtalkDesc: 'Ceangail le DingTalk Bot',
     dingtalkHint: 'Cruthaigh robot i DingTalk Developer Platform',
@@ -1174,4 +1174,4 @@ export default {
     clearSearch: 'Glan cuardach',
     allLoaded: 'Gach {count} scil luchtaithe',
   },
-}
+} as typeof enUS

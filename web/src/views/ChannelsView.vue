@@ -199,9 +199,8 @@ const channelDefs = shallowRef<ChannelDef[]>([
     fields: [
       { key: 'app_id', labelKey: 'channels.appId', type: 'text', placeholderKey: 'channels.placeholderFeishuAppId', value: '', required: true },
       { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '', required: true },
-      { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholderKey: 'channels.placeholderVerificationToken', value: '', required: true },
+      { key: 'verification_token', labelKey: 'channels.verificationToken', type: 'password', placeholderKey: 'channels.placeholderVerificationToken', value: '' },
       { key: 'encrypt_key', labelKey: 'channels.encryptKey', type: 'password', placeholder: '', value: '' },
-      { key: 'webhook_url', labelKey: 'channels.webhookUrl', type: 'url', placeholderKey: 'channels.placeholderWebhookUrl', value: '' },
     ],
   },
   {

@@ -444,7 +444,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 rounded-lg">
+  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 rounded-lg flex items-center justify-center">
     <!-- Canvas -->
     <canvas
       ref="canvasRef"
@@ -504,27 +504,27 @@ watch(() => props.events.length, (newLen, oldLen) => {
       <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #3b82f6" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.messageIn') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.message_received') }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #22c55e" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.messageOut') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.message_sent') }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #a855f7" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.toolCall') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.tool_call') }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #6366f1" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.llmRequest') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.llm_request') }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #ef4444" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.security') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.security_threat') }}</span>
         </div>
         <div class="flex items-center gap-2">
           <div class="w-3 h-3 rounded" style="background-color: #f59e0b" />
-          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.sandbox') }}</span>
+          <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.eventType.sandbox_exec') }}</span>
         </div>
       </div>
     </div>
@@ -539,10 +539,10 @@ watch(() => props.events.length, (newLen, oldLen) => {
         {{ getNodeLabel(hoveredNode) }}
       </div>
       <div class="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-        <div>{{ t('companion.flow.type') }}: {{ hoveredNode.event_type }}</div>
+        <div>{{ t('companion.flow.type') }}: {{ t(`companion.eventType.${hoveredNode.event_type}`) }}</div>
         <div>{{ t('companion.flow.time') }}: {{ formatTime(hoveredNode.timestamp) }}</div>
         <div v-if="hoveredNode.duration">{{ t('companion.flow.duration') }}: {{ formatDuration(hoveredNode.duration) }}</div>
-        <div>{{ t('companion.flow.status') }}: {{ hoveredNode.status }}</div>
+        <div>{{ t('companion.flow.status') }}: {{ t(`companion.status.${hoveredNode.status}`) }}</div>
       </div>
     </div>
   </div>

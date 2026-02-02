@@ -430,6 +430,7 @@ func (p *OpenAIProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reader io.Reader, model string, callback StreamCallback) error {
 	// Read directly without buffering for immediate response
 	var messageID string
+	var actualModel = model // Track actual model from response
 	var promptTokens, completionTokens int
 	var lineBuffer strings.Builder
 	buf := make([]byte, 1)
@@ -472,7 +473,7 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 				// Send final chunk
 				return callback(StreamChunk{
 					ID:    messageID,
-					Model: model,
+					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
 						PromptTokens:     promptTokens,
@@ -506,6 +507,11 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 				messageID = chunk.ID
 			}
 
+			// Capture actual model from response
+			if chunk.Model != "" {
+				actualModel = chunk.Model
+			}
+
 			if chunk.Usage != nil {
 				promptTokens = chunk.Usage.PromptTokens
 				completionTokens = chunk.Usage.CompletionTokens
@@ -528,7 +534,7 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 			if chunk.Choices[0].FinishReason == "stop" {
 				return callback(StreamChunk{
 					ID:    messageID,
-					Model: model,
+					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
 						PromptTokens:     promptTokens,
@@ -547,6 +553,7 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Reader, ch chan<- StreamChunk, model string) {
 	bufReader := bufio.NewReaderSize(reader, 4096)
 	var messageID string
+	var actualModel = model // Track actual model from response
 	var promptTokens, completionTokens int
 	var lineBuffer strings.Builder
 
@@ -587,7 +594,7 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 					return
 				case ch <- StreamChunk{
 					ID:    messageID,
-					Model: model,
+					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
 						PromptTokens:     promptTokens,
@@ -623,6 +630,11 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 				messageID = chunk.ID
 			}
 
+			// Capture actual model from response
+			if chunk.Model != "" {
+				actualModel = chunk.Model
+			}
+
 			if chunk.Usage != nil {
 				promptTokens = chunk.Usage.PromptTokens
 				completionTokens = chunk.Usage.CompletionTokens
@@ -651,7 +663,7 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 					return
 				case ch <- StreamChunk{
 					ID:    messageID,
-					Model: model,
+					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
 						PromptTokens:     promptTokens,

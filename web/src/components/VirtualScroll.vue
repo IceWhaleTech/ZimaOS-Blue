@@ -187,7 +187,7 @@ onUnmounted(() => {
           v-for="index in visibleItems"
           :key="index"
           :index="index"
-          :updateHeight="(height: number) => updateItemHeight(index, height)"
+          :update-height="(height: number) => updateItemHeight(index, height)"
         />
       </div>
     </div>

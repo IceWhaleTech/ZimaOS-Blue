@@ -73,12 +73,12 @@ defineExpose({ refresh: fetchStats })
           <button
             type="button"
             :disabled="toggling"
-            @click="toggleCache"
             :class="[
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
               stats?.enabled ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600',
               toggling ? 'opacity-50 cursor-not-allowed' : ''
             ]"
+            @click="toggleCache"
           >
             <span
               :class="[
@@ -90,17 +90,17 @@ defineExpose({ refresh: fetchStats })
         </label>
         <!-- Clear button -->
         <button
-          @click="clearCache"
           :disabled="clearing || !stats?.enabled"
           class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          @click="clearCache"
         >
           {{ clearing ? t('common.loading') : t('cache.clear') }}
         </button>
         <!-- Refresh button -->
         <button
-          @click="fetchStats"
           :disabled="loading"
           class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50 transition-colors"
+          @click="fetchStats"
         >
           {{ t('common.refresh') }}
         </button>
@@ -181,13 +181,15 @@ defineExpose({ refresh: fetchStats })
             {{ stats?.enabled ? t('cache.enabled') : t('cache.disabled') }}
           </p>
         </div>
-        <div :class="[
+        <div
+:class="[
           'p-3 rounded-full',
           stats?.enabled
             ? 'bg-green-100 dark:bg-green-900/30'
             : 'bg-gray-100 dark:bg-gray-700'
         ]">
-          <svg :class="[
+          <svg
+:class="[
             'w-6 h-6',
             stats?.enabled
               ? 'text-green-600 dark:text-green-400'

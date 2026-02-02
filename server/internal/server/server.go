@@ -47,10 +47,14 @@ func New(cfg *config.ServerConfig) *Server {
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(zerologMiddleware())
-	// Configure CORS with restricted origins (security fix)
-	// In production, configure specific allowed origins via environment or config
+	// Configure CORS with dynamic origin validation
+	// Origins are validated at runtime to support dynamic port binding
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     security.GetDefaultAllowedOrigins(),
+		AllowOriginFunc: func(origin string) (bool, error) {
+			return security.CheckOriginDefault(&http.Request{
+				Header: http.Header{"Origin": []string{origin}},
+			}), nil
+		},
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,
@@ -136,6 +140,10 @@ func (s *Server) Start() error {
 	// Get the actual port from the listener
 	tcpAddr := ln.Addr().(*net.TCPAddr)
 	actualPort.Store(int32(tcpAddr.Port))
+
+	// Update security package with actual port for dynamic CORS origins
+	security.SetServerPort(tcpAddr.Port)
+
 	logger.Info().
 		Int("actual_port", tcpAddr.Port).
 		Int("configured_port", s.config.Port).

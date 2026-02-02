@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Połącz z Microsoft Teams',
     googleChatDesc: 'Połącz z Google Chat',
     feishuDesc: 'Połącz z Feishu/Lark Bot',
-    feishuHint: 'Utwórz aplikację w Feishu Open Platform i skonfiguruj subskrypcję zdarzeń',
+    feishuHint: 'Utwórz bota w Feishu Open Platform. Wymagane: 1) Włącz "Long Connection" dla zdarzeń; 2) Subskrybuj zdarzenie "im.message.receive_v1"; 3) Dodaj uprawnienie "im:message:send_as_bot"',
     feishuOpenChat: 'Otwórz czat bota',
     dingtalkDesc: 'Połącz z DingTalk Bot',
     dingtalkHint: 'Utwórz robota w DingTalk Developer Platform',
@@ -1192,4 +1192,4 @@ export default {
     clearSearch: 'Wyczyść wyszukiwanie',
     allLoaded: 'Załadowano wszystkie {count} umiejętności',
   },
-}
+} as typeof enUS

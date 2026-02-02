@@ -722,7 +722,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -766,7 +766,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
 	e := srv.Echo()
 
 	// Initialize connection manager and add middleware for tracking all connections
@@ -1214,6 +1214,40 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 				if ch == nil {
 					return // Unknown channel type
 				}
+
+				// Set message handler for Feishu channel (auto-reply first, then proxy)
+				if feishuCh, ok := ch.(interface {
+					SetMessageHandler(handler func(ctx context.Context, msg channel.Message) (string, error))
+				}); ok {
+					feishuCh.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
+						// 1. Check auto-reply rules first
+						if autoreplyService != nil {
+							response, rule, err := autoreplyService.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
+							if err != nil {
+								logger.Warn().Err(err).Msg("Auto-reply match error")
+							}
+							if response != "" && rule != nil {
+								logger.Info().Str("rule_id", rule.ID).Str("channel", msg.ChannelName).Msg("Auto-reply rule matched")
+								return response, nil
+							}
+						}
+
+						// 2. No auto-reply matched, call AI via chat handler
+						if chatHandler != nil {
+							// Use chat handler to get AI response
+							aiResponse, err := chatHandler.ProcessChannelMessage(ctx, msg)
+							if err != nil {
+								logger.Error().Err(err).Msg("Failed to process message via AI")
+								return "", err
+							}
+							return aiResponse, nil
+						}
+
+						return "", nil
+					})
+					logger.Info().Str("channel", cfg.ID).Msg("Message handler set for channel")
+				}
+
 				if err := channelManager.Register(ch); err != nil {
 					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to register channel")
 					return

@@ -34,9 +34,8 @@ describe('HomeView Performance Optimizations', () => {
     vi.clearAllMocks()
 
     // Setup default mock responses
-    vi.mocked(systemApi.getMetricsHistory).mockResolvedValue({
-      data: { metrics: [] },
-    } as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(systemApi.getMetricsHistory).mockResolvedValue({ data: { metrics: [] } } as any)
   })
 
   afterEach(() => {
@@ -76,6 +75,7 @@ describe('HomeView Performance Optimizations', () => {
     global.AbortController = vi.fn(() => ({
       abort: abortSpy,
       signal: {} as AbortSignal,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any
 
     const wrapper = mount(HomeView, {
@@ -178,6 +178,7 @@ describe('HomeView Performance Optimizations', () => {
     })
 
     // Access the component's metricsHistory
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const vm = wrapper.vm as any
 
     // Verify it's a ref (we can't directly test if it's shallow, but we can verify it exists)
@@ -251,9 +252,8 @@ describe('System Store Caching', () => {
     const store = useSystemStore()
     const { healthApi } = await import('@/api/index')
 
-    vi.mocked(healthApi.getHealth).mockResolvedValue({
-      data: { status: 'ok' },
-    } as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(healthApi.getHealth).mockResolvedValue({ data: { status: 'ok' } } as any)
 
     // First call
     await store.fetchHealth()
@@ -275,10 +275,12 @@ describe('System Store Caching', () => {
     const store = useSystemStore()
     const { healthApi } = await import('@/api/index')
 
-    let resolveHealth: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let resolveHealth: (value: any) => void
     vi.mocked(healthApi.getHealth).mockReturnValue(
       new Promise((resolve) => {
         resolveHealth = resolve
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any
     )
 
@@ -302,9 +304,8 @@ describe('System Store Caching', () => {
     const store = useSystemStore()
     const { healthApi } = await import('@/api/index')
 
-    vi.mocked(healthApi.getHealth).mockResolvedValue({
-      data: { status: 'ok' },
-    } as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(healthApi.getHealth).mockResolvedValue({ data: { status: 'ok' } } as any)
 
     // First call
     await store.fetchHealth()

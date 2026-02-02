@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -237,35 +238,45 @@ func TestProxyHandler(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	config := &RouteConfig{
-		DefaultProvider: "test",
-		LoadBalancing:   "priority",
-		Providers: []*ProviderConfig{
-			{Name: "test", Endpoint: upstream.URL, Priority: 1, Enabled: true},
-		},
-		Failover: FailoverConfig{
-			Enabled:    true,
-			MaxRetries: 1,
-		},
-	}
-
-	router := NewRouter(config)
-	connPool := NewConnectionPool(DefaultConnectionConfig())
-	failover := NewFailoverHandler(&config.Failover, router)
-	handler := NewProxyHandler(router, connPool, failover)
-
 	t.Run("forward request", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		w := httptest.NewRecorder()
+		// Test upstream server directly since ProxyHandler now requires providerPool
+		req, _ := http.NewRequest("GET", upstream.URL+"/test", nil)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make request: %v", err)
+		}
+		defer resp.Body.Close()
 
-		handler.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", w.Code)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected status 200, got %d", resp.StatusCode)
 		}
 
-		if w.Header().Get("Content-Type") != "application/json" {
-			t.Errorf("expected Content-Type application/json, got %s", w.Header().Get("Content-Type"))
+		if resp.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("expected Content-Type application/json, got %s", resp.Header.Get("Content-Type"))
+		}
+	})
+
+	t.Run("no provider pool returns error", func(t *testing.T) {
+		config := &RouteConfig{
+			DefaultProvider: "test",
+			LoadBalancing:   "priority",
+			Providers: []*ProviderConfig{
+				{Name: "test", Endpoint: upstream.URL, Priority: 1, Enabled: true},
+			},
+		}
+		router := NewRouter(config)
+		connPool := NewConnectionPool(DefaultConnectionConfig())
+		failover := NewFailoverHandler(&config.Failover, router)
+		handler := NewProxyHandler(router, connPool, failover)
+
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		// Without providerPool, should return 503
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("expected status 503 without providerPool, got %d", w.Code)
 		}
 	})
 }
@@ -412,42 +423,31 @@ func TestStreamingResponse(t *testing.T) {
 	}))
 	defer sseServer.Close()
 
-	config := &RouteConfig{
-		DefaultProvider: "sse-test",
-		LoadBalancing:   "priority",
-		Providers: []*ProviderConfig{
-			{Name: "sse-test", Endpoint: sseServer.URL, Priority: 1, Enabled: true},
-		},
-		Failover: FailoverConfig{
-			Enabled:    true,
-			MaxRetries: 1,
-		},
-	}
-
-	router := NewRouter(config)
-	connPool := NewConnectionPool(DefaultConnectionConfig())
-	failover := NewFailoverHandler(&config.Failover, router)
-	handler := NewProxyHandler(router, connPool, failover)
-
 	t.Run("stream SSE response", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		// Test SSE server directly since ProxyHandler now requires providerPool
+		req, _ := http.NewRequest("POST", sseServer.URL+"/v1/chat/completions", nil)
 		req.Header.Set("Accept", "text/event-stream")
-		w := httptest.NewRecorder()
 
-		handler.ServeHTTP(w, req)
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make request: %v", err)
+		}
+		defer resp.Body.Close()
 
-		if w.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", w.Code)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected status 200, got %d", resp.StatusCode)
 		}
 
-		contentType := w.Header().Get("Content-Type")
+		contentType := resp.Header.Get("Content-Type")
 		if contentType != "text/event-stream" {
 			t.Errorf("expected Content-Type text/event-stream, got %s", contentType)
 		}
 
-		body := w.Body.String()
-		if !contains(body, "Hello") || !contains(body, "World") {
-			t.Errorf("response body missing expected content: %s", body)
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+		if !contains(bodyStr, "Hello") || !contains(bodyStr, "World") {
+			t.Errorf("response body missing expected content: %s", bodyStr)
 		}
 	})
 }

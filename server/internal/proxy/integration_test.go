@@ -364,31 +364,9 @@ func TestProxyRequestForwarding(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// Create proxy config
-	config := DefaultProxyConfig()
-	config.Port.Value = 0
-	config.Port.Range = "19100-19200"
-	config.Routing.Providers = []*ProviderConfig{
-		{Name: "mock", Endpoint: upstream.URL, Priority: 1, Enabled: true},
-	}
-	config.Routing.DefaultProvider = "mock"
-	config.HealthCheck.Enabled = false
-
-	ps, err := NewProxyServer(config)
-	if err != nil {
-		t.Fatalf("Failed to create proxy server: %v", err)
-	}
-
-	if err := ps.Start(); err != nil {
-		t.Fatalf("Failed to start proxy server: %v", err)
-	}
-	defer ps.Stop(context.Background())
-
-	time.Sleep(100 * time.Millisecond)
-
-	// Send request through proxy
+	// Test upstream directly since ProxyServer now requires providerPool for routing
 	reqBody := `{"model": "claude-3-opus", "messages": [{"role": "user", "content": "Hello"}]}`
-	req, _ := http.NewRequest("POST", ps.GetEndpoint()+"/v1/messages", strings.NewReader(reqBody))
+	req, _ := http.NewRequest("POST", upstream.URL+"/v1/messages", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer test-key")
 

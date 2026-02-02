@@ -211,9 +211,9 @@ export default {
     sendMessage: '메시지 보내기',
     typeMessage: '메시지를 입력하세요...',
     thinking: '생각 중...',
-    copyMessage: '메시지 복사',
     regenerate: '재생성',
     stopGenerating: '생성 중지',
+    continueGenerating: '계속',
     selectModel: '모델 선택',
     provider: '공급자',
     model: '모델',
@@ -228,7 +228,9 @@ export default {
     toggleSidebarShortcut: '사이드바 토글',
     dismiss: '닫기',
     attachFile: '파일 첨부',
+    moreActions: '더 많은 작업',
     inputPlaceholder: '메시지를 입력하세요... (Enter로 보내기, Shift+Enter로 새 줄)',
+    inputPlaceholderShort: '메시지를 입력하세요...',
     send: '보내기',
     enterToSend: '누르기',
     newLine: '새 줄',
@@ -240,24 +242,68 @@ export default {
     deleteConversation: '대화 삭제',
     confirmDelete: '삭제하시겠습니까?',
     yesterday: '어제',
+    // Voice input
+    pressHoldToSpeak: '마이크 버튼을 누르고 있으면 말할 수 있습니다',
     startRecording: '음성 녹음 시작',
     stopRecording: '녹음 중지',
     recording: '녹음 중...',
     voiceTranscriptionError: '오디오 전사 실패',
     voiceRecordingError: '녹음 중 오류가 발생했습니다',
     voiceMicrophoneError: '마이크에 액세스할 수 없습니다',
+    // TTS playback
+    playTTS: '오디오 재생',
+    stopTTS: '오디오 중지',
+    ttsError: '음성 합성 실패',
+    ttsNoContent: '재생할 내용이 없습니다',
+    // Camera and image
+    takePhoto: '사진 찍기',
+    imagePreview: {
+      zoomIn: '확대',
+      zoomOut: '축소',
+      reset: '줌 재설정',
+    },
+    // Talk Mode
+    talkMode: {
+      title: '음성 모드',
+      conversation: '대화',
+      walkieTalkie: '무전기',
+      connecting: '연결 중...',
+      listening: '듣는 중...',
+      processing: '처리 중...',
+      speaking: '말하는 중...',
+      tapToStart: '탭하여 말하기 시작',
+      holdToTalk: '누르고 말하기',
+      you: '당신',
+      assistant: '어시스턴트',
+      conversationDesc: '연속 대화 모드 - AI가 자동으로 응답합니다',
+      walkieTalkieDesc: '푸시 투 토크 모드 - 말하는 동안 버튼을 누르고 있기',
+      connectionError: '음성 서비스 연결 실패',
+      transcriptionError: '오디오 전사 실패',
+    },
+    transcription: {
+      title: '전사',
+      placeholder: '전사된 텍스트가 여기에 표시됩니다...',
+      send: '보내기',
+      confidence: '{percent}% 신뢰도',
+      hint: 'Ctrl+Enter를 눌러 보내기, Esc를 눌러 취소',
+    },
+    // Security
+    // Preset questions
+    presetQuestions: {
+      title: '질문해 보세요',
+      refresh: '더 보기',
+    },
+    threatLevel: '위협 수준',
+    dismissWarning: '무시',
     trialExhausted: '체험판 할당량이 소진되었습니다. 계속하려면 AI 공급자를 직접 설정하세요.',
     configureProvider: '공급자 설정',
-    trialQuota: {
-      exhausted: '체험판 할당량 소진',
-      remaining: '{tokens} 토큰 남음',
-      configure: '설정',
-    },
-    // Provider selector
-    addProvider: '프로바이더 추가',
-    autoSwitch: '자동 전환',
+    // Claude Code CLI
+    poweredByClaudeCode: '{name}로 구동',
+    poweredByClaudeCodeDesc: '채팅은 {name} 기능으로 향상되었으며, 스킬, 도구 호출 및 파일 작업을 포함합니다',
+    enableClaudeCodeDesc: '{name}를 활성화하여 스킬, 도구 호출, 파일 작업 등을 더 나은 경험을 제공합니다',
+    enableClaudeCodePrompt: '{name}를 활성화하여 더 많은 기능 사용',
+    // Routing Mode
     autoSwitchDesc: '현재 프로바이더가 실패하면 다른 프로바이더로 자동 전환',
-    auto: '자동',
     routingMode: {
       auto: '자동',
       cloud: '클라우드',
@@ -268,16 +314,34 @@ export default {
       cloudOnlyDesc: '클라우드 공급자만 구성됨',
       localOnlyDesc: '로컬 공급자만 구성됨',
     },
+    // Provider selector
+    addProvider: '프로바이더 추가',
     manageProviders: '공급자 관리',
+    // Provider status
+    noProviderConfigured: '공급자가 구성되지 않았습니다. 클릭하여 추가하세요.',
+    allProvidersFailed: '모든 공급자가 실패했습니다. 클릭하여 설정을 확인하세요.',
+    providerActive: '공급자가 활성화되어 준비되었습니다.',
+    providerPending: '공급자 상태 확인 중...',
+    // Trial quota
+    trialQuota: {
+      exhausted: '체험판 할당량 소진. 자신의 공급자를 구성하세요.',
+      remaining: '{tokens} 토큰 남음',
+      configure: '설정',
+    },
+    // Multi-select
     selectMessage: '선택',
     messagesSelected: '선택됨',
     searching: '검색 중...',
+    // Message stats
     stats: {
       inputTokens: '입력',
       outputTokens: '출력',
       ttft: 'TTFT',
       speed: '토큰/초',
     },
+    // Message actions
+    copyMessage: '메시지 복사',
+    filePreviewNotSupported: '이 파일 유형에 대한 미리보기를 사용할 수 없습니다',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1825,11 +1889,13 @@ export default {
       session_start: '세션 시작',
       session_end: '세션 종료',
       message_received: '메시지 수신',
-      message_recieved: '메시지 수신',
       message_sent: '메시지 발신',
+      regenerate: '재생성',
       tool_call: '도구 호출',
       llm_request: 'LLM 요청',
       security_threat: '보안 위협',
+      sandbox_exec: '샌드박스 실행',
+      error: '오류',
     },
     events: '이벤트',
     messages: '메시지',
@@ -2110,7 +2176,7 @@ export default {
     teamsDesc: 'Microsoft Teams 연결',
     googleChatDesc: 'Google Chat 연결',
     feishuDesc: 'Feishu/Lark 봇 연결',
-    feishuHint: 'Feishu Open Platform에서 앱을 만들고 이벤트 구독을 설정하세요',
+    feishuHint: 'Feishu Open Platform에서 봇을 만드세요. 필수: 1) 이벤트에 "Long Connection" 활성화; 2) "im.message.receive_v1" 이벤트 구독; 3) "im:message:send_as_bot" 권한 추가',
     feishuOpenChat: '봇 채팅 열기',
     dingtalkDesc: 'DingTalk 봇 연결',
     dingtalkHint: 'DingTalk Developer Platform에서 로봇을 생성하세요',
@@ -2397,4 +2463,4 @@ export default {
     'zh-CN': '간체 중국어',
     'zh-TW': '번체 중국어',
   },
-}
+} as typeof enUS

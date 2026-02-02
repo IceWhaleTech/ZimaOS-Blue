@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Csatlakozás a Microsoft Teamshez',
     googleChatDesc: 'Csatlakozás a Google Chathez',
     feishuDesc: 'Csatlakozás a Feishu/Lark Bot-hoz',
-    feishuHint: 'Hozzon létre alkalmazást a Feishu Open Platformon, és konfigurálja az eseményfeliratkozást',
+    feishuHint: 'Hozzon létre botot a Feishu Open Platformon. Szükséges: 1) Engedélyezze a "Long Connection" eseményekhez; 2) Iratkozzon fel az "im.message.receive_v1" eseményre; 3) Adja hozzá az "im:message:send_as_bot" jogosultságot',
     feishuOpenChat: 'Bot csevegés megnyitása',
     dingtalkDesc: 'Csatlakozás a DingTalk Bot-hoz',
     dingtalkHint: 'Hozzon létre robotot a DingTalk Developer Platformon',
@@ -968,4 +968,4 @@ export default {
     clearSearch: 'Keresés törlése',
     allLoaded: 'Mind a {count} készség betöltve',
   },
-}
+} as typeof enUS

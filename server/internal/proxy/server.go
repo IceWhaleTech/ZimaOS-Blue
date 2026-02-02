@@ -1,12 +1,18 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 )
 
 // ProxyServer is the main proxy server
@@ -149,6 +155,12 @@ func (ps *ProxyServer) Start() error {
 	if ps.apiHandler != nil {
 		ps.apiHandler.RegisterRoutes(mux)
 	}
+
+	// Anthropic-compatible API endpoints (for Claude Code CLI)
+	mux.HandleFunc("/v1/messages", ps.handleAnthropicMessages)
+
+	// OpenAI-compatible API endpoints
+	mux.HandleFunc("/v1/chat/completions", ps.handler.ServeHTTP)
 
 	// Proxy handler for all other requests
 	mux.Handle("/", ps.handler)
@@ -568,4 +580,171 @@ func (ps *ProxyServer) handleTriggerHealthCheck(w http.ResponseWriter, r *http.R
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// handleAnthropicMessages handles POST /v1/messages (Anthropic-compatible API)
+// This endpoint allows Claude Code CLI to use the proxy with Anthropic API format.
+// Supports automatic failover to next provider on failure.
+func (ps *ProxyServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Read request body
+	bodyBytes, err := io.ReadAll(r.Body)
+	r.Body.Close()
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	// Parse Anthropic request to extract model
+	var anthropicReq map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &anthropicReq); err != nil {
+		http.Error(w, "Invalid JSON request", http.StatusBadRequest)
+		return
+	}
+
+	model, _ := anthropicReq["model"].(string)
+	isStreaming, _ := anthropicReq["stream"].(bool)
+
+	// Route through Provider Pool to get provider + API key
+	if ps.handler.providerPool == nil {
+		http.Error(w, "No provider pool configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Get all candidates for failover
+	route, err := ps.handler.providerPool.Router.Route(&providerpool.RouteRequest{
+		ModelID: model,
+	})
+	if err != nil {
+		http.Error(w, "No available provider: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	// Try primary provider first, then fallbacks
+	providers := []*providerpool.Provider{route.Provider}
+	for _, fallback := range route.Fallbacks {
+		providers = append(providers, fallback.Provider)
+	}
+
+	var lastErr error
+	var lastStatusCode int
+	for i, provider := range providers {
+		// Get API key for this provider
+		apiKey, _ := ps.handler.providerPool.Registry.GetAPIKey(provider.ID)
+
+		resp, statusCode, err := ps.tryAnthropicProvider(r.Context(), provider, apiKey, bodyBytes, isStreaming)
+		if err == nil && statusCode < 500 {
+			// Success - copy response to client
+			ps.copyAnthropicResponse(w, resp, isStreaming)
+			return
+		}
+
+		// Record failure for metrics
+		lastErr = err
+		lastStatusCode = statusCode
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		// Log failover attempt
+		if i < len(providers)-1 {
+			fmt.Printf("Anthropic API: Provider %s failed (status=%d, err=%v), trying next provider\n",
+				provider.Name, statusCode, err)
+		}
+	}
+
+	// All providers failed
+	if lastErr != nil {
+		http.Error(w, "All providers failed: "+lastErr.Error(), http.StatusBadGateway)
+	} else {
+		http.Error(w, fmt.Sprintf("All providers failed with status %d", lastStatusCode), http.StatusBadGateway)
+	}
+}
+
+// tryAnthropicProvider attempts to send request to a single provider
+func (ps *ProxyServer) tryAnthropicProvider(
+	ctx context.Context,
+	provider *providerpool.Provider,
+	apiKey *providerpool.APIKey,
+	bodyBytes []byte,
+	isStreaming bool,
+) (*http.Response, int, error) {
+	// Build upstream URL
+	targetURL, err := url.Parse(provider.BaseURL)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid provider URL: %w", err)
+	}
+
+	upstreamURL := *targetURL
+	upstreamURL.Path = singleJoiningSlash(targetURL.Path, "/v1/messages")
+
+	// Create upstream request
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL.String(), bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != nil && apiKey.Key != "" {
+		req.Header.Set("x-api-key", apiKey.Key)
+	}
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Host = targetURL.Host
+
+	// Send request
+	client := ps.connPool.GetClient(provider.Name)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return resp, resp.StatusCode, nil
+}
+
+// copyAnthropicResponse copies the response to the client
+func (ps *ProxyServer) copyAnthropicResponse(w http.ResponseWriter, resp *http.Response, isStreaming bool) {
+	defer resp.Body.Close()
+
+	// Copy response headers
+	for key, values := range resp.Header {
+		if !isHopByHopHeader(key) {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+	}
+
+	// Handle streaming vs non-streaming response
+	if isStreaming || strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(resp.StatusCode)
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			io.Copy(w, resp.Body)
+			return
+		}
+
+		buf := make([]byte, 4096)
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				w.Write(buf[:n])
+				flusher.Flush()
+			}
+			if err != nil {
+				break
+			}
+		}
+	} else {
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}
 }

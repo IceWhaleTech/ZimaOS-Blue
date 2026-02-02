@@ -48,9 +48,10 @@ async function fetchMetricsHistory() {
     abortController = new AbortController()
     const response = await systemApi.getMetricsHistory('5m')
     metricsHistory.value = response.data.metrics || []
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Don't update state if request was aborted
-    if (error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
+    const err = error as { name?: string }
+    if (err?.name !== 'AbortError' && err?.name !== 'CanceledError') {
       metricsHistory.value = []
     }
   }

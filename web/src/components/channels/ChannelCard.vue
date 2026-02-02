@@ -197,7 +197,8 @@ function formatRelativeTime(dateStr: string | undefined): string {
       <!-- Runtime Statistics (when enabled) -->
       <template v-if="channel.enabled">
         <!-- Connection Status -->
-        <div class="mb-4 p-3 rounded-lg" :class="{
+        <div
+class="mb-4 p-3 rounded-lg" :class="{
           'bg-green-50 dark:bg-green-900/20': channel.status === 'connected',
           'bg-yellow-50 dark:bg-yellow-900/20': channel.status === 'connecting',
           'bg-red-50 dark:bg-red-900/20': channel.status === 'error',
@@ -205,7 +206,8 @@ function formatRelativeTime(dateStr: string | undefined): string {
         }">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full" :class="statusColor"></span>
-            <span class="text-sm font-medium" :class="{
+            <span
+class="text-sm font-medium" :class="{
               'text-green-700 dark:text-green-400': channel.status === 'connected',
               'text-yellow-700 dark:text-yellow-400': channel.status === 'connecting',
               'text-red-700 dark:text-red-400': channel.status === 'error',

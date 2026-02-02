@@ -11,4 +11,4 @@ export default {
   // Note: Most British English spelling differences (colour, favourite, etc.)
   // are handled in the UI components or are not used in the codebase.
   // This file can be extended with British English translations as needed.
-}
+} as typeof enUS

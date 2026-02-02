@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Poveži s Microsoft Teams',
     googleChatDesc: 'Poveži s Google Chat',
     feishuDesc: 'Poveži s Feishu/Lark Bot',
-    feishuHint: 'Stvorite aplikaciju u Feishu Open Platform i konfigurirajte pretplatu na događaje',
+    feishuHint: 'Stvorite bota u Feishu Open Platform. Potrebno: 1) Omogućite "Long Connection" za događaje; 2) Pretplatite se na događaj "im.message.receive_v1"; 3) Dodajte dozvolu "im:message:send_as_bot"',
     feishuOpenChat: 'Otvori chat bota',
     dingtalkDesc: 'Poveži s DingTalk Bot',
     dingtalkHint: 'Stvorite robota u DingTalk Developer Platform',
@@ -968,4 +968,4 @@ export default {
     clearSearch: 'Očisti pretragu',
     allLoaded: 'Učitano svih {count} vještina',
   },
-}
+} as typeof enUS

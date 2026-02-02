@@ -636,6 +636,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
 
   // Parse ANSI escape codes and convert to HTML spans with inline styles
   function parseAnsiToHtml(text: string): string {
+    // eslint-disable-next-line no-control-regex
     const ansiRegex = /\x1b\[([0-9;]*)m/g
     let result = ''
     let lastIndex = 0
@@ -695,6 +696,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
 
   // Strip ANSI codes for plain text (used for copying)
   function stripAnsi(text: string): string {
+    // eslint-disable-next-line no-control-regex
     return text.replace(/\x1b\[[0-9;]*m/g, '')
   }
 

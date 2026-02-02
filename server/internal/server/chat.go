@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
@@ -161,13 +162,21 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 }
 
 // getDefaultProvider returns the best available provider from the pool.
-// It selects the first enabled provider with the highest priority and creates
-// a dynamic LLM provider instance using the pool configuration.
-// Falls back to the legacy provider registry if no pool is configured.
+// It prioritizes Claude Code CLI if enabled, then selects from the provider pool
+// by priority, and finally falls back to the legacy provider registry.
 // Note: This function no longer fetches models to avoid I/O overhead.
 // The caller should use req.Model directly if available.
 func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error) {
-	// Try provider pool first
+	// Priority 1: Check if Claude Code CLI is enabled
+	if h.claudeCodeHandler != nil && h.claudeCodeHandler.IsEnabled() {
+		// Try to get the claude-code provider from registry
+		ccProvider := h.providers.Get("claude-code")
+		if ccProvider != nil {
+			return ccProvider, "claude-code", "", nil
+		}
+	}
+
+	// Priority 2: Try provider pool
 	if h.providerPool != nil {
 		// Get enabled providers from pool, sorted by priority
 		poolProviders := h.providerPool.Registry.ListEnabled()
@@ -209,7 +218,7 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 		}
 	}
 
-	// Fallback to legacy provider registry
+	// Priority 3: Fallback to legacy provider registry
 	providerNames := h.providers.List()
 	if len(providerNames) == 0 {
 		return nil, "", "", fmt.Errorf("no available providers")
@@ -307,6 +316,41 @@ func (h *ChatHandler) getCompanionSessionID(convID string) string {
 // GetProviderRegistry returns the provider registry.
 func (h *ChatHandler) GetProviderRegistry() *llm.ProviderRegistry {
 	return h.providers
+}
+
+// ProcessChannelMessage processes a message from a channel (e.g., Feishu) and returns AI response.
+func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Message) (string, error) {
+	// Get default provider
+	provider, providerName, model, err := h.getDefaultProvider()
+	if err != nil {
+		return "", fmt.Errorf("failed to get provider: %w", err)
+	}
+
+	// If no model from provider, use a default
+	if model == "" {
+		model = "gpt-4o-mini" // Default model
+	}
+
+	// Build messages for LLM
+	messages := []llm.Message{
+		{
+			Role:    "user",
+			Content: msg.Content,
+		},
+	}
+
+	// Call LLM
+	req := llm.ChatRequest{
+		Model:    model,
+		Messages: messages,
+	}
+
+	resp, err := provider.Chat(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM chat failed (%s): %w", providerName, err)
+	}
+
+	return resp.Message.Content, nil
 }
 
 // CreateConversationRequest represents a request to create a conversation.
@@ -447,13 +491,16 @@ type SendMessageRequest struct {
 	Temperature float64             `json:"temperature,omitempty"`
 	MaxTokens   int                 `json:"max_tokens,omitempty"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	Regenerate  bool                `json:"regenerate,omitempty"`
 }
 
 // SendMessageResponse represents a response from sending a message.
 type SendMessageResponse struct {
-	ID      string `json:"id"`
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	ID       string `json:"id"`
+	Role     string `json:"role"`
+	Content  string `json:"content"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 // SendMessage sends a message and gets a response from the LLM.
@@ -492,7 +539,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Auto-select provider and model from pool
-	provider, _, model, err := h.getDefaultProvider()
+	provider, providerID, model, err := h.getDefaultProvider()
 	if err != nil {
 		// Check if this is a trial quota exhausted error
 		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
@@ -504,6 +551,16 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			})
 		}
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
+	}
+
+	// Set companion manager on claude-code provider for sandbox event tracking
+	if providerID == "claude-code" {
+		if ccProvider, ok := provider.(*claudecode.Provider); ok {
+			sessionID := h.getCompanionSessionID(convID)
+			if h.companionManager != nil && sessionID != "" {
+				ccProvider.SetCompanionManager(h.companionManager, sessionID)
+			}
+		}
 	}
 
 	// Use model from request if specified
@@ -524,7 +581,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if h.companionManager != nil {
 		sessionID := h.getCompanionSessionID(convID)
 		if sessionID != "" {
-			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound")
+			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound", req.Regenerate)
 		}
 	}
 
@@ -569,6 +626,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	resp, err := provider.Chat(c.Request().Context(), chatReq)
 	latencyMs := float64(time.Since(startTime).Milliseconds())
 
+	// Use actual model from response if available
+	if resp != nil && resp.Model != "" {
+		model = resp.Model
+	}
+
 	// Estimate tokens if API didn't return usage data
 	if resp != nil && resp.Usage.TotalTokens == 0 {
 		resp.Usage.PromptTokens = estimateInputTokens(llmMessages)
@@ -581,6 +643,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		sessionID := h.getCompanionSessionID(convID)
 		if sessionID != "" {
 			h.emitLLMRequestEvent(c.Request().Context(), sessionID, req.Provider, model, resp, err, time.Duration(latencyMs)*time.Millisecond)
+			// Emit message sent event for the AI response
+			if resp != nil {
+				h.emitMessageSentEvent(c.Request().Context(), sessionID, resp.Message.Content, resp.Usage.CompletionTokens)
+			}
 		}
 	}
 
@@ -607,6 +673,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	if err != nil {
+		// Emit error event to companion
+		if h.companionManager != nil {
+			sessionID := h.getCompanionSessionID(convID)
+			if sessionID != "" {
+				h.emitErrorEvent(c.Request().Context(), sessionID, err.Error())
+			}
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get response from LLM")
 	}
 
@@ -636,9 +709,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, SendMessageResponse{
-		ID:      assistantMsg.ID,
-		Role:    "assistant",
-		Content: resp.Message.Content,
+		ID:       assistantMsg.ID,
+		Role:     "assistant",
+		Content:  resp.Message.Content,
+		Provider: providerName,
+		Model:    model,
 	})
 }
 
@@ -796,6 +871,16 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
+	// Set companion manager on claude-code provider for sandbox event tracking
+	if providerID == "claude-code" {
+		if ccProvider, ok := provider.(*claudecode.Provider); ok {
+			sessionID := h.getCompanionSessionID(convID)
+			if h.companionManager != nil && sessionID != "" {
+				ccProvider.SetCompanionManager(h.companionManager, sessionID)
+			}
+		}
+	}
+
 	// Use model from request if specified
 	if req.Model != "" {
 		model = req.Model
@@ -832,7 +917,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if h.companionManager != nil {
 		sessionID := h.getCompanionSessionID(convID)
 		if sessionID != "" {
-			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound")
+			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound", req.Regenerate)
 		}
 	}
 
@@ -934,12 +1019,18 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var fullContent string
 	var totalInputTokens, totalOutputTokens int
 	var firstChunkTime time.Time
+	var actualModel string // Track actual model from response
 
 	// Use callback-based streaming to avoid channel issues
 	err = provider.ChatStreamCallback(ctx, chatReq, func(chunk llm.StreamChunk) error {
 		// Track first chunk time for TTFT calculation
 		if firstChunkTime.IsZero() && chunk.Delta != "" {
 			firstChunkTime = time.Now()
+		}
+
+		// Capture actual model from response if provided
+		if chunk.Model != "" && actualModel == "" {
+			actualModel = chunk.Model
 		}
 
 		// Check for error in chunk
@@ -991,6 +1082,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 
 		if chunk.Done {
+			// Use actual model from response if available, otherwise use request model
+			if actualModel != "" {
+				model = actualModel
+			}
+
 			// Fallback: estimate tokens if provider didn't return usage
 			if totalInputTokens == 0 {
 				totalInputTokens = estimateInputTokens(compactedMessages)
@@ -1084,6 +1180,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 						},
 					}
 					h.emitLLMRequestEvent(context.Background(), sessionID, providerName, model, llmResp, nil, time.Duration(latencyMs)*time.Millisecond)
+					// Emit message sent event for the AI response
+					h.emitMessageSentEvent(context.Background(), sessionID, fullContent, totalOutputTokens)
 				}
 			}
 		}
@@ -1466,13 +1564,22 @@ func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Messag
 }
 
 // emitMessageEvent emits a message event to the companion system.
-func (h *ChatHandler) emitMessageEvent(ctx context.Context, sessionID, content, direction string) {
+func (h *ChatHandler) emitMessageEvent(ctx context.Context, sessionID, content, direction string, regenerate bool) {
 	if h.companionManager == nil {
 		return
 	}
+	// Use different event type based on direction and regenerate flag
+	var eventType companion.SessionEventType
+	if regenerate {
+		eventType = companion.EventRegenerate
+	} else if direction == "outbound" {
+		eventType = companion.EventMessageSent
+	} else {
+		eventType = companion.EventMessageReceived
+	}
 	event := &companion.SessionEvent{
 		SessionID: sessionID,
-		EventType: companion.EventMessageReceived,
+		EventType: eventType,
 		Platform:  companion.PlatformWeb,
 		Message: &companion.MessageEvent{
 			Direction: direction,
@@ -1541,6 +1648,99 @@ func (h *ChatHandler) emitSecurityEvent(ctx context.Context, sessionID string, r
 			Action:           "blocked",
 			Source:           "prompt_guard",
 		},
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// emitMessageSentEvent emits a message sent event to the companion system.
+func (h *ChatHandler) emitMessageSentEvent(ctx context.Context, sessionID, content string, tokens int) {
+	if h.companionManager == nil {
+		return
+	}
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventMessageSent,
+		Platform:  companion.PlatformWeb,
+		Message: &companion.MessageEvent{
+			Direction: "outbound",
+			Content:   content,
+		},
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// emitErrorEvent emits an error event to the companion system.
+func (h *ChatHandler) emitErrorEvent(ctx context.Context, sessionID string, errMsg string) {
+	if h.companionManager == nil {
+		return
+	}
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventError,
+		Platform:  companion.PlatformWeb,
+		Status:    "error",
+		Error:     errMsg,
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// emitToolCallEvent emits a tool call event to the companion system.
+func (h *ChatHandler) emitToolCallEvent(ctx context.Context, sessionID, toolName, toolID string, input map[string]interface{}, output interface{}, duration time.Duration, status string, err error) {
+	if h.companionManager == nil {
+		return
+	}
+	toolEvent := &companion.ToolCallEvent{
+		ToolName: toolName,
+		ToolID:   toolID,
+		Input:    input,
+		Output:   output,
+		Duration: companion.FromDuration(duration),
+		Status:   status,
+	}
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventToolCall,
+		Platform:  companion.PlatformWeb,
+		ToolCall:  toolEvent,
+		Duration:  companion.FromDuration(duration),
+		Status:    status,
+	}
+	if err != nil {
+		event.Error = err.Error()
+	}
+	_ = h.companionManager.EmitEvent(ctx, event)
+}
+
+// emitSandboxExecEvent emits a sandbox execution event to the companion system.
+func (h *ChatHandler) emitSandboxExecEvent(ctx context.Context, sessionID, command string, args []string, duration time.Duration, status string, exitCode int, err error) {
+	if h.companionManager == nil {
+		return
+	}
+	// Use ToolCallEvent structure for sandbox execution
+	input := map[string]interface{}{
+		"command": command,
+		"args":    args,
+	}
+	toolEvent := &companion.ToolCallEvent{
+		ToolName:    "sandbox_exec",
+		Input:       input,
+		Duration:    companion.FromDuration(duration),
+		Status:      status,
+		SandboxUsed: true,
+	}
+	if exitCode != 0 {
+		toolEvent.Output = map[string]interface{}{"exit_code": exitCode}
+	}
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventSandboxExec,
+		Platform:  companion.PlatformWeb,
+		ToolCall:  toolEvent,
+		Duration:  companion.FromDuration(duration),
+		Status:    status,
+	}
+	if err != nil {
+		event.Error = err.Error()
 	}
 	_ = h.companionManager.EmitEvent(ctx, event)
 }

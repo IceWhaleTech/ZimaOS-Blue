@@ -247,7 +247,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // Build display content for user message
     // Don't add attachment names to content - they're shown in the attachment preview
-    let displayContent = content
+    const displayContent = content
 
     // Add user message to local state immediately
     const userMessage: Message = {
@@ -262,8 +262,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const request: SendMessageRequest = {
       message: content,
-      provider: settingsStore.selectedProvider,
-      model: settingsStore.selectedModel,
+      // Don't send provider/model - let backend auto-select and return actual values
       temperature: settingsStore.temperature,
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
@@ -397,8 +396,7 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: '[CONTINUE]', // Special marker for continue
-        provider: settingsStore.selectedProvider,
-        model: settingsStore.selectedModel,
+        // Don't send provider/model - let backend auto-select
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
       }
@@ -500,11 +498,11 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: lastUserMessage.content,
-        provider: settingsStore.selectedProvider,
-        model: settingsStore.selectedModel,
+        // Don't send provider/model - let backend auto-select
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         attachments: lastUserMessage.attachments,
+        regenerate: true,
       }
 
       await sseClient.connect(conversationId, request, {

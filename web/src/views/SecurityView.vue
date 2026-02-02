@@ -434,13 +434,13 @@ onUnmounted(() => {
         <button
           v-for="tab in tabs"
           :key="tab.id"
-          @click="activeTab = tab.id"
           :class="[
             'px-4 py-2 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-2',
             activeTab === tab.id
               ? 'bg-white dark:bg-slate-800 text-accent border-b-2 border-accent -mb-px'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700/50'
           ]"
+          @click="activeTab = tab.id"
         >
           <!-- Shield icon for Overview -->
           <svg v-if="tab.icon === 'shield'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -749,15 +749,15 @@ onUnmounted(() => {
           </div>
           <div class="flex items-center gap-2">
             <button
-              @click="fetchConnections()"
               :disabled="connectionLoading"
               class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+              @click="fetchConnections()"
             >
               {{ t('common.refresh') }}
             </button>
             <button
-              @click="connectionExpanded = !connectionExpanded"
               class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              @click="connectionExpanded = !connectionExpanded"
             >
               <svg
                 :class="['w-5 h-5 text-gray-500 transition-transform', connectionExpanded ? 'rotate-180' : '']"
@@ -831,7 +831,8 @@ onUnmounted(() => {
               <div class="flex items-center justify-between mb-1">
                 <div class="flex items-center gap-2">
                   <span :class="['w-2 h-2 rounded-full', conn.status === 'active' ? 'bg-green-500' : 'bg-gray-400']"></span>
-                  <span :class="[
+                  <span
+:class="[
                     'px-2 py-0.5 rounded text-xs font-medium uppercase',
                     conn.type === 'http' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' :
                     conn.type === 'websocket' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
@@ -867,9 +868,9 @@ onUnmounted(() => {
             </p>
           </div>
           <button
-            @click="fetchCompanionSessions(); fetchCompanionStats()"
             :disabled="companionLoading"
             class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+            @click="fetchCompanionSessions(); fetchCompanionStats()"
           >
             {{ t('common.refresh') }}
           </button>

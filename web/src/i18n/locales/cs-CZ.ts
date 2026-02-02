@@ -410,7 +410,7 @@ export default {
     teamsDesc: 'Připojení k Microsoft Teams',
     googleChatDesc: 'Připojení k Google Chat',
     feishuDesc: 'Připojení k Feishu/Lark Bot',
-    feishuHint: 'Vytvořte aplikaci ve Feishu Open Platform a nakonfigurujte odběr událostí',
+    feishuHint: 'Vytvořte bota ve Feishu Open Platform. Vyžadováno: 1) Povolte "Long Connection" pro události; 2) Přihlaste se k události "im.message.receive_v1"; 3) Přidejte oprávnění "im:message:send_as_bot"',
     feishuOpenChat: 'Otevřít chat bota',
     dingtalkDesc: 'Připojení k DingTalk Bot',
     dingtalkHint: 'Vytvořte robota v DingTalk Developer Platform',
@@ -1111,4 +1111,4 @@ export default {
     clearSearch: 'Vymazat vyhledávání',
     allLoaded: 'Načteno všech {count} dovedností',
   },
-}
+} as typeof enUS

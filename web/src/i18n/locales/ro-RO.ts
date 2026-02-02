@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Conectare la Microsoft Teams',
     googleChatDesc: 'Conectare la Google Chat',
     feishuDesc: 'Conectare la Feishu/Lark Bot',
-    feishuHint: 'Creați o aplicație în Feishu Open Platform și configurați abonamentul la evenimente',
+    feishuHint: 'Creați un bot în Feishu Open Platform. Necesar: 1) Activați "Long Connection" pentru evenimente; 2) Abonați-vă la evenimentul "im.message.receive_v1"; 3) Adăugați permisiunea "im:message:send_as_bot"',
     feishuOpenChat: 'Deschideți chatul bot',
     dingtalkDesc: 'Conectare la DingTalk Bot',
     dingtalkHint: 'Creați un robot în DingTalk Developer Platform',
@@ -968,4 +968,4 @@ export default {
     clearSearch: 'Ștergeți căutarea',
     allLoaded: 'Toate cele {count} abilități încărcate',
   },
-}
+} as typeof enUS

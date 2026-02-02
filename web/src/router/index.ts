@@ -46,7 +46,7 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
     }
 
     return { preview: isPreviewMode, connectionError: false }
-  } catch (error) {
+  } catch (_error) {
     previewModeChecked = true
     isPreviewMode = false
     connectionFailed = true

@@ -1,6 +1,6 @@
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Mattermost logo - speech bubble with dot -->
-  <rect width="24" height="24" rx="4" fill="#0058CC"/>
-  <path d="M12 4C7.58 4 4 7.58 4 12c0 1.5.42 2.9 1.14 4.1L4 20l3.9-1.14C9.1 19.58 10.5 20 12 20c4.42 0 8-3.58 8-8s-3.58-8-8-8z" fill="white"/>
-  <circle cx="12" cy="12" r="2.5" fill="#0058CC"/>
-</svg>
+<?xml version="1.0" encoding="utf-8"?>
+
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" id="Layer_1" x="0" y="0" viewBox="0 0 265 265" xml:space="preserve">
+   <style type="text/css">
+.st0{fill-rule:evenodd;clip-rule:evenodd;fill:#1b1d21}</style>
+   <g id="XMLID_6_">    <g id="XMLID_2_">      <g id="XMLID_3_">        <path id="XMLID_4_" class="st0" d="M192.4 62.7l.9 17.4c14.1 15.6 19.7 37.7 12.7 58.5-10.5 31-45.1 47.3-77.4 36.4s-49.8-44.9-39.3-75.9c7.1-20.9 25-35.1 45.8-38.8L146.3 47c-35.1-.9-68.1 20.8-80 55.8-14.5 43 8.5 89.6 51.5 104.1s89.6-8.5 104.1-51.5c11.8-34.8-1.2-72.2-29.5-92.7z"/>      </g>      <path id="XMLID_5_" class="st0" d="M172.3 114.1l-.6-24.4-.5-14-.3-12.2s.1-5.9-.1-7.2c0-.3-.1-.5-.2-.7v-.2c-.2-.4-.6-.7-1-.9-.5-.2-1-.1-1.4.1 0 0-.1 0-.1.1-.2.1-.4.2-.6.4-1 1-4.5 5.7-4.5 5.7l-7.6 9.5-8.9 10.9-15.3 19s-7 8.7-5.5 19.5 9.6 16 15.8 18.1c6.2 2.1 15.8 2.8 23.5-4.8 7.5-7.7 7.3-18.9 7.3-18.9z"/>    </g>  </g></svg>

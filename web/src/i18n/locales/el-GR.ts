@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Σύνδεση με Microsoft Teams',
     googleChatDesc: 'Σύνδεση με Google Chat',
     feishuDesc: 'Σύνδεση με Feishu/Lark Bot',
-    feishuHint: 'Δημιουργήστε εφαρμογή στο Feishu Open Platform και ρυθμίστε εγγραφή συμβάντων',
+    feishuHint: 'Δημιουργήστε bot στο Feishu Open Platform. Απαιτείται: 1) Ενεργοποιήστε "Long Connection" για συμβάντα; 2) Εγγραφείτε στο συμβάν "im.message.receive_v1"; 3) Προσθέστε άδεια "im:message:send_as_bot"',
     feishuOpenChat: 'Άνοιγμα συνομιλίας bot',
     dingtalkDesc: 'Σύνδεση με DingTalk Bot',
     dingtalkHint: 'Δημιουργήστε robot στο DingTalk Developer Platform',
@@ -1174,4 +1174,4 @@ export default {
     clearSearch: 'Εκκαθάριση αναζήτησης',
     allLoaded: 'Φορτώθηκαν όλες οι {count} δεξιότητες',
   },
-}
+} as typeof enUS

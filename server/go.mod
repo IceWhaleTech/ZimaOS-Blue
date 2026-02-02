@@ -20,6 +20,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/influxdata/influxdb-client-go/v2 v2.14.0
 	github.com/labstack/echo/v4 v4.12.0
+	github.com/larksuite/oapi-sdk-go/v3 v3.5.3
 	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/orca-zhang/ecache v1.1.3
 	github.com/orca-zhang/ecache2 v0.0.1
@@ -31,6 +32,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slack-go/slack v0.17.3
 	github.com/sourcegraph/conc v0.3.0
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wizzard0/trycloudflared v0.0.0-20250602072109-870ef804aa3b
@@ -77,6 +79,7 @@ require (
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.2.1 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-tpm v0.9.6 // indirect
@@ -88,6 +91,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/log15 v3.0.0-testing.5+incompatible // indirect
 	github.com/inconshreveable/log15/v3 v3.0.0-testing.5 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/influxdata/line-protocol v0.0.0-20200327222509-2487e7298839 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

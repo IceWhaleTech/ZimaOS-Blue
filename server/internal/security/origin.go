@@ -2,6 +2,7 @@
 package security
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,9 +24,7 @@ type OriginConfig struct {
 func DefaultOriginConfig() OriginConfig {
 	return OriginConfig{
 		AllowedOrigins: []string{
-			"http://localhost:23456",
-			"http://127.0.0.1:23456",
-			"tauri://localhost",  // Tauri desktop app
+			// Dynamic origins will be added at runtime based on actual server port
 		},
 		AllowLocalhost: true,
 	}
@@ -123,11 +122,16 @@ func (c *OriginChecker) IsAllowedOrigin(origin string) bool {
 		return false
 	}
 
-	// Check localhost if allowed
+	// Check localhost if allowed - must also match the server port
 	if c.config.AllowLocalhost {
 		host := parsedOrigin.Hostname()
 		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
-			return true
+			// Verify port matches the server port
+			port := parsedOrigin.Port()
+			serverPortStr := fmt.Sprintf("%d", GetServerPort())
+			if port == serverPortStr || port == "" {
+				return true
+			}
 		}
 	}
 
@@ -197,11 +201,12 @@ func (c *OriginChecker) GetAllowedOrigins() []string {
 		}
 	}
 
-	// Add localhost origins if allowed
+	// Add localhost origins with dynamic port if allowed
 	if c.config.AllowLocalhost {
+		port := GetServerPort()
 		localhostOrigins := []string{
-			"http://localhost:23456",
-			"http://127.0.0.1:23456",
+			fmt.Sprintf("http://localhost:%d", port),
+			fmt.Sprintf("http://127.0.0.1:%d", port),
 		}
 		for _, lo := range localhostOrigins {
 			found := false
@@ -268,4 +273,24 @@ func RemoveDynamicOriginDefault(origin string) {
 // GetDynamicOriginsDefault returns the dynamic origins from the default checker.
 func GetDynamicOriginsDefault() []string {
 	return defaultOriginChecker.GetDynamicOrigins()
+}
+
+// serverPort stores the actual server port for dynamic CORS origins.
+// Default to 23456, but should be updated via SetServerPort when server starts.
+var serverPort int = 23456
+var serverPortMu sync.RWMutex
+
+// SetServerPort sets the server port for dynamic CORS origin generation.
+// This should be called after the server starts and the actual port is known.
+func SetServerPort(port int) {
+	serverPortMu.Lock()
+	defer serverPortMu.Unlock()
+	serverPort = port
+}
+
+// GetServerPort returns the current server port for CORS origins.
+func GetServerPort() int {
+	serverPortMu.RLock()
+	defer serverPortMu.RUnlock()
+	return serverPort
 }

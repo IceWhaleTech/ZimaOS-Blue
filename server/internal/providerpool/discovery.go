@@ -70,15 +70,7 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 
 // GetModels returns cached models for a provider
 func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
-	// For trial providers, always return built-in models only
-	if IsTrialProvider(providerID) {
-		builtinModels := GetBuiltinModels(providerID)
-		if builtinModels != nil {
-			return builtinModels, nil
-		}
-		return nil, ErrModelNotFound
-	}
-
+	// Trial providers fetch models from API like other providers
 	d.mu.RLock()
 	models, exists := d.cache[providerID]
 	cacheTime := d.cacheAt[providerID]

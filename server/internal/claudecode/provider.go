@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 )
@@ -18,8 +20,10 @@ type Provider struct {
 	promptBuilder   *SystemPromptBuilder
 	bootstrap       *BootstrapHandler
 
-	mu             sync.RWMutex
-	sessionContext map[string]*sessionContext
+	mu               sync.RWMutex
+	sessionContext   map[string]*sessionContext
+	companionManager *companion.Manager
+	companionSession string // session ID for companion events
 }
 
 // sessionContext tracks context for a session.
@@ -55,6 +59,53 @@ func (p *Provider) SetToolRegistry(registry *tools.Registry) {
 	p.promptBuilder.SetToolRegistry(registry)
 }
 
+// SetCompanionManager sets the companion manager for event tracking.
+func (p *Provider) SetCompanionManager(manager *companion.Manager, sessionID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.companionManager = manager
+	p.companionSession = sessionID
+}
+
+// emitSandboxExecEvent emits a sandbox execution event to the companion system.
+func (p *Provider) emitSandboxExecEvent(ctx context.Context, command string, args []string, duration time.Duration, status string, exitCode int, err error) {
+	p.mu.RLock()
+	manager := p.companionManager
+	sessionID := p.companionSession
+	p.mu.RUnlock()
+
+	if manager == nil || sessionID == "" {
+		return
+	}
+
+	input := map[string]interface{}{
+		"command": command,
+		"args":    args,
+	}
+	toolEvent := &companion.ToolCallEvent{
+		ToolName:    "sandbox_exec",
+		Input:       input,
+		Duration:    companion.FromDuration(duration),
+		Status:      status,
+		SandboxUsed: true,
+	}
+	if exitCode != 0 {
+		toolEvent.Output = map[string]interface{}{"exit_code": exitCode}
+	}
+	event := &companion.SessionEvent{
+		SessionID: sessionID,
+		EventType: companion.EventSandboxExec,
+		Platform:  companion.PlatformAPI,
+		ToolCall:  toolEvent,
+		Duration:  companion.FromDuration(duration),
+		Status:    status,
+	}
+	if err != nil {
+		event.Error = err.Error()
+	}
+	_ = manager.EmitEvent(ctx, event)
+}
+
 // Name returns the provider name.
 func (p *Provider) Name() string {
 	return "claude-code"
@@ -82,11 +133,28 @@ func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResp
 
 	// Execute CLI (use sandboxed runner if available)
 	var result *RunResult
-	if p.sandboxedRunner != nil {
+	startTime := time.Now()
+	useSandbox := p.sandboxedRunner != nil && p.sandboxedRunner.IsSandboxEnabled()
+	if useSandbox {
 		result, err = p.sandboxedRunner.Run(ctx, params)
 	} else {
 		result, err = p.runner.Run(ctx, params)
 	}
+	duration := time.Since(startTime)
+
+	// Emit sandbox execution event if sandbox was used
+	if useSandbox {
+		status := "completed"
+		exitCode := 0
+		if err != nil {
+			status = "failed"
+		}
+		if result != nil {
+			exitCode = result.ExitCode
+		}
+		p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model, params.Prompt}, duration, status, exitCode, err)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +163,7 @@ func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResp
 	p.updateSessionContext(params, result)
 
 	// Convert to LLM response
-	return p.convertToResponse(result, req.Model), nil
+	return p.convertToResponse(result, params.Model), nil
 }
 
 // ChatStream sends a chat completion request and returns a channel of stream chunks.
@@ -195,16 +263,23 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 
 	// Execute CLI with streaming (use sandboxed runner if available)
 	var streamCh <-chan CliStreamChunk
-	if p.sandboxedRunner != nil {
+	startTime := time.Now()
+	useSandbox := p.sandboxedRunner != nil && p.sandboxedRunner.IsSandboxEnabled()
+	if useSandbox {
 		streamCh, err = p.sandboxedRunner.RunStream(ctx, params)
 	} else {
 		streamCh, err = p.runner.RunStream(ctx, params)
 	}
 	if err != nil {
+		// Emit sandbox event on error
+		if useSandbox {
+			p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model}, time.Since(startTime), "failed", 1, err)
+		}
 		return err
 	}
 
 	var sessionId string
+	var streamErr error
 	for chunk := range streamCh {
 		if chunk.Error != nil {
 			// Make error message more user-friendly
@@ -217,6 +292,7 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 				strings.Contains(errMsgLower, "unauthorized") {
 				errMsg = "API key is invalid or not configured. Please check your provider settings."
 			}
+			streamErr = chunk.Error
 			return callback(llm.StreamChunk{
 				Done:  true,
 				Error: errMsg,
@@ -231,7 +307,7 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 		// Convert to LLM stream chunk
 		llmChunk := llm.StreamChunk{
 			ID:    sessionId,
-			Model: req.Model,
+			Model: params.Model, // Use actual model from params (may be default if req.Model was empty)
 			Delta: chunk.Text,
 			Done:  chunk.Done,
 		}
@@ -247,6 +323,15 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 		if err := callback(llmChunk); err != nil {
 			return err
 		}
+	}
+
+	// Emit sandbox event after stream completes
+	if useSandbox {
+		status := "completed"
+		if streamErr != nil {
+			status = "failed"
+		}
+		p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model}, time.Since(startTime), status, 0, streamErr)
 	}
 
 	// Update session context after stream completes

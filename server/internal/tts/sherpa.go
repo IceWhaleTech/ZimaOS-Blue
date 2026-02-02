@@ -36,6 +36,9 @@ type SherpaProvider struct {
 	tts           uintptr
 	sampleRate    int
 	initialized   bool
+	initializing  bool      // Track if async initialization is in progress
+	initErr       error     // Store initialization error
+	initDone      chan struct{} // Signal when initialization completes
 }
 
 // sherpa-onnx library state

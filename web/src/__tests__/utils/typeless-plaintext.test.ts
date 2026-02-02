@@ -18,6 +18,7 @@ describe('Typeless Plain Text Code Blocks', () => {
     expect(result.cards).toHaveLength(1)
     expect(result.cards[0]?.type).toBe('code')
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const codeCard = result.cards[0] as any
     expect(codeCard.language).toBeUndefined()
     expect(codeCard.code).toContain('人工智能（AI）')
@@ -37,6 +38,7 @@ console.log('hello')
     expect(result.cards).toHaveLength(1)
     expect(result.cards[0]?.type).toBe('code')
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const codeCard = result.cards[0] as any
     expect(codeCard.language).toBe('javascript')
     expect(codeCard.code).toContain('console.log')
@@ -53,6 +55,7 @@ console.log('hello')
     expect(result.cards).toHaveLength(1)
     expect(result.cards[0]?.type).toBe('code')
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const codeCard = result.cards[0] as any
     expect(codeCard.language).toBe('markdown')
     expect(codeCard.code).toContain('# Title')
@@ -63,6 +66,7 @@ console.log('hello')
     const result = parseTypelessContent(content)
 
     expect(result.cards).toHaveLength(1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const codeCard = result.cards[0] as any
     expect(codeCard.language).toBeUndefined()
   })

@@ -29,10 +29,12 @@ const (
 	EventSessionEnd      SessionEventType = "session_end"
 	EventMessageReceived SessionEventType = "message_received"
 	EventMessageSent     SessionEventType = "message_sent"
+	EventRegenerate      SessionEventType = "regenerate"
 	EventToolCall        SessionEventType = "tool_call"
 	EventLLMRequest      SessionEventType = "llm_request"
 	EventSecurityThreat  SessionEventType = "security_threat"
 	EventSandboxExec     SessionEventType = "sandbox_exec"
+	EventError           SessionEventType = "error"
 )
 
 // SessionStatus represents the status of a session.

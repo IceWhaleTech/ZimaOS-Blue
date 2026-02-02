@@ -711,7 +711,7 @@ onMounted(() => {
         </div>
         <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'">
           <div>{{ t('providerPool.trialQuota.tokensUsed', { used: store.trialQuota.tokens_used, limit: store.trialQuota.token_limit }) }}</div>
-          <div class="mt-1 w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="mt-1 w-24 h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all"
               :class="store.trialQuota.exhausted ? 'bg-red-500' : 'bg-blue-500'"

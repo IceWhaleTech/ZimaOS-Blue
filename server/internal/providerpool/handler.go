@@ -771,16 +771,6 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 func (h *Handler) FetchProviderModels(c echo.Context) error {
 	id := c.Param("id")
 
-	// Don't allow fetching models for trial providers
-	if IsTrialProvider(id) {
-		// Return built-in models for trial provider instead
-		models := GetBuiltinModels(id)
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"models": models,
-			"total":  len(models),
-		})
-	}
-
 	// Use singleflight to deduplicate concurrent requests for the same provider
 	key := fmt.Sprintf("fetch_models:%s", id)
 	result, err, _ := h.sfGroup.Do(key, func() (interface{}, error) {

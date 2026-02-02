@@ -1306,25 +1306,8 @@ func BuiltinModels() map[string][]*Model {
 			},
 		},
 		"zimaos-trial": {
-			{
-				ID:          "claude-haiku-4-5",
-				ProviderID:  "zimaos-trial",
-				Name:        "claude-haiku-4-5",
-				DisplayName: "Claude Haiku 4.5 (Trial)",
-				Enabled:     true,
-				Capabilities: ModelCapabilities{
-					Chat:         true,
-					Vision:       true,
-					FunctionCall: true,
-					Streaming:    true,
-					JSON:         true,
-					SystemPrompt: true,
-				},
-				ContextWindow: 200000,
-				MaxOutput:     8192,
-				InputPrice:    0.0, // Free for trial
-				OutputPrice:   0.0,
-			},
+			// Trial provider fetches models dynamically from API
+			// No hardcoded models - all available models from the API endpoint are accessible
 		},
 	}
 }

@@ -2,6 +2,8 @@ package skillstore
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,7 +20,24 @@ const (
 	ReadmeFetchTimeout = 10 * time.Second
 	// MaxConcurrentFetches is the maximum number of concurrent README fetches
 	MaxConcurrentFetches = 5
+	// BatchFlushInterval is the interval for flushing batched updates
+	BatchFlushInterval = 2 * time.Second
+	// BatchSize is the maximum number of updates to batch before flushing
+	BatchSize = 20
 )
+
+// readmeUpdate represents a pending README update
+type readmeUpdate struct {
+	ID     string
+	Readme string
+	Hash   string // MD5 hash of readme content
+}
+
+// hashContent returns MD5 hash of content
+func hashContent(content string) string {
+	h := md5.Sum([]byte(content))
+	return hex.EncodeToString(h[:])
+}
 
 // ReadmeFetcher fetches and processes README content for skills
 type ReadmeFetcher struct {
@@ -28,6 +47,11 @@ type ReadmeFetcher struct {
 	queue      chan *Skill
 	wg         sync.WaitGroup
 	stopCh     chan struct{}
+
+	// Batch update fields
+	batchMu      sync.Mutex
+	batchUpdates []readmeUpdate
+	batchCh      chan struct{} // Signal to flush batch
 }
 
 // NewReadmeFetcher creates a new README fetcher
@@ -37,14 +61,21 @@ func NewReadmeFetcher(store *Store, logger *slog.Logger) *ReadmeFetcher {
 		httpClient: &http.Client{
 			Timeout: ReadmeFetchTimeout,
 		},
-		logger: logger,
-		queue:  make(chan *Skill, 100),
-		stopCh: make(chan struct{}),
+		logger:       logger,
+		queue:        make(chan *Skill, 100),
+		stopCh:       make(chan struct{}),
+		batchUpdates: make([]readmeUpdate, 0, BatchSize),
+		batchCh:      make(chan struct{}, 1),
 	}
 }
 
 // Start starts the background README fetcher workers
 func (f *ReadmeFetcher) Start(ctx context.Context) {
+	// Start batch flusher
+	f.wg.Add(1)
+	go f.batchFlusher(ctx)
+
+	// Start fetch workers
 	for i := 0; i < MaxConcurrentFetches; i++ {
 		f.wg.Add(1)
 		go f.worker(ctx)
@@ -79,6 +110,69 @@ func (f *ReadmeFetcher) EnqueueBatch(skills []*Skill) {
 	}
 }
 
+// batchFlusher periodically flushes batched updates to the database
+func (f *ReadmeFetcher) batchFlusher(ctx context.Context) {
+	defer f.wg.Done()
+
+	ticker := time.NewTicker(BatchFlushInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			f.flushBatch(context.Background()) // Final flush
+			return
+		case <-f.stopCh:
+			f.flushBatch(context.Background()) // Final flush
+			return
+		case <-ticker.C:
+			f.flushBatch(ctx)
+		case <-f.batchCh:
+			f.flushBatch(ctx)
+		}
+	}
+}
+
+// flushBatch writes all pending updates to the database in a single transaction
+func (f *ReadmeFetcher) flushBatch(ctx context.Context) {
+	f.batchMu.Lock()
+	if len(f.batchUpdates) == 0 {
+		f.batchMu.Unlock()
+		return
+	}
+	updates := f.batchUpdates
+	f.batchUpdates = make([]readmeUpdate, 0, BatchSize)
+	f.batchMu.Unlock()
+
+	// Batch update in database
+	if err := f.store.UpdateReadmeBatch(ctx, updates); err != nil {
+		if f.logger != nil {
+			f.logger.Error("failed to batch update readmes", "count", len(updates), "error", err)
+		}
+	} else if f.logger != nil {
+		f.logger.Debug("batch updated readmes", "count", len(updates))
+	}
+}
+
+// addToBatch adds an update to the batch and triggers flush if batch is full
+func (f *ReadmeFetcher) addToBatch(id, readme string) {
+	f.batchMu.Lock()
+	f.batchUpdates = append(f.batchUpdates, readmeUpdate{
+		ID:     id,
+		Readme: readme,
+		Hash:   hashContent(readme),
+	})
+	shouldFlush := len(f.batchUpdates) >= BatchSize
+	f.batchMu.Unlock()
+
+	if shouldFlush {
+		select {
+		case f.batchCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
 // worker processes skills from the queue
 func (f *ReadmeFetcher) worker(ctx context.Context) {
 	defer f.wg.Done()
@@ -98,7 +192,7 @@ func (f *ReadmeFetcher) worker(ctx context.Context) {
 	}
 }
 
-// fetchAndStore fetches README content and stores it
+// fetchAndStore fetches README content and adds it to the batch
 func (f *ReadmeFetcher) fetchAndStore(ctx context.Context, skill *Skill) {
 	readme, err := f.FetchReadme(ctx, skill)
 	if err != nil {
@@ -112,13 +206,9 @@ func (f *ReadmeFetcher) fetchAndStore(ctx context.Context, skill *Skill) {
 		return
 	}
 
-	// Update skill in database
+	// Add to batch instead of immediate update
 	skill.Readme = readme
-	if err := f.store.UpdateReadme(ctx, skill.ID, readme); err != nil {
-		if f.logger != nil {
-			f.logger.Error("failed to update readme", "skill", skill.ID, "error", err)
-		}
-	}
+	f.addToBatch(skill.ID, readme)
 }
 
 // FetchReadme fetches README content for a skill

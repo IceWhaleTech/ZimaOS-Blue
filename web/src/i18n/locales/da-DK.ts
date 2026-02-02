@@ -410,7 +410,7 @@ export default {
     teamsDesc: 'Forbind til Microsoft Teams',
     googleChatDesc: 'Forbind til Google Chat',
     feishuDesc: 'Forbind til Feishu/Lark Bot',
-    feishuHint: 'Opret en app i Feishu Open Platform og konfigurer begivenhedsabonnement',
+    feishuHint: 'Opret en bot i Feishu Open Platform. Påkrævet: 1) Aktiver "Long Connection" for begivenheder; 2) Abonner på begivenheden "im.message.receive_v1"; 3) Tilføj tilladelse "im:message:send_as_bot"',
     feishuOpenChat: 'Åbn botchat',
     dingtalkDesc: 'Forbind til DingTalk Bot',
     dingtalkHint: 'Opret en robot i DingTalk Developer Platform',
@@ -1114,4 +1114,4 @@ export default {
     clearSearch: 'Ryd søgning',
     allLoaded: 'Alle {count} færdigheder indlæst',
   },
-}
+} as typeof enUS

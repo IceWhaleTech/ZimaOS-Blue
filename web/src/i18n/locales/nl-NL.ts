@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Verbinden met Microsoft Teams',
     googleChatDesc: 'Verbinden met Google Chat',
     feishuDesc: 'Verbinden met Feishu/Lark Bot',
-    feishuHint: 'Maak een app in Feishu Open Platform en configureer gebeurtenisabonnement',
+    feishuHint: 'Maak een bot in Feishu Open Platform. Vereist: 1) Schakel "Long Connection" in voor gebeurtenissen; 2) Abonneer op gebeurtenis "im.message.receive_v1"; 3) Voeg machtiging "im:message:send_as_bot" toe',
     feishuOpenChat: 'Botchat openen',
     dingtalkDesc: 'Verbinden met DingTalk Bot',
     dingtalkHint: 'Maak een robot in DingTalk Developer Platform',
@@ -1192,4 +1192,4 @@ export default {
     clearSearch: 'Zoekopdracht wissen',
     allLoaded: 'Alle {count} vaardigheden geladen',
   },
-}
+} as typeof enUS

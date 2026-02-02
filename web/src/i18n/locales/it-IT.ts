@@ -147,9 +147,9 @@ export default {
     sendMessage: 'Invia un messaggio',
     typeMessage: 'Scrivi il tuo messaggio...',
     thinking: 'Pensando...',
-    copyMessage: 'Copia messaggio',
     regenerate: 'Rigenera',
     stopGenerating: 'Ferma generazione',
+    continueGenerating: 'Continua',
     selectModel: 'Seleziona modello',
     provider: 'Provider',
     model: 'Modello',
@@ -164,7 +164,9 @@ export default {
     toggleSidebarShortcut: 'Mostra/nascondi barra laterale',
     dismiss: 'Chiudi',
     attachFile: 'Allega file',
+    moreActions: 'Altre azioni',
     inputPlaceholder: 'Scrivi un messaggio... (Invio per inviare, Maiusc+Invio per nuova riga)',
+    inputPlaceholderShort: 'Scrivi un messaggio...',
     send: 'Invia',
     enterToSend: 'Premi',
     newLine: 'per nuova riga',
@@ -176,24 +178,68 @@ export default {
     deleteConversation: 'Elimina conversazione',
     confirmDelete: 'Eliminare?',
     yesterday: 'Ieri',
+    // Voice input
+    pressHoldToSpeak: 'Premi e tieni premuto il pulsante del microfono per parlare',
     startRecording: 'Inizia registrazione vocale',
     stopRecording: 'Ferma registrazione',
     recording: 'Registrazione...',
     voiceTranscriptionError: 'Impossibile trascrivere l\'audio',
     voiceRecordingError: 'Si è verificato un errore durante la registrazione',
     voiceMicrophoneError: 'Impossibile accedere al microfono',
+    // TTS playback
+    playTTS: 'Riproduci audio',
+    stopTTS: 'Ferma audio',
+    ttsError: 'Errore nella sintesi vocale',
+    ttsNoContent: 'Nessun contenuto da riprodurre',
+    // Camera and image
+    takePhoto: 'Scatta foto',
+    imagePreview: {
+      zoomIn: 'Ingrandisci',
+      zoomOut: 'Riduci',
+      reset: 'Reimposta zoom',
+    },
+    // Talk Mode
+    talkMode: {
+      title: 'Modalità vocale',
+      conversation: 'Conversazione',
+      walkieTalkie: 'Walkie-talkie',
+      connecting: 'Connessione...',
+      listening: 'In ascolto...',
+      processing: 'Elaborazione...',
+      speaking: 'Parlare...',
+      tapToStart: 'Tocca per iniziare a parlare',
+      holdToTalk: 'Tieni premuto per parlare',
+      you: 'Tu',
+      assistant: 'Assistente',
+      conversationDesc: 'Modalità conversazione continua - L\'IA risponde automaticamente',
+      walkieTalkieDesc: 'Modalità push-to-talk - Tieni premuto il pulsante mentre parli',
+      connectionError: 'Errore di connessione al servizio vocale',
+      transcriptionError: 'Errore nella trascrizione audio',
+    },
+    transcription: {
+      title: 'Trascrizione',
+      placeholder: 'Il testo trascritto apparirà qui...',
+      send: 'Invia',
+      confidence: '{percent}% di confidenza',
+      hint: 'Premi Ctrl+Invio per inviare, Esc per annullare',
+    },
+    // Security
+    // Preset questions
+    presetQuestions: {
+      title: 'Prova a chiedere',
+      refresh: 'Altro',
+    },
+    threatLevel: 'Livello di minaccia',
+    dismissWarning: 'Ignora',
     trialExhausted: 'La quota di prova è esaurita. Configura il tuo provider AI per continuare.',
     configureProvider: 'Configura provider',
-    trialQuota: {
-      exhausted: 'Quota di prova esaurita',
-      remaining: '{tokens} token rimanenti',
-      configure: 'Configura',
-    },
-    // Provider selector
-    addProvider: 'Aggiungi provider',
-    autoSwitch: 'Cambio automatico',
+    // Claude Code CLI
+    poweredByClaudeCode: 'Alimentato da {name}',
+    poweredByClaudeCodeDesc: 'La chat è migliorata con le capacità di {name} inclusi abilità, chiamate di strumenti e operazioni sui file',
+    enableClaudeCodeDesc: 'Abilita {name} per un\'esperienza migliore con abilità, chiamate di strumenti, operazioni sui file e altro',
+    enableClaudeCodePrompt: 'Abilita {name} per più funzionalità',
+    // Routing Mode
     autoSwitchDesc: 'Passa automaticamente a un altro provider se quello corrente fallisce',
-    auto: 'Automatico',
     routingMode: {
       auto: 'Automatico',
       cloud: 'Cloud',
@@ -204,16 +250,34 @@ export default {
       cloudOnlyDesc: 'Solo provider cloud configurati',
       localOnlyDesc: 'Solo provider locali configurati',
     },
+    // Provider selector
+    addProvider: 'Aggiungi provider',
     manageProviders: 'Gestisci provider',
+    // Provider status
+    noProviderConfigured: 'Nessun provider configurato. Clicca per aggiungerne uno.',
+    allProvidersFailed: 'Tutti i provider sono falliti. Clicca per controllare le impostazioni.',
+    providerActive: 'Il provider è attivo e pronto.',
+    providerPending: 'Stato del provider in verifica...',
+    // Trial quota
+    trialQuota: {
+      exhausted: 'Quota di prova esaurita. Configura il tuo provider.',
+      remaining: '{tokens} token rimanenti',
+      configure: 'Configura',
+    },
+    // Multi-select
     selectMessage: 'Seleziona',
     messagesSelected: 'selezionati',
     searching: 'Ricerca...',
+    // Message stats
     stats: {
       inputTokens: 'ingresso',
       outputTokens: 'uscita',
       ttft: 'TTFT',
       speed: 'tok/s',
     },
+    // Message actions
+    copyMessage: 'Copia messaggio',
+    filePreviewNotSupported: 'Anteprima non disponibile per questo tipo di file',
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1037,7 +1101,7 @@ export default {
     teamsDesc: 'Connetti Microsoft Teams',
     googleChatDesc: 'Connetti Google Chat',
     feishuDesc: 'Connetti Feishu/Lark Bot',
-    feishuHint: 'Crea un’app su Feishu Open Platform e configura la sottoscrizione eventi',
+    feishuHint: 'Crea un\'app su Feishu Open Platform. Richiesto: 1) Abilita "Long Connection" per gli eventi; 2) Sottoscrivi l\'evento "im.message.receive_v1"; 3) Aggiungi il permesso "im:message:send_as_bot"',
     feishuOpenChat: 'Apri chat del bot',
     dingtalkDesc: 'Connetti DingTalk Bot',
     dingtalkHint: 'Crea un robot su DingTalk Developer Platform',
@@ -1779,4 +1843,4 @@ export default {
     clearSearch: 'Cancella ricerca',
     allLoaded: 'Tutte le {count} competenze caricate',
   },
-}
+} as typeof enUS

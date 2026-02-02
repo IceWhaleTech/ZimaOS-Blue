@@ -1037,7 +1037,7 @@ export default {
     teamsDesc: 'Подключение Microsoft Teams',
     googleChatDesc: 'Подключение Google Chat',
     feishuDesc: 'Подключение Feishu/Lark Bot',
-    feishuHint: 'Создайте приложение в Feishu Open Platform и настройте подписку на события',
+    feishuHint: 'Создайте бота в Feishu Open Platform. Необходимо: 1) Включить «Long Connection» для событий; 2) Подписаться на событие «im.message.receive_v1»; 3) Добавить право «im:message:send_as_bot»',
     feishuOpenChat: 'Открыть чат бота',
     dingtalkDesc: 'Подключение DingTalk Bot',
     dingtalkHint: 'Создайте робота в DingTalk Developer Platform',
@@ -1776,4 +1776,4 @@ export default {
     clearSearch: 'Очистить поиск',
     allLoaded: 'Все {count} навыков загружены',
   },
-}
+} as typeof enUS

@@ -412,7 +412,7 @@ export default {
     teamsDesc: 'Connectar amb Microsoft Teams',
     googleChatDesc: 'Connectar amb Google Chat',
     feishuDesc: 'Connectar amb Feishu/Lark Bot',
-    feishuHint: 'Crea una app a Feishu Open Platform i configura la subscripció d\'esdeveniments',
+    feishuHint: 'Crea un bot a Feishu Open Platform. Requerit: 1) Habilita "Long Connection" per a esdeveniments; 2) Subscriu-te a l\'esdeveniment "im.message.receive_v1"; 3) Afegeix el permís "im:message:send_as_bot"',
     feishuOpenChat: 'Obrir xat del bot',
     dingtalkDesc: 'Connectar amb DingTalk Bot',
     dingtalkHint: 'Crea un robot a DingTalk Developer Platform',
@@ -1190,4 +1190,4 @@ export default {
     clearSearch: 'Esborrar cerca',
     allLoaded: 'Totes les {count} habilitats carregades',
   },
-}
+} as typeof enUS
