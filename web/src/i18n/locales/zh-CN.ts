@@ -426,6 +426,9 @@ export default {
       currentTime: { name: '当前时间', description: '返回 UTC、本地时间与 Unix 时间戳；可选时区。' },
       fileRead: { name: '读文件', description: '读取文件内容并以文本形式返回。' },
       fileWrite: { name: '写文件', description: '写入文件内容；若不存在则创建，存在则覆盖。' },
+      memorySearch: { name: '记忆搜索', description: '使用语义/混合搜索查找记忆，返回相关记忆及相似度分数。' },
+      memoryGet: { name: '获取记忆', description: '通过 ID 获取特定记忆，返回完整内容和元数据。' },
+      memoryStats: { name: '记忆统计', description: '返回记忆系统统计信息，包括总记忆数、存储大小和后端信息。' },
     },
   },
   home: {
@@ -2257,6 +2260,18 @@ export default {
       ended: '已结束',
       error: '错误',
     },
+    // 平台名称
+    platforms: {
+      whatsapp: 'WhatsApp',
+      telegram: 'Telegram',
+      discord: 'Discord',
+      slack: 'Slack',
+      matrix: 'Matrix',
+      feishu: '飞书',
+      web: '网页',
+      'web-user': '网页用户',
+      api: 'API',
+    },
     // 威胁等级
     threat: {
       none: '无',
@@ -3539,6 +3554,17 @@ export default {
     speechSpeed: '语速',
     autoPlayTTS: '自动播放语音',
     autoPlayTTSDesc: '助手回复时自动播放语音',
+    provider: '提供商',
+    offline: '离线',
+    online: '在线',
+    privacyWarning: 'Edge-TTS 会将文本发送到微软服务器。您的数据将根据其隐私政策进行处理。',
+    model: '模型',
+    rate: '语速',
+    pitch: '音调',
+    volume: '音量',
+    acceptPrivacy: '我接受 Edge-TTS 的隐私条款',
+    voiceSettings: '语音设置',
+    languagePacks: '语言包',
   },
   mermaid: {
     flowchart: '流程图',

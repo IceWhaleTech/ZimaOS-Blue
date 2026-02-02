@@ -439,6 +439,19 @@ func (m *MockMetricsRecorder) RecordAPICall(model string, success bool, latencyM
 	})
 }
 
+func (m *MockMetricsRecorder) RecordAPICallForUser(userID, model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string) {
+	m.APICalls = append(m.APICalls, MockAPICallRecord{
+		Model:        model,
+		Success:      success,
+		LatencyMs:    latencyMs,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		CacheRead:    cacheRead,
+		CacheWrite:   cacheWrite,
+		ErrorType:    errorType,
+	})
+}
+
 func (m *MockMetricsRecorder) RecordSpeed(model string, tokensPerSecond, ttftMs, decodeSpeed float64) {
 	m.SpeedCalls = append(m.SpeedCalls, MockSpeedRecord{
 		Model:           model,

@@ -472,6 +472,9 @@ export default {
       currentTime: { name: 'Current Time', description: 'Returns the current time in UTC, local time, and Unix timestamp. Optionally accepts a timezone.' },
       fileRead: { name: 'File Read', description: 'Reads content from a file. Returns the file content as text.' },
       fileWrite: { name: 'File Write', description: 'Writes content to a file. Creates the file if it doesn\'t exist, or overwrites if it does.' },
+      memorySearch: { name: 'Memory Search', description: 'Searches memories using semantic/hybrid search. Returns relevant memories based on the query with similarity scores.' },
+      memoryGet: { name: 'Memory Get', description: 'Retrieves a specific memory by its ID. Returns the full content and metadata of the memory.' },
+      memoryStats: { name: 'Memory Stats', description: 'Returns statistics about the memory system including total memories, storage size, and backend information.' },
     },
   },
   home: {
@@ -2294,6 +2297,18 @@ export default {
       ended: 'Ended',
       error: 'Error',
     },
+    // Platform names
+    platforms: {
+      whatsapp: 'WhatsApp',
+      telegram: 'Telegram',
+      discord: 'Discord',
+      slack: 'Slack',
+      matrix: 'Matrix',
+      feishu: 'Feishu',
+      web: 'Web',
+      'web-user': 'Web User',
+      api: 'API',
+    },
     // Threat levels
     threat: {
       none: 'None',
@@ -3672,6 +3687,17 @@ export default {
     speechSpeed: 'Speech Speed',
     autoPlayTTS: 'Auto-play TTS',
     autoPlayTTSDesc: 'Automatically play TTS when assistant responds',
+    provider: 'Provider',
+    offline: 'Offline',
+    online: 'Online',
+    privacyWarning: 'Edge-TTS sends text to Microsoft servers. Your data will be processed according to their privacy policy.',
+    model: 'Model',
+    rate: 'Speech Rate',
+    pitch: 'Pitch',
+    volume: 'Volume',
+    acceptPrivacy: 'I accept the privacy terms for Edge-TTS',
+    voiceSettings: 'Voice Settings',
+    languagePacks: 'Language Packs',
   },
   mermaid: {
     flowchart: 'Flowchart',

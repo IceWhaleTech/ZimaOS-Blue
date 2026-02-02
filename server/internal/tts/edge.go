@@ -1,14 +1,18 @@
 package tts
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"github.com/difyz9/edge-tts-go/pkg/communicate"
 )
 
 // EdgeTTSProvider implements the Provider interface for Microsoft Edge TTS.
-// This is a free TTS service that uses the Edge browser's TTS capabilities.
+// This uses the pure Go edge-tts library (no Python/CLI required).
 type EdgeTTSProvider struct {
 	defaultVoice  string
 	defaultFormat AudioFormat
@@ -56,7 +60,7 @@ func (p *EdgeTTSProvider) Type() ProviderType {
 
 // SupportedFormats returns the supported audio formats.
 func (p *EdgeTTSProvider) SupportedFormats() []AudioFormat {
-	return []AudioFormat{FormatMP3, FormatWAV}
+	return []AudioFormat{FormatMP3}
 }
 
 // MaxTextLength returns the maximum text length.
@@ -64,9 +68,7 @@ func (p *EdgeTTSProvider) MaxTextLength() int {
 	return p.maxTextLength
 }
 
-// Synthesize synthesizes text to speech.
-// Note: This is a placeholder implementation. In production, you would use
-// the edge-tts library or implement the WebSocket protocol.
+// Synthesize synthesizes text to speech using pure Go edge-tts library.
 func (p *EdgeTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequest) (*SynthesizeResponse, error) {
 	if len(req.Text) > p.maxTextLength {
 		return nil, ErrTextTooLong
@@ -77,14 +79,47 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequest
 		voice = p.defaultVoice
 	}
 
-	format := req.Format
-	if format == "" {
-		format = p.defaultFormat
+	// Create edge-tts communicate instance
+	comm, err := communicate.NewCommunicate(
+		req.Text,
+		voice,
+		"+0%",  // rate
+		"+0%",  // volume
+		"+0Hz", // pitch
+		"",     // proxy
+		10,     // connectTimeout
+		60,     // receiveTimeout
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create edge-tts communicate: %w", err)
 	}
 
-	// In a real implementation, this would connect to the Edge TTS service
-	// For now, return an error indicating the service needs to be configured
-	return nil, fmt.Errorf("Edge TTS requires external edge-tts service. Voice: %s, Format: %s", voice, format)
+	// Create temp file for output
+	tmpFile, err := os.CreateTemp("", "edge-tts-*.mp3")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Save audio to temp file
+	if err := comm.Save(ctx, tmpPath, ""); err != nil {
+		os.Remove(tmpPath)
+		return nil, fmt.Errorf("edge-tts synthesis failed: %w", err)
+	}
+
+	// Read the audio data
+	audioData, err := os.ReadFile(tmpPath)
+	os.Remove(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read audio file: %w", err)
+	}
+
+	return &SynthesizeResponse{
+		Audio:       io.NopCloser(bytes.NewReader(audioData)),
+		ContentType: "audio/mpeg",
+		Format:      FormatMP3,
+	}, nil
 }
 
 // SynthesizeStream synthesizes text with streaming audio output.

@@ -506,6 +506,27 @@ func main() {
 		logger.Info().Msg("Browser automation handler initialized")
 	}()
 
+	// Initialize TTS service with Edge TTS provider
+	go func() {
+		var err error
+		ttsService, err = tts.NewService(&tts.ServiceConfig{
+			DefaultProvider: tts.ProviderEdge,
+			Providers: []tts.ProviderConfig{
+				{
+					Type:          tts.ProviderEdge,
+					Enabled:       true,
+					DefaultVoice:  "en-US-AriaNeural",
+					DefaultFormat: tts.FormatMP3,
+				},
+			},
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize TTS service")
+			return
+		}
+		logger.Info().Msg("TTS service initialized with Edge TTS")
+	}()
+
 	// Critical services in parallel pool
 	initPool.Go(func() {
 		// Security threat detector
@@ -656,14 +677,23 @@ func main() {
 	}
 
 	// Initialize voice service (depends on STT and TTS)
+	// Create voice handler even if services are not initialized yet
+	// The services will be initialized on demand when chat page is opened
+	var voiceService voice.Service
 	if sttService != nil && ttsService != nil {
-		voiceService := voice.NewService(&voice.ServiceConfig{
+		voiceService = voice.NewService(&voice.ServiceConfig{
 			STTService: sttService,
 			TTSService: ttsService,
 		})
-		voiceHandler = voice.NewHandler(voiceService)
-		logger.Info().Msg("Voice handler initialized")
+	} else {
+		// Create a placeholder service that will work with lazy initialization
+		voiceService = voice.NewService(&voice.ServiceConfig{
+			STTService: sttService,
+			TTSService: ttsService,
+		})
 	}
+	voiceHandler = voice.NewHandler(voiceService)
+	logger.Info().Msg("Voice handler initialized")
 
 	// Initialize ngrok config store (JSON-based, lazy initialization)
 	ngrokConfigStore = ngrok.NewConfigStore(dataDir)

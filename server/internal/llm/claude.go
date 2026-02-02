@@ -133,8 +133,16 @@ func (p *ClaudeProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	apiURL := p.baseURL + "/v1/messages"
+	// Log request URL and masked API key for debugging
+	maskedKey := p.apiKey
+	if len(maskedKey) > 8 {
+		maskedKey = maskedKey[:4] + "..." + maskedKey[len(maskedKey)-4:]
+	}
+	fmt.Printf("[Claude Chat] URL: %s, APIKey: %s\n", apiURL, maskedKey)
+
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -188,8 +196,16 @@ func (p *ClaudeProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	apiURL := p.baseURL + "/v1/messages"
+	// Log request URL and masked API key for debugging
+	maskedKey := p.apiKey
+	if len(maskedKey) > 8 {
+		maskedKey = maskedKey[:4] + "..." + maskedKey[len(maskedKey)-4:]
+	}
+	fmt.Printf("[Claude ChatStream] URL: %s, APIKey: %s\n", apiURL, maskedKey)
+
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

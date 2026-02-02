@@ -14,6 +14,9 @@ const toolI18nKeyMap: Record<string, string> = {
   'Current Time': 'currentTime',
   'File Read': 'fileRead',
   'File Write': 'fileWrite',
+  'memory_search': 'memorySearch',
+  'memory_get': 'memoryGet',
+  'memory_stats': 'memoryStats',
 }
 
 function getToolName(tool: Tool): string {

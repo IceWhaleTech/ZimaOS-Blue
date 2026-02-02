@@ -47,7 +47,7 @@
 
 ### 2.3 自动分层
 - [x] 会话结束时自动写入每日日志 (SessionMemoryHook)
-- [ ] 定期任务: 从日志提炼长期记忆
+- [x] 定期任务: 从日志提炼长期记忆 (MemoryExtractor)
 - [x] 重要性评分算法 (ImportanceScorer)
 
 ---
@@ -71,7 +71,7 @@
 - [x] HookManager 管理多个钩子
 - [x] 自动保存会话摘要到每日日志 (SessionMemoryHook)
 - [x] 支持 Archive/Reset/Delete 触发
-- [ ] `/new` 命令触发保存
+- [x] `/new` 命令触发保存 (EndReasonNew, SessionManager.NewSession)
 
 ---
 

@@ -81,9 +81,13 @@ const nodes = computed<CanvasNode[]>(() => {
   }))
 })
 
-// Canvas dimensions
-const canvasWidth = computed(() => NODE_WIDTH + NODE_MARGIN_X * 2)
-const canvasHeight = computed(() => {
+// Canvas dimensions - fill container, not based on content
+const canvasWidth = ref(800)
+const canvasHeight = ref(600)
+
+// Content dimensions based on nodes
+const contentWidth = computed(() => NODE_WIDTH + NODE_MARGIN_X * 2)
+const contentHeight = computed(() => {
   if (nodes.value.length === 0) return 400
   return nodes.value.length * (NODE_HEIGHT + NODE_MARGIN_Y) + NODE_MARGIN_Y
 })
@@ -181,22 +185,6 @@ function drawNode(ctx: CanvasRenderingContext2D, node: CanvasNode, isSelected: b
   ctx.strokeStyle = isSelected ? '#2563eb' : colors.border
   ctx.lineWidth = isSelected ? 3 : 2
   ctx.stroke()
-
-  // Left accent bar - draw a clean vertical bar on the left side
-  ctx.fillStyle = colors.border
-  // Draw a simple rectangle for the accent bar (no rounded corners needed for thin bar)
-  ctx.fillRect(x, y + BORDER_RADIUS, 4, height - BORDER_RADIUS * 2)
-  // Fill the top and bottom corners
-  ctx.beginPath()
-  ctx.arc(x + BORDER_RADIUS, y + BORDER_RADIUS, BORDER_RADIUS, Math.PI, Math.PI * 1.5)
-  ctx.lineTo(x, y)
-  ctx.lineTo(x, y + BORDER_RADIUS)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(x + BORDER_RADIUS, y + height - BORDER_RADIUS, BORDER_RADIUS, Math.PI * 0.5, Math.PI)
-  ctx.lineTo(x, y + height)
-  ctx.lineTo(x, y + height - BORDER_RADIUS)
-  ctx.fill()
 
   // Icon circle
   const iconX = x + 24
@@ -314,9 +302,10 @@ function draw() {
   // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Apply transform for panning only (scaling is handled by CSS)
+  // Apply transform for zoom and pan
   ctx.save()
   ctx.translate(offsetX.value, offsetY.value)
+  ctx.scale(scale.value, scale.value)
 
   // Draw connectors first (behind nodes)
   for (let i = 0; i < nodes.value.length - 1; i++) {
@@ -339,9 +328,9 @@ function draw() {
 
 // Find node at position
 function findNodeAtPosition(x: number, y: number): CanvasNode | null {
-  // Adjust for CSS scaling and panning
-  const adjustedX = x / scale.value - offsetX.value
-  const adjustedY = y / scale.value - offsetY.value
+  // Adjust for zoom and pan - reverse the transform
+  const adjustedX = (x - offsetX.value) / scale.value
+  const adjustedY = (y - offsetY.value) / scale.value
 
   for (const node of nodes.value) {
     if (
@@ -404,21 +393,54 @@ function handleClick(e: MouseEvent) {
 
 function handleWheel(e: WheelEvent) {
   e.preventDefault()
+
+  const canvas = canvasRef.value
+  if (!canvas) return
+
+  const rect = canvas.getBoundingClientRect()
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+
+  // Zoom towards mouse position
+  const oldScale = scale.value
   const delta = e.deltaY > 0 ? -0.1 : 0.1
-  scale.value = Math.max(0.5, Math.min(2, scale.value + delta))
+  const newScale = Math.max(0.3, Math.min(3, scale.value + delta))
+
+  // Adjust offset to zoom towards mouse position
+  const scaleRatio = newScale / oldScale
+  offsetX.value = mouseX - (mouseX - offsetX.value) * scaleRatio
+  offsetY.value = mouseY - (mouseY - offsetY.value) * scaleRatio
+
+  scale.value = newScale
   draw()
 }
 
 // Lifecycle
 onMounted(() => {
   const canvas = canvasRef.value
-  if (canvas) {
+  const container = containerRef.value
+  if (canvas && container) {
+    // Set canvas size to fill container
+    const rect = container.getBoundingClientRect()
+    canvasWidth.value = Math.max(rect.width, 600)
+    canvasHeight.value = Math.max(rect.height, 400)
+
     canvas.addEventListener('mousedown', handleMouseDown)
     canvas.addEventListener('mousemove', handleMouseMove)
     canvas.addEventListener('mouseup', handleMouseUp)
     canvas.addEventListener('mouseleave', handleMouseUp)
     canvas.addEventListener('click', handleClick)
     canvas.addEventListener('wheel', handleWheel, { passive: false })
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        canvasWidth.value = Math.max(entry.contentRect.width, 600)
+        canvasHeight.value = Math.max(entry.contentRect.height, 400)
+        draw()
+      }
+    })
+    resizeObserver.observe(container)
   }
   draw()
 })
@@ -436,7 +458,7 @@ onUnmounted(() => {
 })
 
 // Watch for changes
-watch([() => props.events, () => props.selectedEventId, scale], () => {
+watch([() => props.events, () => props.selectedEventId], () => {
   nextTick(draw)
 }, { deep: true })
 
@@ -454,29 +476,14 @@ watch(() => props.events.length, (newLen, oldLen) => {
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 rounded-lg">
-    <!-- Canvas wrapper with minimum size to prevent shrinking too small -->
-    <div
-      class="canvas-wrapper flex items-center justify-center"
-      :style="{
-        minWidth: Math.max(canvasWidth * scale, 400) + 'px',
-        minHeight: Math.max(canvasHeight * scale, 400) + 'px',
-        width: canvasWidth * scale + 'px',
-        height: canvasHeight * scale + 'px'
-      }"
-    >
-      <canvas
-        ref="canvasRef"
-        class="cursor-grab active:cursor-grabbing"
-        :width="canvasWidth"
-        :height="canvasHeight"
-        :style="{
-          width: canvasWidth * scale + 'px',
-          height: canvasHeight * scale + 'px',
-          minWidth: '360px'
-        }"
-      />
-    </div>
+  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-hidden bg-gray-50 dark:bg-gray-900 rounded-lg">
+    <!-- Canvas fills container -->
+    <canvas
+      ref="canvasRef"
+      class="cursor-grab active:cursor-grabbing absolute inset-0"
+      :width="canvasWidth"
+      :height="canvasHeight"
+    />
 
     <!-- Empty state -->
     <div
@@ -496,7 +503,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
       <button
         class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomIn')"
-        @click="scale = Math.min(scale + 0.1, 2)"
+        @click="scale = Math.min(scale + 0.1, 3); draw()"
       >
         <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
@@ -505,7 +512,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
       <button
         class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomOut')"
-        @click="scale = Math.max(scale - 0.1, 0.5)"
+        @click="scale = Math.max(scale - 0.1, 0.3); draw()"
       >
         <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
@@ -514,7 +521,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
       <button
         class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.reset')"
-        @click="scale = 1; offsetX = 0; offsetY = 0"
+        @click="scale = 1; offsetX = 0; offsetY = 0; draw()"
       >
         <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -579,5 +586,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
 
 canvas {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 </style>

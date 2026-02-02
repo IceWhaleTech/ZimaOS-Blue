@@ -144,6 +144,10 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 		return nil, "", fmt.Errorf("text is required")
 	}
 
+	if s.ttsService == nil {
+		return nil, "", fmt.Errorf("TTS service not configured")
+	}
+
 	// Determine format
 	format := tts.AudioFormat(req.Format)
 	if format == "" {

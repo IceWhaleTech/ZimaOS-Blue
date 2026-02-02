@@ -8,6 +8,7 @@ require (
 	github.com/IceWhaleTech/zorm v0.0.0-20260116154824-52cb5178f97d
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/bwmarrin/discordgo v0.29.0
+	github.com/difyz9/edge-tts-go v0.0.3
 	github.com/ebitengine/purego v0.9.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-jose/go-jose/v3 v3.0.4

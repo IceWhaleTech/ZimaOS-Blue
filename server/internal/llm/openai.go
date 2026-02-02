@@ -299,8 +299,16 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	apiURL := p.getAPIPath("/chat/completions")
+	// Log request URL and masked API key for debugging
+	maskedKey := p.apiKey
+	if len(maskedKey) > 8 {
+		maskedKey = maskedKey[:4] + "..." + maskedKey[len(maskedKey)-4:]
+	}
+	fmt.Printf("[OpenAI Chat] URL: %s, APIKey: %s\n", apiURL, maskedKey)
+
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getAPIPath("/chat/completions"), bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -353,8 +361,16 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	apiURL := p.getAPIPath("/chat/completions")
+	// Log request URL and masked API key for debugging
+	maskedKey := p.apiKey
+	if len(maskedKey) > 8 {
+		maskedKey = maskedKey[:4] + "..." + maskedKey[len(maskedKey)-4:]
+	}
+	fmt.Printf("[OpenAI ChatStream] URL: %s, APIKey: %s\n", apiURL, maskedKey)
+
 	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.getAPIPath("/chat/completions"), bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
