@@ -31,15 +31,26 @@ func (s *Service) GetEffectivePermissions(ctx context.Context, userID uuid.UUID)
 		return nil, err
 	}
 
-	// Admin gets all permissions
-	if u.Role == user.RoleAdmin {
-		return AllPagePermissions(), nil
-	}
-
 	// Get custom permissions from database
 	customPerms, err := s.repo.GetUserPermissions(ctx, userID)
 	if err != nil {
-		return nil, err
+		// If error fetching permissions (e.g., table doesn't exist in old versions),
+		// fallback to role defaults for backward compatibility
+		return s.GetDefaultPermissionsForRole(string(u.Role)), nil
+	}
+
+	// Migration logic: If admin has no permissions in DB, populate them
+	if u.Role == user.RoleAdmin && len(customPerms) == 0 {
+		// Automatically initialize admin permissions for migration
+		allPerms := AllPagePermissions()
+		systemGranter := "system-migration"
+		_ = s.repo.SetUserPermissions(ctx, userID, allPerms, &systemGranter)
+		return allPerms, nil
+	}
+
+	// Admin gets all permissions
+	if u.Role == user.RoleAdmin {
+		return AllPagePermissions(), nil
 	}
 
 	// If user has custom permissions, use those
@@ -47,8 +58,15 @@ func (s *Service) GetEffectivePermissions(ctx context.Context, userID uuid.UUID)
 		return customPerms, nil
 	}
 
-	// Otherwise, return role defaults
-	return s.GetDefaultPermissionsForRole(string(u.Role)), nil
+	// Migration logic: If non-admin user has no permissions, populate defaults
+	defaultPerms := s.GetDefaultPermissionsForRole(string(u.Role))
+	if len(defaultPerms) > 0 {
+		systemGranter := "system-migration"
+		_ = s.repo.SetUserPermissions(ctx, userID, defaultPerms, &systemGranter)
+	}
+
+	// Return role defaults (for users created before permission system)
+	return defaultPerms, nil
 }
 
 // GetDefaultPermissionsForRole returns the default permissions for a role

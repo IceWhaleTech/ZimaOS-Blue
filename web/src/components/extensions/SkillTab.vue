@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSkillStore } from '@/stores/skill'
-import type { Skill } from '@/api/skill'
+import { skillApi, type Skill } from '@/api/skill'
 
 const { t, te } = useI18n()
 const skillStore = useSkillStore()
@@ -23,6 +23,12 @@ function getSkillDescription(skill: Skill): string {
 
 const searchQuery = ref('')
 const filterCategory = ref<string>('all')
+
+// Skill detail modal state
+const showDetailModal = ref(false)
+const selectedSkill = ref<Skill | null>(null)
+const skillContent = ref('')
+const loadingContent = ref(false)
 
 const filteredSkills = computed(() => {
   let result = skillStore.skills
@@ -59,6 +65,28 @@ async function handleToggle(skill: Skill) {
   } else {
     await skillStore.enableSkill(skill.id)
   }
+}
+
+async function openSkillDetail(skill: Skill) {
+  selectedSkill.value = skill
+  skillContent.value = ''
+  showDetailModal.value = true
+  loadingContent.value = true
+
+  try {
+    const response = await skillApi.getContent(skill.id)
+    skillContent.value = response.data.content || ''
+  } catch {
+    skillContent.value = ''
+  } finally {
+    loadingContent.value = false
+  }
+}
+
+function closeDetailModal() {
+  showDetailModal.value = false
+  selectedSkill.value = null
+  skillContent.value = ''
 }
 
 function getSkillIconUrl(icon?: string): string | null {
@@ -157,7 +185,8 @@ function getCategoryLabel(category?: string): string {
       <div
         v-for="skill in filteredSkills"
         :key="skill.id"
-        :class="['item-card', { disabled: !skill.enabled }]"
+        :class="['item-card', 'clickable', { disabled: !skill.enabled }]"
+        @click="openSkillDetail(skill)"
       >
         <div class="item-header">
           <img v-if="getSkillIconUrl(skill.icon)" :src="getSkillIconUrl(skill.icon)!" class="item-icon-svg" :alt="getSkillName(skill)" />
@@ -169,7 +198,7 @@ function getCategoryLabel(category?: string): string {
               <span class="builtin-badge">{{ t('plugins.builtin') }}</span>
             </div>
           </div>
-          <label class="toggle-switch">
+          <label class="toggle-switch" @click.stop>
             <input
               type="checkbox"
               :checked="skill.enabled"
@@ -194,8 +223,76 @@ function getCategoryLabel(category?: string): string {
         <p>{{ searchQuery || filterCategory !== 'all' ? t('plugins.noMatchingTools') : t('plugins.noTools') }}</p>
       </div>
     </div>
+
+    <!-- Skill Detail Modal -->
+    <Teleport to="body">
+      <div v-if="showDetailModal" class="modal-overlay" @click.self="closeDetailModal">
+        <div class="modal-content skill-detail-modal">
+          <div class="modal-header">
+            <div class="modal-title-row">
+              <span v-if="selectedSkill" class="modal-icon">{{ getCategoryIcon(selectedSkill.category) }}</span>
+              <h2>{{ selectedSkill ? getSkillName(selectedSkill) : '' }}</h2>
+            </div>
+            <button class="modal-close" @click="closeDetailModal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div v-if="loadingContent" class="loading-content">
+              <div class="spinner"></div>
+              <span>{{ t('common.loading') }}</span>
+            </div>
+            <div v-else-if="skillContent" class="skill-content markdown-body" v-html="renderMarkdown(skillContent)"></div>
+            <div v-else class="no-content">
+              <p>{{ t('skills.noContent') }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
+
+<script lang="ts">
+// Simple markdown renderer
+function renderMarkdown(content: string): string {
+  if (!content) return ''
+
+  let html = content
+    // Escape HTML
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Code blocks
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    // Lists
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    // Paragraphs
+    .replace(/\n\n/g, '</p><p>')
+
+  // Wrap in paragraph
+  html = '<p>' + html + '</p>'
+
+  // Wrap consecutive li elements in ul
+  html = html.replace(/(<li>.*?<\/li>)+/gs, '<ul>$&</ul>')
+
+  return html
+}
+</script>
 
 <style scoped>
 @import './extension-tab.css';
@@ -235,5 +332,181 @@ function getCategoryLabel(category?: string): string {
 .stat-label {
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+.item-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.item-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.skill-detail-modal {
+  background: var(--color-bg-primary, #1a1a2e);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+}
+
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-icon {
+  font-size: 24px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.modal-close:hover {
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.1));
+}
+
+.modal-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 12px;
+  color: var(--color-text-secondary);
+}
+
+.no-content {
+  text-align: center;
+  padding: 40px;
+  color: var(--color-text-secondary);
+}
+
+.skill-content {
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.skill-content :deep(h1) {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  color: var(--color-text-primary);
+}
+
+.skill-content :deep(h2) {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 24px 0 12px 0;
+  color: var(--color-text-primary);
+}
+
+.skill-content :deep(h3) {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 20px 0 8px 0;
+  color: var(--color-text-primary);
+}
+
+.skill-content :deep(p) {
+  margin: 0 0 12px 0;
+}
+
+.skill-content :deep(ul) {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.skill-content :deep(li) {
+  margin: 4px 0;
+}
+
+.skill-content :deep(code) {
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.1));
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.skill-content :deep(pre) {
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.3));
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.skill-content :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.skill-content :deep(strong) {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.skill-content :deep(a) {
+  color: var(--color-accent, #3b82f6);
+  text-decoration: none;
+}
+
+.skill-content :deep(a:hover) {
+  text-decoration: underline;
 }
 </style>

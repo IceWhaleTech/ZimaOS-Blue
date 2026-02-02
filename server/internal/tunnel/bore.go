@@ -13,7 +13,7 @@ const (
 	boreServer               = "bore.pub"
 	boreMaxReconnectDelay    = 60 * time.Second // Maximum delay between reconnection attempts
 	boreInitReconnectDelay   = 2 * time.Second  // Initial delay between reconnection attempts
-	boreMaxReconnectAttempts = 10               // Maximum reconnection attempts before giving up
+	boreMaxReconnectAttempts = 5                // Maximum reconnection attempts before giving up
 )
 
 // BoreManager implements Manager for bore.

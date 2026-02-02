@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats } from '@/api/providerPool'
+import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus } from '@/api/providerPool'
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
   // State
@@ -15,6 +15,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const selectedProviderId = ref<string | null>(null)
   const routingMode = ref<RoutingMode>('auto')
   const locationStats = ref<LocationStats | null>(null)
+  const trialQuota = ref<TrialQuotaStatus | null>(null)
 
   // Computed
   const enabledProviders = computed(() =>
@@ -35,6 +36,10 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   const ideProviders = computed(() =>
     providers.value.filter(p => p.type === 'ide')
+  )
+
+  const trialProviders = computed(() =>
+    providers.value.filter(p => p.type === 'trial')
   )
 
   const cloudProviders = computed(() =>
@@ -64,11 +69,22 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     try {
       const response = await providerPoolApi.listProviders()
       providers.value = response.data.providers || []
+      // Also fetch trial quota
+      fetchTrialQuota()
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to fetch providers'
       throw err
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchTrialQuota() {
+    try {
+      const response = await providerPoolApi.getTrialQuota()
+      trialQuota.value = response.data
+    } catch {
+      // Ignore errors - trial quota is optional
     }
   }
 
@@ -504,6 +520,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     selectedProviderId,
     routingMode,
     locationStats,
+    trialQuota,
 
     // Computed
     enabledProviders,
@@ -511,6 +528,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     builtinProviders,
     customProviders,
     ideProviders,
+    trialProviders,
     cloudProviders,
     localProviders,
     hasCloudProviders,
@@ -551,5 +569,6 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     fetchRoutingMode,
     setRoutingMode,
     fetchLocationStats,
+    fetchTrialQuota,
   }
 })

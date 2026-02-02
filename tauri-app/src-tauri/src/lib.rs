@@ -50,6 +50,12 @@ fn get_server_port(state: tauri::State<AppState>) -> u16 {
     *state.server_port.lock().unwrap()
 }
 
+/// Open URL in system default browser (no ACL required)
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    open::that(url).map_err(|e| e.to_string())
+}
+
 /// Start the server using platform-specific approach
 /// - macOS: Uses CGO library (FFI to Go static library) for faster startup
 /// - Windows: Uses sidecar process
@@ -137,6 +143,7 @@ pub fn run() {
             get_server_url,
             is_server_running,
             get_server_port,
+            open_url,
             server::start_server,
             server::stop_server,
             server::restart_server,

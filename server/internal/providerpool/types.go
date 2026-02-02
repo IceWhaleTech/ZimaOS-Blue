@@ -18,6 +18,8 @@ const (
 	ProviderTypeACP ProviderType = "acp"
 	// ProviderTypeIDE represents providers discovered from local IDE tools
 	ProviderTypeIDE ProviderType = "ide"
+	// ProviderTypeTrial represents trial providers with limited quota
+	ProviderTypeTrial ProviderType = "trial"
 )
 
 // ProviderLocation represents where the provider runs

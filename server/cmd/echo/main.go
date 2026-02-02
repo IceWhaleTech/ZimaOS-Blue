@@ -163,7 +163,7 @@ func main() {
 
 	// Parse flags
 	configPath := flag.String("config", "", "Path to config file")
-	showVersion := flag.Bool("version", false, "Show version information")
+	showVersion := flag.Bool("v", false, "Show version information")
 	showHelp := flag.Bool("help", false, "Show help information")
 	flag.Parse()
 
@@ -173,7 +173,7 @@ func main() {
 		fmt.Println("")
 		fmt.Println("Options:")
 		fmt.Println("  --config <path>  Path to config file")
-		fmt.Println("  --version        Show version information")
+		fmt.Println("  -v               Show version information")
 		fmt.Println("  --help           Show this help message")
 		fmt.Println("")
 		PrintServiceHelp()
@@ -852,6 +852,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	networkHandler.RegisterRoutes(e)
 	logger.Info().Msg("Network routes registered")
 
+	// Initialize CORS origins with detected local network addresses
+	if err := networkHandler.InitializeCORSOrigins(); err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize CORS origins with local network addresses")
+	} else {
+		logger.Info().Msg("CORS origins initialized with local network addresses")
+	}
+
 	// Register link preview routes (public - for fetching URL metadata)
 	linkPreviewHandler := networkapi.NewLinkPreviewHandler()
 	linkPreviewHandler.RegisterRoutes(v1)
@@ -1046,31 +1053,39 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	providerPool, err := providerpool.NewPool(providerPoolPath)
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize provider pool, provider pool features will be disabled")
-	} else {
-		providerPool.Start(context.Background())
+		// Create empty pool to allow route registration
+		providerPool = nil
+	}
 
-		// Auto-migrate from legacy provider settings
-		if providerpool.CheckMigrationNeeded(dataDir) {
-			logger.Info().Msg("Legacy provider settings detected, starting migration...")
-			result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
-			if err != nil {
-				logger.Warn().Err(err).Msg("Failed to migrate legacy provider settings")
-			} else if result.Migrated > 0 {
-				logger.Info().
-					Int("migrated", result.Migrated).
-					Int("skipped", result.Skipped).
-					Strs("migrated_names", result.MigratedNames).
-					Str("backup_path", result.BackupPath).
-					Msg("Legacy provider settings migrated successfully")
+	// Always register routes, even if pool is nil (handlers will return empty data)
+	if true {
+		// Start pool if it was successfully created
+		if providerPool != nil {
+			providerPool.Start(context.Background())
+
+			// Auto-migrate from legacy provider settings
+			if providerpool.CheckMigrationNeeded(dataDir) {
+				logger.Info().Msg("Legacy provider settings detected, starting migration...")
+				result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
+				if err != nil {
+					logger.Warn().Err(err).Msg("Failed to migrate legacy provider settings")
+				} else if result.Migrated > 0 {
+					logger.Info().
+						Int("migrated", result.Migrated).
+						Int("skipped", result.Skipped).
+						Strs("migrated_names", result.MigratedNames).
+						Str("backup_path", result.BackupPath).
+						Msg("Legacy provider settings migrated successfully")
+				}
 			}
+
+			// Load providers from Provider Pool and register them in LLM registry
+			// This replaces the environment variable-based provider registration
+			loadProvidersFromPool(providerPool, llmRegistry)
+
+			// Set provider pool on chat handler for auto-selecting providers
+			chatHandler.SetProviderPool(providerPool)
 		}
-
-		// Load providers from Provider Pool and register them in LLM registry
-		// This replaces the environment variable-based provider registration
-		loadProvidersFromPool(providerPool, llmRegistry)
-
-		// Set provider pool on chat handler for auto-selecting providers
-		chatHandler.SetProviderPool(providerPool)
 
 		// Initialize shared cache (cc-cache) for both proxy and chat
 		// This is done here so both proxy and chat can share the same cache instance
@@ -1087,7 +1102,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		providersGroup := protected.Group("/providers")
 		providerPoolHandler.RegisterRoutes(providersGroup)
 		// Register model routes
-		modelsGroup := v1.Group("/models")
+		modelsGroup := protected.Group("/models")
 		providerPoolHandler.RegisterModelRoutes(modelsGroup)
 		// Register IDE routes
 		ideGroup := protected.Group("/ide")

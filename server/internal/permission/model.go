@@ -56,6 +56,7 @@ func AllPagePermissions() []string {
 // DefaultGuestPermissions returns the default permissions for guest role
 func DefaultGuestPermissions() []string {
 	return []string{
+		PageHome,
 		PageChat,
 	}
 }

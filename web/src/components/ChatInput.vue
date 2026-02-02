@@ -59,12 +59,56 @@ const asrModelReady = ref(true) // Assume ready until checked
 
 const maxSize = computed(() => props.maxFileSize || 10 * 1024 * 1024) // 10MB default
 const allowedMimeTypes = computed(() => props.allowedTypes || [
+  // Images
   'image/*',
+  // PDF
   'application/pdf',
+  // Text files
   'text/plain',
   'text/markdown',
-  'application/json',
   'text/csv',
+  'text/html',
+  'text/xml',
+  'text/rtf',
+  // Code/Data files
+  'application/json',
+  'application/xml',
+  'application/x-yaml',
+  'text/yaml',
+  'text/x-python',
+  'text/javascript',
+  'application/javascript',
+  'text/x-java-source',
+  'text/x-c',
+  'text/x-c++',
+  'text/x-go',
+  'text/x-rust',
+  'text/x-typescript',
+  // Microsoft Office documents
+  'application/msword', // .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/vnd.ms-excel', // .xls
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-powerpoint', // .ppt
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+  'application/rtf', // .rtf
+  // OpenDocument formats
+  'application/vnd.oasis.opendocument.text', // .odt
+  'application/vnd.oasis.opendocument.spreadsheet', // .ods
+  'application/vnd.oasis.opendocument.presentation', // .odp
+  // Archives
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/x-rar-compressed',
+  'application/x-7z-compressed',
+  'application/gzip',
+  'application/x-tar',
+  // Audio
+  'audio/*',
+  // Video
+  'video/*',
+  // E-books
+  'application/epub+zip', // .epub
 ])
 
 const canSend = computed(() =>

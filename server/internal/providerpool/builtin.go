@@ -1,6 +1,25 @@
 package providerpool
 
-import "time"
+import (
+	"os"
+	"time"
+)
+
+// Build-time variables (injected via -ldflags)
+// Example: go build -ldflags "-X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialAPIKey=sk-xxx"
+var (
+	trialAPIKey  string // Injected at build time
+	trialBaseURL string // Injected at build time (optional)
+)
+
+const (
+	// TrialAPIKeyEnvVar is the environment variable name for trial API key (runtime override)
+	TrialAPIKeyEnvVar = "ZIMAOS_TRIAL_API_KEY"
+	// TrialBaseURLEnvVar is the environment variable name for trial base URL (runtime override)
+	TrialBaseURLEnvVar = "ZIMAOS_TRIAL_BASE_URL"
+	// DefaultTrialBaseURL is the default base URL for trial provider
+	DefaultTrialBaseURL = "https://api-paid.tribios.top/v1"
+)
 
 // BuiltinProviders returns the list of built-in provider configurations
 func BuiltinProviders() []*Provider {
@@ -14,6 +33,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.openai.com/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    50,
 			Icon:        "openai",
 			Description: "OpenAI API - GPT-4, GPT-4o, o1, and more",
@@ -30,6 +50,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.anthropic.com",
 			APIVersion:  "2024-01-01",
+			APIFormat:   APIFormatAnthropic,
 			Priority:    50,
 			Icon:        "anthropic",
 			Description: "Anthropic API - Claude Opus, Sonnet, Haiku",
@@ -46,6 +67,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://generativelanguage.googleapis.com",
 			APIVersion:  "v1beta",
+			APIFormat:   APIFormatGoogle,
 			Priority:    40,
 			Icon:        "google",
 			Description: "Google Gemini API - Gemini Pro, Ultra",
@@ -62,6 +84,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.deepseek.com/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    30,
 			Icon:        "deepseek",
 			Description: "DeepSeek API - DeepSeek Chat, Coder",
@@ -78,6 +101,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.moonshot.cn/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    30,
 			Icon:        "moonshot",
 			Description: "Moonshot AI (Kimi) API",
@@ -94,6 +118,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "", // User must configure
 			APIVersion:  "2024-02-01",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    45,
 			Icon:        "azure",
 			Description: "Azure OpenAI Service",
@@ -110,6 +135,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://openrouter.ai/api/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    35,
 			Icon:        "openrouter",
 			Description: "OpenRouter - Access multiple models through one API",
@@ -126,6 +152,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://aihubmix.com/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    35,
 			Icon:        "aihubmix",
 			Description: "AiHubMix - AI model aggregator",
@@ -142,6 +169,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "http://localhost:11434",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOllama,
 			Priority:    20,
 			Icon:        "ollama",
 			Description: "Ollama - Run LLMs locally",
@@ -158,6 +186,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.minimax.chat/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    30,
 			Icon:        "minimax",
 			Description: "MiniMax API - abab series models",
@@ -174,6 +203,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.codex.com/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    30,
 			Icon:        "codex",
 			Description: "Codex API - Code generation models",
@@ -190,6 +220,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.x.ai/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    40,
 			Icon:        "grok",
 			Description: "xAI Grok API - Advanced AI models from xAI",
@@ -206,6 +237,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://dashscope.aliyuncs.com/compatible-mode/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    35,
 			Icon:        "qwen",
 			Description: "Alibaba Cloud Qwen API - Qwen series models with multilingual support",
@@ -222,6 +254,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://api.venice.ai/api/v1",
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    35,
 			Icon:        "venice",
 			Description: "Venice AI - Privacy-focused AI with uncensored models",
@@ -238,6 +271,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "", // User must configure with their AWS region endpoint
 			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    45,
 			Icon:        "aws",
 			Description: "Amazon Bedrock - AWS managed AI service with Claude, Llama, and more",
@@ -254,12 +288,73 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusInactive,
 			BaseURL:     "https://open.bigmodel.cn/api/paas/v4",
 			APIVersion:  "v4",
+			APIFormat:   APIFormatOpenAI,
 			Priority:    35,
 			Icon:        "glm",
 			Description: "Zhipu AI GLM API - GLM-4 series models with Chinese language support",
 			Website:     "https://open.bigmodel.cn",
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
+		},
+		{
+			ID:          "zimaos-trial",
+			Name:        "ZimaOS Trial",
+			Type:        ProviderTypeTrial,
+			Location:    ProviderLocationCloud,
+			Enabled:     true,
+			Status:      ProviderStatusActive,
+			BaseURL:     getTrialBaseURL(),
+			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
+			Priority:    100, // Highest priority for trial
+			Icon:        "echo",
+			Description: "Echo Trial Provider - Free trial with limited quota",
+			Website:     "https://zimaos.com",
+			APIKeys:     getTrialAPIKeys(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		},
+	}
+}
+
+// getTrialBaseURL returns the trial provider base URL
+// Priority: 1. Environment variable (runtime override) 2. Build-time value 3. Default
+func getTrialBaseURL() string {
+	// Runtime override via environment variable
+	if url := os.Getenv(TrialBaseURLEnvVar); url != "" {
+		return url
+	}
+	// Build-time injected value
+	if trialBaseURL != "" {
+		return trialBaseURL
+	}
+	// Default
+	return DefaultTrialBaseURL
+}
+
+// getTrialAPIKeys returns the trial API keys
+// Priority: 1. Environment variable (runtime override) 2. Build-time value
+func getTrialAPIKeys() []APIKey {
+	// Runtime override via environment variable
+	apiKey := os.Getenv(TrialAPIKeyEnvVar)
+	if apiKey == "" {
+		// Use build-time injected value
+		apiKey = trialAPIKey
+	}
+
+	if apiKey == "" {
+		// No key configured
+		return nil
+	}
+
+	return []APIKey{
+		{
+			ID:        "trial-key",
+			Key:       apiKey,
+			KeyHash:   HashAPIKey(apiKey),
+			Label:     "Trial API Key",
+			Enabled:   true,
+			CreatedAt: time.Now(),
 		},
 	}
 }
@@ -1210,6 +1305,27 @@ func BuiltinModels() map[string][]*Model {
 				OutputPrice:   1.4,
 			},
 		},
+		"zimaos-trial": {
+			{
+				ID:          "claude-haiku-4-5",
+				ProviderID:  "zimaos-trial",
+				Name:        "claude-haiku-4-5",
+				DisplayName: "Claude Haiku 4.5 (Trial)",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 200000,
+				MaxOutput:     8192,
+				InputPrice:    0.0, // Free for trial
+				OutputPrice:   0.0,
+			},
+		},
 	}
 }
 
@@ -1230,4 +1346,29 @@ func GetBuiltinModels(providerID string) []*Model {
 		return m
 	}
 	return nil
+}
+
+// GetBuiltinPricingConfig returns pricing configuration from built-in models
+func GetBuiltinPricingConfig() *PricingConfig {
+	config := DefaultPricingConfig()
+
+	// Extract pricing from all built-in models
+	allModels := BuiltinModels()
+	for _, models := range allModels {
+		for _, model := range models {
+			if model.InputPrice > 0 || model.OutputPrice > 0 {
+				config.CustomPricing[model.ID] = &ModelPricing{
+					ModelID:     model.ID,
+					ProviderID:  model.ProviderID,
+					InputPrice:  model.InputPrice,
+					OutputPrice: model.OutputPrice,
+					CachePrice:  0, // Built-in models don't have cache pricing
+					IsCustom:    false,
+					UpdatedAt:   config.UpdatedAt,
+				}
+			}
+		}
+	}
+
+	return config
 }

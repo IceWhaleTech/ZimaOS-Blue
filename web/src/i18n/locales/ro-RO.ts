@@ -23,6 +23,8 @@ export default {
     testing: 'Se testează...',
     dismiss: 'Închide',
     done: 'Gata',
+    filterByIp: 'Filtrare după IP',
+    allIps: 'Toate IP-urile',
   },
   theme: {
     styles: {
@@ -804,6 +806,12 @@ export default {
     title: 'Pool furnizori',
     subtitle: 'Gestionați furnizori LLM și chei API',
     description: 'Gestionați furnizori LLM, chei API și rutarea modelelor',
+    trialQuota: {
+      title: 'Cota de încercare',
+      exhausted: 'Cota de încercare epuizată',
+      remaining: '{tokens} tokeni rămași, {conversations} conversații rămase',
+      tokensUsed: '{used} / {limit} tokeni utilizați',
+    },
     testConnection: 'Testează conexiunea',
     noProviders: 'Niciun furnizor configurat',
     noModels: 'Niciun model disponibil',
@@ -880,6 +888,18 @@ export default {
     antivirusBlockedTitle: 'ngrok poate fi blocat de antivirus',
     antivirusBlockedDesc: 'Dacă conexiunea eșuează, verificați dacă antivirusul blochează ngrok și adăugați-l la whitelist.',
   },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+  },
+  userdata: {
+    ...enUS.userdata,
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  speech: {
+    ...enUS.speech,
+  },
   localeNames: {
     'ca-ES': 'Catalană',
     'cs-CZ': 'Cehă',
@@ -908,5 +928,44 @@ export default {
     'sv-SE': 'Suedeză',
     'zh-CN': 'Chineză simplificată',
     'zh-TW': 'Chineză tradițională',
+  },
+  chat: {
+    ...enUS.chat,
+    trialExhausted: 'Cota de încercare a fost epuizată. Vă rugăm să configurați propriul furnizor de IA pentru a continua.',
+    configureProvider: 'Configurare furnizor',
+    trialQuota: {
+      exhausted: 'Cota de încercare epuizată',
+      remaining: '{tokens} tokeni rămași',
+      configure: 'Configurare',
+    },
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    title: 'Magazin de abilități',
+    subtitle: 'Descoperiți și instalați abilități pentru a vă extinde asistentul AI',
+    sort: {
+      downloads: 'Descărcări',
+      rating: 'Evaluare',
+      stars: 'Stele',
+      updated: 'Actualizat recent',
+      name: 'Nume',
+    },
+    filters: {
+      searchSkillsPlaceholder: 'Căutați abilități...',
+      allCategories: 'Toate categoriile',
+      allSources: 'Toate sursele',
+    },
+    install: 'Instalare',
+    installed: 'Instalat',
+    downloads: 'Descărcări',
+    rating: 'Evaluare',
+    reviews: 'Recenzii',
+    stars: 'Stele',
+    noSkillsFound: 'Nu s-au găsit abilități',
+    noResults: 'Fără rezultate',
+    noResultsForQuery: 'Încercați să ajustați căutarea sau filtrele',
+    noSkillsAvailable: 'Nu sunt disponibile abilități în acest moment',
+    clearSearch: 'Ștergeți căutarea',
+    allLoaded: 'Toate cele {count} abilități încărcate',
   },
 }

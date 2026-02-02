@@ -27,9 +27,24 @@ const props = withDefaults(
 
 const sortBy = ref<'connectedAt' | 'lastActivity' | 'requestCount'>('connectedAt')
 const sortOrder = ref<'asc' | 'desc'>('desc')
+const selectedIp = ref<string>('all')
+
+// Get unique IPs from connections
+const uniqueIps = computed(() => {
+  const ips = new Set(props.connections.map(c => c.clientIp))
+  return Array.from(ips).sort()
+})
+
+// Filter connections by selected IP
+const filteredConnections = computed(() => {
+  if (selectedIp.value === 'all') {
+    return props.connections
+  }
+  return props.connections.filter(c => c.clientIp === selectedIp.value)
+})
 
 const sortedConnections = computed(() => {
-  return [...props.connections].sort((a, b) => {
+  return [...filteredConnections.value].sort((a, b) => {
     let comparison = 0
     switch (sortBy.value) {
       case 'connectedAt':
@@ -83,9 +98,22 @@ function toggleSort(field: typeof sortBy.value) {
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.activeConnectionsTitle') }}</h2>
-      <span class="text-sm text-gray-500 dark:text-gray-400">
-        {{ t('common.activeCount', { count: connections.length }) }}
-      </span>
+      <div class="flex items-center gap-4">
+        <!-- IP Filter -->
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-gray-500 dark:text-gray-400">{{ t('common.filterByIp') }}:</label>
+          <select
+            v-model="selectedIp"
+            class="text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">{{ t('common.allIps') }}</option>
+            <option v-for="ip in uniqueIps" :key="ip" :value="ip">{{ ip }}</option>
+          </select>
+        </div>
+        <span class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('common.activeCount', { count: filteredConnections.length }) }}
+        </span>
+      </div>
     </div>
 
     <div v-if="loading" class="p-6 text-center">

@@ -23,6 +23,8 @@ export default {
     testing: 'Tester...',
     dismiss: 'Lukk',
     done: 'Ferdig',
+    filterByIp: 'Filtrer etter IP',
+    allIps: 'Alle IP-er',
   },
   theme: {
     styles: {
@@ -804,6 +806,12 @@ export default {
     title: 'Leverandørpool',
     subtitle: 'Administrer LLM-leverandører og API-nøkler',
     description: 'Administrer LLM-leverandører, API-nøkler og modellruting',
+    trialQuota: {
+      title: 'Prøvekvote',
+      exhausted: 'Prøvekvote oppbrukt',
+      remaining: '{tokens} tokens gjenstår, {conversations} samtaler gjenstår',
+      tokensUsed: '{used} / {limit} tokens brukt',
+    },
     testConnection: 'Test tilkobling',
     noProviders: 'Ingen leverandører konfigurert',
     noModels: 'Ingen modeller tilgjengelig',
@@ -880,6 +888,18 @@ export default {
     antivirusBlockedTitle: 'ngrok kan bli blokkert av antivirus',
     antivirusBlockedDesc: 'Hvis tilkoblingen mislykkes, sjekk om antivirusprogrammet blokkerer ngrok og legg det til i whitelisten.',
   },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+  },
+  userdata: {
+    ...enUS.userdata,
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  speech: {
+    ...enUS.speech,
+  },
   localeNames: {
     'ca-ES': 'Katalansk',
     'cs-CZ': 'Tsjekkisk',
@@ -908,5 +928,44 @@ export default {
     'sv-SE': 'Svensk',
     'zh-CN': 'Forenklet kinesisk',
     'zh-TW': 'Tradisjonell kinesisk',
+  },
+  chat: {
+    ...enUS.chat,
+    trialExhausted: 'Prøvekvoten er oppbrukt. Vennligst konfigurer din egen AI-leverandør for å fortsette.',
+    configureProvider: 'Konfigurer leverandør',
+    trialQuota: {
+      exhausted: 'Prøvekvote oppbrukt',
+      remaining: '{tokens} tokens gjenstår',
+      configure: 'Konfigurer',
+    },
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    title: 'Ferdighetsbutikk',
+    subtitle: 'Oppdag og installer ferdigheter for å utvide AI-assistenten din',
+    sort: {
+      downloads: 'Nedlastinger',
+      rating: 'Vurdering',
+      stars: 'Stjerner',
+      updated: 'Nylig oppdatert',
+      name: 'Navn',
+    },
+    filters: {
+      searchSkillsPlaceholder: 'Søk etter ferdigheter...',
+      allCategories: 'Alle kategorier',
+      allSources: 'Alle kilder',
+    },
+    install: 'Installer',
+    installed: 'Installert',
+    downloads: 'Nedlastinger',
+    rating: 'Vurdering',
+    reviews: 'Anmeldelser',
+    stars: 'Stjerner',
+    noSkillsFound: 'Ingen ferdigheter funnet',
+    noResults: 'Ingen resultater',
+    noResultsForQuery: 'Prøv å justere søket eller filtrene',
+    noSkillsAvailable: 'Ingen ferdigheter tilgjengelig for øyeblikket',
+    clearSearch: 'Tøm søk',
+    allLoaded: 'Alle {count} ferdigheter lastet',
   },
 }

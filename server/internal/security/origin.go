@@ -25,6 +25,7 @@ func DefaultOriginConfig() OriginConfig {
 		AllowedOrigins: []string{
 			"http://localhost:23456",
 			"http://127.0.0.1:23456",
+			"tauri://localhost",  // Tauri desktop app
 		},
 		AllowLocalhost: true,
 	}

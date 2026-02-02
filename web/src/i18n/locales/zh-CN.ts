@@ -74,6 +74,8 @@ export default {
     toggleLiveStreaming: '切换实时流',
     activeConnectionsTitle: '活跃连接',
     activeCount: '{count} 个活跃',
+    filterByIp: '按 IP 过滤',
+    allIps: '所有 IP',
     type: '类型',
     clientIp: '客户端 IP',
     connected: '连接时间',
@@ -303,6 +305,13 @@ export default {
     // Security
     threatLevel: '威胁等级',
     dismissWarning: '关闭',
+    trialExhausted: '试用额度已用完，请配置您自己的 AI 提供商以继续使用。',
+    configureProvider: '配置提供商',
+    trialQuota: {
+      exhausted: '试用额度已用完',
+      remaining: '剩余 {tokens} tokens',
+      configure: '配置',
+    },
     // Claude Code CLI
     poweredByClaudeCode: 'Powered by {name}',
     poweredByClaudeCodeDesc: '聊天已增强 {name} 功能，包括技能、工具调用和文件操作',
@@ -316,6 +325,12 @@ export default {
     allProvidersFailed: '所有提供商均失败，点击检查设置。',
     providerActive: '提供商已就绪。',
     providerPending: '正在检查提供商状态...',
+    // Trial quota
+    trialQuota: {
+      exhausted: '试用额度已用完，请配置您自己的提供商。',
+      remaining: '剩余 {tokens} tokens',
+      configure: '配置',
+    },
     // Routing Mode
     routingMode: {
       auto: '自动',
@@ -406,6 +421,7 @@ export default {
       'slack-skill': { name: 'Slack', description: 'Slack 工作区操作' },
       'discord-skill': { name: 'Discord', description: 'Discord 服务器操作' },
     },
+    noContent: '该技能暂无详细内容。',
   },
   // 内置工具（工具商店/扩展 i18n）
   tools: {
@@ -1828,8 +1844,22 @@ export default {
     },
     threats: {
       riskLevel: {
+        critical: '严重',
+        high: '高',
+        medium: '中',
+        low: '低',
+        none: '无',
       },
       types: {
+        injection: '注入攻击',
+        xss: 'XSS 攻击',
+        sqlInjection: 'SQL 注入',
+        pathTraversal: '路径遍历',
+        commandInjection: '命令注入',
+        promptInjection: '提示词注入',
+        bruteForce: '暴力破解',
+        rateLimit: '速率限制超限',
+        suspiciousIp: '可疑 IP',
       },
     },
     // Direct keys used in template
@@ -2309,6 +2339,7 @@ export default {
       sent: '已发送',
       message: '消息',
       chars: '{count} 字符',
+      tokens: '{count} 令牌',
       toolCall: '工具调用',
       sandbox: '沙箱',
       llmRequest: '大语言模型请求',
@@ -2317,6 +2348,14 @@ export default {
       tokensOut: '输出',
       status: {
       },
+    },
+    // 大语言模型请求详情
+    llmDetails: {
+      input: '输入',
+      prompt: '提示词',
+      completion: '补全',
+      total: '总计',
+      score: '分数',
     },
     // 消息方向
     message: {
@@ -2444,6 +2483,7 @@ export default {
     // 排序
     sort: {
       downloads: '下载量',
+      rating: '评分',
       stars: '星标数',
       updated: '最近更新',
       name: '名称',
@@ -2454,7 +2494,12 @@ export default {
     downloads: '下载量',
     rating: '评分',
     reviews: '评论',
+    stars: '星标',
     noSkillsFound: '未找到技能',
+    noResults: '无结果',
+    noResultsForQuery: '尝试调整搜索条件或筛选器',
+    noSkillsAvailable: '暂无可用技能',
+    clearSearch: '清除搜索',
     allLoaded: '已加载全部 {count} 个技能',
     fetchError: '获取技能失败',
     installError: '安装技能失败',
@@ -2621,7 +2666,6 @@ export default {
     binaryPath: '二进制路径',
     latestVersion: '最新版本',
     lastCheck: '上次检查',
-    version: '版本',
     // 操作
     checkForUpdates: '检查更新',
     checking: '检查中...',
@@ -2911,11 +2955,46 @@ export default {
     locationLocal: '本地',
     locationHint: '云端提供商运行在远程服务器，本地提供商运行在您的设备上',
     dragToReorder: '拖拽调整优先级',
+    // 试用提供商
+    trial: {
+      name: 'ZimaOS 试用',
+      description: '免费试用，额度有限',
+      quotaExhausted: '试用额度已用完',
+      quotaExhaustedTokens: '您的试用 Token 额度已用完，请配置自己的提供商以继续使用。',
+      quotaExhaustedConversations: '您的试用对话次数已达上限，请配置自己的提供商以继续使用。',
+      tokensUsed: '已使用 {used} / {total} Token',
+      conversationsUsed: '已使用 {used} / {total} 次对话',
+      configureProvider: '配置提供商',
+      trialEnded: '试用已结束',
+      trialEndedDesc: '您的免费试用已结束。请添加自己的 API 密钥以继续使用 Echo。',
+    },
+    // 提供商描述
+    providers: {
+      openai: 'OpenAI GPT 系列模型，包括 GPT-4o、GPT-4 Turbo 和 GPT-3.5',
+      anthropic: 'Anthropic Claude 系列模型，具有出色的推理能力',
+      google: 'Google Gemini 系列模型，支持多模态能力',
+      deepseek: 'DeepSeek 模型，针对编程和推理任务优化',
+      groq: 'Groq LPU 推理，超快响应速度',
+      mistral: 'Mistral AI 模型，性价比出色',
+      xai: 'xAI Grok 模型，具有实时知识',
+      openrouter: '通过统一 API 访问多种 AI 模型',
+      ollama: '在本地运行开源大语言模型',
+      lmstudio: '本地大语言模型推理，界面友好',
+      glm: '智谱 AI GLM-4 系列模型，中文支持优秀',
+      'zimaos-trial': '免费试用，额度有限 - 在配置自己的提供商之前体验 Echo',
+    },
     tabs: {
       all: '全部',
-      builtin: '内置',
+      trial: '试用',
+      builtin: '主流',
       custom: '自定义',
       ide: 'IDE',
+    },
+    trialQuota: {
+      title: '试用额度',
+      exhausted: '试用额度已用完，请配置您自己的提供商。',
+      remaining: '剩余 {tokens} tokens，{conversations} 次对话',
+      tokensUsed: '{used} / {limit} tokens',
     },
     search: '搜索提供商...',
     confirmDelete: '确定要删除该提供商吗？',

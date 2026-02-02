@@ -5,6 +5,7 @@ export interface SSEClientOptions {
   onError?: (error: Error) => void
   onComplete?: (finalChunk?: StreamChunk) => void
   onBlocked?: (message: string, threatLevel: string) => void
+  onTrialExhausted?: (message: string) => void
 }
 
 export class SSEClient {
@@ -49,6 +50,18 @@ export class SSEClient {
             const data = await response.json()
             if (data.blocked) {
               options.onBlocked?.(data.message || 'Message blocked', data.threat_level || 'unknown')
+              return
+            }
+          } catch {
+            // Fall through to generic error
+          }
+        }
+        // Handle trial quota exhausted (402)
+        if (response.status === 402) {
+          try {
+            const data = await response.json()
+            if (data.trial_exhausted) {
+              options.onTrialExhausted?.(data.message || 'trial_quota_exhausted')
               return
             }
           } catch {

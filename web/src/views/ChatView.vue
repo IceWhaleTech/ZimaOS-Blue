@@ -535,6 +535,31 @@ onUnmounted(() => {
         </div>
       </header>
 
+      <!-- Trial Quota Banner (only show when not exhausted) -->
+      <div
+        v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted"
+        class="px-4 py-2 flex items-center justify-between text-sm border-b bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
+      >
+        <div class="flex items-center gap-2">
+          <span>🎁</span>
+          <span>{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all bg-blue-500"
+              :style="{ width: `${Math.min(100, (providerPoolStore.trialQuota.tokens_used / providerPoolStore.trialQuota.token_limit) * 100)}%` }"
+            ></div>
+          </div>
+          <router-link
+            to="/settings?tab=llm"
+            class="text-xs underline hover:no-underline"
+          >
+            {{ t('chat.trialQuota.configure') }}
+          </router-link>
+        </div>
+      </div>
+
       <!-- Messages area -->
       <div
         ref="messagesContainer"
@@ -886,6 +911,25 @@ onUnmounted(() => {
         >
           {{ t('chat.dismissWarning') }}
         </button>
+      </div>
+
+      <!-- Trial Exhausted Banner -->
+      <div
+        v-if="chatStore.trialExhausted"
+        class="px-3 sm:px-4 py-3 bg-gray-500/10 border-t border-gray-500/30 text-gray-400 text-xs sm:text-sm flex items-center justify-between gap-2"
+      >
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{{ t('chat.trialExhausted') }}</span>
+        </div>
+        <router-link
+          to="/settings?tab=llm"
+          class="text-blue-400 hover:text-blue-300 flex-shrink-0 px-3 py-1 rounded hover:bg-blue-500/10 transition-colors"
+        >
+          {{ t('chat.configureProvider') }}
+        </router-link>
       </div>
 
       <!-- Input area - floating at bottom -->

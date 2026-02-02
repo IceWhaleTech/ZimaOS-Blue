@@ -23,6 +23,8 @@ export default {
     testing: 'Tesztelés...',
     dismiss: 'Bezárás',
     done: 'Kész',
+    filterByIp: 'Szűrés IP szerint',
+    allIps: 'Összes IP',
   },
   theme: {
     styles: {
@@ -804,6 +806,12 @@ export default {
     title: 'Szolgáltatókészlet',
     subtitle: 'LLM szolgáltatók és API kulcsok kezelése',
     description: 'LLM szolgáltatók, API kulcsok és modell-útválasztás kezelése',
+    trialQuota: {
+      title: 'Próba kvóta',
+      exhausted: 'A próba kvóta kimerült',
+      remaining: '{tokens} token maradt, {conversations} beszélgetés maradt',
+      tokensUsed: '{used} / {limit} token felhasználva',
+    },
     testConnection: 'Kapcsolat tesztelése',
     noProviders: 'Nincsenek konfigurált szolgáltatók',
     noModels: 'Nincsenek elérhető modellek',
@@ -880,6 +888,18 @@ export default {
     antivirusBlockedTitle: 'Az ngrok blokkolva lehet az antivirus által',
     antivirusBlockedDesc: 'Ha a kapcsolat sikertelen, ellenőrizze, hogy az antivirus blokkolja-e az ngrok-ot, és adja hozzá a whitelisthez.',
   },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+  },
+  userdata: {
+    ...enUS.userdata,
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  speech: {
+    ...enUS.speech,
+  },
   localeNames: {
     'ca-ES': 'Katalán',
     'cs-CZ': 'Cseh',
@@ -908,5 +928,44 @@ export default {
     'sv-SE': 'Svéd',
     'zh-CN': 'Egyszerűsített kínai',
     'zh-TW': 'Hagyományos kínai',
+  },
+  chat: {
+    ...enUS.chat,
+    trialExhausted: 'A próbaverzió kvótája kimerült. Konfiguráljon saját AI-szolgáltatót a folytatáshoz.',
+    configureProvider: 'Szolgáltató konfigurálása',
+    trialQuota: {
+      exhausted: 'Próbaverzió kvótája kimerült',
+      remaining: '{tokens} token maradt',
+      configure: 'Konfigurálás',
+    },
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    title: 'Készségbolt',
+    subtitle: 'Fedezzen fel és telepítsen készségeket AI asszisztense bővítéséhez',
+    sort: {
+      downloads: 'Letöltések',
+      rating: 'Értékelés',
+      stars: 'Csillagok',
+      updated: 'Nemrég frissítve',
+      name: 'Név',
+    },
+    filters: {
+      searchSkillsPlaceholder: 'Készségek keresése...',
+      allCategories: 'Minden kategória',
+      allSources: 'Minden forrás',
+    },
+    install: 'Telepítés',
+    installed: 'Telepítve',
+    downloads: 'Letöltések',
+    rating: 'Értékelés',
+    reviews: 'Vélemények',
+    stars: 'Csillagok',
+    noSkillsFound: 'Nem található készség',
+    noResults: 'Nincs találat',
+    noResultsForQuery: 'Próbálja módosítani a keresést vagy a szűrőket',
+    noSkillsAvailable: 'Jelenleg nincs elérhető készség',
+    clearSearch: 'Keresés törlése',
+    allLoaded: 'Mind a {count} készség betöltve',
   },
 }

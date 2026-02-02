@@ -65,6 +65,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
+        "label": "main",
         "title": "ZimaOS Echo",
         "width": 1400,
         "height": 900,

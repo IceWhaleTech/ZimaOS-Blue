@@ -214,7 +214,23 @@ func (s *FileStorage) loadProvidersInternal() (*providerStorage, error) {
 
 	var storage providerStorage
 	if err := json.Unmarshal(data, &storage); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal providers: %w", err)
+	}
+
+	// Restore API keys from separate storage to Provider.APIKeys
+	for _, data := range storage.Providers {
+		if data.Provider != nil && len(data.APIKeys) > 0 {
+			// Ensure APIKeys slice is initialized
+			if data.Provider.APIKeys == nil {
+				data.Provider.APIKeys = make([]APIKey, 0, len(data.APIKeys))
+			}
+			// Restore keys from string array
+			for i, keyStr := range data.APIKeys {
+				if i < len(data.Provider.APIKeys) {
+					data.Provider.APIKeys[i].Key = keyStr
+				}
+			}
+		}
 	}
 
 	return &storage, nil

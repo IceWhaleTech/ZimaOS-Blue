@@ -589,8 +589,8 @@ function formatDate(dateStr?: string) {
                     </div>
                     <button
                       :disabled="togglingWhitelist || !isInstalled"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cta focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      :class="isWhitelistEnabled ? 'bg-cta' : 'bg-gray-200 dark:bg-slate-600'"
+                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="isWhitelistEnabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
                       role="switch"
                       :aria-checked="isWhitelistEnabled ? 'true' : 'false'"
                       @click.stop="toggleWhitelist"

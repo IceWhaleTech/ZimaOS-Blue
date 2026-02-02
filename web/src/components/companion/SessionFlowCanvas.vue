@@ -116,11 +116,11 @@ function getNodeSubtitle(event: SessionEvent): string {
   switch (event.event_type) {
     case 'message_received':
     case 'message_sent':
-      return `${event.message?.content?.length || 0} chars`
+      return t('companion.nodes.chars', { count: event.message?.content?.length || 0 })
     case 'tool_call':
       return event.tool_call?.status || ''
     case 'llm_request':
-      return `${event.llm_request?.totalTokens || 0} tokens`
+      return t('companion.nodes.tokens', { count: event.llm_request?.totalTokens || 0 })
     case 'security_threat':
       return event.security?.action || ''
     default:

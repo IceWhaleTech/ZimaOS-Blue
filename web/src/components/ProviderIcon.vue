@@ -20,6 +20,9 @@ import awsIcon from '@/assets/providers/aws.svg'
 import glmIcon from '@/assets/providers/glm.svg'
 import defaultIcon from '@/assets/providers/default.svg'
 
+// ZimaOS Echo logo for trial provider
+const zimaosTrialIcon = '/logo.png'
+
 const props = defineProps<{
   providerId: string
   customIcon?: string
@@ -45,6 +48,7 @@ const icons: Record<string, string> = {
   aws: awsIcon,
   bedrock: awsIcon,
   glm: glmIcon,
+  'zimaos-trial': zimaosTrialIcon,
 }
 
 // Use custom icon if provided, otherwise fall back to built-in icons

@@ -248,12 +248,12 @@ func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 	}
 	s.store.UpdateSyncStatus(ctx, status)
 
-	var skills []*Skill
+	var totalCount int
 	var err error
 
 	switch source.Type {
 	case "clawhub":
-		skills, err = s.fetchClawHubSkills(ctx, source)
+		totalCount, err = s.fetchClawHubSkillsWithInsert(ctx, source)
 	default:
 		err = fmt.Errorf("unsupported source type: %s", source.Type)
 	}
@@ -261,38 +261,34 @@ func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 	duration := time.Since(startTime).Milliseconds()
 
 	if err != nil {
-		status.Status = "failed"
-		status.ErrorMessage = err.Error()
-		status.SyncDuration = duration
-		s.store.UpdateSyncStatus(ctx, status)
-		return err
-	}
-
-	// Generate dedup keys and deduplicate
-	for _, skill := range skills {
-		if skill.DedupKey == "" {
-			skill.DedupKey = GenerateDedupKey(skill.Name, skill.Author)
+		// Even if there's an error, we may have inserted some skills
+		// Update status with partial success if we got some skills
+		if totalCount > 0 {
+			status.Status = "success"
+			status.SkillCount = totalCount
+			status.ErrorMessage = fmt.Sprintf("partial sync: %v", err)
+		} else {
+			status.Status = "failed"
+			status.ErrorMessage = err.Error()
 		}
-	}
-	skills = DeduplicateSkills(skills)
-
-	// Save skills to database
-	if err := s.store.UpsertSkillBatch(ctx, skills); err != nil {
-		status.Status = "failed"
-		status.ErrorMessage = err.Error()
 		status.SyncDuration = duration
 		s.store.UpdateSyncStatus(ctx, status)
+		if totalCount > 0 {
+			if s.logger != nil {
+				s.logger.Warn("partial sync completed",
+					"source", source.ID,
+					"count", totalCount,
+					"error", err,
+				)
+			}
+			return nil // Return nil since we got some data
+		}
 		return err
-	}
-
-	// Enqueue skills for README fetching (background)
-	if s.readmeFetcher != nil {
-		s.readmeFetcher.EnqueueBatch(skills)
 	}
 
 	// Update status to success
 	status.Status = "success"
-	status.SkillCount = len(skills)
+	status.SkillCount = totalCount
 	status.SyncDuration = duration
 	status.ErrorMessage = ""
 	s.store.UpdateSyncStatus(ctx, status)
@@ -300,7 +296,7 @@ func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 	if s.logger != nil {
 		s.logger.Info("synced skills from source",
 			"source", source.ID,
-			"count", len(skills),
+			"count", totalCount,
 			"duration_ms", duration,
 		)
 	}
@@ -374,30 +370,34 @@ type ClawHubSkill struct {
 	} `json:"latestVersion"`
 }
 
-// fetchClawHubSkills fetches all skills from ClawHub with pagination and retry.
-func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([]*Skill, error) {
-	var allSkills []*Skill
+// fetchClawHubSkillsWithInsert fetches skills from ClawHub and inserts them page by page.
+// This ensures that even if sync fails midway, we still have the skills from previous pages.
+func (s *SyncService) fetchClawHubSkillsWithInsert(ctx context.Context, source *Source) (int, error) {
+	totalCount := 0
 	baseURL := source.URL + "/api/v1/skills"
-	maxPages := 100           // Safety limit
-	pageSize := 24            // ClawHub returns 24 items per page
-	maxRetries := 3           // Max retries per page
+	maxPages := 100                       // Safety limit
+	pageSize := 24                        // ClawHub returns 24 items per page
+	maxRetries := 3                       // Max retries per page
+	maxConsecutiveEmpty := 2              // Stop after 2 consecutive empty pages
 	baseBackoff := time.Second
-	pageDelay := 200 * time.Millisecond // Rate limiting between pages
+	pageDelay := 200 * time.Millisecond   // Rate limiting between pages
 
 	if s.logger != nil {
 		s.logger.Info("starting skill sync from ClawHub", "source", source.ID, "url", baseURL)
 	}
 
+	consecutiveEmpty := 0
+
 	for page := 1; page <= maxPages; page++ {
 		select {
 		case <-ctx.Done():
-			if len(allSkills) > 0 {
+			if totalCount > 0 {
 				if s.logger != nil {
-					s.logger.Info("sync cancelled, returning partial results", "skills_fetched", len(allSkills))
+					s.logger.Info("sync cancelled, partial results saved", "skills_saved", totalCount)
 				}
-				return allSkills, nil
+				return totalCount, nil
 			}
-			return nil, ctx.Err()
+			return 0, ctx.Err()
 		default:
 		}
 
@@ -405,7 +405,7 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 		if page > 1 {
 			select {
 			case <-ctx.Done():
-				return allSkills, nil
+				return totalCount, nil
 			case <-time.After(pageDelay):
 			}
 		}
@@ -419,10 +419,7 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 				backoff := baseBackoff * time.Duration(1<<retry)
 				select {
 				case <-ctx.Done():
-					if len(allSkills) > 0 {
-						return allSkills, nil
-					}
-					return nil, ctx.Err()
+					return totalCount, ctx.Err()
 				case <-time.After(backoff):
 				}
 				if s.logger != nil {
@@ -451,7 +448,7 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 					backoff := baseBackoff * time.Duration(1<<(retry+2)) // 4s, 8s, 16s
 					select {
 					case <-ctx.Done():
-						return allSkills, nil
+						return totalCount, ctx.Err()
 					case <-time.After(backoff):
 					}
 				}
@@ -476,30 +473,36 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 
 		// If all retries failed, return what we have or error
 		if lastErr != nil {
-			if len(allSkills) > 0 {
+			if totalCount > 0 {
 				if s.logger != nil {
-					s.logger.Warn("page fetch failed after retries, returning partial results", "page", page, "error", lastErr, "skills_fetched", len(allSkills))
+					s.logger.Warn("page fetch failed after retries, partial results saved", "page", page, "error", lastErr, "skills_saved", totalCount)
 				}
-				return allSkills, nil
+				return totalCount, lastErr
 			}
-			return nil, lastErr
+			return 0, lastErr
 		}
 
-		// Empty page means we've reached the end
+		// Handle empty page - don't stop immediately, allow a few consecutive empty pages
 		if len(apiResp.Items) == 0 {
+			consecutiveEmpty++
 			if s.logger != nil {
-				s.logger.Info("reached empty page, sync complete", "page", page, "total_skills", len(allSkills))
+				s.logger.Warn("empty page received", "page", page, "consecutive_empty", consecutiveEmpty)
 			}
-			break
+			if consecutiveEmpty >= maxConsecutiveEmpty {
+				if s.logger != nil {
+					s.logger.Info("reached end of data after consecutive empty pages", "page", page, "total_skills", totalCount)
+				}
+				break
+			}
+			continue // Try next page
 		}
 
-		// Log progress every 5 pages
-		if s.logger != nil && page%5 == 0 {
-			s.logger.Info("sync progress", "page", page, "skills_fetched", len(allSkills)+len(apiResp.Items))
-		}
+		// Reset consecutive empty counter on successful page
+		consecutiveEmpty = 0
 
 		// Convert to local skill format
 		now := time.Now()
+		var pageSkills []*Skill
 		for _, item := range apiResp.Items {
 			// Extract categories from tags (up to 3 tags as categories)
 			category := "skill"
@@ -545,7 +548,40 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 				skill.Tags = item.Tags.Latest
 			}
 
-			allSkills = append(allSkills, skill)
+			// Generate dedup key
+			if skill.DedupKey == "" {
+				skill.DedupKey = GenerateDedupKey(skill.Name, skill.Author)
+			}
+
+			pageSkills = append(pageSkills, skill)
+		}
+
+		// Deduplicate within page
+		pageSkills = DeduplicateSkills(pageSkills)
+
+		// Insert this page's skills immediately
+		if len(pageSkills) > 0 {
+			if err := s.store.UpsertSkillBatch(ctx, pageSkills); err != nil {
+				if s.logger != nil {
+					s.logger.Error("failed to insert page skills", "page", page, "error", err)
+				}
+				// Continue to next page even if insert fails
+			} else {
+				totalCount += len(pageSkills)
+				if s.logger != nil {
+					s.logger.Debug("inserted page skills", "page", page, "count", len(pageSkills), "total", totalCount)
+				}
+			}
+
+			// Enqueue for README fetching
+			if s.readmeFetcher != nil {
+				s.readmeFetcher.EnqueueBatch(pageSkills)
+			}
+		}
+
+		// Log progress every 5 pages
+		if s.logger != nil && page%5 == 0 {
+			s.logger.Info("sync progress", "page", page, "skills_saved", totalCount)
 		}
 
 		// If we got fewer items than page size, we've reached the last page
@@ -555,10 +591,10 @@ func (s *SyncService) fetchClawHubSkills(ctx context.Context, source *Source) ([
 	}
 
 	if s.logger != nil {
-		s.logger.Info("fetched skills from ClawHub", "count", len(allSkills))
+		s.logger.Info("fetched and saved skills from ClawHub", "count", totalCount)
 	}
 
-	return allSkills, nil
+	return totalCount, nil
 }
 
 // FetchSkillDetail fetches detailed information for a specific skill.

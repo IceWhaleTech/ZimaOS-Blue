@@ -147,6 +147,7 @@ func (h *SkillHandler) RegisterRoutes(g *echo.Group) {
 	skills := g.Group("/skills")
 	skills.GET("", h.ListSkills)
 	skills.GET("/:id", h.GetSkill)
+	skills.GET("/:id/content", h.GetSkillContent) // Get skill content (SKILL.md)
 	skills.POST("/:id/enable", h.EnableSkill)
 	skills.POST("/:id/disable", h.DisableSkill)
 	skills.GET("/local", h.ListLocalSkills)       // New: List local skills
@@ -240,6 +241,82 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 		Builtin:     info.Builtin,
 		Inputs:      m.Inputs,
 		Outputs:     m.Outputs,
+	})
+}
+
+// GetSkillContent returns the content (SKILL.md/readme) of a skill
+func (h *SkillHandler) GetSkillContent(c echo.Context) error {
+	id := c.Param("id")
+	ctx := c.Request().Context()
+
+	// First check if skill exists in registry
+	info := h.registry.GetInfo(id)
+	if info == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": "skill not found",
+		})
+	}
+
+	// Try to get content from database store
+	if h.store != nil {
+		skill, err := h.store.GetSkill(ctx, id)
+		if err == nil && skill != nil && skill.Readme != "" {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"id":      id,
+				"name":    info.Manifest.Name,
+				"content": skill.Readme,
+				"source":  "database",
+			})
+		}
+	}
+
+	// For builtin skills, return the description as content
+	if info.Builtin {
+		m := info.Manifest
+		content := fmt.Sprintf("# %s\n\n%s\n\n", m.Name, m.Description)
+		if m.Author != "" {
+			content += fmt.Sprintf("**Author:** %s\n\n", m.Author)
+		}
+		if m.Version != "" {
+			content += fmt.Sprintf("**Version:** %s\n\n", m.Version)
+		}
+		if m.Category != "" {
+			content += fmt.Sprintf("**Category:** %s\n\n", m.Category)
+		}
+		if len(m.Tags) > 0 {
+			content += fmt.Sprintf("**Tags:** %s\n\n", strings.Join(m.Tags, ", "))
+		}
+		if len(m.Inputs) > 0 {
+			content += "## Inputs\n\n"
+			for _, input := range m.Inputs {
+				required := ""
+				if input.Required {
+					required = " (required)"
+				}
+				content += fmt.Sprintf("- **%s**%s: %s\n", input.Name, required, input.Description)
+			}
+			content += "\n"
+		}
+		if len(m.Outputs) > 0 {
+			content += "## Outputs\n\n"
+			for _, output := range m.Outputs {
+				content += fmt.Sprintf("- **%s**: %s\n", output.Name, output.Description)
+			}
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"id":      id,
+			"name":    m.Name,
+			"content": content,
+			"source":  "builtin",
+		})
+	}
+
+	// No content available
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":      id,
+		"name":    info.Manifest.Name,
+		"content": "",
+		"source":  "none",
 	})
 }
 

@@ -6,7 +6,13 @@ BUILD_DIR=bin
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME?=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME)"
+
+# Trial provider configuration (injected from environment)
+TRIAL_API_KEY?=$(ZIMAOS_TRIAL_API_KEY)
+TRIAL_BASE_URL?=$(ZIMAOS_TRIAL_BASE_URL)
+
+# Build flags
+LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialAPIKey=$(TRIAL_API_KEY) -X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialBaseURL=$(TRIAL_BASE_URL)"
 
 # Default target
 all: lint test build

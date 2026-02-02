@@ -18,7 +18,7 @@ export type APIFormat = 'openai' | 'anthropic' | 'ollama' | 'google' | ''
 export interface Provider {
   id: string
   name: string
-  type: 'builtin' | 'custom' | 'acp' | 'ide'
+  type: 'builtin' | 'custom' | 'acp' | 'ide' | 'trial'
   location: ProviderLocation
   enabled: boolean
   status: 'active' | 'inactive' | 'error'
@@ -93,6 +93,17 @@ export interface UsageSummary {
   failed_requests: number
   total_estimated_cost: number
   avg_latency_ms: number
+}
+
+export interface TrialQuotaStatus {
+  tokens_used: number
+  tokens_remaining: number
+  token_limit: number
+  conversations_used: number
+  conversations_left: number
+  conversation_limit: number
+  exhausted: boolean
+  exhausted_by_tokens: boolean
 }
 
 export interface IDEInfo {
@@ -291,6 +302,10 @@ export const providerPoolApi = {
     api.get<{ summary: UsageSummary; models: Record<string, UsageSummary> }>(
       `/providers/${providerId}/usage`
     ),
+
+  // Trial quota
+  getTrialQuota: () =>
+    api.get<TrialQuotaStatus>('/providers/trial/quota'),
 
   // IDE operations
   scanIDEs: () =>

@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole/oleutil"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
@@ -260,6 +262,13 @@ func Install(config *Config) error {
 		fmt.Printf("Warning: failed to install event log: %v\n", err)
 	}
 
+	// Add Windows Firewall exception for the service
+	err = addFirewallRule(config.Name, exePath)
+	if err != nil {
+		// Non-fatal, just log
+		fmt.Printf("Warning: failed to add firewall exception: %v\n", err)
+	}
+
 	return nil
 }
 
@@ -484,3 +493,124 @@ var _ svc.Handler = (*WindowsService)(nil)
 
 // Ensure debug.Log is available for testing
 var _ debug.Log = (*eventlog.Log)(nil)
+
+// addFirewallRule adds Windows Firewall exceptions for the service executable and port.
+func addFirewallRule(serviceName, exePath string) error {
+	// Initialize COM
+	err := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED)
+	if err != nil {
+		return fmt.Errorf("failed to initialize COM: %w", err)
+	}
+	defer ole.CoUninitialize()
+
+	// Create INetFwPolicy2 object
+	unknown, err := oleutil.CreateObject("HNetCfg.FwPolicy2")
+	if err != nil {
+		return fmt.Errorf("failed to create FwPolicy2 object: %w", err)
+	}
+	defer unknown.Release()
+
+	policy, err := unknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return fmt.Errorf("failed to query IDispatch interface: %w", err)
+	}
+	defer policy.Release()
+
+	// Get Rules collection
+	rulesRaw, err := oleutil.GetProperty(policy, "Rules")
+	if err != nil {
+		return fmt.Errorf("failed to get Rules property: %w", err)
+	}
+	rules := rulesRaw.ToIDispatch()
+	defer rules.Release()
+
+	// Rule 1: Application-level rule for the executable
+	appRuleName := serviceName + "-App"
+	if err := addApplicationRule(rules, appRuleName, exePath); err != nil {
+		return fmt.Errorf("failed to add application rule: %w", err)
+	}
+
+	// Rule 2: Port-specific rule for TCP port 23456 (default Echo server port)
+	portRuleName := serviceName + "-Port-23456"
+	if err := addPortRule(rules, portRuleName, 23456); err != nil {
+		return fmt.Errorf("failed to add port rule: %w", err)
+	}
+
+	return nil
+}
+
+// addApplicationRule adds a firewall rule for the application executable.
+func addApplicationRule(rules *ole.IDispatch, ruleName, exePath string) error {
+	// Check if rule already exists
+	ruleRaw, err := oleutil.CallMethod(rules, "Item", ruleName)
+	if err == nil && ruleRaw.VT == ole.VT_DISPATCH && ruleRaw.Val != 0 {
+		rule := ruleRaw.ToIDispatch()
+		rule.Release()
+		return nil // Rule already exists
+	}
+
+	// Create new rule
+	ruleUnknown, err := oleutil.CreateObject("HNetCfg.FWRule")
+	if err != nil {
+		return fmt.Errorf("failed to create FWRule object: %w", err)
+	}
+	defer ruleUnknown.Release()
+
+	rule, err := ruleUnknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return fmt.Errorf("failed to query IDispatch interface: %w", err)
+	}
+	defer rule.Release()
+
+	// Set rule properties
+	oleutil.PutProperty(rule, "Name", ruleName)
+	oleutil.PutProperty(rule, "Description", "Allow ZimaOS-Echo application")
+	oleutil.PutProperty(rule, "ApplicationName", exePath)
+	oleutil.PutProperty(rule, "Protocol", 6) // TCP
+	oleutil.PutProperty(rule, "Direction", 1) // Inbound
+	oleutil.PutProperty(rule, "Action", 1)    // Allow
+	oleutil.PutProperty(rule, "Enabled", true)
+	oleutil.PutProperty(rule, "Profiles", 0x7FFFFFFF) // All profiles
+
+	// Add rule to collection
+	_, err = oleutil.CallMethod(rules, "Add", rule)
+	return err
+}
+
+// addPortRule adds a firewall rule for a specific TCP port.
+func addPortRule(rules *ole.IDispatch, ruleName string, port int) error {
+	// Check if rule already exists
+	ruleRaw, err := oleutil.CallMethod(rules, "Item", ruleName)
+	if err == nil && ruleRaw.VT == ole.VT_DISPATCH && ruleRaw.Val != 0 {
+		rule := ruleRaw.ToIDispatch()
+		rule.Release()
+		return nil // Rule already exists
+	}
+
+	// Create new rule
+	ruleUnknown, err := oleutil.CreateObject("HNetCfg.FWRule")
+	if err != nil {
+		return fmt.Errorf("failed to create FWRule object: %w", err)
+	}
+	defer ruleUnknown.Release()
+
+	rule, err := ruleUnknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return fmt.Errorf("failed to query IDispatch interface: %w", err)
+	}
+	defer rule.Release()
+
+	// Set rule properties
+	oleutil.PutProperty(rule, "Name", ruleName)
+	oleutil.PutProperty(rule, "Description", fmt.Sprintf("Allow ZimaOS-Echo on TCP port %d", port))
+	oleutil.PutProperty(rule, "Protocol", 6) // TCP
+	oleutil.PutProperty(rule, "LocalPorts", fmt.Sprintf("%d", port))
+	oleutil.PutProperty(rule, "Direction", 1) // Inbound
+	oleutil.PutProperty(rule, "Action", 1)    // Allow
+	oleutil.PutProperty(rule, "Enabled", true)
+	oleutil.PutProperty(rule, "Profiles", 0x7FFFFFFF) // All profiles
+
+	// Add rule to collection
+	_, err = oleutil.CallMethod(rules, "Add", rule)
+	return err
+}

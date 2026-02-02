@@ -12,6 +12,20 @@ const opening = ref(false)
 
 const preferredAddress = computed(() => {
   if (!addresses.value) return null
+
+  // In Tauri desktop app, fix the port in the preferred address
+  // The backend may return port 0, so we use the current window's port
+  if (isTauri.value && addresses.value.preferred) {
+    try {
+      const url = new URL(addresses.value.preferred)
+      url.port = window.location.port
+      return url.toString()
+    } catch {
+      // Fallback to current location if URL parsing fails
+      return `${window.location.protocol}//${window.location.host}`
+    }
+  }
+
   return addresses.value.preferred
 })
 

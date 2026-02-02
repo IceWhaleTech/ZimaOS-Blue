@@ -22,7 +22,7 @@ const testingProvider = ref<string | null>(null)
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
-const activeTab = ref<'all' | 'builtin' | 'ide' | 'custom'>('all')
+const activeTab = ref<'all' | 'trial' | 'builtin' | 'ide' | 'custom'>('all')
 const iconInput = ref<HTMLInputElement | null>(null)
 const uploadingIcon = ref(false)
 
@@ -76,6 +76,9 @@ const filteredProviders = computed(() => {
     case 'all':
       providers = store.providers || []
       break
+    case 'trial':
+      providers = store.trialProviders || []
+      break
     case 'builtin':
       providers = store.builtinProviders || []
       break
@@ -117,6 +120,7 @@ const currentTabSelectedProvider = computed(() => {
     'custom': 'custom',
     'acp': 'custom',
     'ide': 'ide',
+    'trial': 'trial',
   }
 
   const expectedTab = typeToTab[providerType] || 'builtin'
@@ -139,6 +143,28 @@ function getModelCustomPricing(modelId: string) {
 // Check if model has custom pricing
 function hasCustomPricing(modelId: string): boolean {
   return !!getModelCustomPricing(modelId)
+}
+
+// Get localized provider name
+function getProviderName(provider: Provider): string {
+  // For trial provider, use i18n name
+  if (provider.type === 'trial') {
+    return t('providerPool.trial.name')
+  }
+  return provider.name
+}
+
+// Get localized provider description
+function getProviderDescription(provider: Provider): string {
+  // Try to get i18n description first
+  const i18nKey = `providerPool.providers.${provider.id}`
+  const translated = t(i18nKey)
+  // If translation exists and is different from the key, use it
+  if (translated && translated !== i18nKey) {
+    return translated
+  }
+  // Fall back to provider's description or base_url
+  return provider.description || provider.base_url || ''
 }
 
 // Clear selection when switching to a tab with no matching provider
@@ -632,7 +658,7 @@ onMounted(() => {
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
       <button
-        v-for="tab in ['all', 'builtin', 'ide', 'custom'] as const"
+        v-for="tab in ['all', 'trial', 'builtin', 'ide', 'custom'] as const"
         :key="tab"
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
@@ -644,7 +670,7 @@ onMounted(() => {
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'all' ? store.providers.length : tab === 'builtin' ? store.builtinProviders.length : tab === 'ide' ? store.ideProviders.length : store.customProviders.length }})
+          ({{ tab === 'all' ? (store.providers?.length || 0) : tab === 'trial' ? (store.trialProviders?.length || 0) : tab === 'builtin' ? (store.builtinProviders?.length || 0) : tab === 'ide' ? (store.ideProviders?.length || 0) : (store.customProviders?.length || 0) }})
         </span>
       </button>
     </div>
@@ -659,6 +685,41 @@ onMounted(() => {
         data-form-filler-ignore
         class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent text-sm"
       />
+    </div>
+
+    <!-- Trial Quota Banner -->
+    <div
+      v-if="store.trialQuota && store.trialProviders?.length > 0"
+      :class="[
+        'mb-4 p-3 rounded-lg border',
+        store.trialQuota.exhausted
+          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+          : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+      ]"
+    >
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">{{ store.trialQuota.exhausted ? '⚠️' : '🎁' }}</span>
+          <div>
+            <h4 class="font-medium text-sm" :class="store.trialQuota.exhausted ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'">
+              {{ t('providerPool.trialQuota.title') }}
+            </h4>
+            <p class="text-xs" :class="store.trialQuota.exhausted ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'">
+              {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: store.trialQuota.tokens_remaining, conversations: store.trialQuota.conversations_left }) }}
+            </p>
+          </div>
+        </div>
+        <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'">
+          <div>{{ t('providerPool.trialQuota.tokensUsed', { used: store.trialQuota.tokens_used, limit: store.trialQuota.token_limit }) }}</div>
+          <div class="mt-1 w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all"
+              :class="store.trialQuota.exhausted ? 'bg-red-500' : 'bg-blue-500'"
+              :style="{ width: `${Math.min(100, (store.trialQuota.tokens_used / store.trialQuota.token_limit) * 100)}%` }"
+            ></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Loading -->
@@ -678,7 +739,7 @@ onMounted(() => {
     <!-- Provider List -->
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Provider Cards -->
-      <div class="space-y-2 max-h-[480px] overflow-y-auto">
+      <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
         <!-- IDE Tab Empty State -->
         <div v-if="activeTab === 'ide' && filteredProviders.length === 0 && !searchQuery" class="text-center py-8">
           <div class="text-4xl mb-4">🔍</div>
@@ -737,7 +798,7 @@ onMounted(() => {
               </div>
               <ProviderIcon :provider-id="provider.id" :custom-icon="provider.custom_icon" size="lg" />
               <div>
-                <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ provider.name }}</h3>
+                <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ getProviderName(provider) }}</h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ provider.id }}</p>
               </div>
             </div>
@@ -782,7 +843,7 @@ onMounted(() => {
       </div>
 
       <!-- Provider Details -->
-      <div>
+      <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
         <div v-if="currentTabSelectedProvider" class="bg-gray-50 dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
@@ -822,8 +883,8 @@ onMounted(() => {
                 />
               </div>
               <div>
-                <h2 class="font-bold text-gray-900 dark:text-white">{{ currentTabSelectedProvider.name }}</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ currentTabSelectedProvider.description || currentTabSelectedProvider.base_url }}</p>
+                <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(currentTabSelectedProvider) }}</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ getProviderDescription(currentTabSelectedProvider) }}</p>
                 <!-- Location Toggle -->
                 <div class="flex items-center gap-1 mt-1">
                   <span class="text-xs text-gray-400">{{ t('providerPool.location') }}:</span>
@@ -932,6 +993,7 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
               <button
+                v-if="currentTabSelectedProvider!.type !== 'trial'"
                 class="px-2 py-1 bg-accent hover:bg-accent-hover text-white rounded text-xs"
                 @click="openKeyModal(currentTabSelectedProvider!.id)"
               >
@@ -939,30 +1001,68 @@ onMounted(() => {
               </button>
             </div>
             <div class="space-y-1">
-              <div
-                v-for="key in currentTabSelectedProvider!.api_keys"
-                :key="key.id"
-                class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs"
-              >
+              <!-- Trial provider: show placeholder -->
+              <div v-if="currentTabSelectedProvider!.type === 'trial'" class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs">
                 <div>
-                  <span class="text-gray-700 dark:text-white font-mono">{{ key.key_hash }}</span>
-                  <span v-if="key.label" class="ml-2 text-gray-500">({{ key.label }})</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <span v-if="key.usage_count" class="text-gray-500">
-                    {{ t('providerPool.usageCount') }}: {{ key.usage_count }}
-                  </span>
-                  <button
-                    class="text-red-400 hover:text-red-300"
-                    @click="removeAPIKey(currentTabSelectedProvider!.id, key.id)"
-                  >
-                    ✕
-                  </button>
+                  <span class="text-gray-700 dark:text-white font-mono">••••••••••••••••</span>
+                  <span class="ml-2 text-gray-500">({{ t('providerPool.trial.name') }})</span>
                 </div>
               </div>
-              <div v-if="!currentTabSelectedProvider!.api_keys?.length" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
-                {{ t('providerPool.noKeys') }}
+              <!-- Non-trial provider: show actual keys -->
+              <template v-else>
+                <div
+                  v-for="key in currentTabSelectedProvider!.api_keys"
+                  :key="key.id"
+                  class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs"
+                >
+                  <div>
+                    <span class="text-gray-700 dark:text-white font-mono">{{ key.key_hash }}</span>
+                    <span v-if="key.label" class="ml-2 text-gray-500">({{ key.label }})</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span v-if="key.usage_count" class="text-gray-500">
+                      {{ t('providerPool.usageCount') }}: {{ key.usage_count }}
+                    </span>
+                    <button
+                      class="text-red-400 hover:text-red-300"
+                      @click="removeAPIKey(currentTabSelectedProvider!.id, key.id)"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <div v-if="!currentTabSelectedProvider!.api_keys?.length" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
+                  {{ t('providerPool.noKeys') }}
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Trial Quota Section (only for trial providers) -->
+          <div v-if="currentTabSelectedProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <h3 class="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">{{ t('providerPool.trial.name') }}</h3>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.tokensUsed', { used: store.trialQuota.tokens_used, total: store.trialQuota.token_limit }) }}</span>
+                <div class="w-24 h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-blue-500 dark:bg-blue-400 transition-all"
+                    :style="{ width: `${Math.min(100, (store.trialQuota.tokens_used / store.trialQuota.token_limit) * 100)}%` }"
+                  />
+                </div>
               </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.conversationsUsed', { used: store.trialQuota.conversations_used, total: store.trialQuota.conversation_limit }) }}</span>
+                <div class="w-24 h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-blue-500 dark:bg-blue-400 transition-all"
+                    :style="{ width: `${Math.min(100, (store.trialQuota.conversations_used / store.trialQuota.conversation_limit) * 100)}%` }"
+                  />
+                </div>
+              </div>
+              <p v-if="store.trialQuota.exhausted" class="text-xs text-red-600 dark:text-red-400 mt-2">
+                {{ store.trialQuota.exhausted_by_tokens ? t('providerPool.trial.quotaExhaustedTokens') : t('providerPool.trial.quotaExhaustedConversations') }}
+              </p>
             </div>
           </div>
 

@@ -33,7 +33,7 @@ func NewTunnelHandler(repo *ngrok.Repository, serverPort int) *TunnelHandler {
 		serverPort: serverPort,
 	}
 
-	// Initialize providers (Auto uses Bore/Serveo/LocalTunnel in parallel)
+	// Initialize providers (Auto uses Bore/Serveo/LocalTunnel/Cloudflare in parallel)
 	h.managers[tunnel.ProviderAuto] = tunnel.NewAutoManager()
 	h.managers[tunnel.ProviderNgrok] = tunnel.NewNgrokManager()
 	h.managers[tunnel.ProviderCloudflare] = tunnel.NewCloudflareManager()
@@ -466,7 +466,7 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 		},
 		"ssh_available":         checkSSHAvailable(),
 		"bore_available":        tunnel.CheckBoreAvailable(),
-		"cloudflared_installed": tunnel.CheckCloudflaredInstalled(),
+// // 		"cloudflared_installed": tunnel.CheckCloudflaredInstalled(),
 	}
 
 	if active != nil {

@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 )
 
 // NetworkHandler handles network-related API requests.
@@ -26,6 +27,27 @@ func (h *NetworkHandler) RegisterRoutes(e *echo.Echo) {
 	g.GET("/addresses", h.GetAddresses)
 	g.GET("/status", h.GetStatus)
 	g.GET("/preferred", h.GetPreferred)
+}
+
+// InitializeCORSOrigins detects local network addresses and adds them to CORS allowed origins.
+// This should be called during server initialization.
+func (h *NetworkHandler) InitializeCORSOrigins() error {
+	addresses, err := h.detector.GetAddresses()
+	if err != nil {
+		return err
+	}
+
+	// Add all LAN addresses to CORS allowed origins
+	for _, iface := range addresses.LAN {
+		security.AddDynamicOriginDefault(iface.Address)
+	}
+
+	// Add hostname if available
+	if addresses.Hostname != "" {
+		security.AddDynamicOriginDefault(addresses.Hostname)
+	}
+
+	return nil
 }
 
 // GetAddresses returns all available network addresses.

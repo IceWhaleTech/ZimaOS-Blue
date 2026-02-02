@@ -64,30 +64,39 @@ export function useTauri() {
 
   /**
    * Open a URL in the system's default browser.
-   * Only works when running inside Tauri.
+   * In Tauri, uses custom command. In web browser, uses window.open.
    */
   async function openInBrowser(url: string): Promise<boolean> {
+    // If not in Tauri, use regular window.open
     if (!isTauriApp.value) {
-      // Fallback to window.open for non-Tauri environments
-      window.open(url, '_blank')
-      return true
+      try {
+        window.open(url, '_blank')
+        return true
+      } catch (e) {
+        console.error('Failed to open URL in browser:', e)
+        return false
+      }
     }
 
+    // In Tauri, use custom command
     try {
-      // Use Tauri's opener plugin to open URLs
       const internals = window.__TAURI_INTERNALS__
       if (internals?.invoke) {
-        await internals.invoke('plugin:opener|open_url', { url })
+        await internals.invoke('open_url', { url })
         return true
       }
-      // Fallback
+      // Fallback to window.open if invoke not available
       window.open(url, '_blank')
       return true
     } catch (e) {
       console.error('Failed to open URL in browser:', e)
-      // Fallback to window.open
-      window.open(url, '_blank')
-      return true
+      // Try fallback
+      try {
+        window.open(url, '_blank')
+        return true
+      } catch {
+        return false
+      }
     }
   }
 

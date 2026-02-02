@@ -23,6 +23,8 @@ export default {
     testing: 'Testiranje...',
     dismiss: 'Zatvori',
     done: 'Gotovo',
+    filterByIp: 'Filtriraj po IP-u',
+    allIps: 'Sve IP adrese',
   },
   theme: {
     styles: {
@@ -804,6 +806,12 @@ export default {
     title: 'Pool pružatelja',
     subtitle: 'Upravljajte LLM pružateljima i API ključevima',
     description: 'Upravljajte LLM pružateljima, API ključevima i usmjeravanjem modela',
+    trialQuota: {
+      title: 'Pokusna kvota',
+      exhausted: 'Pokusna kvota iscrpljena',
+      remaining: '{tokens} tokena preostalo, {conversations} razgovora preostalo',
+      tokensUsed: '{used} / {limit} tokena korišteno',
+    },
     testConnection: 'Testiraj vezu',
     noProviders: 'Nema konfiguriranih pružatelja',
     noModels: 'Nema dostupnih modela',
@@ -880,6 +888,18 @@ export default {
     antivirusBlockedTitle: 'ngrok može biti blokiran antivirusom',
     antivirusBlockedDesc: 'Ako se veza ne uspije, provjerite blokira li vaš antivirus ngrok i dodajte ga na whitelist.',
   },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+  },
+  userdata: {
+    ...enUS.userdata,
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  speech: {
+    ...enUS.speech,
+  },
   localeNames: {
     'ca-ES': 'Katalonski',
     'cs-CZ': 'Češki',
@@ -908,5 +928,44 @@ export default {
     'sv-SE': 'Švedski',
     'zh-CN': 'Pojednostavljeni kineski',
     'zh-TW': 'Tradicionalni kineski',
+  },
+  chat: {
+    ...enUS.chat,
+    trialExhausted: 'Pokusna kvota je iscrpljena. Molimo konfigurujte vlastiti AI pružatelja da nastavite.',
+    configureProvider: 'Konfiguruj pružatelja',
+    trialQuota: {
+      exhausted: 'Pokusna kvota iscrpljena',
+      remaining: '{tokens} tokena preostalo',
+      configure: 'Konfiguruj',
+    },
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    title: 'Trgovina vještina',
+    subtitle: 'Otkrijte i instalirajte vještine za proširenje vašeg AI asistenta',
+    sort: {
+      downloads: 'Preuzimanja',
+      rating: 'Ocjena',
+      stars: 'Zvjezdice',
+      updated: 'Nedavno ažurirano',
+      name: 'Naziv',
+    },
+    filters: {
+      searchSkillsPlaceholder: 'Pretraži vještine...',
+      allCategories: 'Sve kategorije',
+      allSources: 'Svi izvori',
+    },
+    install: 'Instaliraj',
+    installed: 'Instalirano',
+    downloads: 'Preuzimanja',
+    rating: 'Ocjena',
+    reviews: 'Recenzije',
+    stars: 'Zvjezdice',
+    noSkillsFound: 'Vještine nisu pronađene',
+    noResults: 'Nema rezultata',
+    noResultsForQuery: 'Pokušajte prilagoditi pretragu ili filtre',
+    noSkillsAvailable: 'Trenutno nema dostupnih vještina',
+    clearSearch: 'Očisti pretragu',
+    allLoaded: 'Učitano svih {count} vještina',
   },
 }

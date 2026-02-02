@@ -84,8 +84,11 @@ func runLocaltunnelClient(ctx context.Context, info *localtunnelInfo, localPort 
 	onURL(info.URL)
 
 	numConns := info.MaxConnCount
-	if numConns > 4 {
-		numConns = 4
+	if numConns > 10 {
+		numConns = 10
+	}
+	if numConns < 1 {
+		numConns = 1
 	}
 
 	var wg sync.WaitGroup

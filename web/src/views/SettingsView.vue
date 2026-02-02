@@ -118,6 +118,7 @@ function formatLogTime(timestamp: string) {
 }
 
 function getLogLevelClass(level: string) {
+  if (!level) return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
   switch (level.toLowerCase()) {
     case 'error': return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
     case 'warn': return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
@@ -131,8 +132,9 @@ function isRequestLog(log: LogEntry): boolean {
   return log.message === 'request' && log.fields?.method !== undefined
 }
 
-function getMethodColor(method: string): string {
-  switch (method?.toUpperCase()) {
+function getMethodColor(method: string | undefined): string {
+  if (!method) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+  switch (method.toUpperCase()) {
     case 'GET': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
     case 'POST': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'PUT': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'

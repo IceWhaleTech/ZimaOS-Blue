@@ -73,6 +73,8 @@ export default {
     toggleLiveStreaming: 'Toggle live streaming',
     activeConnectionsTitle: 'Active Connections',
     activeCount: '{count} active',
+    filterByIp: 'Filter by IP',
+    allIps: 'All IPs',
     type: 'Type',
     clientIp: 'Client IP',
     connected: 'Connected',
@@ -353,6 +355,13 @@ export default {
     },
     threatLevel: 'Threat Level',
     dismissWarning: 'Dismiss',
+    trialExhausted: 'Trial quota has been exhausted. Please configure your own AI provider to continue.',
+    configureProvider: 'Configure Provider',
+    trialQuota: {
+      exhausted: 'Trial quota exhausted',
+      remaining: '{tokens} tokens remaining',
+      configure: 'Configure',
+    },
     // Claude Code CLI
     poweredByClaudeCode: 'Powered by {name}',
     poweredByClaudeCodeDesc: 'Chat is enhanced with {name} capabilities including skills, tool calling, and file operations',
@@ -375,6 +384,12 @@ export default {
     allProvidersFailed: 'All providers failed. Click to check settings.',
     providerActive: 'Provider is active and ready.',
     providerPending: 'Provider status is being checked...',
+    // Trial quota
+    trialQuota: {
+      exhausted: 'Trial quota exhausted. Configure your own provider.',
+      remaining: '{tokens} tokens remaining',
+      configure: 'Configure',
+    },
     // Multi-select
     selectMessage: 'Select',
     messagesSelected: 'selected',
@@ -452,6 +467,7 @@ export default {
       'slack-skill': { name: 'Slack', description: 'Slack workspace operations' },
       'discord-skill': { name: 'Discord', description: 'Discord server operations' },
     },
+    noContent: 'No detailed content available for this skill.',
   },
   // Built-in tools (i18n for tool store / extensions)
   tools: {
@@ -1865,8 +1881,22 @@ export default {
     },
     threats: {
       riskLevel: {
+        critical: 'Critical',
+        high: 'High',
+        medium: 'Medium',
+        low: 'Low',
+        none: 'None',
       },
       types: {
+        injection: 'Injection Attack',
+        xss: 'XSS Attack',
+        sqlInjection: 'SQL Injection',
+        pathTraversal: 'Path Traversal',
+        commandInjection: 'Command Injection',
+        promptInjection: 'Prompt Injection',
+        bruteForce: 'Brute Force',
+        rateLimit: 'Rate Limit Exceeded',
+        suspiciousIp: 'Suspicious IP',
       },
     },
     // Direct keys used in template
@@ -2346,6 +2376,7 @@ export default {
       sent: 'Sent',
       message: 'Message',
       chars: '{count} chars',
+      tokens: '{count} tokens',
       toolCall: 'Tool Call',
       sandbox: 'Sandbox',
       llmRequest: 'LLM Request',
@@ -2354,6 +2385,14 @@ export default {
       tokensOut: 'Out',
       status: {
       },
+    },
+    // LLM request details
+    llmDetails: {
+      input: 'Input',
+      prompt: 'Prompt',
+      completion: 'Completion',
+      total: 'Total',
+      score: 'Score',
     },
     // Message direction
     message: {
@@ -2481,6 +2520,7 @@ export default {
     // Sort options
     sort: {
       downloads: 'Downloads',
+      rating: 'Rating',
       stars: 'Stars',
       updated: 'Recently Updated',
       name: 'Name',
@@ -2491,7 +2531,12 @@ export default {
     downloads: 'Downloads',
     rating: 'Rating',
     reviews: 'Reviews',
+    stars: 'Stars',
     noSkillsFound: 'No skills found',
+    noResults: 'No Results',
+    noResultsForQuery: 'Try adjusting your search or filters',
+    noSkillsAvailable: 'No skills available at the moment',
+    clearSearch: 'Clear Search',
     allLoaded: 'All {count} skills loaded',
     fetchError: 'Failed to fetch skills',
     installError: 'Failed to install skill',
@@ -2660,7 +2705,6 @@ export default {
     binaryPath: 'Binary Path',
     latestVersion: 'Latest Version',
     lastCheck: 'Last Check',
-    version: 'Version',
     // Actions
     checkForUpdates: 'Check for Updates',
     checking: 'Checking...',
@@ -3046,11 +3090,46 @@ export default {
     locationLocal: 'Local',
     locationHint: 'Cloud providers run on remote servers, local providers run on your machine',
     dragToReorder: 'Drag to reorder priority',
+    // Trial provider
+    trial: {
+      name: 'ZimaOS Trial',
+      description: 'Free trial with limited quota',
+      quotaExhausted: 'Trial quota exhausted',
+      quotaExhaustedTokens: 'Your trial token quota has been exhausted. Please configure your own provider to continue.',
+      quotaExhaustedConversations: 'Your trial conversation limit has been reached. Please configure your own provider to continue.',
+      tokensUsed: '{used} / {total} tokens used',
+      conversationsUsed: '{used} / {total} conversations used',
+      configureProvider: 'Configure Provider',
+      trialEnded: 'Trial Ended',
+      trialEndedDesc: 'Your free trial has ended. Add your own API key to continue using Echo.',
+    },
+    // Provider descriptions
+    providers: {
+      openai: 'OpenAI GPT series models including GPT-4o, GPT-4 Turbo, and GPT-3.5',
+      anthropic: 'Anthropic Claude series models with excellent reasoning capabilities',
+      google: 'Google Gemini series models with multimodal capabilities',
+      deepseek: 'DeepSeek models optimized for coding and reasoning tasks',
+      groq: 'Groq LPU inference for ultra-fast response times',
+      mistral: 'Mistral AI models with excellent performance-to-cost ratio',
+      xai: 'xAI Grok models with real-time knowledge',
+      openrouter: 'Access multiple AI models through a unified API',
+      ollama: 'Run open-source LLMs locally on your machine',
+      lmstudio: 'Local LLM inference with a user-friendly interface',
+      glm: 'Zhipu AI GLM-4 series models with Chinese language support',
+      'zimaos-trial': 'Free trial with limited quota - experience Echo before configuring your own provider',
+    },
     tabs: {
       all: 'All',
+      trial: 'Trial',
       builtin: 'Built-in',
       custom: 'Custom',
       ide: 'IDE',
+    },
+    trialQuota: {
+      title: 'Trial Quota',
+      exhausted: 'Trial quota exhausted. Please configure your own provider.',
+      remaining: '{tokens} tokens, {conversations} conversations remaining',
+      tokensUsed: '{used} / {limit} tokens',
     },
     search: 'Search providers...',
     confirmDelete: 'Are you sure you want to delete this provider?',

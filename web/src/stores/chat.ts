@@ -24,6 +24,7 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref<string | null>(null)
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
+  const trialExhausted = ref(false) // Trial quota exhausted flag
 
   // Pagination state
   const hasMoreMessages = ref(false)
@@ -315,6 +316,13 @@ export const useChatStore = defineStore('chat', () => {
             (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
           )
         },
+        onTrialExhausted: () => {
+          trialExhausted.value = true
+          // Remove placeholder messages
+          messages.value = messages.value.filter(
+            (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+          )
+        },
         onComplete: (finalChunk) => {
           streaming.value = false
           // Store metadata from final chunk directly on the message object
@@ -598,6 +606,10 @@ export const useChatStore = defineStore('chat', () => {
     securityBlocked.value = null
   }
 
+  function clearTrialExhausted() {
+    trialExhausted.value = false
+  }
+
   function getMessageMetadata(messageId: string) {
     return messageMetadata.value.get(messageId)
   }
@@ -689,6 +701,7 @@ export const useChatStore = defineStore('chat', () => {
     error,
     streamError,
     securityBlocked,
+    trialExhausted,
     hasMoreMessages,
     loadingMore,
     searchQuery,
@@ -716,6 +729,7 @@ export const useChatStore = defineStore('chat', () => {
     clearError,
     clearStreamError,
     clearSecurityBlocked,
+    clearTrialExhausted,
     getMessageMetadata,
     toggleMessageSelection,
     selectMessage,

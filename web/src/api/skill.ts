@@ -176,12 +176,21 @@ export interface InstallFromURLRequest {
   description?: string
 }
 
+export interface SkillContentResponse {
+  id: string
+  name: string
+  content: string
+  source: 'database' | 'builtin' | 'none'
+}
+
 // Skill API
 export const skillApi = {
   // Local skills
   list: () => api.get<Skill[]>('/skills'),
 
   get: (id: string) => api.get<Skill>(`/skills/${id}`),
+
+  getContent: (id: string) => api.get<SkillContentResponse>(`/skills/${id}/content`),
 
   enable: (id: string) =>
     api.post<{ success: boolean; message: string }>(`/skills/${id}/enable`),

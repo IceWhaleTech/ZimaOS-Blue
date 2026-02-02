@@ -23,6 +23,8 @@ export default {
     testing: 'Testuje sa...',
     dismiss: 'Zavrieť',
     done: 'Hotovo',
+    filterByIp: 'Filtrovať podľa IP',
+    allIps: 'Všetky IP adresy',
   },
   theme: {
     styles: {
@@ -804,6 +806,12 @@ export default {
     title: 'Pool poskytovateľov',
     subtitle: 'Spravujte poskytovateľov LLM a API kľúče',
     description: 'Spravujte poskytovateľov LLM, API kľúče a smerovanie modelov',
+    trialQuota: {
+      title: 'Skúšobná kvóta',
+      exhausted: 'Skúšobná kvóta vyčerpaná',
+      remaining: '{tokens} tokenov zostáva, {conversations} rozhovorov zostáva',
+      tokensUsed: '{used} / {limit} tokenov použitých',
+    },
     testConnection: 'Testovať pripojenie',
     noProviders: 'Žiadni nakonfigurovaní poskytovatelia',
     noModels: 'Žiadne dostupné modely',
@@ -880,6 +888,18 @@ export default {
     antivirusBlockedTitle: 'ngrok môže byť blokovaný antivírusom',
     antivirusBlockedDesc: 'Ak sa pripojenie nepodarí, skontrolujte, či váš antivírus neblokuje ngrok a pridajte ho do whitelistu.',
   },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+  },
+  userdata: {
+    ...enUS.userdata,
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  speech: {
+    ...enUS.speech,
+  },
   localeNames: {
     'ca-ES': 'Katalánčina',
     'cs-CZ': 'Čeština',
@@ -908,5 +928,44 @@ export default {
     'sv-SE': 'Švédčina',
     'zh-CN': 'Čínština (zjednodušená)',
     'zh-TW': 'Čínština (tradičná)',
+  },
+  chat: {
+    ...enUS.chat,
+    trialExhausted: 'Skúšobná kvóta bola vyčerpaná. Prosím, nakonfigurujte svojho vlastného poskytovateľa AI, aby ste mohli pokračovať.',
+    configureProvider: 'Konfigurovať poskytovateľa',
+    trialQuota: {
+      exhausted: 'Skúšobná kvóta vyčerpaná',
+      remaining: 'Zostáva {tokens} tokenov',
+      configure: 'Konfigurovať',
+    },
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    title: 'Obchod so zručnosťami',
+    subtitle: 'Objavte a nainštalujte zručnosti na rozšírenie vášho AI asistenta',
+    sort: {
+      downloads: 'Stiahnutia',
+      rating: 'Hodnotenie',
+      stars: 'Hviezdičky',
+      updated: 'Nedávno aktualizované',
+      name: 'Názov',
+    },
+    filters: {
+      searchSkillsPlaceholder: 'Hľadať zručnosti...',
+      allCategories: 'Všetky kategórie',
+      allSources: 'Všetky zdroje',
+    },
+    install: 'Inštalovať',
+    installed: 'Nainštalované',
+    downloads: 'Stiahnutia',
+    rating: 'Hodnotenie',
+    reviews: 'Recenzie',
+    stars: 'Hviezdičky',
+    noSkillsFound: 'Nenašli sa žiadne zručnosti',
+    noResults: 'Žiadne výsledky',
+    noResultsForQuery: 'Skúste upraviť vyhľadávanie alebo filtre',
+    noSkillsAvailable: 'Momentálne nie sú k dispozícii žiadne zručnosti',
+    clearSearch: 'Vymazať vyhľadávanie',
+    allLoaded: 'Načítaných všetkých {count} zručností',
   },
 }

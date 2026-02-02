@@ -23,6 +23,8 @@ export default {
     testing: 'പരീക്ഷിക്കുന്നു...',
     dismiss: 'അടയ്ക്കുക',
     done: 'പൂർത്തിയായി',
+    filterByIp: 'IP ద్వారా ఫిల్టర్ చేయండి',
+    allIps: 'అన్ని IP లు',
   },
   theme: {
     styles: {
@@ -804,6 +806,12 @@ export default {
     title: 'പ്രൊവൈഡർ പൂൾ',
     subtitle: 'LLM പ്രൊവൈഡർമാരും API കീകളും നിയന്ത്രിക്കുക',
     description: 'LLM പ്രൊവൈഡർമാർ, API കീകൾ, മോഡൽ റൗട്ടിംഗ് നിയന്ത്രിക്കുക',
+    trialQuota: {
+      title: 'ട്രയൽ ക്വോട്ട',
+      exhausted: 'ട്രയൽ ക്വോട്ട തീരുന്നു',
+      remaining: '{tokens} ടോക്കണുകൾ ശേഷിക്കുന്നു, {conversations} സംഭാഷണങ്ങൾ ശേഷിക്കുന്നു',
+      tokensUsed: '{used} / {limit} ടോക്കണുകൾ ഉപയോഗിച്ചു',
+    },
     testConnection: 'കണക്ഷൻ പരിശോധിക്കുക',
     noProviders: 'പ്രൊവൈഡർമാർ കോൺഫിഗർ ചെയ്തിട്ടില്ല',
     noModels: 'മോഡലുകൾ ലഭ്യമല്ല',
@@ -880,6 +888,18 @@ export default {
     antivirusBlockedTitle: 'ngrok ആൻറിവൈറസ് ബ്ലോക്ക് ചെയ്യാം',
     antivirusBlockedDesc: 'കണക്ഷൻ പരാജയപ്പെട്ടാൽ, ആൻറിവൈറസ് ngrok ബ്ലോക്ക് ചെയ്യുന്നുണ്ടോ എന്ന് പരിശോധിച്ച് വൈറ്റ് ലിസ്റ്റിലേക്ക് ചേർക്കുക.',
   },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+  },
+  userdata: {
+    ...enUS.userdata,
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  speech: {
+    ...enUS.speech,
+  },
   localeNames: {
     'ca-ES': 'കാറ്റലൻ',
     'cs-CZ': 'ചെക്ക്',
@@ -908,5 +928,44 @@ export default {
     'sv-SE': 'സ്വീഡിഷ്',
     'zh-CN': 'ലളിത ചൈനീസ്',
     'zh-TW': 'പരമ്പരാഗത ചൈനീസ്',
+  },
+  chat: {
+    ...enUS.chat,
+    trialExhausted: 'ട്രയൽ ക്വോട്ട ശേഷിച്ചിരിക്കുന്നില്ല. തുടരാൻ നിങ്ങളുടെ സ്വന്തം AI പ്രൊവൈഡർ കോൺഫിഗർ ചെയ്യുക.',
+    configureProvider: 'പ്രൊവൈഡർ കോൺഫിഗർ ചെയ്യുക',
+    trialQuota: {
+      exhausted: 'ട്രയൽ ക്വോട്ട ശേഷിച്ചിരിക്കുന്നില്ല',
+      remaining: '{tokens} ടോക്കണുകൾ ശേഷിച്ചിരിക്കുന്നു',
+      configure: 'കോൺഫിഗർ ചെയ്യുക',
+    },
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    title: 'സ്കിൽ സ്റ്റോർ',
+    subtitle: 'നിങ്ങളുടെ AI അസിസ്റ്റന്റ് വിപുലീകരിക്കാൻ സ്കില്ലുകൾ കണ്ടെത്തി ഇൻസ്റ്റാൾ ചെയ്യുക',
+    sort: {
+      downloads: 'ഡൗൺലോഡുകൾ',
+      rating: 'റേറ്റിംഗ്',
+      stars: 'നക്ഷത്രങ്ങൾ',
+      updated: 'അടുത്തിടെ അപ്ഡേറ്റ് ചെയ്തത്',
+      name: 'പേര്',
+    },
+    filters: {
+      searchSkillsPlaceholder: 'സ്കില്ലുകൾ തിരയുക...',
+      allCategories: 'എല്ലാ വിഭാഗങ്ങളും',
+      allSources: 'എല്ലാ ഉറവിടങ്ങളും',
+    },
+    install: 'ഇൻസ്റ്റാൾ',
+    installed: 'ഇൻസ്റ്റാൾ ചെയ്തു',
+    downloads: 'ഡൗൺലോഡുകൾ',
+    rating: 'റേറ്റിംഗ്',
+    reviews: 'അവലോകനങ്ങൾ',
+    stars: 'നക്ഷത്രങ്ങൾ',
+    noSkillsFound: 'സ്കില്ലുകൾ കണ്ടെത്തിയില്ല',
+    noResults: 'ഫലങ്ങളില്ല',
+    noResultsForQuery: 'നിങ്ങളുടെ തിരയൽ അല്ലെങ്കിൽ ഫിൽട്ടറുകൾ ക്രമീകരിക്കാൻ ശ്രമിക്കുക',
+    noSkillsAvailable: 'ഇപ്പോൾ സ്കില്ലുകൾ ലഭ്യമല്ല',
+    clearSearch: 'തിരയൽ മായ്ക്കുക',
+    allLoaded: 'എല്ലാ {count} സ്കില്ലുകളും ലോഡ് ചെയ്തു',
   },
 }

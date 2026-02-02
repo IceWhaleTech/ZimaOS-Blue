@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { PagePermissions } from '@/api/users'
+import { useAuthStore } from '@/stores/auth'
 
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false
@@ -12,7 +13,15 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
   if (previewModeChecked) return { preview: isPreviewMode, connectionError: connectionFailed }
 
   try {
-    const response = await fetch('/api/v1/system/mode')
+    // Add timeout to prevent indefinite hanging
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+
+    const response = await fetch('/api/v1/system/mode', {
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+
     // Treat 500+ errors as connection/server errors
     if (response.status >= 500) {
       previewModeChecked = true
@@ -37,7 +46,7 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
     }
 
     return { preview: isPreviewMode, connectionError: false }
-  } catch {
+  } catch (error) {
     previewModeChecked = true
     isPreviewMode = false
     connectionFailed = true
@@ -80,6 +89,17 @@ export function resetPreviewModeStatus(): void {
   connectionFailed = false
   previewTokenFetched = false
   localStorage.removeItem('preview_token')
+}
+
+// Clear all cached state and tokens (for debugging/cleanup)
+export function clearAllState(): void {
+  previewModeChecked = false
+  isPreviewMode = false
+  connectionFailed = false
+  previewTokenFetched = false
+  localStorage.removeItem('preview_token')
+  localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
 }
 
 const routes: RouteRecordRaw[] = [
@@ -204,12 +224,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
-    path: '/tools',
-    name: 'ToolStore',
-    component: () => import('@/views/ToolStoreView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.PLUGINS },
-  },
-  {
     path: '/security',
     name: 'Security',
     component: () => import('@/views/SecurityView.vue'),
@@ -297,24 +311,47 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   // Normal mode (users exist): standard authentication flow
-  if (requiresAuth && !isAuthenticated) {
+  // If we have a preview token but system is in normal mode, clear it and require login
+  const previewToken = localStorage.getItem('preview_token')
+  if (previewToken && !inPreviewMode) {
+    // System has been upgraded from preview to normal mode
+    // Clear preview token and require proper authentication
+    localStorage.removeItem('preview_token')
+    localStorage.removeItem('token')
+
+    // If trying to access a protected route, redirect to login
+    if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
+      next({ name: 'Login', query: { redirect: to.fullPath } })
+      return
+    }
+  }
+
+  // Routes with required permissions implicitly require authentication
+  if ((requiresAuth || requiredPermission) && !isAuthenticated) {
     // Redirect to login with return URL
     next({ name: 'Login', query: { redirect: to.fullPath } })
     return
   }
 
   if (to.name === 'Login' && isAuthenticated) {
-    // Already logged in, redirect to chat
-    next({ name: 'Chat' })
+    // Already logged in, redirect to the requested page or stay on previous page
+    const redirect = to.query.redirect as string
+    if (redirect) {
+      next(redirect)
+    } else if (_from.name && _from.name !== 'Login') {
+      // Stay on the page they came from
+      next(_from)
+    } else {
+      next({ name: 'Home' })
+    }
     return
   }
 
   // Check admin requirement
   if (requiresAdmin && isAuthenticated) {
-    // Dynamically import auth store to check admin status
-    const { useAuthStore } = await import('@/stores/auth')
     const authStore = useAuthStore()
     if (!authStore.isAdmin) {
+      // Not admin, redirect to chat
       next({ name: 'Chat' })
       return
     }
@@ -322,12 +359,17 @@ router.beforeEach(async (to, _from, next) => {
 
   // Check page permission requirement
   if (requiredPermission && isAuthenticated) {
-    const { useAuthStore } = await import('@/stores/auth')
+    // Skip permission check if already going to Chat (prevent infinite loop)
+    if (to.name === 'Chat') {
+      next()
+      return
+    }
+
     const authStore = useAuthStore()
 
     // Admin has all permissions
     if (!authStore.isAdmin && !authStore.hasPermission(requiredPermission)) {
-      // Redirect to chat (default allowed page)
+      // No permission, redirect to chat
       next({ name: 'Chat' })
       return
     }

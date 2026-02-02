@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -107,8 +108,7 @@ var providerPoolToLLM = map[string]string{
 	"venice":    "venice",
 	"bedrock":   "bedrock",
 	"glm":       "glm",
-	// Also support direct LLM provider names for backwards compatibility
-	"claude": "claude",
+	"claude":    "claude",
 }
 
 // mapProviderID converts a Provider Pool ID to an LLM provider name.
@@ -179,6 +179,25 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 
 			// Use the highest priority enabled provider
 			poolProvider := poolProviders[0]
+
+			// Check if this is a trial provider and if quota is exhausted
+			if providerpool.IsTrialProvider(poolProvider.ID) {
+				if h.providerPool.TrialQuotaManager != nil && h.providerPool.TrialQuotaManager.IsExhausted() {
+					// Skip trial provider if quota is exhausted
+					// Try to find next available provider
+					for i := 1; i < len(poolProviders); i++ {
+						nextProvider := poolProviders[i]
+						if !providerpool.IsTrialProvider(nextProvider.ID) {
+							provider, err := h.getProviderFromPool(nextProvider.ID)
+							if err == nil {
+								return provider, nextProvider.ID, "", nil
+							}
+						}
+					}
+					// No other providers available, return quota exhausted error
+					return nil, "", "", providerpool.ErrTrialQuotaExhausted
+				}
+			}
 
 			// Create LLM provider from pool configuration
 			provider, err := h.getProviderFromPool(poolProvider.ID)
@@ -475,6 +494,15 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Auto-select provider and model from pool
 	provider, _, model, err := h.getDefaultProvider()
 	if err != nil {
+		// Check if this is a trial quota exhausted error
+		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
+			return c.JSON(http.StatusPaymentRequired, map[string]interface{}{
+				"success":           false,
+				"trial_exhausted":   true,
+				"message":           "trial_quota_exhausted",
+				"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
+			})
+		}
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
@@ -541,6 +569,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	resp, err := provider.Chat(c.Request().Context(), chatReq)
 	latencyMs := float64(time.Since(startTime).Milliseconds())
 
+	// Estimate tokens if API didn't return usage data
+	if resp != nil && resp.Usage.TotalTokens == 0 {
+		resp.Usage.PromptTokens = estimateInputTokens(llmMessages)
+		resp.Usage.CompletionTokens = estimateTokens(resp.Message.Content)
+		resp.Usage.TotalTokens = resp.Usage.PromptTokens + resp.Usage.CompletionTokens
+	}
+
 	// Emit LLM request event to companion
 	if h.companionManager != nil {
 		sessionID := h.getCompanionSessionID(convID)
@@ -564,6 +599,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 
 		h.metricsRecorder.RecordAPICall(model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
+
+		// Record trial usage if this is a trial provider
+		if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(req.Provider) {
+			h.providerPool.TrialQuotaManager.RecordUsage(inputTokens, outputTokens, convID)
+		}
 	}
 
 	if err != nil {
@@ -744,6 +784,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Auto-select provider and model from pool
 	provider, providerID, model, err := h.getDefaultProvider()
 	if err != nil {
+		// Check if this is a trial quota exhausted error
+		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
+			return c.JSON(http.StatusPaymentRequired, map[string]interface{}{
+				"success":           false,
+				"trial_exhausted":   true,
+				"message":           "trial_quota_exhausted",
+				"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
+			})
+		}
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
@@ -962,6 +1011,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 						tokensPerSecond := float64(totalOutputTokens) / totalDuration
 						h.metricsRecorder.RecordSpeed(req.Model, tokensPerSecond, ttftMs, tokensPerSecond)
 					}
+				}
+
+				// Record trial usage if this is a trial provider
+				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(providerID) {
+					h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
 				}
 			}
 

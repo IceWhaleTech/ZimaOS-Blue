@@ -3,7 +3,6 @@ import { ref, computed } from 'vue'
 import { authApi, apiKeyApi } from '@/api/auth'
 import { permissionsApi, type PagePermission } from '@/api/users'
 import type { User, ApiKey, CreateApiKeyRequest } from '@/api/auth'
-import { usePreviewStore } from '@/stores/preview'
 
 const TOKEN_KEY = 'token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
@@ -14,40 +13,31 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
   const refreshToken = ref<string | null>(localStorage.getItem(REFRESH_TOKEN_KEY))
   const permissions = ref<string[]>([])
+  const permissionsLoaded = ref(false) // Track if permissions have been loaded
   const apiKeys = ref<ApiKey[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   // Computed
   const isAuthenticated = computed(() => !!token.value)
-  const isAdmin = computed(() => {
-    // In preview mode, users are treated as admin
-    const previewStore = usePreviewStore()
-    if (previewStore.isPreviewMode) return true
-    return user.value?.role === 'admin'
-  })
+  const isAdmin = computed(() => user.value?.role === 'admin')
   const username = computed(() => user.value?.username || '')
 
   // Permission check helper
   function hasPermission(permission: PagePermission | string): boolean {
-    // In preview mode, users have all permissions (treated as admin)
-    const previewStore = usePreviewStore()
-    if (previewStore.isPreviewMode) return true
     // Admin has all permissions
     if (user.value?.role === 'admin') return true
+    // If permissions haven't been loaded yet but user is authenticated, allow access
+    if (!permissionsLoaded.value && token.value) return true
     return permissions.value.includes(permission)
   }
 
   function hasAnyPermission(perms: (PagePermission | string)[]): boolean {
-    const previewStore = usePreviewStore()
-    if (previewStore.isPreviewMode) return true
     if (user.value?.role === 'admin') return true
     return perms.some((p) => permissions.value.includes(p))
   }
 
   function hasAllPermissions(perms: (PagePermission | string)[]): boolean {
-    const previewStore = usePreviewStore()
-    if (previewStore.isPreviewMode) return true
     if (user.value?.role === 'admin') return true
     return perms.every((p) => permissions.value.includes(p))
   }
@@ -98,6 +88,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken.value = null
     user.value = null
     permissions.value = []
+    permissionsLoaded.value = false
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
   }
@@ -129,9 +120,11 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await permissionsApi.getMyPermissions()
       permissions.value = response.data.permissions
+      permissionsLoaded.value = true
     } catch {
-      // Default to empty permissions on error
+      // Default to empty permissions on error, but mark as loaded
       permissions.value = []
+      permissionsLoaded.value = true
     }
   }
 

@@ -127,14 +127,14 @@ const allNavItems: NavItem[] = [
 
 // Filter nav items based on permissions
 const navItems = computed(() => {
+  // Show all nav items - individual pages handle their own permission checks
   return allNavItems
     .filter(item => {
-      // Admin-only items
+      // Only filter admin-only items
       if (item.adminOnly) {
         return isAdmin.value
       }
-      // Permission-based items
-      return hasPermission(item.permission)
+      return true
     })
     .map(item => ({
       ...item,

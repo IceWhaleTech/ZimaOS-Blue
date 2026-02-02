@@ -5791,6 +5791,7 @@ dependencies = [
  "env_logger",
  "log",
  "once_cell",
+ "open",
  "reqwest",
  "serde",
  "serde_json",

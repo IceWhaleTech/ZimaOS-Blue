@@ -37,7 +37,7 @@ async function fetchSkills(append = false) {
     const params: SearchParams = {
       count: pageSize,
       sort_by: sortBy.value,
-      sort_order: 'desc',
+      sort_order: sortBy.value === 'name' ? 'asc' : 'desc',
     }
     if (append && nextCursor.value) {
       params.cursor = nextCursor.value
@@ -49,7 +49,10 @@ async function fetchSkills(append = false) {
       params.categories = filterCategory.value
     }
     const response = await skillApi.search(params)
-    const newSkills = response.data.skills.map(s => ({
+
+    // Handle null or undefined skills array
+    const skillsData = response.data.skills || []
+    const newSkills = skillsData.map(s => ({
       ...s,
       tags: s.tags ? s.tags.split(',').map(t => t.trim()) : [],
     })) as unknown as RemoteSkill[]
@@ -59,9 +62,9 @@ async function fetchSkills(append = false) {
     } else {
       skills.value = newSkills
     }
-    total.value = response.data.total
+    total.value = response.data.total || 0
     nextCursor.value = response.data.next_cursor || null
-    hasMore.value = response.data.has_more
+    hasMore.value = response.data.has_more || false
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to fetch skills'
   } finally {
@@ -132,6 +135,12 @@ function formatNumber(num?: number): string {
   return num.toString()
 }
 
+function filterVersionTags(tags: string[]): string[] {
+  // Filter out version-like tags (e.g., "1.0.0", "v1.0.0", "1.0.1")
+  const versionPattern = /^v?\d+\.\d+(\.\d+)?$/
+  return tags.filter(tag => !versionPattern.test(tag))
+}
+
 function openSkillHomepage(skill: RemoteSkill) {
   const url = skill.homepage || skill.download_url
   if (url) {
@@ -200,6 +209,19 @@ onMounted(() => {
       <span>{{ t('common.loading') }}</span>
     </div>
 
+    <!-- Empty State -->
+    <div v-else-if="!loading && skills.length === 0" class="empty-state">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </svg>
+      <h3>{{ t('skillStore.noResults') }}</h3>
+      <p>{{ searchQuery ? t('skillStore.noResultsForQuery') : t('skillStore.noSkillsAvailable') }}</p>
+      <button v-if="searchQuery" class="btn-clear-search" @click="searchQuery = ''; handleSearch()">
+        {{ t('skillStore.clearSearch') }}
+      </button>
+    </div>
+
     <!-- Skills Grid with infinite scroll -->
     <div v-else ref="scrollContainer" class="items-grid-container" @scroll="handleScroll">
       <div class="items-grid">
@@ -214,23 +236,13 @@ onMounted(() => {
             <div class="item-title">
               <h3 :title="skill.name">{{ skill.name }}</h3>
               <div class="item-title-meta">
+                <span v-if="skill.version" class="item-version">v{{ skill.version }}</span>
                 <span v-if="skill.author" class="author">{{ skill.author }}</span>
-                <span v-if="skill.version" class="version">v{{ skill.version }}</span>
               </div>
             </div>
-            <button
-              v-if="!skill.installed"
-              class="btn-install"
-              :disabled="installing.has(skill.id)"
-              @click.stop="installSkill(skill)"
-            >
-              <span v-if="installing.has(skill.id)" class="spinner-small"></span>
-              <span v-else>{{ t('skillStore.install') }}</span>
-            </button>
-            <span v-else class="installed-badge">{{ t('skillStore.installed') }}</span>
           </div>
 
-          <p class="item-description">{{ skill.description || skill.summary || t('plugins.noDescription') }}</p>
+          <p class="item-description" :title="skill.description || skill.summary">{{ skill.description || skill.summary || t('plugins.noDescription') }}</p>
 
           <div class="item-stats">
             <span class="stat" :title="t('skillStore.downloads')">
@@ -240,6 +252,12 @@ onMounted(() => {
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
               {{ formatNumber(skill.downloads) }}
+            </span>
+            <span v-if="skill.stars" class="stat" :title="t('skillStore.stars')">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              {{ formatNumber(skill.stars) }}
             </span>
             <span v-if="skill.rating" class="stat" :title="t('skillStore.rating')">
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -259,8 +277,17 @@ onMounted(() => {
             <span v-for="cat in getCategories(skill.category)" :key="cat" class="category-badge">{{ cat }}</span>
           </div>
 
-          <div v-if="skill.tags?.length" class="item-tags">
-            <span v-for="tag in (Array.isArray(skill.tags) ? skill.tags : []).slice(0, 4)" :key="tag" class="tag">{{ tag }}</span>
+          <div class="item-footer">
+            <button
+              v-if="!skill.installed"
+              class="btn-install"
+              :disabled="installing.has(skill.id)"
+              @click.stop="installSkill(skill)"
+            >
+              <span v-if="installing.has(skill.id)" class="spinner-small"></span>
+              <span v-else>{{ t('skillStore.install') }}</span>
+            </button>
+            <span v-else class="installed-badge">{{ t('skillStore.installed') }}</span>
           </div>
         </div>
 
@@ -312,8 +339,67 @@ onMounted(() => {
   color: var(--color-accent);
 }
 
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--color-text-primary);
+}
+
+.empty-state p {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.btn-clear-search {
+  padding: 8px 16px;
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: opacity 0.2s;
+}
+
+.btn-clear-search:hover {
+  opacity: 0.9;
+}
+
 .item-stats .stat:nth-child(2) svg {
   color: #fbbf24;
+}
+
+.item-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Override description to show more lines */
+.item-description {
+  -webkit-line-clamp: 5;
+  min-height: 95px;
 }
 
 .btn-install {

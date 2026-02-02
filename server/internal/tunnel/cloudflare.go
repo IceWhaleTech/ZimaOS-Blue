@@ -1,22 +1,20 @@
 package tunnel
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os/exec"
-	"regexp"
 	"sync"
 	"time"
+
+	"github.com/wizzard0/trycloudflared"
 )
 
-// CloudflareManager manages Cloudflare Tunnel connections.
+// CloudflareManager manages Cloudflare Tunnel connections using native Go implementation.
 type CloudflareManager struct {
 	mu        sync.RWMutex
 	running   bool
 	url       string
 	startedAt time.Time
-	cmd       *exec.Cmd
 	cancel    context.CancelFunc
 
 	onURLChange func(url string)
@@ -28,7 +26,7 @@ func NewCloudflareManager() *CloudflareManager {
 	return &CloudflareManager{}
 }
 
-// Start starts the Cloudflare Tunnel.
+// Start starts the Cloudflare Tunnel using native Go implementation.
 func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 	m.mu.Lock()
 	if m.running {
@@ -42,80 +40,76 @@ func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 		port = 23456
 	}
 
-	// Create cancellable context
-	ctx, cancel := context.WithCancel(ctx)
+	// Create independent context for the tunnel
+	// This prevents panics when the parent context is canceled by Auto manager
+	tunnelCtx, cancel := context.WithCancel(context.Background())
 
-	var cmd *exec.Cmd
+	// Note: trycloudflared only supports quick tunnel (no token-based auth)
+	// For token-based tunnels, users should use the standalone Cloudflare provider
+	// with the cloudflared binary
 
-	if cfg.CloudflareToken != "" {
-		// Use token-based authentication (recommended)
-		// cloudflared tunnel run --token <TOKEN>
-		cmd = exec.CommandContext(ctx, "cloudflared",
-			"tunnel", "run",
-			"--token", cfg.CloudflareToken,
-		)
-	} else {
-		// Use quick tunnel (no account required, temporary URL)
-		// cloudflared tunnel --url http://localhost:PORT
-		cmd = exec.CommandContext(ctx, "cloudflared",
-			"tunnel",
-			"--url", fmt.Sprintf("http://localhost:%d", port),
-		)
-	}
-
-	// Capture stderr for URL extraction
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return fmt.Errorf("failed to start cloudflared: %w", err)
-	}
-
-	m.mu.Lock()
-	m.running = true
-	m.cmd = cmd
-	m.cancel = cancel
-	m.startedAt = time.Now()
-	m.mu.Unlock()
-
-	// Parse URL from output in background
+	// Start tunnel in background
 	go func() {
-		scanner := bufio.NewScanner(stderr)
-		// Quick tunnel outputs: https://xxxxx.trycloudflare.com
-		// Token-based outputs the configured domain
-		urlRegex := regexp.MustCompile(`https?://[a-zA-Z0-9.-]+\.(trycloudflare\.com|[a-zA-Z0-9.-]+)`)
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			if matches := urlRegex.FindString(line); matches != "" {
+		// Recover from panics in the trycloudflared library
+		defer func() {
+			if r := recover(); r != nil {
 				m.mu.Lock()
-				m.url = matches
+				m.running = false
+				m.url = ""
 				m.mu.Unlock()
 
-				if m.onURLChange != nil {
-					m.onURLChange(matches)
+				var err error
+				switch v := r.(type) {
+				case error:
+					err = fmt.Errorf("cloudflare tunnel panic: %w", v)
+				case string:
+					err = fmt.Errorf("cloudflare tunnel panic: %s", v)
+				default:
+					err = fmt.Errorf("cloudflare tunnel panic: %v", v)
 				}
-				// Don't break - cloudflared may output multiple URLs
-			}
-		}
-	}()
 
-	// Monitor process
-	go func() {
-		err := cmd.Wait()
+				if m.onError != nil {
+					m.onError(err)
+				}
+				cancel()
+			}
+		}()
+
+		// Create Cloudflare tunnel
+		tunnelURL, err := trycloudflared.CreateCloudflareTunnel(tunnelCtx, port)
+		if err != nil {
+			m.mu.Lock()
+			m.running = false
+			m.mu.Unlock()
+			if m.onError != nil {
+				m.onError(fmt.Errorf("failed to create cloudflare tunnel: %w", err))
+			}
+			cancel()
+			return
+		}
+
+		m.mu.Lock()
+		m.url = tunnelURL
+		m.mu.Unlock()
+
+		// Notify URL change
+		if m.onURLChange != nil {
+			m.onURLChange(tunnelURL)
+		}
+
+		// Wait for context cancellation
+		<-tunnelCtx.Done()
 		m.mu.Lock()
 		m.running = false
 		m.url = ""
 		m.mu.Unlock()
-
-		if err != nil && m.onError != nil {
-			m.onError(err)
-		}
 	}()
+
+	m.mu.Lock()
+	m.running = true
+	m.cancel = cancel
+	m.startedAt = time.Now()
+	m.mu.Unlock()
 
 	return nil
 }
@@ -131,10 +125,6 @@ func (m *CloudflareManager) Stop() error {
 
 	if m.cancel != nil {
 		m.cancel()
-	}
-
-	if m.cmd != nil && m.cmd.Process != nil {
-		m.cmd.Process.Kill()
 	}
 
 	m.running = false
@@ -182,10 +172,4 @@ func (m *CloudflareManager) SetOnURLChange(fn func(url string)) {
 // SetOnError sets a callback for errors.
 func (m *CloudflareManager) SetOnError(fn func(err error)) {
 	m.onError = fn
-}
-
-// CheckCloudflaredInstalled checks if cloudflared is installed.
-func CheckCloudflaredInstalled() bool {
-	_, err := exec.LookPath("cloudflared")
-	return err == nil
 }

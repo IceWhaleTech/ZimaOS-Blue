@@ -70,6 +70,15 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 
 // GetModels returns cached models for a provider
 func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
+	// For trial providers, always return built-in models only
+	if IsTrialProvider(providerID) {
+		builtinModels := GetBuiltinModels(providerID)
+		if builtinModels != nil {
+			return builtinModels, nil
+		}
+		return nil, ErrModelNotFound
+	}
+
 	d.mu.RLock()
 	models, exists := d.cache[providerID]
 	cacheTime := d.cacheAt[providerID]
@@ -155,17 +164,36 @@ func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
 	return filtered
 }
 
-// GetAllModels returns all models from all enabled providers
+// GetAllModels returns all models from all providers (including built-in models from disabled providers)
 func (d *ModelDiscovery) GetAllModels() []*Model {
-	providers := d.registry.ListEnabled()
 	var allModels []*Model
+	seenProviders := make(map[string]bool)
 
-	for _, provider := range providers {
+	// First, get models from all enabled providers (custom or built-in)
+	enabledProviders := d.registry.ListEnabled()
+	for _, provider := range enabledProviders {
 		models, err := d.GetModels(provider.ID)
 		if err != nil {
 			continue
 		}
 		allModels = append(allModels, models...)
+		seenProviders[provider.ID] = true
+	}
+
+	// Then, add built-in models from all built-in providers (even if disabled)
+	// This allows users to see all available models with pricing before enabling providers
+	builtinProviders := BuiltinProviders()
+	for _, builtinProvider := range builtinProviders {
+		// Skip if we already got models from this provider (it's enabled)
+		if seenProviders[builtinProvider.ID] {
+			continue
+		}
+
+		// Get built-in models for this provider
+		builtinModels := GetBuiltinModels(builtinProvider.ID)
+		if builtinModels != nil {
+			allModels = append(allModels, builtinModels...)
+		}
 	}
 
 	return allModels

@@ -15,14 +15,15 @@ import (
 
 // Pool is the main entry point for the provider pool functionality
 type Pool struct {
-	Registry       *Registry
-	Discovery      *ModelDiscovery
-	Router         *Router
-	IDEDiscovery   *ide.Discovery
-	UsageTracker   *UsageTracker
-	PricingManager *PricingManager
-	Storage        Storage
-	Config         *PoolConfig
+	Registry          *Registry
+	Discovery         *ModelDiscovery
+	Router            *Router
+	IDEDiscovery      *ide.Discovery
+	UsageTracker      *UsageTracker
+	PricingManager    *PricingManager
+	Storage           Storage
+	Config            *PoolConfig
+	TrialQuotaManager *TrialQuotaManager
 }
 
 // PoolOption configures the Pool
@@ -89,6 +90,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 			UsageTrackingEnabled:     true,
 			UsageRetentionDays:       30,
 		},
+		TrialQuotaManager: NewTrialQuotaManager(storage, registry),
 	}
 
 	for _, opt := range opts {
@@ -242,6 +244,13 @@ func NewHandler(pool *Pool) *Handler {
 	}
 }
 
+// poolNotAvailable returns a standard error response when pool is nil
+func (h *Handler) poolNotAvailable(c echo.Context) error {
+	return c.JSON(http.StatusServiceUnavailable, map[string]string{
+		"error": "provider pool not available",
+	})
+}
+
 // RegisterRoutes registers all API routes on an Echo group
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Provider endpoints
@@ -270,6 +279,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Usage endpoints
 	g.GET("/usage", h.GetUsageStats)
 	g.GET("/:id/usage", h.GetProviderUsage)
+
+	// Trial quota endpoint
+	g.GET("/trial/quota", h.GetTrialQuota)
 }
 
 // RegisterModelRoutes registers model routes on a separate group
@@ -301,11 +313,41 @@ func (h *Handler) RegisterPricingRoutes(g *echo.Group) {
 
 // ListProviders returns all providers
 func (h *Handler) ListProviders(c echo.Context) error {
+	if h.pool == nil || h.pool.Registry == nil {
+		// Return built-in providers when pool is not available
+		builtinProviders := BuiltinProviders()
+		// Sanitize trial providers
+		sanitizedProviders := sanitizeTrialProviders(builtinProviders)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"providers": sanitizedProviders,
+			"total":     len(sanitizedProviders),
+		})
+	}
+
 	providers := h.pool.Registry.List()
+	// Sanitize trial providers (hide base_url and api_keys)
+	sanitizedProviders := sanitizeTrialProviders(providers)
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"providers": providers,
-		"total":     len(providers),
+		"providers": sanitizedProviders,
+		"total":     len(sanitizedProviders),
 	})
+}
+
+// sanitizeTrialProviders removes sensitive information from trial providers
+func sanitizeTrialProviders(providers []*Provider) []*Provider {
+	result := make([]*Provider, len(providers))
+	for i, p := range providers {
+		if p.Type == ProviderTypeTrial {
+			// Create a copy with sensitive fields hidden
+			sanitized := *p
+			sanitized.BaseURL = ""
+			sanitized.APIKeys = nil
+			result[i] = &sanitized
+		} else {
+			result[i] = p
+		}
+	}
+	return result
 }
 
 // AddProvider adds a new custom provider
@@ -729,6 +771,16 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 func (h *Handler) FetchProviderModels(c echo.Context) error {
 	id := c.Param("id")
 
+	// Don't allow fetching models for trial providers
+	if IsTrialProvider(id) {
+		// Return built-in models for trial provider instead
+		models := GetBuiltinModels(id)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"models": models,
+			"total":  len(models),
+		})
+	}
+
 	// Use singleflight to deduplicate concurrent requests for the same provider
 	key := fmt.Sprintf("fetch_models:%s", id)
 	result, err, _ := h.sfGroup.Do(key, func() (interface{}, error) {
@@ -748,6 +800,24 @@ func (h *Handler) FetchProviderModels(c echo.Context) error {
 
 // ListAllModels returns all models from all providers
 func (h *Handler) ListAllModels(c echo.Context) error {
+	// Handle nil pool gracefully - return built-in models
+	if h.pool == nil || h.pool.Discovery == nil {
+		var allModels []*Model
+
+		// Get models from all built-in providers
+		for _, provider := range BuiltinProviders() {
+			builtinModels := GetBuiltinModels(provider.ID)
+			if builtinModels != nil {
+				allModels = append(allModels, builtinModels...)
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"models": allModels,
+			"total":  len(allModels),
+		})
+	}
+
 	models := h.pool.Discovery.GetAllModels()
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -868,6 +938,15 @@ func (h *Handler) GetProviderUsage(c echo.Context) error {
 
 // ScanIDEs scans for available IDEs and returns all results (including not found)
 func (h *Handler) ScanIDEs(c echo.Context) error {
+	// Handle nil pool gracefully
+	if h.pool == nil || h.pool.IDEDiscovery == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"ides":         []interface{}{},
+			"scan_results": []interface{}{},
+			"total":        0,
+		})
+	}
+
 	ctx := c.Request().Context()
 
 	// Try cache first
@@ -906,6 +985,10 @@ func (h *Handler) ScanIDEs(c echo.Context) error {
 
 // ConnectIDE connects to an IDE
 func (h *Handler) ConnectIDE(c echo.Context) error {
+	if h.pool == nil || h.pool.IDEDiscovery == nil {
+		return h.poolNotAvailable(c)
+	}
+
 	ideType := ide.IDEType(c.Param("type"))
 
 	info, err := h.pool.IDEDiscovery.Connect(c.Request().Context(), ideType)
@@ -918,6 +1001,13 @@ func (h *Handler) ConnectIDE(c echo.Context) error {
 
 // GetImportableConfigs returns all IDE configurations that can be imported
 func (h *Handler) GetImportableConfigs(c echo.Context) error {
+	if h.pool == nil || h.pool.IDEDiscovery == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"configs": []interface{}{},
+			"total":   0,
+		})
+	}
+
 	configs, err := h.pool.IDEDiscovery.GetImportableConfigs(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1080,12 +1170,35 @@ func getProviderIDForIDE(ideType ide.IDEType) string {
 
 // GetPricingConfig returns the current pricing configuration
 func (h *Handler) GetPricingConfig(c echo.Context) error {
+	if h.pool == nil || h.pool.PricingManager == nil {
+		// Return built-in pricing when pool is unavailable
+		config := GetBuiltinPricingConfig()
+		return c.JSON(http.StatusOK, config)
+	}
+
+	// Get custom pricing from storage
 	config := h.pool.PricingManager.GetPricingConfig()
+
+	// Merge with built-in pricing (built-in as baseline, custom overrides)
+	builtinConfig := GetBuiltinPricingConfig()
+
+	// Start with built-in pricing
+	for modelID, builtinPricing := range builtinConfig.CustomPricing {
+		// Only add if not already in custom pricing
+		if _, exists := config.CustomPricing[modelID]; !exists {
+			config.CustomPricing[modelID] = builtinPricing
+		}
+	}
+
 	return c.JSON(http.StatusOK, config)
 }
 
 // SetDefaultPricing updates the default pricing for unknown models
 func (h *Handler) SetDefaultPricing(c echo.Context) error {
+	if h.pool == nil || h.pool.PricingManager == nil {
+		return h.poolNotAvailable(c)
+	}
+
 	var req struct {
 		InputPrice  float64 `json:"input_price"`
 		OutputPrice float64 `json:"output_price"`
@@ -1113,6 +1226,13 @@ func (h *Handler) SetDefaultPricing(c echo.Context) error {
 
 // ListModelPricing returns all custom model pricing configurations
 func (h *Handler) ListModelPricing(c echo.Context) error {
+	if h.pool == nil || h.pool.PricingManager == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"pricing": []interface{}{},
+			"total":   0,
+		})
+	}
+
 	pricing := h.pool.PricingManager.ListCustomPricing()
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"pricing": pricing,
@@ -1122,6 +1242,10 @@ func (h *Handler) ListModelPricing(c echo.Context) error {
 
 // SetModelPricing sets custom pricing for a specific model
 func (h *Handler) SetModelPricing(c echo.Context) error {
+	if h.pool == nil || h.pool.PricingManager == nil {
+		return h.poolNotAvailable(c)
+	}
+
 	modelID := c.Param("modelId")
 
 	var req struct {
@@ -1155,6 +1279,10 @@ func (h *Handler) SetModelPricing(c echo.Context) error {
 
 // RemoveModelPricing removes custom pricing for a model (reverts to default)
 func (h *Handler) RemoveModelPricing(c echo.Context) error {
+	if h.pool == nil || h.pool.PricingManager == nil {
+		return h.poolNotAvailable(c)
+	}
+
 	modelID := c.Param("modelId")
 	providerID := c.QueryParam("provider_id")
 
@@ -1235,6 +1363,13 @@ func (h *Handler) RegisterConfigRoutes(g *echo.Group) {
 
 // GetRoutingMode returns the current routing mode
 func (h *Handler) GetRoutingMode(c echo.Context) error {
+	// Handle nil pool gracefully
+	if h.pool == nil || h.pool.Config == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"mode": "auto",
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"mode": h.pool.Config.DefaultRoutingMode,
 	})
@@ -1268,6 +1403,17 @@ func (h *Handler) SetRoutingMode(c echo.Context) error {
 
 // GetLocationStats returns statistics about provider locations
 func (h *Handler) GetLocationStats(c echo.Context) error {
+	if h.pool == nil || h.pool.Registry == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"cloud_count":     0,
+			"local_count":     0,
+			"cloud_providers": []string{},
+			"local_providers": []string{},
+			"has_cloud":       false,
+			"has_local":       false,
+		})
+	}
+
 	providers := h.pool.Registry.ListEnabled()
 
 	var cloudCount, localCount int
@@ -1291,4 +1437,23 @@ func (h *Handler) GetLocationStats(c echo.Context) error {
 		"has_cloud":       cloudCount > 0,
 		"has_local":       localCount > 0,
 	})
+}
+
+// GetTrialQuota returns the current trial quota status
+func (h *Handler) GetTrialQuota(c echo.Context) error {
+	if h.pool == nil || h.pool.TrialQuotaManager == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"tokens_used":         0,
+			"tokens_remaining":    TrialTokenLimit,
+			"token_limit":         TrialTokenLimit,
+			"conversations_used":  0,
+			"conversations_left":  TrialConversationLimit,
+			"conversation_limit":  TrialConversationLimit,
+			"exhausted":           false,
+			"exhausted_by_tokens": false,
+		})
+	}
+
+	status := h.pool.TrialQuotaManager.GetStatus()
+	return c.JSON(http.StatusOK, status)
 }

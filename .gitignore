@@ -71,6 +71,8 @@ data/
 server/zimaos-echo
 server/echo
 dist/
+echo
+zimaos-echo
 
 # Tauri binaries and capabilities
 tauri-app/src-tauri/binaries/

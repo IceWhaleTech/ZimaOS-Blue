@@ -86,13 +86,13 @@ type ProviderInfo struct {
 }
 
 // GetProviderInfos returns information about all available providers for the UI.
-// LocalTunnel is not listed separately; it is used internally by Auto (Bore/Serveo/LocalTunnel in parallel).
+// LocalTunnel is not listed separately; it is used internally by Auto (Bore/Serveo/LocalTunnel/Cloudflare in parallel).
 func GetProviderInfos() []ProviderInfo {
 	return []ProviderInfo{
 		{
 			ID:          ProviderAuto,
 			Name:        "Auto",
-			Description: "Bore, Serveo, or LocalTunnel (no signup; tries in parallel, first success wins)",
+			Description: "Bore, Serveo, LocalTunnel, or Cloudflare (no signup; tries in parallel, first success wins)",
 			RequiresKey: false,
 			DocURL:      "https://github.com/ekzhang/bore",
 		},

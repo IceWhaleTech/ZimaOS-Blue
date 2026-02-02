@@ -296,7 +296,7 @@ function formatDuration(ms: number): string {
                 <span class="text-xs text-gray-400">{{ formatDuration(event.tool_call.duration) }}</span>
               </div>
               <div v-if="event.tool_call.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
-                Input: {{ event.tool_call.inputPreview }}
+                {{ t('companion.llmDetails.input') }}: {{ event.tool_call.inputPreview }}
               </div>
             </div>
 
@@ -307,9 +307,9 @@ function formatDuration(ms: number): string {
                 <span class="text-xs text-gray-400">{{ formatDuration(event.llm_request.duration) }}</span>
               </div>
               <div class="flex gap-3 text-xs text-gray-500 dark:text-slate-400">
-                <span>Prompt: {{ event.llm_request.promptTokens }}</span>
-                <span>Completion: {{ event.llm_request.completionTokens }}</span>
-                <span>Total: {{ event.llm_request.totalTokens }}</span>
+                <span>{{ t('companion.llmDetails.prompt') }}: {{ event.llm_request.promptTokens }}</span>
+                <span>{{ t('companion.llmDetails.completion') }}: {{ event.llm_request.completionTokens }}</span>
+                <span>{{ t('companion.llmDetails.total') }}: {{ event.llm_request.totalTokens }}</span>
               </div>
             </div>
 
@@ -319,7 +319,7 @@ function formatDuration(ms: number): string {
                 <span :class="['px-1.5 py-0.5 rounded text-xs', getThreatColor(event.security.threatLevel)]">
                   {{ event.security.threatLevel }}
                 </span>
-                <span class="text-xs text-gray-400">Score: {{ event.security.threatScore }}</span>
+                <span class="text-xs text-gray-400">{{ t('companion.llmDetails.score') }}: {{ event.security.threatScore }}</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-slate-400">
                 {{ event.security.threatTypes.join(', ') }}
