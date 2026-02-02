@@ -147,6 +147,19 @@ func (s *service) GetDefaultProvider() ProviderType {
 	return s.defaultProvider
 }
 
+// SetDefaultProvider sets the default provider type.
+func (s *service) SetDefaultProvider(providerType ProviderType) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.providers[providerType]; !ok {
+		return fmt.Errorf("provider %s not available", providerType)
+	}
+
+	s.defaultProvider = providerType
+	return nil
+}
+
 // GetSherpaProvider returns the Sherpa TTS provider if available.
 func (s *service) GetSherpaProvider() *SherpaProvider {
 	s.mu.RLock()

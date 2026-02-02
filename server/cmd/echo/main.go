@@ -358,13 +358,30 @@ func main() {
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
 	// Claude Code CLI provider (v0.10)
-	if cfg.ClaudeCode.Enabled {
-		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, claudeKey, claudeBaseURL)
+	// Auto-enable CC CLI when zimaos-trial is available, using local proxy
+	ccCliEnabled := cfg.ClaudeCode.Enabled
+	ccCliBaseURL := claudeBaseURL
+	ccCliAPIKey := claudeKey
+
+	// If not explicitly configured, try to use local proxy with zimaos-trial
+	if !ccCliEnabled && os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
+		ccCliEnabled = true
+		// Use local proxy URL (same port as main server)
+		ccCliBaseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+		// Generate internal API key for CC CLI to use with local proxy
+		ccCliAPIKey = os.Getenv("ZIMAOS_TRIAL_API_KEY")
+		logger.Info().Str("base_url", ccCliBaseURL).Msg("CC CLI auto-enabled with local proxy (zimaos-trial)")
+	}
+
+	if ccCliEnabled {
+		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, ccCliAPIKey, ccCliBaseURL)
+		// Override enabled flag since we may have auto-enabled it
+		ccConfig.Enabled = true
 		ccProvider := claudecode.NewProvider(ccConfig)
 		ccProvider.SetToolRegistry(toolRegistry) // Set tool registry for system prompt
 		ccProvider.Start()
 		llmRegistry.Register(ccProvider)
-		logger.Info().Str("command", cfg.ClaudeCode.Command).Msg("Claude Code CLI provider registered")
+		logger.Info().Str("command", cfg.ClaudeCode.Command).Str("base_url", ccCliBaseURL).Msg("Claude Code CLI provider registered")
 
 		// Register shutdown hook for Claude Code provider
 		lm.RegisterShutdownHook(func(ctx context.Context) error {

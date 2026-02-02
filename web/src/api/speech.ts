@@ -133,6 +133,9 @@ export const speechApi = {
   deleteTTSModel: (modelType?: string) =>
     api.delete<{ status: string; message: string }>(`/speech/tts/model${modelType ? `?model_type=${modelType}` : ''}`),
 
+  switchTTSProvider: (provider: string) =>
+    api.post<{ status: string; message: string; provider: string }>('/speech/tts/provider', { provider }),
+
   // Transcription with edit support
   transcribe: async (audio: Blob, format: string, language?: string): Promise<TranscriptionResult> => {
     const formData = new FormData()

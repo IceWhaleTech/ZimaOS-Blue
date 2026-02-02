@@ -171,6 +171,14 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 		}
 	}
 
+	// Debug: Print provider info
+	maskedKey := apiKey
+	if len(apiKey) > 10 {
+		maskedKey = apiKey[:6] + "..." + apiKey[len(apiKey)-4:]
+	}
+	fmt.Printf("[getProviderFromPool] providerID=%s, APIFormat=%s, BaseURL=%s, APIKey=%s\n",
+		providerID, poolProvider.APIFormat, poolProvider.BaseURL, maskedKey)
+
 	// Create LLM provider based on API format
 	switch poolProvider.APIFormat {
 	case providerpool.APIFormatAnthropic:
@@ -190,9 +198,14 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 // The caller should use req.Model directly if available.
 func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error) {
 	// Priority 1: Check if Claude Code CLI is enabled
+	fmt.Printf("[getDefaultProvider] claudeCodeHandler=%v\n", h.claudeCodeHandler != nil)
+	if h.claudeCodeHandler != nil {
+		fmt.Printf("[getDefaultProvider] claudeCodeHandler.IsEnabled()=%v\n", h.claudeCodeHandler.IsEnabled())
+	}
 	if h.claudeCodeHandler != nil && h.claudeCodeHandler.IsEnabled() {
 		// Try to get the claude-code provider from registry
 		ccProvider := h.providers.Get("claude-code")
+		fmt.Printf("[getDefaultProvider] ccProvider=%v\n", ccProvider != nil)
 		if ccProvider != nil {
 			return ccProvider, "claude-code", "", nil
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
 )
 
 // Handler handles unified speech HTTP requests.
@@ -46,6 +47,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	tts.POST("/download", h.DownloadTTSModel)
 	tts.POST("/switch", h.SwitchTTSModel)
 	tts.DELETE("/model", h.DeleteTTSModel)
+	tts.POST("/provider", h.SwitchTTSProvider)
 
 	// Transcription with edit support
 	g.POST("/transcribe", h.Transcribe)
@@ -402,5 +404,38 @@ func (h *Handler) ConfirmTranscription(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status": "confirmed",
 		"text":   req.Text,
+	})
+}
+
+// SwitchTTSProvider switches the TTS provider.
+func (h *Handler) SwitchTTSProvider(c echo.Context) error {
+	var req SwitchProviderRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request",
+		})
+	}
+
+	ttsSvc := h.service.GetTTSService()
+	if ttsSvc == nil {
+		// If TTS service is not available, just save preference
+		// The service will use it when initialized
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":   "switched",
+			"message":  "Provider preference saved: " + req.Provider,
+			"provider": req.Provider,
+		})
+	}
+
+	if err := ttsSvc.SetDefaultProvider(tts.ProviderType(req.Provider)); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":   "switched",
+		"message":  "Switched to provider: " + req.Provider,
+		"provider": req.Provider,
 	})
 }

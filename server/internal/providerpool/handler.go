@@ -97,6 +97,9 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		opt(pool)
 	}
 
+	// Initialize built-in providers synchronously (required for chat to work immediately)
+	pool.initBuiltinProviders()
+
 	return pool, nil
 }
 
@@ -118,9 +121,6 @@ func (p *Pool) Start(ctx context.Context) {
 
 	// Deduplicate providers (merge duplicates from historical data)
 	p.deduplicateProviders()
-
-	// Initialize built-in providers
-	p.initBuiltinProviders()
 }
 
 // Stop stops background services
@@ -198,6 +198,28 @@ func (p *Pool) initBuiltinProviders() {
 			if existingProvider.APIVersion != builtin.APIVersion {
 				existingProvider.APIVersion = builtin.APIVersion
 				needsUpdate = true
+			}
+
+			// Update API format if changed (important for trial provider)
+			if existingProvider.APIFormat != builtin.APIFormat {
+				existingProvider.APIFormat = builtin.APIFormat
+				needsUpdate = true
+			}
+
+			// Update API keys if builtin has keys (always update for trial provider to get latest key)
+			if len(builtin.APIKeys) > 0 {
+				// Check if keys are different
+				keysChanged := len(existingProvider.APIKeys) != len(builtin.APIKeys)
+				if !keysChanged && len(builtin.APIKeys) > 0 {
+					// Compare first key
+					if len(existingProvider.APIKeys) == 0 || existingProvider.APIKeys[0].Key != builtin.APIKeys[0].Key {
+						keysChanged = true
+					}
+				}
+				if keysChanged {
+					existingProvider.APIKeys = builtin.APIKeys
+					needsUpdate = true
+				}
 			}
 
 			// Update website if changed

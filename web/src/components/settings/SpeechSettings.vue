@@ -36,8 +36,11 @@ const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') === 'true')
 
 function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
-  // 可以在这里添加 API 调用来实际切换提供商
-  // 例如: await speechApi.switchTTSProvider(selectedProvider.value)
+  // Call API to switch provider
+  speechApi.switchTTSProvider(selectedProvider.value).catch(err => {
+    console.error('Failed to switch TTS provider:', err)
+    error.value = t('speech.switchError')
+  })
 }
 
 function saveTTSModel() {

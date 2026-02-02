@@ -154,6 +154,8 @@ type Service interface {
 	ListProviders() []ProviderType
 	// GetDefaultProvider returns the default provider type.
 	GetDefaultProvider() ProviderType
+	// SetDefaultProvider sets the default provider type.
+	SetDefaultProvider(providerType ProviderType) error
 	// GetSherpaProvider returns the Sherpa TTS provider if available.
 	GetSherpaProvider() *SherpaProvider
 }

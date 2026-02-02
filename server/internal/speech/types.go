@@ -105,3 +105,8 @@ type DownloadRequest struct {
 type SwitchRequest struct {
 	ModelType string `json:"model_type"`
 }
+
+// SwitchProviderRequest represents a TTS provider switch request.
+type SwitchProviderRequest struct {
+	Provider string `json:"provider"`
+}

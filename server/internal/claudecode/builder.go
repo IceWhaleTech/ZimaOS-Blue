@@ -216,6 +216,22 @@ func (b *CommandBuilder) BuildEnv(baseEnv []string) []string {
 		envMap[key] = value
 	}
 
+	// Debug: Print ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL
+	if token, ok := envMap["ANTHROPIC_AUTH_TOKEN"]; ok {
+		masked := token
+		if len(token) > 10 {
+			masked = token[:6] + "..." + token[len(token)-4:]
+		}
+		println("[CC CLI BuildEnv] ANTHROPIC_AUTH_TOKEN:", masked)
+	} else {
+		println("[CC CLI BuildEnv] ANTHROPIC_AUTH_TOKEN: not set")
+	}
+	if baseURL, ok := envMap["ANTHROPIC_BASE_URL"]; ok {
+		println("[CC CLI BuildEnv] ANTHROPIC_BASE_URL:", baseURL)
+	} else {
+		println("[CC CLI BuildEnv] ANTHROPIC_BASE_URL: not set")
+	}
+
 	// Convert back to slice
 	result := make([]string, 0, len(envMap))
 	for key, value := range envMap {
