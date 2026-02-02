@@ -24,6 +24,9 @@ func NewHandler(svc Service) *Handler {
 
 // RegisterRoutes registers unified speech management routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
+	// Lazy initialization endpoint
+	g.POST("/init", h.Init)
+
 	// Unified status and models
 	g.GET("/status", h.GetStatus)
 	g.GET("/models", h.GetModels)
@@ -53,6 +56,25 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 func (h *Handler) GetStatus(c echo.Context) error {
 	status := h.service.GetStatus()
 	return c.JSON(http.StatusOK, status)
+}
+
+// Init initializes TTS/STT services lazily.
+func (h *Handler) Init(c echo.Context) error {
+	if h.service.IsInitialized() {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "already initialized",
+		})
+	}
+
+	go func() {
+		_ = h.service.Initialize()
+	}()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "initialization started",
+	})
 }
 
 // GetModels returns all available models.

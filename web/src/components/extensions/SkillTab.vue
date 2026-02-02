@@ -360,14 +360,22 @@ function renderMarkdown(content: string): string {
 }
 
 .skill-detail-modal {
-  background: var(--color-bg-primary, #1a1a2e);
+  background: var(--color-bg-elevated, #ffffff);
   border-radius: 16px;
   width: 100%;
   max-width: 700px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+}
+
+:root.dark .skill-detail-modal,
+[data-theme="dark"] .skill-detail-modal {
+  background: var(--color-bg-elevated, #1a1a2e);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  border-color: var(--color-border, rgba(255, 255, 255, 0.1));
 }
 
 .modal-header {
@@ -375,7 +383,12 @@ function renderMarkdown(content: string): string {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+}
+
+:root.dark .modal-header,
+[data-theme="dark"] .modal-header {
+  border-bottom-color: var(--color-border, rgba(255, 255, 255, 0.1));
 }
 
 .modal-title-row {
@@ -499,22 +512,21 @@ function renderMarkdown(content: string): string {
   color: inherit;
 }
 
-/* Light theme support */
-@media (prefers-color-scheme: light) {
-  .skill-detail-modal {
-    background: var(--color-bg-primary, #ffffff);
-    color: var(--color-text-primary, #000000);
-  }
+/* Light theme support - use CSS variables that adapt to theme */
+.skill-content :deep(code) {
+  background: var(--color-bg-tertiary, var(--color-bg-secondary));
+  color: var(--color-code-text, var(--color-text-primary));
+}
 
-  .skill-content :deep(code) {
-    background: #f0f0f0;
-    color: #d63384;
-  }
+.skill-content :deep(pre) {
+  background: var(--color-bg-tertiary, var(--color-bg-secondary));
+  color: var(--color-text-primary);
+}
 
-  .skill-content :deep(pre) {
-    background: #f5f5f5;
-    color: #000000;
-  }
+/* Ensure markdown-body adapts to dark mode */
+.markdown-body {
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
 }
 
 .skill-content :deep(strong) {

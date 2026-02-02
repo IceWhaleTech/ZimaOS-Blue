@@ -3,9 +3,12 @@ package providerpool
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Router handles intelligent model routing and provider selection
@@ -21,6 +24,14 @@ type Router struct {
 	latencies map[string]time.Duration
 	latencyMu sync.RWMutex
 
+	// Cooldown management
+	cooldowns  map[string]*CooldownEntry
+	cooldownMu sync.RWMutex
+	cooldownCfg *CooldownConfig
+
+	// Failover callback for external logging/tracking
+	failoverCallback func(*FailoverResult)
+
 	// Default strategy
 	defaultStrategy RoutingStrategy
 }
@@ -32,8 +43,22 @@ func NewRouter(registry *Registry, discovery *ModelDiscovery, defaultStrategy Ro
 		discovery:       discovery,
 		rrIndex:         make(map[string]*uint64),
 		latencies:       make(map[string]time.Duration),
+		cooldowns:       make(map[string]*CooldownEntry),
+		cooldownCfg:     DefaultCooldownConfig(),
 		defaultStrategy: defaultStrategy,
 	}
+}
+
+// SetCooldownConfig sets the cooldown configuration
+func (r *Router) SetCooldownConfig(cfg *CooldownConfig) {
+	r.cooldownMu.Lock()
+	defer r.cooldownMu.Unlock()
+	r.cooldownCfg = cfg
+}
+
+// SetFailoverCallback sets a callback to be called after each failover operation
+func (r *Router) SetFailoverCallback(cb func(*FailoverResult)) {
+	r.failoverCallback = cb
 }
 
 // Route selects the best provider for a model request
@@ -98,6 +123,11 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 			continue
 		}
 
+		// Skip providers in cooldown
+		if r.IsInCooldown(provider.ID) {
+			continue
+		}
+
 		// Filter by routing mode (location preference)
 		if req.Mode != "" && req.Mode != RoutingModeAuto {
 			if req.Mode == RoutingModeCloud && provider.Location != ProviderLocationCloud {
@@ -111,6 +141,25 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 		// Get models for this provider
 		models, err := r.discovery.GetModels(provider.ID)
 		if err != nil {
+			continue
+		}
+
+		// If no model specified, use first available enabled model
+		if req.ModelID == "" {
+			for _, model := range models {
+				if !model.Enabled {
+					continue
+				}
+				// Check capabilities if required
+				if req.RequireCap != nil && !matchesCapabilities(model.Capabilities, *req.RequireCap) {
+					continue
+				}
+				candidates = append(candidates, &RouteCandidate{
+					Provider: provider,
+					Model:    model,
+				})
+				break // Only one model per provider
+			}
 			continue
 		}
 
@@ -289,31 +338,184 @@ func (r *Router) GetLatency(providerID string) time.Duration {
 	return r.latencies[providerID]
 }
 
+// IsInCooldown checks if a provider is currently in cooldown
+func (r *Router) IsInCooldown(providerID string) bool {
+	r.cooldownMu.RLock()
+	defer r.cooldownMu.RUnlock()
+	entry, exists := r.cooldowns[providerID]
+	if !exists {
+		return false
+	}
+	return time.Now().Before(entry.CooldownUntil)
+}
+
+// GetCooldownEntry returns the cooldown entry for a provider
+func (r *Router) GetCooldownEntry(providerID string) *CooldownEntry {
+	r.cooldownMu.RLock()
+	defer r.cooldownMu.RUnlock()
+	if entry, exists := r.cooldowns[providerID]; exists {
+		// Return a copy
+		entryCopy := *entry
+		return &entryCopy
+	}
+	return nil
+}
+
+// RecordFailure records a failure for a provider and potentially puts it in cooldown
+func (r *Router) RecordFailure(providerID string, err error) {
+	r.cooldownMu.Lock()
+	defer r.cooldownMu.Unlock()
+
+	entry, exists := r.cooldowns[providerID]
+	if !exists {
+		entry = &CooldownEntry{
+			ProviderID: providerID,
+		}
+		r.cooldowns[providerID] = entry
+	}
+
+	entry.FailureCount++
+	entry.LastFailure = time.Now()
+	if err != nil {
+		entry.LastError = err.Error()
+	}
+
+	// Check if we should enter cooldown
+	if entry.FailureCount >= r.cooldownCfg.FailureThreshold {
+		// Calculate cooldown duration with exponential backoff
+		cooldownDuration := r.cooldownCfg.InitialCooldown
+		multiplier := 1.0
+		for i := r.cooldownCfg.FailureThreshold; i < entry.FailureCount; i++ {
+			multiplier *= r.cooldownCfg.CooldownMultiplier
+		}
+		cooldownDuration = time.Duration(float64(cooldownDuration) * multiplier)
+		if cooldownDuration > r.cooldownCfg.MaxCooldown {
+			cooldownDuration = r.cooldownCfg.MaxCooldown
+		}
+		entry.CooldownUntil = time.Now().Add(cooldownDuration)
+	}
+}
+
+// RecordSuccess records a successful request and potentially resets cooldown
+func (r *Router) RecordSuccess(providerID string) {
+	r.cooldownMu.Lock()
+	defer r.cooldownMu.Unlock()
+
+	entry, exists := r.cooldowns[providerID]
+	if !exists {
+		return
+	}
+
+	// Reset failure count on success
+	entry.FailureCount = 0
+	entry.CooldownUntil = time.Time{}
+}
+
+// ClearCooldown manually clears cooldown for a provider
+func (r *Router) ClearCooldown(providerID string) {
+	r.cooldownMu.Lock()
+	defer r.cooldownMu.Unlock()
+	delete(r.cooldowns, providerID)
+}
+
+// ListCooldowns returns all providers currently in cooldown
+func (r *Router) ListCooldowns() []*CooldownEntry {
+	r.cooldownMu.RLock()
+	defer r.cooldownMu.RUnlock()
+
+	var result []*CooldownEntry
+	now := time.Now()
+	for _, entry := range r.cooldowns {
+		if now.Before(entry.CooldownUntil) {
+			entryCopy := *entry
+			result = append(result, &entryCopy)
+		}
+	}
+	return result
+}
+
+// classifyError determines the failover reason from an error
+func classifyError(err error) FailoverReason {
+	if err == nil {
+		return FailoverReasonUnknown
+	}
+	errStr := strings.ToLower(err.Error())
+
+	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
+		return FailoverReasonTimeout
+	}
+	if strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "429") || strings.Contains(errStr, "too many requests") {
+		return FailoverReasonRateLimit
+	}
+	if strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "401") || strings.Contains(errStr, "invalid api key") || strings.Contains(errStr, "authentication") {
+		return FailoverReasonAuthError
+	}
+	if strings.Contains(errStr, "model not found") || strings.Contains(errStr, "404") || strings.Contains(errStr, "does not exist") {
+		return FailoverReasonModelNotFound
+	}
+	return FailoverReasonAPIError
+}
+
 // RouteWithFallback attempts to route with automatic fallback on failure
 func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execute func(*RouteResult) error) error {
+	// Initialize failover tracking
+	failoverResult := &FailoverResult{
+		RequestID: uuid.New().String(),
+		StartTime: time.Now(),
+	}
+	defer func() {
+		failoverResult.EndTime = time.Now()
+		if r.failoverCallback != nil {
+			r.failoverCallback(failoverResult)
+		}
+	}()
+
 	result, err := r.Route(req)
 	if err != nil {
+		failoverResult.FinalError = err.Error()
 		return err
 	}
 
 	// Try primary
+	failoverResult.TotalAttempts++
 	start := time.Now()
 	err = execute(result)
 	latency := time.Since(start)
 
 	if err == nil {
 		r.UpdateLatency(result.Provider.ID, latency)
+		r.RecordSuccess(result.Provider.ID)
+		failoverResult.SuccessProvider = result.Provider.ID
+		failoverResult.SuccessModel = result.Model.ID
 		return nil
 	}
 
-	// Update latency even on failure (with penalty)
+	// Record failure for primary
 	r.UpdateLatency(result.Provider.ID, latency*2)
+	r.RecordFailure(result.Provider.ID, err)
+
+	// Track the failed attempt
+	failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+		Timestamp:    start,
+		ProviderID:   result.Provider.ID,
+		ProviderName: result.Provider.Name,
+		ModelID:      result.Model.ID,
+		Reason:       classifyError(err),
+		Error:        err.Error(),
+		Latency:      latency,
+	})
 
 	// Try fallbacks
-	for _, fallback := range result.Fallbacks {
+	for i, fallback := range result.Fallbacks {
 		// Check context
 		if ctx.Err() != nil {
+			failoverResult.FinalError = ctx.Err().Error()
 			return ctx.Err()
+		}
+
+		// Update previous record with next provider info
+		if len(failoverResult.FailedAttempts) > 0 {
+			failoverResult.FailedAttempts[len(failoverResult.FailedAttempts)-1].NextProviderID = fallback.Provider.ID
 		}
 
 		fallbackResult := &RouteResult{
@@ -322,22 +524,45 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		}
 
 		// Get API key
-		if apiKey, err := r.registry.GetAPIKey(fallback.Provider.ID); err == nil {
+		if apiKey, keyErr := r.registry.GetAPIKey(fallback.Provider.ID); keyErr == nil {
 			fallbackResult.APIKey = apiKey
 		}
 
+		failoverResult.TotalAttempts++
 		start := time.Now()
 		err = execute(fallbackResult)
 		latency := time.Since(start)
 
 		if err == nil {
 			r.UpdateLatency(fallback.Provider.ID, latency)
+			r.RecordSuccess(fallback.Provider.ID)
+			failoverResult.SuccessProvider = fallback.Provider.ID
+			failoverResult.SuccessModel = fallback.Model.ID
 			return nil
 		}
 
+		// Record failure
 		r.UpdateLatency(fallback.Provider.ID, latency*2)
+		r.RecordFailure(fallback.Provider.ID, err)
+
+		nextProviderID := ""
+		if i+1 < len(result.Fallbacks) {
+			nextProviderID = result.Fallbacks[i+1].Provider.ID
+		}
+
+		failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+			Timestamp:      start,
+			ProviderID:     fallback.Provider.ID,
+			ProviderName:   fallback.Provider.Name,
+			ModelID:        fallback.Model.ID,
+			Reason:         classifyError(err),
+			Error:          err.Error(),
+			Latency:        latency,
+			NextProviderID: nextProviderID,
+		})
 	}
 
+	failoverResult.FinalError = err.Error()
 	return err
 }
 

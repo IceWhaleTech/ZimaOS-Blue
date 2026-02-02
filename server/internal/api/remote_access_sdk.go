@@ -14,17 +14,17 @@ import (
 
 // SDKRemoteAccessHandler handles remote access API requests using SDK tunnel manager.
 type SDKRemoteAccessHandler struct {
-	tunnelManager *ngrok.SDKTunnelManager
-	repository    *ngrok.Repository
-	serverPort    int
+	tunnelManager  *ngrok.SDKTunnelManager
+	configProvider ngrok.ConfigProvider
+	serverPort     int
 }
 
 // NewSDKRemoteAccessHandler creates a new SDK-based remote access handler.
-func NewSDKRemoteAccessHandler(tm *ngrok.SDKTunnelManager, repo *ngrok.Repository, serverPort int) *SDKRemoteAccessHandler {
+func NewSDKRemoteAccessHandler(tm *ngrok.SDKTunnelManager, configProvider ngrok.ConfigProvider, serverPort int) *SDKRemoteAccessHandler {
 	return &SDKRemoteAccessHandler{
-		tunnelManager: tm,
-		repository:    repo,
-		serverPort:    serverPort,
+		tunnelManager:  tm,
+		configProvider: configProvider,
+		serverPort:     serverPort,
 	}
 }
 
@@ -99,23 +99,6 @@ func (h *SDKRemoteAccessHandler) StopRemoteAccess(c echo.Context) error {
 func (h *SDKRemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
 	tunnelStatus := h.tunnelManager.GetStatus()
 
-	// If tunnel is not active in memory, check database for persisted state
-	if !tunnelStatus.Active && h.repository != nil {
-		session, err := h.repository.GetActiveSession(c.Request().Context())
-		if err == nil && session != nil {
-			// Return persisted state
-			tunnelStatus = ngrok.TunnelStatus{
-				Active:        session.Status == "active",
-				Connecting:    session.Status == "connecting",
-				URL:           session.TunnelURL,
-				StartedAt:     session.StartedAt,
-				ExpiresAt:     session.ExpiresAt,
-				RemainingTime: formatRemainingTime(time.Until(session.ExpiresAt)),
-				RenewedCount:  session.RenewedCount,
-			}
-		}
-	}
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"tunnel":  tunnelStatus,
@@ -149,14 +132,14 @@ func (h *SDKRemoteAccessHandler) GetQRCode(c echo.Context) error {
 
 // GetRemoteAccessConfig returns the remote access configuration.
 func (h *SDKRemoteAccessHandler) GetRemoteAccessConfig(c echo.Context) error {
-	if h.repository == nil {
+	if h.configProvider == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
 			"success": false,
 			"error":   "Configuration storage not available",
 		})
 	}
 
-	config, err := h.repository.GetConfig(c.Request().Context())
+	config, err := h.configProvider.GetConfig(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -172,7 +155,7 @@ func (h *SDKRemoteAccessHandler) GetRemoteAccessConfig(c echo.Context) error {
 
 // UpdateRemoteAccessConfig updates the remote access configuration.
 func (h *SDKRemoteAccessHandler) UpdateRemoteAccessConfig(c echo.Context) error {
-	if h.repository == nil {
+	if h.configProvider == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
 			"success": false,
 			"error":   "Configuration storage not available",
@@ -187,7 +170,7 @@ func (h *SDKRemoteAccessHandler) UpdateRemoteAccessConfig(c echo.Context) error 
 		})
 	}
 
-	if err := h.repository.SaveConfig(c.Request().Context(), &config); err != nil {
+	if err := h.configProvider.SaveConfig(c.Request().Context(), &config); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
 			"error":   err.Error(),
@@ -202,7 +185,7 @@ func (h *SDKRemoteAccessHandler) UpdateRemoteAccessConfig(c echo.Context) error 
 
 // GetRemoteAccessLogs returns the remote access logs.
 func (h *SDKRemoteAccessHandler) GetRemoteAccessLogs(c echo.Context) error {
-	if h.repository == nil {
+	if h.configProvider == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
 			"success": false,
 			"error":   "Log storage not available",
@@ -228,7 +211,7 @@ func (h *SDKRemoteAccessHandler) GetRemoteAccessLogs(c echo.Context) error {
 		}
 	}
 
-	logs, err := h.repository.GetLogs(c.Request().Context(), limit, offset)
+	logs, err := h.configProvider.GetLogs(c.Request().Context(), limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -254,17 +237,11 @@ func (h *SDKRemoteAccessHandler) GetDiagnostics(c echo.Context) error {
 		},
 	}
 
-	// Get recent errors from database
-	if h.repository != nil {
-		logs, err := h.repository.GetLogs(c.Request().Context(), 10, 0)
+	// Get recent errors from config provider
+	if h.configProvider != nil {
+		logs, err := h.configProvider.GetLogs(c.Request().Context(), 10, 0)
 		if err == nil {
 			diagnostics["recent_errors"] = logs
-		}
-
-		// Get active session
-		session, err := h.repository.GetActiveSession(c.Request().Context())
-		if err == nil && session != nil {
-			diagnostics["active_session"] = session
 		}
 	}
 

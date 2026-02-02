@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/embedding"
@@ -34,6 +36,17 @@ type HybridSearchResult struct {
 	KeywordScore  float32     `json:"keyword_score,omitempty"`
 	CombinedScore float32     `json:"combined_score"`
 	MatchTypes    []string    `json:"match_types"`
+	Highlights    []string    `json:"highlights,omitempty"`    // Highlighted snippets
+	MatchedTerms  []string    `json:"matched_terms,omitempty"` // Terms that matched
+}
+
+// SearchOptions holds optional search parameters.
+type SearchOptions struct {
+	Limit       int        // Maximum results
+	StartDate   *time.Time // Filter by date range start
+	EndDate     *time.Time // Filter by date range end
+	Highlight   bool       // Enable highlighting
+	HighlightTag string    // Tag for highlighting (default: <mark>)
 }
 
 // NewHybridSearcher creates a new hybrid searcher.
@@ -62,9 +75,15 @@ func NewHybridSearcher(store *VectorStore, provider embedding.Provider, cfg conf
 
 // Search performs hybrid search combining vector and keyword search.
 func (h *HybridSearcher) Search(ctx context.Context, query string, limit int) ([]HybridSearchResult, error) {
+	return h.SearchWithOptions(ctx, query, SearchOptions{Limit: limit})
+}
+
+// SearchWithOptions performs hybrid search with additional options.
+func (h *HybridSearcher) SearchWithOptions(ctx context.Context, query string, opts SearchOptions) ([]HybridSearchResult, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	limit := opts.Limit
 	if limit == 0 {
 		limit = h.config.MaxResults
 	}
@@ -104,6 +123,20 @@ func (h *HybridSearcher) Search(ctx context.Context, query string, limit int) ([
 	// Combine results
 	results := h.combineResults(vectorResults, keywordResults, vectorErr, keywordErr)
 
+	// Apply date range filter
+	if opts.StartDate != nil || opts.EndDate != nil {
+		results = h.filterByDateRange(results, opts.StartDate, opts.EndDate)
+	}
+
+	// Add highlighting if enabled
+	if opts.Highlight {
+		tag := opts.HighlightTag
+		if tag == "" {
+			tag = "mark"
+		}
+		results = h.addHighlights(results, query, tag)
+	}
+
 	// Sort by combined score
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].CombinedScore > results[j].CombinedScore
@@ -115,6 +148,101 @@ func (h *HybridSearcher) Search(ctx context.Context, query string, limit int) ([
 	}
 
 	return results, nil
+}
+
+// filterByDateRange filters results by date range.
+func (h *HybridSearcher) filterByDateRange(results []HybridSearchResult, start, end *time.Time) []HybridSearchResult {
+	filtered := make([]HybridSearchResult, 0, len(results))
+	for _, r := range results {
+		if start != nil && r.Chunk.CreatedAt.Before(*start) {
+			continue
+		}
+		if end != nil && r.Chunk.CreatedAt.After(*end) {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered
+}
+
+// addHighlights adds highlighted snippets to results.
+func (h *HybridSearcher) addHighlights(results []HybridSearchResult, query string, tag string) []HybridSearchResult {
+	queryTerms := strings.Fields(strings.ToLower(query))
+	openTag := "<" + tag + ">"
+	closeTag := "</" + tag + ">"
+
+	for i := range results {
+		content := results[i].Chunk.Content
+		contentLower := strings.ToLower(content)
+
+		var matchedTerms []string
+		var highlights []string
+
+		for _, term := range queryTerms {
+			if strings.Contains(contentLower, term) {
+				matchedTerms = append(matchedTerms, term)
+
+				// Find and highlight the term in context
+				idx := strings.Index(contentLower, term)
+				if idx >= 0 {
+					// Get surrounding context (50 chars before and after)
+					start := idx - 50
+					if start < 0 {
+						start = 0
+					}
+					end := idx + len(term) + 50
+					if end > len(content) {
+						end = len(content)
+					}
+
+					snippet := content[start:end]
+					// Highlight the term (case-insensitive replacement)
+					highlighted := highlightTerm(snippet, term, openTag, closeTag)
+
+					// Add ellipsis if truncated
+					if start > 0 {
+						highlighted = "..." + highlighted
+					}
+					if end < len(content) {
+						highlighted = highlighted + "..."
+					}
+
+					highlights = append(highlights, highlighted)
+				}
+			}
+		}
+
+		results[i].MatchedTerms = matchedTerms
+		results[i].Highlights = highlights
+	}
+
+	return results
+}
+
+// highlightTerm highlights a term in text (case-insensitive).
+func highlightTerm(text, term, openTag, closeTag string) string {
+	textLower := strings.ToLower(text)
+	termLower := strings.ToLower(term)
+
+	var result strings.Builder
+	lastEnd := 0
+
+	for {
+		idx := strings.Index(textLower[lastEnd:], termLower)
+		if idx < 0 {
+			break
+		}
+		idx += lastEnd
+
+		result.WriteString(text[lastEnd:idx])
+		result.WriteString(openTag)
+		result.WriteString(text[idx : idx+len(term)])
+		result.WriteString(closeTag)
+		lastEnd = idx + len(term)
+	}
+
+	result.WriteString(text[lastEnd:])
+	return result.String()
 }
 
 // SearchVectorOnly performs vector-only search.
@@ -300,6 +428,11 @@ func (h *HybridSearcher) Get(ctx context.Context, id string) (*MemoryChunk, erro
 	return h.vectorStore.Get(ctx, id)
 }
 
+// GetAll retrieves all memory chunks.
+func (h *HybridSearcher) GetAll(ctx context.Context) ([]MemoryChunk, error) {
+	return h.vectorStore.GetAll(ctx)
+}
+
 // Prune removes old chunks.
 func (h *HybridSearcher) Prune(ctx context.Context) (int, error) {
 	return h.vectorStore.Prune(ctx)
@@ -379,6 +512,11 @@ func (s *MemoryService) ForgetAll(ctx context.Context) error {
 // Get retrieves a memory by ID.
 func (s *MemoryService) Get(ctx context.Context, id string) (*MemoryChunk, error) {
 	return s.Searcher.Get(ctx, id)
+}
+
+// GetAll retrieves all memories.
+func (s *MemoryService) GetAll(ctx context.Context) ([]MemoryChunk, error) {
+	return s.Searcher.GetAll(ctx)
 }
 
 // Prune removes old memories.

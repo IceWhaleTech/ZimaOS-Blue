@@ -117,3 +117,56 @@ func TestInterfaceTypePriority(t *testing.T) {
 		t.Error("Virtual should have higher priority than Loopback")
 	}
 }
+
+func TestAddressDetector_DynamicPort(t *testing.T) {
+	// Test that AddressDetector uses dynamic port from security.GetServerPort()
+	// when created with port 0
+
+	// Create detector with port 0 (simulating early initialization)
+	detector := NewAddressDetector(0)
+
+	// Set the dynamic port (simulating server startup)
+	SetDynamicPort(23456)
+
+	// Get addresses - should use the dynamic port, not 0
+	addresses, err := detector.GetAddresses()
+	if err != nil {
+		t.Logf("Warning: GetAddresses returned error: %v", err)
+	}
+
+	// Verify port is not 0
+	if addresses.Port == 0 {
+		t.Error("Port should not be 0 after SetDynamicPort was called")
+	}
+
+	// Verify port is the dynamic port
+	if addresses.Port != 23456 {
+		t.Errorf("Expected port 23456, got %d", addresses.Port)
+	}
+
+	// Verify local address uses dynamic port
+	expectedLocal := "http://localhost:23456"
+	if addresses.Local != expectedLocal {
+		t.Errorf("Expected local address %s, got %s", expectedLocal, addresses.Local)
+	}
+
+	// Verify LAN addresses use dynamic port (not :0)
+	for _, iface := range addresses.LAN {
+		if iface.Address == "" {
+			continue
+		}
+		// Check that address doesn't contain :0
+		if len(iface.Address) > 2 && iface.Address[len(iface.Address)-2:] == ":0" {
+			t.Errorf("LAN address should not end with :0, got %s", iface.Address)
+		}
+	}
+
+	t.Logf("Local: %s", addresses.Local)
+	t.Logf("Port: %d", addresses.Port)
+	for _, iface := range addresses.LAN {
+		t.Logf("  - %s: %s", iface.Name, iface.Address)
+	}
+
+	// Reset for other tests
+	SetDynamicPort(0)
+}

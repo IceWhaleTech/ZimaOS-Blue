@@ -127,6 +127,53 @@ func (h *Handler) GetTokenUsage(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// GetUserTokenUsage handles GET /api/v1/metrics/tokens/users
+func (h *Handler) GetUserTokenUsage(c echo.Context) error {
+	period := c.QueryParam("period")
+	if period == "" {
+		period = PeriodDaily
+	}
+
+	users := h.writer.GetAllUserUsage()
+
+	// Calculate summary
+	var totalTokens, totalRequests int64
+	var totalCost float64
+	for _, u := range users {
+		totalTokens += u.TotalTokens
+		totalCost += u.EstimatedCost
+		totalRequests += u.RequestCount
+	}
+
+	response := &UserTokenUsageResponse{
+		Period: period,
+		Users:  users,
+		Summary: &UserUsageSummary{
+			TotalUsers:    len(users),
+			TotalTokens:   totalTokens,
+			TotalCost:     totalCost,
+			TotalRequests: totalRequests,
+		},
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// GetUserTokenUsageByID handles GET /api/v1/metrics/tokens/users/:user_id
+func (h *Handler) GetUserTokenUsageByID(c echo.Context) error {
+	userID := c.Param("user_id")
+	if userID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "user_id is required")
+	}
+
+	usage := h.writer.GetUserTokenUsage(userID)
+	if usage == nil {
+		return echo.NewHTTPError(http.StatusNotFound, "user not found")
+	}
+
+	return c.JSON(http.StatusOK, usage)
+}
+
 // GetLatencyStats handles GET /api/v1/metrics/latency
 func (h *Handler) GetLatencyStats(c echo.Context) error {
 	model := c.QueryParam("model")
@@ -437,6 +484,8 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// Token usage
 	g.GET("/tokens", h.GetTokenUsage)
+	g.GET("/tokens/users", h.GetUserTokenUsage)
+	g.GET("/tokens/users/:user_id", h.GetUserTokenUsageByID)
 
 	// Latency
 	g.GET("/latency", h.GetLatencyStats)

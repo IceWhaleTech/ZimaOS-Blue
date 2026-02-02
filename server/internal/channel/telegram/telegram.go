@@ -35,6 +35,9 @@ type InlineButton struct {
 // CallbackHandler is a function that handles callback queries from inline keyboards.
 type CallbackHandler func(ctx context.Context, query *tgbotapi.CallbackQuery) (string, error)
 
+// MessageHandler handles incoming messages and returns AI response.
+type MessageHandler func(ctx context.Context, msg channel.Message) (string, error)
+
 // Channel implements the channel.Channel interface for Telegram.
 type Channel struct {
 	config   channel.TelegramConfig
@@ -57,6 +60,12 @@ type Channel struct {
 	commandHandlers  map[string]CommandHandler
 	callbackHandlers map[string]CallbackHandler
 	commandMu        sync.RWMutex
+
+	// Message handler for AI processing
+	messageHandler MessageHandler
+
+	// Bot session manager for monitoring
+	sessionManager *channel.BotSessionManager
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -89,6 +98,16 @@ func (c *Channel) Name() string {
 // Type returns the channel type.
 func (c *Channel) Type() string {
 	return "telegram"
+}
+
+// SetMessageHandler sets the handler for processing messages.
+func (c *Channel) SetMessageHandler(handler MessageHandler) {
+	c.messageHandler = handler
+}
+
+// SetSessionManager sets the bot session manager for monitoring.
+func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) {
+	c.sessionManager = manager
 }
 
 // Start initializes and starts the Telegram bot.
@@ -236,6 +255,51 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 	c.lastMessageAt = &now
 	c.mu.Unlock()
 
+	chatID := fmt.Sprintf("%d", msg.Chat.ID)
+	userID := fmt.Sprintf("%d", msg.From.ID)
+
+	// Get or create session for monitoring
+	var sessionID string
+	if c.sessionManager != nil {
+		sessionID, _ = c.sessionManager.GetOrCreateSession(c.ctx, chatID, userID)
+		c.sessionManager.EmitMessageReceived(sessionID, userID, channelMsg.Content)
+	}
+
+	// If message handler is set, process and reply
+	if c.messageHandler != nil {
+		go func() {
+			response, err := c.messageHandler(c.ctx, channelMsg)
+			if err != nil {
+				c.logger.Error("message handler error",
+					zap.Error(err),
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				if c.sessionManager != nil && sessionID != "" {
+					c.sessionManager.EmitError(sessionID, userID, err.Error())
+				}
+				errMsg := channel.OutgoingMessage{ChatID: chatID, Content: "处理消息时发生错误，请稍后重试。"}
+				if sendErr := c.Send(c.ctx, errMsg); sendErr != nil {
+					c.logger.Error("failed to send error response", zap.Error(sendErr))
+				}
+				return
+			}
+			if response == "" {
+				c.logger.Warn("message handler returned empty response",
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				return
+			}
+			outMsg := channel.OutgoingMessage{ChatID: chatID, Content: response}
+			if err := c.Send(c.ctx, outMsg); err != nil {
+				c.logger.Error("failed to send response", zap.Error(err))
+			} else if c.sessionManager != nil && sessionID != "" {
+				c.sessionManager.EmitMessageSent(sessionID, userID, response)
+			}
+		}()
+		return
+	}
+
+	// Fallback: send to message channel for external processing
 	select {
 	case c.messages <- channelMsg:
 	default:

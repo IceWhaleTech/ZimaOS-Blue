@@ -342,3 +342,30 @@ type ProcessSummary struct {
 	TotalCPUPercent  float64 `json:"total_cpu_percent"`
 	TotalMemoryBytes int64   `json:"total_memory_bytes"`
 }
+
+// UserTokenUsage represents token usage for a specific user.
+type UserTokenUsage struct {
+	UserID           string  `json:"user_id"`
+	InputTokens      int64   `json:"input_tokens"`
+	OutputTokens     int64   `json:"output_tokens"`
+	TotalTokens      int64   `json:"total_tokens"`
+	CacheReadTokens  int64   `json:"cache_read_tokens"`
+	CacheWriteTokens int64   `json:"cache_write_tokens"`
+	EstimatedCost    float64 `json:"estimated_cost"`
+	RequestCount     int64   `json:"request_count"`
+}
+
+// UserTokenUsageResponse represents the API response for user token usage.
+type UserTokenUsageResponse struct {
+	Period  string           `json:"period"`
+	Users   []UserTokenUsage `json:"users"`
+	Summary *UserUsageSummary `json:"summary,omitempty"`
+}
+
+// UserUsageSummary represents a summary of user token usage.
+type UserUsageSummary struct {
+	TotalUsers    int     `json:"total_users"`
+	TotalTokens   int64   `json:"total_tokens"`
+	TotalCost     float64 `json:"total_cost"`
+	TotalRequests int64   `json:"total_requests"`
+}

@@ -135,6 +135,23 @@ export const memoryApi = {
    */
   testSupermemory: () =>
     api.post<{ success: boolean; error?: string }>('/memory/supermemory/test'),
+
+  /**
+   * Export memories as Markdown
+   */
+  exportMarkdown: () =>
+    api.get<string>('/memory/export', {
+      responseType: 'text' as const,
+    }),
+
+  /**
+   * Import memories from Markdown
+   */
+  importMarkdown: (content: string, mode: 'append' | 'replace' = 'append') =>
+    api.post<{ imported: number; skipped: number; errors: string[] }>('/memory/import', {
+      content,
+      mode,
+    }),
 }
 
 export default memoryApi

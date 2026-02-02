@@ -435,7 +435,7 @@ export default {
       ollama: 'Ollama（ローカル）',
       custom: 'カスタム OpenAI 互換',
       trial: {
-        name: 'ZimaOS トライアル',
+        name: 'ZimaOS Echoトライアル',
         description: '制限付きの無料トライアル',
         quotaExhausted: 'トライアル枠を使い切りました',
         quotaExhaustedTokens: 'トライアルのトークン枠を使い切りました。続けるには自分のプロバイダーを設定してください。',

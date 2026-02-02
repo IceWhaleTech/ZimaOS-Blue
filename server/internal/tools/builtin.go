@@ -480,3 +480,51 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
 	registry.Register(NewWebSearchTool(webSearchConfig))
 }
+
+// RegisterMemoryTools registers memory-related tools with the registry.
+// This should be called after the memory service is initialized.
+func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {
+	if memoryService == nil {
+		return
+	}
+	registry.Register(NewMemorySearchToolWithInterface(memoryService))
+	registry.Register(NewMemoryGetToolWithInterface(memoryService))
+	registry.Register(NewMemoryStatsToolWithInterface(memoryService))
+}
+
+// MemoryServiceInterface defines the interface for memory service used by tools.
+// This avoids circular imports with the memory package.
+type MemoryServiceInterface interface {
+	Recall(ctx context.Context, query string, limit int) ([]MemorySearchResult, error)
+	Get(ctx context.Context, id string) (*MemoryChunkResult, error)
+	Stats(ctx context.Context) (*MemoryStatsResult, error)
+	GetActiveBackend() string
+	IsSupermemoryAvailable() bool
+}
+
+// MemorySearchResult represents a search result from memory service.
+type MemorySearchResult struct {
+	Chunk         MemoryChunkResult
+	VectorScore   float32
+	KeywordScore  float32
+	CombinedScore float32
+	MatchTypes    []string
+}
+
+// MemoryChunkResult represents a memory chunk.
+type MemoryChunkResult struct {
+	ID        string
+	Content   string
+	Metadata  map[string]string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// MemoryStatsResult represents memory statistics.
+type MemoryStatsResult struct {
+	TotalChunks    int
+	TotalSizeBytes int64
+	OldestChunk    string
+	NewestChunk    string
+	Backend        string
+}

@@ -159,7 +159,13 @@ func (p *SherpaProvider) verifyModelFiles() bool {
 	requiredFiles := []string{onnxFile, "tokens.txt"}
 	for _, file := range requiredFiles {
 		filePath := filepath.Join(modelPath, file)
+		// Check if file exists
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			return false
+		}
+		// Check if .tmp version exists (incomplete download)
+		tmpPath := filePath + ".tmp"
+		if _, err := os.Stat(tmpPath); err == nil {
 			return false
 		}
 	}

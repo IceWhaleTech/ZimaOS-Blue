@@ -445,7 +445,7 @@ onMounted(async () => {
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
       <!-- Memory Manager -->
-      <MemoryManager />
+      <MemoryManager @status-change="showSaveStatus" />
 
       <UserDataExport @status-change="showSaveStatus" />
 

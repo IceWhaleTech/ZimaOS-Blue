@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="ig-a" cx="225.474" cy="222.805" r="298.657" gradientUnits="userSpaceOnUse">
+      <stop offset=".09" stop-color="#fa8f21"/>
+      <stop offset=".78" stop-color="#d82d7e"/>
+    </radialGradient>
+    <radialGradient id="ig-b" cx="11.786" cy="443.378" r="443.378" gradientUnits="userSpaceOnUse">
+      <stop offset=".64" stop-color="#8c3aaa"/>
+      <stop offset="1" stop-color="#8c3aaa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="102.4" fill="url(#ig-a)"/>
+  <rect width="512" height="512" rx="102.4" fill="url(#ig-b)"/>
+  <circle cx="256" cy="256" r="97.3" fill="none" stroke="#fff" stroke-width="38.4"/>
+  <circle cx="393.2" cy="118.8" r="28.2" fill="#fff"/>
+</svg>

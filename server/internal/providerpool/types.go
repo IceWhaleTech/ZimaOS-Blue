@@ -363,3 +363,81 @@ func DefaultPricingConfig() *PricingConfig {
 		UpdatedAt:          time.Now(),
 	}
 }
+
+// FailoverReason represents why a failover occurred
+type FailoverReason string
+
+const (
+	// FailoverReasonAPIError indicates the provider returned an API error
+	FailoverReasonAPIError FailoverReason = "api_error"
+	// FailoverReasonTimeout indicates the request timed out
+	FailoverReasonTimeout FailoverReason = "timeout"
+	// FailoverReasonRateLimit indicates rate limiting was hit
+	FailoverReasonRateLimit FailoverReason = "rate_limit"
+	// FailoverReasonAuthError indicates authentication failed
+	FailoverReasonAuthError FailoverReason = "auth_error"
+	// FailoverReasonModelNotFound indicates the model was not available
+	FailoverReasonModelNotFound FailoverReason = "model_not_found"
+	// FailoverReasonCooldown indicates the provider is in cooldown
+	FailoverReasonCooldown FailoverReason = "cooldown"
+	// FailoverReasonUnknown indicates an unknown error
+	FailoverReasonUnknown FailoverReason = "unknown"
+)
+
+// FailoverRecord tracks a single failover event
+type FailoverRecord struct {
+	Timestamp      time.Time      `json:"timestamp"`
+	ProviderID     string         `json:"provider_id"`
+	ProviderName   string         `json:"provider_name"`
+	ModelID        string         `json:"model_id"`
+	Reason         FailoverReason `json:"reason"`
+	Error          string         `json:"error"`
+	Latency        time.Duration  `json:"latency"`
+	NextProviderID string         `json:"next_provider_id,omitempty"`
+}
+
+// FailoverResult contains the complete failover tracking for a request
+type FailoverResult struct {
+	RequestID       string            `json:"request_id"`
+	StartTime       time.Time         `json:"start_time"`
+	EndTime         time.Time         `json:"end_time"`
+	TotalAttempts   int               `json:"total_attempts"`
+	SuccessProvider string            `json:"success_provider,omitempty"`
+	SuccessModel    string            `json:"success_model,omitempty"`
+	FailedAttempts  []*FailoverRecord `json:"failed_attempts,omitempty"`
+	FinalError      string            `json:"final_error,omitempty"`
+}
+
+// CooldownEntry tracks cooldown state for a provider
+type CooldownEntry struct {
+	ProviderID     string    `json:"provider_id"`
+	CooldownUntil  time.Time `json:"cooldown_until"`
+	FailureCount   int       `json:"failure_count"`
+	LastFailure    time.Time `json:"last_failure"`
+	LastError      string    `json:"last_error"`
+}
+
+// CooldownConfig configures the cooldown behavior
+type CooldownConfig struct {
+	// FailureThreshold is the number of failures before cooldown
+	FailureThreshold int `json:"failure_threshold"`
+	// InitialCooldown is the initial cooldown duration
+	InitialCooldown time.Duration `json:"initial_cooldown"`
+	// MaxCooldown is the maximum cooldown duration
+	MaxCooldown time.Duration `json:"max_cooldown"`
+	// CooldownMultiplier increases cooldown on repeated failures
+	CooldownMultiplier float64 `json:"cooldown_multiplier"`
+	// ResetAfter resets failure count after this duration of success
+	ResetAfter time.Duration `json:"reset_after"`
+}
+
+// DefaultCooldownConfig returns sensible defaults for cooldown
+func DefaultCooldownConfig() *CooldownConfig {
+	return &CooldownConfig{
+		FailureThreshold:   3,
+		InitialCooldown:    30 * time.Second,
+		MaxCooldown:        5 * time.Minute,
+		CooldownMultiplier: 2.0,
+		ResetAfter:         5 * time.Minute,
+	}
+}

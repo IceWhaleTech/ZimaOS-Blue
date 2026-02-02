@@ -72,6 +72,30 @@ export interface TokenUsageResponse {
   by_model: ModelTokenUsage[]
 }
 
+export interface UserTokenUsage {
+  user_id: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  estimated_cost: number
+  request_count: number
+}
+
+export interface UserUsageSummary {
+  total_users: number
+  total_tokens: number
+  total_cost: number
+  total_requests: number
+}
+
+export interface UserTokenUsageResponse {
+  period: string
+  users: UserTokenUsage[]
+  summary: UserUsageSummary
+}
+
 export interface LatencyStats {
   min_ms: number
   max_ms: number
@@ -196,6 +220,13 @@ export const metricsApi = {
   // Token usage
   getTokenUsage: (period?: string) =>
     api.get<TokenUsageResponse>('/metrics/tokens', { params: period ? { period } : undefined }),
+
+  // User token usage
+  getUserTokenUsage: (period?: string) =>
+    api.get<UserTokenUsageResponse>('/metrics/tokens/users', { params: period ? { period } : undefined }),
+
+  getUserTokenUsageById: (userId: string) =>
+    api.get<UserTokenUsage>(`/metrics/tokens/users/${userId}`),
 
   // Latency
   getLatencyStats: (model?: string) =>

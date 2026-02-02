@@ -182,11 +182,21 @@ function drawNode(ctx: CanvasRenderingContext2D, node: CanvasNode, isSelected: b
   ctx.lineWidth = isSelected ? 3 : 2
   ctx.stroke()
 
-  // Left accent bar
+  // Left accent bar - draw a clean vertical bar on the left side
   ctx.fillStyle = colors.border
-  drawRoundedRect(ctx, x, y, 6, height, BORDER_RADIUS)
+  // Draw a simple rectangle for the accent bar (no rounded corners needed for thin bar)
+  ctx.fillRect(x, y + BORDER_RADIUS, 4, height - BORDER_RADIUS * 2)
+  // Fill the top and bottom corners
+  ctx.beginPath()
+  ctx.arc(x + BORDER_RADIUS, y + BORDER_RADIUS, BORDER_RADIUS, Math.PI, Math.PI * 1.5)
+  ctx.lineTo(x, y)
+  ctx.lineTo(x, y + BORDER_RADIUS)
   ctx.fill()
-  ctx.fillRect(x + 3, y, 3, height)
+  ctx.beginPath()
+  ctx.arc(x + BORDER_RADIUS, y + height - BORDER_RADIUS, BORDER_RADIUS, Math.PI * 0.5, Math.PI)
+  ctx.lineTo(x, y + height)
+  ctx.lineTo(x, y + height - BORDER_RADIUS)
+  ctx.fill()
 
   // Icon circle
   const iconX = x + 24
@@ -444,15 +454,29 @@ watch(() => props.events.length, (newLen, oldLen) => {
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 rounded-lg flex items-center justify-center">
-    <!-- Canvas -->
-    <canvas
-      ref="canvasRef"
-      class="cursor-grab active:cursor-grabbing"
-      :width="canvasWidth"
-      :height="canvasHeight"
-      :style="{ width: canvasWidth * scale + 'px', height: canvasHeight * scale + 'px' }"
-    />
+  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 rounded-lg">
+    <!-- Canvas wrapper with minimum size to prevent shrinking too small -->
+    <div
+      class="canvas-wrapper flex items-center justify-center"
+      :style="{
+        minWidth: Math.max(canvasWidth * scale, 400) + 'px',
+        minHeight: Math.max(canvasHeight * scale, 400) + 'px',
+        width: canvasWidth * scale + 'px',
+        height: canvasHeight * scale + 'px'
+      }"
+    >
+      <canvas
+        ref="canvasRef"
+        class="cursor-grab active:cursor-grabbing"
+        :width="canvasWidth"
+        :height="canvasHeight"
+        :style="{
+          width: canvasWidth * scale + 'px',
+          height: canvasHeight * scale + 'px',
+          minWidth: '360px'
+        }"
+      />
+    </div>
 
     <!-- Empty state -->
     <div

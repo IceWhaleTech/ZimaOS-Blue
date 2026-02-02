@@ -5,14 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	_ "modernc.org/sqlite"
-
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/embedding"
+	// Use CGO sqlite driver for sqlite-vec extension support
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // MemoryChunk represents a chunk of memory with embedding.
@@ -34,21 +32,22 @@ type VectorSearchResult struct {
 
 // VectorStoreConfig holds vector store configuration.
 type VectorStoreConfig struct {
-	DBPath          string
-	EmbeddingDim    int
-	MaxChunks       int
-	EnableFTS       bool
-	SimilarityFunc  string // "cosine", "dot", "euclidean"
+	DBPath         string
+	EmbeddingDim   int
+	MaxChunks      int
+	EnableFTS      bool
+	EnableVec      bool   // Enable sqlite-vec for fast vector search
+	SimilarityFunc string // "cosine", "dot", "euclidean" (only used when sqlite-vec unavailable)
 }
 
 // VectorStore provides vector-based memory storage.
 type VectorStore struct {
-	db             *sql.DB
-	embeddingDim   int
-	maxChunks      int
-	enableFTS      bool
-	similarityFunc func(a, b []float32) float32
-	mu             sync.RWMutex
+	db           *sql.DB
+	embeddingDim int
+	maxChunks    int
+	enableFTS    bool
+	enableVec    bool // sqlite-vec extension loaded
+	mu           sync.RWMutex
 }
 
 const vectorStoreSchema = `
@@ -89,7 +88,7 @@ END;
 
 // NewVectorStore creates a new vector store.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
-	db, err := sql.Open("sqlite", cfg.DBPath)
+	db, err := sql.Open("sqlite3", cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -124,32 +123,39 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 		maxChunks = 10000
 	}
 
-	// Select similarity function
-	var simFunc func(a, b []float32) float32
-	switch cfg.SimilarityFunc {
-	case "dot":
-		simFunc = func(a, b []float32) float32 {
-			result, _ := embedding.DotProduct(a, b)
-			return result
+	// Try to load sqlite-vec extension for fast vector search
+	enableVec := false
+	if cfg.EnableVec {
+		// Try different extension names
+		for _, extName := range []string{"vec0", "sqlite-vec", "vec"} {
+			_, err := db.Exec(fmt.Sprintf("SELECT load_extension('%s')", extName))
+			if err == nil {
+				enableVec = true
+				break
+			}
 		}
-	case "euclidean":
-		simFunc = func(a, b []float32) float32 {
-			dist, _ := embedding.EuclideanDistance(a, b)
-			return 1.0 / (1.0 + dist)
-		}
-	default:
-		simFunc = func(a, b []float32) float32 {
-			result, _ := embedding.CosineSimilarity(a, b)
-			return result
+
+		if enableVec {
+			// Create vec0 virtual table for vector search
+			vecTableSQL := fmt.Sprintf(`
+				CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0(
+					id TEXT PRIMARY KEY,
+					embedding float[%d]
+				)
+			`, embeddingDim)
+			if _, err := db.Exec(vecTableSQL); err != nil {
+				// Log but don't fail - fall back to in-memory search
+				enableVec = false
+			}
 		}
 	}
 
 	return &VectorStore{
-		db:             db,
-		embeddingDim:   embeddingDim,
-		maxChunks:      maxChunks,
-		enableFTS:      cfg.EnableFTS,
-		similarityFunc: simFunc,
+		db:           db,
+		embeddingDim: embeddingDim,
+		maxChunks:    maxChunks,
+		enableFTS:    cfg.EnableFTS,
+		enableVec:    enableVec,
 	}, nil
 }
 
@@ -190,6 +196,18 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store chunk: %w", err)
+	}
+
+	// Store in vec0 table if sqlite-vec is enabled
+	if s.enableVec && len(emb) > 0 {
+		_, err = s.db.ExecContext(ctx,
+			"INSERT OR REPLACE INTO memory_vectors (id, embedding) VALUES (?, ?)",
+			chunk.ID, string(embJSON),
+		)
+		if err != nil {
+			// Log but don't fail - vector search will fall back to in-memory
+			_ = err
+		}
 	}
 
 	// Prune if needed
@@ -237,6 +255,12 @@ func (s *VectorStore) StoreBatch(ctx context.Context, chunks []MemoryChunk) erro
 		if err != nil {
 			return fmt.Errorf("failed to store chunk: %w", err)
 		}
+
+		// Store in vec0 table if sqlite-vec is enabled
+		if s.enableVec && len(chunks[i].Embedding) > 0 {
+			tx.ExecContext(ctx, "INSERT OR REPLACE INTO memory_vectors (id, embedding) VALUES (?, ?)",
+				chunks[i].ID, string(embJSON))
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -283,6 +307,38 @@ func (s *VectorStore) Get(ctx context.Context, id string) (*MemoryChunk, error) 
 	return &chunk, nil
 }
 
+// GetAll retrieves all memory chunks.
+func (s *VectorStore) GetAll(ctx context.Context) ([]MemoryChunk, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id, content, metadata, created_at, updated_at FROM memory_chunks ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query chunks: %w", err)
+	}
+	defer rows.Close()
+
+	var chunks []MemoryChunk
+	for rows.Next() {
+		var chunk MemoryChunk
+		var metaJSON sql.NullString
+
+		if err := rows.Scan(&chunk.ID, &chunk.Content, &metaJSON, &chunk.CreatedAt, &chunk.UpdatedAt); err != nil {
+			continue
+		}
+
+		if metaJSON.Valid && metaJSON.String != "" {
+			json.Unmarshal([]byte(metaJSON.String), &chunk.Metadata)
+		}
+
+		chunks = append(chunks, chunk)
+	}
+
+	return chunks, nil
+}
+
 // Delete deletes a memory chunk.
 func (s *VectorStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
@@ -292,6 +348,12 @@ func (s *VectorStore) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete chunk: %w", err)
 	}
+
+	// Delete from vec0 table if sqlite-vec is enabled
+	if s.enableVec {
+		s.db.ExecContext(ctx, "DELETE FROM memory_vectors WHERE id = ?", id)
+	}
+
 	return nil
 }
 
@@ -300,6 +362,69 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// Use sqlite-vec for fast KNN search if available
+	if s.enableVec {
+		return s.searchVectorVec(ctx, queryEmb, limit, minScore)
+	}
+
+	// Fallback to in-memory search
+	return s.searchVectorFallback(ctx, queryEmb, limit, minScore)
+}
+
+// searchVectorVec uses sqlite-vec for fast KNN vector search.
+func (s *VectorStore) searchVectorVec(ctx context.Context, queryEmb []float32, limit int, minScore float32) ([]VectorSearchResult, error) {
+	embJSON, _ := json.Marshal(queryEmb)
+
+	// Use sqlite-vec's KNN search with vec_distance_cosine
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			v.id,
+			m.content,
+			m.metadata,
+			m.created_at,
+			m.updated_at,
+			vec_distance_cosine(v.embedding, ?) as distance
+		FROM memory_vectors v
+		JOIN memory_chunks m ON v.id = m.id
+		ORDER BY distance ASC
+		LIMIT ?
+	`, string(embJSON), limit)
+	if err != nil {
+		// Fall back to in-memory search if sqlite-vec query fails
+		return s.searchVectorFallback(ctx, queryEmb, limit, minScore)
+	}
+	defer rows.Close()
+
+	var results []VectorSearchResult
+	for rows.Next() {
+		var chunk MemoryChunk
+		var metaJSON sql.NullString
+		var distance float64
+
+		if err := rows.Scan(&chunk.ID, &chunk.Content, &metaJSON, &chunk.CreatedAt, &chunk.UpdatedAt, &distance); err != nil {
+			continue
+		}
+
+		if metaJSON.Valid && metaJSON.String != "" {
+			json.Unmarshal([]byte(metaJSON.String), &chunk.Metadata)
+		}
+
+		// Convert distance to similarity score (1 - distance for cosine)
+		score := float32(1.0 - distance)
+		if score >= minScore {
+			results = append(results, VectorSearchResult{
+				Chunk:     chunk,
+				Score:     score,
+				MatchType: "vector",
+			})
+		}
+	}
+
+	return results, nil
+}
+
+// searchVectorFallback performs in-memory vector similarity search.
+func (s *VectorStore) searchVectorFallback(ctx context.Context, queryEmb []float32, limit int, minScore float32) ([]VectorSearchResult, error) {
 	// Load all chunks with embeddings
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT id, content, embedding, metadata, created_at, updated_at FROM memory_chunks WHERE embedding IS NOT NULL AND embedding != ''",
@@ -331,8 +456,8 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 			json.Unmarshal([]byte(metaJSON.String), &chunk.Metadata)
 		}
 
-		// Calculate similarity
-		score := s.similarityFunc(queryEmb, chunk.Embedding)
+		// Calculate cosine similarity in Go
+		score := cosineSimilarity(queryEmb, chunk.Embedding)
 		if score >= minScore {
 			results = append(results, VectorSearchResult{
 				Chunk:     chunk,
@@ -343,9 +468,13 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 	}
 
 	// Sort by score descending
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
+	for i := 0; i < len(results)-1; i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[j].Score > results[i].Score {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
 
 	// Limit results
 	if limit > 0 && len(results) > limit {
@@ -353,6 +482,39 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 	}
 
 	return results, nil
+}
+
+// cosineSimilarity calculates cosine similarity between two vectors.
+func cosineSimilarity(a, b []float32) float32 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+
+	var dotProduct, normA, normB float32
+	for i := range a {
+		dotProduct += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+
+	return dotProduct / (sqrt32(normA) * sqrt32(normB))
+}
+
+// sqrt32 calculates square root for float32.
+func sqrt32(x float32) float32 {
+	if x <= 0 {
+		return 0
+	}
+	// Newton's method
+	z := x / 2
+	for i := 0; i < 10; i++ {
+		z = (z + x/z) / 2
+	}
+	return z
 }
 
 // SearchKeyword performs FTS5 keyword search.
@@ -547,6 +709,12 @@ func (s *VectorStore) Clear(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to clear chunks: %w", err)
 	}
+
+	// Clear vec0 table if sqlite-vec is enabled
+	if s.enableVec {
+		s.db.ExecContext(ctx, "DELETE FROM memory_vectors")
+	}
+
 	return nil
 }
 
@@ -564,6 +732,7 @@ func (s *VectorStore) Stats(ctx context.Context) (VectorStoreStats, error) {
 	stats.MaxChunks = s.maxChunks
 	stats.EmbeddingDim = s.embeddingDim
 	stats.FTSEnabled = s.enableFTS
+	stats.VecEnabled = s.enableVec
 
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memory_chunks").Scan(&stats.ChunkCount)
 	if err != nil {
@@ -591,6 +760,12 @@ type VectorStoreStats struct {
 	MaxChunks     int       `json:"max_chunks"`
 	EmbeddingDim  int       `json:"embedding_dim"`
 	FTSEnabled    bool      `json:"fts_enabled"`
+	VecEnabled    bool      `json:"vec_enabled"` // sqlite-vec extension loaded
 	OldestChunk   time.Time `json:"oldest_chunk,omitempty"`
 	NewestChunk   time.Time `json:"newest_chunk,omitempty"`
+}
+
+// IsVecEnabled returns whether sqlite-vec is enabled.
+func (s *VectorStore) IsVecEnabled() bool {
+	return s.enableVec
 }

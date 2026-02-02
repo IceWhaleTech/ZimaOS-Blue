@@ -348,6 +348,9 @@ onMounted(async () => {
   // Preload common card components for better UX
   componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file'])
 
+  // Initialize speech services lazily (TTS/STT)
+  fetch('/api/v1/speech/init', { method: 'POST' }).catch(() => {})
+
   await Promise.all([
     chatStore.fetchConversations(),
     settingsStore.fetchProviders(),
@@ -545,9 +548,9 @@ onUnmounted(() => {
           <span>{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="w-20 h-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-full overflow-hidden">
             <div
-              class="h-full rounded-full transition-all bg-blue-500"
+              class="h-full rounded-full transition-all bg-blue-500 dark:bg-blue-400"
               :style="{ width: `${Math.min(100, (providerPoolStore.trialQuota.tokens_used / providerPoolStore.trialQuota.token_limit) * 100)}%` }"
             ></div>
           </div>

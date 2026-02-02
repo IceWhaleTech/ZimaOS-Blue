@@ -428,7 +428,7 @@ export default {
       ollama: 'Ollama (로컬)',
       custom: '사용자 정의 OpenAI 호환',
       trial: {
-        name: 'ZimaOS 체험판',
+        name: 'ZimaOS Echo체험판',
         description: '제한된 할당량의 무료 체험',
         quotaExhausted: '체험판 할당량 소진',
         quotaExhaustedTokens: '체험판 토큰 할당량이 소진되었습니다. 계속 사용하려면 자체 공급자를 구성하세요.',

@@ -300,7 +300,7 @@ export default {
       ollama: 'Ollama (Локальный)',
       custom: 'Пользовательский совместимый с OpenAI',
       trial: {
-        name: 'ZimaOS Пробная версия',
+        name: 'ZimaOS EchoПробная версия',
         description: 'Бесплатная пробная версия с ограниченной квотой',
         quotaExhausted: 'Пробная квота исчерпана',
         quotaExhaustedTokens: 'Ваша пробная квота токенов исчерпана. Настройте собственного провайдера для продолжения.',

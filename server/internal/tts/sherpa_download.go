@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -83,7 +84,8 @@ func (m *SherpaDownloadManager) clearState() {
 	os.Remove(m.stateFilePath())
 }
 
-// IsModelComplete checks if a model has been fully downloaded by checking actual files.
+// IsModelComplete checks if a model has been fully downloaded.
+// Directory with .tmp suffix is considered incomplete.
 func (m *SherpaDownloadManager) IsModelComplete(modelType string) bool {
 	// Get model directory
 	modelDirs := map[string]string{
@@ -99,26 +101,18 @@ func (m *SherpaDownloadManager) IsModelComplete(modelType string) bool {
 	}
 
 	modelPath := filepath.Join(m.ModelDir, dir)
+	tmpPath := modelPath + ".tmp"
 
-	// Piper models have different naming: {voice}.onnx instead of model.onnx
-	modelFiles := map[string]string{
-		"piper-en":     "en_US-lessac-medium.onnx",
-		"piper-en-hfc": "en_US-hfc_female-medium.onnx",
-		"piper-de":     "de_DE-thorsten-medium.onnx",
-		"piper-es":     "es_ES-davefx-medium.onnx",
-	}
-	onnxFile := "model.onnx"
-	if f, ok := modelFiles[modelType]; ok {
-		onnxFile = f
+	// Check if .tmp directory exists (incomplete download)
+	if _, err := os.Stat(tmpPath); err == nil {
+		return false
 	}
 
-	// Check if required files exist
-	requiredFiles := []string{onnxFile, "tokens.txt"}
-	for _, file := range requiredFiles {
-		if _, err := os.Stat(filepath.Join(modelPath, file)); os.IsNotExist(err) {
-			return false
-		}
+	// Check if final directory exists
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		return false
 	}
+
 	return true
 }
 
@@ -290,6 +284,7 @@ func (m *SherpaDownloadManager) downloadWithResume(ctx context.Context, url, tem
 }
 
 // extractTarBz2 extracts a tar.bz2 file.
+// Directory is first extracted with .tmp suffix, then renamed after extraction completes.
 func (m *SherpaDownloadManager) extractTarBz2(archivePath string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
@@ -303,6 +298,9 @@ func (m *SherpaDownloadManager) extractTarBz2(archivePath string) error {
 	// Extract tar
 	tarReader := tar.NewReader(bzReader)
 
+	// Track the root directory name for renaming
+	var rootDir string
+
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -312,8 +310,20 @@ func (m *SherpaDownloadManager) extractTarBz2(archivePath string) error {
 			return fmt.Errorf("tar read error: %w", err)
 		}
 
-		// Construct target path
-		target := filepath.Join(m.ModelDir, header.Name)
+		// Get root directory name from first entry
+		if rootDir == "" {
+			parts := strings.SplitN(header.Name, "/", 2)
+			if len(parts) > 0 {
+				rootDir = parts[0]
+			}
+		}
+
+		// Construct target path with .tmp suffix on root directory
+		targetName := header.Name
+		if rootDir != "" && strings.HasPrefix(targetName, rootDir) {
+			targetName = rootDir + ".tmp" + targetName[len(rootDir):]
+		}
+		target := filepath.Join(m.ModelDir, targetName)
 
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -326,7 +336,6 @@ func (m *SherpaDownloadManager) extractTarBz2(archivePath string) error {
 				return fmt.Errorf("failed to create parent directory: %w", err)
 			}
 
-			// Create file
 			outFile, err := os.Create(target)
 			if err != nil {
 				return fmt.Errorf("failed to create file: %w", err)
@@ -337,6 +346,17 @@ func (m *SherpaDownloadManager) extractTarBz2(archivePath string) error {
 				return fmt.Errorf("failed to write file: %w", err)
 			}
 			outFile.Close()
+		}
+	}
+
+	// All files extracted successfully, now rename .tmp directory to final name
+	if rootDir != "" {
+		tmpDir := filepath.Join(m.ModelDir, rootDir+".tmp")
+		finalDir := filepath.Join(m.ModelDir, rootDir)
+		// Remove existing directory if any
+		os.RemoveAll(finalDir)
+		if err := os.Rename(tmpDir, finalDir); err != nil {
+			return fmt.Errorf("failed to rename directory: %w", err)
 		}
 	}
 

@@ -370,7 +370,7 @@ export default {
       ollama: 'Ollama (Local)',
       custom: 'Personnalisé compatible OpenAI',
       trial: {
-        name: 'ZimaOS Essai',
+        name: 'ZimaOS EchoEssai',
         description: 'Essai gratuit avec quota limité',
         quotaExhausted: 'Quota d\'essai épuisé',
         quotaExhaustedTokens: 'Votre quota de tokens d\'essai est épuisé. Veuillez configurer votre propre fournisseur pour continuer.',

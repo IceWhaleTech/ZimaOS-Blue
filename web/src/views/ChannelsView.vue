@@ -51,6 +51,10 @@ const saving = ref<string | null>(null)
 const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
+const showMoreChannels = ref(false)
+
+// Primary channels shown by default (top 8)
+const primaryChannelIds = ['telegram', 'discord', 'slack', 'whatsapp', 'wechat', 'feishu', 'dingtalk', 'teams']
 
 // Remote Access state
 type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
@@ -305,6 +309,95 @@ const channelDefs = shallowRef<ChannelDef[]>([
       { key: 'secret_key', labelKey: 'channels.secretKey', type: 'password', placeholderKey: 'channels.placeholderZaloSecretKey', value: '' },
     ],
   },
+  {
+    id: 'line',
+    nameKey: 'channels.line',
+    icon: getChannelIconOrDefault('line'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.lineDesc',
+    hintKey: 'channels.lineHint',
+    docUrl: 'https://developers.line.biz/en/docs/messaging-api/',
+    fields: [
+      { key: 'channel_access_token', labelKey: 'channels.channelAccessToken', type: 'password', placeholderKey: 'channels.placeholderLineChannelToken', value: '', required: true },
+      { key: 'channel_secret', labelKey: 'channels.channelSecret', type: 'password', placeholderKey: 'channels.placeholderLineChannelSecret', value: '', required: true },
+    ],
+  },
+  {
+    id: 'messenger',
+    nameKey: 'channels.messenger',
+    icon: getChannelIconOrDefault('messenger'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.messengerDesc',
+    hintKey: 'channels.messengerHint',
+    docUrl: 'https://developers.facebook.com/docs/messenger-platform/',
+    fields: [
+      { key: 'page_access_token', labelKey: 'channels.pageAccessToken', type: 'password', placeholderKey: 'channels.placeholderMessengerPageToken', value: '', required: true },
+      { key: 'verify_token', labelKey: 'channels.verifyToken', type: 'password', placeholderKey: 'channels.placeholderMessengerVerifyToken', value: '', required: true },
+      { key: 'app_secret', labelKey: 'channels.appSecret', type: 'password', placeholderKey: 'channels.placeholderAppSecret', value: '' },
+    ],
+  },
+  {
+    id: 'viber',
+    nameKey: 'channels.viber',
+    icon: getChannelIconOrDefault('viber'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.viberDesc',
+    hintKey: 'channels.viberHint',
+    docUrl: 'https://developers.viber.com/docs/api/rest-bot-api/',
+    fields: [
+      { key: 'auth_token', labelKey: 'channels.authToken', type: 'password', placeholderKey: 'channels.placeholderViberAuthToken', value: '', required: true },
+      { key: 'bot_name', labelKey: 'channels.botName', type: 'text', placeholderKey: 'channels.placeholderViberBotName', value: '' },
+    ],
+  },
+  {
+    id: 'twitter',
+    nameKey: 'channels.twitterDM',
+    icon: getChannelIconOrDefault('twitter'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.twitterDMDesc',
+    hintKey: 'channels.twitterDMHint',
+    docUrl: 'https://developer.twitter.com/en/docs/twitter-api/direct-messages',
+    fields: [
+      { key: 'api_key', labelKey: 'channels.apiKey', type: 'password', placeholderKey: 'channels.placeholderTwitterApiKey', value: '', required: true },
+      { key: 'api_secret', labelKey: 'channels.apiSecret', type: 'password', placeholderKey: 'channels.placeholderTwitterApiSecret', value: '', required: true },
+      { key: 'access_token', labelKey: 'channels.accessToken', type: 'password', placeholderKey: 'channels.placeholderTwitterAccessToken', value: '', required: true },
+      { key: 'access_token_secret', labelKey: 'channels.accessTokenSecret', type: 'password', placeholderKey: 'channels.placeholderTwitterAccessTokenSecret', value: '', required: true },
+    ],
+  },
+  {
+    id: 'instagram',
+    nameKey: 'channels.instagramDM',
+    icon: getChannelIconOrDefault('instagram'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.instagramDMDesc',
+    hintKey: 'channels.instagramDMHint',
+    docUrl: 'https://developers.facebook.com/docs/messenger-platform/instagram/',
+    fields: [
+      { key: 'page_access_token', labelKey: 'channels.pageAccessToken', type: 'password', placeholderKey: 'channels.placeholderInstagramPageToken', value: '', required: true },
+      { key: 'instagram_account_id', labelKey: 'channels.instagramAccountId', type: 'text', placeholderKey: 'channels.placeholderInstagramAccountId', value: '', required: true },
+    ],
+  },
+  {
+    id: 'twitch',
+    nameKey: 'channels.twitchBot',
+    icon: getChannelIconOrDefault('twitch'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.twitchDesc',
+    hintKey: 'channels.twitchHint',
+    docUrl: 'https://dev.twitch.tv/docs/irc/',
+    fields: [
+      { key: 'client_id', labelKey: 'channels.clientId', type: 'text', placeholderKey: 'channels.placeholderTwitchClientId', value: '', required: true },
+      { key: 'client_secret', labelKey: 'channels.clientSecret', type: 'password', placeholderKey: 'channels.placeholderTwitchClientSecret', value: '', required: true },
+      { key: 'bot_username', labelKey: 'channels.botUsername', type: 'text', placeholderKey: 'channels.placeholderTwitchBotUsername', value: '', required: true },
+      { key: 'channel_name', labelKey: 'channels.channelName', type: 'text', placeholderKey: 'channels.placeholderTwitchChannelName', value: '' },
+    ],
+  },
 ])
 
 // Sorted channels - enabled channels first
@@ -317,6 +410,16 @@ const sortedChannels = computed(() => {
     const statusOrder = { connected: 0, connecting: 1, error: 2, disconnected: 3 }
     return (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3)
   })
+})
+
+// Primary channels (top 8 popular channels)
+const primaryChannels = computed(() => {
+  return sortedChannels.value.filter(c => primaryChannelIds.includes(c.id))
+})
+
+// Secondary channels (shown after clicking "Load More")
+const secondaryChannels = computed(() => {
+  return sortedChannels.value.filter(c => !primaryChannelIds.includes(c.id))
 })
 
 // Channel map for O(1) lookup
@@ -1003,7 +1106,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
       <!-- Other Channels -->
       <ChannelCard
-        v-for="channel in sortedChannels"
+        v-for="channel in primaryChannels"
         :key="channel.id"
         v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult]"
         :channel="channel"
@@ -1018,6 +1121,38 @@ watch(() => tunnelStatus.value?.active, (active) => {
         @test-connection="testConnection(channel.id)"
         @update-field="(fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)"
       />
+
+      <!-- Load More Button -->
+      <button
+        v-if="!showMoreChannels && secondaryChannels.length > 0"
+        class="w-full py-3 px-4 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium transition-colors flex items-center justify-center gap-2"
+        @click="showMoreChannels = true"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+        {{ t('common.loadMore') }} ({{ secondaryChannels.length }})
+      </button>
+
+      <!-- Secondary Channels (shown after Load More) -->
+      <template v-if="showMoreChannels">
+        <ChannelCard
+          v-for="channel in secondaryChannels"
+          :key="channel.id"
+          v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult]"
+          :channel="channel"
+          :expanded="expandedChannel === channel.id"
+          :toggling="toggling === channel.id"
+          :saving="saving === channel.id"
+          :testing-connection="testingConnection === channel.id"
+          :test-result="testResult"
+          @toggle="toggleChannel(channel.id)"
+          @toggle-enabled="toggleChannelEnabled(channel.id, $event)"
+          @save="saveChannel(channel.id)"
+          @test-connection="testConnection(channel.id)"
+          @update-field="(fieldIndex: number, value: string) => updateChannelField(channel.id, fieldIndex, value)"
+        />
+      </template>
     </div>
   </div>
 </template>

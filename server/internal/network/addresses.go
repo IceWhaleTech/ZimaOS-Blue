@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // InterfaceType represents the type of network interface.
@@ -38,6 +39,25 @@ type NetworkAddresses struct {
 	Preferred string             `json:"preferred"`
 }
 
+// dynamicPort stores the actual server port for use when detector was created with port 0
+var dynamicPort int
+var dynamicPortMu sync.RWMutex
+
+// SetDynamicPort sets the dynamic port for address detection.
+// This should be called after the server starts and the actual port is known.
+func SetDynamicPort(port int) {
+	dynamicPortMu.Lock()
+	defer dynamicPortMu.Unlock()
+	dynamicPort = port
+}
+
+// GetDynamicPort returns the current dynamic port.
+func GetDynamicPort() int {
+	dynamicPortMu.RLock()
+	defer dynamicPortMu.RUnlock()
+	return dynamicPort
+}
+
 // AddressDetector detects network addresses.
 type AddressDetector struct {
 	port int
@@ -50,9 +70,15 @@ func NewAddressDetector(port int) *AddressDetector {
 
 // GetAddresses returns all available network addresses.
 func (d *AddressDetector) GetAddresses() (*NetworkAddresses, error) {
+	// Use dynamic port if detector was created with port 0
+	port := d.port
+	if port == 0 {
+		port = GetDynamicPort()
+	}
+
 	addresses := &NetworkAddresses{
-		Local: fmt.Sprintf("http://localhost:%d", d.port),
-		Port:  d.port,
+		Local: fmt.Sprintf("http://localhost:%d", port),
+		Port:  port,
 		LAN:   make([]NetworkInterface, 0),
 	}
 
@@ -61,9 +87,9 @@ func (d *AddressDetector) GetAddresses() (*NetworkAddresses, error) {
 	if err == nil && hostname != "" {
 		// Add .local suffix for mDNS/Bonjour
 		if !strings.Contains(hostname, ".") {
-			addresses.Hostname = fmt.Sprintf("http://%s.local:%d", hostname, d.port)
+			addresses.Hostname = fmt.Sprintf("http://%s.local:%d", hostname, port)
 		} else {
-			addresses.Hostname = fmt.Sprintf("http://%s:%d", hostname, d.port)
+			addresses.Hostname = fmt.Sprintf("http://%s:%d", hostname, port)
 		}
 	}
 
@@ -121,7 +147,7 @@ func (d *AddressDetector) GetAddresses() (*NetworkAddresses, error) {
 
 			netInterface := NetworkInterface{
 				Name:    iface.Name,
-				Address: fmt.Sprintf("http://%s:%d", ip.String(), d.port),
+				Address: fmt.Sprintf("http://%s:%d", ip.String(), port),
 				Type:    detectInterfaceType(iface.Name),
 				IsUp:    true,
 				IsIPv6:  isIPv6,

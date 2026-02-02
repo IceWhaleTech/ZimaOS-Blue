@@ -5,6 +5,10 @@ import { memoryApi, type MemorySearchResult, type MemoryStats } from '@/api/memo
 
 const { t } = useI18n()
 
+const emit = defineEmits<{
+  (e: 'status-change', message: string): void
+}>()
+
 // State
 const memories = ref<MemorySearchResult[]>([])
 const stats = ref<MemoryStats | null>(null)
@@ -15,6 +19,7 @@ const searchType = ref<'hybrid' | 'vector' | 'keyword'>('hybrid')
 const showAddModal = ref(false)
 const showClearConfirm = ref(false)
 const showSettingsModal = ref(false)
+const showExportImportModal = ref(false)
 const newMemoryContent = ref('')
 const newMemoryTags = ref('')
 
@@ -25,6 +30,14 @@ const supermemoryApiKey = ref('')
 const supermemoryBaseUrl = ref('')
 const testingConnection = ref(false)
 const connectionTestResult = ref<{ success: boolean; error?: string } | null>(null)
+
+// Export/Import state
+const memoryExporting = ref(false)
+const memoryImporting = ref(false)
+const memoryError = ref<string | null>(null)
+const memoryImportFile = ref<File | null>(null)
+const memoryImportMode = ref<'append' | 'replace'>('append')
+const memoryFileInputRef = ref<HTMLInputElement | null>(null)
 
 // Computed
 const hasMemories = computed(() => memories.value.length > 0 || stats.value?.total_chunks)
@@ -201,6 +214,88 @@ async function testSupermemoryConnection() {
   }
 }
 
+// Export/Import functions
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsText(file)
+  })
+}
+
+async function handleMemoryExport() {
+  memoryExporting.value = true
+  memoryError.value = null
+
+  try {
+    const response = await memoryApi.exportMarkdown()
+    const content = typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
+
+    const blob = new Blob([content], { type: 'text/markdown; charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const timestamp = new Date().toISOString().split('T')[0]
+    a.download = `memory-export-${timestamp}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+
+    emit('status-change', t('userdata.memory.exportSuccess'))
+  } catch (e) {
+    memoryError.value = e instanceof Error ? e.message : t('userdata.memory.exportFailed')
+  } finally {
+    memoryExporting.value = false
+  }
+}
+
+function handleMemoryFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    const file = input.files[0]
+    if (file) memoryImportFile.value = file
+    memoryError.value = null
+  }
+}
+
+async function handleMemoryImport() {
+  if (!memoryImportFile.value) return
+
+  memoryImporting.value = true
+  memoryError.value = null
+
+  try {
+    const content = await readFileAsText(memoryImportFile.value)
+    const response = await memoryApi.importMarkdown(content, memoryImportMode.value)
+
+    if (response.data.errors && response.data.errors.length > 0) {
+      memoryError.value = response.data.errors.join(', ')
+    }
+
+    emit('status-change', t('userdata.memory.importSuccess', { count: response.data.imported }))
+
+    memoryImportFile.value = null
+    if (memoryFileInputRef.value) {
+      memoryFileInputRef.value.value = ''
+    }
+
+    await loadStats()
+  } catch (e) {
+    memoryError.value = e instanceof Error ? e.message : t('userdata.memory.importFailed')
+  } finally {
+    memoryImporting.value = false
+  }
+}
+
+function closeExportImportModal() {
+  showExportImportModal.value = false
+  memoryError.value = null
+  memoryImportFile.value = null
+  if (memoryFileInputRef.value) {
+    memoryFileInputRef.value.value = ''
+  }
+}
+
 onMounted(() => {
   loadStats()
   loadBackendStatus()
@@ -225,6 +320,15 @@ onMounted(() => {
           @click="showAddModal = true"
         >
           {{ t('memory.add') }}
+        </button>
+        <button
+          class="p-2 text-purple-500 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-200 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+          :title="t('userdata.memory.title')"
+          @click="showExportImportModal = true"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
         </button>
         <button
           class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -576,6 +680,148 @@ onMounted(() => {
             >
               {{ t('common.save') }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Export/Import Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showExportImportModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="closeExportImportModal"
+      >
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div class="sticky top-0 bg-white dark:bg-gray-800 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              {{ t('userdata.memory.title') }}
+            </h3>
+            <button class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="closeExportImportModal">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="p-6 space-y-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.memory.description') }}</p>
+
+            <!-- Memory Stats -->
+            <div v-if="stats" class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+              <div class="flex justify-between text-sm">
+                <span class="text-purple-700 dark:text-purple-300">{{ t('userdata.memory.totalMemories') }}</span>
+                <span class="font-medium text-purple-800 dark:text-purple-200">{{ stats.total_chunks }}</span>
+              </div>
+              <div class="flex justify-between text-sm mt-1">
+                <span class="text-purple-700 dark:text-purple-300">{{ t('userdata.memory.backend') }}</span>
+                <span class="font-medium text-purple-800 dark:text-purple-200">{{ stats.backend || 'local' }}</span>
+              </div>
+            </div>
+
+            <!-- Export Section -->
+            <div class="space-y-2">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.memory.exportSection') }}</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('userdata.memory.exportDesc') }}</p>
+              <button
+                :disabled="memoryExporting"
+                class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                @click="handleMemoryExport"
+              >
+                <svg v-if="memoryExporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                {{ memoryExporting ? t('userdata.exporting') : t('userdata.memory.exportButton') }}
+              </button>
+            </div>
+
+            <hr class="border-gray-200 dark:border-gray-700" />
+
+            <!-- Import Section -->
+            <div class="space-y-3">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.memory.importSection') }}</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('userdata.memory.importDesc') }}</p>
+
+              <!-- File Selection -->
+              <div class="flex items-center gap-2">
+                <input
+                  ref="memoryFileInputRef"
+                  type="file"
+                  accept=".md,.markdown,.txt"
+                  class="hidden"
+                  @change="handleMemoryFileSelect"
+                />
+                <button
+                  class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
+                  @click="memoryFileInputRef?.click()"
+                >
+                  {{ t('userdata.chooseFile') }}
+                </button>
+                <span v-if="memoryImportFile" class="text-sm text-gray-600 dark:text-gray-300 truncate flex-1">
+                  {{ memoryImportFile.name }}
+                </span>
+              </div>
+
+              <!-- Import Mode -->
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-gray-400 mb-2">{{ t('userdata.memory.importMode') }}</label>
+                <div class="flex gap-2">
+                  <button
+                    :class="[
+                      'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      memoryImportMode === 'append'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    ]"
+                    @click="memoryImportMode = 'append'"
+                  >
+                    {{ t('userdata.memory.modeAppend') }}
+                  </button>
+                  <button
+                    :class="[
+                      'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      memoryImportMode === 'replace'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    ]"
+                    @click="memoryImportMode = 'replace'"
+                  >
+                    {{ t('userdata.memory.modeReplace') }}
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  {{ memoryImportMode === 'append' ? t('userdata.memory.modeAppendDesc') : t('userdata.memory.modeReplaceDesc') }}
+                </p>
+              </div>
+
+              <!-- Import Button -->
+              <button
+                :disabled="!memoryImportFile || memoryImporting"
+                class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                @click="handleMemoryImport"
+              >
+                <svg v-if="memoryImporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {{ memoryImporting ? t('userdata.importing') : t('userdata.memory.importButton') }}
+              </button>
+            </div>
+
+            <!-- Error -->
+            <div v-if="memoryError" class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm">
+              {{ memoryError }}
+            </div>
           </div>
         </div>
       </div>

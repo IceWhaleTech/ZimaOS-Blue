@@ -1335,12 +1335,12 @@ func (h *Handler) RecalculateCosts(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"period":             period,
-		"records_processed":  recalculatedCount,
-		"old_total_cost":     totalOldCost,
-		"new_total_cost":     totalNewCost,
-		"cost_difference":    totalNewCost - totalOldCost,
-		"message":            "costs recalculated (view only, historical records not modified)",
+		"period":            period,
+		"records_processed": recalculatedCount,
+		"old_total_cost":    totalOldCost,
+		"new_total_cost":    totalNewCost,
+		"cost_difference":   totalNewCost - totalOldCost,
+		"message":           "costs recalculated (view only, historical records not modified)",
 	})
 }
 

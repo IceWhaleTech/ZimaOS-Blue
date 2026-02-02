@@ -2,11 +2,18 @@ package speech
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
 )
+
+// InitConfig holds configuration for lazy initialization of TTS/STT services.
+type InitConfig struct {
+	DataDir       string
+	OpenAIAPIKey  string
+}
 
 // Service provides unified speech functionality (TTS + ASR).
 type Service interface {
@@ -24,6 +31,10 @@ type Service interface {
 	GetTTSService() tts.Service
 	// IsEditBeforeSendEnabled returns whether edit-before-send is enabled.
 	IsEditBeforeSendEnabled() bool
+	// Initialize initializes TTS/STT services lazily.
+	Initialize() error
+	// IsInitialized returns whether services have been initialized.
+	IsInitialized() bool
 }
 
 // service implements the Service interface.
@@ -33,6 +44,9 @@ type service struct {
 	sherpaASR      *stt.SherpaProvider
 	sherpaTTS      *tts.SherpaProvider
 	config         *Config
+	initConfig     *InitConfig
+	initialized    bool
+	initializing   bool
 	mu             sync.RWMutex
 }
 
@@ -58,12 +72,67 @@ func NewService(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service) Service {
 // NewServiceWithProviders creates a service with explicit Sherpa providers.
 func NewServiceWithProviders(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service, sherpaASR *stt.SherpaProvider, sherpaTTS *tts.SherpaProvider) Service {
 	return &service{
-		sttService: sttSvc,
-		ttsService: ttsSvc,
-		sherpaASR:  sherpaASR,
-		sherpaTTS:  sherpaTTS,
-		config:     cfg,
+		sttService:  sttSvc,
+		ttsService:  ttsSvc,
+		sherpaASR:   sherpaASR,
+		sherpaTTS:   sherpaTTS,
+		config:      cfg,
+		initialized: sherpaASR != nil || sherpaTTS != nil,
 	}
+}
+
+// NewServiceWithInitConfig creates a service with lazy initialization config.
+func NewServiceWithInitConfig(cfg *Config, initCfg *InitConfig) Service {
+	return &service{
+		config:     cfg,
+		initConfig: initCfg,
+	}
+}
+
+// Initialize initializes TTS/STT services lazily.
+func (s *service) Initialize() error {
+	s.mu.Lock()
+	if s.initialized || s.initializing {
+		s.mu.Unlock()
+		return nil
+	}
+	s.initializing = true
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.initializing = false
+		s.initialized = true
+		s.mu.Unlock()
+	}()
+
+	if s.initConfig == nil {
+		return fmt.Errorf("no init config provided")
+	}
+
+	// Initialize Sherpa TTS provider
+	s.sherpaTTS = tts.NewSherpaProvider(&tts.SherpaConfig{
+		ModelDir:      s.initConfig.DataDir + "/sherpa-tts",
+		ModelType:     "piper-en",
+		DefaultVoice:  "0",
+		DefaultFormat: tts.FormatWAV,
+		MaxTextLength: 5000,
+	})
+
+	// Initialize Sherpa ASR provider
+	s.sherpaASR = stt.NewSherpaProvider(&stt.SherpaConfig{
+		ModelDir:  s.initConfig.DataDir + "/sherpa-asr",
+		ModelType: "whisper-tiny",
+	})
+
+	return nil
+}
+
+// IsInitialized returns whether services have been initialized.
+func (s *service) IsInitialized() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.initialized
 }
 
 // GetStatus returns the unified speech status.

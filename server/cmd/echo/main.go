@@ -25,6 +25,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/feishu"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
@@ -240,6 +241,14 @@ func main() {
 		logger.Warn().Err(err).Msg("Failed to enable foreign keys")
 	}
 
+	// Warm up connection pool for faster startup
+	for i := 0; i < 3; i++ {
+		conn, err := db.Conn(context.Background())
+		if err == nil {
+			conn.Close()
+		}
+	}
+
 	// Initialize user repository and service
 	userRepo, err := user.NewSQLiteRepository(db)
 	if err != nil {
@@ -449,14 +458,15 @@ func main() {
 		companionWSHandler *companion.WebSocketHandler
 		companionManager   *companion.Manager
 		ngrokTunnelMgr     *ngrok.SDKTunnelManager
-		ngrokRepo          *ngrok.Repository
+		ngrokConfigStore   *ngrok.ConfigStore
 	)
 
 	// Use conc/pool for safer parallel initialization with automatic panic recovery
 	initPool := concpool.New().WithMaxGoroutines(20)
 
 	// Group 1: Independent services (no dependencies on each other)
-	initPool.Go(func() {
+	// Async initialization for non-critical services to speed up startup
+	go func() {
 		// Metrics collector (collect every 5 seconds, keep 10 minutes of history)
 		metricsCollector = metrics.NewCollector(5*time.Second, 120)
 		metricsCollector.Start()
@@ -466,9 +476,9 @@ func main() {
 		metricsWriter = metrics.NewMetricsWriter(nil, metricsConfig)
 		metricsWriter.Start()
 		logger.Info().Msg("Metrics services initialized")
-	})
+	}()
 
-	initPool.Go(func() {
+	go func() {
 		// Backup manager
 		var err error
 		backupManager, err = backup.NewManager(backup.Config{
@@ -482,52 +492,9 @@ func main() {
 		}
 		backupHandler = backup.NewHandler(backupManager)
 		logger.Info().Msg("Backup manager initialized")
-	})
+	}()
 
-	initPool.Go(func() {
-		// Security threat detector
-		threatDetector = security.NewThreatDetector()
-		securityHandler = security.NewHandler(threatDetector)
-		logger.Info().Msg("Security handler initialized")
-	})
-
-	initPool.Go(func() {
-		// MFA handler
-		mfaHandler = mfa.NewHandler(nil, nil)
-		logger.Info().Msg("MFA handler initialized")
-	})
-
-	initPool.Go(func() {
-		// Sandbox manager
-		var err error
-		sandboxManager, err = sandbox.NewManager(nil)
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
-			return
-		}
-		sandboxHandler = sandbox.NewHandler(sandboxManager)
-		logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
-	})
-
-	initPool.Go(func() {
-		// Cron service
-		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
-		cronService.RegisterBuiltinHandlers()
-		cronHandler = cron.NewHandler(cronService, zapLogger)
-		if err := cronService.Start(); err != nil {
-			logger.Warn().Err(err).Msg("Failed to start cron service")
-		}
-		logger.Info().Msg("Cron service initialized")
-	})
-
-	initPool.Go(func() {
-		// Home Assistant service
-		haService = homeassistant.NewHAService()
-		haHandler = homeassistant.NewHandler(haService)
-		logger.Info().Msg("Home Assistant handler initialized")
-	})
-
-	initPool.Go(func() {
+	go func() {
 		// Browser automation service
 		var err error
 		browserService, err = browser.NewService(nil)
@@ -537,55 +504,14 @@ func main() {
 		}
 		browserHandler = browser.NewHandler(browserService)
 		logger.Info().Msg("Browser automation handler initialized")
-	})
+	}()
 
+	// Critical services in parallel pool
 	initPool.Go(func() {
-		// STT service (Speech-to-Text)
-		var err error
-		sttService, err = stt.NewService(&stt.ServiceConfig{
-			DefaultProvider: stt.ProviderWhisperAPI,
-			Providers: []stt.ProviderConfig{
-				{
-					Type:    stt.ProviderWhisperAPI,
-					Enabled: true,
-					APIKey:  os.Getenv("OPENAI_API_KEY"),
-				},
-			},
-		})
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize STT service, voice transcription will be disabled")
-		}
-	})
-
-	initPool.Go(func() {
-		// TTS service (Text-to-Speech)
-		// Use Sherpa as default provider for local TTS (no external service required)
-		var err error
-		ttsService, err = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderSherpa,
-			Providers: []tts.ProviderConfig{
-				{
-					Type:          tts.ProviderSherpa,
-					Enabled:       true,
-					BaseURL:       filepath.Join(dataDir, "sherpa-tts"), // Model directory
-					DefaultVoice:  "piper-en",                           // Model type
-					DefaultFormat: tts.FormatWAV,
-					MaxTextLength: 5000,
-				},
-				{
-					Type:    tts.ProviderEdge,
-					Enabled: true,
-				},
-				{
-					Type:    tts.ProviderOpenAI,
-					Enabled: os.Getenv("OPENAI_API_KEY") != "",
-					APIKey:  os.Getenv("OPENAI_API_KEY"),
-				},
-			},
-		})
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize TTS service, voice synthesis will be disabled")
-		}
+		// Security threat detector
+		threatDetector = security.NewThreatDetector()
+		securityHandler = security.NewHandler(threatDetector)
+		logger.Info().Msg("Security handler initialized")
 	})
 
 	initPool.Go(func() {
@@ -605,7 +531,48 @@ func main() {
 		logger.Info().Msg("Workflow handler initialized")
 	})
 
-	initPool.Go(func() {
+	// Async initialization for MFA handler
+	go func() {
+		mfaHandler = mfa.NewHandler(nil, nil)
+		logger.Info().Msg("MFA handler initialized")
+	}()
+
+	// Async initialization for Sandbox manager
+	go func() {
+		var err error
+		sandboxManager, err = sandbox.NewManager(nil)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
+			return
+		}
+		sandboxHandler = sandbox.NewHandler(sandboxManager)
+		logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
+	}()
+
+	// Async initialization for Cron service
+	go func() {
+		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
+		cronService.RegisterBuiltinHandlers()
+		cronHandler = cron.NewHandler(cronService, zapLogger)
+		if err := cronService.Start(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to start cron service")
+		}
+		logger.Info().Msg("Cron service initialized")
+	}()
+
+	// Async initialization for Home Assistant service
+	go func() {
+		haService = homeassistant.NewHAService()
+		haHandler = homeassistant.NewHandler(haService)
+		logger.Info().Msg("Home Assistant handler initialized")
+	}()
+
+	// TTS/STT services are initialized lazily when chat page is opened
+	// This avoids heavy initialization at startup
+	logger.Info().Msg("TTS/STT services will be initialized on demand (when chat page is opened)")
+
+	// Async initialization for non-critical services
+	go func() {
 		// Form filler store
 		var err error
 		formfillerStore, err = formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
@@ -615,7 +582,7 @@ func main() {
 		}
 		formfillerHandler = formfiller.NewHandler(formfillerStore)
 		logger.Info().Msg("Form filler handler initialized")
-	})
+	}()
 
 	initPool.Go(func() {
 		// Companion service (Echo Companion - real-time AI Agent monitoring)
@@ -698,20 +665,10 @@ func main() {
 		logger.Info().Msg("Voice handler initialized")
 	}
 
-	// Initialize ngrok remote access services with SDK
-	ngrokRepoPath := filepath.Join(dataDir, "ngrok.db")
-	ngrokRepo, err = ngrok.NewRepository(ngrokRepoPath)
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize ngrok repository, tunnel state persistence will be disabled")
-		ngrokTunnelMgr = ngrok.NewSDKTunnelManager(nil)
-	} else {
-		ngrokTunnelMgr = ngrok.NewSDKTunnelManager(ngrokRepo)
-		// Register shutdown hook for ngrok repository
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			return ngrokRepo.Close()
-		})
-	}
-	logger.Info().Msg("Ngrok remote access services initialized (SDK-based)")
+	// Initialize ngrok config store (JSON-based, lazy initialization)
+	ngrokConfigStore = ngrok.NewConfigStore(dataDir)
+	ngrokTunnelMgr = ngrok.NewSDKTunnelManager(nil)
+	logger.Info().Msg("Ngrok tunnel services initialized (lightweight)")
 
 	// Set metrics recorder on chat handler for API call tracking
 	chatHandler.SetMetricsRecorder(metricsWriter)
@@ -722,7 +679,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokRepo, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -766,7 +723,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokRepo *ngrok.Repository, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
 	e := srv.Echo()
 
 	// Initialize connection manager and add middleware for tracking all connections
@@ -852,12 +809,14 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	networkHandler.RegisterRoutes(e)
 	logger.Info().Msg("Network routes registered")
 
-	// Initialize CORS origins with detected local network addresses
-	if err := networkHandler.InitializeCORSOrigins(); err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize CORS origins with local network addresses")
-	} else {
-		logger.Info().Msg("CORS origins initialized with local network addresses")
-	}
+	// Initialize CORS origins after server starts (when actual port is known)
+	server.OnServerStart(func(port int) {
+		if err := networkHandler.InitializeCORSOrigins(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize CORS origins with local network addresses")
+		} else {
+			logger.Info().Int("port", port).Msg("CORS origins initialized with local network addresses")
+		}
+	})
 
 	// Register link preview routes (public - for fetching URL metadata)
 	linkPreviewHandler := networkapi.NewLinkPreviewHandler()
@@ -893,6 +852,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
 		MaxChunks:    10000,
 		EnableFTS:    true,
+		EnableVec:    true, // Enable sqlite-vec for fast vector search
 	})
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize vector store, memory features disabled")
@@ -902,8 +862,28 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
 		memoryHandler = server.NewMemoryHandler(memoryService)
 		memoryHandler.SetUnifiedService(unifiedService)
+
+		// Initialize LayeredMemoryService for dual-layer memory architecture
+		memoryDir := filepath.Join(dataDir, "memory")
+		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
+			BaseDir:            memoryDir,
+			DailyRetentionDays: 30,
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize layered memory service")
+		} else {
+			memoryHandler.SetLayeredService(layeredService)
+			logger.Info().Str("dir", memoryDir).Msg("Layered memory service initialized")
+		}
+
 		memoryHandler.RegisterRoutes(v1)
-		logger.Info().Msg("Memory handler initialized")
+
+		// Register memory tools for AI agent access
+		toolsAdapter := memory.NewToolsAdapter(unifiedService)
+		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
+		logger.Info().Msg("Memory tools registered for AI agent")
+
+		logger.Info().Bool("vec_enabled", vectorStore.IsVecEnabled()).Msg("Memory handler initialized")
 	}
 
 	// Register skill routes (skills and skill store)
@@ -1007,16 +987,19 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Register unified speech routes (ASR + TTS) - /api/v1/speech/*
-	speechService := speech.NewServiceWithProviders(&speech.Config{
+	speechService := speech.NewServiceWithInitConfig(&speech.Config{
 		ASR: speech.ASRConfig{
 			Enabled:        true,
 			EditBeforeSend: true,
 		},
-	}, sttService, ttsService, sherpaASRProvider, sherpaTTSProvider)
+	}, &speech.InitConfig{
+		DataDir:      dataDir,
+		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
+	})
 	speechHandler := speech.NewHandler(speechService)
 	speechGroup := v1.Group("/speech")
 	speechHandler.RegisterRoutes(speechGroup)
-	logger.Info().Msg("Speech routes registered")
+	logger.Info().Msg("Speech routes registered (lazy initialization)")
 
 	// Register form filler routes (protected) - /api/v1/formfiller/*
 	if formfillerHandler != nil {
@@ -1034,9 +1017,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
 	// Also register multi-provider tunnel routes - /api/v1/tunnel/*
-	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokRepo, cfg.Server.Port)
+	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokConfigStore, cfg.Server.Port)
 	remoteAccessHandler.RegisterRoutes(e)
-	tunnelHandler := networkapi.NewTunnelHandler(ngrokRepo, cfg.Server.Port)
+	tunnelHandler := networkapi.NewTunnelHandler(ngrokConfigStore, cfg.Server.Port)
 	tunnelHandler.RegisterRoutes(e)
 	logger.Info().Msg("Remote access and tunnel routes registered")
 
@@ -1049,7 +1032,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register provider pool routes (protected) - /api/v1/providers/*
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
 
-	// Create provider pool (no encryption)
+	// Create provider pool (no encryption) - lightweight creation
 	providerPool, err := providerpool.NewPool(providerPoolPath)
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize provider pool, provider pool features will be disabled")
@@ -1057,124 +1040,127 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		providerPool = nil
 	}
 
-	// Always register routes, even if pool is nil (handlers will return empty data)
-	if true {
-		// Start pool if it was successfully created
+	// Initialize provider pool synchronously (required for chat to work immediately)
+	// Only health checks run asynchronously after server starts
+	if providerPool != nil {
+		// Load providers from Provider Pool and register them in LLM registry
+		loadProvidersFromPool(providerPool, llmRegistry)
+
+		// Set provider pool on chat handler for auto-selecting providers
+		chatHandler.SetProviderPool(providerPool)
+
+		// Auto-migrate from legacy provider settings (synchronous, usually fast)
+		if providerpool.CheckMigrationNeeded(dataDir) {
+			logger.Info().Msg("Legacy provider settings detected, starting migration...")
+			result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to migrate legacy provider settings")
+			} else if result.Migrated > 0 {
+				logger.Info().
+					Int("migrated", result.Migrated).
+					Int("skipped", result.Skipped).
+					Strs("migrated_names", result.MigratedNames).
+					Str("backup_path", result.BackupPath).
+					Msg("Legacy provider settings migrated successfully")
+			}
+		}
+
+		// Start health checks asynchronously after server starts (non-blocking)
+		server.OnServerStart(func(port int) {
+			go func() {
+				logger.Info().Msg("Starting provider pool health checks (post-startup)")
+				providerPool.Start(context.Background())
+				logger.Info().Msg("Provider pool health checks started")
+			}()
+		})
+	}
+
+	// Initialize shared cache (cc-cache) for both proxy and chat
+	var sharedCache *proxy.CCCache
+	cacheConfig := proxy.DefaultCacheConfig()
+	if cfg.Proxy != nil && cfg.Proxy.Cache != nil {
+		cacheConfig = cfg.Proxy.Cache
+	}
+	sharedCache = proxy.NewCCCache(cacheConfig)
+	chatHandler.SetCache(sharedCache)
+	logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Shared cache (cc-cache) initialized for chat")
+
+	providerPoolHandler := providerpool.NewHandler(providerPool)
+	providersGroup := protected.Group("/providers")
+	providerPoolHandler.RegisterRoutes(providersGroup)
+	// Register model routes
+	modelsGroup := protected.Group("/models")
+	providerPoolHandler.RegisterModelRoutes(modelsGroup)
+	// Register IDE routes
+	ideGroup := protected.Group("/ide")
+	providerPoolHandler.RegisterIDERoutes(ideGroup)
+	// Register pricing routes
+	pricingGroup := protected.Group("/pricing")
+	providerPoolHandler.RegisterPricingRoutes(pricingGroup)
+	// Register config routes
+	configGroup := protected.Group("/config")
+	providerPoolHandler.RegisterConfigRoutes(configGroup)
+	logger.Info().Msg("Provider pool routes registered")
+
+	// Register proxy failover routes
+	failoverConfig := proxy.DefaultProxyConfig().Routing.Failover
+	failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
+	failoverGroup := protected.Group("/proxy/failover")
+	failoverHandler.RegisterRoutes(failoverGroup)
+	logger.Info().Msg("Proxy failover routes registered")
+
+	// Register OpenAI-compatible proxy routes on /v1/* (unified port architecture)
+	// This allows external apps and Claude Code CLI to use Echo as an OpenAI-compatible API
+	if cfg.Proxy != nil && cfg.Proxy.Enabled {
+		logger.Info().Msg("Initializing OpenAI-compatible proxy on /v1/*")
+
+		// Use Routing config (prefer Route over deprecated Routing field)
+		routingConfig := &cfg.Proxy.Routing
+		if cfg.Proxy.Route != nil {
+			routingConfig = cfg.Proxy.Route
+		}
+
+		// Create proxy components
+		proxyRouter := proxy.NewRouter(routingConfig)
+		proxyConnPool := proxy.NewConnectionPool(&cfg.Proxy.Connection)
+		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
+		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+
+		// Use shared cache for proxy (same instance as chat)
+		proxyHandler.SetCache(sharedCache)
+		logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Proxy using shared cache (cc-cache)")
+
+		// Register cache API routes - /api/v1/proxy/cache/*
+		cacheAPIHandler := proxy.NewCacheAPIHandler(sharedCache, cacheConfig)
+		proxyCacheGroup := v1.Group("/proxy/cache")
+		cacheAPIHandler.RegisterRoutes(proxyCacheGroup)
+		logger.Info().Msg("Proxy cache API routes registered")
+
+		// Set Provider Pool for API key lookup
 		if providerPool != nil {
-			providerPool.Start(context.Background())
-
-			// Auto-migrate from legacy provider settings
-			if providerpool.CheckMigrationNeeded(dataDir) {
-				logger.Info().Msg("Legacy provider settings detected, starting migration...")
-				result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
-				if err != nil {
-					logger.Warn().Err(err).Msg("Failed to migrate legacy provider settings")
-				} else if result.Migrated > 0 {
-					logger.Info().
-						Int("migrated", result.Migrated).
-						Int("skipped", result.Skipped).
-						Strs("migrated_names", result.MigratedNames).
-						Str("backup_path", result.BackupPath).
-						Msg("Legacy provider settings migrated successfully")
-				}
-			}
-
-			// Load providers from Provider Pool and register them in LLM registry
-			// This replaces the environment variable-based provider registration
-			loadProvidersFromPool(providerPool, llmRegistry)
-
-			// Set provider pool on chat handler for auto-selecting providers
-			chatHandler.SetProviderPool(providerPool)
+			proxyHandler.SetProviderPool(providerPool)
 		}
 
-		// Initialize shared cache (cc-cache) for both proxy and chat
-		// This is done here so both proxy and chat can share the same cache instance
-		var sharedCache *proxy.CCCache
-		cacheConfig := proxy.DefaultCacheConfig()
-		if cfg.Proxy != nil && cfg.Proxy.Cache != nil {
-			cacheConfig = cfg.Proxy.Cache
-		}
-		sharedCache = proxy.NewCCCache(cacheConfig)
-		chatHandler.SetCache(sharedCache)
-		logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Shared cache (cc-cache) initialized for chat")
+		// Create /v1 group (no /api prefix - OpenAI-compatible)
+		v1ProxyGroup := e.Group("/v1")
 
-		providerPoolHandler := providerpool.NewHandler(providerPool)
-		providersGroup := protected.Group("/providers")
-		providerPoolHandler.RegisterRoutes(providersGroup)
-		// Register model routes
-		modelsGroup := protected.Group("/models")
-		providerPoolHandler.RegisterModelRoutes(modelsGroup)
-		// Register IDE routes
-		ideGroup := protected.Group("/ide")
-		providerPoolHandler.RegisterIDERoutes(ideGroup)
-		// Register pricing routes
-		pricingGroup := protected.Group("/pricing")
-		providerPoolHandler.RegisterPricingRoutes(pricingGroup)
-		// Register config routes
-		configGroup := protected.Group("/config")
-		providerPoolHandler.RegisterConfigRoutes(configGroup)
-		logger.Info().Msg("Provider pool routes registered")
+		// Optional: Add authentication middleware if configured
+		// For now, we'll make it public to allow easy integration with Claude Code CLI
+		// Users can add authentication via API keys in the provider configuration
 
-		// Register proxy failover routes
-		failoverConfig := proxy.DefaultProxyConfig().Routing.Failover
-		failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
-		failoverGroup := protected.Group("/proxy/failover")
-		failoverHandler.RegisterRoutes(failoverGroup)
-		logger.Info().Msg("Proxy failover routes registered")
+		// Register OpenAI-compatible endpoints
+		// These endpoints forward requests to configured providers (Anthropic, OpenAI, etc.)
+		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
+		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
+		v1ProxyGroup.Any("/embeddings", echo.WrapHandler(proxyHandler))
+		v1ProxyGroup.Any("/models", echo.WrapHandler(proxyHandler))
 
-		// Register OpenAI-compatible proxy routes on /v1/* (unified port architecture)
-		// This allows external apps and Claude Code CLI to use Echo as an OpenAI-compatible API
-		if cfg.Proxy != nil && cfg.Proxy.Enabled {
-			logger.Info().Msg("Initializing OpenAI-compatible proxy on /v1/*")
-
-			// Use Routing config (prefer Route over deprecated Routing field)
-			routingConfig := &cfg.Proxy.Routing
-			if cfg.Proxy.Route != nil {
-				routingConfig = cfg.Proxy.Route
-			}
-
-			// Create proxy components
-			proxyRouter := proxy.NewRouter(routingConfig)
-			proxyConnPool := proxy.NewConnectionPool(&cfg.Proxy.Connection)
-			proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
-			proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
-
-			// Use shared cache for proxy (same instance as chat)
-			proxyHandler.SetCache(sharedCache)
-			logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Proxy using shared cache (cc-cache)")
-
-			// Register cache API routes - /api/v1/proxy/cache/*
-			cacheAPIHandler := proxy.NewCacheAPIHandler(sharedCache, cacheConfig)
-			proxyCacheGroup := v1.Group("/proxy/cache")
-			cacheAPIHandler.RegisterRoutes(proxyCacheGroup)
-			logger.Info().Msg("Proxy cache API routes registered")
-
-			// Set Provider Pool for API key lookup
-			if providerPool != nil {
-				proxyHandler.SetProviderPool(providerPool)
-			}
-
-			// Create /v1 group (no /api prefix - OpenAI-compatible)
-			v1ProxyGroup := e.Group("/v1")
-
-			// Optional: Add authentication middleware if configured
-			// For now, we'll make it public to allow easy integration with Claude Code CLI
-			// Users can add authentication via API keys in the provider configuration
-
-			// Register OpenAI-compatible endpoints
-			// These endpoints forward requests to configured providers (Anthropic, OpenAI, etc.)
-			v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
-			v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
-			v1ProxyGroup.Any("/embeddings", echo.WrapHandler(proxyHandler))
-			v1ProxyGroup.Any("/models", echo.WrapHandler(proxyHandler))
-
-			logger.Info().
-				Str("path", "/v1/*").
-				Str("providers", fmt.Sprintf("%d configured", len(routingConfig.Providers))).
-				Str("load_balancing", routingConfig.LoadBalancing).
-				Bool("failover", routingConfig.Failover.Enabled).
-				Msg("OpenAI-compatible proxy routes registered (unified port)")
-		}
+		logger.Info().
+			Str("path", "/v1/*").
+			Str("providers", fmt.Sprintf("%d configured", len(routingConfig.Providers))).
+			Str("load_balancing", routingConfig.LoadBalancing).
+			Bool("failover", routingConfig.Failover.Enabled).
+			Msg("OpenAI-compatible proxy routes registered (unified port)")
 	}
 
 	// Register companion routes (Echo Companion - real-time AI Agent monitoring)
@@ -1194,6 +1180,41 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Initialize channel manager for connection lifecycle management
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)
 	channelFactory := server.NewChannelFactory(zapLogger)
+
+	// Set global message handler for all channels (auto-reply first, then AI)
+	channelManager.SetHandler(func(ctx context.Context, msg channel.Message) (*channel.OutgoingMessage, error) {
+		// 1. Check auto-reply rules first
+		if autoreplyService != nil {
+			response, rule, err := autoreplyService.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Auto-reply match error")
+			}
+			if response != "" && rule != nil {
+				logger.Info().Str("rule_id", rule.ID).Str("channel", msg.ChannelName).Msg("Auto-reply rule matched")
+				return &channel.OutgoingMessage{
+					ChatID:  msg.ChatID,
+					Content: response,
+				}, nil
+			}
+		}
+
+		// 2. No auto-reply matched, call AI via chat handler
+		if chatHandler != nil {
+			aiResponse, err := chatHandler.ProcessChannelMessage(ctx, msg)
+			if err != nil {
+				logger.Error().Err(err).Msg("Failed to process message via AI")
+				return nil, err
+			}
+			if aiResponse != "" {
+				return &channel.OutgoingMessage{
+					ChatID:  msg.ChatID,
+					Content: aiResponse,
+				}, nil
+			}
+		}
+
+		return nil, nil
+	})
 
 	// Register channels from saved configurations and start enabled ones in parallel
 	enabledChannels := channelConfigStore.GetEnabled()
@@ -1216,9 +1237,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 				}
 
 				// Set message handler for Feishu channel (auto-reply first, then proxy)
-				if feishuCh, ok := ch.(interface {
-					SetMessageHandler(handler func(ctx context.Context, msg channel.Message) (string, error))
-				}); ok {
+				if feishuCh, ok := ch.(*feishu.Channel); ok {
+					// Set session manager for monitoring
+					if companionManager != nil {
+						feishuSessionManager := channel.NewBotSessionManager(companionManager, companion.PlatformFeishu)
+						feishuCh.SetSessionManager(feishuSessionManager)
+					}
+
 					feishuCh.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
 						// 1. Check auto-reply rules first
 						if autoreplyService != nil {

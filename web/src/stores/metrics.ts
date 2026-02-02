@@ -6,6 +6,7 @@ import {
   type CallStatsResponse,
   type ModelStatsResponse,
   type TokenUsageResponse,
+  type UserTokenUsageResponse,
   type LatencyStats,
   type SpeedResponse,
   type TokenPricing,
@@ -17,6 +18,7 @@ export const useMetricsStore = defineStore('metrics', () => {
   const callStats = ref<CallStatsResponse | null>(null)
   const modelStats = ref<ModelStatsResponse | null>(null)
   const tokenUsage = ref<TokenUsageResponse | null>(null)
+  const userTokenUsage = ref<UserTokenUsageResponse | null>(null)
   const latencyStats = ref<LatencyStats | null>(null)
   const speedStats = ref<SpeedResponse | null>(null)
   const pricing = ref<TokenPricing[]>([])
@@ -49,6 +51,11 @@ export const useMetricsStore = defineStore('metrics', () => {
   const tokensPerSecond = computed(() => {
     if (!summary.value?.speed) return 0
     return summary.value.speed.tokens_per_second
+  })
+
+  // Show user usage card only when there are multiple users
+  const hasMultipleUsers = computed(() => {
+    return (userTokenUsage.value?.users?.length ?? 0) > 1
   })
 
   // Actions - Individual fetchers (kept for backward compatibility)
@@ -85,6 +92,15 @@ export const useMetricsStore = defineStore('metrics', () => {
       tokenUsage.value = response.data
     } catch (e) {
       console.error('Failed to fetch token usage:', e)
+    }
+  }
+
+  async function fetchUserTokenUsage(period?: string) {
+    try {
+      const response = await metricsApi.getUserTokenUsage(period)
+      userTokenUsage.value = response.data
+    } catch (e) {
+      console.error('Failed to fetch user token usage:', e)
     }
   }
 
@@ -131,6 +147,14 @@ export const useMetricsStore = defineStore('metrics', () => {
       latencyStats.value = data.latency
       speedStats.value = data.speed
       pricing.value = data.pricing || []
+
+      // Fetch user token usage separately (not in aggregated endpoint)
+      try {
+        const userResponse = await metricsApi.getUserTokenUsage()
+        userTokenUsage.value = userResponse.data
+      } catch (e) {
+        console.error('Failed to fetch user token usage:', e)
+      }
 
       // Build summary from aggregated data
       summary.value = {
@@ -217,6 +241,7 @@ export const useMetricsStore = defineStore('metrics', () => {
     callStats,
     modelStats,
     tokenUsage,
+    userTokenUsage,
     latencyStats,
     speedStats,
     pricing,
@@ -231,12 +256,14 @@ export const useMetricsStore = defineStore('metrics', () => {
     totalCost,
     avgLatency,
     tokensPerSecond,
+    hasMultipleUsers,
 
     // Actions
     fetchSummary,
     fetchCallStats,
     fetchModelStats,
     fetchTokenUsage,
+    fetchUserTokenUsage,
     fetchLatencyStats,
     fetchSpeedStats,
     fetchPricing,

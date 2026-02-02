@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { speechApi, type SpeechStatus, type ASRModel, type TTSModel } from '@/api/speech'
+import TTSSettingsNew from './TTSSettingsNew.vue'
 
 const { t } = useI18n()
 
@@ -431,6 +432,9 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- New TTS Settings -->
+    <TTSSettingsNew />
 
     <!-- Info -->
     <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">

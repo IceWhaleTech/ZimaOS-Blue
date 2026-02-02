@@ -13,10 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
@@ -25,6 +27,26 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
+
+// messageSlicePool is a sync.Pool for reusing message slices to reduce GC pressure.
+var messageSlicePool = sync.Pool{
+	New: func() interface{} {
+		// Pre-allocate for typical conversation size
+		slice := make([]llm.Message, 0, 64)
+		return &slice
+	},
+}
+
+// getMessageSlice gets a message slice from the pool.
+func getMessageSlice() *[]llm.Message {
+	return messageSlicePool.Get().(*[]llm.Message)
+}
+
+// putMessageSlice returns a message slice to the pool.
+func putMessageSlice(slice *[]llm.Message) {
+	*slice = (*slice)[:0] // Reset length but keep capacity
+	messageSlicePool.Put(slice)
+}
 
 // estimateTokens estimates the number of tokens in a text.
 // This is a rough estimation: ~4 characters per token for English,
@@ -256,23 +278,63 @@ type ChatHandler struct {
 	cache             *proxy.CCCache
 	convToSession     map[string]string
 	convMu            sync.RWMutex
+
+	// Performance optimization: async event queue
+	eventQueue chan func()
+	eventStop  chan struct{}
 }
 
 // MetricsRecorder is an interface for recording API call metrics.
 type MetricsRecorder interface {
 	RecordAPICall(model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string)
+	RecordAPICallForUser(userID, model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string)
 	RecordSpeed(model string, tokensPerSecond, ttftMs, decodeSpeed float64)
 }
 
 // NewChatHandler creates a new chat handler.
 func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRegistry *tools.Registry) *ChatHandler {
-	return &ChatHandler{
+	h := &ChatHandler{
 		store:            store,
 		providers:        providers,
 		toolRegistry:     toolRegistry,
 		streamController: claudecode.NewStreamController(),
 		compactionConfig: claudecode.DefaultCompactionConfig(),
 		convToSession:    make(map[string]string),
+		eventQueue:       make(chan func(), 100), // Buffered channel for async events
+		eventStop:        make(chan struct{}),
+	}
+	// Start async event processor
+	go h.processEventQueue()
+	return h
+}
+
+// processEventQueue processes events asynchronously to avoid blocking request handlers.
+func (h *ChatHandler) processEventQueue() {
+	for {
+		select {
+		case <-h.eventStop:
+			return
+		case fn := <-h.eventQueue:
+			if fn != nil {
+				fn()
+			}
+		}
+	}
+}
+
+// Close stops the async event processor.
+func (h *ChatHandler) Close() {
+	close(h.eventStop)
+}
+
+// queueEvent queues an event for async processing. Falls back to sync if queue is full.
+func (h *ChatHandler) queueEvent(fn func()) {
+	select {
+	case h.eventQueue <- fn:
+		// Queued successfully
+	default:
+		// Queue full, run synchronously
+		fn()
 	}
 }
 
@@ -313,6 +375,14 @@ func (h *ChatHandler) getCompanionSessionID(convID string) string {
 	return h.convToSession[convID]
 }
 
+// getUserID returns the user ID from the request context, or empty string if not authenticated.
+func (h *ChatHandler) getUserID(c echo.Context) string {
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		return claims.UserID
+	}
+	return ""
+}
+
 // GetProviderRegistry returns the provider registry.
 func (h *ChatHandler) GetProviderRegistry() *llm.ProviderRegistry {
 	return h.providers
@@ -320,15 +390,17 @@ func (h *ChatHandler) GetProviderRegistry() *llm.ProviderRegistry {
 
 // ProcessChannelMessage processes a message from a channel (e.g., Feishu) and returns AI response.
 func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Message) (string, error) {
-	// Get default provider
-	provider, providerName, model, err := h.getDefaultProvider()
-	if err != nil {
-		return "", fmt.Errorf("failed to get provider: %w", err)
-	}
+	logger.Info().
+		Str("channel", msg.ChannelName).
+		Str("user_id", msg.UserID).
+		Str("content", msg.Content).
+		Bool("has_provider_pool", h.providerPool != nil).
+		Msg("ProcessChannelMessage called")
 
-	// If no model from provider, use a default
-	if model == "" {
-		model = "gpt-4o-mini" // Default model
+	// Validate input
+	if msg.Content == "" {
+		logger.Warn().Str("channel", msg.ChannelName).Msg("empty message content")
+		return "", fmt.Errorf("empty message content")
 	}
 
 	// Build messages for LLM
@@ -339,15 +411,192 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		},
 	}
 
-	// Call LLM
+	var responseContent string
+
+	// Use provider pool router with failover if available
+	if h.providerPool != nil && h.providerPool.Router != nil {
+		// Set up failover callback for logging
+		h.providerPool.Router.SetFailoverCallback(func(result *providerpool.FailoverResult) {
+			if len(result.FailedAttempts) > 0 {
+				logger.Warn().
+					Str("request_id", result.RequestID).
+					Int("total_attempts", result.TotalAttempts).
+					Int("failed_count", len(result.FailedAttempts)).
+					Str("success_provider", result.SuccessProvider).
+					Str("final_error", result.FinalError).
+					Dur("duration", result.EndTime.Sub(result.StartTime)).
+					Msg("channel message routing with failover")
+
+				for i, attempt := range result.FailedAttempts {
+					logger.Debug().
+						Str("request_id", result.RequestID).
+						Int("attempt", i+1).
+						Str("provider_id", attempt.ProviderID).
+						Str("reason", string(attempt.Reason)).
+						Str("error", attempt.Error).
+						Dur("latency", attempt.Latency).
+						Msg("failover attempt details")
+				}
+			}
+		})
+
+		// Check available models
+		availableModels := h.providerPool.Router.ListAvailableModels()
+		if len(availableModels) == 0 {
+			logger.Error().Msg("no models available in provider pool")
+			return "", fmt.Errorf("no AI models available, please configure a provider")
+		}
+
+		modelID := availableModels[0].ID
+		logger.Debug().
+			Str("model_id", modelID).
+			Int("available_models", len(availableModels)).
+			Msg("selected model for channel message")
+
+		routeReq := &providerpool.RouteRequest{
+			ModelID:  modelID,
+			Strategy: providerpool.RoutingStrategyPriority,
+		}
+
+		err := h.providerPool.Router.RouteWithFallback(ctx, routeReq, func(result *providerpool.RouteResult) error {
+			logger.Debug().
+				Str("provider_id", result.Provider.ID).
+				Str("provider_name", result.Provider.Name).
+				Str("model_id", result.Model.ID).
+				Str("api_format", string(result.Provider.APIFormat)).
+				Msg("routing to provider")
+
+			// Get the LLM provider from pool (handles custom provider IDs like prov_xxx)
+			provider, err := h.getProviderFromPool(result.Provider.ID)
+			if err != nil {
+				logger.Debug().
+					Str("provider_id", result.Provider.ID).
+					Str("api_format", string(result.Provider.APIFormat)).
+					Err(err).
+					Msg("getProviderFromPool failed, trying legacy registry")
+
+				// Fallback to legacy registry lookup using mapped ID
+				mappedID := mapProviderID(result.Provider.ID)
+				provider = h.providers.Get(mappedID)
+				if provider == nil {
+					// Last resort: try using the provider's API format to create a new provider
+					apiKey := ""
+					if result.APIKey != nil {
+						apiKey = result.APIKey.Key
+					}
+					switch result.Provider.APIFormat {
+					case providerpool.APIFormatAnthropic:
+						provider = llm.NewClaudeProvider(apiKey, result.Provider.BaseURL)
+					case providerpool.APIFormatOllama:
+						provider = llm.NewOllamaProvider(result.Provider.BaseURL)
+					default:
+						provider = llm.NewCustomProvider(apiKey, result.Provider.BaseURL)
+					}
+					logger.Debug().
+						Str("provider_id", result.Provider.ID).
+						Str("api_format", string(result.Provider.APIFormat)).
+						Msg("created provider from RouteResult")
+				}
+			}
+
+			if provider == nil {
+				return fmt.Errorf("failed to get provider for %s", result.Provider.ID)
+			}
+
+			req := llm.ChatRequest{
+				Model:    result.Model.ID,
+				Messages: messages,
+			}
+
+			logger.Debug().
+				Str("model", req.Model).
+				Int("messages", len(req.Messages)).
+				Msg("sending chat request to LLM")
+
+			resp, err := provider.Chat(ctx, req)
+			if err != nil {
+				logger.Error().
+					Err(err).
+					Str("provider_id", result.Provider.ID).
+					Str("model", req.Model).
+					Msg("LLM chat request failed")
+				return err
+			}
+
+			if resp.Message.Content == "" {
+				logger.Warn().
+					Str("provider_id", result.Provider.ID).
+					Str("model", req.Model).
+					Msg("LLM returned empty response")
+				return fmt.Errorf("LLM returned empty response")
+			}
+
+			responseContent = resp.Message.Content
+			logger.Debug().
+				Str("provider_id", result.Provider.ID).
+				Int("response_len", len(responseContent)).
+				Msg("LLM chat request succeeded")
+			return nil
+		})
+
+		if err != nil {
+			// Log cooldown info
+			if cooldowns := h.providerPool.Router.ListCooldowns(); len(cooldowns) > 0 {
+				logger.Warn().Int("providers_in_cooldown", len(cooldowns)).Msg("providers in cooldown")
+			}
+			logger.Error().Err(err).Msg("LLM chat failed with all providers")
+			return "", fmt.Errorf("AI service unavailable: %w", err)
+		}
+
+		if responseContent == "" {
+			logger.Error().Msg("LLM returned empty response after successful routing")
+			return "", fmt.Errorf("AI returned empty response")
+		}
+
+		return responseContent, nil
+	}
+
+	// Fallback: use getDefaultProvider without failover
+	logger.Debug().Msg("using fallback provider (no provider pool)")
+	provider, providerName, model, err := h.getDefaultProvider()
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to get default provider")
+		return "", fmt.Errorf("no AI provider available: %w", err)
+	}
+
+	// If no model from provider, try to get from provider's default
+	if model == "" {
+		// Try to get first available model from provider
+		if h.providerPool != nil {
+			if models := h.providerPool.Router.ListAvailableModels(); len(models) > 0 {
+				model = models[0].ID
+			}
+		}
+		if model == "" {
+			logger.Error().Str("provider", providerName).Msg("no model available")
+			return "", fmt.Errorf("no model available for provider %s", providerName)
+		}
+	}
+
 	req := llm.ChatRequest{
 		Model:    model,
 		Messages: messages,
 	}
 
+	logger.Debug().
+		Str("provider", providerName).
+		Str("model", model).
+		Msg("sending chat request via fallback provider")
+
 	resp, err := provider.Chat(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("LLM chat failed (%s): %w", providerName, err)
+		logger.Error().Err(err).Str("provider", providerName).Msg("fallback LLM chat failed")
+		return "", fmt.Errorf("AI chat failed (%s): %w", providerName, err)
+	}
+
+	if resp.Message.Content == "" {
+		logger.Warn().Str("provider", providerName).Msg("fallback LLM returned empty response")
+		return "", fmt.Errorf("AI returned empty response")
 	}
 
 	return resp.Message.Content, nil
@@ -577,13 +826,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
 	}
 
-	// Emit message event to companion
-	if h.companionManager != nil {
-		sessionID := h.getCompanionSessionID(convID)
-		if sessionID != "" {
-			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound", req.Regenerate)
-		}
-	}
+	// Emit message event to companion (async)
+	sessionID := h.getCompanionSessionID(convID)
+	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 
 	// Get conversation history
 	messages, err := h.store.GetMessages(c.Request().Context(), convID, 50, 0)
@@ -591,13 +836,15 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages")
 	}
 
-	// Convert to LLM messages
-	llmMessages := make([]llm.Message, len(messages))
-	for i, msg := range messages {
-		llmMessages[i] = llm.Message{
+	// Convert to LLM messages using pooled slice
+	llmMessagesPtr := getMessageSlice()
+	defer putMessageSlice(llmMessagesPtr)
+	llmMessages := *llmMessagesPtr
+	for _, msg := range messages {
+		llmMessages = append(llmMessages, llm.Message{
 			Role:    llm.Role(msg.Role),
 			Content: msg.Content,
-		}
+		})
 	}
 
 	// Build chat request
@@ -638,16 +885,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		resp.Usage.TotalTokens = resp.Usage.PromptTokens + resp.Usage.CompletionTokens
 	}
 
-	// Emit LLM request event to companion
-	if h.companionManager != nil {
-		sessionID := h.getCompanionSessionID(convID)
-		if sessionID != "" {
-			h.emitLLMRequestEvent(c.Request().Context(), sessionID, req.Provider, model, resp, err, time.Duration(latencyMs)*time.Millisecond)
-			// Emit message sent event for the AI response
-			if resp != nil {
-				h.emitMessageSentEvent(c.Request().Context(), sessionID, resp.Message.Content, resp.Usage.CompletionTokens)
-			}
-		}
+	// Emit LLM request event to companion (async)
+	h.emitLLMRequestEventAsync(sessionID, req.Provider, model, resp, err, time.Duration(latencyMs)*time.Millisecond)
+	if resp != nil {
+		h.emitMessageSentEventAsync(sessionID, resp.Message.Content, resp.Usage.CompletionTokens)
 	}
 
 	// Record metrics
@@ -664,7 +905,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			errorType = "api_error"
 		}
 
-		h.metricsRecorder.RecordAPICall(model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
+		userID := h.getUserID(c)
+		h.metricsRecorder.RecordAPICallForUser(userID, model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
 
 		// Record trial usage if this is a trial provider
 		if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(req.Provider) {
@@ -673,20 +915,15 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	if err != nil {
-		// Emit error event to companion
-		if h.companionManager != nil {
-			sessionID := h.getCompanionSessionID(convID)
-			if sessionID != "" {
-				h.emitErrorEvent(c.Request().Context(), sessionID, err.Error())
-			}
-		}
+		// Emit error event to companion (async)
+		h.emitErrorEventAsync(sessionID, err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get response from LLM")
 	}
 
 	// Get provider name for display
-	providerName := req.Provider
+	providerName := providerID
 	if h.providerPool != nil {
-		if poolProvider, err := h.providerPool.Registry.Get(req.Provider); err == nil {
+		if poolProvider, err := h.providerPool.Registry.Get(providerID); err == nil {
 			providerName = poolProvider.Name
 		}
 	}
@@ -913,13 +1150,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message: "+err.Error())
 	}
 
-	// Emit message event to companion
-	if h.companionManager != nil {
-		sessionID := h.getCompanionSessionID(convID)
-		if sessionID != "" {
-			h.emitMessageEvent(c.Request().Context(), sessionID, req.Message, "inbound", req.Regenerate)
-		}
-	}
+	// Emit message event to companion (async)
+	sessionID := h.getCompanionSessionID(convID)
+	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 
 	// Get conversation history
 	messages, err := h.store.GetMessages(c.Request().Context(), convID, 50, 0)
@@ -927,13 +1160,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages: "+err.Error())
 	}
 
-	// Convert to LLM messages
-	llmMessages := make([]llm.Message, len(messages))
-	for i, msg := range messages {
-		llmMessages[i] = llm.Message{
+	// Convert to LLM messages using pooled slice
+	llmMessagesPtr := getMessageSlice()
+	defer putMessageSlice(llmMessagesPtr)
+	llmMessages := *llmMessagesPtr
+	for _, msg := range messages {
+		llmMessages = append(llmMessages, llm.Message{
 			Role:    llm.Role(msg.Role),
 			Content: msg.Content,
-		}
+		})
 	}
 
 	// Add attachments to the last user message (current request) as ContentParts
@@ -1020,6 +1255,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var totalInputTokens, totalOutputTokens int
 	var firstChunkTime time.Time
 	var actualModel string // Track actual model from response
+	userID := h.getUserID(c)
 
 	// Use callback-based streaming to avoid channel issues
 	err = provider.ChatStreamCallback(ctx, chatReq, func(chunk llm.StreamChunk) error {
@@ -1038,7 +1274,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Record error metrics
 			if h.metricsRecorder != nil {
 				latencyMs := float64(time.Since(startTime).Milliseconds())
-				h.metricsRecorder.RecordAPICall(model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "stream_error")
+				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "stream_error")
 			}
 			// Send error to client
 			data := map[string]interface{}{
@@ -1098,7 +1334,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Record successful completion metrics
 			latencyMs := float64(time.Since(startTime).Milliseconds())
 			if h.metricsRecorder != nil {
-				h.metricsRecorder.RecordAPICall(model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "")
+				h.metricsRecorder.RecordAPICallForUser(userID, model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "")
 				// Record speed metrics
 				if !firstChunkTime.IsZero() && totalOutputTokens > 0 {
 					ttftMs := float64(firstChunkTime.Sub(startTime).Milliseconds())
@@ -1179,9 +1415,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 							TotalTokens:      totalInputTokens + totalOutputTokens,
 						},
 					}
-					h.emitLLMRequestEvent(context.Background(), sessionID, providerName, model, llmResp, nil, time.Duration(latencyMs)*time.Millisecond)
-					// Emit message sent event for the AI response
-					h.emitMessageSentEvent(context.Background(), sessionID, fullContent, totalOutputTokens)
+					h.emitLLMRequestEventAsync(sessionID, providerName, model, llmResp, nil, time.Duration(latencyMs)*time.Millisecond)
+					// Emit message sent event for the AI response (async)
+					h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
 				}
 			}
 		}
@@ -1195,7 +1431,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Stream was cancelled
 			if h.metricsRecorder != nil {
 				latencyMs := float64(time.Since(startTime).Milliseconds())
-				h.metricsRecorder.RecordAPICall(model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
+				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
 			}
 			if fullContent != "" {
 				h.store.AddMessage(context.Background(), convID, memory.Message{
@@ -1561,6 +1797,46 @@ func (h *ChatHandler) CancelAllStreams(c echo.Context) error {
 func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, provider llm.Provider) ([]llm.Message, string, error) {
 	compactor := claudecode.NewCompactor(h.compactionConfig, provider)
 	return compactor.CompactMessages(ctx, messages)
+}
+
+// emitMessageEventAsync queues a message event for async processing.
+func (h *ChatHandler) emitMessageEventAsync(sessionID, content, direction string, regenerate bool) {
+	if h.companionManager == nil || sessionID == "" {
+		return
+	}
+	h.queueEvent(func() {
+		h.emitMessageEvent(context.Background(), sessionID, content, direction, regenerate)
+	})
+}
+
+// emitLLMRequestEventAsync queues an LLM request event for async processing.
+func (h *ChatHandler) emitLLMRequestEventAsync(sessionID, providerName, model string, resp *llm.ChatResponse, err error, duration time.Duration) {
+	if h.companionManager == nil || sessionID == "" {
+		return
+	}
+	h.queueEvent(func() {
+		h.emitLLMRequestEvent(context.Background(), sessionID, providerName, model, resp, err, duration)
+	})
+}
+
+// emitMessageSentEventAsync queues a message sent event for async processing.
+func (h *ChatHandler) emitMessageSentEventAsync(sessionID, content string, tokens int) {
+	if h.companionManager == nil || sessionID == "" {
+		return
+	}
+	h.queueEvent(func() {
+		h.emitMessageSentEvent(context.Background(), sessionID, content, tokens)
+	})
+}
+
+// emitErrorEventAsync queues an error event for async processing.
+func (h *ChatHandler) emitErrorEventAsync(sessionID string, errMsg string) {
+	if h.companionManager == nil || sessionID == "" {
+		return
+	}
+	h.queueEvent(func() {
+		h.emitErrorEvent(context.Background(), sessionID, errMsg)
+	})
 }
 
 // emitMessageEvent emits a message event to the companion system.

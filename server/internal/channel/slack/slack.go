@@ -24,6 +24,9 @@ import (
 // InteractionHandler handles interactive component callbacks.
 type InteractionHandler func(ctx context.Context, callback *slack.InteractionCallback) error
 
+// MessageHandler handles incoming messages and returns AI response.
+type MessageHandler func(ctx context.Context, msg channel.Message) (string, error)
+
 // WebhookPayload represents an incoming webhook payload.
 type WebhookPayload struct {
 	Type        string `json:"type"`
@@ -49,7 +52,11 @@ type Channel struct {
 	connectedAt *time.Time
 	lastError   string
 	lastErrorAt *time.Time
-	msgCount    atomic.Int64
+	msgCount      atomic.Int64
+	msgsReceived  atomic.Int64
+	msgsSent      atomic.Int64
+	lastMessageAt *time.Time
+	lastReplyAt   *time.Time
 	botUserID   string
 
 	// Interactive components
@@ -60,6 +67,12 @@ type Channel struct {
 	// Webhook mode
 	webhookMode   bool
 	webhookServer *http.Server
+
+	// Message handler for AI processing
+	messageHandler MessageHandler
+
+	// Bot session manager for monitoring
+	sessionManager *channel.BotSessionManager
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -86,6 +99,16 @@ func (c *Channel) Name() string {
 // Type returns the channel type.
 func (c *Channel) Type() string {
 	return "slack"
+}
+
+// SetMessageHandler sets the handler for processing messages.
+func (c *Channel) SetMessageHandler(handler MessageHandler) {
+	c.messageHandler = handler
+}
+
+// SetSessionManager sets the bot session manager for monitoring.
+func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) {
+	c.sessionManager = manager
 }
 
 // Start initializes and starts the Slack bot.
@@ -230,7 +253,57 @@ func (c *Channel) handleMessageEvent(ev *slackevents.MessageEvent) {
 
 	channelMsg := c.convertMessageEvent(ev)
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &now
+	c.mu.Unlock()
 
+	chatID := ev.Channel
+	userID := ev.User
+
+	// Get or create session for monitoring
+	var sessionID string
+	if c.sessionManager != nil {
+		sessionID, _ = c.sessionManager.GetOrCreateSession(c.ctx, chatID, userID)
+		c.sessionManager.EmitMessageReceived(sessionID, userID, channelMsg.Content)
+	}
+
+	// If message handler is set, process and reply
+	if c.messageHandler != nil {
+		go func() {
+			response, err := c.messageHandler(c.ctx, channelMsg)
+			if err != nil {
+				c.logger.Error("message handler error",
+					zap.Error(err),
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				if c.sessionManager != nil && sessionID != "" {
+					c.sessionManager.EmitError(sessionID, userID, err.Error())
+				}
+				errMsg := channel.OutgoingMessage{ChatID: chatID, Content: "处理消息时发生错误，请稍后重试。"}
+				if sendErr := c.Send(c.ctx, errMsg); sendErr != nil {
+					c.logger.Error("failed to send error response", zap.Error(sendErr))
+				}
+				return
+			}
+			if response == "" {
+				c.logger.Warn("message handler returned empty response",
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				return
+			}
+			outMsg := channel.OutgoingMessage{ChatID: chatID, Content: response}
+			if err := c.Send(c.ctx, outMsg); err != nil {
+				c.logger.Error("failed to send response", zap.Error(err))
+			} else if c.sessionManager != nil && sessionID != "" {
+				c.sessionManager.EmitMessageSent(sessionID, userID, response)
+			}
+		}()
+		return
+	}
+
+	// Fallback: send to message channel for external processing
 	select {
 	case c.messages <- channelMsg:
 	default:
@@ -267,6 +340,11 @@ func (c *Channel) handleAppMentionEvent(ev *slackevents.AppMentionEvent) {
 	}
 
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	nowTime := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &nowTime
+	c.mu.Unlock()
 
 	select {
 	case c.messages <- channelMsg:
@@ -306,6 +384,11 @@ func (c *Channel) handleSlashCommand(cmd slack.SlashCommand) {
 	}
 
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	nowTime := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &nowTime
+	c.mu.Unlock()
 
 	select {
 	case c.messages <- channelMsg:
@@ -438,6 +521,12 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
+	c.msgsSent.Add(1)
+	nowSent := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &nowSent
+	c.mu.Unlock()
+
 	return nil
 }
 
@@ -506,15 +595,19 @@ func (c *Channel) Info() channel.Info {
 	defer c.mu.RUnlock()
 
 	info := channel.Info{
-		Name:         "slack",
-		Type:         "slack",
-		Status:       c.status,
-		Enabled:      c.config.Enabled,
-		ConnectedAt:  c.connectedAt,
-		LastError:    c.lastError,
-		LastErrorAt:  c.lastErrorAt,
-		MessageCount: c.msgCount.Load(),
-		Metadata:     make(map[string]interface{}),
+		Name:             "slack",
+		Type:             "slack",
+		Status:           c.status,
+		Enabled:          c.config.Enabled,
+		ConnectedAt:      c.connectedAt,
+		LastError:        c.lastError,
+		LastErrorAt:      c.lastErrorAt,
+		MessageCount:     c.msgCount.Load(),
+		MessagesReceived: c.msgsReceived.Load(),
+		MessagesSent:     c.msgsSent.Load(),
+		LastMessageAt:    c.lastMessageAt,
+		LastReplyAt:      c.lastReplyAt,
+		Metadata:         make(map[string]interface{}),
 	}
 
 	if c.botUserID != "" {

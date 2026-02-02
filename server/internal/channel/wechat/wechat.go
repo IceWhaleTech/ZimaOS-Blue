@@ -36,7 +36,11 @@ type Channel struct {
 	connectedAt *time.Time
 	lastError   string
 	lastErrorAt *time.Time
-	msgCount    atomic.Int64
+	msgCount      atomic.Int64
+	msgsReceived  atomic.Int64
+	msgsSent      atomic.Int64
+	lastMessageAt *time.Time
+	lastReplyAt   *time.Time
 
 	accessToken     string
 	tokenExpireTime time.Time
@@ -241,6 +245,11 @@ func (c *Channel) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Convert to unified message format
 	channelMsg := c.convertMessage(&msg)
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &now
+	c.mu.Unlock()
 
 	select {
 	case c.messages <- channelMsg:
@@ -473,6 +482,12 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
 	}
 
+	c.msgsSent.Add(1)
+	nowSent := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &nowSent
+	c.mu.Unlock()
+
 	return nil
 }
 
@@ -509,14 +524,18 @@ func (c *Channel) Info() channel.Info {
 	defer c.mu.RUnlock()
 
 	info := channel.Info{
-		Name:         "wechat_work",
-		Type:         "wechat_work",
-		Status:       c.status,
-		Enabled:      c.config.Enabled,
-		ConnectedAt:  c.connectedAt,
-		LastError:    c.lastError,
-		LastErrorAt:  c.lastErrorAt,
-		MessageCount: c.msgCount.Load(),
+		Name:             "wechat_work",
+		Type:             "wechat_work",
+		Status:           c.status,
+		Enabled:          c.config.Enabled,
+		ConnectedAt:      c.connectedAt,
+		LastError:        c.lastError,
+		LastErrorAt:      c.lastErrorAt,
+		MessageCount:     c.msgCount.Load(),
+		MessagesReceived: c.msgsReceived.Load(),
+		MessagesSent:     c.msgsSent.Load(),
+		LastMessageAt:    c.lastMessageAt,
+		LastReplyAt:      c.lastReplyAt,
 		Metadata: map[string]interface{}{
 			"corp_id":  c.config.CorpID,
 			"agent_id": c.config.AgentID,

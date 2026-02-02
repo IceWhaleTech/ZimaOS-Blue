@@ -375,7 +375,7 @@ export default {
       ollama: 'Ollama（本機）',
       custom: '自訂 OpenAI 相容',
       trial: {
-        name: 'ZimaOS 試用',
+        name: 'ZimaOS Echo試用',
         description: '免費試用，額度有限',
         quotaExhausted: '試用額度已用完',
         quotaExhaustedTokens: '您的試用 Token 額度已用完，請設定自己的提供商以繼續使用。',

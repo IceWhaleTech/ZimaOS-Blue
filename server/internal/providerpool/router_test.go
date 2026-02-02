@@ -791,3 +791,402 @@ func TestRouterRoutingModeCostStrategyWithLocalMode(t *testing.T) {
 			result.Model.InputPrice, result.Model.OutputPrice)
 	}
 }
+
+func TestRouterCooldown(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	// Configure short cooldown for testing
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:   2,
+		InitialCooldown:    100 * time.Millisecond,
+		MaxCooldown:        500 * time.Millisecond,
+		CooldownMultiplier: 2.0,
+		ResetAfter:         time.Minute,
+	})
+
+	providerID := "provider-high"
+
+	// Initially not in cooldown
+	if router.IsInCooldown(providerID) {
+		t.Error("Provider should not be in cooldown initially")
+	}
+
+	// Record failures below threshold
+	router.RecordFailure(providerID, errors.New("test error 1"))
+	if router.IsInCooldown(providerID) {
+		t.Error("Provider should not be in cooldown after 1 failure")
+	}
+
+	// Record failure at threshold - should trigger cooldown
+	router.RecordFailure(providerID, errors.New("test error 2"))
+	if !router.IsInCooldown(providerID) {
+		t.Error("Provider should be in cooldown after 2 failures")
+	}
+
+	// Wait for cooldown to expire
+	time.Sleep(150 * time.Millisecond)
+	if router.IsInCooldown(providerID) {
+		t.Error("Provider should not be in cooldown after cooldown expires")
+	}
+}
+
+func TestRouterCooldownReset(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:   2,
+		InitialCooldown:    100 * time.Millisecond,
+		MaxCooldown:        500 * time.Millisecond,
+		CooldownMultiplier: 2.0,
+		ResetAfter:         time.Minute,
+	})
+
+	providerID := "provider-high"
+
+	// Trigger cooldown
+	router.RecordFailure(providerID, errors.New("error 1"))
+	router.RecordFailure(providerID, errors.New("error 2"))
+	if !router.IsInCooldown(providerID) {
+		t.Error("Provider should be in cooldown")
+	}
+
+	// Record success should reset
+	router.RecordSuccess(providerID)
+	if router.IsInCooldown(providerID) {
+		t.Error("Provider should not be in cooldown after success")
+	}
+
+	// Verify failure count was reset
+	entry := router.GetCooldownEntry(providerID)
+	if entry != nil && entry.FailureCount != 0 {
+		t.Errorf("Failure count should be 0 after success, got %d", entry.FailureCount)
+	}
+}
+
+func TestRouterCooldownSkipsProvider(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:   1,
+		InitialCooldown:    time.Hour, // Long cooldown
+		MaxCooldown:        time.Hour,
+		CooldownMultiplier: 1.0,
+		ResetAfter:         time.Hour,
+	})
+
+	// Put high priority provider in cooldown
+	router.RecordFailure("provider-high", errors.New("error"))
+
+	// Route should skip the cooldown provider
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	})
+
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+
+	// Should select medium priority (next available)
+	if result.Provider.ID == "provider-high" {
+		t.Error("Should not select provider in cooldown")
+	}
+}
+
+func TestRouterFailoverTracking(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	var capturedResult *FailoverResult
+	router.SetFailoverCallback(func(result *FailoverResult) {
+		capturedResult = result
+	})
+
+	failFirst := true
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		if failFirst && result.Provider.ID == "provider-high" {
+			failFirst = false
+			return errors.New("simulated timeout error")
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+
+	// Verify failover was tracked
+	if capturedResult == nil {
+		t.Fatal("Failover callback was not called")
+	}
+
+	if capturedResult.TotalAttempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", capturedResult.TotalAttempts)
+	}
+
+	if len(capturedResult.FailedAttempts) != 1 {
+		t.Errorf("Expected 1 failed attempt, got %d", len(capturedResult.FailedAttempts))
+	}
+
+	if capturedResult.FailedAttempts[0].Reason != FailoverReasonTimeout {
+		t.Errorf("Expected timeout reason, got %s", capturedResult.FailedAttempts[0].Reason)
+	}
+
+	if capturedResult.SuccessProvider == "" {
+		t.Error("Success provider should be set")
+	}
+}
+
+func TestRouterEmptyModelID(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	// Route with empty model ID should select first available
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "",
+		Strategy: RoutingStrategyPriority,
+	})
+
+	if err != nil {
+		t.Fatalf("Route with empty model ID failed: %v", err)
+	}
+
+	if result.Provider == nil {
+		t.Error("Provider should not be nil")
+	}
+
+	if result.Model == nil {
+		t.Error("Model should not be nil")
+	}
+}
+
+func TestClassifyError(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected FailoverReason
+	}{
+		{errors.New("request timeout"), FailoverReasonTimeout},
+		{errors.New("context deadline exceeded"), FailoverReasonTimeout},
+		{errors.New("rate limit exceeded"), FailoverReasonRateLimit},
+		{errors.New("429 too many requests"), FailoverReasonRateLimit},
+		{errors.New("401 unauthorized"), FailoverReasonAuthError},
+		{errors.New("invalid api key"), FailoverReasonAuthError},
+		{errors.New("model not found"), FailoverReasonModelNotFound},
+		{errors.New("404 resource does not exist"), FailoverReasonModelNotFound},
+		{errors.New("internal server error"), FailoverReasonAPIError},
+		{nil, FailoverReasonUnknown},
+	}
+
+	for _, tt := range tests {
+		result := classifyError(tt.err)
+		if result != tt.expected {
+			errStr := "<nil>"
+			if tt.err != nil {
+				errStr = tt.err.Error()
+			}
+			t.Errorf("classifyError(%q) = %s, want %s", errStr, result, tt.expected)
+		}
+	}
+}
+
+// TestCustomProviderWithProvIDFormat tests routing with custom provider IDs like "prov_xxx"
+// This simulates the actual user configuration scenario
+func TestCustomProviderWithProvIDFormat(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-custom-prov-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	// Register custom provider with prov_xxx ID format (like user's actual config)
+	customProvider := &Provider{
+		ID:        "prov_dedd1b4d0489003f",
+		Name:      "tribios",
+		Type:      ProviderTypeCustom,
+		Location:  ProviderLocationCloud,
+		Enabled:   true,
+		Status:    ProviderStatusActive,
+		BaseURL:   "https://api-paid.tribios.top",
+		APIFormat: APIFormatOpenAI,
+		Priority:  90,
+		APIKeys: []APIKey{
+			{
+				ID:      "key_f4821c438a434c2d",
+				Key:     "sk-test-key-12345",
+				KeyHash: "sk-test...5",
+				Enabled: true,
+			},
+		},
+	}
+	if err := registry.Register(customProvider); err != nil {
+		t.Fatalf("Failed to register provider: %v", err)
+	}
+
+	// Save models for the custom provider
+	models := []*Model{
+		{
+			ID:          "claude-haiku-4-5",
+			ProviderID:  "prov_dedd1b4d0489003f",
+			Name:        "claude-haiku-4-5",
+			DisplayName: "Haiku 4 5",
+			Enabled:     true,
+			Capabilities: ModelCapabilities{
+				Chat:         true,
+				Streaming:    true,
+				FunctionCall: true,
+			},
+		},
+		{
+			ID:          "claude-sonnet-4-5",
+			ProviderID:  "prov_dedd1b4d0489003f",
+			Name:        "claude-sonnet-4-5",
+			DisplayName: "Sonnet 4 5",
+			Enabled:     true,
+			Capabilities: ModelCapabilities{
+				Chat:         true,
+				Streaming:    true,
+				FunctionCall: true,
+			},
+		},
+	}
+	storage.SaveModels("prov_dedd1b4d0489003f", models)
+
+	// Test 1: Route to specific model
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "claude-haiku-4-5",
+		Strategy: RoutingStrategyPriority,
+	})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+
+	if result.Provider.ID != "prov_dedd1b4d0489003f" {
+		t.Errorf("Expected provider prov_dedd1b4d0489003f, got %s", result.Provider.ID)
+	}
+
+	if result.Provider.APIFormat != APIFormatOpenAI {
+		t.Errorf("Expected APIFormat openai, got %s", result.Provider.APIFormat)
+	}
+
+	if result.Model.ID != "claude-haiku-4-5" {
+		t.Errorf("Expected model claude-haiku-4-5, got %s", result.Model.ID)
+	}
+
+	// Test 2: Verify API key is accessible
+	if result.APIKey == nil {
+		t.Error("APIKey should not be nil")
+	} else if result.APIKey.Key != "sk-test-key-12345" {
+		t.Errorf("Expected API key sk-test-key-12345, got %s", result.APIKey.Key)
+	}
+
+	// Test 3: Route with empty model ID should select first available
+	result2, err := router.Route(&RouteRequest{
+		ModelID:  "",
+		Strategy: RoutingStrategyPriority,
+	})
+	if err != nil {
+		t.Fatalf("Route with empty model failed: %v", err)
+	}
+
+	if result2.Provider.ID != "prov_dedd1b4d0489003f" {
+		t.Errorf("Expected provider prov_dedd1b4d0489003f, got %s", result2.Provider.ID)
+	}
+
+	if result2.Model == nil {
+		t.Error("Model should not be nil when routing with empty model ID")
+	}
+
+	// Test 4: RouteWithFallback should work with custom provider
+	callCount := 0
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "claude-sonnet-4-5",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		callCount++
+		// Verify we got the right provider and model
+		if result.Provider.ID != "prov_dedd1b4d0489003f" {
+			t.Errorf("Expected provider prov_dedd1b4d0489003f in callback, got %s", result.Provider.ID)
+		}
+		if result.Model.ID != "claude-sonnet-4-5" {
+			t.Errorf("Expected model claude-sonnet-4-5 in callback, got %s", result.Model.ID)
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+
+	if callCount != 1 {
+		t.Errorf("Expected 1 call, got %d", callCount)
+	}
+}
+
+// TestRegistryGetCustomProvider tests that Registry.Get works with custom provider IDs
+func TestRegistryGetCustomProvider(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "registry-custom-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	// Register custom provider
+	customProvider := &Provider{
+		ID:        "prov_abc123def456",
+		Name:      "Custom Provider",
+		Type:      ProviderTypeCustom,
+		Enabled:   true,
+		Status:    ProviderStatusActive,
+		BaseURL:   "https://api.example.com",
+		APIFormat: APIFormatOpenAI,
+		APIKeys: []APIKey{
+			{ID: "k1", Key: "test-api-key", Enabled: true},
+		},
+	}
+	registry.Register(customProvider)
+
+	// Test Get
+	retrieved, err := registry.Get("prov_abc123def456")
+	if err != nil {
+		t.Fatalf("Registry.Get failed: %v", err)
+	}
+
+	if retrieved.ID != "prov_abc123def456" {
+		t.Errorf("Expected ID prov_abc123def456, got %s", retrieved.ID)
+	}
+
+	if retrieved.APIFormat != APIFormatOpenAI {
+		t.Errorf("Expected APIFormat openai, got %s", retrieved.APIFormat)
+	}
+
+	// Verify API key is loaded
+	if len(retrieved.APIKeys) == 0 {
+		t.Error("APIKeys should not be empty")
+	} else if retrieved.APIKeys[0].Key != "test-api-key" {
+		t.Errorf("Expected API key test-api-key, got %s", retrieved.APIKeys[0].Key)
+	}
+
+	// Test GetAPIKey
+	apiKey, err := registry.GetAPIKey("prov_abc123def456")
+	if err != nil {
+		t.Fatalf("GetAPIKey failed: %v", err)
+	}
+
+	if apiKey.Key != "test-api-key" {
+		t.Errorf("Expected API key test-api-key, got %s", apiKey.Key)
+	}
+}

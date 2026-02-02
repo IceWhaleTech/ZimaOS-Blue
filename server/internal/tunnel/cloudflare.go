@@ -7,15 +7,20 @@ import (
 	"time"
 
 	"github.com/wizzard0/trycloudflared"
+	"golang.org/x/sync/singleflight"
 )
 
 // CloudflareManager manages Cloudflare Tunnel connections using native Go implementation.
+// Uses singleflight pattern to ensure only one tunnel creation runs at a time.
 type CloudflareManager struct {
 	mu        sync.RWMutex
 	running   bool
 	url       string
 	startedAt time.Time
 	cancel    context.CancelFunc
+
+	// singleflight ensures only one tunnel creation runs at a time
+	sf singleflight.Group
 
 	onURLChange func(url string)
 	onError     func(err error)
@@ -27,6 +32,7 @@ func NewCloudflareManager() *CloudflareManager {
 }
 
 // Start starts the Cloudflare Tunnel using native Go implementation.
+// Uses singleflight to ensure only one tunnel creation runs at a time.
 func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 	m.mu.Lock()
 	if m.running {
@@ -40,13 +46,36 @@ func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 		port = 23456
 	}
 
+	// Use singleflight to ensure only one tunnel creation runs at a time
+	// This prevents multiple concurrent Start calls from creating multiple tunnels
+	_, err, _ := m.sf.Do("cloudflare-tunnel", func() (interface{}, error) {
+		return m.startTunnelInternal(port)
+	})
+
+	return err
+}
+
+// startTunnelInternal is the actual tunnel creation logic, called via singleflight.
+func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
+	// Double-check running state inside singleflight
+	m.mu.Lock()
+	if m.running {
+		m.mu.Unlock()
+		return nil, nil // Already running, return success
+	}
+	m.mu.Unlock()
+
 	// Create independent context for the tunnel
 	// This prevents panics when the parent context is canceled by Auto manager
+	// The tunnel will run until explicitly stopped via Stop()
 	tunnelCtx, cancel := context.WithCancel(context.Background())
 
 	// Note: trycloudflared only supports quick tunnel (no token-based auth)
 	// For token-based tunnels, users should use the standalone Cloudflare provider
 	// with the cloudflared binary
+
+	// Channel to receive result from goroutine
+	resultCh := make(chan error, 1)
 
 	// Start tunnel in background
 	go func() {
@@ -84,6 +113,7 @@ func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 			if m.onError != nil {
 				m.onError(fmt.Errorf("failed to create cloudflare tunnel: %w", err))
 			}
+			resultCh <- err
 			cancel()
 			return
 		}
@@ -91,6 +121,9 @@ func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 		m.mu.Lock()
 		m.url = tunnelURL
 		m.mu.Unlock()
+
+		// Signal success
+		resultCh <- nil
 
 		// Notify URL change
 		if m.onURLChange != nil {
@@ -111,7 +144,22 @@ func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 	m.startedAt = time.Now()
 	m.mu.Unlock()
 
-	return nil
+	// Wait for tunnel creation result with timeout
+	select {
+	case err := <-resultCh:
+		if err != nil {
+			m.mu.Lock()
+			m.running = false
+			m.cancel = nil
+			m.mu.Unlock()
+			return nil, err
+		}
+		return nil, nil
+	case <-time.After(30 * time.Second):
+		// Tunnel creation is taking too long, but don't cancel it
+		// The URL will be available via callback when ready
+		return nil, nil
+	}
 }
 
 // Stop stops the tunnel.

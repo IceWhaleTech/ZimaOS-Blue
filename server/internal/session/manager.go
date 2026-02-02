@@ -1,34 +1,37 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/context"
+	ctxpkg "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/context"
 )
 
 // SessionManager manages sessions with isolation and persistence.
 type SessionManager struct {
-	sessions   map[string]*Session
-	store      SessionStore
-	compactor  *SessionCompactor
-	config     config.SessionConfig
-	mu         sync.RWMutex
-	stopCh     chan struct{}
-	wg         sync.WaitGroup
+	sessions    map[string]*Session
+	store       SessionStore
+	compactor   *SessionCompactor
+	hookManager *HookManager
+	config      config.SessionConfig
+	mu          sync.RWMutex
+	stopCh      chan struct{}
+	wg          sync.WaitGroup
 }
 
 // NewSessionManager creates a new SessionManager.
 func NewSessionManager(cfg config.SessionConfig, store SessionStore, compactor *SessionCompactor) *SessionManager {
 	mgr := &SessionManager{
-		sessions:  make(map[string]*Session),
-		store:     store,
-		compactor: compactor,
-		config:    cfg,
-		stopCh:    make(chan struct{}),
+		sessions:    make(map[string]*Session),
+		store:       store,
+		compactor:   compactor,
+		hookManager: NewHookManager(),
+		config:      cfg,
+		stopCh:      make(chan struct{}),
 	}
 
 	// Start background tasks
@@ -97,7 +100,7 @@ func (m *SessionManager) Get(id SessionID) (*Session, bool) {
 }
 
 // AddMessage adds a message to a session.
-func (m *SessionManager) AddMessage(id SessionID, msg context.Message) error {
+func (m *SessionManager) AddMessage(id SessionID, msg ctxpkg.Message) error {
 	session, err := m.GetOrCreate(id)
 	if err != nil {
 		return err
@@ -125,7 +128,7 @@ func (m *SessionManager) AddMessage(id SessionID, msg context.Message) error {
 }
 
 // GetMessages gets all messages from a session.
-func (m *SessionManager) GetMessages(id SessionID) ([]context.Message, error) {
+func (m *SessionManager) GetMessages(id SessionID) ([]ctxpkg.Message, error) {
 	session, err := m.GetOrCreate(id)
 	if err != nil {
 		return nil, err
@@ -162,6 +165,39 @@ func (m *SessionManager) Compact(id SessionID) (*CompactionResult, error) {
 	return result, nil
 }
 
+// NewSession starts a new session, saving the current one to memory first.
+// This is triggered by the /new command.
+func (m *SessionManager) NewSession(id SessionID) (*Session, error) {
+	m.mu.Lock()
+	oldSession, exists := m.sessions[id.String()]
+	m.mu.Unlock()
+
+	// Trigger hooks for the old session before creating new one
+	if exists && m.hookManager != nil {
+		m.hookManager.TriggerSessionEnd(context.Background(), oldSession, EndReasonNew)
+	}
+
+	// Clear the old session
+	if exists {
+		oldSession.Clear()
+	}
+
+	// Get or create the session (will be cleared if existed)
+	session, err := m.GetOrCreate(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Persist if enabled
+	if m.store != nil && m.config.Persistence.Enabled {
+		if err := m.store.Save(session); err != nil {
+			log.Printf("[WARN] failed to persist new session: %v", err)
+		}
+	}
+
+	return session, nil
+}
+
 // Reset resets a session (clears messages but keeps system prompt).
 func (m *SessionManager) Reset(id SessionID) error {
 	m.mu.Lock()
@@ -170,6 +206,11 @@ func (m *SessionManager) Reset(id SessionID) error {
 
 	if !ok {
 		return fmt.Errorf("session not found: %s", id.String())
+	}
+
+	// Trigger hooks before clearing
+	if m.hookManager != nil {
+		m.hookManager.TriggerSessionEnd(context.Background(), session, EndReasonReset)
 	}
 
 	session.Clear()
@@ -188,10 +229,20 @@ func (m *SessionManager) Reset(id SessionID) error {
 func (m *SessionManager) Archive(id SessionID) error {
 	m.mu.Lock()
 	session, ok := m.sessions[id.String()]
-	if ok {
-		session.SetState(SessionStateArchived)
-		delete(m.sessions, id.String())
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("session not found: %s", id.String())
 	}
+
+	// Trigger hooks before archiving
+	if m.hookManager != nil {
+		m.hookManager.TriggerSessionEnd(context.Background(), session, EndReasonArchive)
+	}
+
+	m.mu.Lock()
+	session.SetState(SessionStateArchived)
+	delete(m.sessions, id.String())
 	m.mu.Unlock()
 
 	if m.store != nil {
@@ -203,6 +254,15 @@ func (m *SessionManager) Archive(id SessionID) error {
 // Delete deletes a session.
 func (m *SessionManager) Delete(id SessionID) error {
 	m.mu.Lock()
+	session, ok := m.sessions[id.String()]
+	m.mu.Unlock()
+
+	// Trigger hooks before deleting (if session exists)
+	if ok && m.hookManager != nil {
+		m.hookManager.TriggerSessionEnd(context.Background(), session, EndReasonDelete)
+	}
+
+	m.mu.Lock()
 	delete(m.sessions, id.String())
 	m.mu.Unlock()
 
@@ -210,6 +270,13 @@ func (m *SessionManager) Delete(id SessionID) error {
 		return m.store.Delete(id)
 	}
 	return nil
+}
+
+// RegisterHook registers a session hook.
+func (m *SessionManager) RegisterHook(hook SessionHook) {
+	if m.hookManager != nil {
+		m.hookManager.Register(hook)
+	}
 }
 
 // List lists sessions matching the filter.

@@ -2,7 +2,6 @@ package ngrok
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"time"
@@ -49,6 +48,18 @@ type RemoteAccessLog struct {
 	Message   string                 `json:"message"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt time.Time              `json:"created_at"`
+}
+
+// ConfigProvider defines the interface for tunnel configuration storage.
+// Both Repository (SQLite) and ConfigStore (JSON) implement this interface.
+type ConfigProvider interface {
+	GetConfig(ctx context.Context) (*RemoteAccessConfig, error)
+	SaveConfig(ctx context.Context, config *RemoteAccessConfig) error
+	EnsureTunnelSubdomain(ctx context.Context) (string, error)
+	AddLog(ctx context.Context, sessionID, eventType, message string, metadata map[string]interface{}) error
+	GetLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error)
+	GetErrorLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error)
+	Close() error
 }
 
 // Repository handles remote access data persistence.
@@ -145,22 +156,6 @@ func (r *Repository) migrate() error {
 
 // Base58 alphabet (excludes 0, O, I, l to avoid confusion).
 const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-
-// generateTunnelSubdomain generates a random subdomain like "echo-" + 8 base58 chars.
-func generateTunnelSubdomain() string {
-	const n = 8
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback: fill with time-derived bytes so output is still non-deterministic
-		for i := range b {
-			b[i] = byte((int(time.Now().UnixNano()) + i) % 256)
-		}
-	}
-	for i := range b {
-		b[i] = base58Alphabet[int(b[i])%len(base58Alphabet)]
-	}
-	return "echo-" + string(b)
-}
 
 // initializeTunnelSubdomain ensures a tunnel subdomain exists.
 func (r *Repository) initializeTunnelSubdomain(ctx context.Context) error {

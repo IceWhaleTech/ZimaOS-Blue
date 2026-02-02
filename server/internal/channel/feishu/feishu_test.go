@@ -144,20 +144,187 @@ func TestChannel_convertMessageType(t *testing.T) {
 	}
 }
 
-func TestParseFeishuTimestamp(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected int64 // Unix milliseconds
-	}{
-		{"1609459200000", 1609459200000},
-		{"1234567890123", 1234567890123},
-		{"0", 0},
+func TestChannel_SafeSendMessage_AfterStop(t *testing.T) {
+	cfg := channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}
+	logger := zap.NewNop()
+	ch := New(cfg, logger)
+
+	// Manually set status to connected to simulate a running channel
+	ch.mu.Lock()
+	ch.status = channel.StatusConnected
+	ch.mu.Unlock()
+
+	// Stop the channel (this closes the messages channel)
+	ctx := context.Background()
+	err := ch.Stop(ctx)
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		result := parseFeishuTimestamp(tt.input)
-		if result.UnixMilli() != tt.expected {
-			t.Errorf("parseFeishuTimestamp(%s) = %d, want %d", tt.input, result.UnixMilli(), tt.expected)
+	// This should NOT panic - safeSendMessage should handle closed channel gracefully
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("safeSendMessage panicked after Stop: %v", r)
 		}
+	}()
+
+	msg := channel.Message{
+		ID:          "test-msg-id",
+		ChannelName: "feishu",
+		Content:     "test message",
+	}
+	ch.safeSendMessage(msg, "test-msg-id")
+}
+
+func TestChannel_SafeSendMessage_WhenDisconnected(t *testing.T) {
+	cfg := channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}
+	logger := zap.NewNop()
+	ch := New(cfg, logger)
+
+	// Channel is disconnected by default, safeSendMessage should drop the message
+	msg := channel.Message{
+		ID:          "test-msg-id",
+		ChannelName: "feishu",
+		Content:     "test message",
+	}
+
+	// This should not panic and should not block
+	ch.safeSendMessage(msg, "test-msg-id")
+
+	// Verify no message was sent (channel should be empty)
+	select {
+	case <-ch.Messages():
+		t.Error("expected no message to be sent when disconnected")
+	default:
+		// Expected - no message sent
+	}
+}
+
+func TestChannel_SafeSendMessage_ChannelFull(t *testing.T) {
+	cfg := channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}
+	logger := zap.NewNop()
+	ch := New(cfg, logger)
+
+	// Set status to connected
+	ch.mu.Lock()
+	ch.status = channel.StatusConnected
+	ch.mu.Unlock()
+
+	// Fill the channel buffer (capacity is 100)
+	for i := 0; i < 100; i++ {
+		ch.messages <- channel.Message{ID: "fill-msg"}
+	}
+
+	// This should not block - safeSendMessage uses non-blocking send
+	done := make(chan struct{})
+	go func() {
+		msg := channel.Message{
+			ID:          "overflow-msg",
+			ChannelName: "feishu",
+			Content:     "overflow message",
+		}
+		ch.safeSendMessage(msg, "overflow-msg")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Expected - safeSendMessage returned without blocking
+	case <-time.After(1 * time.Second):
+		t.Error("safeSendMessage blocked when channel was full")
+	}
+}
+
+func TestChannel_Stop_DoubleStop(t *testing.T) {
+	cfg := channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}
+	logger := zap.NewNop()
+	ch := New(cfg, logger)
+
+	// Manually set status to connected
+	ch.mu.Lock()
+	ch.status = channel.StatusConnected
+	ch.mu.Unlock()
+
+	ctx := context.Background()
+
+	// First stop
+	err := ch.Stop(ctx)
+	if err != nil {
+		t.Fatalf("First Stop() error = %v", err)
+	}
+
+	// Second stop should not panic (sync.Once protects close)
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Double Stop() panicked: %v", r)
+		}
+	}()
+
+	err = ch.Stop(ctx)
+	if err != nil {
+		t.Errorf("Second Stop() error = %v", err)
+	}
+}
+
+func TestChannel_ConcurrentSendAndStop(t *testing.T) {
+	cfg := channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}
+	logger := zap.NewNop()
+	ch := New(cfg, logger)
+
+	// Set status to connected
+	ch.mu.Lock()
+	ch.status = channel.StatusConnected
+	ch.mu.Unlock()
+
+	ctx := context.Background()
+
+	// Start multiple goroutines sending messages
+	done := make(chan struct{})
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			for j := 0; j < 100; j++ {
+				msg := channel.Message{
+					ID:          "concurrent-msg",
+					ChannelName: "feishu",
+					Content:     "concurrent message",
+				}
+				ch.safeSendMessage(msg, "concurrent-msg")
+			}
+		}(i)
+	}
+
+	// Stop the channel while messages are being sent
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		ch.Stop(ctx)
+		close(done)
+	}()
+
+	// Wait for completion - should not panic
+	select {
+	case <-done:
+		// Success - no panic occurred
+	case <-time.After(5 * time.Second):
+		t.Error("Test timed out")
 	}
 }

@@ -31,7 +31,11 @@ type Channel struct {
 	connectedAt *time.Time
 	lastError   string
 	lastErrorAt *time.Time
-	msgCount    atomic.Int64
+	msgCount      atomic.Int64
+	msgsReceived  atomic.Int64
+	msgsSent      atomic.Int64
+	lastMessageAt *time.Time
+	lastReplyAt   *time.Time
 
 	// Official SDK client
 	client   *lark.Client
@@ -43,6 +47,9 @@ type Channel struct {
 
 	// Message handler for AI processing
 	messageHandler MessageHandler
+
+	// Bot session manager for monitoring
+	sessionManager *channel.BotSessionManager
 
 	// Ensure messages channel is only closed once
 	closeOnce sync.Once
@@ -89,6 +96,11 @@ func (c *Channel) SetMessageHandler(handler MessageHandler) {
 	c.messageHandler = handler
 }
 
+// SetSessionManager sets the bot session manager for monitoring.
+func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) {
+	c.sessionManager = manager
+}
+
 // Start initializes and starts the Feishu bot with WebSocket long connection.
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()
@@ -108,7 +120,9 @@ func (c *Channel) Start(ctx context.Context) error {
 	eventDispatcher := dispatcher.NewEventDispatcher(
 		c.config.VerificationToken,
 		c.config.EncryptKey,
-	).OnP2MessageReceiveV1(c.onMessageReceive)
+	).OnP2MessageReceiveV1(c.onMessageReceive).
+		OnP2ChatAccessEventBotP2pChatEnteredV1(c.onBotP2pChatEntered).
+		OnP2MessageReadV1(c.onMessageRead)
 
 	// Create WebSocket client for long connection
 	c.wsClient = larkws.NewClient(
@@ -215,41 +229,98 @@ func (c *Channel) onMessageReceive(ctx context.Context, event *larkim.P2MessageR
 	}
 
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &now
+	c.mu.Unlock()
+
+	// Get or create session for monitoring
+	var sessionID string
+	if c.sessionManager != nil {
+		sessionID, _ = c.sessionManager.GetOrCreateSession(ctx, chatID, userID)
+		// Emit message received event
+		c.sessionManager.EmitMessageReceived(sessionID, userID, content)
+	}
 
 	// If message handler is set, process and reply
 	if c.messageHandler != nil {
 		go func() {
 			response, err := c.messageHandler(c.ctx, channelMsg)
 			if err != nil {
-				c.logger.Error("message handler error", zap.Error(err))
-				response = "处理消息时发生错误，请稍后重试。"
-			}
-			if response != "" {
-				if err := c.SendText(c.ctx, chatID, response); err != nil {
-					c.logger.Error("failed to send response", zap.Error(err))
+				c.logger.Error("message handler error",
+					zap.Error(err),
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				if c.sessionManager != nil && sessionID != "" {
+					c.sessionManager.EmitError(sessionID, userID, err.Error())
 				}
+				// Send user-friendly error message
+				errMsg := "处理消息时发生错误，请稍后重试。"
+				if sendErr := c.SendText(c.ctx, chatID, errMsg); sendErr != nil {
+					c.logger.Error("failed to send error response", zap.Error(sendErr))
+				}
+				return
+			}
+			if response == "" {
+				c.logger.Warn("message handler returned empty response",
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				return
+			}
+			if err := c.SendText(c.ctx, chatID, response); err != nil {
+				c.logger.Error("failed to send response", zap.Error(err))
+			} else if c.sessionManager != nil && sessionID != "" {
+				c.sessionManager.EmitMessageSent(sessionID, userID, response)
 			}
 		}()
 	} else {
 		// Send to message channel for external processing
-		// Check if channel is still connected before sending
-		c.mu.RLock()
-		isConnected := c.status == channel.StatusConnected
-		c.mu.RUnlock()
+		// Use a safe send to avoid panic on closed channel
+		c.safeSendMessage(channelMsg, messageID)
+	}
 
-		if !isConnected {
-			c.logger.Warn("channel not connected, dropping message",
-				zap.String("message_id", messageID))
-			return nil
+	return nil
+}
+
+// onBotP2pChatEntered handles the bot_p2p_chat_entered_v1 event when a user enters a P2P chat with the bot.
+func (c *Channel) onBotP2pChatEntered(ctx context.Context, event *larkim.P2ChatAccessEventBotP2pChatEnteredV1) error {
+	if event == nil || event.Event == nil {
+		return nil
+	}
+
+	c.logger.Info("user entered p2p chat with bot",
+		zap.Any("event", event.Event))
+
+	// Create session for monitoring when user enters chat
+	if c.sessionManager != nil {
+		chatID := ""
+		userID := ""
+		if event.Event.ChatId != nil {
+			chatID = *event.Event.ChatId
 		}
-
-		select {
-		case c.messages <- channelMsg:
-		default:
-			c.logger.Warn("message channel full, dropping message",
-				zap.String("message_id", messageID))
+		if event.Event.OperatorId != nil && event.Event.OperatorId.OpenId != nil {
+			userID = *event.Event.OperatorId.OpenId
+		}
+		if chatID != "" {
+			_, err := c.sessionManager.GetOrCreateSession(ctx, chatID, userID)
+			if err != nil {
+				c.logger.Warn("failed to create session for p2p chat", zap.Error(err))
+			}
 		}
 	}
+
+	return nil
+}
+
+// onMessageRead handles the message_read_v1 event when messages are read.
+func (c *Channel) onMessageRead(ctx context.Context, event *larkim.P2MessageReadV1) error {
+	if event == nil || event.Event == nil {
+		return nil
+	}
+
+	c.logger.Debug("message read event",
+		zap.Any("event", event.Event))
 
 	return nil
 }
@@ -283,6 +354,12 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string) erro
 	if !resp.Success() {
 		return fmt.Errorf("feishu API error: %d - %s", resp.Code, resp.Msg)
 	}
+
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
 
 	c.logger.Debug("message sent", zap.String("chat_id", chatID))
 	return nil
@@ -330,14 +407,19 @@ func (c *Channel) Stop(ctx context.Context) error {
 		c.mu.Unlock()
 		return nil
 	}
+	// Set status to disconnected first to prevent new messages from being processed
+	// safeSendMessage checks this status before sending
 	c.status = channel.StatusDisconnected
 	c.mu.Unlock()
 
+	// Cancel context to stop WebSocket connection
 	if c.cancel != nil {
 		c.cancel()
 	}
 
-	// Use sync.Once to ensure channel is only closed once
+	// Close the messages channel
+	// Note: safeSendMessage has defer recover() to handle any race condition
+	// where a message handler tries to send after channel is closed
 	c.closeOnce.Do(func() {
 		close(c.messages)
 	})
@@ -371,14 +453,18 @@ func (c *Channel) Info() channel.Info {
 	defer c.mu.RUnlock()
 
 	return channel.Info{
-		Name:         "feishu",
-		Type:         "feishu",
-		Status:       c.status,
-		Enabled:      c.config.Enabled,
-		ConnectedAt:  c.connectedAt,
-		LastError:    c.lastError,
-		LastErrorAt:  c.lastErrorAt,
-		MessageCount: c.msgCount.Load(),
+		Name:             "feishu",
+		Type:             "feishu",
+		Status:           c.status,
+		Enabled:          c.config.Enabled,
+		ConnectedAt:      c.connectedAt,
+		LastError:        c.lastError,
+		LastErrorAt:      c.lastErrorAt,
+		MessageCount:     c.msgCount.Load(),
+		MessagesReceived: c.msgsReceived.Load(),
+		MessagesSent:     c.msgsSent.Load(),
+		LastMessageAt:    c.lastMessageAt,
+		LastReplyAt:      c.lastReplyAt,
 		Metadata: map[string]interface{}{
 			"app_id":     c.config.AppID,
 			"connection": "websocket",
@@ -406,6 +492,35 @@ func (c *Channel) setError(err string) {
 	now := time.Now()
 	c.lastErrorAt = &now
 	c.status = channel.StatusError
+}
+
+// safeSendMessage safely sends a message to the channel, recovering from panic if channel is closed.
+func (c *Channel) safeSendMessage(msg channel.Message, messageID string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Warn("channel closed, dropping message",
+				zap.String("message_id", messageID),
+				zap.Any("recover", r))
+		}
+	}()
+
+	// Check if channel is still connected before sending
+	c.mu.RLock()
+	isConnected := c.status == channel.StatusConnected
+	c.mu.RUnlock()
+
+	if !isConnected {
+		c.logger.Warn("channel not connected, dropping message",
+			zap.String("message_id", messageID))
+		return
+	}
+
+	select {
+	case c.messages <- msg:
+	default:
+		c.logger.Warn("message channel full, dropping message",
+			zap.String("message_id", messageID))
+	}
 }
 
 // RegisterCommand registers a bot command handler.

@@ -192,6 +192,7 @@ func (p *SherpaProvider) checkModelReady() bool {
 }
 
 // verifyModelFiles checks if essential model files exist.
+// Files with .tmp suffix are considered incomplete.
 func (p *SherpaProvider) verifyModelFiles() bool {
 	modelPath := p.getModelPath()
 	// Check for common model files
@@ -205,7 +206,14 @@ func (p *SherpaProvider) verifyModelFiles() bool {
 	}
 
 	for _, file := range essentialFiles {
-		if _, err := os.Stat(filepath.Join(modelPath, file)); os.IsNotExist(err) {
+		filePath := filepath.Join(modelPath, file)
+		// Check if file exists
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			return false
+		}
+		// Check if .tmp version exists (incomplete download)
+		tmpPath := filePath + ".tmp"
+		if _, err := os.Stat(tmpPath); err == nil {
 			return false
 		}
 	}

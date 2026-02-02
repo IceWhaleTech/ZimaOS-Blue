@@ -29,6 +29,9 @@ type SlashCommandHandler func(ctx context.Context, s *discordgo.Session, i *disc
 // ComponentHandler handles component interactions (buttons, select menus).
 type ComponentHandler func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error
 
+// MessageHandler handles incoming messages and returns AI response.
+type MessageHandler func(ctx context.Context, msg channel.Message) (string, error)
+
 // MessageComponent represents a message component (button or select menu).
 type MessageComponent struct {
 	Type        discordgo.ComponentType
@@ -61,7 +64,11 @@ type Channel struct {
 	connectedAt *time.Time
 	lastError   string
 	lastErrorAt *time.Time
-	msgCount    atomic.Int64
+	msgCount      atomic.Int64
+	msgsReceived  atomic.Int64
+	msgsSent      atomic.Int64
+	lastMessageAt *time.Time
+	lastReplyAt   *time.Time
 
 	// Slash commands
 	slashCommands     map[string]*SlashCommand
@@ -72,6 +79,12 @@ type Channel struct {
 	// Sharding
 	shardID    int
 	shardCount int
+
+	// Message handler for AI processing
+	messageHandler MessageHandler
+
+	// Bot session manager for monitoring
+	sessionManager *channel.BotSessionManager
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -112,6 +125,16 @@ func (c *Channel) Name() string {
 // Type returns the channel type.
 func (c *Channel) Type() string {
 	return "discord"
+}
+
+// SetMessageHandler sets the handler for processing messages.
+func (c *Channel) SetMessageHandler(handler MessageHandler) {
+	c.messageHandler = handler
+}
+
+// SetSessionManager sets the bot session manager for monitoring.
+func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) {
+	c.sessionManager = manager
 }
 
 // Start initializes and starts the Discord bot.
@@ -210,7 +233,57 @@ func (c *Channel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate
 	// Convert to unified message format
 	channelMsg := c.convertMessage(m)
 	c.msgCount.Add(1)
+	c.msgsReceived.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastMessageAt = &now
+	c.mu.Unlock()
 
+	chatID := m.ChannelID
+	userID := m.Author.ID
+
+	// Get or create session for monitoring
+	var sessionID string
+	if c.sessionManager != nil {
+		sessionID, _ = c.sessionManager.GetOrCreateSession(c.ctx, chatID, userID)
+		c.sessionManager.EmitMessageReceived(sessionID, userID, channelMsg.Content)
+	}
+
+	// If message handler is set, process and reply
+	if c.messageHandler != nil {
+		go func() {
+			response, err := c.messageHandler(c.ctx, channelMsg)
+			if err != nil {
+				c.logger.Error("message handler error",
+					zap.Error(err),
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				if c.sessionManager != nil && sessionID != "" {
+					c.sessionManager.EmitError(sessionID, userID, err.Error())
+				}
+				errMsg := channel.OutgoingMessage{ChatID: chatID, Content: "处理消息时发生错误，请稍后重试。"}
+				if sendErr := c.Send(c.ctx, errMsg); sendErr != nil {
+					c.logger.Error("failed to send error response", zap.Error(sendErr))
+				}
+				return
+			}
+			if response == "" {
+				c.logger.Warn("message handler returned empty response",
+					zap.String("chat_id", chatID),
+					zap.String("user_id", userID))
+				return
+			}
+			outMsg := channel.OutgoingMessage{ChatID: chatID, Content: response}
+			if err := c.Send(c.ctx, outMsg); err != nil {
+				c.logger.Error("failed to send response", zap.Error(err))
+			} else if c.sessionManager != nil && sessionID != "" {
+				c.sessionManager.EmitMessageSent(sessionID, userID, response)
+			}
+		}()
+		return
+	}
+
+	// Fallback: send to message channel for external processing
 	select {
 	case c.messages <- channelMsg:
 	default:
@@ -365,6 +438,12 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+
 	return nil
 }
 
@@ -434,15 +513,19 @@ func (c *Channel) Info() channel.Info {
 	defer c.mu.RUnlock()
 
 	info := channel.Info{
-		Name:         "discord",
-		Type:         "discord",
-		Status:       c.status,
-		Enabled:      c.config.Enabled,
-		ConnectedAt:  c.connectedAt,
-		LastError:    c.lastError,
-		LastErrorAt:  c.lastErrorAt,
-		MessageCount: c.msgCount.Load(),
-		Metadata:     make(map[string]interface{}),
+		Name:             "discord",
+		Type:             "discord",
+		Status:           c.status,
+		Enabled:          c.config.Enabled,
+		ConnectedAt:      c.connectedAt,
+		LastError:        c.lastError,
+		LastErrorAt:      c.lastErrorAt,
+		MessageCount:     c.msgCount.Load(),
+		MessagesReceived: c.msgsReceived.Load(),
+		MessagesSent:     c.msgsSent.Load(),
+		LastMessageAt:    c.lastMessageAt,
+		LastReplyAt:      c.lastReplyAt,
+		Metadata:         make(map[string]interface{}),
 	}
 
 	if c.session != nil && c.session.State != nil && c.session.State.User != nil {

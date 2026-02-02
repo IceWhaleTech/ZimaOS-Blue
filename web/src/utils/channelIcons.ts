@@ -47,6 +47,10 @@ export const channelIcons: Record<string, string> = {
   // Social
   twitter: '/icons/channels/twitter.svg',
   x: '/icons/channels/twitter.svg',
+  instagram: '/icons/channels/instagram.svg',
+  messenger: '/icons/channels/messenger.svg',
+  'facebook-messenger': '/icons/channels/messenger.svg',
+  viber: '/icons/channels/viber.svg',
   // Tools & Utilities
   '1password': '/icons/channels/1password.svg',
   onepassword: '/icons/channels/1password.svg',

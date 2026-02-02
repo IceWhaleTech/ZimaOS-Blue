@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"golang.org/x/net/netutil"
 )
@@ -23,11 +25,23 @@ import (
 // actualPort stores the actual port the server is listening on
 var actualPort atomic.Int32
 
+// onServerStartCallbacks stores callbacks to run after server starts
+var onServerStartCallbacks []func(port int)
+var onServerStartMu sync.Mutex
+
 // GetActualPort returns the actual port the server is listening on.
 // This may differ from the configured port if port_auto_fallback is enabled
 // and the configured port was already in use.
 func GetActualPort() int {
 	return int(actualPort.Load())
+}
+
+// OnServerStart registers a callback to be called after the server starts
+// and the actual port is known.
+func OnServerStart(callback func(port int)) {
+	onServerStartMu.Lock()
+	defer onServerStartMu.Unlock()
+	onServerStartCallbacks = append(onServerStartCallbacks, callback)
 }
 
 type Server struct {
@@ -143,6 +157,18 @@ func (s *Server) Start() error {
 
 	// Update security package with actual port for dynamic CORS origins
 	security.SetServerPort(tcpAddr.Port)
+
+	// Update network package with actual port for address detection
+	network.SetDynamicPort(tcpAddr.Port)
+
+	// Execute registered callbacks with actual port
+	onServerStartMu.Lock()
+	callbacks := make([]func(int), len(onServerStartCallbacks))
+	copy(callbacks, onServerStartCallbacks)
+	onServerStartMu.Unlock()
+	for _, cb := range callbacks {
+		cb(tcpAddr.Port)
+	}
 
 	logger.Info().
 		Int("actual_port", tcpAddr.Port).

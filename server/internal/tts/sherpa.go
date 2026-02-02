@@ -183,28 +183,20 @@ func (p *SherpaProvider) checkModelReady() bool {
 
 func (p *SherpaProvider) verifyModelFiles() bool {
 	modelPath := p.getModelPath()
+	tmpPath := modelPath + ".tmp"
 
-	// Piper models have different naming: {voice}.onnx instead of model.onnx
-	modelFiles := map[string]string{
-		"piper-en":     "en_US-lessac-medium.onnx",
-		"piper-en-hfc": "en_US-hfc_female-medium.onnx",
-		"piper-de":     "de_DE-thorsten-medium.onnx",
-		"piper-es":     "es_ES-davefx-medium.onnx",
+	// Check if .tmp directory exists (incomplete download)
+	if _, err := os.Stat(tmpPath); err == nil {
+		fmt.Printf("TTS verifyModelFiles: found incomplete .tmp directory %s\n", tmpPath)
+		return false
 	}
 
-	onnxFile := "model.onnx"
-	if f, ok := modelFiles[p.modelType]; ok {
-		onnxFile = f
+	// Check if final directory exists
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		fmt.Printf("TTS verifyModelFiles: model directory does not exist %s\n", modelPath)
+		return false
 	}
 
-	requiredFiles := []string{onnxFile, "tokens.txt"}
-	for _, file := range requiredFiles {
-		filePath := filepath.Join(modelPath, file)
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			fmt.Printf("TTS verifyModelFiles: missing file %s\n", filePath)
-			return false
-		}
-	}
 	if p.downloadMgr != nil {
 		p.downloadMgr.markComplete(p.modelType)
 	}
@@ -272,18 +264,60 @@ func cStr(s string) uintptr {
 
 func (p *SherpaProvider) initTTS() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.initialized && p.tts != 0 {
+		p.mu.Unlock()
 		return nil
 	}
+
+	// If already initializing, wait for completion
+	if p.initializing {
+		initDone := p.initDone
+		p.mu.Unlock()
+		<-initDone
+		p.mu.RLock()
+		err := p.initErr
+		p.mu.RUnlock()
+		return err
+	}
+
+	// Start async initialization
+	p.initializing = true
+	p.initDone = make(chan struct{})
+	p.mu.Unlock()
+
+	// Run initialization in goroutine
+	go p.doInitTTS()
+
+	// Wait for completion
+	<-p.initDone
+	p.mu.RLock()
+	err := p.initErr
+	p.mu.RUnlock()
+	return err
+}
+
+// doInitTTS performs the actual TTS initialization (called async)
+func (p *SherpaProvider) doInitTTS() {
+	defer func() {
+		p.mu.Lock()
+		p.initializing = false
+		close(p.initDone)
+		p.mu.Unlock()
+	}()
 
 	configStrings = nil
 	libDir := filepath.Join(p.modelDir, "lib")
 	if err := ensureSherpaLibraries(p.modelDir); err != nil {
-		return fmt.Errorf("failed to setup sherpa libraries: %w", err)
+		p.mu.Lock()
+		p.initErr = fmt.Errorf("failed to setup sherpa libraries: %w", err)
+		p.mu.Unlock()
+		return
 	}
 	if err := loadSherpaLibrary(libDir); err != nil {
-		return fmt.Errorf("failed to load sherpa library: %w", err)
+		p.mu.Lock()
+		p.initErr = fmt.Errorf("failed to load sherpa library: %w", err)
+		p.mu.Unlock()
+		return
 	}
 
 	modelPath := p.getModelPath()
@@ -347,14 +381,20 @@ func (p *SherpaProvider) initTTS() error {
 	*(*int32)(unsafe.Pointer(configPtr + 56)) = int32(numCPU)
 
 	fmt.Printf("Creating TTS engine with model: %s (threads=%d)\n", modelPath, numCPU)
-	p.tts = sherpaCreateOfflineTts(configPtr)
-	if p.tts == 0 {
-		return fmt.Errorf("failed to create TTS engine")
+	tts := sherpaCreateOfflineTts(configPtr)
+	if tts == 0 {
+		p.mu.Lock()
+		p.initErr = fmt.Errorf("failed to create TTS engine")
+		p.mu.Unlock()
+		return
 	}
-	fmt.Printf("TTS engine created: %x\n", p.tts)
+	fmt.Printf("TTS engine created: %x\n", tts)
 
+	p.mu.Lock()
+	p.tts = tts
 	p.initialized = true
-	return nil
+	p.initErr = nil
+	p.mu.Unlock()
 }
 
 func (p *SherpaProvider) Close() {

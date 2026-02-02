@@ -11,12 +11,16 @@ import (
 
 // Store provides skill storage and search operations.
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	zorm  *ZormStore
 }
 
 // NewStore creates a new skill store.
 func NewStore(db *sql.DB) (*Store, error) {
-	store := &Store{db: db}
+	store := &Store{
+		db:   db,
+		zorm: NewZormStore(db),
+	}
 	if err := store.initSchema(); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -638,34 +642,10 @@ func (s *Store) UpdateReadme(ctx context.Context, id string, readme string) erro
 	return err
 }
 
-// UpdateReadmeBatch updates readme content for multiple skills in a single transaction.
+// UpdateReadmeBatch updates readme content for multiple skills using zorm.
 // Only updates records where the readme hash has changed.
 func (s *Store) UpdateReadmeBatch(ctx context.Context, updates []readmeUpdate) error {
-	if len(updates) == 0 {
-		return nil
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Only update if hash is different (or was NULL)
-	stmt, err := tx.PrepareContext(ctx, "UPDATE skills SET readme = ?, readme_hash = ?, updated_at = ? WHERE id = ? AND (readme_hash IS NULL OR readme_hash != ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	now := time.Now()
-	for _, u := range updates {
-		if _, err := stmt.ExecContext(ctx, u.Readme, u.Hash, now, u.ID, u.Hash); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+	return s.zorm.UpdateReadmeBatchZorm(ctx, updates)
 }
 
 // DeleteBySource deletes all skills from a source.

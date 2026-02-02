@@ -26,6 +26,7 @@ type Skill struct {
 	Versions    int       `json:"versions" db:"versions"`         // Number of versions
 	Changelog   string    `json:"changelog" db:"changelog"`       // Latest changelog
 	Readme      string    `json:"readme,omitempty" db:"readme"`   // Full README/homepage content
+	ReadmeHash  string    `json:"-" db:"readme_hash"`             // MD5 hash of readme content
 	DedupKey    string    `json:"dedup_key" db:"dedup_key"`       // Deduplication key (name:author normalized)
 	Installed   bool      `json:"installed" db:"installed"`       // Whether installed locally
 	Enabled     bool      `json:"enabled" db:"enabled"`           // Whether enabled

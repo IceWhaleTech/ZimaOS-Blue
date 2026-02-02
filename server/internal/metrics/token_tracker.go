@@ -13,11 +13,20 @@ type TokenTracker struct {
 	// Token usage by model
 	modelUsage map[string]*TokenUsage
 
+	// Token usage by user
+	userUsage map[string]*userUsageInternal
+
 	// Global usage
 	globalUsage *TokenUsage
 
 	// Pricing configuration
 	pricing []TokenPricing
+}
+
+// userUsageInternal tracks internal user usage with request count.
+type userUsageInternal struct {
+	TokenUsage
+	RequestCount int64
 }
 
 // DefaultTokenPricing returns the default token pricing configuration.
@@ -64,6 +73,7 @@ func DefaultTokenPricing() []TokenPricing {
 func NewTokenTracker() *TokenTracker {
 	return &TokenTracker{
 		modelUsage:  make(map[string]*TokenUsage),
+		userUsage:   make(map[string]*userUsageInternal),
 		globalUsage: &TokenUsage{},
 		pricing:     DefaultTokenPricing(),
 	}
@@ -73,6 +83,7 @@ func NewTokenTracker() *TokenTracker {
 func NewTokenTrackerWithPricing(pricing []TokenPricing) *TokenTracker {
 	return &TokenTracker{
 		modelUsage:  make(map[string]*TokenUsage),
+		userUsage:   make(map[string]*userUsageInternal),
 		globalUsage: &TokenUsage{},
 		pricing:     pricing,
 	}
@@ -80,6 +91,11 @@ func NewTokenTrackerWithPricing(pricing []TokenPricing) *TokenTracker {
 
 // RecordTokenUsage records token usage for a call.
 func (t *TokenTracker) RecordTokenUsage(model string, inputTokens, outputTokens, cacheRead, cacheWrite int64) {
+	t.RecordTokenUsageForUser("", model, inputTokens, outputTokens, cacheRead, cacheWrite)
+}
+
+// RecordTokenUsageForUser records token usage for a call with user tracking.
+func (t *TokenTracker) RecordTokenUsageForUser(userID, model string, inputTokens, outputTokens, cacheRead, cacheWrite int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -104,6 +120,22 @@ func (t *TokenTracker) RecordTokenUsage(model string, inputTokens, outputTokens,
 	pricing := t.getPricingForModel(model)
 	cost := t.calculateCost(inputTokens, outputTokens, cacheRead, cacheWrite, pricing)
 	usage.EstimatedCost += cost
+
+	// Update user usage if userID is provided
+	if userID != "" {
+		userUsage, ok := t.userUsage[userID]
+		if !ok {
+			userUsage = &userUsageInternal{}
+			t.userUsage[userID] = userUsage
+		}
+		userUsage.InputTokens += inputTokens
+		userUsage.OutputTokens += outputTokens
+		userUsage.TotalTokens += inputTokens + outputTokens
+		userUsage.CacheReadTokens += cacheRead
+		userUsage.CacheWriteTokens += cacheWrite
+		userUsage.EstimatedCost += cost
+		userUsage.RequestCount++
+	}
 
 	// Update global usage
 	t.globalUsage.InputTokens += inputTokens
@@ -170,6 +202,50 @@ func (t *TokenTracker) GetAllModelUsage() []ModelTokenUsage {
 	return result
 }
 
+// GetUserTokenUsage returns token usage for a specific user.
+func (t *TokenTracker) GetUserTokenUsage(userID string) *UserTokenUsage {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	usage, ok := t.userUsage[userID]
+	if !ok {
+		return nil
+	}
+
+	return &UserTokenUsage{
+		UserID:           userID,
+		InputTokens:      usage.InputTokens,
+		OutputTokens:     usage.OutputTokens,
+		TotalTokens:      usage.TotalTokens,
+		CacheReadTokens:  usage.CacheReadTokens,
+		CacheWriteTokens: usage.CacheWriteTokens,
+		EstimatedCost:    usage.EstimatedCost,
+		RequestCount:     usage.RequestCount,
+	}
+}
+
+// GetAllUserUsage returns token usage for all users.
+func (t *TokenTracker) GetAllUserUsage() []UserTokenUsage {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	result := make([]UserTokenUsage, 0, len(t.userUsage))
+	for userID, usage := range t.userUsage {
+		result = append(result, UserTokenUsage{
+			UserID:           userID,
+			InputTokens:      usage.InputTokens,
+			OutputTokens:     usage.OutputTokens,
+			TotalTokens:      usage.TotalTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
+			CacheWriteTokens: usage.CacheWriteTokens,
+			EstimatedCost:    usage.EstimatedCost,
+			RequestCount:     usage.RequestCount,
+		})
+	}
+
+	return result
+}
+
 // GetPricing returns the pricing configuration.
 func (t *TokenTracker) GetPricing() []TokenPricing {
 	t.mu.RLock()
@@ -212,6 +288,7 @@ func (t *TokenTracker) Reset() {
 	defer t.mu.Unlock()
 
 	t.modelUsage = make(map[string]*TokenUsage)
+	t.userUsage = make(map[string]*userUsageInternal)
 	t.globalUsage = &TokenUsage{}
 }
 

@@ -21,16 +21,16 @@ type TunnelHandler struct {
 	mu         sync.RWMutex
 	managers   map[tunnel.Provider]tunnel.Manager
 	active     tunnel.Manager
-	repository *ngrok.Repository
+	configProvider ngrok.ConfigProvider
 	serverPort int
 }
 
 // NewTunnelHandler creates a new tunnel handler with multiple provider support.
-func NewTunnelHandler(repo *ngrok.Repository, serverPort int) *TunnelHandler {
+func NewTunnelHandler(configProvider ngrok.ConfigProvider, serverPort int) *TunnelHandler {
 	h := &TunnelHandler{
-		managers:   make(map[tunnel.Provider]tunnel.Manager),
-		repository: repo,
-		serverPort: serverPort,
+		managers:       make(map[tunnel.Provider]tunnel.Manager),
+		configProvider: configProvider,
+		serverPort:     serverPort,
 	}
 
 	// Initialize providers (Auto uses Bore/Serveo/LocalTunnel/Cloudflare in parallel)
@@ -44,8 +44,8 @@ func NewTunnelHandler(repo *ngrok.Repository, serverPort int) *TunnelHandler {
 		m.SetOnURLChange(func(url string) {
 			if url != "" {
 				// Log the URL
-				if h.repository != nil {
-					h.repository.AddLog(context.Background(), "", "url", fmt.Sprintf("Tunnel URL: %s", url), nil)
+				if h.configProvider != nil {
+					h.configProvider.AddLog(context.Background(), "", "url", fmt.Sprintf("Tunnel URL: %s", url), nil)
 				}
 				// Add to CORS allowed origins
 				security.AddDynamicOriginDefault(url)
@@ -162,8 +162,8 @@ func (h *TunnelHandler) StartTunnel(c echo.Context) error {
 	}
 
 	// Try to get tokens and subdomain from saved config if not provided
-	if h.repository != nil {
-		savedConfig, err := h.repository.GetConfig(c.Request().Context())
+	if h.configProvider != nil {
+		savedConfig, err := h.configProvider.GetConfig(c.Request().Context())
 		if err == nil && savedConfig != nil {
 			// Set subdomain for SSH-based tunnels (serveo, localhost.run)
 			if savedConfig.TunnelSubdomain != "" {
@@ -181,7 +181,7 @@ func (h *TunnelHandler) StartTunnel(c echo.Context) error {
 		}
 		// Auto (Serveo): ensure we always have a subdomain (echo-xxx)
 		if provider == tunnel.ProviderAuto && cfg.Subdomain == "" {
-			if sub, err := h.repository.EnsureTunnelSubdomain(c.Request().Context()); err == nil {
+			if sub, err := h.configProvider.EnsureTunnelSubdomain(c.Request().Context()); err == nil {
 				cfg.Subdomain = sub
 			}
 		}
@@ -219,8 +219,8 @@ func (h *TunnelHandler) StartTunnel(c echo.Context) error {
 			}
 		}
 		// Log error
-		if h.repository != nil {
-			h.repository.AddLog(context.Background(), "", "error", err.Error(), nil)
+		if h.configProvider != nil {
+			h.configProvider.AddLog(context.Background(), "", "error", err.Error(), nil)
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -233,12 +233,12 @@ func (h *TunnelHandler) StartTunnel(c echo.Context) error {
 	h.mu.Unlock()
 
 	// Log start with domain when available
-	if h.repository != nil {
+	if h.configProvider != nil {
 		msg := fmt.Sprintf("Tunnel started with provider: %s", provider)
 		if url := manager.GetURL(); url != "" {
 			msg = fmt.Sprintf("Tunnel started with provider: %s, domain: %s", provider, url)
 		}
-		h.repository.AddLog(context.Background(), "", "started", msg, nil)
+		h.configProvider.AddLog(context.Background(), "", "started", msg, nil)
 	}
 
 	// Get current status (URL may not be available yet for async providers)
@@ -278,8 +278,8 @@ func (h *TunnelHandler) StopTunnel(c echo.Context) error {
 	h.mu.Unlock()
 
 	// Log stop
-	if h.repository != nil {
-		h.repository.AddLog(context.Background(), "", "stopped", "Tunnel stopped", nil)
+	if h.configProvider != nil {
+		h.configProvider.AddLog(context.Background(), "", "stopped", "Tunnel stopped", nil)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -348,14 +348,14 @@ func (h *TunnelHandler) GetQRCode(c echo.Context) error {
 
 // GetTunnelConfig returns the tunnel configuration.
 func (h *TunnelHandler) GetTunnelConfig(c echo.Context) error {
-	if h.repository == nil {
+	if h.configProvider == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
 			"success": false,
 			"error":   "Configuration storage not available",
 		})
 	}
 
-	config, err := h.repository.GetConfig(c.Request().Context())
+	config, err := h.configProvider.GetConfig(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -376,7 +376,7 @@ func (h *TunnelHandler) GetTunnelConfig(c echo.Context) error {
 
 // UpdateTunnelConfig updates the tunnel configuration.
 func (h *TunnelHandler) UpdateTunnelConfig(c echo.Context) error {
-	if h.repository == nil {
+	if h.configProvider == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
 			"success": false,
 			"error":   "Configuration storage not available",
@@ -396,7 +396,7 @@ func (h *TunnelHandler) UpdateTunnelConfig(c echo.Context) error {
 		config.DefaultProvider = "auto"
 	}
 
-	if err := h.repository.SaveConfig(c.Request().Context(), &config); err != nil {
+	if err := h.configProvider.SaveConfig(c.Request().Context(), &config); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
 			"error":   err.Error(),
@@ -411,7 +411,7 @@ func (h *TunnelHandler) UpdateTunnelConfig(c echo.Context) error {
 
 // GetTunnelLogs returns the tunnel logs.
 func (h *TunnelHandler) GetTunnelLogs(c echo.Context) error {
-	if h.repository == nil {
+	if h.configProvider == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
 			"success": false,
 			"error":   "Log storage not available",
@@ -436,7 +436,7 @@ func (h *TunnelHandler) GetTunnelLogs(c echo.Context) error {
 		}
 	}
 
-	logs, err := h.repository.GetLogs(c.Request().Context(), limit, offset)
+	logs, err := h.configProvider.GetLogs(c.Request().Context(), limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -474,8 +474,8 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 	}
 
 	// Get recent error logs only
-	if h.repository != nil {
-		logs, err := h.repository.GetErrorLogs(c.Request().Context(), 10, 0)
+	if h.configProvider != nil {
+		logs, err := h.configProvider.GetErrorLogs(c.Request().Context(), 10, 0)
 		if err == nil {
 			diagnostics["recent_errors"] = logs
 		}

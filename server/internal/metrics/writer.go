@@ -376,6 +376,11 @@ func (w *MetricsWriter) collectSystemMetrics() {
 
 // RecordAPICall records an API call with all metrics.
 func (w *MetricsWriter) RecordAPICall(model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string) {
+	w.RecordAPICallForUser("", model, success, latencyMs, inputTokens, outputTokens, cacheRead, cacheWrite, errorType)
+}
+
+// RecordAPICallForUser records an API call with all metrics including user tracking.
+func (w *MetricsWriter) RecordAPICallForUser(userID, model string, success bool, latencyMs float64, inputTokens, outputTokens, cacheRead, cacheWrite int64, errorType string) {
 	// Record to call collector
 	record := CallRecord{
 		Model:            model,
@@ -389,8 +394,8 @@ func (w *MetricsWriter) RecordAPICall(model string, success bool, latencyMs floa
 	}
 	w.callCollector.RecordCall(record)
 
-	// Record token usage
-	w.tokenTracker.RecordTokenUsage(model, inputTokens, outputTokens, cacheRead, cacheWrite)
+	// Record token usage with user tracking
+	w.tokenTracker.RecordTokenUsageForUser(userID, model, inputTokens, outputTokens, cacheRead, cacheWrite)
 
 	// Record latency
 	w.latencyTracker.RecordLatency(model, latencyMs)
@@ -412,6 +417,9 @@ func (w *MetricsWriter) RecordAPICall(model string, success bool, latencyMs floa
 
 		if errorType != "" {
 			point.AddTag(TagErrorType, errorType)
+		}
+		if userID != "" {
+			point.AddTag("user_id", userID)
 		}
 
 		w.store.Write(ctx, point)
@@ -471,6 +479,16 @@ func (w *MetricsWriter) GetSpeedStats() *GenerationSpeed {
 // GetAllModelUsage returns token usage for all models.
 func (w *MetricsWriter) GetAllModelUsage() []ModelTokenUsage {
 	return w.tokenTracker.GetAllModelUsage()
+}
+
+// GetUserTokenUsage returns token usage for a specific user.
+func (w *MetricsWriter) GetUserTokenUsage(userID string) *UserTokenUsage {
+	return w.tokenTracker.GetUserTokenUsage(userID)
+}
+
+// GetAllUserUsage returns token usage for all users.
+func (w *MetricsWriter) GetAllUserUsage() []UserTokenUsage {
+	return w.tokenTracker.GetAllUserUsage()
 }
 
 // Reset resets all metrics.
