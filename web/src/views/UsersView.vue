@@ -56,7 +56,7 @@ async function handleLockUser(user: User) {
   try {
     await usersApi.lock(user.id)
     await fetchUsers()
-  } catch (e) {
+  } catch (_e) {
     error.value = t('users.error.lockFailed')
   }
 }
@@ -65,7 +65,7 @@ async function handleUnlockUser(user: User) {
   try {
     await usersApi.unlock(user.id)
     await fetchUsers()
-  } catch (e) {
+  } catch (_e) {
     error.value = t('users.error.unlockFailed')
   }
 }
@@ -76,7 +76,7 @@ async function handleDeleteUser(user: User) {
   try {
     await usersApi.delete(user.id)
     await fetchUsers()
-  } catch (e) {
+  } catch (_e) {
     error.value = t('users.error.deleteFailed')
   }
 }

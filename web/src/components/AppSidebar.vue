@@ -65,7 +65,7 @@ defineExpose({
 })
 
 // Check if user has permission for a page
-const hasPermission = (permission?: string) => {
+const _hasPermission = (permission?: string) => {
   if (!permission) return true
   return authStore.hasPermission(permission)
 }

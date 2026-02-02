@@ -98,7 +98,7 @@ async function parseCert() {
   try {
     const response = await securityApi.parseCertificate(certPem.value)
     parsedCertInfo.value = response.data
-  } catch (e) {
+  } catch (_e: unknown) {
     parsedCertInfo.value = null
   }
 }

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const _props = defineProps<{
   modelValue: boolean
   src: string
   alt?: string

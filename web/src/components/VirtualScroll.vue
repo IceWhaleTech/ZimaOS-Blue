@@ -114,7 +114,7 @@ function updateItemHeight(index: number, height: number) {
 }
 
 // Scroll to item
-function scrollToItem(index: number, behavior: ScrollBehavior = 'auto') {
+function scrollToItem(index: number, behavior: 'auto' | 'smooth' = 'auto') {
   if (!containerRef.value) return
 
   let offset = 0
@@ -126,7 +126,7 @@ function scrollToItem(index: number, behavior: ScrollBehavior = 'auto') {
 }
 
 // Scroll to bottom
-function scrollToBottom(behavior: ScrollBehavior = 'auto') {
+function scrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
   if (!containerRef.value) return
   containerRef.value.scrollTo({ top: totalHeight.value, behavior })
 }

@@ -2,7 +2,7 @@
   "name": "ZimaOS Echo",
   "title": "ZimaOS Echo - AI Assistant",
   "description": "A powerful AI assistant for ZimaOS with smart home integration, multi-channel support, and voice capabilities",
-  "version": "0.10.2",
+  "version": "0.10.17",
   "icon": "/app/icon.png",
   "category": "ai",
   "author": {

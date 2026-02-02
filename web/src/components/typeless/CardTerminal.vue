@@ -68,7 +68,7 @@ interface ParsedSegment {
 function parseAnsiToSegments(text: string): ParsedSegment[] {
   const segments: ParsedSegment[] = []
   // Match ANSI escape sequences: ESC[...m
-  const ansiRegex = /\x1b\[([0-9;]*)m/g
+  const ansiRegex = /\u001b\[([0-9;]*)m/g
 
   let lastIndex = 0
   let currentClasses: string[] = []
@@ -132,7 +132,7 @@ function parseAnsiToSegments(text: string): ParsedSegment[] {
 
 // Get plain text without ANSI codes (for copying)
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, '')
+  return text.replace(/\u001b\[[0-9;]*m/g, '')
 }
 
 const parsedLines = computed(() => {

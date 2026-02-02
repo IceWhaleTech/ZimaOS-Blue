@@ -476,7 +476,8 @@ function renderMarkdown(content: string): string {
 }
 
 .skill-content :deep(code) {
-  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.1));
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: monospace;
@@ -484,7 +485,8 @@ function renderMarkdown(content: string): string {
 }
 
 .skill-content :deep(pre) {
-  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.3));
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   padding: 16px;
   border-radius: 8px;
   overflow-x: auto;
@@ -494,6 +496,25 @@ function renderMarkdown(content: string): string {
 .skill-content :deep(pre code) {
   background: none;
   padding: 0;
+  color: inherit;
+}
+
+/* Light theme support */
+@media (prefers-color-scheme: light) {
+  .skill-detail-modal {
+    background: var(--color-bg-primary, #ffffff);
+    color: var(--color-text-primary, #000000);
+  }
+
+  .skill-content :deep(code) {
+    background: #f0f0f0;
+    color: #d63384;
+  }
+
+  .skill-content :deep(pre) {
+    background: #f5f5f5;
+    color: #000000;
+  }
 }
 
 .skill-content :deep(strong) {

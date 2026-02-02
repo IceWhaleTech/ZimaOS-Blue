@@ -55,7 +55,7 @@ const voiceError = ref<string | null>(null)
 
 // Model download prompt state
 const showASRDownloadPrompt = ref(false)
-const asrModelReady = ref(true) // Assume ready until checked
+const _asrModelReady = ref(true) // Assume ready until checked
 
 const maxSize = computed(() => props.maxFileSize || 10 * 1024 * 1024) // 10MB default
 const allowedMimeTypes = computed(() => props.allowedTypes || [

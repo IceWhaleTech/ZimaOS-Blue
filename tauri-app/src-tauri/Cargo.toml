@@ -1,6 +1,6 @@
 [package]
 name = "zimaos-echo"
-version = "0.10.4"
+version = "0.10.17"
 description = "ZimaOS Echo - AI Gateway Desktop Application"
 authors = ["ZimaOS Team"]
 edition = "2021"

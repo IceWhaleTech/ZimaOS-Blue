@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, _onUnmounted, _computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { skillApi, type RemoteSkill, type SearchParams } from '@/api/skill'
 
@@ -135,7 +135,7 @@ function formatNumber(num?: number): string {
   return num.toString()
 }
 
-function filterVersionTags(tags: string[]): string[] {
+function _filterVersionTags(tags: string[]): string[] {
   // Filter out version-like tags (e.g., "1.0.0", "v1.0.0", "1.0.1")
   const versionPattern = /^v?\d+\.\d+(\.\d+)?$/
   return tags.filter(tag => !versionPattern.test(tag))
