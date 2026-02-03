@@ -61,11 +61,6 @@ func createProvider(cfg ProviderConfig) (Provider, error) {
 			DefaultFormat: cfg.DefaultFormat,
 			MaxTextLength: cfg.MaxTextLength,
 		}), nil
-	case ProviderEdge:
-		return NewEdgeTTSProvider(&EdgeTTSConfig{
-			DefaultVoice:  cfg.DefaultVoice,
-			DefaultFormat: cfg.DefaultFormat,
-		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}

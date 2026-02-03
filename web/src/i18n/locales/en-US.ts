@@ -1354,19 +1354,42 @@ export default {
     // Template names and descriptions
     templates: {
       webScraping: {
+        name: 'Web Scraping',
+        description: 'Extract data from web pages',
       },
       formFilling: {
+        name: 'Form Filling',
+        description: 'Automatically fill web forms',
       },
       pageMonitor: {
+        name: 'Page Monitor',
+        description: 'Monitor page changes',
       },
       loginTest: {
+        name: 'Login Test',
+        description: 'Test login flow',
       },
     },
     // Template categories
     categories: {
+      data: 'Data',
+      automation: 'Automation',
+      monitoring: 'Monitoring',
+      testing: 'Testing',
     },
     // Step labels
     stepLabels: {
+      navigate: 'Navigate to URL',
+      click: 'Click Element',
+      type: 'Type Text',
+      screenshot: 'Take Screenshot',
+      wait: 'Wait',
+      extract: 'Extract Data',
+      scroll: 'Scroll',
+      select: 'Select',
+      hover: 'Hover',
+      pressKey: 'Press Key',
+      evaluate: 'Evaluate',
     },
     tasks: {
       empty: 'No tasks yet. Create your first automation task!',
@@ -2481,6 +2504,10 @@ export default {
       threatTypes: 'Threat Types',
       details: 'Details',
       actions: {
+        blocked: 'Blocked',
+        filtered: 'Filtered',
+        allowed: 'Allowed',
+        passed: 'Passed',
       },
     },
     // Alerts
@@ -2897,6 +2924,14 @@ export default {
     nodeNamePlaceholder: 'e.g., Send Email',
     // Node types
     nodeTypes: {
+      trigger: 'Trigger',
+      action: 'Action',
+      condition: 'Condition',
+      loop: 'Loop',
+      delay: 'Delay',
+      switch: 'Switch',
+      merge: 'Merge',
+      subflow: 'Subflow',
     },
   },
   cron: {
@@ -3372,6 +3407,7 @@ export default {
   users: {
     title: 'User Management',
     subtitle: 'Manage users and their permissions',
+    addUser: 'Add User',
     createUser: 'Create User',
     editUser: 'Edit User',
     deleteUser: 'Delete User',
@@ -3384,6 +3420,7 @@ export default {
     searchPlaceholder: 'Search users...',
     allRoles: 'All Roles',
     allStatus: 'All Status',
+    allStatuses: 'All Status',
     // Table headers
     username: 'Username',
     email: 'Email',
@@ -3401,6 +3438,7 @@ export default {
     // Status
     statusActive: 'Active',
     statusLocked: 'Locked',
+    statusDisabled: 'Disabled',
     // Actions
     lock: 'Lock',
     unlock: 'Unlock',
@@ -3451,12 +3489,28 @@ export default {
     lockFailed: 'Failed to lock user',
     unlockFailed: 'Failed to unlock user',
     resetPasswordFailed: 'Failed to reset password',
+    error: {
+      createFailed: 'Failed to create user',
+      updateFailed: 'Failed to update user',
+      deleteFailed: 'Failed to delete user',
+      lockFailed: 'Failed to lock user',
+      unlockFailed: 'Failed to unlock user',
+      loadFailed: 'Failed to load users',
+      passwordResetFailed: 'Failed to reset password',
+    },
     passwordMismatch: 'Passwords do not match',
     // Empty state
     noUsers: 'No users found',
+    noUsersDescription: 'Create your first user to get started',
     noUsersHint: 'Create your first user to get started',
+    showing: 'Showing {from}-{to} of {total}',
     // Never logged in
     neverLoggedIn: 'Never',
+    justNow: 'Just now',
+    hoursAgo: '{hours} hr ago',
+    daysAgo: '{days} days ago',
+    hidePasswordReset: 'Hide password reset',
+    adminNotice: 'Admins have all permissions',
   },
   ideDiscovery: {
     title: 'IDE Configuration Discovery',
@@ -3697,14 +3751,19 @@ export default {
     provider: 'Provider',
     offline: 'Offline',
     online: 'Online',
-    privacyWarning: 'Edge-TTS sends text to Microsoft servers. Your data will be processed according to their privacy policy.',
     model: 'Model',
     rate: 'Speech Rate',
     pitch: 'Pitch',
     volume: 'Volume',
-    acceptPrivacy: 'I accept the privacy terms for Edge-TTS',
     voiceSettings: 'Voice Settings',
     languagePacks: 'Language Packs',
+    allPacksInfo: 'Download all {count} language packs (Total: {size})',
+    downloadAll: 'Download All Language Packs',
+    allDownloaded: 'All Packs Downloaded',
+    downloadFailed: 'Download failed',
+    ttsProvider: 'TTS Provider',
+    espeakNote: 'Offline - lightweight (~8.5MB)',
+    sherpaNote: 'Offline - premium quality (requires download)',
   },
   mermaid: {
     flowchart: 'Flowchart',

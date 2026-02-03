@@ -7,12 +7,8 @@
       <label>{{ t('speech.provider') }}</label>
       <select v-model="selectedProvider" @change="handleProviderChange" class="provider-select">
         <option value="espeak-ng">eSpeak-NG ({{ t('speech.offline') }})</option>
-        <option value="edge-tts">Edge-TTS ({{ t('speech.online') }})</option>
         <option value="sherpa-onnx">Sherpa-ONNX ({{ t('speech.offline') }})</option>
       </select>
-      <p class="provider-note" v-if="selectedProvider === 'edge-tts'">
-        ⚠️ {{ t('speech.privacyWarning') }}
-      </p>
     </div>
 
     <!-- Voice Customizer -->
@@ -34,38 +30,19 @@
       </div>
     </div>
 
-    <!-- Language Packs (eSpeak-NG) -->
+    <!-- Language Packs (eSpeak-NG) - Simplified -->
     <div v-if="selectedProvider === 'espeak-ng'" class="setting-group">
       <label>{{ t('speech.languagePacks') }}</label>
-      <div class="language-packs">
-        <div v-for="pack in languagePacks" :key="pack.language" class="pack-item">
-          <span>{{ pack.name }} ({{ pack.size_kb }} KB)</span>
-          <button
-            v-if="!pack.downloaded"
-            @click="downloadLanguagePack(pack.language)"
-            :disabled="downloading"
-            class="btn-download"
-          >
-            {{ t('speech.download') }}
-          </button>
-          <button
-            v-else
-            @click="deleteLanguagePack(pack.language)"
-            :disabled="downloading"
-            class="btn-delete"
-          >
-            {{ t('speech.delete') }}
-          </button>
-        </div>
+      <div class="language-pack-download">
+        <p class="pack-info">{{ t('speech.allPacksInfo', { count: 27, size: '8.5 MB' }) }}</p>
+        <button
+          @click="downloadAllLanguagePacks"
+          :disabled="downloading || allPacksDownloaded"
+          class="btn-download-all"
+        >
+          {{ allPacksDownloaded ? t('speech.allDownloaded') : t('speech.downloadAll') }}
+        </button>
       </div>
-    </div>
-
-    <!-- Privacy Consent (Edge-TTS) -->
-    <div v-if="selectedProvider === 'edge-tts'" class="setting-group">
-      <label>
-        <input v-model="edgeTTSConsent" type="checkbox" @change="handleConsentChange" />
-        {{ t('speech.acceptPrivacy') }}
-      </label>
     </div>
 
     <!-- Error Message -->
@@ -76,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTTSStore } from '@/stores/tts'
 
@@ -87,10 +64,13 @@ const selectedProvider = ref('espeak-ng')
 const rate = ref(1.0)
 const pitch = ref(0)
 const volume = ref(100)
-const edgeTTSConsent = ref(false)
 const languagePacks = ref<any[]>([])
 const downloading = ref(false)
 const error = ref('')
+
+const allPacksDownloaded = computed(() => {
+  return languagePacks.value.length > 0 && languagePacks.value.every(pack => pack.downloaded)
+})
 
 onMounted(async () => {
   await ttsStore.loadProviders()
@@ -103,29 +83,15 @@ const handleProviderChange = async () => {
   await ttsStore.setPreferredProvider(selectedProvider.value)
 }
 
-const handleConsentChange = async () => {
-  await ttsStore.setConsent('edge-tts', edgeTTSConsent.value)
-}
-
-const downloadLanguagePack = async (language: string) => {
+const downloadAllLanguagePacks = async () => {
   downloading.value = true
   error.value = ''
   try {
-    await ttsStore.downloadLanguagePack(language)
+    await ttsStore.downloadAllLanguagePacks()
+    await ttsStore.loadLanguagePacks()
+    languagePacks.value = ttsStore.languagePacks
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Download failed'
-  } finally {
-    downloading.value = false
-  }
-}
-
-const deleteLanguagePack = async (language: string) => {
-  downloading.value = true
-  error.value = ''
-  try {
-    await ttsStore.deleteLanguagePack(language)
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Delete failed'
+    error.value = err instanceof Error ? err.message : t('speech.downloadFailed')
   } finally {
     downloading.value = false
   }
@@ -163,12 +129,6 @@ label {
   font-size: 14px;
 }
 
-.provider-note {
-  margin: 8px 0 0 0;
-  font-size: 12px;
-  color: #666;
-}
-
 .voice-controls {
   display: flex;
   flex-direction: column;
@@ -185,39 +145,37 @@ label {
   cursor: pointer;
 }
 
-.language-packs {
+.language-pack-download {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-.pack-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px;
+.pack-info {
+  margin: 0;
+  padding: 12px;
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
+  font-size: 14px;
+  color: #333;
 }
 
-.btn-download,
-.btn-delete {
-  padding: 4px 8px;
+.btn-download-all {
+  padding: 10px 16px;
   border: none;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
-}
-
-.btn-download {
   background: #007bff;
   color: white;
+  font-weight: 500;
 }
 
-.btn-delete {
-  background: #dc3545;
-  color: white;
+.btn-download-all:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .error-message {

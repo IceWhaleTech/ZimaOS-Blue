@@ -32,6 +32,12 @@ func (b *SystemPromptBuilder) SetToolRegistry(registry *tools.Registry) {
 func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) string {
 	var parts []string
 
+	// Add identity
+	parts = append(parts, "You are a personal assistant running inside ZimaOS Echo.")
+
+	// Add tool call style guidance
+	parts = append(parts, b.buildToolCallStyleGuidance())
+
 	// Add runtime information
 	parts = append(parts, b.buildRuntimeInfo())
 
@@ -47,6 +53,12 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 			parts = append(parts, toolsInfo)
 		}
 	}
+
+	// Add silent reply mechanism
+	parts = append(parts, b.buildSilentReplyGuidance())
+
+	// Add heartbeat detection
+	parts = append(parts, b.buildHeartbeatGuidance())
 
 	// Add extra system prompt
 	if extraPrompt != "" {
@@ -122,6 +134,7 @@ func (b *SystemPromptBuilder) buildWorkspaceInfo() string {
 	lines = append(lines, "# Workspace")
 	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("Working directory: %s", b.config.WorkspaceDir))
+	lines = append(lines, "Treat this directory as the single global workspace for file operations unless explicitly instructed otherwise.")
 
 	// Check if it's a git repository
 	if isGitRepo(b.config.WorkspaceDir) {
@@ -131,9 +144,64 @@ func (b *SystemPromptBuilder) buildWorkspaceInfo() string {
 	return strings.Join(lines, "\n")
 }
 
+// buildToolCallStyleGuidance builds guidance for tool call narration.
+func (b *SystemPromptBuilder) buildToolCallStyleGuidance() string {
+	var lines []string
+
+	lines = append(lines, "# Tool Call Style")
+	lines = append(lines, "")
+	lines = append(lines, "Default: do not narrate routine, low-risk tool calls (just call the tool).")
+	lines = append(lines, "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.")
+	lines = append(lines, "Keep narration brief and value-dense; avoid repeating obvious steps.")
+	lines = append(lines, "Use plain human language for narration unless in a technical context.")
+
+	return strings.Join(lines, "\n")
+}
+
+// buildSilentReplyGuidance builds guidance for silent replies.
+func (b *SystemPromptBuilder) buildSilentReplyGuidance() string {
+	var lines []string
+
+	lines = append(lines, "# Silent Replies")
+	lines = append(lines, "")
+	lines = append(lines, "When you have nothing to say, respond with ONLY: [SILENT_REPLY]")
+	lines = append(lines, "")
+	lines = append(lines, "⚠️ Rules:")
+	lines = append(lines, "- It must be your ENTIRE message — nothing else")
+	lines = append(lines, "- Never append it to an actual response (never include \"[SILENT_REPLY]\" in real replies)")
+	lines = append(lines, "- Never wrap it in markdown or code blocks")
+	lines = append(lines, "")
+	lines = append(lines, "❌ Wrong: \"Here's help... [SILENT_REPLY]\"")
+	lines = append(lines, "❌ Wrong: \"[SILENT_REPLY]\"")
+	lines = append(lines, "✅ Right: [SILENT_REPLY]")
+
+	return strings.Join(lines, "\n")
+}
+
+// buildHeartbeatGuidance builds guidance for heartbeat detection.
+func (b *SystemPromptBuilder) buildHeartbeatGuidance() string {
+	var lines []string
+
+	lines = append(lines, "# Heartbeats")
+	lines = append(lines, "")
+	lines = append(lines, "If you receive a heartbeat poll (a system health check), and there is nothing that needs attention, reply exactly:")
+	lines = append(lines, "HEARTBEAT_OK")
+	lines = append(lines, "")
+	lines = append(lines, "ZimaOS Echo treats a leading/trailing \"HEARTBEAT_OK\" as a heartbeat ack (and may discard it).")
+	lines = append(lines, "If something needs attention, do NOT include \"HEARTBEAT_OK\"; reply with the alert text instead.")
+
+	return strings.Join(lines, "\n")
+}
+
 // BuildWithContext builds a system prompt with additional context.
 func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt string, contextFiles map[string]string) string {
 	var parts []string
+
+	// Add identity
+	parts = append(parts, "You are a personal assistant running inside ZimaOS Echo.")
+
+	// Add tool call style guidance
+	parts = append(parts, b.buildToolCallStyleGuidance())
 
 	// Add runtime information
 	parts = append(parts, b.buildRuntimeInfo())
@@ -144,11 +212,15 @@ func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt 
 	}
 
 	// Add context files
-	for name, content := range contextFiles {
-		if content != "" {
-			parts = append(parts, b.buildContextFileSection(name, content))
-		}
+	if len(contextFiles) > 0 {
+		parts = append(parts, b.buildProjectContext(contextFiles))
 	}
+
+	// Add silent reply mechanism
+	parts = append(parts, b.buildSilentReplyGuidance())
+
+	// Add heartbeat detection
+	parts = append(parts, b.buildHeartbeatGuidance())
 
 	// Add extra system prompt
 	if extraPrompt != "" {
@@ -162,9 +234,43 @@ func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt 
 func (b *SystemPromptBuilder) buildContextFileSection(name, content string) string {
 	var lines []string
 
-	lines = append(lines, fmt.Sprintf("# Context: %s", name))
+	lines = append(lines, fmt.Sprintf("## %s", name))
 	lines = append(lines, "")
 	lines = append(lines, content)
+
+	return strings.Join(lines, "\n")
+}
+
+// buildProjectContext builds project context from multiple files.
+func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string) string {
+	var lines []string
+
+	lines = append(lines, "# Project Context")
+	lines = append(lines, "")
+	lines = append(lines, "The following project context files have been loaded:")
+
+	// Check for SOUL.md
+	hasSoulFile := false
+	for name := range contextFiles {
+		if strings.ToLower(name) == "soul.md" {
+			hasSoulFile = true
+			break
+		}
+	}
+
+	if hasSoulFile {
+		lines = append(lines, "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
+	}
+
+	lines = append(lines, "")
+
+	// Add each context file
+	for name, content := range contextFiles {
+		if content != "" {
+			lines = append(lines, b.buildContextFileSection(name, content))
+			lines = append(lines, "")
+		}
+	}
 
 	return strings.Join(lines, "\n")
 }

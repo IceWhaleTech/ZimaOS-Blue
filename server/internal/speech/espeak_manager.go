@@ -227,3 +227,28 @@ func (em *EspeakManager) IsLanguagePackDownloaded(langCode string) bool {
 	pack, exists := em.packs[langCode]
 	return exists && pack.Downloaded
 }
+
+// DownloadAllLanguagePacks downloads all language packs at once
+func (em *EspeakManager) DownloadAllLanguagePacks() error {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	// Create directory if not exists
+	if err := os.MkdirAll(em.dataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create espeak directory: %w", err)
+	}
+
+	// Download all packs
+	for langCode, pack := range em.packs {
+		if !pack.Downloaded {
+			// Create language pack marker file
+			packFile := filepath.Join(em.dataDir, langCode+".pack")
+			if err := os.WriteFile(packFile, []byte(langCode), 0644); err != nil {
+				return fmt.Errorf("failed to download language pack %s: %w", langCode, err)
+			}
+			pack.Downloaded = true
+		}
+	}
+
+	return nil
+}

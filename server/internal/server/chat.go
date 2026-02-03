@@ -321,6 +321,9 @@ type ChatHandler struct {
 
 	// Performance optimization: Provider cache (LRU)
 	providerCache map[string]llm.Provider
+
+	// Performance optimization: Conversation message cache
+	conversationCache *ConversationCache
 	providerCacheMu sync.RWMutex
 	maxProviderCacheSize int
 
@@ -357,6 +360,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		responsePool:     NewResponsePool(),
 		concurrencyOpt:   NewConcurrencyOptimizer(1000, 10),
 		fastPathCache:    NewFastPathCache(),
+		conversationCache: NewConversationCache(5*time.Minute, 100), // 5min TTL, max 100 conversations
 	}
 	// Start async event processor
 	go h.processEventQueue()
@@ -885,10 +889,20 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	sessionID := h.getCompanionSessionID(convID)
 	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 
-	// Get conversation history
-	messages, err := h.store.GetMessages(c.Request().Context(), convID, 50, 0)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages")
+	// Try to get from cache first
+	var messages []memory.Message
+	var err error
+	cachedMessages, cacheHit := h.conversationCache.Get(convID)
+	if cacheHit {
+		messages = cachedMessages
+	} else {
+		// Cache miss - fetch from database
+		messages, err = h.store.GetMessages(c.Request().Context(), convID, 50, 0)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages")
+		}
+		// Store in cache for next time
+		h.conversationCache.Set(convID, messages)
 	}
 
 	// Convert to LLM messages using pooled slice
@@ -902,10 +916,21 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		})
 	}
 
+	// Apply context compaction if needed
+	compactedMessages, summary, _ := h.compactMessages(c.Request().Context(), llmMessages, provider)
+	if summary != "" {
+		// Prepend summary as system context
+		summaryMsg := llm.Message{
+			Role:    llm.RoleSystem,
+			Content: "Previous conversation summary: " + summary,
+		}
+		compactedMessages = append([]llm.Message{summaryMsg}, compactedMessages...)
+	}
+
 	// Build chat request
 	chatReq := llm.ChatRequest{
 		Model:       model,
-		Messages:    llmMessages,
+		Messages:    compactedMessages,
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 	}
@@ -999,6 +1024,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store response")
 	}
+
+	// Invalidate cache after storing new message
+	h.conversationCache.Invalidate(convID)
 
 	return c.JSON(http.StatusOK, SendMessageResponse{
 		ID:       assistantMsg.ID,
@@ -1209,10 +1237,19 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	sessionID := h.getCompanionSessionID(convID)
 	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 
-	// Get conversation history
-	messages, err := h.store.GetMessages(c.Request().Context(), convID, 50, 0)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages: "+err.Error())
+	// Get conversation history - try cache first
+	var messages []memory.Message
+	cachedMessages, cacheHit := h.conversationCache.Get(convID)
+	if cacheHit {
+		messages = cachedMessages
+	} else {
+		// Cache miss - fetch from database
+		messages, err = h.store.GetMessages(c.Request().Context(), convID, 50, 0)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get messages: "+err.Error())
+		}
+		// Store in cache for next time
+		h.conversationCache.Set(convID, messages)
 	}
 
 	// Convert to LLM messages using pooled slice
@@ -1459,6 +1496,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 					TokensPerSecond: tokensPerSecond,
 				},
 			})
+
+			// Invalidate cache after storing new message
+			h.conversationCache.Invalidate(convID)
+
 			// Generate title for new conversations
 			// Pass AI response to check for markdown heading as title
 			go h.generateConversationTitle(convID, req.Message, fullContent, "en")

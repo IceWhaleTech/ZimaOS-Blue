@@ -58,6 +58,9 @@ export const ttsApi = {
   downloadLanguagePack: (language: string) =>
     api.post<{ message: string; language: string }>(`/tts/espeak/packs/${language}`),
 
+  downloadAllLanguagePacks: () =>
+    api.post<{ status: string; message: string }>('/speech/espeak/download-all'),
+
   deleteLanguagePack: (language: string) =>
     api.delete<{ message: string; language: string }>(`/tts/espeak/packs/${language}`),
 

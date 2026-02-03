@@ -66,10 +66,26 @@ const espeak_languages = ref<Array<{code: string; name: string; downloaded: bool
 ])
 const espeak_downloading = ref(false)
 const espeak_download_progress = ref(0)
-// Support multiple languages simultaneously
-const espeak_selected_langs = ref<string[]>(
-  JSON.parse(localStorage.getItem('espeak-langs') || '["en"]')
-)
+
+const allPacksDownloaded = computed(() => {
+  return espeak_languages.value.every(lang => lang.downloaded)
+})
+
+async function downloadAllEspeakLanguages() {
+  espeak_downloading.value = true
+  espeak_download_progress.value = 0
+  error.value = null
+  try {
+    await speechApi.downloadAllEspeakLanguages()
+    // Sync state from server
+    await syncEspeakLanguages()
+  } catch (e: any) {
+    console.error('Failed to download all eSpeak languages:', e)
+    error.value = t('speech.downloadError')
+  } finally {
+    espeak_downloading.value = false
+  }
+}
 
 async function downloadEspeakLanguage(langCode: string) {
   const lang = espeak_languages.value.find(l => l.code === langCode)
@@ -87,21 +103,12 @@ async function downloadEspeakLanguage(langCode: string) {
   try {
     await speechApi.downloadEspeakLanguage(langCode)
     lang.downloaded = true
-    // Add to selected languages if not already there
-    if (!espeak_selected_langs.value.includes(langCode)) {
-      espeak_selected_langs.value.push(langCode)
-      saveEspeakLanguages()
-    }
     // Sync state from server to ensure consistency
     await syncEspeakLanguages()
   } catch (e: any) {
     // If already downloaded error, mark as downloaded anyway and sync
     if (e.response?.data?.error?.includes('already downloaded')) {
       lang.downloaded = true
-      if (!espeak_selected_langs.value.includes(langCode)) {
-        espeak_selected_langs.value.push(langCode)
-        saveEspeakLanguages()
-      }
       await syncEspeakLanguages()
     } else {
       console.error('Failed to download eSpeak language:', e)
@@ -110,20 +117,6 @@ async function downloadEspeakLanguage(langCode: string) {
   } finally {
     espeak_downloading.value = false
   }
-}
-
-function toggleEspeakLanguage(langCode: string) {
-  const index = espeak_selected_langs.value.indexOf(langCode)
-  if (index > -1) {
-    espeak_selected_langs.value.splice(index, 1)
-  } else {
-    espeak_selected_langs.value.push(langCode)
-  }
-  saveEspeakLanguages()
-}
-
-function saveEspeakLanguages() {
-  localStorage.setItem('espeak-langs', JSON.stringify(espeak_selected_langs.value))
 }
 
 function saveProvider() {
@@ -305,13 +298,6 @@ async function syncEspeakLanguages() {
         local.downloaded = lang.downloaded
       }
     }
-
-    // Sync selected languages with downloaded status
-    espeak_selected_langs.value = espeak_selected_langs.value.filter(code => {
-      const lang = espeak_languages.value.find(l => l.code === code)
-      return lang && lang.downloaded
-    })
-    saveEspeakLanguages()
   } catch (e) {
     console.error('Failed to sync eSpeak languages:', e)
   }
@@ -480,7 +466,6 @@ onMounted(() => {
             >
               <option value="">{{ t('common.select') }} TTS {{ t('common.provider') }}</option>
               <option value="espeak-ng">eSpeak-NG ({{ t('speech.offline') }})</option>
-              <option value="edge-tts">Edge-TTS ({{ t('speech.online') }}, 100+ voices)</option>
             </select>
             <button
               type="button"
@@ -490,18 +475,27 @@ onMounted(() => {
               {{ t('common.save') }}
             </button>
           </div>
-          <p v-if="selectedProvider === 'edge-tts'" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
-            ⚠️ {{ t('speech.privacyWarning') }}
-          </p>
         </div>
 
         <!-- eSpeak-NG Language Packs (show when eSpeak-NG is selected) -->
         <div v-if="selectedProvider === 'espeak-ng'" class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
+          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
             {{ t('speech.languagePacks') }}
           </h4>
 
-          <div v-if="espeak_downloading" class="mb-4">
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            {{ t('speech.allPacksInfo', { count: 27, size: '8.5 MB' }) }}
+          </p>
+
+          <button
+            @click="downloadAllEspeakLanguages"
+            :disabled="espeak_downloading || allPacksDownloaded"
+            class="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+          >
+            {{ allPacksDownloaded ? t('speech.allDownloaded') : t('speech.downloadAll') }}
+          </button>
+
+          <div v-if="espeak_downloading" class="mt-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(espeak_download_progress) }}%</span>
@@ -511,47 +505,6 @@ onMounted(() => {
                 class="bg-purple-500 h-2 rounded-full transition-all duration-300"
                 :style="{ width: `${Math.floor(espeak_download_progress)}%` }"
               ></div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            <div
-              v-for="lang in espeak_languages"
-              :key="lang.code"
-              class="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-400 dark:hover:border-purple-500 transition-colors"
-            >
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium text-gray-900 dark:text-white text-sm truncate">{{ lang.name }}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {{ lang.code.toUpperCase() }} · {{ lang.size }}
-                  </div>
-                </div>
-              </div>
-
-              <div class="mt-2">
-                <template v-if="lang.downloaded">
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      :checked="espeak_selected_langs.includes(lang.code)"
-                      @change="toggleEspeakLanguage(lang.code)"
-                      class="w-4 h-4 rounded border-gray-300 text-purple-500 focus:ring-purple-500"
-                    />
-                    <span class="text-xs text-gray-700 dark:text-gray-300">
-                      {{ t('speech.inUse') }}
-                    </span>
-                  </label>
-                </template>
-                <button
-                  v-else
-                  class="w-full px-2 py-1.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
-                  :disabled="espeak_downloading"
-                  @click="downloadEspeakLanguage(lang.code)"
-                >
-                  {{ t('speech.download') }}
-                </button>
-              </div>
             </div>
           </div>
         </div>

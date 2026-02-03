@@ -33,25 +33,21 @@ func (zs *ZormStore) UpdateReadmeBatchZorm(ctx context.Context, updates []readme
 	}
 	defer tx.Rollback()
 
-	t := z.TableContext(ctx, tx, "skills")
 	now := time.Now()
 
+	// Prepare update statement
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE skills
+		SET readme = ?, readme_hash = ?, updated_at = ?
+		WHERE id = ? AND (readme_hash IS NULL OR readme_hash != ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
 	for _, u := range updates {
-		// Only update if hash is different
-		_, err := t.Update(
-			map[string]interface{}{
-				"readme":      u.Readme,
-				"readme_hash": u.Hash,
-				"updated_at":  now,
-			},
-			z.Where(
-				z.Eq("id", u.ID),
-				z.Or(
-					z.IsNull("readme_hash"),
-					z.Neq("readme_hash", u.Hash),
-				),
-			),
-		)
+		_, err := stmt.ExecContext(ctx, u.Readme, u.Hash, now, u.ID, u.Hash)
 		if err != nil {
 			return err
 		}

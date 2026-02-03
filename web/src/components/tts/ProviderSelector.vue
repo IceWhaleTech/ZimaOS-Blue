@@ -1,26 +1,26 @@
 <template>
   <div class="provider-selector">
-    <label>TTS Provider</label>
+    <label>{{ t('speech.ttsProvider') }}</label>
     <select v-model="selectedProvider" @change="handleChange" class="provider-select">
       <option v-for="provider in providers" :key="provider.type" :value="provider.type">
         {{ provider.name }}
       </option>
     </select>
-    <p v-if="selectedProvider === 'edge-tts'" class="provider-note">
-      ⚠️ Online service - requires privacy consent
-    </p>
-    <p v-else-if="selectedProvider === 'espeak-ng'" class="provider-note">
-      ✓ Offline - lightweight (~5MB)
+    <p v-if="selectedProvider === 'espeak-ng'" class="provider-note">
+      ✓ {{ t('speech.espeakNote') }}
     </p>
     <p v-else-if="selectedProvider === 'sherpa-onnx'" class="provider-note">
-      ✓ Offline - premium quality (requires download)
+      ✓ {{ t('speech.sherpaNote') }}
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTTSStore } from '@/stores/tts'
+
+const { t } = useI18n()
 
 const ttsStore = useTTSStore()
 const selectedProvider = ref('')

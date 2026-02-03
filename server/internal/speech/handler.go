@@ -59,6 +59,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	espeak := g.Group("/espeak")
 	espeak.GET("/languages", h.ListEspeakLanguages)
 	espeak.POST("/download", h.DownloadEspeakLanguage)
+	espeak.POST("/download-all", h.DownloadAllEspeakLanguages)
 	espeak.DELETE("/language", h.DeleteEspeakLanguage)
 }
 
@@ -455,6 +456,20 @@ func (h *Handler) DownloadEspeakLanguage(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":  "downloaded",
 		"message": "Language pack downloaded: " + req.LangCode,
+	})
+}
+
+// DownloadAllEspeakLanguages downloads all eSpeak-NG language packs at once.
+func (h *Handler) DownloadAllEspeakLanguages(c echo.Context) error {
+	if err := h.espeakManager.DownloadAllLanguagePacks(); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloaded",
+		"message": "All language packs downloaded successfully",
 	})
 }
 

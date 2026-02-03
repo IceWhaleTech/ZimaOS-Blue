@@ -212,3 +212,20 @@ func (p *EspeakNGProvider) GetAllLanguagePackInfo() []LanguagePackInfo {
 	}
 	return infos
 }
+
+// GetTotalLanguagePackSize returns the total size of all language packs in KB
+func (p *EspeakNGProvider) GetTotalLanguagePackSize() int {
+	langSizes := map[string]int{
+		"en": 250, "es": 280, "fr": 300, "de": 320, "it": 290, "pt": 310,
+		"ru": 350, "pl": 320, "nl": 300, "sv": 280, "no": 270, "da": 260,
+		"fi": 290, "cs": 310, "sk": 300, "hu": 330, "ro": 310, "el": 320,
+		"tr": 340, "ar": 380, "he": 350, "fa": 360, "zh": 400, "ja": 420,
+		"ko": 410, "vi": 330, "th": 350,
+	}
+
+	total := 0
+	for _, size := range langSizes {
+		total += size
+	}
+	return total
+}

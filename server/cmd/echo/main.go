@@ -159,9 +159,9 @@ func runServer() {
 
 func main() {
 	// Handle Windows service commands (install, uninstall, start, stop, status)
-	if HandleServiceCommand(os.Args) {
-		return
-	}
+	// if HandleServiceCommand(os.Args) {
+	// 	return
+	// }
 
 	// Parse flags
 	configPath := flag.String("config", "", "Path to config file")
@@ -178,7 +178,7 @@ func main() {
 		fmt.Println("  -v               Show version information")
 		fmt.Println("  --help           Show this help message")
 		fmt.Println("")
-		PrintServiceHelp()
+		// PrintServiceHelp()
 		os.Exit(0)
 	}
 
@@ -575,19 +575,12 @@ func main() {
 		logger.Info().Msg("Browser automation handler initialized")
 	}()
 
-	// Initialize TTS service with Edge TTS provider
+	// Initialize TTS service (disabled by default, no providers configured)
 	go func() {
 		var err error
 		ttsService, err = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderEdge,
-			Providers: []tts.ProviderConfig{
-				{
-					Type:          tts.ProviderEdge,
-					Enabled:       true,
-					DefaultVoice:  "en-US-AriaNeural",
-					DefaultFormat: tts.FormatMP3,
-				},
-			},
+			DefaultProvider: "",
+			Providers:       []tts.ProviderConfig{},
 		})
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize TTS service")

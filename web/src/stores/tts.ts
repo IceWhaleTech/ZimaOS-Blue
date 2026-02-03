@@ -9,7 +9,6 @@ export const useTTSStore = defineStore('tts', () => {
   const languagePacks = ref<LanguagePack[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const consentStatus = ref<Record<string, boolean>>({})
 
   // Computed
   const currentProvider = computed(() => {
@@ -93,23 +92,20 @@ export const useTTSStore = defineStore('tts', () => {
     }
   }
 
-  const checkConsent = async (service: string) => {
+  const downloadAllLanguagePacks = async () => {
     try {
-      const response = await ttsApi.getConsent(service)
-      consentStatus.value[service] = response.data.consent_given
-      return response.data.consent_given
+      loading.value = true
+      error.value = null
+      await ttsApi.downloadAllLanguagePacks()
+      // Mark all packs as downloaded
+      languagePacks.value.forEach(pack => {
+        pack.downloaded = true
+      })
     } catch (err) {
-      console.error('Failed to check consent:', err)
-      return false
-    }
-  }
-
-  const setConsent = async (service: string, given: boolean) => {
-    try {
-      await ttsApi.setConsent(service, given)
-      consentStatus.value[service] = given
-    } catch (err) {
-      console.error('Failed to set consent:', err)
+      error.value = err instanceof Error ? err.message : 'Failed to download all language packs'
+      throw err
+    } finally {
+      loading.value = false
     }
   }
 
@@ -120,7 +116,6 @@ export const useTTSStore = defineStore('tts', () => {
     languagePacks,
     loading,
     error,
-    consentStatus,
 
     // Computed
     currentProvider,
@@ -131,8 +126,7 @@ export const useTTSStore = defineStore('tts', () => {
     setPreferredProvider,
     loadLanguagePacks,
     downloadLanguagePack,
+    downloadAllLanguagePacks,
     deleteLanguagePack,
-    checkConsent,
-    setConsent,
   }
 })
