@@ -465,7 +465,7 @@ onMounted(() => {
               class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             >
               <option value="">{{ t('common.select') }} TTS {{ t('common.provider') }}</option>
-              <option value="espeak-ng">eSpeak-NG ({{ t('speech.offline') }})</option>
+              <option value="espeak-ng">eSpeak-NG</option>
             </select>
             <button
               type="button"
