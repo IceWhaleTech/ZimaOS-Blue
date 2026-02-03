@@ -82,14 +82,20 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
             *state.server_running.lock().unwrap() = true;
         }
 
-        // Wait for server to be ready
+        // Wait for server to be ready with exponential backoff (optimized for macOS FFI)
         let url = "http://localhost:23456/api/v1/health";
-        for i in 0..30 {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let mut delay_ms = 25u64;  // 优化: 更快的首次检查
+        let max_delay_ms = 100u64;
+        let max_attempts = 8;      // 优化: 减少重试次数
+
+        for i in 0..max_attempts {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             if reqwest::get(url).await.is_ok() {
-                info!("Server ready after {}ms", (i + 1) * 100);
+                info!("Server ready after attempt {} (~{}ms total)", i + 1,
+                    (0..=i).map(|j| std::cmp::min(25 * 2u64.pow(j as u32), max_delay_ms)).sum::<u64>());
                 return Ok(());
             }
+            delay_ms = std::cmp::min(delay_ms * 2, max_delay_ms);
         }
 
         info!("Server may not be fully ready, but FFI call succeeded");
@@ -126,8 +132,19 @@ async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
 
 /// Main application entry point
 pub fn run() {
-    // Initialize logger
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Initialize logger with optimized settings for Windows
+    // Use warn level in release builds to reduce startup overhead
+    #[cfg(debug_assertions)]
+    let default_level = "info";
+    #[cfg(not(debug_assertions))]
+    let default_level = "warn";
+
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
+        .format_timestamp(None)
+        .format_module_path(false)
+        .format_target(false)
+        .format_level(false)
+        .init();
 
     info!("Starting ZimaOS Echo desktop application");
 
@@ -156,13 +173,13 @@ pub fn run() {
         .setup(|app| {
             info!("Setting up application");
 
-            // Create tray menu
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
-            let hide = MenuItem::with_id(app, "hide", "Hide Window", true, None::<&str>)?;
-            let separator = MenuItem::with_id(app, "sep", "─────────", false, None::<&str>)?;
+            // Create tray menu with improved styling
+            let show = MenuItem::with_id(app, "show", "📂 Show Window", true, None::<&str>)?;
+            let hide = MenuItem::with_id(app, "hide", "🙈 Hide Window", true, None::<&str>)?;
+            let separator1 = MenuItem::with_id(app, "sep1", "", false, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "❌ Quit", true, None::<&str>)?;
 
-            let menu = Menu::with_items(app, &[&show, &hide, &separator, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &hide, &separator1, &quit])?;
 
             // Build tray icon with embedded image
             let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
@@ -227,6 +244,13 @@ pub fn run() {
             // Start the Echo server using platform-specific approach
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
+
+            // Show window immediately with loading state
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
             tauri::async_runtime::spawn(async move {
                 info!("Attempting to start server...");
                 match start_server_platform(&app_handle).await {
@@ -244,26 +268,12 @@ pub fn run() {
                     23456
                 };
 
-                // Navigate the main window to the Go server URL and show it
+                // Navigate the main window to the Go server URL
                 if let Some(window) = app_handle_for_window.get_webview_window("main") {
                     let url = format!("http://localhost:{}", port);
                     info!("Navigating to server at {}", url);
                     if let Err(e) = window.navigate(url.parse().unwrap()) {
                         error!("Failed to navigate to server: {}", e);
-                    }
-
-                    // Wait a bit for navigation to complete
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-                    // Show the window after navigation
-                    info!("Showing window...");
-                    match window.show() {
-                        Ok(_) => info!("Window shown successfully"),
-                        Err(e) => error!("Failed to show window: {}", e),
-                    }
-                    match window.set_focus() {
-                        Ok(_) => info!("Window focused successfully"),
-                        Err(e) => error!("Failed to focus window: {}", e),
                     }
 
                     // On macOS, we need to activate the app to bring it to front

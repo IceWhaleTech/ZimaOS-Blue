@@ -48,6 +48,9 @@ export default {
     default: 'Default',
     search: 'Search',
     searching: 'Searching...',
+    select: 'Select',
+    provider: 'Provider',
+    downloading: 'Downloading',
     loadingActions: 'Loading actions...',
     noActionsAvailable: 'No actions available',
     loadingActivity: 'Loading activity...',
@@ -315,6 +318,10 @@ export default {
     stopTTS: 'Stop audio',
     ttsError: 'Failed to synthesize speech',
     ttsNoContent: 'No content to speak',
+    languagePackRequired: 'Language Pack Required',
+    languagePackRequiredDesc: 'Detected {language} text. Please download the language pack to play audio.',
+    downloadAndPlay: 'Download & Play',
+    downloadLanguagePackError: 'Failed to download language pack',
     // Camera and image
     takePhoto: 'Take photo',
     imagePreview: {

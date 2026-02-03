@@ -22,7 +22,7 @@ const currentTTSModel = computed(() => status.value?.tts?.model_type ?? '')
 const editBeforeSend = computed(() => status.value?.asr?.edit_before_send ?? false)
 
 // TTS Provider selection
-const selectedProvider = ref(localStorage.getItem('tts-provider') || 'espeak-ng')
+const selectedProvider = ref(localStorage.getItem('tts-provider') || '')
 const selectedTTSModel = ref(localStorage.getItem('tts-model') || 'piper-en')
 const selectedASRModel = ref(localStorage.getItem('asr-model') || '')
 
@@ -34,35 +34,35 @@ const speechVolume = ref(parseFloat(localStorage.getItem('tts-speech-volume') ||
 // Auto-play TTS for assistant responses
 const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') === 'true')
 
-// eSpeak-NG language packs - 27 languages
-const espeak_languages = ref<Array<{code: string; name: string; downloaded: boolean}>>([
-  { code: 'en', name: 'English', downloaded: true },
-  { code: 'zh', name: 'Chinese', downloaded: false },
-  { code: 'es', name: 'Spanish', downloaded: false },
-  { code: 'fr', name: 'French', downloaded: false },
-  { code: 'de', name: 'German', downloaded: false },
-  { code: 'ja', name: 'Japanese', downloaded: false },
-  { code: 'ko', name: 'Korean', downloaded: false },
-  { code: 'ru', name: 'Russian', downloaded: false },
-  { code: 'pt', name: 'Portuguese', downloaded: false },
-  { code: 'it', name: 'Italian', downloaded: false },
-  { code: 'nl', name: 'Dutch', downloaded: false },
-  { code: 'pl', name: 'Polish', downloaded: false },
-  { code: 'tr', name: 'Turkish', downloaded: false },
-  { code: 'ar', name: 'Arabic', downloaded: false },
-  { code: 'hi', name: 'Hindi', downloaded: false },
-  { code: 'th', name: 'Thai', downloaded: false },
-  { code: 'vi', name: 'Vietnamese', downloaded: false },
-  { code: 'id', name: 'Indonesian', downloaded: false },
-  { code: 'fil', name: 'Filipino', downloaded: false },
-  { code: 'uk', name: 'Ukrainian', downloaded: false },
-  { code: 'cs', name: 'Czech', downloaded: false },
-  { code: 'sv', name: 'Swedish', downloaded: false },
-  { code: 'da', name: 'Danish', downloaded: false },
-  { code: 'no', name: 'Norwegian', downloaded: false },
-  { code: 'fi', name: 'Finnish', downloaded: false },
-  { code: 'el', name: 'Greek', downloaded: false },
-  { code: 'he', name: 'Hebrew', downloaded: false },
+// eSpeak-NG language packs - 27 languages with sizes
+const espeak_languages = ref<Array<{code: string; name: string; downloaded: boolean; size: string}>>([
+  { code: 'en', name: 'English', downloaded: true, size: '250KB' },
+  { code: 'zh', name: 'Chinese', downloaded: false, size: '400KB' },
+  { code: 'es', name: 'Spanish', downloaded: false, size: '280KB' },
+  { code: 'fr', name: 'French', downloaded: false, size: '300KB' },
+  { code: 'de', name: 'German', downloaded: false, size: '320KB' },
+  { code: 'ja', name: 'Japanese', downloaded: false, size: '420KB' },
+  { code: 'ko', name: 'Korean', downloaded: false, size: '410KB' },
+  { code: 'ru', name: 'Russian', downloaded: false, size: '350KB' },
+  { code: 'pt', name: 'Portuguese', downloaded: false, size: '310KB' },
+  { code: 'it', name: 'Italian', downloaded: false, size: '290KB' },
+  { code: 'nl', name: 'Dutch', downloaded: false, size: '300KB' },
+  { code: 'pl', name: 'Polish', downloaded: false, size: '320KB' },
+  { code: 'tr', name: 'Turkish', downloaded: false, size: '340KB' },
+  { code: 'ar', name: 'Arabic', downloaded: false, size: '380KB' },
+  { code: 'hi', name: 'Hindi', downloaded: false, size: '360KB' },
+  { code: 'th', name: 'Thai', downloaded: false, size: '350KB' },
+  { code: 'vi', name: 'Vietnamese', downloaded: false, size: '330KB' },
+  { code: 'id', name: 'Indonesian', downloaded: false, size: '280KB' },
+  { code: 'fil', name: 'Filipino', downloaded: false, size: '290KB' },
+  { code: 'uk', name: 'Ukrainian', downloaded: false, size: '340KB' },
+  { code: 'cs', name: 'Czech', downloaded: false, size: '310KB' },
+  { code: 'sv', name: 'Swedish', downloaded: false, size: '280KB' },
+  { code: 'da', name: 'Danish', downloaded: false, size: '260KB' },
+  { code: 'no', name: 'Norwegian', downloaded: false, size: '270KB' },
+  { code: 'fi', name: 'Finnish', downloaded: false, size: '290KB' },
+  { code: 'el', name: 'Greek', downloaded: false, size: '320KB' },
+  { code: 'he', name: 'Hebrew', downloaded: false, size: '350KB' },
 ])
 const espeak_downloading = ref(false)
 const espeak_download_progress = ref(0)
@@ -92,14 +92,17 @@ async function downloadEspeakLanguage(langCode: string) {
       espeak_selected_langs.value.push(langCode)
       saveEspeakLanguages()
     }
+    // Sync state from server to ensure consistency
+    await syncEspeakLanguages()
   } catch (e: any) {
-    // If already downloaded error, mark as downloaded anyway
+    // If already downloaded error, mark as downloaded anyway and sync
     if (e.response?.data?.error?.includes('already downloaded')) {
       lang.downloaded = true
       if (!espeak_selected_langs.value.includes(langCode)) {
         espeak_selected_langs.value.push(langCode)
         saveEspeakLanguages()
       }
+      await syncEspeakLanguages()
     } else {
       console.error('Failed to download eSpeak language:', e)
       error.value = t('speech.downloadError')
@@ -290,10 +293,35 @@ async function deleteTTSModel(modelType?: string) {
   }
 }
 
+async function syncEspeakLanguages() {
+  try {
+    const res = await speechApi.listEspeakLanguages()
+    const languages = res.data?.languages || []
+
+    // Update downloaded status from server
+    for (const lang of languages) {
+      const local = espeak_languages.value.find(l => l.code === lang.code)
+      if (local) {
+        local.downloaded = lang.downloaded
+      }
+    }
+
+    // Sync selected languages with downloaded status
+    espeak_selected_langs.value = espeak_selected_langs.value.filter(code => {
+      const lang = espeak_languages.value.find(l => l.code === code)
+      return lang && lang.downloaded
+    })
+    saveEspeakLanguages()
+  } catch (e) {
+    console.error('Failed to sync eSpeak languages:', e)
+  }
+}
+
 onMounted(() => {
   fetchStatus()
   fetchASRModels()
   fetchTTSModels()
+  syncEspeakLanguages()
 })
 </script>
 
@@ -450,9 +478,9 @@ onMounted(() => {
               v-model="selectedProvider"
               class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
             >
-              <option value="espeak-ng">eSpeak-NG ({{ t('speech.offline') }}, 5MB)</option>
+              <option value="">{{ t('common.select') }} TTS {{ t('common.provider') }}</option>
+              <option value="espeak-ng">eSpeak-NG ({{ t('speech.offline') }})</option>
               <option value="edge-tts">Edge-TTS ({{ t('speech.online') }}, 100+ voices)</option>
-              <option value="sherpa-onnx">Sherpa-ONNX ({{ t('speech.offline') }}, 82MB)</option>
             </select>
             <button
               type="button"
@@ -496,7 +524,7 @@ onMounted(() => {
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-gray-900 dark:text-white text-sm truncate">{{ lang.name }}</div>
                   <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {{ lang.code.toUpperCase() }}
+                    {{ lang.code.toUpperCase() }} · {{ lang.size }}
                   </div>
                 </div>
               </div>
@@ -525,104 +553,6 @@ onMounted(() => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- TTS Models Section (show when Sherpa is selected) -->
-        <div v-if="selectedProvider === 'sherpa-onnx'" class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
-            {{ t('speech.ttsModels') }}
-          </h4>
-
-          <div v-if="ttsDownloading" class="mb-4">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(ttsDownloadProgress) }}%</span>
-            </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div
-                class="bg-green-500 h-2 rounded-full transition-all duration-300"
-                :style="{ width: `${Math.floor(ttsDownloadProgress)}%` }"
-              ></div>
-            </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('speech.resumeSupported') }}</p>
-          </div>
-
-          <div class="space-y-3">
-            <div
-              v-for="model in ttsModels"
-              :key="model.id"
-              class="flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded-lg"
-            >
-              <div class="flex-1">
-                <div class="font-medium text-gray-900 dark:text-white">{{ model.name }}</div>
-                <div class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ model.description }} · {{ model.size }}
-                </div>
-                <div v-if="model.languages?.length" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  {{ model.languages.join(', ') }}
-                </div>
-              </div>
-
-              <div class="flex items-center gap-2 ml-4">
-                <template v-if="model.downloaded">
-                  <button
-                    v-if="currentTTSModel !== model.id"
-                    class="px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                    @click="switchTTSModel(model.id)"
-                  >
-                    {{ t('speech.use') }}
-                  </button>
-                  <span v-else class="px-3 py-1.5 text-sm bg-green-500/20 text-green-500 rounded-lg">
-                    {{ t('speech.inUse') }}
-                  </span>
-                  <button
-                    class="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                    :title="t('common.delete')"
-                    @click="deleteTTSModel(model.id)"
-                  >
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </template>
-                <button
-                  v-else
-                  class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
-                  :disabled="ttsDownloading"
-                  @click="downloadTTSModel(model.id)"
-                >
-                  {{ t('speech.download') }}
-                </button>
-              </div>
-            </div>
-
-            <div v-if="ttsModels.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
-              {{ t('speech.noModels') }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Sherpa Model Selection -->
-        <div v-if="selectedProvider === 'sherpa-onnx'">
-          <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-            {{ t('speech.model') }}
-          </label>
-          <div class="flex gap-2">
-            <select
-              v-model="selectedTTSModel"
-              class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-            >
-              <option value="piper-en">Piper (English)</option>
-              <option value="piper-zh">Piper (Chinese)</option>
-            </select>
-            <button
-              type="button"
-              @click="saveTTSModel"
-              class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
-            >
-              {{ t('common.save') }}
-            </button>
           </div>
         </div>
 

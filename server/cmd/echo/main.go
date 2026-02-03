@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -227,9 +228,9 @@ func main() {
 	}
 	defer db.Close()
 
-	// Configure database connection pool
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	// Configure database connection pool (optimized for startup performance)
+	db.SetMaxOpenConns(15)      // 优化: 增加到 15 以支持并发初始化
+	db.SetMaxIdleConns(8)       // 优化: 增加到 8 以减少连接创建开销
 	db.SetConnMaxLifetime(time.Hour)
 
 	// Enable WAL mode for better concurrency
@@ -240,13 +241,22 @@ func main() {
 	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
 		logger.Warn().Err(err).Msg("Failed to enable foreign keys")
 	}
+	// 优化: 添加更多 SQLite 性能优化
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		logger.Warn().Err(err).Msg("Failed to set synchronous mode")
+	}
+	if _, err := db.Exec("PRAGMA cache_size=-64000"); err != nil {
+		logger.Warn().Err(err).Msg("Failed to set cache size")
+	}
 
-	// Warm up connection pool for faster startup
-	for i := 0; i < 3; i++ {
-		conn, err := db.Conn(context.Background())
-		if err == nil {
-			conn.Close()
-		}
+	// Warm up connection pool for faster startup (parallel)
+	for i := 0; i < 5; i++ {
+		go func() {
+			conn, err := db.Conn(context.Background())
+			if err == nil {
+				conn.Close()
+			}
+		}()
 	}
 
 	// Initialize user repository and service
@@ -692,15 +702,8 @@ func main() {
 	// Wait for all parallel initializations to complete
 	initPool.Wait()
 
-	// Get Sherpa providers from the services (they share the same instance)
-	var sherpaTTSProvider *tts.SherpaProvider
+	// Get Sherpa ASR provider from the STT service
 	var sherpaASRProvider *stt.SherpaProvider
-	if ttsService != nil {
-		sherpaTTSProvider = ttsService.GetSherpaProvider()
-		if sherpaTTSProvider != nil {
-			logger.Info().Msg("Using Sherpa TTS provider from TTS service")
-		}
-	}
 	if sttService != nil {
 		sherpaASRProvider = sttService.GetSherpaProvider()
 		if sherpaASRProvider != nil {
@@ -708,17 +711,7 @@ func main() {
 		}
 	}
 
-	// Create standalone providers if not available from services
-	if sherpaTTSProvider == nil {
-		sherpaTTSProvider = tts.NewSherpaProvider(&tts.SherpaConfig{
-			ModelDir:      filepath.Join(dataDir, "sherpa-tts"),
-			ModelType:     "piper-en",
-			DefaultVoice:  "0",
-			DefaultFormat: tts.FormatWAV,
-			MaxTextLength: 5000,
-		})
-		logger.Info().Msg("Created standalone Sherpa TTS provider")
-	}
+	// Create standalone ASR provider if not available from services
 	if sherpaASRProvider == nil {
 		sherpaASRProvider = stt.NewSherpaProvider(&stt.SherpaConfig{
 			ModelDir:  filepath.Join(dataDir, "sherpa-asr"),
@@ -768,7 +761,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -812,7 +805,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager) {
 	e := srv.Echo()
 
 	// Initialize connection manager and add middleware for tracking all connections
@@ -985,6 +978,38 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	} else {
 		skillHandler.SetStore(skillStoreDb)
 		logger.Info().Msg("Skill store initialized")
+
+		// Load installed skills from database and register them
+		installedSkills, err := skillStoreDb.GetInstalledSkills(context.Background())
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to load installed skills from database")
+		} else {
+			loadedCount := 0
+			for _, s := range installedSkills {
+				// Create a remote skill adapter for each installed skill
+				manifest := &skill.Manifest{
+					ID:          s.ID,
+					Name:        s.Name,
+					Version:     s.Version,
+					Description: s.Summary,
+					Author:      s.Author,
+					Category:    s.Category,
+					Tags:        strings.Split(s.Tags, ","),
+					Metadata: map[string]string{
+						"source_id":   s.SourceID,
+						"source_name": s.SourceName,
+						"homepage":    s.Homepage,
+					},
+				}
+				adapter := server.NewRemoteSkillAdapter(manifest)
+				if err := skillRegistry.Register(adapter, false); err != nil {
+					logger.Warn().Err(err).Str("skill_id", s.ID).Msg("Failed to register installed skill")
+				} else {
+					loadedCount++
+				}
+			}
+			logger.Info().Int("count", loadedCount).Msg("Installed skills loaded from database")
+		}
 
 		// Initialize sync service for periodic skill updates
 		syncConfig := skillstore.DefaultSyncServiceConfig()

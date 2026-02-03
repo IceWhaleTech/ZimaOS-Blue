@@ -355,20 +355,8 @@ onMounted(() => {
     </div>
 
     <!-- Stats -->
-    <div v-if="stats" class="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div>
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats.total_chunks }}
-          </div>
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('memory.totalMemories') }}</div>
-        </div>
-        <div>
-          <div class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ formatSize(stats.total_size_bytes) }}
-          </div>
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('memory.totalSize') }}</div>
-        </div>
+    <div v-if="stats && (stats.oldest_chunk || stats.newest_chunk)" class="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+      <div class="grid grid-cols-2 gap-4">
         <div v-if="stats.oldest_chunk">
           <div class="text-sm font-medium text-gray-900 dark:text-white">
             {{ formatDate(stats.oldest_chunk) }}
@@ -710,18 +698,6 @@ onMounted(() => {
 
           <div class="p-6 space-y-6">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.memory.description') }}</p>
-
-            <!-- Memory Stats -->
-            <div v-if="stats" class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-              <div class="flex justify-between text-sm">
-                <span class="text-purple-700 dark:text-purple-300">{{ t('userdata.memory.totalMemories') }}</span>
-                <span class="font-medium text-purple-800 dark:text-purple-200">{{ stats.total_chunks }}</span>
-              </div>
-              <div class="flex justify-between text-sm mt-1">
-                <span class="text-purple-700 dark:text-purple-300">{{ t('userdata.memory.backend') }}</span>
-                <span class="font-medium text-purple-800 dark:text-purple-200">{{ stats.backend || 'local' }}</span>
-              </div>
-            </div>
 
             <!-- Export Section -->
             <div class="space-y-2">

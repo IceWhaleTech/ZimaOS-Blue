@@ -23,6 +23,10 @@ const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
 
+// Trial quota animation state
+const tokenAnimating = ref(false)
+const previousTokens = ref<number | null>(null)
+
 // Theme style class for chat interface
 const themeStyleClass = computed(() => `theme-style-${settingsStore.themeStyle}`)
 
@@ -165,6 +169,22 @@ watch(
     // Clear incremental parse states for the old conversation to free memory
     if (oldId && oldId !== newId) {
       clearConversationIncrementalStates(oldId)
+    }
+  }
+)
+
+// Watch for trial quota token changes and trigger animation
+watch(
+  () => providerPoolStore.trialQuota?.tokens_remaining,
+  (newTokens, oldTokens) => {
+    if (newTokens !== undefined && oldTokens !== undefined && newTokens !== oldTokens) {
+      // Trigger animation when tokens change
+      tokenAnimating.value = true
+      previousTokens.value = oldTokens
+      setTimeout(() => {
+        tokenAnimating.value = false
+        previousTokens.value = null
+      }, 600)
     }
   }
 )
@@ -539,29 +559,34 @@ onUnmounted(() => {
       </header>
 
       <!-- Trial Quota Banner (only show when not exhausted) -->
-      <div
-        v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted"
-        class="px-4 py-2 flex items-center justify-between text-sm border-b bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
-      >
-        <div class="flex items-center gap-2">
-          <span>🎁</span>
-          <span>{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <div class="w-20 h-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-full overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all bg-blue-500 dark:bg-blue-400"
-              :style="{ width: `${Math.min(100, (providerPoolStore.trialQuota.tokens_used / providerPoolStore.trialQuota.token_limit) * 100)}%` }"
-            ></div>
+      <Transition name="slide-fade">
+        <div
+          v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted"
+          class="px-4 py-2 flex items-center justify-between text-sm border-b bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
+        >
+          <div class="flex items-center gap-2">
+            <span>🎁</span>
+            <span
+              class="tabular-nums transition-all duration-300"
+              :class="{ 'token-change-animation': tokenAnimating }"
+            >{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
           </div>
-          <router-link
-            to="/settings?tab=llm"
-            class="text-xs underline hover:no-underline"
-          >
-            {{ t('chat.trialQuota.configure') }}
-          </router-link>
+          <div class="flex items-center gap-2">
+            <div class="w-20 h-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-full overflow-hidden">
+              <div
+                class="h-full rounded-full transition-all duration-500 ease-out bg-blue-500 dark:bg-blue-400"
+                :style="{ width: `${Math.min(100, (providerPoolStore.trialQuota.tokens_used / providerPoolStore.trialQuota.token_limit) * 100)}%` }"
+              ></div>
+            </div>
+            <router-link
+              to="/settings?tab=llm"
+              class="text-xs underline hover:no-underline"
+            >
+              {{ t('chat.trialQuota.configure') }}
+            </router-link>
+          </div>
         </div>
-      </div>
+      </Transition>
 
       <!-- Messages area -->
       <div
@@ -1016,5 +1041,42 @@ onUnmounted(() => {
 .slide-up-leave-to {
   opacity: 0;
   transform: translate(-50%, 20px);
+}
+
+/* Slide fade transition for trial quota banner */
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+.slide-fade-leave-active {
+  transition: all 0.3s ease-in;
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
+}
+
+/* Token change animation */
+.token-change-animation {
+  animation: token-pulse 0.6s ease-out;
+}
+
+@keyframes token-pulse {
+  0% {
+    transform: scale(1);
+    color: inherit;
+  }
+  30% {
+    transform: scale(1.15);
+    color: #f59e0b;
+  }
+  100% {
+    transform: scale(1);
+    color: inherit;
+  }
 }
 </style>

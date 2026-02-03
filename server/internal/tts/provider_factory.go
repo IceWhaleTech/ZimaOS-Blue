@@ -15,14 +15,6 @@ func (pf *ProviderFactory) CreateProvider(providerType string) (Provider, error)
 			DefaultVoice:  "en-US-AriaNeural",
 			DefaultFormat: FormatMP3,
 		}), nil
-	case "sherpa-onnx":
-		return NewSherpaProvider(&SherpaConfig{
-			ModelDir:      "./data/sherpa-tts",
-			ModelType:     "piper-en",
-			DefaultVoice:  "0",
-			DefaultFormat: FormatWAV,
-			MaxTextLength: 5000,
-		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
@@ -30,5 +22,5 @@ func (pf *ProviderFactory) CreateProvider(providerType string) (Provider, error)
 
 // GetAvailableProviders returns list of available provider types
 func (pf *ProviderFactory) GetAvailableProviders() []string {
-	return []string{"edge-tts", "sherpa-onnx"}
+	return []string{"edge-tts"}
 }

@@ -76,7 +76,7 @@ fn kill_existing_echo_servers() {
         let _ = Command::new("pkill")
             .args(["-f", "echo-server"])
             .output();
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(100));
     }
 
     #[cfg(windows)]
@@ -84,7 +84,7 @@ fn kill_existing_echo_servers() {
         let _ = Command::new("taskkill")
             .args(["/F", "/IM", "echo-server.exe"])
             .output();
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -162,7 +162,7 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
             default_port
         );
         kill_existing_echo_servers();
-        sleep(Duration::from_millis(200)).await;
+        sleep(Duration::from_millis(100)).await;
     }
 
     // Find available port
@@ -203,11 +203,11 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
         *state.server_running.lock().unwrap() = true;
     }
 
-    // Wait for server to be ready with exponential backoff
+    // Wait for server to be ready with exponential backoff (optimized for faster startup)
     let url = format!("http://localhost:{}/api/v1/health", port);
-    let mut delay_ms = 50u64;
-    let max_delay_ms = 400u64;
-    let max_attempts = 15;
+    let mut delay_ms = 20u64;   // 优化: 更快的首次检查 (20ms)
+    let max_delay_ms = 100u64;  // 优化: 最大延迟 100ms
+    let max_attempts = 6;       // 优化: 6 次尝试 (~200ms 总时间)
 
     for i in 0..max_attempts {
         sleep(Duration::from_millis(delay_ms)).await;
@@ -216,7 +216,7 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
                 "Server is ready after attempt {} (~{}ms total)",
                 i + 1,
                 (0..=i)
-                    .map(|j| std::cmp::min(50 * 2u64.pow(j as u32), max_delay_ms))
+                    .map(|j| std::cmp::min(20 * 2u64.pow(j as u32), max_delay_ms))
                     .sum::<u64>()
             );
             return Ok(());

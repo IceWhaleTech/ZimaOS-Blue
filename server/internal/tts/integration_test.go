@@ -89,20 +89,6 @@ func TestProviderFactory(t *testing.T) {
 		t.Errorf("Expected ProviderEdge, got %v", provider.Type())
 	}
 
-	// Test creating sherpa-onnx provider
-	provider, err = factory.CreateProvider("sherpa-onnx")
-	if err != nil {
-		t.Fatalf("Failed to create sherpa-onnx provider: %v", err)
-	}
-
-	if provider == nil {
-		t.Fatal("CreateProvider returned nil")
-	}
-
-	if provider.Type() != ProviderSherpa {
-		t.Errorf("Expected ProviderSherpa, got %v", provider.Type())
-	}
-
 	// Test creating unsupported provider
 	_, err = factory.CreateProvider("unsupported")
 	if err == nil {

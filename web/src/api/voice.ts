@@ -397,6 +397,71 @@ export function base64ToBlob(base64: string, contentType: string): Blob {
   return new Blob([byteArray], { type: contentType })
 }
 
+// Global TTS audio manager - ensures only one audio plays at a time
+class TTSAudioManager {
+  private currentAudio: HTMLAudioElement | null = null
+  private currentUrl: string | null = null
+  private onStopCallback: (() => void) | null = null
+
+  play(base64: string, contentType: string, onStop?: () => void): Promise<void> {
+    // Stop any currently playing audio
+    this.stop()
+
+    return new Promise((resolve, reject) => {
+      const blob = base64ToBlob(base64, contentType)
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+
+      this.currentAudio = audio
+      this.currentUrl = url
+      this.onStopCallback = onStop || null
+
+      audio.onended = () => {
+        this.cleanup()
+        resolve()
+      }
+
+      audio.onerror = (e) => {
+        this.cleanup()
+        reject(e)
+      }
+
+      audio.play().catch((e) => {
+        this.cleanup()
+        reject(e)
+      })
+    })
+  }
+
+  stop(): boolean {
+    if (this.currentAudio) {
+      this.currentAudio.pause()
+      this.cleanup()
+      return true
+    }
+    return false
+  }
+
+  private cleanup() {
+    if (this.currentUrl) {
+      URL.revokeObjectURL(this.currentUrl)
+      this.currentUrl = null
+    }
+    this.currentAudio = null
+    if (this.onStopCallback) {
+      this.onStopCallback()
+      this.onStopCallback = null
+    }
+  }
+
+  isPlaying(): boolean {
+    return this.currentAudio !== null && !this.currentAudio.paused
+  }
+}
+
+// Singleton instance
+export const ttsAudioManager = new TTSAudioManager()
+
 // Helper to play audio from base64
 export function playAudioFromBase64(base64: string, contentType: string): Promise<void> {
   return new Promise((resolve, reject) => {

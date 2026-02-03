@@ -12,7 +12,9 @@ TRIAL_API_KEY?=$(ZIMAOS_TRIAL_API_KEY)
 TRIAL_BASE_URL?=$(ZIMAOS_TRIAL_BASE_URL)
 
 # Build flags
-LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialAPIKey=$(TRIAL_API_KEY) -X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialBaseURL=$(TRIAL_BASE_URL)"
+# -s: Omit symbol table and debug info
+# -w: Omit DWARF symbol table
+LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialAPIKey=$(TRIAL_API_KEY) -X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialBaseURL=$(TRIAL_BASE_URL)"
 
 # Default target
 all: lint test build

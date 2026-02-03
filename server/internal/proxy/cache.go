@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -150,15 +151,26 @@ func (c *CCCache) Stop() {
 	}
 }
 
-// GenerateKey generates a cache key from request
+// GenerateKey generates a cache key from request using FNV hash (faster than SHA256)
 func (c *CCCache) GenerateKey(r *http.Request, body []byte) string {
-	h := sha256.New()
+	// Use FNV-1a hash for better performance
+	const (
+		fnvOffset uint64 = 14695981039346656037
+		fnvPrime  uint64 = 1099511628211
+	)
+	hash := fnvOffset
 
 	// Method
-	h.Write([]byte(r.Method))
+	for _, b := range r.Method {
+		hash ^= uint64(b)
+		hash *= fnvPrime
+	}
 
 	// Path
-	h.Write([]byte(r.URL.Path))
+	for _, b := range r.URL.Path {
+		hash ^= uint64(b)
+		hash *= fnvPrime
+	}
 
 	// Query params (sorted, excluding ignored)
 	if r.URL.RawQuery != "" {
@@ -179,25 +191,42 @@ func (c *CCCache) GenerateKey(r *http.Request, body []byte) string {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			h.Write([]byte(k))
-			h.Write([]byte(strings.Join(params[k], ",")))
+			for _, b := range k {
+				hash ^= uint64(b)
+				hash *= fnvPrime
+			}
+			for _, v := range params[k] {
+				for _, b := range v {
+					hash ^= uint64(b)
+					hash *= fnvPrime
+				}
+			}
 		}
 	}
 
 	// Include specified headers
 	for _, header := range c.config.KeyIncludeHeaders {
 		if v := r.Header.Get(header); v != "" {
-			h.Write([]byte(header))
-			h.Write([]byte(v))
+			for _, b := range header {
+				hash ^= uint64(b)
+				hash *= fnvPrime
+			}
+			for _, b := range v {
+				hash ^= uint64(b)
+				hash *= fnvPrime
+			}
 		}
 	}
 
 	// Body hash (for POST requests)
 	if len(body) > 0 {
-		h.Write(body)
+		for _, b := range body {
+			hash ^= uint64(b)
+			hash *= fnvPrime
+		}
 	}
 
-	return hex.EncodeToString(h.Sum(nil))
+	return fmt.Sprintf("%016x", hash)
 }
 
 // ShouldCache determines if a request should be cached

@@ -2,8 +2,6 @@ package speech
 
 import (
 	"bytes"
-	"context"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -102,12 +100,16 @@ func (h *Handler) GetASRStatus(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"ready":    false,
 			"provider": "none",
-			"message":  "Sherpa ASR provider not configured",
+			"message":  "ASR provider not configured",
 		})
 	}
 
-	status := provider.GetModelStatus()
-	return c.JSON(http.StatusOK, status)
+	// Return basic status
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"ready":    true,
+		"provider": provider.Type(),
+		"name":     provider.Name(),
+	})
 }
 
 // ListASRModels returns available ASR models.
@@ -119,9 +121,16 @@ func (h *Handler) ListASRModels(c echo.Context) error {
 		})
 	}
 
-	models := provider.ListModels()
+	// For providers that support model listing
+	if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
+		models := lister.ListModels()
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"models": models,
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": models,
+		"models": []interface{}{},
 	})
 }
 
@@ -130,7 +139,7 @@ func (h *Handler) DownloadASRModel(c echo.Context) error {
 	provider := h.service.GetASRProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Sherpa ASR provider not configured",
+			"error": "ASR provider not configured",
 		})
 	}
 
@@ -141,15 +150,9 @@ func (h *Handler) DownloadASRModel(c echo.Context) error {
 		})
 	}
 
-	// Start download in background
-	go func() {
-		ctx := context.Background()
-		provider.DownloadModel(ctx, req.ModelType)
-	}()
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "downloading",
-		"message": "Download started for model: " + req.ModelType,
+	// Current providers don't support model downloads
+	return c.JSON(http.StatusBadRequest, map[string]string{
+		"error": "current provider does not support model downloads",
 	})
 }
 
@@ -158,7 +161,7 @@ func (h *Handler) SwitchASRModel(c echo.Context) error {
 	provider := h.service.GetASRProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Sherpa ASR provider not configured",
+			"error": "ASR provider not configured",
 		})
 	}
 
@@ -169,15 +172,9 @@ func (h *Handler) SwitchASRModel(c echo.Context) error {
 		})
 	}
 
-	if err := provider.SwitchModel(req.ModelType); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "switched",
-		"message": "Switched to model: " + req.ModelType,
+	// Current providers don't support model switching
+	return c.JSON(http.StatusBadRequest, map[string]string{
+		"error": "current provider does not support model switching",
 	})
 }
 
@@ -186,20 +183,13 @@ func (h *Handler) DeleteASRModel(c echo.Context) error {
 	provider := h.service.GetASRProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Sherpa ASR provider not configured",
+			"error": "ASR provider not configured",
 		})
 	}
 
-	modelType := c.QueryParam("model_type")
-	if err := provider.DeleteModel(modelType); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "deleted",
-		"message": "Model deleted",
+	// Current providers don't support model deletion
+	return c.JSON(http.StatusBadRequest, map[string]string{
+		"error": "current provider does not support model deletion",
 	})
 }
 
@@ -214,13 +204,7 @@ func (h *Handler) GetTTSStatus(c echo.Context) error {
 		})
 	}
 
-	// For Sherpa provider, get detailed model status
-	if sherpaProvider, ok := provider.(*tts.SherpaProvider); ok {
-		status := sherpaProvider.GetModelStatus()
-		return c.JSON(http.StatusOK, status)
-	}
-
-	// For other providers (Edge, eSpeak), return basic status
+	// Return basic status for all providers
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"ready":    true,
 		"provider": provider.Type(),
@@ -237,9 +221,9 @@ func (h *Handler) ListTTSModels(c echo.Context) error {
 		})
 	}
 
-	// For Sherpa provider, get models from provider
-	if sherpaProvider, ok := provider.(*tts.SherpaProvider); ok {
-		models := sherpaProvider.ListModels()
+	// For providers that support model listing
+	if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
+		models := lister.ListModels()
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"models": models,
 		})
@@ -267,29 +251,9 @@ func (h *Handler) DownloadTTSModel(c echo.Context) error {
 		})
 	}
 
-	// Only Sherpa provider supports model downloads
-	sherpaProvider, ok := provider.(*tts.SherpaProvider)
-	if !ok {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "current provider does not support model downloads",
-		})
-	}
-
-	// Start download in background
-	go func() {
-		ctx := context.Background()
-		if err := sherpaProvider.GetDownloadManager().Download(ctx, req.ModelType); err != nil {
-			fmt.Printf("TTS model download failed: %v\n", err)
-		} else {
-			fmt.Printf("TTS model download completed: %s\n", req.ModelType)
-			// Refresh model status after successful download
-			sherpaProvider.RefreshModelStatus()
-		}
-	}()
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "downloading",
-		"message": "Download started for model: " + req.ModelType,
+	// Current providers don't support model downloads
+	return c.JSON(http.StatusBadRequest, map[string]string{
+		"error": "current provider does not support model downloads",
 	})
 }
 
@@ -309,23 +273,9 @@ func (h *Handler) SwitchTTSModel(c echo.Context) error {
 		})
 	}
 
-	// Only Sherpa provider supports model switching
-	sherpaProvider, ok := provider.(*tts.SherpaProvider)
-	if !ok {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "current provider does not support model switching",
-		})
-	}
-
-	if err := sherpaProvider.SwitchModel(req.ModelType); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "switched",
-		"message": "Switched to model: " + req.ModelType,
+	// Current providers don't support model switching
+	return c.JSON(http.StatusBadRequest, map[string]string{
+		"error": "current provider does not support model switching",
 	})
 }
 
@@ -338,24 +288,9 @@ func (h *Handler) DeleteTTSModel(c echo.Context) error {
 		})
 	}
 
-	// Only Sherpa provider supports model deletion
-	sherpaProvider, ok := provider.(*tts.SherpaProvider)
-	if !ok {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "current provider does not support model deletion",
-		})
-	}
-
-	modelType := c.QueryParam("model_type")
-	if err := sherpaProvider.DeleteModel(modelType); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "deleted",
-		"message": "Model deleted",
+	// Current providers don't support model deletion
+	return c.JSON(http.StatusBadRequest, map[string]string{
+		"error": "current provider does not support model deletion",
 	})
 }
 
@@ -399,9 +334,9 @@ func (h *Handler) Transcribe(c echo.Context) error {
 		Language: language,
 	}
 
-	// Use Sherpa ASR if available
+	// Use ASR provider if available
 	provider := h.service.GetASRProvider()
-	if provider != nil && provider.IsModelReady() {
+	if provider != nil {
 		resp, err := provider.Transcribe(c.Request().Context(), req)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{

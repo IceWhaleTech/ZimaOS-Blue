@@ -9,8 +9,9 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
 import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
-import { voiceApi, playAudioFromBase64 } from '@/api/voice'
+import { voiceApi, ttsAudioManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
+import { detectLanguage, detectVoiceForText } from '@/utils/language'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 
 const { t } = useI18n()
@@ -46,7 +47,20 @@ const copyState = ref<'idle' | 'copied'>('idle')
 // TTS playback state
 const isSpeaking = ref(false)
 const ttsError = ref<string | null>(null)
-let currentAudio: HTMLAudioElement | null = null
+const showLanguagePackPrompt = ref(false)
+const missingLanguage = ref<{code: string; name: string} | null>(null)
+const downloadingLanguagePack = ref(false)
+
+// Language code to name mapping
+const languageNames: Record<string, string> = {
+  'en': 'English', 'zh': 'Chinese', 'ja': 'Japanese', 'ko': 'Korean',
+  'de': 'German', 'fr': 'French', 'es': 'Spanish', 'ru': 'Russian',
+  'ar': 'Arabic', 'pt': 'Portuguese', 'it': 'Italian', 'nl': 'Dutch',
+  'pl': 'Polish', 'tr': 'Turkish', 'hi': 'Hindi', 'th': 'Thai',
+  'vi': 'Vietnamese', 'id': 'Indonesian', 'fil': 'Filipino', 'uk': 'Ukrainian',
+  'cs': 'Czech', 'sv': 'Swedish', 'da': 'Danish', 'no': 'Norwegian',
+  'fi': 'Finnish', 'el': 'Greek', 'he': 'Hebrew'
+}
 
 // TTS model download prompt
 const showTTSDownloadPrompt = ref(false)
@@ -202,10 +216,9 @@ async function handleCopyMessage() {
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
   clearIncrementalState(props.message.id, props.message.conversation_id)
-  // Stop any playing audio
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
+  // Stop any playing audio for this message
+  if (isSpeaking.value) {
+    ttsAudioManager.stop()
   }
 })
 
@@ -294,10 +307,7 @@ async function checkTTSModelReady(): Promise<boolean> {
 async function handlePlayTTS() {
   if (isSpeaking.value) {
     // Stop current playback
-    if (currentAudio) {
-      currentAudio.pause()
-      currentAudio = null
-    }
+    ttsAudioManager.stop()
     isSpeaking.value = false
     return
   }
@@ -310,36 +320,91 @@ async function handlePlayTTS() {
   }
 
   ttsError.value = null
-  isSpeaking.value = true
 
-  try {
-    // Get plain text content (strip markdown)
-    const textContent = props.message.content
-      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-      .replace(/`[^`]+`/g, '') // Remove inline code
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
-      .replace(/[#*_~]/g, '') // Remove markdown formatting
-      .trim()
+  // Get plain text content (strip markdown)
+  const textContent = props.message.content
+    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+    .replace(/`[^`]+`/g, '') // Remove inline code
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+    .replace(/[#*_~]/g, '') // Remove markdown formatting
+    .trim()
 
-    if (!textContent) {
-      ttsError.value = t('chat.ttsNoContent')
-      isSpeaking.value = false
-      return
+  if (!textContent) {
+    ttsError.value = t('chat.ttsNoContent')
+    return
+  }
+
+  // Get provider setting
+  const provider = localStorage.getItem('tts-provider') || 'edge-tts'
+
+  // For espeak-ng, check if language pack is downloaded
+  if (provider === 'espeak-ng') {
+    const detectedLang = detectLanguage(textContent)
+    try {
+      const res = await speechApi.listEspeakLanguages()
+      const languages = res.data?.languages || []
+      const langPack = languages.find(l => l.code === detectedLang)
+      if (langPack && !langPack.downloaded) {
+        // Language pack not downloaded, show prompt
+        missingLanguage.value = { code: detectedLang, name: languageNames[detectedLang] || detectedLang }
+        showLanguagePackPrompt.value = true
+        return
+      }
+    } catch (e) {
+      console.error('Failed to check language packs:', e)
     }
+  }
 
+  await playTTSAudio(textContent, provider)
+}
+
+async function playTTSAudio(textContent: string, provider: string) {
+  isSpeaking.value = true
+  try {
     // Get speech speed from settings
     const speed = parseFloat(localStorage.getItem('tts-speech-speed') || '1.0')
-    const provider = localStorage.getItem('tts-provider') || 'espeak-ng'
-    const response = await voiceApi.synthesize(textContent, undefined, undefined, speed, provider)
+    // Auto-detect language and select appropriate voice
+    const voice = detectVoiceForText(textContent)
+    const response = await voiceApi.synthesize(textContent, voice, undefined, speed, provider)
     if (response.data.audio) {
-      await playAudioFromBase64(response.data.audio, response.data.content_type)
+      // Use ttsAudioManager to play - it will stop any previous audio
+      await ttsAudioManager.play(response.data.audio, response.data.content_type, () => {
+        // Callback when audio is stopped externally
+        isSpeaking.value = false
+      })
     }
   } catch (error) {
     console.error('TTS error:', error)
     ttsError.value = t('chat.ttsError')
   } finally {
     isSpeaking.value = false
-    currentAudio = null
+  }
+}
+
+async function downloadLanguagePackAndPlay() {
+  if (!missingLanguage.value) return
+
+  downloadingLanguagePack.value = true
+  try {
+    await speechApi.downloadEspeakLanguage(missingLanguage.value.code)
+    showLanguagePackPrompt.value = false
+
+    // Now play the TTS
+    const textContent = props.message.content
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]+`/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[#*_~]/g, '')
+      .trim()
+
+    const provider = localStorage.getItem('tts-provider') || 'edge-tts'
+    await playTTSAudio(textContent, provider)
+  } catch (error) {
+    console.error('Failed to download language pack:', error)
+    ttsError.value = t('chat.downloadLanguagePackError')
+  } finally {
+    downloadingLanguagePack.value = false
+    missingLanguage.value = null
   }
 }
 
@@ -782,6 +847,40 @@ function closeAttachmentPreview() {
       type="tts"
       @downloaded="handlePlayTTS"
     />
+
+    <!-- Language Pack Download Prompt -->
+    <Teleport to="body">
+      <div
+        v-if="showLanguagePackPrompt"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="showLanguagePackPrompt = false"
+      >
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full mx-4 p-6">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+            {{ t('chat.languagePackRequired') }}
+          </h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            {{ t('chat.languagePackRequiredDesc', { language: missingLanguage?.name || missingLanguage?.code }) }}
+          </p>
+          <div class="flex gap-3">
+            <button
+              class="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              @click="showLanguagePackPrompt = false"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              :disabled="downloadingLanguagePack"
+              @click="downloadLanguagePackAndPlay"
+            >
+              <span v-if="downloadingLanguagePack">{{ t('common.downloading') }}...</span>
+              <span v-else>{{ t('chat.downloadAndPlay') }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

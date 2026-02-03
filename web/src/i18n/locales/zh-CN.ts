@@ -49,6 +49,9 @@ export default {
     default: '默认',
     search: '搜索',
     searching: '搜索中...',
+    select: '选择',
+    provider: '提供商',
+    downloading: '下载中',
     loadingActions: '正在加载操作...',
     noActionsAvailable: '暂无可用操作',
     loadingActivity: '正在加载动态...',
@@ -270,6 +273,10 @@ export default {
     stopTTS: '停止播放',
     ttsError: '语音合成失败',
     ttsNoContent: '没有可播放的内容',
+    languagePackRequired: '需要下载语音包',
+    languagePackRequiredDesc: '检测到文本包含{language}，需要下载对应的语音包才能播放。',
+    downloadAndPlay: '下载并播放',
+    downloadLanguagePackError: '语音包下载失败',
     // Camera and image
     takePhoto: '拍照',
     imagePreview: {

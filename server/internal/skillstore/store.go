@@ -753,6 +753,49 @@ func buildSearchContent(skill *Skill) string {
 	return strings.Join(parts, " ")
 }
 
+// GetInstalledSkills retrieves all installed skills from the database
+func (s *Store) GetInstalledSkills(ctx context.Context) ([]*Skill, error) {
+	query := `
+	SELECT id, name, version, summary, description, author, category, tags,
+		source_id, source_name, homepage, download_url, stars, downloads,
+		reviews, rating, versions, changelog, readme, dedup_key,
+		installed, enabled, created_at, updated_at, synced_at
+	FROM skills WHERE installed = 1
+	ORDER BY name ASC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var skills []*Skill
+	for rows.Next() {
+		skill := &Skill{}
+		var readme, dedupKey sql.NullString
+		err := rows.Scan(
+			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
+			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
+			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
+			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &readme, &dedupKey,
+			&skill.Installed, &skill.Enabled, &skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if readme.Valid {
+			skill.Readme = readme.String
+		}
+		if dedupKey.Valid {
+			skill.DedupKey = dedupKey.String
+		}
+		skills = append(skills, skill)
+	}
+
+	return skills, rows.Err()
+}
+
 // escapeFTS5Query escapes special characters for FTS5 queries.
 func escapeFTS5Query(query string) string {
 	// Remove special FTS5 operators and add prefix matching

@@ -1918,6 +1918,18 @@ func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 		})
 	}
 
+	// Update installed status in database
+	if h.store != nil {
+		if err := h.store.SetInstalled(ctx, skillID, true); err != nil {
+			// Rollback: unregister the skill
+			h.registry.Unregister(skillID)
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error":    fmt.Sprintf("failed to update database: %v", err),
+				"rollback": "skill registration rolled back",
+			})
+		}
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"skill": map[string]interface{}{

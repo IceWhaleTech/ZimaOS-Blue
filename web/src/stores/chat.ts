@@ -4,6 +4,7 @@ import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAt
 import { conversationApi, messageApi } from '@/api/chat'
 import { SSEClient } from '@/utils/sse'
 import { useSettingsStore } from './settings'
+import { useProviderPoolStore } from './providerPool'
 
 const PAGE_SIZE = 50
 
@@ -354,6 +355,8 @@ export const useChatStore = defineStore('chat', () => {
           fetchMessages(conversationId)
           // Refresh conversations to get updated title (auto-generated after first message)
           fetchConversations()
+          // Refresh trial quota to update progress bar
+          useProviderPoolStore().fetchTrialQuota()
         },
       })
     } catch (e) {
@@ -442,6 +445,8 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
           fetchMessages(conversationId)
+          // Refresh trial quota to update progress bar
+          useProviderPoolStore().fetchTrialQuota()
         },
       })
     } catch (e) {
@@ -546,6 +551,8 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
           fetchMessages(conversationId)
+          // Refresh trial quota to update progress bar
+          useProviderPoolStore().fetchTrialQuota()
         },
       })
     } catch (e) {

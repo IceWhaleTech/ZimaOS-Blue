@@ -66,21 +66,6 @@ func createProvider(cfg ProviderConfig) (Provider, error) {
 			DefaultVoice:  cfg.DefaultVoice,
 			DefaultFormat: cfg.DefaultFormat,
 		}), nil
-	case ProviderSherpa:
-		return NewSherpaProvider(&SherpaConfig{
-			ModelDir:      cfg.BaseURL, // Reuse BaseURL field for model directory
-			ModelType:     cfg.DefaultVoice, // Reuse DefaultVoice for model type (kokoro, piper, etc.)
-			DefaultFormat: cfg.DefaultFormat,
-			MaxTextLength: cfg.MaxTextLength,
-		}), nil
-	case ProviderKokoro:
-		// Legacy: redirect to Sherpa provider with kokoro model
-		return NewSherpaProvider(&SherpaConfig{
-			ModelDir:      cfg.BaseURL,
-			ModelType:     "kokoro",
-			DefaultFormat: cfg.DefaultFormat,
-			MaxTextLength: cfg.MaxTextLength,
-		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}
@@ -178,17 +163,5 @@ func (s *service) SetDefaultProvider(providerType ProviderType) error {
 	}
 
 	s.defaultProvider = providerType
-	return nil
-}
-
-// GetSherpaProvider returns the Sherpa TTS provider if available.
-func (s *service) GetSherpaProvider() *SherpaProvider {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if p, ok := s.providers[ProviderSherpa]; ok {
-		if sp, ok := p.(*SherpaProvider); ok {
-			return sp
-		}
-	}
 	return nil
 }

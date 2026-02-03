@@ -22,7 +22,7 @@ tauri-plugin-opener = "2"
 open = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 log = "0.4"
 env_logger = "0.11"
 reqwest = { version = "0.12", features = ["json"] }
@@ -41,7 +41,11 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
 panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "s"
+codegen-units = 16
+lto = "thin"
+opt-level = 3
 strip = true
+split-debuginfo = "packed"
+
+[profile.release.package."*"]
+opt-level = 2

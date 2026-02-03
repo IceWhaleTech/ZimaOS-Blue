@@ -147,6 +147,14 @@ func mapProviderID(providerID string) string {
 // getProviderFromPool retrieves a provider from the Provider Pool and creates an LLM provider instance.
 // This handles custom providers (prov_xxx IDs) by looking up their configuration in the pool.
 func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, error) {
+	// Check cache first (fast path)
+	h.providerCacheMu.RLock()
+	if provider, exists := h.providerCache[providerID]; exists {
+		h.providerCacheMu.RUnlock()
+		return provider, nil
+	}
+	h.providerCacheMu.RUnlock()
+
 	if h.providerPool == nil {
 		return nil, fmt.Errorf("provider pool not configured")
 	}
@@ -180,15 +188,30 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 		providerID, poolProvider.APIFormat, poolProvider.BaseURL, maskedKey)
 
 	// Create LLM provider based on API format
+	var provider llm.Provider
 	switch poolProvider.APIFormat {
 	case providerpool.APIFormatAnthropic:
-		return llm.NewClaudeProvider(apiKey, poolProvider.BaseURL), nil
+		provider = llm.NewClaudeProvider(apiKey, poolProvider.BaseURL)
 	case providerpool.APIFormatOllama:
-		return llm.NewOllamaProvider(poolProvider.BaseURL), nil
+		provider = llm.NewOllamaProvider(poolProvider.BaseURL)
 	default:
 		// Default to OpenAI-compatible format (covers OpenAI, Google, and custom providers)
-		return llm.NewCustomProvider(apiKey, poolProvider.BaseURL), nil
+		provider = llm.NewCustomProvider(apiKey, poolProvider.BaseURL)
 	}
+
+	// Cache the provider (with LRU eviction if needed)
+	h.providerCacheMu.Lock()
+	if len(h.providerCache) >= h.maxProviderCacheSize {
+		// Simple eviction: remove first entry (not true LRU, but good enough)
+		for k := range h.providerCache {
+			delete(h.providerCache, k)
+			break
+		}
+	}
+	h.providerCache[providerID] = provider
+	h.providerCacheMu.Unlock()
+
+	return provider, nil
 }
 
 // getDefaultProvider returns the best available provider from the pool.
@@ -295,6 +318,19 @@ type ChatHandler struct {
 	// Performance optimization: async event queue
 	eventQueue chan func()
 	eventStop  chan struct{}
+
+	// Performance optimization: Provider cache (LRU)
+	providerCache map[string]llm.Provider
+	providerCacheMu sync.RWMutex
+	maxProviderCacheSize int
+
+	// Performance optimization: Object pools
+	requestPool  *RequestPool
+	responsePool *ResponsePool
+
+	// Performance optimization: Concurrency optimizer
+	concurrencyOpt *ConcurrencyOptimizer
+	fastPathCache  *FastPathCache
 }
 
 // MetricsRecorder is an interface for recording API call metrics.
@@ -315,6 +351,12 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		convToSession:    make(map[string]string),
 		eventQueue:       make(chan func(), 100), // Buffered channel for async events
 		eventStop:        make(chan struct{}),
+		providerCache:    make(map[string]llm.Provider),
+		maxProviderCacheSize: 20, // LRU cache size
+		requestPool:      NewRequestPool(),
+		responsePool:     NewResponsePool(),
+		concurrencyOpt:   NewConcurrencyOptimizer(1000, 10),
+		fastPathCache:    NewFastPathCache(),
 	}
 	// Start async event processor
 	go h.processEventQueue()
@@ -1326,8 +1368,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			}
 
 			jsonData, _ := json.Marshal(data)
+			// Write with immediate flush for real-time streaming
 			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
 			flusher.Flush()
+
+			// Optional: Add small delay to prevent overwhelming client
+			// time.Sleep(time.Millisecond)
 		}
 
 		if chunk.Done {

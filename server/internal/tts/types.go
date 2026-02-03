@@ -37,8 +37,6 @@ const (
 	ProviderEdge ProviderType = "edge"
 	// ProviderKokoro is local Kokoro TTS (legacy, Python-based).
 	ProviderKokoro ProviderType = "kokoro"
-	// ProviderSherpa is local TTS using sherpa-onnx (native Go, no Python).
-	ProviderSherpa ProviderType = "sherpa"
 )
 
 // AudioFormat represents the output audio format.
@@ -156,6 +154,4 @@ type Service interface {
 	GetDefaultProvider() ProviderType
 	// SetDefaultProvider sets the default provider type.
 	SetDefaultProvider(providerType ProviderType) error
-	// GetSherpaProvider returns the Sherpa TTS provider if available.
-	GetSherpaProvider() *SherpaProvider
 }

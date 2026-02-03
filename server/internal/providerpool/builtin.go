@@ -1,7 +1,6 @@
 package providerpool
 
 import (
-	"fmt"
 	"os"
 	"time"
 )
@@ -336,27 +335,14 @@ func getTrialBaseURL() string {
 // getTrialAPIKeys returns the trial API keys
 // Priority: 1. Environment variable (runtime override) 2. Build-time value
 func getTrialAPIKeys() []APIKey {
-	// Runtime override via environment variable
 	apiKey := os.Getenv(TrialAPIKeyEnvVar)
-	source := "environment"
 	if apiKey == "" {
-		// Use build-time injected value
 		apiKey = trialAPIKey
-		source = "build-time"
 	}
 
 	if apiKey == "" {
-		// No key configured
-		fmt.Printf("[Trial Provider] No API key configured (checked %s and build-time)\n", TrialAPIKeyEnvVar)
 		return nil
 	}
-
-	// Log that we found a key (mask the actual key)
-	masked := apiKey
-	if len(apiKey) > 10 {
-		masked = apiKey[:6] + "..." + apiKey[len(apiKey)-4:]
-	}
-	fmt.Printf("[Trial Provider] API key loaded from %s: %s\n", source, masked)
 
 	return []APIKey{
 		{

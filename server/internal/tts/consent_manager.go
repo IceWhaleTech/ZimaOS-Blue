@@ -17,7 +17,7 @@ type ConsentManager struct {
 type Consent struct {
 	ID              string    `json:"id"`
 	UserID          string    `json:"user_id"`
-	Service         string    `json:"service"` // 'edge-tts', 'sherpa', 'espeak'
+	Service         string    `json:"service"` // 'edge-tts', 'espeak'
 	ConsentGiven    bool      `json:"consent_given"`
 	ConsentDate     *time.Time `json:"consent_date,omitempty"`
 	ConsentVersion  string    `json:"consent_version"`

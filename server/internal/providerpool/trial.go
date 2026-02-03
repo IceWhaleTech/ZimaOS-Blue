@@ -14,8 +14,8 @@ const (
 	// TrialProviderID is the ID of the trial provider
 	TrialProviderID = "zimaos-trial"
 
-	// TrialTokenLimit is the maximum number of tokens allowed for trial (10KB ≈ 10,000 tokens)
-	TrialTokenLimit int64 = 10000
+	// TrialTokenLimit is the maximum number of tokens allowed for trial
+	TrialTokenLimit int64 = 5000
 
 	// TrialConversationLimit is the maximum number of conversations allowed for trial
 	TrialConversationLimit int64 = 5

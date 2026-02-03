@@ -8,7 +8,7 @@
 .PHONY: build-echo-lib-macos build-echo-lib-arm64 build-echo-lib-x64 build-echo-lib-universal
 
 # Version info
-VERSION ?= 0.10.4
+VERSION ?= 0.10.20
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

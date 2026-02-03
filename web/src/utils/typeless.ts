@@ -8,6 +8,7 @@ import type {
   TypelessCardFile,
   TypelessCardTerminal,
   TypelessCardMermaid,
+  TypelessCardAccordion,
   GalleryImage,
   ListItem,
   ParsedContent,
@@ -347,12 +348,89 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
 }
 
 /**
+ * Parse special XML-like tags and convert to cards or remove them
+ * Handles: <thinking>...</thinking>, <system_placeholder />, etc.
+ */
+function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+  let text = content
+
+  // Remove <system_placeholder /> and similar self-closing system tags
+  text = text.replace(/<system_placeholder\s*\/>/g, '')
+  text = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+
+  // Parse <thinking>...</thinking> tags and convert to collapsible accordion
+  const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/g
+  let match
+  const replacements: { start: number; end: number; placeholder: string }[] = []
+
+  while ((match = thinkingRegex.exec(text)) !== null) {
+    const thinkingContent = match[1]?.trim()
+    if (thinkingContent) {
+      const card: TypelessCardAccordion = {
+        type: 'accordion',
+        id: `thinking-${cardIndex.value++}`,
+        title: '💭 思考过程',
+        items: [{
+          title: '展开查看',
+          content: thinkingContent,
+          defaultOpen: false,
+        }],
+        allowMultiple: false,
+      }
+      cards.push(card)
+      replacements.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        placeholder: `[[TYPELESS_CARD:${card.id}]]`,
+      })
+    }
+  }
+
+  // Replace in reverse order to preserve indices
+  for (let i = replacements.length - 1; i >= 0; i--) {
+    const replacement = replacements[i]
+    if (replacement) {
+      const { start, end, placeholder } = replacement
+      text = text.slice(0, start) + placeholder + text.slice(end)
+    }
+  }
+
+  // Handle incomplete/streaming <thinking> tags (no closing tag yet)
+  const incompleteThinkingRegex = /<thinking>([\s\S]*)$/
+  const incompleteMatch = incompleteThinkingRegex.exec(text)
+  if (incompleteMatch && incompleteMatch[1]) {
+    const thinkingContent = incompleteMatch[1].trim()
+    if (thinkingContent) {
+      const card: TypelessCardAccordion = {
+        type: 'accordion',
+        id: `thinking-streaming-${cardIndex.value++}`,
+        title: '💭 思考中...',
+        items: [{
+          title: '展开查看',
+          content: thinkingContent,
+          defaultOpen: true, // Show open while streaming
+        }],
+        allowMultiple: false,
+        _streaming: true,
+      }
+      cards.push(card)
+      text = text.slice(0, incompleteMatch.index) + `[[TYPELESS_CARD:${card.id}]]`
+    }
+  }
+
+  return text
+}
+
+/**
  * Internal parsing function (no caching)
  */
 function parseTypelessContentInternal(content: string, startCardIndex: number, isStreaming = false): ParsedContent {
   const cards: TypelessCard[] = []
   let text = content
   const cardIndex = { value: startCardIndex }
+
+  // First, parse special XML-like tags
+  text = parseSpecialTags(text, cards, cardIndex)
 
   // Find all complete typeless blocks first
   const regex = new RegExp(
