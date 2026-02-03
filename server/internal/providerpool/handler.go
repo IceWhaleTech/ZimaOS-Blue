@@ -121,6 +121,17 @@ func (p *Pool) Start(ctx context.Context) {
 
 	// Deduplicate providers (merge duplicates from historical data)
 	p.deduplicateProviders()
+
+	// Refresh models for all enabled providers (especially important for trial provider)
+	// This runs in background to not block startup
+	go func() {
+		refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := p.Discovery.RefreshAll(refreshCtx); err != nil {
+			// Log but don't fail - models can be fetched on demand
+			fmt.Printf("[Provider Pool] Failed to refresh models on startup: %v\n", err)
+		}
+	}()
 }
 
 // Stop stops background services
@@ -165,7 +176,11 @@ func (p *Pool) initBuiltinProviders() {
 		existingMap[provider.ID] = provider
 	}
 
-	for _, builtin := range BuiltinProviders() {
+	builtins := BuiltinProviders()
+	fmt.Printf("[Pool] initBuiltinProviders: %d existing, %d builtins\n", len(existing), len(builtins))
+
+	for _, builtin := range builtins {
+		fmt.Printf("[Pool] initBuiltinProviders: processing %s (enabled=%v, hasKeys=%d)\n", builtin.ID, builtin.Enabled, len(builtin.APIKeys))
 		if existingProvider, exists := existingMap[builtin.ID]; exists {
 			// Update existing builtin provider's metadata (but preserve user settings)
 			needsUpdate := false

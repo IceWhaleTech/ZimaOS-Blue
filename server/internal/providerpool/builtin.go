@@ -19,7 +19,7 @@ const (
 	// TrialBaseURLEnvVar is the environment variable name for trial base URL (runtime override)
 	TrialBaseURLEnvVar = "ZIMAOS_TRIAL_BASE_URL"
 	// DefaultTrialBaseURL is the default base URL for trial provider
-	DefaultTrialBaseURL = "https://api-paid.tribios.top/v1"
+	DefaultTrialBaseURL = "https://api-paid.tribios.top/"
 )
 
 // BuiltinProviders returns the list of built-in provider configurations
@@ -306,7 +306,7 @@ func BuiltinProviders() []*Provider {
 			Status:      ProviderStatusActive,
 			BaseURL:     getTrialBaseURL(),
 			APIVersion:  "v1",
-			APIFormat:   APIFormatOpenAI,
+			APIFormat:   APIFormatAnthropic,
 			Priority:    100, // Highest priority for trial
 			Icon:        "echo",
 			Description: "Echo Trial Provider - Free trial with limited quota",
@@ -391,8 +391,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     16384,
-				InputPrice:    2.5,   // $2.50 per 1M input tokens
-				OutputPrice:   10.0,  // $10.00 per 1M output tokens
+				InputPrice:    2.5,  // $2.50 per 1M input tokens
+				OutputPrice:   10.0, // $10.00 per 1M output tokens
 			},
 			{
 				ID:          "gpt-4o-mini",
@@ -410,8 +410,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     16384,
-				InputPrice:    0.15,  // $0.15 per 1M input tokens
-				OutputPrice:   0.6,   // $0.60 per 1M output tokens
+				InputPrice:    0.15, // $0.15 per 1M input tokens
+				OutputPrice:   0.6,  // $0.60 per 1M output tokens
 			},
 			{
 				ID:          "o1",
@@ -430,8 +430,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     100000,
-				InputPrice:    15.0,  // $15.00 per 1M input tokens
-				OutputPrice:   60.0,  // $60.00 per 1M output tokens
+				InputPrice:    15.0, // $15.00 per 1M input tokens
+				OutputPrice:   60.0, // $60.00 per 1M output tokens
 			},
 			{
 				ID:          "o1-mini",
@@ -449,8 +449,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     65536,
-				InputPrice:    3.0,   // $3.00 per 1M input tokens
-				OutputPrice:   12.0,  // $12.00 per 1M output tokens
+				InputPrice:    3.0,  // $3.00 per 1M input tokens
+				OutputPrice:   12.0, // $12.00 per 1M output tokens
 			},
 			{
 				ID:          "o3-mini",
@@ -468,8 +468,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     100000,
-				InputPrice:    1.1,   // $1.10 per 1M input tokens
-				OutputPrice:   4.4,   // $4.40 per 1M output tokens
+				InputPrice:    1.1, // $1.10 per 1M input tokens
+				OutputPrice:   4.4, // $4.40 per 1M output tokens
 			},
 			{
 				ID:          "gpt-4-turbo",
@@ -487,8 +487,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    10.0,  // $10.00 per 1M input tokens
-				OutputPrice:   30.0,  // $30.00 per 1M output tokens
+				InputPrice:    10.0, // $10.00 per 1M input tokens
+				OutputPrice:   30.0, // $30.00 per 1M output tokens
 			},
 		},
 		"anthropic": {
@@ -509,9 +509,9 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     32000,
-				InputPrice:    15.0,  // $15.00 per 1M input tokens
-				OutputPrice:   75.0,  // $75.00 per 1M output tokens
-				CachePrice:    1.5,   // $1.50 per 1M cache read tokens
+				InputPrice:    15.0, // $15.00 per 1M input tokens
+				OutputPrice:   75.0, // $75.00 per 1M output tokens
+				CachePrice:    1.5,  // $1.50 per 1M cache read tokens
 			},
 			{
 				ID:          "claude-sonnet-4-5-20250929",
@@ -530,9 +530,9 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     64000,
-				InputPrice:    3.0,   // $3.00 per 1M input tokens
-				OutputPrice:   15.0,  // $15.00 per 1M output tokens
-				CachePrice:    0.3,   // $0.30 per 1M cache read tokens
+				InputPrice:    3.0,  // $3.00 per 1M input tokens
+				OutputPrice:   15.0, // $15.00 per 1M output tokens
+				CachePrice:    0.3,  // $0.30 per 1M cache read tokens
 			},
 			{
 				ID:          "claude-3-5-haiku-20241022",
@@ -550,9 +550,9 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     8192,
-				InputPrice:    0.8,   // $0.80 per 1M input tokens
-				OutputPrice:   4.0,   // $4.00 per 1M output tokens
-				CachePrice:    0.08,  // $0.08 per 1M cache read tokens
+				InputPrice:    0.8,  // $0.80 per 1M input tokens
+				OutputPrice:   4.0,  // $4.00 per 1M output tokens
+				CachePrice:    0.08, // $0.08 per 1M cache read tokens
 			},
 			{
 				ID:          "claude-3-5-sonnet-20241022",
@@ -570,9 +570,9 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     8192,
-				InputPrice:    3.0,   // $3.00 per 1M input tokens
-				OutputPrice:   15.0,  // $15.00 per 1M output tokens
-				CachePrice:    0.3,   // $0.30 per 1M cache read tokens
+				InputPrice:    3.0,  // $3.00 per 1M input tokens
+				OutputPrice:   15.0, // $15.00 per 1M output tokens
+				CachePrice:    0.3,  // $0.30 per 1M cache read tokens
 			},
 		},
 		"google": {
@@ -592,8 +592,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 1000000,
 				MaxOutput:     8192,
-				InputPrice:    0.075,  // $0.075 per 1M input tokens
-				OutputPrice:   0.3,    // $0.30 per 1M output tokens
+				InputPrice:    0.075, // $0.075 per 1M input tokens
+				OutputPrice:   0.3,   // $0.30 per 1M output tokens
 			},
 			{
 				ID:          "gemini-2.0-flash-thinking",
@@ -612,8 +612,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 1000000,
 				MaxOutput:     65536,
-				InputPrice:    0.075,  // $0.075 per 1M input tokens
-				OutputPrice:   0.3,    // $0.30 per 1M output tokens
+				InputPrice:    0.075, // $0.075 per 1M input tokens
+				OutputPrice:   0.3,   // $0.30 per 1M output tokens
 			},
 			{
 				ID:          "gemini-1.5-pro",
@@ -631,8 +631,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 2000000,
 				MaxOutput:     8192,
-				InputPrice:    1.25,   // $1.25 per 1M input tokens
-				OutputPrice:   5.0,    // $5.00 per 1M output tokens
+				InputPrice:    1.25, // $1.25 per 1M input tokens
+				OutputPrice:   5.0,  // $5.00 per 1M output tokens
 			},
 			{
 				ID:          "gemini-1.5-flash",
@@ -650,8 +650,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 1000000,
 				MaxOutput:     8192,
-				InputPrice:    0.075,  // $0.075 per 1M input tokens
-				OutputPrice:   0.3,    // $0.30 per 1M output tokens
+				InputPrice:    0.075, // $0.075 per 1M input tokens
+				OutputPrice:   0.3,   // $0.30 per 1M output tokens
 			},
 		},
 		"deepseek": {
@@ -670,9 +670,9 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 64000,
 				MaxOutput:     8192,
-				InputPrice:    0.27,   // $0.27 per 1M input tokens (cache miss)
-				OutputPrice:   1.1,    // $1.10 per 1M output tokens
-				CachePrice:    0.07,   // $0.07 per 1M cache hit tokens
+				InputPrice:    0.27, // $0.27 per 1M input tokens (cache miss)
+				OutputPrice:   1.1,  // $1.10 per 1M output tokens
+				CachePrice:    0.07, // $0.07 per 1M cache hit tokens
 			},
 			{
 				ID:          "deepseek-reasoner",
@@ -690,9 +690,9 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 64000,
 				MaxOutput:     8192,
-				InputPrice:    0.55,   // $0.55 per 1M input tokens
-				OutputPrice:   2.19,   // $2.19 per 1M output tokens
-				CachePrice:    0.14,   // $0.14 per 1M cache hit tokens
+				InputPrice:    0.55, // $0.55 per 1M input tokens
+				OutputPrice:   2.19, // $2.19 per 1M output tokens
+				CachePrice:    0.14, // $0.14 per 1M cache hit tokens
 			},
 		},
 		"moonshot": {
@@ -711,7 +711,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 8000,
 				MaxOutput:     4096,
-				InputPrice:    1.7,    // ¥12/1M tokens ≈ $1.7
+				InputPrice:    1.7, // ¥12/1M tokens ≈ $1.7
 				OutputPrice:   1.7,
 			},
 			{
@@ -729,7 +729,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 32000,
 				MaxOutput:     4096,
-				InputPrice:    3.4,    // ¥24/1M tokens ≈ $3.4
+				InputPrice:    3.4, // ¥24/1M tokens ≈ $3.4
 				OutputPrice:   3.4,
 			},
 			{
@@ -747,7 +747,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    8.5,    // ¥60/1M tokens ≈ $8.5
+				InputPrice:    8.5, // ¥60/1M tokens ≈ $8.5
 				OutputPrice:   8.5,
 			},
 		},
@@ -767,7 +767,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    0.0,    // Local, no cost
+				InputPrice:    0.0, // Local, no cost
 				OutputPrice:   0.0,
 			},
 			{
@@ -785,7 +785,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 32000,
 				MaxOutput:     4096,
-				InputPrice:    0.0,    // Local, no cost
+				InputPrice:    0.0, // Local, no cost
 				OutputPrice:   0.0,
 			},
 			{
@@ -804,7 +804,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 64000,
 				MaxOutput:     8192,
-				InputPrice:    0.0,    // Local, no cost
+				InputPrice:    0.0, // Local, no cost
 				OutputPrice:   0.0,
 			},
 		},
@@ -824,7 +824,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 245760,
 				MaxOutput:     16384,
-				InputPrice:    1.0,    // ¥1/1M tokens
+				InputPrice:    1.0, // ¥1/1M tokens
 				OutputPrice:   1.0,
 			},
 			{
@@ -900,8 +900,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 131072,
 				MaxOutput:     16384,
-				InputPrice:    5.0,   // $5.00 per 1M input tokens
-				OutputPrice:   15.0,  // $15.00 per 1M output tokens
+				InputPrice:    5.0,  // $5.00 per 1M input tokens
+				OutputPrice:   15.0, // $15.00 per 1M output tokens
 			},
 			{
 				ID:          "grok-vision-beta",
@@ -919,8 +919,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 8192,
 				MaxOutput:     4096,
-				InputPrice:    5.0,   // $5.00 per 1M input tokens
-				OutputPrice:   15.0,  // $15.00 per 1M output tokens
+				InputPrice:    5.0,  // $5.00 per 1M input tokens
+				OutputPrice:   15.0, // $15.00 per 1M output tokens
 			},
 		},
 		"qwen": {
@@ -939,8 +939,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 8192,
 				MaxOutput:     2048,
-				InputPrice:    0.3,   // $0.30 per 1M input tokens
-				OutputPrice:   0.6,   // $0.60 per 1M output tokens
+				InputPrice:    0.3, // $0.30 per 1M input tokens
+				OutputPrice:   0.6, // $0.60 per 1M output tokens
 			},
 			{
 				ID:          "qwen-plus",
@@ -957,8 +957,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 32768,
 				MaxOutput:     8192,
-				InputPrice:    0.8,   // $0.80 per 1M input tokens
-				OutputPrice:   2.0,   // $2.00 per 1M output tokens
+				InputPrice:    0.8, // $0.80 per 1M input tokens
+				OutputPrice:   2.0, // $2.00 per 1M output tokens
 			},
 			{
 				ID:          "qwen-max",
@@ -975,8 +975,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 32768,
 				MaxOutput:     8192,
-				InputPrice:    4.0,   // $4.00 per 1M input tokens
-				OutputPrice:   12.0,  // $12.00 per 1M output tokens
+				InputPrice:    4.0,  // $4.00 per 1M input tokens
+				OutputPrice:   12.0, // $12.00 per 1M output tokens
 			},
 			{
 				ID:          "qwen-max-longcontext",
@@ -993,8 +993,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 1000000,
 				MaxOutput:     8192,
-				InputPrice:    4.0,   // $4.00 per 1M input tokens
-				OutputPrice:   12.0,  // $12.00 per 1M output tokens
+				InputPrice:    4.0,  // $4.00 per 1M input tokens
+				OutputPrice:   12.0, // $12.00 per 1M output tokens
 			},
 			{
 				ID:          "qwen-vl-plus",
@@ -1012,8 +1012,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 8192,
 				MaxOutput:     2048,
-				InputPrice:    0.8,   // $0.80 per 1M input tokens
-				OutputPrice:   2.0,   // $2.00 per 1M output tokens
+				InputPrice:    0.8, // $0.80 per 1M input tokens
+				OutputPrice:   2.0, // $2.00 per 1M output tokens
 			},
 			{
 				ID:          "qwen-vl-max",
@@ -1031,8 +1031,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 32768,
 				MaxOutput:     8192,
-				InputPrice:    4.0,   // $4.00 per 1M input tokens
-				OutputPrice:   12.0,  // $12.00 per 1M output tokens
+				InputPrice:    4.0,  // $4.00 per 1M input tokens
+				OutputPrice:   12.0, // $12.00 per 1M output tokens
 			},
 		},
 		"venice": {
@@ -1051,8 +1051,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    0.35,  // $0.35 per 1M input tokens
-				OutputPrice:   0.4,   // $0.40 per 1M output tokens
+				InputPrice:    0.35, // $0.35 per 1M input tokens
+				OutputPrice:   0.4,  // $0.40 per 1M output tokens
 			},
 			{
 				ID:          "deepseek-r1-llama-70b",
@@ -1070,8 +1070,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 64000,
 				MaxOutput:     8192,
-				InputPrice:    0.35,  // $0.35 per 1M input tokens
-				OutputPrice:   0.4,   // $0.40 per 1M output tokens
+				InputPrice:    0.35, // $0.35 per 1M input tokens
+				OutputPrice:   0.4,  // $0.40 per 1M output tokens
 			},
 			{
 				ID:          "qwen-2.5-72b",
@@ -1088,8 +1088,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 32000,
 				MaxOutput:     4096,
-				InputPrice:    0.35,  // $0.35 per 1M input tokens
-				OutputPrice:   0.4,   // $0.40 per 1M output tokens
+				InputPrice:    0.35, // $0.35 per 1M input tokens
+				OutputPrice:   0.4,  // $0.40 per 1M output tokens
 			},
 			{
 				ID:          "llama-3.2-3b",
@@ -1126,8 +1126,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     8192,
-				InputPrice:    3.0,   // $3.00 per 1M input tokens
-				OutputPrice:   15.0,  // $15.00 per 1M output tokens
+				InputPrice:    3.0,  // $3.00 per 1M input tokens
+				OutputPrice:   15.0, // $15.00 per 1M output tokens
 			},
 			{
 				ID:          "anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -1145,8 +1145,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 200000,
 				MaxOutput:     8192,
-				InputPrice:    0.8,   // $0.80 per 1M input tokens
-				OutputPrice:   4.0,   // $4.00 per 1M output tokens
+				InputPrice:    0.8, // $0.80 per 1M input tokens
+				OutputPrice:   4.0, // $4.00 per 1M output tokens
 			},
 			{
 				ID:          "meta.llama3-3-70b-instruct-v1:0",
@@ -1163,8 +1163,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    0.72,  // $0.72 per 1M input tokens
-				OutputPrice:   0.72,  // $0.72 per 1M output tokens
+				InputPrice:    0.72, // $0.72 per 1M input tokens
+				OutputPrice:   0.72, // $0.72 per 1M output tokens
 			},
 			{
 				ID:          "amazon.nova-pro-v1:0",
@@ -1182,8 +1182,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 300000,
 				MaxOutput:     5000,
-				InputPrice:    0.8,   // $0.80 per 1M input tokens
-				OutputPrice:   3.2,   // $3.20 per 1M output tokens
+				InputPrice:    0.8, // $0.80 per 1M input tokens
+				OutputPrice:   3.2, // $3.20 per 1M output tokens
 			},
 			{
 				ID:          "amazon.nova-lite-v1:0",
@@ -1201,8 +1201,8 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 300000,
 				MaxOutput:     5000,
-				InputPrice:    0.06,  // $0.06 per 1M input tokens
-				OutputPrice:   0.24,  // $0.24 per 1M output tokens
+				InputPrice:    0.06, // $0.06 per 1M input tokens
+				OutputPrice:   0.24, // $0.24 per 1M output tokens
 			},
 		},
 		"glm": {
@@ -1221,7 +1221,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    7.0,   // ¥50/1M tokens ≈ $7.0
+				InputPrice:    7.0, // ¥50/1M tokens ≈ $7.0
 				OutputPrice:   7.0,
 			},
 			{
@@ -1239,7 +1239,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    0.14,  // ¥1/1M tokens ≈ $0.14
+				InputPrice:    0.14, // ¥1/1M tokens ≈ $0.14
 				OutputPrice:   0.14,
 			},
 			{
@@ -1257,7 +1257,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 8192,
 				MaxOutput:     4096,
-				InputPrice:    1.4,   // ¥10/1M tokens ≈ $1.4
+				InputPrice:    1.4, // ¥10/1M tokens ≈ $1.4
 				OutputPrice:   1.4,
 			},
 			{
@@ -1275,7 +1275,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000,
 				MaxOutput:     4096,
-				InputPrice:    0.0,   // Free tier
+				InputPrice:    0.0, // Free tier
 				OutputPrice:   0.0,
 			},
 			{
@@ -1293,7 +1293,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 1000000,
 				MaxOutput:     4096,
-				InputPrice:    0.14,  // ¥1/1M tokens ≈ $0.14
+				InputPrice:    0.14, // ¥1/1M tokens ≈ $0.14
 				OutputPrice:   0.14,
 			},
 			{
@@ -1312,7 +1312,7 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 8192,
 				MaxOutput:     1024,
-				InputPrice:    1.4,   // ¥10/1M tokens ≈ $1.4
+				InputPrice:    1.4, // ¥10/1M tokens ≈ $1.4
 				OutputPrice:   1.4,
 			},
 		},

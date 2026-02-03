@@ -23,8 +23,8 @@ type Service interface {
 	GetModels() *ModelsResponse
 	// GetASRProvider returns the Sherpa ASR provider if available.
 	GetASRProvider() *stt.SherpaProvider
-	// GetTTSProvider returns the Sherpa TTS provider if available.
-	GetTTSProvider() *tts.SherpaProvider
+	// GetTTSProvider returns the TTS provider if available.
+	GetTTSProvider() tts.Provider
 	// GetSTTService returns the underlying STT service.
 	GetSTTService() stt.Service
 	// GetTTSService returns the underlying TTS service.
@@ -42,7 +42,7 @@ type service struct {
 	sttService     stt.Service
 	ttsService     tts.Service
 	sherpaASR      *stt.SherpaProvider
-	sherpaTTS      *tts.SherpaProvider
+	ttsProvider    tts.Provider
 	config         *Config
 	initConfig     *InitConfig
 	initialized    bool
@@ -60,7 +60,10 @@ func NewService(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service) Service {
 
 	// Get Sherpa providers from the underlying services
 	if ttsSvc != nil {
-		s.sherpaTTS = ttsSvc.GetSherpaProvider()
+		sherpaProvider := ttsSvc.GetSherpaProvider()
+		if sherpaProvider != nil {
+			s.ttsProvider = sherpaProvider
+		}
 	}
 	if sttSvc != nil {
 		s.sherpaASR = sttSvc.GetSherpaProvider()
@@ -70,12 +73,12 @@ func NewService(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service) Service {
 }
 
 // NewServiceWithProviders creates a service with explicit Sherpa providers.
-func NewServiceWithProviders(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service, sherpaASR *stt.SherpaProvider, sherpaTTS *tts.SherpaProvider) Service {
+func NewServiceWithProviders(cfg *Config, sttSvc stt.Service, ttsSvc tts.Service, sherpaASR *stt.SherpaProvider, sherpaTTS tts.Provider) Service {
 	return &service{
 		sttService:  sttSvc,
 		ttsService:  ttsSvc,
 		sherpaASR:   sherpaASR,
-		sherpaTTS:   sherpaTTS,
+		ttsProvider: sherpaTTS,
 		config:      cfg,
 		initialized: sherpaASR != nil || sherpaTTS != nil,
 	}
@@ -110,20 +113,48 @@ func (s *service) Initialize() error {
 		return fmt.Errorf("no init config provided")
 	}
 
-	// Initialize Sherpa TTS provider
-	s.sherpaTTS = tts.NewSherpaProvider(&tts.SherpaConfig{
-		ModelDir:      s.initConfig.DataDir + "/sherpa-tts",
-		ModelType:     "piper-en",
-		DefaultVoice:  "0",
-		DefaultFormat: tts.FormatWAV,
-		MaxTextLength: 5000,
-	})
+	// Initialize TTS provider based on configuration
+	if s.config.TTS.Provider == "" {
+		s.config.TTS.Provider = "sherpa-onnx" // Default to Sherpa
+	}
 
-	// Initialize Sherpa ASR provider
-	s.sherpaASR = stt.NewSherpaProvider(&stt.SherpaConfig{
-		ModelDir:  s.initConfig.DataDir + "/sherpa-asr",
-		ModelType: "whisper-tiny",
-	})
+	switch s.config.TTS.Provider {
+	case "sherpa-onnx":
+		model := s.config.TTS.Model
+		if model == "" {
+			model = "piper-en"
+		}
+		s.ttsProvider = tts.NewSherpaProvider(&tts.SherpaConfig{
+			ModelDir:      s.initConfig.DataDir + "/sherpa-tts",
+			ModelType:     model,
+			DefaultVoice:  "0",
+			DefaultFormat: tts.FormatWAV,
+			MaxTextLength: 5000,
+		})
+	case "edge-tts":
+		s.ttsProvider = tts.NewEdgeTTSProvider(&tts.EdgeTTSConfig{
+			DefaultVoice:  "en-US-AriaNeural",
+			DefaultFormat: tts.FormatMP3,
+			MaxTextLength: 5000,
+		})
+	// eSpeak-NG would be initialized through ttsService if available
+	}
+
+	// Initialize ASR provider based on configuration
+	if s.config.ASR.Provider == "" {
+		s.config.ASR.Provider = "sherpa" // Default to Sherpa
+	}
+
+	if s.config.ASR.Provider == "sherpa" && s.config.ASR.Enabled {
+		model := s.config.ASR.Model
+		if model == "" {
+			model = "whisper-tiny"
+		}
+		s.sherpaASR = stt.NewSherpaProvider(&stt.SherpaConfig{
+			ModelDir:  s.initConfig.DataDir + "/sherpa-asr",
+			ModelType: model,
+		})
+	}
 
 	return nil
 }
@@ -139,8 +170,8 @@ func (s *service) IsInitialized() bool {
 func (s *service) GetStatus() *StatusResponse {
 	resp := &StatusResponse{
 		TTS: TTSStatus{
-			Ready:    true,
-			Provider: "default",
+			Ready:    false,
+			Provider: "none",
 		},
 		ASR: ASRStatus{
 			Ready:          false,
@@ -149,32 +180,42 @@ func (s *service) GetStatus() *StatusResponse {
 		},
 	}
 
-	// Get TTS status
-	if s.sherpaTTS != nil {
-		status := s.sherpaTTS.GetModelStatus()
-		resp.TTS.Ready = status.Ready
-		resp.TTS.Provider = "sherpa"
-		resp.TTS.ModelType = status.ModelType
+	// Get TTS status from configured provider
+	if s.config.TTS.Provider != "" {
+		resp.TTS.Provider = s.config.TTS.Provider
+		if s.ttsProvider != nil {
+			// For Sherpa provider, get model status
+			if sherpaProvider, ok := s.ttsProvider.(*tts.SherpaProvider); ok {
+				status := sherpaProvider.GetModelStatus()
+				resp.TTS.Ready = status.Ready
+				resp.TTS.ModelType = status.ModelType
+			} else {
+				// For other providers (Edge, eSpeak), mark as ready
+				resp.TTS.Ready = true
+			}
+		}
 	}
 
-	// Get ASR status
-	if s.sherpaASR != nil {
-		status := s.sherpaASR.GetModelStatus()
-		resp.ASR.Ready = status.Ready
-		resp.ASR.Provider = "sherpa"
-		resp.ASR.ModelType = status.ModelType
-		resp.ASR.StreamingSupported = status.StreamingSupported
-		resp.ASR.Downloading = status.Downloading
-		resp.ASR.HasPending = status.HasPending
+	// Get ASR status from configured provider
+	if s.config.ASR.Provider != "" {
+		resp.ASR.Provider = s.config.ASR.Provider
+		if s.sherpaASR != nil {
+			status := s.sherpaASR.GetModelStatus()
+			resp.ASR.Ready = status.Ready
+			resp.ASR.ModelType = status.ModelType
+			resp.ASR.StreamingSupported = status.StreamingSupported
+			resp.ASR.Downloading = status.Downloading
+			resp.ASR.HasPending = status.HasPending
 
-		if status.Progress != nil {
-			resp.ASR.Progress = &Progress{
-				File:       status.Progress.File,
-				Downloaded: status.Progress.Downloaded,
-				Total:      status.Progress.Total,
-				Percentage: status.Progress.Percentage,
-				SpeedHuman: status.Progress.SpeedHuman,
-				ETA:        status.Progress.ETA,
+			if status.Progress != nil {
+				resp.ASR.Progress = &Progress{
+					File:       status.Progress.File,
+					Downloaded: status.Progress.Downloaded,
+					Total:      status.Progress.Total,
+					Percentage: status.Progress.Percentage,
+					SpeedHuman: status.Progress.SpeedHuman,
+					ETA:        status.Progress.ETA,
+				}
 			}
 		}
 	}
@@ -217,9 +258,9 @@ func (s *service) GetASRProvider() *stt.SherpaProvider {
 	return s.sherpaASR
 }
 
-// GetTTSProvider returns the Sherpa TTS provider.
-func (s *service) GetTTSProvider() *tts.SherpaProvider {
-	return s.sherpaTTS
+// GetTTSProvider returns the TTS provider.
+func (s *service) GetTTSProvider() tts.Provider {
+	return s.ttsProvider
 }
 
 // GetSTTService returns the underlying STT service.
@@ -244,11 +285,11 @@ func (s *service) SetASRProvider(provider *stt.SherpaProvider) {
 	s.sherpaASR = provider
 }
 
-// SetTTSProvider sets the Sherpa TTS provider.
-func (s *service) SetTTSProvider(provider *tts.SherpaProvider) {
+// SetTTSProvider sets the TTS provider.
+func (s *service) SetTTSProvider(provider tts.Provider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sherpaTTS = provider
+	s.ttsProvider = provider
 }
 
 // Transcribe transcribes audio using the configured ASR provider.

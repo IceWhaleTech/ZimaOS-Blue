@@ -20,18 +20,29 @@ type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// onStopHooks are called when the manager stops, to persist stats
+	onStopHooks []func()
 }
 
 // NewManager creates a new channel manager.
 func NewManager(cfg Config, logger *zap.Logger) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		channels: make(map[string]Channel),
-		logger:   logger,
-		config:   cfg,
-		ctx:      ctx,
-		cancel:   cancel,
+		channels:    make(map[string]Channel),
+		logger:      logger,
+		config:      cfg,
+		ctx:         ctx,
+		cancel:      cancel,
+		onStopHooks: make([]func(), 0),
 	}
+}
+
+// OnStop registers a callback to be called when the manager stops.
+func (m *Manager) OnStop(hook func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onStopHooks = append(m.onStopHooks, hook)
 }
 
 // SetHandler sets the message handler for incoming messages.
@@ -255,6 +266,15 @@ func (m *Manager) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 		m.logger.Warn("timeout waiting for channel handlers to stop")
 		return ctx.Err()
+	}
+
+	// Run onStop hooks to persist stats
+	m.mu.RLock()
+	hooks := make([]func(), len(m.onStopHooks))
+	copy(hooks, m.onStopHooks)
+	m.mu.RUnlock()
+	for _, hook := range hooks {
+		hook()
 	}
 
 	return lastErr

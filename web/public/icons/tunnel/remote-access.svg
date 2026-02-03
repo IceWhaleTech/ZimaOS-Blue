@@ -1,0 +1,57 @@
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="globeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA"/>
+      <stop offset="100%" style="stop-color:#2563EB"/>
+    </linearGradient>
+    <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34D399"/>
+      <stop offset="100%" style="stop-color:#10B981"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer ring with pulse animation -->
+  <circle cx="24" cy="24" r="20" fill="none" stroke="url(#ringGradient)" stroke-width="2" opacity="0.3">
+    <animate attributeName="r" values="18;22;18" dur="2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.3;0.6;0.3" dur="2s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Globe -->
+  <circle cx="24" cy="24" r="14" fill="url(#globeGradient)"/>
+
+  <!-- Globe meridians -->
+  <ellipse cx="24" cy="24" rx="14" ry="5" fill="none" stroke="#fff" stroke-width="0.8" opacity="0.5"/>
+  <ellipse cx="24" cy="24" rx="5" ry="14" fill="none" stroke="#fff" stroke-width="0.8" opacity="0.5"/>
+  <line x1="10" y1="24" x2="38" y2="24" stroke="#fff" stroke-width="0.8" opacity="0.5"/>
+
+  <!-- Connection arrows -->
+  <g filter="url(#glow)">
+    <!-- Arrow pointing in (left) -->
+    <path d="M4 24 L10 24 M7 21 L10 24 L7 27" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="1.2s" repeatCount="indefinite"/>
+    </path>
+    <!-- Arrow pointing out (right) -->
+    <path d="M44 24 L38 24 M41 21 L38 24 L41 27" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="1.2s" repeatCount="indefinite" begin="0.6s"/>
+    </path>
+  </g>
+
+  <!-- Data dots traveling -->
+  <circle r="2" fill="#FBBF24" filter="url(#glow)">
+    <animate attributeName="cx" values="6;24;42" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="24;24;24" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="2" fill="#FBBF24" filter="url(#glow)">
+    <animate attributeName="cx" values="42;24;6" dur="1.5s" repeatCount="indefinite" begin="0.75s"/>
+    <animate attributeName="cy" values="24;24;24" dur="1.5s" repeatCount="indefinite" begin="0.75s"/>
+    <animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" begin="0.75s"/>
+  </circle>
+</svg>

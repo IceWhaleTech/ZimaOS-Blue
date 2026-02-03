@@ -9,12 +9,16 @@ mod tray;
 mod echo_ffi;
 
 use log::{error, info};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent,
 };
+
+/// Flag to track if we're actually quitting (vs just hiding to tray)
+static QUITTING: AtomicBool = AtomicBool::new(false);
 
 /// Application state shared across the app
 pub struct AppState {
@@ -163,13 +167,16 @@ pub fn run() {
             // Build tray icon with embedded image
             let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
                 .expect("Failed to load tray icon");
-            let _tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         info!("Quit requested from tray");
+
+                        // Set quitting flag so ExitRequested handler allows exit
+                        QUITTING.store(true, Ordering::SeqCst);
 
                         // Stop server before exit on macOS
                         #[cfg(target_os = "macos")]
@@ -207,6 +214,9 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Store tray icon in app state for cleanup on Windows
+            app.manage(tray);
 
             // Open devtools in debug builds (must be done in setup, before async tasks)
             #[cfg(debug_assertions)]
@@ -275,12 +285,26 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let RunEvent::ExitRequested { api, .. } = event {
-                // Prevent exit, minimize to tray instead
-                api.prevent_exit();
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    let _ = window.hide();
+            match event {
+                RunEvent::ExitRequested { api, .. } => {
+                    // Only prevent exit if we're not actually quitting
+                    if !QUITTING.load(Ordering::SeqCst) {
+                        api.prevent_exit();
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
+                    }
                 }
+                RunEvent::Exit => {
+                    // Clean up tray icon on Windows to prevent ghost icons
+                    #[cfg(target_os = "windows")]
+                    {
+                        if let Some(tray) = app_handle.try_state::<tauri::tray::TrayIcon>() {
+                            let _ = tray.set_visible(false);
+                        }
+                    }
+                }
+                _ => {}
             }
         });
 }

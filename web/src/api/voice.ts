@@ -97,10 +97,10 @@ export const voiceApi = {
     }),
 
   // Synthesize text to speech
-  synthesize: (text: string, voice?: string, format?: string, speed?: number) =>
+  synthesize: (text: string, voice?: string, format?: string, speed?: number, provider?: string) =>
     api.post<SynthesizeResponse>(
       '/voice/synthesize',
-      { text, voice, format, speed },
+      { text, voice, format, speed, provider },
       { headers: { Accept: 'application/json' } }
     ),
 
@@ -109,9 +109,10 @@ export const voiceApi = {
     text: string,
     voice?: string,
     format?: string,
-    speed?: number
+    speed?: number,
+    provider?: string
   ): Promise<Blob> => {
-    const response = await api.post('/voice/synthesize', { text, voice, format, speed }, {
+    const response = await api.post('/voice/synthesize', { text, voice, format, speed, provider }, {
       responseType: 'blob',
     })
     return response.data

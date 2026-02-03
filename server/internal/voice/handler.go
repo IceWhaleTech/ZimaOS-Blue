@@ -108,10 +108,11 @@ func (h *Handler) Transcribe(c echo.Context) error {
 
 // SynthesizeRequest represents the synthesize API request.
 type synthesizeAPIRequest struct {
-	Text   string  `json:"text"`
-	Voice  string  `json:"voice"`
-	Format string  `json:"format"`
-	Speed  float32 `json:"speed"`
+	Text     string  `json:"text"`
+	Voice    string  `json:"voice"`
+	Format   string  `json:"format"`
+	Speed    float32 `json:"speed"`
+	Provider string  `json:"provider"`
 }
 
 // Synthesize handles text-to-speech requests.
@@ -132,10 +133,11 @@ func (h *Handler) Synthesize(c echo.Context) error {
 
 	// Synthesize
 	audioData, contentType, err := h.service.Synthesize(c.Request().Context(), &SynthesizeRequest{
-		Text:   req.Text,
-		Voice:  req.Voice,
-		Format: req.Format,
-		Speed:  req.Speed,
+		Text:     req.Text,
+		Voice:    req.Voice,
+		Format:   req.Format,
+		Speed:    req.Speed,
+		Provider: req.Provider,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

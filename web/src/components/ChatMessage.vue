@@ -329,7 +329,8 @@ async function handlePlayTTS() {
 
     // Get speech speed from settings
     const speed = parseFloat(localStorage.getItem('tts-speech-speed') || '1.0')
-    const response = await voiceApi.synthesize(textContent, undefined, undefined, speed)
+    const provider = localStorage.getItem('tts-provider') || 'espeak-ng'
+    const response = await voiceApi.synthesize(textContent, undefined, undefined, speed, provider)
     if (response.data.audio) {
       await playAudioFromBase64(response.data.audio, response.data.content_type)
     }

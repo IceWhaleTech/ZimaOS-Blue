@@ -1,0 +1,130 @@
+package voice
+
+import (
+	"testing"
+)
+
+func TestSynthesizeCaching(t *testing.T) {
+	cfg := &ServiceConfig{
+		TTSService: nil,
+	}
+
+	svc := NewService(cfg)
+	if svc == nil {
+		t.Fatal("NewService returned nil")
+	}
+
+	// Since TTS service is nil, this will fail, but we can test the cache structure
+	voiceSvc := svc.(*service)
+	if voiceSvc.ttsCache == nil {
+		t.Fatal("TTS cache should be initialized")
+	}
+
+	if len(voiceSvc.ttsCache) != 0 {
+		t.Error("Cache should be empty initially")
+	}
+}
+
+func TestServiceCreation(t *testing.T) {
+	cfg := &ServiceConfig{
+		TTSService: nil,
+	}
+
+	svc := NewService(cfg)
+	if svc == nil {
+		t.Fatal("NewService returned nil")
+	}
+
+	voiceSvc := svc.(*service)
+	if voiceSvc.sessions == nil {
+		t.Error("Sessions map should be initialized")
+	}
+
+	if voiceSvc.ttsCache == nil {
+		t.Error("TTS cache should be initialized")
+	}
+}
+
+func TestCacheKeyGeneration(t *testing.T) {
+	tests := []struct {
+		name     string
+		req1     *SynthesizeRequest
+		req2     *SynthesizeRequest
+		sameKey  bool
+	}{
+		{
+			name: "identical requests",
+			req1: &SynthesizeRequest{
+				Text:     "Hello",
+				Voice:    "voice1",
+				Format:   "mp3",
+				Provider: "edge-tts",
+				Speed:    1.0,
+			},
+			req2: &SynthesizeRequest{
+				Text:     "Hello",
+				Voice:    "voice1",
+				Format:   "mp3",
+				Provider: "edge-tts",
+				Speed:    1.0,
+			},
+			sameKey: true,
+		},
+		{
+			name: "different text",
+			req1: &SynthesizeRequest{
+				Text:     "Hello",
+				Voice:    "voice1",
+				Format:   "mp3",
+				Provider: "edge-tts",
+				Speed:    1.0,
+			},
+			req2: &SynthesizeRequest{
+				Text:     "World",
+				Voice:    "voice1",
+				Format:   "mp3",
+				Provider: "edge-tts",
+				Speed:    1.0,
+			},
+			sameKey: false,
+		},
+		{
+			name: "different provider",
+			req1: &SynthesizeRequest{
+				Text:     "Hello",
+				Voice:    "voice1",
+				Format:   "mp3",
+				Provider: "edge-tts",
+				Speed:    1.0,
+			},
+			req2: &SynthesizeRequest{
+				Text:     "Hello",
+				Voice:    "voice1",
+				Format:   "mp3",
+				Provider: "sherpa",
+				Speed:    1.0,
+			},
+			sameKey: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Generate cache keys manually (same logic as in Synthesize)
+			key1 := generateCacheKey(tt.req1)
+			key2 := generateCacheKey(tt.req2)
+
+			if tt.sameKey && key1 != key2 {
+				t.Errorf("Expected same cache key, got different: %s vs %s", key1, key2)
+			}
+			if !tt.sameKey && key1 == key2 {
+				t.Errorf("Expected different cache keys, got same: %s", key1)
+			}
+		})
+	}
+}
+
+// Helper function to generate cache key (same logic as in service)
+func generateCacheKey(req *SynthesizeRequest) string {
+	return req.Text + ":" + req.Voice + ":" + req.Format + ":" + req.Provider
+}

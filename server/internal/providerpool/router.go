@@ -2,6 +2,7 @@ package providerpool
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -67,11 +68,16 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 		req.Strategy = r.defaultStrategy
 	}
 
+	fmt.Printf("[Router] Route: modelID=%s, mode=%s\n", req.ModelID, req.Mode)
+
 	// Find all candidates that have the requested model
 	candidates, err := r.findCandidates(req)
 	if err != nil {
+		fmt.Printf("[Router] Route: findCandidates error: %v\n", err)
 		return nil, err
 	}
+
+	fmt.Printf("[Router] Route: found %d candidates\n", len(candidates))
 
 	if len(candidates) == 0 {
 		return nil, ErrNoAvailableProvider
@@ -105,6 +111,7 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 
 	// Get all enabled providers
 	providers := r.registry.ListEnabled()
+	fmt.Printf("[Router] findCandidates: %d enabled providers\n", len(providers))
 
 	// Build exclusion set
 	excludeSet := make(map[string]bool)
@@ -113,27 +120,34 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 	}
 
 	for _, provider := range providers {
+		fmt.Printf("[Router] findCandidates: checking provider %s (status=%s, location=%s)\n", provider.ID, provider.Status, provider.Location)
+
 		// Skip excluded providers
 		if excludeSet[provider.ID] {
+			fmt.Printf("[Router] findCandidates: provider %s excluded\n", provider.ID)
 			continue
 		}
 
 		// Skip unhealthy providers
 		if provider.Status == ProviderStatusError {
+			fmt.Printf("[Router] findCandidates: provider %s has error status\n", provider.ID)
 			continue
 		}
 
 		// Skip providers in cooldown
 		if r.IsInCooldown(provider.ID) {
+			fmt.Printf("[Router] findCandidates: provider %s in cooldown\n", provider.ID)
 			continue
 		}
 
 		// Filter by routing mode (location preference)
 		if req.Mode != "" && req.Mode != RoutingModeAuto {
 			if req.Mode == RoutingModeCloud && provider.Location != ProviderLocationCloud {
+				fmt.Printf("[Router] findCandidates: provider %s not cloud (location=%s)\n", provider.ID, provider.Location)
 				continue
 			}
 			if req.Mode == RoutingModeLocal && provider.Location != ProviderLocationLocal {
+				fmt.Printf("[Router] findCandidates: provider %s not local (location=%s)\n", provider.ID, provider.Location)
 				continue
 			}
 		}
@@ -141,8 +155,10 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 		// Get models for this provider
 		models, err := r.discovery.GetModels(provider.ID)
 		if err != nil {
+			fmt.Printf("[Router] findCandidates: provider %s GetModels error: %v\n", provider.ID, err)
 			continue
 		}
+		fmt.Printf("[Router] findCandidates: provider %s has %d models\n", provider.ID, len(models))
 
 		// If no model specified, use first available enabled model
 		if req.ModelID == "" {
@@ -165,14 +181,19 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 
 		// Find matching model
 		for _, model := range models {
+			fmt.Printf("[Router] findCandidates: checking model %s (name=%s) against requested %s\n", model.ID, model.Name, req.ModelID)
 			if !model.Enabled {
+				fmt.Printf("[Router] findCandidates: model %s is disabled\n", model.ID)
 				continue
 			}
 
-			// Check if model matches
-			if model.ID != req.ModelID && model.Name != req.ModelID {
+			// Check if model matches (exact match or prefix match for versioned model names)
+			// e.g., "claude-sonnet-4-5-20250929" should match "claude-sonnet-4-5"
+			if !modelMatches(model.ID, model.Name, req.ModelID) {
 				continue
 			}
+
+			fmt.Printf("[Router] findCandidates: model %s matched!\n", model.ID)
 
 			// Check capabilities if required
 			if req.RequireCap != nil && !matchesCapabilities(model.Capabilities, *req.RequireCap) {
@@ -188,6 +209,62 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 	}
 
 	return candidates, nil
+}
+
+// modelMatches checks if a model matches the requested model ID.
+// Supports exact match, prefix match, and Claude model alias matching.
+// e.g., "claude-sonnet-4-5-20250929" matches "claude-sonnet-4-5"
+// e.g., "claude-3-5-haiku-20241022" matches "claude-haiku-4-5"
+func modelMatches(modelID, modelName, requestedID string) bool {
+	// Exact match
+	if modelID == requestedID || modelName == requestedID {
+		return true
+	}
+
+	// Prefix match: requested ID starts with model ID/name
+	// e.g., "claude-sonnet-4-5-20250929" starts with "claude-sonnet-4-5"
+	if strings.HasPrefix(requestedID, modelID+"-") || strings.HasPrefix(requestedID, modelName+"-") {
+		return true
+	}
+
+	// Reverse prefix match: model ID/name starts with requested ID
+	if strings.HasPrefix(modelID, requestedID+"-") || strings.HasPrefix(modelName, requestedID+"-") {
+		return true
+	}
+
+	// Claude model alias matching
+	// CC CLI uses: claude-haiku-4-5, claude-sonnet-4-5, claude-opus-4-5
+	// API uses: claude-3-5-haiku-20241022, claude-sonnet-4-5-20250929, claude-opus-4-5-20251101
+	claudeAliases := map[string][]string{
+		"claude-haiku-4-5":  {"claude-3-5-haiku", "claude-haiku-4-5"},
+		"claude-sonnet-4-5": {"claude-sonnet-4-5", "claude-3-5-sonnet"},
+		"claude-opus-4-5":   {"claude-opus-4-5", "claude-opus-4-5"},
+		// Also support the reverse lookup
+		"claude-3-5-haiku":  {"claude-haiku-4-5", "claude-3-5-haiku"},
+		"claude-3-5-sonnet": {"claude-sonnet-4-5", "claude-3-5-sonnet"},
+	}
+
+	// Check if requestedID is a Claude alias
+	if aliases, ok := claudeAliases[requestedID]; ok {
+		for _, alias := range aliases {
+			if strings.HasPrefix(modelID, alias) || strings.HasPrefix(modelName, alias) {
+				return true
+			}
+		}
+	}
+
+	// Check if modelID/modelName contains a Claude alias that matches requestedID
+	for alias, variants := range claudeAliases {
+		if strings.HasPrefix(modelID, alias) || strings.HasPrefix(modelName, alias) {
+			for _, variant := range variants {
+				if requestedID == variant || strings.HasPrefix(requestedID, variant) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // sortByStrategy sorts candidates according to the routing strategy

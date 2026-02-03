@@ -34,6 +34,95 @@ const speechVolume = ref(parseFloat(localStorage.getItem('tts-speech-volume') ||
 // Auto-play TTS for assistant responses
 const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') === 'true')
 
+// eSpeak-NG language packs - 27 languages
+const espeak_languages = ref<Array<{code: string; name: string; downloaded: boolean}>>([
+  { code: 'en', name: 'English', downloaded: true },
+  { code: 'zh', name: 'Chinese', downloaded: false },
+  { code: 'es', name: 'Spanish', downloaded: false },
+  { code: 'fr', name: 'French', downloaded: false },
+  { code: 'de', name: 'German', downloaded: false },
+  { code: 'ja', name: 'Japanese', downloaded: false },
+  { code: 'ko', name: 'Korean', downloaded: false },
+  { code: 'ru', name: 'Russian', downloaded: false },
+  { code: 'pt', name: 'Portuguese', downloaded: false },
+  { code: 'it', name: 'Italian', downloaded: false },
+  { code: 'nl', name: 'Dutch', downloaded: false },
+  { code: 'pl', name: 'Polish', downloaded: false },
+  { code: 'tr', name: 'Turkish', downloaded: false },
+  { code: 'ar', name: 'Arabic', downloaded: false },
+  { code: 'hi', name: 'Hindi', downloaded: false },
+  { code: 'th', name: 'Thai', downloaded: false },
+  { code: 'vi', name: 'Vietnamese', downloaded: false },
+  { code: 'id', name: 'Indonesian', downloaded: false },
+  { code: 'fil', name: 'Filipino', downloaded: false },
+  { code: 'uk', name: 'Ukrainian', downloaded: false },
+  { code: 'cs', name: 'Czech', downloaded: false },
+  { code: 'sv', name: 'Swedish', downloaded: false },
+  { code: 'da', name: 'Danish', downloaded: false },
+  { code: 'no', name: 'Norwegian', downloaded: false },
+  { code: 'fi', name: 'Finnish', downloaded: false },
+  { code: 'el', name: 'Greek', downloaded: false },
+  { code: 'he', name: 'Hebrew', downloaded: false },
+])
+const espeak_downloading = ref(false)
+const espeak_download_progress = ref(0)
+// Support multiple languages simultaneously
+const espeak_selected_langs = ref<string[]>(
+  JSON.parse(localStorage.getItem('espeak-langs') || '["en"]')
+)
+
+async function downloadEspeakLanguage(langCode: string) {
+  const lang = espeak_languages.value.find(l => l.code === langCode)
+  if (!lang) return
+
+  // If already downloaded, just toggle it
+  if (lang.downloaded) {
+    toggleEspeakLanguage(langCode)
+    return
+  }
+
+  espeak_downloading.value = true
+  espeak_download_progress.value = 0
+  error.value = null
+  try {
+    await speechApi.downloadEspeakLanguage(langCode)
+    lang.downloaded = true
+    // Add to selected languages if not already there
+    if (!espeak_selected_langs.value.includes(langCode)) {
+      espeak_selected_langs.value.push(langCode)
+      saveEspeakLanguages()
+    }
+  } catch (e: any) {
+    // If already downloaded error, mark as downloaded anyway
+    if (e.response?.data?.error?.includes('already downloaded')) {
+      lang.downloaded = true
+      if (!espeak_selected_langs.value.includes(langCode)) {
+        espeak_selected_langs.value.push(langCode)
+        saveEspeakLanguages()
+      }
+    } else {
+      console.error('Failed to download eSpeak language:', e)
+      error.value = t('speech.downloadError')
+    }
+  } finally {
+    espeak_downloading.value = false
+  }
+}
+
+function toggleEspeakLanguage(langCode: string) {
+  const index = espeak_selected_langs.value.indexOf(langCode)
+  if (index > -1) {
+    espeak_selected_langs.value.splice(index, 1)
+  } else {
+    espeak_selected_langs.value.push(langCode)
+  }
+  saveEspeakLanguages()
+}
+
+function saveEspeakLanguages() {
+  localStorage.setItem('espeak-langs', JSON.stringify(espeak_selected_langs.value))
+}
+
 function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
   // Call API to switch provider
@@ -376,6 +465,67 @@ onMounted(() => {
           <p v-if="selectedProvider === 'edge-tts'" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
             ⚠️ {{ t('speech.privacyWarning') }}
           </p>
+        </div>
+
+        <!-- eSpeak-NG Language Packs (show when eSpeak-NG is selected) -->
+        <div v-if="selectedProvider === 'espeak-ng'" class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
+            {{ t('speech.languagePacks') }}
+          </h4>
+
+          <div v-if="espeak_downloading" class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(espeak_download_progress) }}%</span>
+            </div>
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                class="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                :style="{ width: `${Math.floor(espeak_download_progress)}%` }"
+              ></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div
+              v-for="lang in espeak_languages"
+              :key="lang.code"
+              class="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-purple-400 dark:hover:border-purple-500 transition-colors"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-gray-900 dark:text-white text-sm truncate">{{ lang.name }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ lang.code.toUpperCase() }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-2">
+                <template v-if="lang.downloaded">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="espeak_selected_langs.includes(lang.code)"
+                      @change="toggleEspeakLanguage(lang.code)"
+                      class="w-4 h-4 rounded border-gray-300 text-purple-500 focus:ring-purple-500"
+                    />
+                    <span class="text-xs text-gray-700 dark:text-gray-300">
+                      {{ t('speech.inUse') }}
+                    </span>
+                  </label>
+                </template>
+                <button
+                  v-else
+                  class="w-full px-2 py-1.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+                  :disabled="espeak_downloading"
+                  @click="downloadEspeakLanguage(lang.code)"
+                >
+                  {{ t('speech.download') }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- TTS Models Section (show when Sherpa is selected) -->

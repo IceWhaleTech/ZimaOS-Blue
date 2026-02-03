@@ -121,21 +121,38 @@ function handleFieldInput(fieldIndex: number, event: Event) {
   emit('updateField', fieldIndex, target.value)
 }
 
-// Format relative time
+// Format time as fixed format (YYYY-MM-DD HH:mm:ss) for tooltip
+function formatTime(dateStr: string | undefined): string {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+// Format time as relative (刚刚, X分钟前, X小时前, or specific date)
 function formatRelativeTime(dateStr: string | undefined): string {
   if (!dateStr) return '-'
   const date = new Date(dateStr)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
+  const diffSeconds = Math.floor(diffMs / 1000)
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  const diffHours = Math.floor(diffMinutes / 60)
+  const diffDays = Math.floor(diffHours / 24)
 
-  if (diffSec < 60) return t('channels.justNow')
-  if (diffMin < 60) return t('channels.minutesAgo', { n: diffMin })
-  if (diffHour < 24) return t('channels.hoursAgo', { n: diffHour })
-  return t('channels.daysAgo', { n: diffDay })
+  if (diffSeconds < 60) {
+    return '刚刚'
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes}分钟前`
+  } else if (diffHours < 24) {
+    return `${diffHours}小时前`
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`
+  } else {
+    // Show specific date for older times
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  }
 }
 </script>
 
@@ -217,27 +234,27 @@ class="text-sm font-medium" :class="{
           <p v-if="channel.lastError" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ channel.lastError }}</p>
         </div>
 
-        <!-- Statistics Grid -->
-        <div class="grid grid-cols-2 gap-3 mb-4">
-          <div class="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
-            <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ channel.messagesReceived ?? 0 }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('channels.messagesReceived') }}</div>
+        <!-- Statistics Row -->
+        <div class="flex items-center justify-between gap-4 mb-4 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+          <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('channels.messagesReceived') }}:</span>
+              <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ channel.messagesReceived ?? 0 }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('channels.messagesSent') }}:</span>
+              <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ channel.messagesSent ?? 0 }}</span>
+            </div>
           </div>
-          <div class="bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
-            <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ channel.messagesSent ?? 0 }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('channels.messagesSent') }}</div>
-          </div>
-        </div>
-
-        <!-- Last Activity -->
-        <div class="space-y-2 mb-4">
-          <div class="flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('channels.lastMessageReceived') }}</span>
-            <span class="text-gray-900 dark:text-white">{{ formatRelativeTime(channel.lastMessageAt) }}</span>
-          </div>
-          <div class="flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('channels.lastReplySent') }}</span>
-            <span class="text-gray-900 dark:text-white">{{ formatRelativeTime(channel.lastReplyAt) }}</span>
+          <div class="flex items-center gap-6 text-xs">
+            <div class="flex items-center gap-1">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('channels.lastMessageReceived') }}:</span>
+              <span class="text-gray-700 dark:text-gray-300 font-mono cursor-help" :title="formatTime(channel.lastMessageAt)">{{ formatRelativeTime(channel.lastMessageAt) }}</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('channels.lastReplySent') }}:</span>
+              <span class="text-gray-700 dark:text-gray-300 font-mono cursor-help" :title="formatTime(channel.lastReplyAt)">{{ formatRelativeTime(channel.lastReplyAt) }}</span>
+            </div>
           </div>
         </div>
 

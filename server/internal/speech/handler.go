@@ -15,12 +15,16 @@ import (
 
 // Handler handles unified speech HTTP requests.
 type Handler struct {
-	service Service
+	service        Service
+	espeakManager  *EspeakManager
 }
 
 // NewHandler creates a new speech handler.
 func NewHandler(svc Service) *Handler {
-	return &Handler{service: svc}
+	return &Handler{
+		service:       svc,
+		espeakManager: NewEspeakManager("./data"),
+	}
 }
 
 // RegisterRoutes registers unified speech management routes.
@@ -52,6 +56,12 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Transcription with edit support
 	g.POST("/transcribe", h.Transcribe)
 	g.POST("/confirm", h.ConfirmTranscription)
+
+	// eSpeak-NG language pack management
+	espeak := g.Group("/espeak")
+	espeak.GET("/languages", h.ListEspeakLanguages)
+	espeak.POST("/download", h.DownloadEspeakLanguage)
+	espeak.DELETE("/language", h.DeleteEspeakLanguage)
 }
 
 // GetStatus returns the unified speech status.
@@ -200,12 +210,22 @@ func (h *Handler) GetTTSStatus(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"ready":    false,
 			"provider": "none",
-			"message":  "Sherpa TTS provider not configured",
+			"message":  "TTS provider not configured",
 		})
 	}
 
-	status := provider.GetModelStatus()
-	return c.JSON(http.StatusOK, status)
+	// For Sherpa provider, get detailed model status
+	if sherpaProvider, ok := provider.(*tts.SherpaProvider); ok {
+		status := sherpaProvider.GetModelStatus()
+		return c.JSON(http.StatusOK, status)
+	}
+
+	// For other providers (Edge, eSpeak), return basic status
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"ready":    true,
+		"provider": provider.Type(),
+		"name":     provider.Name(),
+	})
 }
 
 // ListTTSModels returns available TTS models.
@@ -217,9 +237,17 @@ func (h *Handler) ListTTSModels(c echo.Context) error {
 		})
 	}
 
-	models := provider.ListModels()
+	// For Sherpa provider, get models from provider
+	if sherpaProvider, ok := provider.(*tts.SherpaProvider); ok {
+		models := sherpaProvider.ListModels()
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"models": models,
+		})
+	}
+
+	// For other providers, return empty models list
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": models,
+		"models": []interface{}{},
 	})
 }
 
@@ -228,7 +256,7 @@ func (h *Handler) DownloadTTSModel(c echo.Context) error {
 	provider := h.service.GetTTSProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Sherpa TTS provider not configured",
+			"error": "TTS provider not configured",
 		})
 	}
 
@@ -239,15 +267,23 @@ func (h *Handler) DownloadTTSModel(c echo.Context) error {
 		})
 	}
 
+	// Only Sherpa provider supports model downloads
+	sherpaProvider, ok := provider.(*tts.SherpaProvider)
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "current provider does not support model downloads",
+		})
+	}
+
 	// Start download in background
 	go func() {
 		ctx := context.Background()
-		if err := provider.GetDownloadManager().Download(ctx, req.ModelType); err != nil {
+		if err := sherpaProvider.GetDownloadManager().Download(ctx, req.ModelType); err != nil {
 			fmt.Printf("TTS model download failed: %v\n", err)
 		} else {
 			fmt.Printf("TTS model download completed: %s\n", req.ModelType)
 			// Refresh model status after successful download
-			provider.RefreshModelStatus()
+			sherpaProvider.RefreshModelStatus()
 		}
 	}()
 
@@ -262,7 +298,7 @@ func (h *Handler) SwitchTTSModel(c echo.Context) error {
 	provider := h.service.GetTTSProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Sherpa TTS provider not configured",
+			"error": "TTS provider not configured",
 		})
 	}
 
@@ -273,7 +309,15 @@ func (h *Handler) SwitchTTSModel(c echo.Context) error {
 		})
 	}
 
-	if err := provider.SwitchModel(req.ModelType); err != nil {
+	// Only Sherpa provider supports model switching
+	sherpaProvider, ok := provider.(*tts.SherpaProvider)
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "current provider does not support model switching",
+		})
+	}
+
+	if err := sherpaProvider.SwitchModel(req.ModelType); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
@@ -290,12 +334,20 @@ func (h *Handler) DeleteTTSModel(c echo.Context) error {
 	provider := h.service.GetTTSProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Sherpa TTS provider not configured",
+			"error": "TTS provider not configured",
+		})
+	}
+
+	// Only Sherpa provider supports model deletion
+	sherpaProvider, ok := provider.(*tts.SherpaProvider)
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "current provider does not support model deletion",
 		})
 	}
 
 	modelType := c.QueryParam("model_type")
-	if err := provider.DeleteModel(modelType); err != nil {
+	if err := sherpaProvider.DeleteModel(modelType); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
@@ -437,5 +489,57 @@ func (h *Handler) SwitchTTSProvider(c echo.Context) error {
 		"status":   "switched",
 		"message":  "Switched to provider: " + req.Provider,
 		"provider": req.Provider,
+	})
+}
+
+// ListEspeakLanguages returns available eSpeak-NG language packs.
+func (h *Handler) ListEspeakLanguages(c echo.Context) error {
+	languages := h.espeakManager.ListLanguagePacks()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"languages": languages,
+	})
+}
+
+// DownloadEspeakLanguage downloads an eSpeak-NG language pack.
+func (h *Handler) DownloadEspeakLanguage(c echo.Context) error {
+	var req struct {
+		LangCode string `json:"lang_code"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request",
+		})
+	}
+
+	if err := h.espeakManager.DownloadLanguagePack(req.LangCode); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloaded",
+		"message": "Language pack downloaded: " + req.LangCode,
+	})
+}
+
+// DeleteEspeakLanguage deletes an eSpeak-NG language pack.
+func (h *Handler) DeleteEspeakLanguage(c echo.Context) error {
+	langCode := c.QueryParam("lang_code")
+	if langCode == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "lang_code is required",
+		})
+	}
+
+	if err := h.espeakManager.DeleteLanguagePack(langCode); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "deleted",
+		"message": "Language pack deleted: " + langCode,
 	})
 }

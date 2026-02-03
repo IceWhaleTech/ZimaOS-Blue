@@ -91,7 +91,7 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) (*Synt
 	return s.SynthesizeWithProvider(ctx, s.defaultProvider, req)
 }
 
-// SynthesizeWithProvider synthesizes text using a specific provider.
+// SynthesizeWithProvider synthesizes text using a specific provider with fallback.
 func (s *service) SynthesizeWithProvider(ctx context.Context, providerType ProviderType, req *SynthesizeRequest) (*SynthesizeResponse, error) {
 	s.mu.RLock()
 	provider, ok := s.providers[providerType]
@@ -101,7 +101,28 @@ func (s *service) SynthesizeWithProvider(ctx context.Context, providerType Provi
 		return nil, ErrProviderNotFound
 	}
 
-	return provider.Synthesize(ctx, req)
+	// Try the specified provider
+	result, err := provider.Synthesize(ctx, req)
+	if err == nil {
+		return result, nil
+	}
+
+	// If specified provider fails, try fallback to default provider
+	if providerType != s.defaultProvider {
+		s.mu.RLock()
+		defaultProvider, ok := s.providers[s.defaultProvider]
+		s.mu.RUnlock()
+
+		if ok {
+			result, fallbackErr := defaultProvider.Synthesize(ctx, req)
+			if fallbackErr == nil {
+				return result, nil
+			}
+		}
+	}
+
+	// If both fail, return original error
+	return nil, err
 }
 
 // SynthesizeStream synthesizes text with streaming audio output.

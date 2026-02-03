@@ -164,6 +164,16 @@ export const speechApi = {
       session_id: sessionId,
       text,
     }),
+
+  // eSpeak-NG language pack management
+  listEspeakLanguages: () =>
+    api.get<{ languages: Array<{code: string; name: string; downloaded: boolean; size: string}> }>('/speech/espeak/languages'),
+
+  downloadEspeakLanguage: (langCode: string) =>
+    api.post<{ status: string; message: string }>('/speech/espeak/download', { lang_code: langCode }),
+
+  deleteEspeakLanguage: (langCode: string) =>
+    api.delete<{ status: string; message: string }>(`/speech/espeak/language?lang_code=${langCode}`),
 }
 
 export default speechApi

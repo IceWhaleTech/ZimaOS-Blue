@@ -77,7 +77,7 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 	d.mu.RUnlock()
 
 	// Check if cache is valid
-	if exists && time.Since(cacheTime) < d.cacheTTL {
+	if exists && len(models) > 0 && time.Since(cacheTime) < d.cacheTTL {
 		return models, nil
 	}
 
@@ -96,8 +96,17 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 
 	// Fall back to built-in models
 	builtinModels := GetBuiltinModels(providerID)
-	if builtinModels != nil {
+	if builtinModels != nil && len(builtinModels) > 0 {
 		return builtinModels, nil
+	}
+
+	// No cached/stored/builtin models - try to fetch from API on demand
+	// This is important for providers like zimaos-trial that have no builtin models
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	fetchedModels, err := d.FetchModels(ctx, providerID)
+	if err == nil && len(fetchedModels) > 0 {
+		return fetchedModels, nil
 	}
 
 	return nil, ErrModelNotFound

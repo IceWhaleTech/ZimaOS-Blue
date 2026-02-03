@@ -104,6 +104,8 @@ type SynthesizeRequest struct {
 	Format string `json:"format,omitempty"`
 	// Speed is the speech speed.
 	Speed float32 `json:"speed,omitempty"`
+	// Provider is the TTS provider (espeak-ng, edge-tts, sherpa-onnx).
+	Provider string `json:"provider,omitempty"`
 }
 
 // VoiceConfig represents voice configuration.

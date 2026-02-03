@@ -160,11 +160,16 @@ type ChannelConfigStore struct {
 
 // ChannelConfig represents a channel's configuration.
 type ChannelConfig struct {
-	ID        string            `json:"id"`
-	Enabled   bool              `json:"enabled"`
-	Status    string            `json:"status"`
-	Config    map[string]string `json:"config"`
-	LastError string            `json:"last_error,omitempty"`
+	ID               string            `json:"id"`
+	Enabled          bool              `json:"enabled"`
+	Status           string            `json:"status"`
+	Config           map[string]string `json:"config"`
+	LastError        string            `json:"last_error,omitempty"`
+	// Persistent statistics
+	MessagesReceived int64   `json:"messages_received,omitempty"`
+	MessagesSent     int64   `json:"messages_sent,omitempty"`
+	LastMessageAt    *string `json:"last_message_at,omitempty"`
+	LastReplyAt      *string `json:"last_reply_at,omitempty"`
 }
 
 // NewChannelConfigStore creates a new channel config store.
@@ -243,6 +248,21 @@ func (s *ChannelConfigStore) GetEnabled() []*ChannelConfig {
 	return result
 }
 
+// UpdateStats updates the statistics for a channel and persists them.
+func (s *ChannelConfigStore) UpdateStats(id string, messagesReceived, messagesSent int64, lastMessageAt, lastReplyAt *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, ok := s.configs[id]
+	if !ok {
+		return nil // Channel not configured, skip
+	}
+	cfg.MessagesReceived = messagesReceived
+	cfg.MessagesSent = messagesSent
+	cfg.LastMessageAt = lastMessageAt
+	cfg.LastReplyAt = lastReplyAt
+	return s.save()
+}
+
 // ChannelConfigHandler handles channel configuration API endpoints.
 type ChannelConfigHandler struct {
 	store   *ChannelConfigStore
@@ -258,6 +278,40 @@ func NewChannelConfigHandler(store *ChannelConfigStore) *ChannelConfigHandler {
 // SetManager sets the channel manager for connection lifecycle management.
 func (h *ChannelConfigHandler) SetManager(manager *channel.Manager) {
 	h.manager = manager
+	// Register hook to persist stats when manager stops
+	if manager != nil {
+		manager.OnStop(h.persistAllStats)
+	}
+}
+
+// persistAllStats saves all channel statistics to persistent storage.
+func (h *ChannelConfigHandler) persistAllStats() {
+	if h.manager == nil {
+		return
+	}
+	configs := h.store.List()
+	for _, cfg := range configs {
+		if ch, exists := h.manager.Get(cfg.ID); exists {
+			info := ch.Info()
+			// Accumulate stats: persisted + runtime
+			totalReceived := cfg.MessagesReceived + info.MessagesReceived
+			totalSent := cfg.MessagesSent + info.MessagesSent
+			var lastMsgAt, lastReplyAt *string
+			if info.LastMessageAt != nil {
+				t := info.LastMessageAt.Format("2006-01-02T15:04:05Z07:00")
+				lastMsgAt = &t
+			} else {
+				lastMsgAt = cfg.LastMessageAt
+			}
+			if info.LastReplyAt != nil {
+				t := info.LastReplyAt.Format("2006-01-02T15:04:05Z07:00")
+				lastReplyAt = &t
+			} else {
+				lastReplyAt = cfg.LastReplyAt
+			}
+			h.store.UpdateStats(cfg.ID, totalReceived, totalSent, lastMsgAt, lastReplyAt)
+		}
+	}
 }
 
 // SetFactory sets the channel factory for creating channel instances.
@@ -285,11 +339,15 @@ func (h *ChannelConfigHandler) ListChannelConfigs(c echo.Context) error {
 
 	for _, cfg := range configs {
 		resp := &ChannelConfigResponse{
-			ID:        cfg.ID,
-			Enabled:   cfg.Enabled,
-			Status:    cfg.Status,
-			Config:    cfg.Config,
-			LastError: cfg.LastError,
+			ID:               cfg.ID,
+			Enabled:          cfg.Enabled,
+			Status:           cfg.Status,
+			Config:           cfg.Config,
+			LastError:        cfg.LastError,
+			MessagesReceived: cfg.MessagesReceived,
+			MessagesSent:     cfg.MessagesSent,
+			LastMessageAt:    cfg.LastMessageAt,
+			LastReplyAt:      cfg.LastReplyAt,
 		}
 
 		// Merge runtime stats from channel manager if available
@@ -297,8 +355,12 @@ func (h *ChannelConfigHandler) ListChannelConfigs(c echo.Context) error {
 			if ch, exists := h.manager.Get(cfg.ID); exists {
 				info := ch.Info()
 				resp.Status = string(info.Status)
-				resp.MessagesReceived = info.MessagesReceived
-				resp.MessagesSent = info.MessagesSent
+				// Use runtime stats if they are greater (accumulated during this session)
+				if info.MessagesReceived > 0 || info.MessagesSent > 0 {
+					// Add persisted stats to runtime stats for total count
+					resp.MessagesReceived = cfg.MessagesReceived + info.MessagesReceived
+					resp.MessagesSent = cfg.MessagesSent + info.MessagesSent
+				}
 				if info.LastMessageAt != nil {
 					t := info.LastMessageAt.Format("2006-01-02T15:04:05Z07:00")
 					resp.LastMessageAt = &t

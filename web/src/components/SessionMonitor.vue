@@ -24,6 +24,18 @@ const filteredSessions = computed(() => {
 const activeSessions = computed(() => sessions.value.filter((s) => s.status === 'active').length)
 const totalSessions = computed(() => sessions.value.length)
 
+const totalToolCalls = computed(() => {
+  return sessions.value.reduce((sum, session) => sum + (session.tool_calls ?? 0), 0)
+})
+
+const totalTokens = computed(() => {
+  return sessions.value.reduce((sum, session) => {
+    const inputTokens = session.input_tokens ?? 0
+    const outputTokens = session.output_tokens ?? 0
+    return sum + inputTokens + outputTokens
+  }, 0)
+})
+
 const statusColor = (status: string) => {
   switch (status) {
     case 'active':
@@ -194,6 +206,18 @@ onUnmounted(() => {
           {{ stats?.total_requests ?? 0 }}
         </div>
         <div class="text-sm text-gray-600/70 dark:text-gray-400/70">{{ t('common.totalRequests') }}</div>
+      </div>
+      <div class="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+        <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          {{ totalToolCalls }}
+        </div>
+        <div class="text-sm text-orange-600/70 dark:text-orange-400/70">{{ t('common.toolCalls') }}</div>
+      </div>
+      <div class="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+        <div class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+          {{ totalTokens }}
+        </div>
+        <div class="text-sm text-indigo-600/70 dark:text-indigo-400/70">{{ t('common.totalTokens') }}</div>
       </div>
     </div>
 

@@ -20,6 +20,16 @@ type service struct {
 	ttsService tts.Service
 	sessions   map[string]*Session
 	mu         sync.RWMutex
+	// TTS cache
+	ttsCache map[string]*ttsCacheEntry
+	ttsCacheMu sync.RWMutex
+}
+
+// ttsCacheEntry represents a cached TTS result
+type ttsCacheEntry struct {
+	audio       []byte
+	contentType string
+	createdAt   time.Time
 }
 
 // ServiceConfig holds the configuration for the voice service.
@@ -34,6 +44,7 @@ func NewService(cfg *ServiceConfig) Service {
 		sttService: cfg.STTService,
 		ttsService: cfg.TTSService,
 		sessions:   make(map[string]*Session),
+		ttsCache:   make(map[string]*ttsCacheEntry),
 	}
 }
 
@@ -148,6 +159,18 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 		return nil, "", fmt.Errorf("TTS service not configured")
 	}
 
+	// Generate cache key
+	cacheKey := fmt.Sprintf("%s:%s:%s:%s:%.1f", req.Text, req.Voice, req.Format, req.Provider, req.Speed)
+
+	// Check cache
+	s.ttsCacheMu.RLock()
+	if entry, exists := s.ttsCache[cacheKey]; exists {
+		s.ttsCacheMu.RUnlock()
+		// Cache hit - return cached result
+		return entry.audio, entry.contentType, nil
+	}
+	s.ttsCacheMu.RUnlock()
+
 	// Determine format
 	format := tts.AudioFormat(req.Format)
 	if format == "" {
@@ -162,7 +185,29 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 		Speed:  req.Speed,
 	}
 
-	// Synthesize
+	// If provider specified, try to use it
+	if req.Provider != "" {
+		result, err := s.ttsService.SynthesizeWithProvider(ctx, tts.ProviderType(req.Provider), ttsReq)
+		if err == nil {
+			defer result.Audio.Close()
+			audioData, err := io.ReadAll(result.Audio)
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to read audio: %w", err)
+			}
+			// Cache the result
+			s.ttsCacheMu.Lock()
+			s.ttsCache[cacheKey] = &ttsCacheEntry{
+				audio:       audioData,
+				contentType: result.ContentType,
+				createdAt:   time.Now(),
+			}
+			s.ttsCacheMu.Unlock()
+			return audioData, result.ContentType, nil
+		}
+		// If specified provider fails, fall through to default
+	}
+
+	// Use default provider
 	result, err := s.ttsService.Synthesize(ctx, ttsReq)
 	if err != nil {
 		return nil, "", fmt.Errorf("synthesis failed: %w", err)
@@ -174,6 +219,15 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read audio: %w", err)
 	}
+
+	// Cache the result
+	s.ttsCacheMu.Lock()
+	s.ttsCache[cacheKey] = &ttsCacheEntry{
+		audio:       audioData,
+		contentType: result.ContentType,
+		createdAt:   time.Now(),
+	}
+	s.ttsCacheMu.Unlock()
 
 	return audioData, result.ContentType, nil
 }

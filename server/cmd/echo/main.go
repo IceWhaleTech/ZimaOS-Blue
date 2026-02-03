@@ -357,38 +357,6 @@ func main() {
 	tools.RegisterBuiltinTools(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
-	// Claude Code CLI provider (v0.10)
-	// Auto-enable CC CLI when zimaos-trial is available, using local proxy
-	ccCliEnabled := cfg.ClaudeCode.Enabled
-	ccCliBaseURL := claudeBaseURL
-	ccCliAPIKey := claudeKey
-
-	// If not explicitly configured, try to use local proxy with zimaos-trial
-	if !ccCliEnabled && os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
-		ccCliEnabled = true
-		// Use local proxy URL (same port as main server)
-		ccCliBaseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
-		// Generate internal API key for CC CLI to use with local proxy
-		ccCliAPIKey = os.Getenv("ZIMAOS_TRIAL_API_KEY")
-		logger.Info().Str("base_url", ccCliBaseURL).Msg("CC CLI auto-enabled with local proxy (zimaos-trial)")
-	}
-
-	if ccCliEnabled {
-		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, ccCliAPIKey, ccCliBaseURL)
-		// Override enabled flag since we may have auto-enabled it
-		ccConfig.Enabled = true
-		ccProvider := claudecode.NewProvider(ccConfig)
-		ccProvider.SetToolRegistry(toolRegistry) // Set tool registry for system prompt
-		ccProvider.Start()
-		llmRegistry.Register(ccProvider)
-		logger.Info().Str("command", cfg.ClaudeCode.Command).Str("base_url", ccCliBaseURL).Msg("Claude Code CLI provider registered")
-
-		// Register shutdown hook for Claude Code provider
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			return ccProvider.Close()
-		})
-	}
-
 	// Initialize skill registry and register built-in skills
 	skillRegistry := skill.NewRegistry()
 	if err := builtin.RegisterAll(skillRegistry); err != nil {
@@ -431,6 +399,80 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to initialize API key service")
 	}
 	defer apiKeyService.Close()
+
+	// Initialize Claude Code CLI provider with internal API key for local proxy
+	// This must be done after apiKeyService is ready
+	// Create three internal API keys for different routing modes:
+	// - cc-cli-auto: Auto mode (system chooses best provider)
+	// - cc-cli-cloud: Cloud mode (force cloud provider)
+	// - cc-cli-local: Local mode (force local CC CLI)
+	var ccCliAutoKey, ccCliCloudKey, ccCliLocalKey string
+
+	if os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
+		// Helper function to create or recreate an API key
+		createOrRecreateKey := func(name string, scopes []string) string {
+			keyInfo, err := apiKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
+				UserID: "system",
+				Name:   name,
+				Scopes: scopes,
+			})
+			if err != nil {
+				// Key might already exist, revoke and recreate
+				keys, _ := apiKeyService.ListKeys(context.Background(), "system")
+				for _, k := range keys {
+					if k.Name == name {
+						apiKeyService.RevokeKey(context.Background(), k.ID, "system")
+						keyInfo, _ = apiKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
+							UserID: "system",
+							Name:   name,
+							Scopes: scopes,
+						})
+						break
+					}
+				}
+			}
+			if keyInfo != nil {
+				return keyInfo.Key
+			}
+			return ""
+		}
+
+		// Create three keys for different routing modes
+		ccCliAutoKey = createOrRecreateKey("cc-cli-auto", []string{"chat", "proxy", "route:auto"})
+		ccCliCloudKey = createOrRecreateKey("cc-cli-cloud", []string{"chat", "proxy", "route:cloud"})
+		ccCliLocalKey = createOrRecreateKey("cc-cli-local", []string{"chat", "proxy", "route:local"})
+
+		logger.Info().
+			Str("auto_key", ccCliAutoKey[:8]+"...").
+			Str("cloud_key", ccCliCloudKey[:8]+"...").
+			Str("local_key", ccCliLocalKey[:8]+"...").
+			Msg("Created three internal API keys for CC CLI routing modes")
+	}
+
+	// Initialize CC CLI provider if enabled or trial key available
+	if cfg.ClaudeCode.Enabled || os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
+		ccCliBaseURL := claudeBaseURL
+		ccCliAPIKey := claudeKey
+
+		// If using local proxy mode, use auto key by default
+		if os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
+			ccCliBaseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+			ccCliAPIKey = ccCliAutoKey // Use auto mode by default
+			logger.Info().Str("base_url", ccCliBaseURL).Msg("CC CLI using local proxy with auto routing")
+		}
+
+		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, ccCliAPIKey, ccCliBaseURL)
+		ccConfig.Enabled = true
+		ccProvider := claudecode.NewProvider(ccConfig)
+		ccProvider.SetToolRegistry(toolRegistry)
+		ccProvider.Start()
+		llmRegistry.Register(ccProvider)
+		logger.Info().Str("command", cfg.ClaudeCode.Command).Str("base_url", ccCliBaseURL).Msg("Claude Code CLI provider registered")
+
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return ccProvider.Close()
+		})
+	}
 
 	// Initialize auth middleware
 	authMiddleware := auth.NewAuthMiddleware(jwtService, apiKeyService)
@@ -726,7 +768,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, sherpaTTSProvider, sherpaASRProvider, lm)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -770,7 +812,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, sherpaTTSProvider *tts.SherpaProvider, sherpaASRProvider *stt.SherpaProvider, lm *lifecycle.Manager) {
 	e := srv.Echo()
 
 	// Initialize connection manager and add middleware for tracking all connections
@@ -1035,6 +1077,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Register unified speech routes (ASR + TTS) - /api/v1/speech/*
 	speechService := speech.NewServiceWithInitConfig(&speech.Config{
+		TTS: speech.TTSConfig{
+			Provider: "edge-tts",
+			Model:    "",
+		},
 		ASR: speech.ASRConfig{
 			Enabled:        true,
 			EditBeforeSend: true,
@@ -1188,6 +1234,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			proxyHandler.SetProviderPool(providerPool)
 		}
 
+		// Set API key validator for routing mode detection
+		proxyHandler.SetAPIKeyValidator(func(key string) ([]string, error) {
+			info, err := apiKeyService.ValidateKey(context.Background(), key)
+			if err != nil {
+				return nil, err
+			}
+			return info.Scopes, nil
+		})
+
 		// Create /v1 group (no /api prefix - OpenAI-compatible)
 		v1ProxyGroup := e.Group("/v1")
 
@@ -1201,6 +1256,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/embeddings", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/models", echo.WrapHandler(proxyHandler))
+
+		// Register Anthropic-compatible endpoints for Claude Code CLI
+		// CC CLI uses Anthropic API format (/v1/messages)
+		v1ProxyGroup.Any("/messages", echo.WrapHandler(proxyHandler))
 
 		logger.Info().
 			Str("path", "/v1/*").
