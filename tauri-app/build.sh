@@ -62,10 +62,26 @@ if [ "$GOOS" = "darwin" ]; then
         source "$HOME/.cargo/env"
     fi
 
-    # Install espeak-ng for TTS support
-    if ! brew list espeak-ng &> /dev/null; then
-        print_step "Installing espeak-ng..."
-        brew install espeak-ng
+    # Build espeak-ng static library from source
+    ESPEAK_DIR="$PROJECT_ROOT/third_party/espeak-ng"
+    if [ ! -f "$ESPEAK_DIR/build/src/libespeak-ng/libespeak-ng.a" ]; then
+        print_step "Building espeak-ng from source..."
+        cd "$ESPEAK_DIR"
+        mkdir -p build && cd build
+        cmake .. -DBUILD_SHARED_LIBS=OFF
+        make -j$(sysctl -n hw.ncpu)
+        cd "$SCRIPT_DIR"
+    fi
+
+    # Build whisper.cpp static library from source
+    WHISPER_DIR="$PROJECT_ROOT/third_party/whisper.cpp"
+    if [ ! -f "$WHISPER_DIR/build/src/libwhisper.a" ]; then
+        print_step "Building whisper.cpp from source..."
+        cd "$WHISPER_DIR"
+        mkdir -p build && cd build
+        cmake .. -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_TESTS=OFF
+        make -j$(sysctl -n hw.ncpu)
+        cd "$SCRIPT_DIR"
     fi
 
     # Install fileicon for setting DMG icon
