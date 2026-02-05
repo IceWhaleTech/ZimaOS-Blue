@@ -31,11 +31,22 @@ export interface ServiceResponse {
   output?: string
 }
 
+export interface InstallCheckResult {
+  can_install: boolean
+  method: 'standard' | 'sysext' | 'none'
+  path?: string
+  requires_root: boolean
+  message: string
+  message_key: string
+}
+
 // Service API
 export const serviceApi = {
   getInfo: () => api.get<ServiceInfo>('/service/info'),
 
   getStatus: () => api.get<ServiceStatus>('/service/status'),
+
+  checkInstall: () => api.get<InstallCheckResult>('/service/install/check'),
 
   install: () => api.post<ServiceResponse>('/service/install'),
 

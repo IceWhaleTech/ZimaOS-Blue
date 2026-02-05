@@ -1,9 +1,16 @@
 package providerpool
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,6 +28,9 @@ const (
 	// This file is stored in a location that is NOT backed up to prevent
 	// users from restoring trial quota via backup restore
 	trialExhaustedMarkerFile = ".trial_exhausted"
+
+	// trialQuotaFile is the filename for persistent quota storage
+	trialQuotaFile = ".trial_quota"
 )
 
 var (
@@ -112,6 +122,136 @@ func getMachineID() string {
 	return "default"
 }
 
+// trialQuotaData is the structure for persistent quota storage
+type trialQuotaData struct {
+	TokensUsed      int64     `json:"tokens_used"`
+	Exhausted       bool      `json:"exhausted"`
+	ExhaustedReason string    `json:"exhausted_reason,omitempty"`
+	LastUpdated     time.Time `json:"last_updated"`
+	MachineID       string    `json:"machine_id"`
+}
+
+// getEncryptionKey derives a 32-byte AES key from machine ID
+func getEncryptionKey() []byte {
+	machineID := getMachineID()
+	// Add a salt to make the key more unique
+	salt := "zimaos-echo-trial-quota-v1"
+	h := sha256.New()
+	h.Write([]byte(machineID))
+	h.Write([]byte(salt))
+	return h.Sum(nil)
+}
+
+// encrypt encrypts data using AES-GCM
+func encrypt(plaintext []byte) (string, error) {
+	key := getEncryptionKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// decrypt decrypts data using AES-GCM
+func decrypt(encoded string) ([]byte, error) {
+	key := getEncryptionKey()
+	ciphertext, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ciphertext) < gcm.NonceSize() {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
+	return gcm.Open(nil, nonce, ciphertext, nil)
+}
+
+// getQuotaFilePath returns the path to the quota storage file
+func (m *TrialQuotaManager) getQuotaFilePath() string {
+	if m.markerDir != "" {
+		return filepath.Join(m.markerDir, trialQuotaFile)
+	}
+	return filepath.Join(os.TempDir(), "zimaos-echo", trialQuotaFile)
+}
+
+// saveQuotaToFile saves the current quota to an encrypted file
+func (m *TrialQuotaManager) saveQuotaToFile() error {
+	data := trialQuotaData{
+		TokensUsed:      m.tokensUsed,
+		Exhausted:       m.exhausted,
+		ExhaustedReason: m.exhaustedReason,
+		LastUpdated:     m.lastUpdated,
+		MachineID:       getMachineID(),
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	encrypted, err := encrypt(jsonData)
+	if err != nil {
+		return err
+	}
+
+	quotaPath := m.getQuotaFilePath()
+	if err := os.MkdirAll(filepath.Dir(quotaPath), 0700); err != nil {
+		return err
+	}
+
+	return os.WriteFile(quotaPath, []byte(encrypted), 0600)
+}
+
+// loadQuotaFromFile loads quota from the encrypted file
+func (m *TrialQuotaManager) loadQuotaFromFile() (*trialQuotaData, error) {
+	quotaPath := m.getQuotaFilePath()
+	encrypted, err := os.ReadFile(quotaPath)
+	if err != nil {
+		return nil, err
+	}
+
+	decrypted, err := decrypt(string(encrypted))
+	if err != nil {
+		return nil, err
+	}
+
+	var data trialQuotaData
+	if err := json.Unmarshal(decrypted, &data); err != nil {
+		return nil, err
+	}
+
+	// Verify machine ID matches
+	if data.MachineID != getMachineID() {
+		return nil, errors.New("machine ID mismatch")
+	}
+
+	return &data, nil
+}
+
 // checkExhaustedMarker checks if the trial exhausted marker exists
 func (m *TrialQuotaManager) checkExhaustedMarker() bool {
 	markerPath := m.getMarkerPath()
@@ -143,8 +283,6 @@ func (m *TrialQuotaManager) writeExhaustedMarker() error {
 // loadFromStorage loads trial quota from storage
 func (m *TrialQuotaManager) loadFromStorage() {
 	// First check if trial is already exhausted via marker file
-	// This marker is stored outside the backup directory to prevent
-	// users from restoring trial quota via backup restore
 	if m.checkExhaustedMarker() {
 		m.mu.Lock()
 		m.exhausted = true
@@ -154,36 +292,41 @@ func (m *TrialQuotaManager) loadFromStorage() {
 		return
 	}
 
-	// Load usage records for trial provider
-	start := time.Time{} // From the beginning
-	end := time.Now()
-	records, err := m.storage.LoadUsage(TrialProviderID, start, end)
+	// Try to load from encrypted quota file
+	data, err := m.loadQuotaFromFile()
 	if err != nil {
+		// If file doesn't exist, this is a fresh install - start with zero usage
+		if os.IsNotExist(err) {
+			m.mu.Lock()
+			m.tokensUsed = 0
+			m.exhausted = false
+			m.lastUpdated = time.Now()
+			m.mu.Unlock()
+			// Save initial state
+			m.saveQuotaToFile()
+			fmt.Printf("[TrialQuotaManager] Fresh install, starting with zero usage\n")
+			return
+		}
+		// File exists but failed to load (corrupted/tampered) - treat as exhausted
+		m.mu.Lock()
+		m.exhausted = true
+		m.exhaustedReason = "quota_file_invalid"
+		m.lastUpdated = time.Now()
+		m.mu.Unlock()
+		m.writeExhaustedMarker()
+		fmt.Printf("[TrialQuotaManager] Failed to load quota file, treating as exhausted: %v\n", err)
 		return
 	}
 
-	var totalTokens int64
-	conversationSet := make(map[string]bool)
-
-	for _, record := range records {
-		totalTokens += record.InputTokens + record.OutputTokens
-		if record.SessionID != "" {
-			conversationSet[record.SessionID] = true
-		}
-	}
-
+	// Successfully loaded from encrypted file
 	m.mu.Lock()
-	m.tokensUsed = totalTokens
-	m.lastUpdated = time.Now()
-
-	// Check if exhausted
-	if m.tokensUsed >= TrialTokenLimit {
-		m.exhausted = true
-		m.exhaustedReason = "token_limit"
-		// Write marker to prevent restore
-		m.writeExhaustedMarker()
-	}
+	m.tokensUsed = data.TokensUsed
+	m.exhausted = data.Exhausted
+	m.exhaustedReason = data.ExhaustedReason
+	m.lastUpdated = data.LastUpdated
 	m.mu.Unlock()
+	fmt.Printf("[TrialQuotaManager] Loaded from encrypted file: tokens=%d, exhausted=%v\n",
+		data.TokensUsed, data.Exhausted)
 }
 
 // CheckQuota checks if trial quota is available
@@ -200,29 +343,29 @@ func (m *TrialQuotaManager) CheckQuota() error {
 // RecordUsage records usage and checks if quota is exhausted
 func (m *TrialQuotaManager) RecordUsage(inputTokens, outputTokens int64, sessionID string) (exhausted bool, err error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Update tokens
+	previousUsed := m.tokensUsed
 	m.tokensUsed += inputTokens + outputTokens
 	m.lastUpdated = time.Now()
 
-	// Track unique conversations
-	// Note: In a real implementation, we'd track this in storage
-	// For now, we increment if sessionID is provided
-	if sessionID != "" {
-		// This is a simplified approach - in production, we'd check if this is a new session
-		// For now, we'll rely on the loadFromStorage to get accurate counts
-	}
+	fmt.Printf("[TrialQuotaManager] RecordUsage: input=%d, output=%d, previous=%d, new=%d, limit=%d\n",
+		inputTokens, outputTokens, previousUsed, m.tokensUsed, TrialTokenLimit)
 
 	// Check if exhausted
 	if m.tokensUsed >= TrialTokenLimit {
 		m.exhausted = true
 		m.exhaustedReason = "token_limit"
-		// Write marker to prevent restore via backup
 		m.writeExhaustedMarker()
+		fmt.Printf("[TrialQuotaManager] Trial quota EXHAUSTED!\n")
+		m.mu.Unlock()
+		m.saveQuotaToFile()
 		return true, nil
 	}
 
+	m.mu.Unlock()
+	// Save to encrypted file after each usage update
+	m.saveQuotaToFile()
 	return false, nil
 }
 
@@ -300,5 +443,6 @@ func (m *TrialQuotaManager) Reset() {
 
 // IsTrialProvider checks if a provider ID is the trial provider
 func IsTrialProvider(providerID string) bool {
-	return providerID == TrialProviderID
+	// Support both old and new trial provider IDs for backwards compatibility
+	return providerID == TrialProviderID || providerID == "zimaos-trial"
 }

@@ -459,30 +459,8 @@ func main() {
 			Msg("Created three internal API keys for CC CLI routing modes")
 	}
 
-	// Initialize CC CLI provider if enabled or trial key available
-	if cfg.ClaudeCode.Enabled || os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
-		ccCliBaseURL := claudeBaseURL
-		ccCliAPIKey := claudeKey
-
-		// If using local proxy mode, use auto key by default
-		if os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
-			ccCliBaseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
-			ccCliAPIKey = ccCliAutoKey // Use auto mode by default
-			logger.Info().Str("base_url", ccCliBaseURL).Msg("CC CLI using local proxy with auto routing")
-		}
-
-		ccConfig := convertClaudeCodeConfig(&cfg.ClaudeCode, ccCliAPIKey, ccCliBaseURL)
-		ccConfig.Enabled = true
-		ccProvider := claudecode.NewProvider(ccConfig)
-		ccProvider.SetToolRegistry(toolRegistry)
-		ccProvider.Start()
-		llmRegistry.Register(ccProvider)
-		logger.Info().Str("command", cfg.ClaudeCode.Command).Str("base_url", ccCliBaseURL).Msg("Claude Code CLI provider registered")
-
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			return ccProvider.Close()
-		})
-	}
+	// Note: Claude Code CLI is no longer registered as an LLM provider.
+	// All chat requests are routed through the proxy, which handles provider selection internally.
 
 	// Initialize auth middleware
 	authMiddleware := auth.NewAuthMiddleware(jwtService, apiKeyService)
@@ -637,17 +615,17 @@ func main() {
 		logger.Info().Msg("MFA handler initialized")
 	}()
 
-	// Async initialization for Sandbox manager
-	go func() {
+	// Sync initialization for Sandbox manager (must complete before route registration)
+	{
 		var err error
 		sandboxManager, err = sandbox.NewManager(nil)
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize sandbox manager, sandbox features will be disabled")
-			return
+		} else {
+			sandboxHandler = sandbox.NewHandler(sandboxManager)
+			logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
 		}
-		sandboxHandler = sandbox.NewHandler(sandboxManager)
-		logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
-	}()
+	}
 
 	// Async initialization for Cron service
 	go func() {
@@ -1157,6 +1135,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	claudeCodeGroup := protected.Group("/claudecode")
 	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
 	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
+
+	// Set up system prompt builder for channel messages
+	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
+		WorkspaceDir: dataDir,
+	})
+	systemPromptBuilder.SetToolRegistry(toolRegistry)
+	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 	logger.Info().Msg("Claude Code CLI routes registered")
 
 	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
@@ -1227,6 +1212,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 	sharedCache = proxy.NewCCCache(cacheConfig)
 	chatHandler.SetCache(sharedCache)
+	detailedMetricsHandler.SetCacheProvider(sharedCache)
 	logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Shared cache (cc-cache) initialized for chat")
 
 	providerPoolHandler := providerpool.NewHandler(providerPool)

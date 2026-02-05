@@ -571,3 +571,17 @@ select:disabled {
 .theme-style-btn-ocean {
   background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%);
 }
+
+/* Code Syntax Highlighting */
+.hljs-keyword {
+  color: #C792EA;
+}
+.hljs-string {
+  color: #C3E88D;
+}
+.hljs-comment {
+  color: #6B7280;
+}
+.hljs-number {
+  color: #F78C6C;
+}

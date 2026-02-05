@@ -714,6 +714,13 @@ export default {
     disableFailed: 'Dienst konnte nicht deaktiviert werden',
     actionFailed: 'Aktion fehlgeschlagen',
     fetchFailed: 'Dienstinformationen konnten nicht abgerufen werden',
+    // Install method hints
+    installMethodStandard: 'Standardinstallation verfügbar',
+    installMethodSystemd: 'Wird in /etc/systemd/system installiert',
+    installMethodUsrLib: 'Wird in /usr/lib/systemd/system installiert',
+    installMethodVarLib: 'Wird in /var/lib/systemd/system installiert',
+    installMethodSysext: 'Wird über Systemerweiterung (sysext) installiert (für unveränderliches Dateisystem)',
+    installMethodNone: 'Installation nicht möglich: Dateisystem ist schreibgeschützt und sysext wird nicht unterstützt',
   },
   autoReply: {
     ...enUS.autoReply,
@@ -1994,8 +2001,6 @@ export default {
     privacyWarning: 'Edge-TTS ist ein Onlinedienst. Text wird an Microsoft-Server zur Synthese gesendet.',
     downloadFailed: 'Download fehlgeschlagen',
     ttsProvider: 'TTS-Anbieter',
-    edgeTTSDesc: 'Hochwertige Online-Neuralstimmen (Internet erforderlich)',
-    espeakNGDesc: 'Offline-Leichtgewicht-Engine (funktioniert ohne Internet)',
     espeakNote: 'Offline – leichtgewichtig (~8,5 MB)',
     sherpaNote: 'Offline – hohe Qualität (Download erforderlich)',
   },

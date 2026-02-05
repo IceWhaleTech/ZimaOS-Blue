@@ -7,7 +7,8 @@ const metricsStore = useMetricsStore()
 </script>
 
 <template>
-  <div>
+  <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow border border-gray-200 dark:border-gray-700">
+    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('metrics.modelStats') }}</h3>
     <div v-if="metricsStore.modelStats?.models?.length" class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>

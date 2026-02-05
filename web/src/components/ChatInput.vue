@@ -37,8 +37,8 @@ const cameraInputRef = ref<HTMLInputElement | null>(null)
 const attachments = ref<FileAttachment[]>([])
 const dragOver = ref(false)
 
-// Mobile menu state
-const isMobile = ref(false)
+// Compact mode state (for narrow screens, including non-mobile)
+const isCompact = ref(false)
 const showMobileMenu = ref(false)
 const mobileMenuRef = ref<HTMLDivElement | null>(null)
 
@@ -117,7 +117,7 @@ const canSend = computed(() =>
 
 // Shorter placeholder for mobile
 const placeholder = computed(() =>
-  isMobile.value ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
+  isCompact.value ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 )
 
 function generateId(): string {
@@ -390,10 +390,10 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-// Check if mobile
+// Check if compact mode (narrow screen)
 function checkMobile() {
-  isMobile.value = window.innerWidth < 640
-  if (!isMobile.value) {
+  isCompact.value = window.innerWidth < 768
+  if (!isCompact.value) {
     showMobileMenu.value = false
   }
 }
@@ -567,7 +567,7 @@ defineExpose({ focus, setInput })
 
     <div class="flex items-center gap-2 sm:gap-3">
       <!-- Mobile: Collapsed menu button -->
-      <div v-if="isMobile" ref="mobileMenuRef" class="relative">
+      <div v-if="isCompact" ref="mobileMenuRef" class="relative">
         <button
           :disabled="disabled || streaming"
           class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
@@ -662,7 +662,7 @@ defineExpose({ focus, setInput })
       <!-- Desktop: Individual buttons -->
       <!-- Attachment button -->
       <button
-        v-if="!isMobile"
+        v-if="!isCompact"
         :disabled="disabled || streaming"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.attachFile')"
@@ -686,7 +686,7 @@ defineExpose({ focus, setInput })
 
       <!-- Camera button (desktop) -->
       <button
-        v-if="!isMobile"
+        v-if="!isCompact"
         :disabled="disabled || streaming"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.takePhoto')"
@@ -716,7 +716,7 @@ defineExpose({ focus, setInput })
 
       <!-- Voice input button (desktop) -->
       <button
-        v-if="!isMobile"
+        v-if="!isCompact"
         :disabled="disabled || streaming || isTranscribing"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :class="isRecording
@@ -754,7 +754,7 @@ defineExpose({ focus, setInput })
 
       <!-- Talk Mode button (desktop) -->
       <button
-        v-if="!isMobile"
+        v-if="!isCompact"
         :disabled="disabled || streaming"
         class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.talkMode.title')"
@@ -782,7 +782,7 @@ defineExpose({ focus, setInput })
           v-model="message"
           :disabled="disabled || streaming"
           :placeholder="placeholder"
-          class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 sm:px-4 sm:py-3 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full glass-input text-gray-900 dark:text-white px-3 py-1.5 sm:px-4 sm:py-2 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
           rows="1"
           @keydown="handleKeydown"
           @input="handleInput"
@@ -860,13 +860,6 @@ defineExpose({ focus, setInput })
       <span>{{ t('chat.recording') }}</span>
     </div>
 
-    <!-- Hint text -->
-      <div v-if="!isRecording && !voiceError" class="text-xs text-gray-400 dark:text-slate-500 mt-2 text-center hidden sm:block">
-        {{ t('chat.enterToSend') }} <kbd class="px-1.5 py-0.5 glass rounded text-gray-500 dark:text-slate-400">Enter</kbd>,
-        <kbd class="px-1.5 py-0.5 glass rounded text-gray-500 dark:text-slate-400">Shift + Enter</kbd> {{ t('chat.newLine') }}
-        <span class="mx-2 text-gray-300 dark:text-slate-600">|</span>
-        {{ t('chat.dragDropHint') }}
-      </div>
     </div>
   </div>
 </template>

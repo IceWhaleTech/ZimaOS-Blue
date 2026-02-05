@@ -72,7 +72,9 @@ echo   ZimaOS-Echo Development Environment
 echo ========================================
 echo.
 echo   Backend:  http://localhost:23456
-echo   Frontend: http://localhost:3000
+echo   Frontend: http://localhost:3000 (background)
+echo.
+echo   Press Ctrl+C to stop backend server
 echo.
 
 :: Check prerequisites
@@ -84,8 +86,8 @@ call :install_deps
 if errorlevel 1 exit /b 1
 
 :: Start Vite dev server in background FIRST (Go server proxies to it)
-echo [INFO] Starting Vite dev server...
-start "ZimaOS-Echo Web" cmd /c "cd /d "%PROJECT_ROOT%web" && npm run dev"
+echo [INFO] Starting Vite dev server in background...
+start "ZimaOS-Echo Web" /min cmd /c "cd /d "%PROJECT_ROOT%web" && npm run dev"
 
 :: Wait for Vite to start
 timeout /t 3 /nobreak >nul

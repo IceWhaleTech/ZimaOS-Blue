@@ -214,27 +214,11 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 	return provider, nil
 }
 
-// getDefaultProvider returns the best available provider from the pool.
-// It prioritizes Claude Code CLI if enabled, then selects from the provider pool
-// by priority, and finally falls back to the legacy provider registry.
-// Note: This function no longer fetches models to avoid I/O overhead.
-// The caller should use req.Model directly if available.
+// getDefaultProvider returns an available provider from the pool.
+// It checks if any provider is available; the actual routing is handled by the proxy.
+// Returns error if no providers are configured, prompting user to configure one.
 func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error) {
-	// Priority 1: Check if Claude Code CLI is enabled
-	fmt.Printf("[getDefaultProvider] claudeCodeHandler=%v\n", h.claudeCodeHandler != nil)
-	if h.claudeCodeHandler != nil {
-		fmt.Printf("[getDefaultProvider] claudeCodeHandler.IsEnabled()=%v\n", h.claudeCodeHandler.IsEnabled())
-	}
-	if h.claudeCodeHandler != nil && h.claudeCodeHandler.IsEnabled() {
-		// Try to get the claude-code provider from registry
-		ccProvider := h.providers.Get("claude-code")
-		fmt.Printf("[getDefaultProvider] ccProvider=%v\n", ccProvider != nil)
-		if ccProvider != nil {
-			return ccProvider, "claude-code", "", nil
-		}
-	}
-
-	// Priority 2: Try provider pool
+	// Priority 1: Try provider pool
 	if h.providerPool != nil {
 		// Get enabled providers from pool, sorted by priority
 		poolProviders := h.providerPool.Registry.ListEnabled()
@@ -257,7 +241,11 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 						if !providerpool.IsTrialProvider(nextProvider.ID) {
 							provider, err := h.getProviderFromPool(nextProvider.ID)
 							if err == nil {
-								return provider, nextProvider.ID, "", nil
+								defaultModel := ""
+								if len(nextProvider.AllowedModels) > 0 {
+									defaultModel = nextProvider.AllowedModels[0]
+								}
+								return provider, nextProvider.ID, defaultModel, nil
 							}
 						}
 					}
@@ -269,9 +257,22 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 			// Create LLM provider from pool configuration
 			provider, err := h.getProviderFromPool(poolProvider.ID)
 			if err == nil {
-				// Return empty model - caller will use req.Model if available
-				// This avoids expensive GetModels() call on every request
-				return provider, poolProvider.ID, "", nil
+				// Get default model from provider's allowed models list
+				defaultModel := ""
+				if len(poolProvider.AllowedModels) > 0 {
+					defaultModel = poolProvider.AllowedModels[0]
+				} else if h.providerPool.Discovery != nil {
+					// Try to fetch models from discovery if not configured
+					if models, err := h.providerPool.Discovery.GetModels(poolProvider.ID); err == nil && len(models) > 0 {
+						defaultModel = models[0].ID
+					}
+				}
+				// Fallback to common default model if still empty
+				if defaultModel == "" {
+					defaultModel = "claude-sonnet-4-20250514"
+				}
+				fmt.Printf("[getDefaultProvider] using provider=%s, defaultModel=%s\n", poolProvider.ID, defaultModel)
+				return provider, poolProvider.ID, defaultModel, nil
 			}
 		}
 	}
@@ -314,6 +315,9 @@ type ChatHandler struct {
 	cache             *proxy.CCCache
 	convToSession     map[string]string
 	convMu            sync.RWMutex
+
+	// System prompt builder for channel messages
+	systemPromptBuilder *claudecode.SystemPromptBuilder
 
 	// Performance optimization: async event queue
 	eventQueue chan func()
@@ -407,6 +411,11 @@ func (h *ChatHandler) SetClaudeCodeHandler(handler *claudecode.Handler) {
 	h.claudeCodeHandler = handler
 }
 
+// SetSystemPromptBuilder sets the system prompt builder for channel messages.
+func (h *ChatHandler) SetSystemPromptBuilder(builder *claudecode.SystemPromptBuilder) {
+	h.systemPromptBuilder = builder
+}
+
 // SetCompanionManager sets the companion manager for session tracking.
 func (h *ChatHandler) SetCompanionManager(manager *companion.Manager) {
 	h.companionManager = manager
@@ -454,6 +463,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		Str("user_id", msg.UserID).
 		Str("content", msg.Content).
 		Bool("has_provider_pool", h.providerPool != nil).
+		Bool("has_claude_code", h.claudeCodeHandler != nil).
 		Msg("ProcessChannelMessage called")
 
 	// Validate input
@@ -462,13 +472,25 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		return "", fmt.Errorf("empty message content")
 	}
 
-	// Build messages for LLM
-	messages := []llm.Message{
-		{
-			Role:    "user",
-			Content: msg.Content,
-		},
+	// Use provider pool with system prompt
+	var messages []llm.Message
+
+	// Add system prompt if available
+	if h.systemPromptBuilder != nil {
+		systemPrompt := h.systemPromptBuilder.Build(ctx, "")
+		if systemPrompt != "" {
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: systemPrompt,
+			})
+		}
 	}
+
+	// Add user message
+	messages = append(messages, llm.Message{
+		Role:    "user",
+		Content: msg.Content,
+	})
 
 	var responseContent string
 
@@ -861,16 +883,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
-	// Set companion manager on claude-code provider for sandbox event tracking
-	if providerID == "claude-code" {
-		if ccProvider, ok := provider.(*claudecode.Provider); ok {
-			sessionID := h.getCompanionSessionID(convID)
-			if h.companionManager != nil && sessionID != "" {
-				ccProvider.SetCompanionManager(h.companionManager, sessionID)
-			}
-		}
-	}
-
 	// Use model from request if specified
 	if req.Model != "" {
 		model = req.Model
@@ -1177,6 +1189,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Auto-select provider and model from pool
 	provider, providerID, model, err := h.getDefaultProvider()
+	fmt.Printf("[StreamMessage] getDefaultProvider: providerID=%s, model=%s, err=%v, provider=%v\n", providerID, model, err, provider != nil)
 	if err != nil {
 		// Check if this is a trial quota exhausted error
 		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
@@ -1190,22 +1203,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
 	}
 
-	// Set companion manager on claude-code provider for sandbox event tracking
-	if providerID == "claude-code" {
-		if ccProvider, ok := provider.(*claudecode.Provider); ok {
-			sessionID := h.getCompanionSessionID(convID)
-			if h.companionManager != nil && sessionID != "" {
-				ccProvider.SetCompanionManager(h.companionManager, sessionID)
-			}
-		}
-	}
-
 	// Use model from request if specified
 	if req.Model != "" {
 		model = req.Model
 	}
-
-	// Get provider name for display
+	fmt.Printf("[StreamMessage] using model=%s, providerName=%s\n", model, providerID)
 	providerName := providerID
 	if h.providerPool != nil {
 		if poolProvider, err := h.providerPool.Registry.Get(providerID); err == nil {
@@ -1313,6 +1315,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		MaxTokens:   req.MaxTokens,
 		Stream:      true,
 	}
+	fmt.Printf("[StreamMessage] chatReq: model=%s, messages=%d, stream=%v\n", chatReq.Model, len(chatReq.Messages), chatReq.Stream)
 
 	// Create cancellable context
 	streamID := uuid.New().String()
@@ -1345,19 +1348,25 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var fullContent string
 	var totalInputTokens, totalOutputTokens int
 	var firstChunkTime time.Time
-	var actualModel string // Track actual model from response
+	var actualModel string    // Track actual model from response
+	var actualProvider string // Track actual provider from response
 	userID := h.getUserID(c)
 
 	// Use callback-based streaming to avoid channel issues
+	fmt.Printf("[StreamMessage] calling ChatStreamCallback on provider %T\n", provider)
 	err = provider.ChatStreamCallback(ctx, chatReq, func(chunk llm.StreamChunk) error {
+		fmt.Printf("[StreamMessage] received chunk: delta=%q, done=%v, error=%q\n", chunk.Delta, chunk.Done, chunk.Error)
 		// Track first chunk time for TTFT calculation
 		if firstChunkTime.IsZero() && chunk.Delta != "" {
 			firstChunkTime = time.Now()
 		}
 
-		// Capture actual model from response if provided
+		// Capture actual model/provider from response if provided
 		if chunk.Model != "" && actualModel == "" {
 			actualModel = chunk.Model
+		}
+		if chunk.Provider != "" && actualProvider == "" {
+			actualProvider = chunk.Provider
 		}
 
 		// Check for error in chunk
@@ -1441,7 +1450,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				}
 
 				// Record trial usage if this is a trial provider
+				fmt.Printf("[StreamMessage] checking trial: providerID=%s, isTrialProvider=%v\n", providerID, providerpool.IsTrialProvider(providerID))
 				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(providerID) {
+					fmt.Printf("[StreamMessage] recording trial usage: input=%d, output=%d\n", totalInputTokens, totalOutputTokens)
 					h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
 				}
 			}
@@ -1458,12 +1469,21 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			}
 
 			// Send final chunk with provider/model info and stats
+			// Use actual provider/model from response if available
+			finalProvider := providerName
+			if actualProvider != "" {
+				finalProvider = actualProvider
+			}
+			finalModel := model
+			if actualModel != "" {
+				finalModel = actualModel
+			}
 			finalData := map[string]interface{}{
 				"delta":     "",
 				"done":      true,
 				"stream_id": streamID,
-				"provider":  providerName,
-				"model":     model,
+				"provider":  finalProvider,
+				"model":     finalModel,
 				"stats": map[string]interface{}{
 					"input_tokens":      totalInputTokens,
 					"output_tokens":     totalOutputTokens,

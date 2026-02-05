@@ -35,6 +35,7 @@ const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
+const isMac = ref(false)
 const showRoutingMenu = ref(false)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 const routingButtonRef = ref<HTMLElement | null>(null)
@@ -126,6 +127,7 @@ const localActiveCount = computed(() =>
 // Check if mobile on mount and resize
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
+  isMac.value = navigator.platform.toUpperCase().indexOf('MAC') >= 0
   // Auto-show sidebar on desktop
   if (!isMobile.value) {
     showSidebar.value = true
@@ -563,11 +565,12 @@ onUnmounted(() => {
         <div
           v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted"
           class="px-4 py-2 flex items-center justify-between text-sm border-b bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
+          :class="{ 'trial-quota-pulse': tokenAnimating }"
         >
           <div class="flex items-center gap-2">
-            <span>🎁</span>
+            <span :class="{ 'animate-bounce': tokenAnimating }">🎁</span>
             <span
-              class="tabular-nums transition-all duration-300"
+              class="tabular-nums transition-all duration-300 font-medium"
               :class="{ 'token-change-animation': tokenAnimating }"
             >{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
           </div>
@@ -653,9 +656,16 @@ onUnmounted(() => {
           <div v-if="!isMobile" class="mt-8 text-xs text-gray-400 dark:text-slate-500">
             <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
             <p class="space-x-4">
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Alt+N</span> {{ t('chat.newChatShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{ isMac ? '⌘N' : 'Alt+N' }}</span> {{ t('chat.newChatShortcut') }}
               <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">/</span> {{ t('chat.focusInputShortcut') }}
-              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Alt+B</span> {{ t('chat.toggleSidebarShortcut') }}
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{ isMac ? '⌘B' : 'Alt+B' }}</span> {{ t('chat.toggleSidebarShortcut') }}
+            </p>
+            <p class="mt-3 text-gray-400 dark:text-slate-500">
+              <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Enter</span> {{ t('chat.sendMessage') }}
+              <span class="ml-4 px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Shift+Enter</span> {{ t('chat.newLine') }}
+            </p>
+            <p class="mt-2 text-gray-400 dark:text-slate-500">
+              {{ t('chat.dragDropHint') }}
             </p>
           </div>
         </div>
@@ -1065,21 +1075,56 @@ onUnmounted(() => {
 
 /* Token change animation */
 .token-change-animation {
-  animation: token-pulse 0.6s ease-out;
+  animation: token-pulse 0.8s ease-out;
 }
 
 @keyframes token-pulse {
   0% {
     transform: scale(1);
     color: inherit;
+    text-shadow: none;
   }
-  30% {
+  20% {
+    transform: scale(1.3);
+    color: #ef4444;
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.5);
+  }
+  50% {
     transform: scale(1.15);
     color: #f59e0b;
+    text-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
   }
   100% {
     transform: scale(1);
     color: inherit;
+    text-shadow: none;
+  }
+}
+
+/* Trial quota banner pulse when tokens change */
+.trial-quota-pulse {
+  animation: banner-pulse 0.8s ease-out;
+}
+
+@keyframes banner-pulse {
+  0%, 100% {
+    background-color: rgb(239 246 255 / var(--tw-bg-opacity, 1));
+  }
+  30% {
+    background-color: rgb(254 243 199 / var(--tw-bg-opacity, 1));
+  }
+}
+
+:root.dark .trial-quota-pulse {
+  animation: banner-pulse-dark 0.8s ease-out;
+}
+
+@keyframes banner-pulse-dark {
+  0%, 100% {
+    background-color: rgb(30 58 138 / 0.2);
+  }
+  30% {
+    background-color: rgb(180 83 9 / 0.3);
   }
 }
 </style>

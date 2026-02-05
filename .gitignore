@@ -53,8 +53,6 @@ temp/
 *.test
 *.out
 go.work
-echo
-echolib
 
 # Config (local overrides)
 config.local.yaml
@@ -70,9 +68,12 @@ data/
 # Compiled binaries
 server/zimaos-echo
 server/echo
+server/echolib
+bin/echo
+bin/echolib
 dist/
-echo
 zimaos-echo
+zimaos-echolib
 
 # Tauri binaries and capabilities
 tauri-app/src-tauri/binaries/

@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
+import { useMetricsStore } from '@/stores/metrics'
 import { systemApi } from '@/api/index'
 import type { SystemMetrics, DetailedSystemInfo } from '@/api/system'
 import { storeToRefs } from 'pinia'
@@ -11,6 +12,7 @@ import { ConfigurableDashboard } from '@/components/dashboard'
 
 const { t } = useI18n()
 const systemStore = useSystemStore()
+const metricsStore = useMetricsStore()
 const { health: _health, loading: _loading } = storeToRefs(systemStore)
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
@@ -104,6 +106,7 @@ watch(autoRefresh, (newValue) => {
 
 onMounted(async () => {
   await systemStore.fetchAll()
+  await metricsStore.fetchAll()
   await fetchMetricsHistory()
 
   // Add visibility change listener
@@ -113,6 +116,7 @@ onMounted(async () => {
   refreshInterval = setInterval(() => {
     if (autoRefresh.value && isPageVisible.value) {
       systemStore.fetchAll()
+      metricsStore.fetchAll()
       fetchMetricsHistory()
     }
   }, 15000)

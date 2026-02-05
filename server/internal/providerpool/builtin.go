@@ -297,8 +297,8 @@ func BuiltinProviders() []*Provider {
 			UpdatedAt:   time.Now(),
 		},
 		{
-			ID:          "zimaos-trial",
-			Name:        "ZimaOS Trial",
+			ID:          "zimaos-echo-trial",
+			Name:        "ZimaOS Echo Trial",
 			Type:        ProviderTypeTrial,
 			Location:    ProviderLocationCloud,
 			Enabled:     true,
@@ -1302,9 +1302,27 @@ func BuiltinModels() map[string][]*Model {
 				OutputPrice:   1.4,
 			},
 		},
-		"zimaos-trial": {
-			// Trial provider fetches models dynamically from API
-			// No hardcoded models - all available models from the API endpoint are accessible
+		"zimaos-echo-trial": {
+			// Default models for trial provider
+			{
+				ID:          "claude-haiku-4-5",
+				ProviderID:  "zimaos-echo-trial",
+				Name:        "claude-haiku-4-5",
+				DisplayName: "Claude Haiku 4.5",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					Chat:         true,
+					Vision:       true,
+					FunctionCall: true,
+					Streaming:    true,
+					JSON:         true,
+					SystemPrompt: true,
+				},
+				ContextWindow: 200000,
+				MaxOutput:     8192,
+				InputPrice:    0.8,
+				OutputPrice:   4.0,
+			},
 		},
 	}
 }

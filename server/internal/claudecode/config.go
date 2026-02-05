@@ -143,6 +143,12 @@ type ClaudeCodeConfig struct {
 	// BaseURL is the base URL for the Anthropic API (optional, for custom endpoints).
 	BaseURL string `mapstructure:"base_url" json:"base_url,omitempty"`
 
+	// ActualProvider is the actual provider name used by the CLI proxy (e.g., "anthropic", "openai").
+	ActualProvider string `mapstructure:"actual_provider" json:"actual_provider,omitempty"`
+
+	// ActualModel is the actual model name used by the CLI proxy (e.g., "claude-3-5-sonnet-20241022").
+	ActualModel string `mapstructure:"actual_model" json:"actual_model,omitempty"`
+
 	// Backend contains the CLI backend configuration.
 	Backend CliBackendConfig `mapstructure:"backend" json:"backend"`
 

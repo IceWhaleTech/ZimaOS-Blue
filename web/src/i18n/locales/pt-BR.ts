@@ -695,6 +695,13 @@ export default {
     disableFailed: 'Falha ao desabilitar o serviço',
     actionFailed: 'Ação falhou',
     fetchFailed: 'Falha ao obter informações do serviço',
+    // Install method hints
+    installMethodStandard: 'Instalação padrão disponível',
+    installMethodSystemd: 'Será instalado em /etc/systemd/system',
+    installMethodUsrLib: 'Será instalado em /usr/lib/systemd/system',
+    installMethodVarLib: 'Será instalado em /var/lib/systemd/system',
+    installMethodSysext: 'Será instalado via extensão do sistema (sysext) para sistema de arquivos imutável',
+    installMethodNone: 'Não é possível instalar: sistema de arquivos somente leitura e sem suporte a sysext',
   },
   autoReply: {
     ...enUS.autoReply,

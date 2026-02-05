@@ -31,6 +31,7 @@ func NewServiceHandler() *ServiceHandler {
 func (h *ServiceHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/service/status", h.GetStatus)
 	g.GET("/service/info", h.GetInfo)
+	g.GET("/service/install/check", h.CheckInstall) // Dry run check
 	g.POST("/service/install", h.Install)
 	g.POST("/service/uninstall", h.Uninstall)
 	g.POST("/service/start", h.Start)
@@ -88,6 +89,113 @@ func (h *ServiceHandler) GetInfo(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, info)
+}
+
+// InstallCheckResult represents the result of a dry-run install check
+type InstallCheckResult struct {
+	CanInstall    bool   `json:"can_install"`
+	Method        string `json:"method"`         // "standard", "sysext", "none"
+	Path          string `json:"path,omitempty"` // Where service will be installed
+	RequiresRoot  bool   `json:"requires_root"`
+	Message       string `json:"message"`
+	MessageKey    string `json:"message_key"` // i18n key
+}
+
+// CheckInstall performs a dry-run check to determine how the service can be installed
+func (h *ServiceHandler) CheckInstall(c echo.Context) error {
+	if runtime.GOOS != "linux" {
+		return c.JSON(http.StatusOK, InstallCheckResult{
+			CanInstall:   true,
+			Method:       "standard",
+			RequiresRoot: runtime.GOOS != "darwin", // macOS user agents don't need root
+			Message:      "Standard installation available",
+			MessageKey:   "service.installMethodStandard",
+		})
+	}
+
+	// Linux: check which method is available
+	result := h.checkLinuxInstallMethod()
+	return c.JSON(http.StatusOK, result)
+}
+
+// checkLinuxInstallMethod checks which systemd installation method is available
+func (h *ServiceHandler) checkLinuxInstallMethod() InstallCheckResult {
+	unit := h.getSystemdUnit()
+
+	// Method 1: /etc/systemd/system
+	testPath := filepath.Join("/etc/systemd/system", unit+".test")
+	if f, err := os.Create(testPath); err == nil {
+		f.Close()
+		os.Remove(testPath)
+		return InstallCheckResult{
+			CanInstall:   true,
+			Method:       "standard",
+			Path:         "/etc/systemd/system",
+			RequiresRoot: true,
+			Message:      "Standard systemd installation",
+			MessageKey:   "service.installMethodSystemd",
+		}
+	}
+
+	// Method 2: /usr/lib/systemd/system
+	testPath = filepath.Join("/usr/lib/systemd/system", unit+".test")
+	if err := os.MkdirAll("/usr/lib/systemd/system", 0755); err == nil {
+		if f, err := os.Create(testPath); err == nil {
+			f.Close()
+			os.Remove(testPath)
+			return InstallCheckResult{
+				CanInstall:   true,
+				Method:       "standard",
+				Path:         "/usr/lib/systemd/system",
+				RequiresRoot: true,
+				Message:      "Systemd installation via /usr/lib",
+				MessageKey:   "service.installMethodUsrLib",
+			}
+		}
+	}
+
+	// Method 3: /var/lib/systemd/system
+	testPath = filepath.Join("/var/lib/systemd/system", unit+".test")
+	if err := os.MkdirAll("/var/lib/systemd/system", 0755); err == nil {
+		if f, err := os.Create(testPath); err == nil {
+			f.Close()
+			os.Remove(testPath)
+			return InstallCheckResult{
+				CanInstall:   true,
+				Method:       "standard",
+				Path:         "/var/lib/systemd/system",
+				RequiresRoot: true,
+				Message:      "Systemd installation via /var/lib",
+				MessageKey:   "service.installMethodVarLib",
+			}
+		}
+	}
+
+	// Method 4: systemd-sysext
+	if _, err := os.Stat("/var/lib/extensions"); err == nil {
+		// Check if we can write to extensions directory
+		testDir := filepath.Join("/var/lib/extensions", "test-zimaos-echo")
+		if err := os.MkdirAll(testDir, 0755); err == nil {
+			os.RemoveAll(testDir)
+			return InstallCheckResult{
+				CanInstall:   true,
+				Method:       "sysext",
+				Path:         "/var/lib/extensions/zimaos-echo",
+				RequiresRoot: true,
+				Message:      "System extension (sysext) installation for immutable filesystem",
+				MessageKey:   "service.installMethodSysext",
+			}
+		}
+	}
+
+	// No method available
+	return InstallCheckResult{
+		CanInstall:   false,
+		Method:       "none",
+		RequiresRoot: true,
+		Message:      "Cannot install: filesystem is read-only and no sysext support",
+		MessageKey:   "service.installMethodNone",
+	}
 }
 
 // GetStatus returns the current service status
@@ -710,12 +818,48 @@ SyslogIdentifier=zimaos-echo
 WantedBy=multi-user.target
 `, h.execPath, configPath, installDir, installDir, installDir)
 
-	// Write service file
+	// Try different installation methods in order of preference
+	var lastErr error
+
+	// Method 1: Try /etc/systemd/system (standard location)
 	servicePath := filepath.Join("/etc/systemd/system", unit)
-	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
-		return "", fmt.Errorf("failed to write service file: %w", err)
+	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err == nil {
+		return h.finalizeSystemdInstall(unit, servicePath)
+	} else {
+		lastErr = err
 	}
 
+	// Method 2: Try /usr/lib/systemd/system
+	servicePath = filepath.Join("/usr/lib/systemd/system", unit)
+	if err := os.MkdirAll("/usr/lib/systemd/system", 0755); err == nil {
+		if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err == nil {
+			return h.finalizeSystemdInstall(unit, servicePath)
+		} else {
+			lastErr = err
+		}
+	}
+
+	// Method 3: Try /var/lib/systemd/system (for some immutable systems)
+	servicePath = filepath.Join("/var/lib/systemd/system", unit)
+	if err := os.MkdirAll("/var/lib/systemd/system", 0755); err == nil {
+		if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err == nil {
+			return h.finalizeSystemdInstall(unit, servicePath)
+		} else {
+			lastErr = err
+		}
+	}
+
+	// Method 4: Use systemd-sysext (system extension) for immutable filesystems
+	extResult, extErr := h.installViaSystemExtension(unit, serviceContent)
+	if extErr == nil {
+		return extResult, nil
+	}
+
+	return "", fmt.Errorf("failed to install systemd service (tried /etc/systemd/system, /usr/lib/systemd/system, /var/lib/systemd/system, and sysext): %w", lastErr)
+}
+
+// finalizeSystemdInstall reloads systemd and enables the service
+func (h *ServiceHandler) finalizeSystemdInstall(unit, servicePath string) (string, error) {
 	// Reload systemd
 	if output, err := h.runCommand("systemctl", "daemon-reload"); err != nil {
 		return output, fmt.Errorf("failed to reload systemd: %w", err)
@@ -726,7 +870,77 @@ WantedBy=multi-user.target
 		return output, fmt.Errorf("failed to enable service: %w", err)
 	}
 
-	return "Service installed and enabled successfully", nil
+	return fmt.Sprintf("Service installed at %s and enabled successfully", servicePath), nil
+}
+
+// installViaSystemExtension creates a systemd-sysext extension for immutable systems
+func (h *ServiceHandler) installViaSystemExtension(unit, serviceContent string) (string, error) {
+	extName := "zimaos-echo"
+	extDir := filepath.Join("/var/lib/extensions", extName)
+
+	// Check if extensions directory exists
+	if _, err := os.Stat("/var/lib/extensions"); os.IsNotExist(err) {
+		return "", fmt.Errorf("system extensions not supported: /var/lib/extensions does not exist")
+	}
+
+	// Create extension directory structure
+	serviceDir := filepath.Join(extDir, "usr", "lib", "systemd", "system")
+	if err := os.MkdirAll(serviceDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create extension directory: %w", err)
+	}
+
+	// Write service file
+	servicePath := filepath.Join(serviceDir, unit)
+	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
+		return "", fmt.Errorf("failed to write service file: %w", err)
+	}
+
+	// Create extension-release file (required for sysext)
+	releaseDir := filepath.Join(extDir, "usr", "lib", "extension-release.d")
+	if err := os.MkdirAll(releaseDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create release directory: %w", err)
+	}
+
+	// Get OS release info for compatibility
+	osRelease := h.getOSReleaseID()
+	releaseContent := fmt.Sprintf("ID=%s\n", osRelease)
+	releasePath := filepath.Join(releaseDir, "extension-release."+extName)
+	if err := os.WriteFile(releasePath, []byte(releaseContent), 0644); err != nil {
+		return "", fmt.Errorf("failed to write extension-release: %w", err)
+	}
+
+	// Refresh system extensions
+	if output, err := h.runCommand("systemd-sysext", "refresh"); err != nil {
+		// Clean up on failure
+		os.RemoveAll(extDir)
+		return output, fmt.Errorf("failed to refresh system extensions: %w", err)
+	}
+
+	// Reload systemd to pick up new service
+	h.runCommand("systemctl", "daemon-reload")
+
+	// Enable the service
+	if output, err := h.runCommand("systemctl", "enable", unit); err != nil {
+		return output, fmt.Errorf("service installed via sysext but failed to enable: %w", err)
+	}
+
+	return "Service installed via system extension and enabled successfully", nil
+}
+
+// getOSReleaseID reads the OS ID from /etc/os-release
+func (h *ServiceHandler) getOSReleaseID() string {
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return "_any" // Fallback: match any OS
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "ID=") {
+			id := strings.TrimPrefix(line, "ID=")
+			return strings.Trim(id, "\"")
+		}
+	}
+	return "_any"
 }
 
 func (h *ServiceHandler) uninstallSystemdService() (string, error) {
@@ -738,14 +952,34 @@ func (h *ServiceHandler) uninstallSystemdService() (string, error) {
 	// Disable the service
 	h.runCommand("systemctl", "disable", unit)
 
-	// Remove service file
-	servicePath := filepath.Join("/etc/systemd/system", unit)
-	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("failed to remove service file: %w", err)
+	// Try to remove from all possible locations
+	locations := []string{
+		filepath.Join("/etc/systemd/system", unit),
+		filepath.Join("/usr/lib/systemd/system", unit),
+		filepath.Join("/var/lib/systemd/system", unit),
+	}
+
+	removed := false
+	for _, servicePath := range locations {
+		if err := os.Remove(servicePath); err == nil {
+			removed = true
+		}
+	}
+
+	// Also try to remove system extension
+	extDir := filepath.Join("/var/lib/extensions", "zimaos-echo")
+	if _, err := os.Stat(extDir); err == nil {
+		os.RemoveAll(extDir)
+		h.runCommand("systemd-sysext", "refresh")
+		removed = true
 	}
 
 	// Reload systemd
 	h.runCommand("systemctl", "daemon-reload")
+
+	if !removed {
+		return "", fmt.Errorf("service file not found in any location")
+	}
 
 	return "Service uninstalled successfully", nil
 }

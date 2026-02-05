@@ -102,7 +102,10 @@ func (h *Handler) Status(c echo.Context) error {
 // GetEntities returns all entities or filtered by domain.
 func (h *Handler) GetEntities(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"entities":  []*Entity{},
+		})
 	}
 
 	domain := c.QueryParam("domain")
@@ -120,7 +123,10 @@ func (h *Handler) GetEntities(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, entities)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"connected": true,
+		"entities":  entities,
+	})
 }
 
 // GetEntity returns a single entity.

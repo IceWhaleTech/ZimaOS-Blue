@@ -62,6 +62,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     return models.value.filter(m => m.provider_id === selectedProviderId.value)
   })
 
+  // Get provider display name by ID
+  function getProviderDisplayName(providerId: string): string {
+    const provider = providers.value.find(p => p.id === providerId)
+    return provider?.name || providerId
+  }
+
   // Actions
   async function fetchProviders() {
     loading.value = true
@@ -535,6 +541,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     hasLocalProviders,
     selectedProvider,
     providerModels,
+
+    // Helpers
+    getProviderDisplayName,
 
     // Actions
     fetchProviders,

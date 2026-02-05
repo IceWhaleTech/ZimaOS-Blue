@@ -5,7 +5,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
-import { useMetricsStore } from '@/stores/metrics'
 import { systemApi, backupApi } from '@/api/index'
 import type { LocaleKey } from '@/i18n'
 import type { LogEntry } from '@/api/system'
@@ -13,10 +12,6 @@ import type { BackupInfo } from '@/api/index'
 import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import ServiceManagement from '@/components/ServiceManagement.vue'
-import MetricsOverview from '@/components/metrics/MetricsOverview.vue'
-import TokenUsageChart from '@/components/metrics/TokenUsageChart.vue'
-import LatencyChart from '@/components/metrics/LatencyChart.vue'
-import CacheStats from '@/components/metrics/CacheStats.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
@@ -29,12 +24,11 @@ const router = useRouter()
 const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
-const metricsStore = useMetricsStore()
 
 const saveStatus = ref<string | null>(null)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'network' | 'speech' | 'metrics' | 'userdata' | 'logs'
+type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata' | 'logs'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 // Timezone
@@ -91,8 +85,6 @@ function switchTab(tab: TabType) {
     fetchLogs()
   } else if (tab === 'userdata' && backups.value.length === 0) {
     fetchBackups()
-  } else if (tab === 'metrics') {
-    metricsStore.fetchAll()
   }
 }
 
@@ -246,16 +238,6 @@ function _formatBytes(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-async function handleResetMetrics() {
-  if (!confirm(t('metrics.confirmReset'))) return
-  try {
-    await metricsStore.resetMetrics()
-    showSaveStatus(t('metrics.resetSuccess'))
-  } catch (e) {
-    console.error('Failed to reset metrics:', e)
-  }
-}
-
 onMounted(async () => {
   await settingsStore.fetchProviders()
 
@@ -284,7 +266,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'speech', 'network', 'metrics', 'userdata', 'logs'] as const"
+        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata', 'logs'] as const"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
@@ -371,75 +353,6 @@ onMounted(async () => {
     <!-- Speech Tab -->
     <div v-if="activeTab === 'speech'">
       <SpeechSettings />
-    </div>
-
-    <!-- Metrics Tab -->
-    <div v-if="activeTab === 'metrics'" class="space-y-4">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <span v-if="metricsStore.lastUpdated" class="text-sm text-gray-500 dark:text-gray-400">
-            {{ t('metrics.lastUpdated') }}: {{ metricsStore.lastUpdated.toLocaleTimeString() }}
-          </span>
-        </div>
-        <button
-          class="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-          @click="handleResetMetrics"
-        >
-          {{ t('metrics.reset') }}
-        </button>
-      </div>
-
-      <MetricsOverview />
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <TokenUsageChart />
-        <LatencyChart />
-      </div>
-
-      <!-- Model Statistics -->
-      <div class="glass-card p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          {{ t('metrics.modelStats') }}
-        </h3>
-        <div v-if="metricsStore.modelStats?.models?.length" class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-gray-200 dark:border-gray-700">
-                <th class="text-left py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.model') }}</th>
-                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.calls') }}</th>
-                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</th>
-                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.tokens') }}</th>
-                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.cost') }}</th>
-                <th class="text-right py-3 px-2 text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="model in metricsStore.modelStats.models"
-                :key="model.model"
-                class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-              >
-                <td class="py-3 px-2 font-medium text-gray-900 dark:text-white">{{ model.model }}</td>
-                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ model.calls ?? 0 }}</td>
-                <td class="py-3 px-2 text-right">
-                  <span :class="(model.success_rate ?? 0) >= 95 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'">
-                    {{ (model.success_rate ?? 0).toFixed(1) }}%
-                  </span>
-                </td>
-                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.total_tokens ?? 0).toLocaleString() }}</td>
-                <td class="py-3 px-2 text-right text-green-600 dark:text-green-400">${{ (model.estimated_cost ?? 0).toFixed(4) }}</td>
-                <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ (model.avg_latency_ms ?? 0).toFixed(0) }}ms</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-else class="text-center py-8 text-gray-500 dark:text-gray-400">
-          {{ t('metrics.noData') }}
-        </div>
-      </div>
-
-      <!-- Cache Statistics -->
-      <CacheStats />
     </div>
 
     <!-- User Data Tab -->

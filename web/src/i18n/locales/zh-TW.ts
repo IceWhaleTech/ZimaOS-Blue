@@ -705,6 +705,13 @@ export default {
     disableFailed: '服務禁用失敗',
     actionFailed: '操作失敗',
     fetchFailed: '取得服務資訊失敗',
+    // Install method hints
+    installMethodStandard: '可使用標準方式安裝',
+    installMethodSystemd: '將安裝到 /etc/systemd/system',
+    installMethodUsrLib: '將安裝到 /usr/lib/systemd/system',
+    installMethodVarLib: '將安裝到 /var/lib/systemd/system',
+    installMethodSysext: '將透過系統擴充 (sysext) 安裝，適用於不可變檔案系統',
+    installMethodNone: '無法安裝：檔案系統唯讀且不支援 sysext',
   },
   autoReply: {
     ...enUS.autoReply,

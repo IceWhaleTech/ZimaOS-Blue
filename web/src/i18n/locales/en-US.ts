@@ -21,8 +21,6 @@ export default {
     optional: 'Optional',
     status: 'Status',
     enabled: 'Enabled',
-    download: 'Download',
-    downloaded: 'Downloaded',
     disabled: 'Disabled',
     online: 'Online',
     language: 'Language',
@@ -284,14 +282,6 @@ export default {
     checkingConnection: 'Checking connection...',
     unknownError: 'An unknown error occurred',
     pleaseRetry: 'Please try again',
-    // Channel error messages
-    processing: 'Sorry, an error occurred while processing your message: {error}',
-    channelNotConnected: 'The channel is not connected. Please try again later.',
-    rateLimited: 'Too many requests. Please wait a moment and try again.',
-    serviceUnavailable: 'The service is temporarily unavailable. Please try again later.',
-    invalidRequest: 'Invalid request. Please check your input and try again.',
-    unauthorized: 'You are not authorized to perform this action.',
-    internal: 'An internal error occurred. Please try again later.',
   },
   chat: {
     newChat: 'New Chat',
@@ -307,15 +297,16 @@ export default {
     newChatShortcut: 'New chat',
     focusInputShortcut: 'Focus input',
     toggleSidebarShortcut: 'Toggle sidebar',
+    sendMessage: 'Send message',
+    newLine: 'New line',
+    dragDropHint: 'Drag and drop or paste files to add attachments',
     dismiss: 'Dismiss',
     attachFile: 'Attach file',
     moreActions: 'More actions',
-    inputPlaceholder: 'Type a message... (Enter to send, Shift+Enter for new line)',
+    inputPlaceholder: 'Type a message...',
     inputPlaceholderShort: 'Type a message...',
     send: 'Send',
     enterToSend: 'Press',
-    newLine: 'for new line',
-    dragDropHint: 'Drag & drop or paste files to attach',
     searchConversations: 'Search conversations...',
     searching: 'Searching...',
     noConversationsFound: 'No conversations found',
@@ -444,7 +435,6 @@ export default {
       all: 'All',
       overview: 'Overview',
       system: 'System',
-      metrics: 'Metrics',
     },
     cards: {
       systemStatus: 'System Status',
@@ -457,11 +447,6 @@ export default {
       goroutinesChart: 'Goroutines',
       heapChart: 'Heap Memory',
       systemInfo: 'System Information',
-      metricsOverview: 'API Metrics',
-      tokenUsageChart: 'Token Usage',
-      latencyChart: 'Latency',
-      modelStats: 'Model Statistics',
-      cacheStats: 'Cache Statistics',
     },
   },
   // Built-in skills (i18n for skill store / extensions)
@@ -1131,6 +1116,14 @@ export default {
     macosHelp2: 'You can also use launchctl command to manage the service.',
     linuxHelp1: 'The service is managed through systemd with a unit file in /etc/systemd/system.',
     linuxHelp2: 'You can also use systemctl command to manage the service.',
+    // Install method messages
+    installMethodStandard: 'Standard installation available',
+    installMethodSystemd: 'Will install to /etc/systemd/system',
+    installMethodUsrLib: 'Will install to /usr/lib/systemd/system',
+    installMethodVarLib: 'Will install to /var/lib/systemd/system',
+    installMethodSysext: 'Will install via system extension (sysext) for immutable filesystem',
+    installMethodNone: 'Cannot install: filesystem is read-only and no sysext support',
+    sysextNote: 'Uses systemd-sysext to overlay service files on immutable systems',
     // Success messages
     // Error messages
     fetchFailed: 'Failed to fetch service info',
@@ -1958,10 +1951,6 @@ export default {
         bruteForce: 'Brute Force',
         rateLimit: 'Rate Limit Exceeded',
         suspiciousIp: 'Suspicious IP',
-        elevatedAccess: 'Elevated Access Attempt',
-        dangerousCommand: 'Dangerous Command',
-        massDelete: 'Mass Deletion Request',
-        roleSeparator: 'Role Separator Injection',
       },
     },
     // Direct keys used in template
@@ -3256,7 +3245,6 @@ export default {
       quotaExhaustedTokens: 'Your trial token quota has been exhausted. Please configure your own provider to continue.',
       quotaExhaustedConversations: 'Your trial conversation limit has been reached. Please configure your own provider to continue.',
       tokensUsed: '{remaining} / {total} tokens remaining',
-      conversationsUsed: '{remaining} / {total} conversations remaining',
       configureProvider: 'Configure Provider',
       trialEnded: 'Trial Ended',
       trialEndedDesc: 'Your free trial has ended. Add your own API key to continue using Echo.',
@@ -3274,7 +3262,7 @@ export default {
       ollama: 'Run open-source LLMs locally on your machine',
       lmstudio: 'Local LLM inference with a user-friendly interface',
       glm: 'Zhipu AI GLM-4 series models with Chinese language support',
-      'zimaos-trial': 'Free trial with limited quota - experience Echo before configuring your own provider',
+      'zimaos-echo-trial': 'Free trial with limited quota - experience Echo before configuring your own provider',
     },
     tabs: {
       all: 'All',
@@ -3579,6 +3567,8 @@ export default {
     noConfigsHint: 'Install and configure IDE tools like Claude Code, Cursor, or Windsurf to auto-detect their API keys',
     envVarsOnlyHint: 'Environment variables detected but no importable configurations found. Check the reference table below for supported environment variables.',
     availableConfigs: 'Available Configurations',
+    installedOnly: 'Installed (No API Key)',
+    noApiKeyFound: 'No API key found in config',
     scanResults: 'Scan Results',
     scanResultsSummary: 'Found {found} of {total} supported IDEs',
     viewResults: 'View Results',
@@ -3785,7 +3775,7 @@ export default {
     confirmDelete: 'Are you sure you want to delete this model?',
     espeakDesc: 'Offline lightweight speech synthesis engine',
     downloadAndEnable: 'Download & Enable',
-    ttsProvider: 'Speech Synthesis Engine',
+    ttsProvider: 'TTS Provider',
     edgeTTSDesc: 'High-quality online neural voices (requires internet)',
     espeakNGDesc: 'Offline lightweight engine (works without internet)',
     // Tab labels
@@ -3799,24 +3789,6 @@ export default {
     },
     downloadAndUse: 'Download & Use',
     streaming: 'Streaming',
-    asrModelInfo: {
-      whisperTiny: {
-        name: 'Whisper Tiny',
-        description: 'Fast multilingual speech recognition',
-      },
-      whisperBase: {
-        name: 'Whisper Base',
-        description: 'Balanced multilingual speech recognition',
-      },
-      zipformerEn: {
-        name: 'Zipformer English Streaming',
-        description: 'Real-time English speech recognition',
-      },
-      sensevoiceSmall: {
-        name: 'SenseVoice Small',
-        description: 'Multi-language with emotion detection',
-      },
-    },
     ttsSettings: 'TTS Settings',
     speechSpeed: 'Speech Speed',
     autoPlayTTS: 'Auto-play TTS',
@@ -3837,6 +3809,13 @@ export default {
     downloadFailed: 'Download failed',
     espeakNote: 'Offline - lightweight (~8.5MB)',
     sherpaNote: 'Offline - premium quality (requires download)',
+    asrModelInfo: {
+      whisperBase: {
+        name: 'Whisper Base [Recommended]',
+        description:
+          'Balanced accuracy and performance. Recommended for most general-purpose speech recognition scenarios.',
+      },
+    },
   },
   mermaid: {
     flowchart: 'Flowchart',

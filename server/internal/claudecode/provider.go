@@ -305,11 +305,17 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 		}
 
 		// Convert to LLM stream chunk
+		// Use actual provider/model from config if available
+		actualModel := params.Model
+		if p.config.ActualModel != "" {
+			actualModel = p.config.ActualModel
+		}
 		llmChunk := llm.StreamChunk{
-			ID:    sessionId,
-			Model: params.Model, // Use actual model from params (may be default if req.Model was empty)
-			Delta: chunk.Text,
-			Done:  chunk.Done,
+			ID:       sessionId,
+			Model:    actualModel,
+			Provider: p.config.ActualProvider,
+			Delta:    chunk.Text,
+			Done:     chunk.Done,
 		}
 
 		if chunk.Usage != nil {

@@ -752,6 +752,7 @@ type ImportConfig struct {
 	ConfigPath string   `json:"config_path,omitempty"`
 	EnvVar     string   `json:"env_var,omitempty"` // Which env var the key came from
 	Source     string   `json:"source"`            // "config", "env", "cc-switch"
+	CanImport  bool     `json:"can_import"`        // Whether this config can be imported
 }
 
 // GetImportableConfigs returns all configurations that can be imported
@@ -765,6 +766,10 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 	}
 
 	for _, ide := range ides {
+		// Try to get API key from config
+		key, masked := d.ExtractAPIKey(ide.Type, ide.ConfigPath)
+		canImport := key != ""
+
 		config := &ImportConfig{
 			IDEType:    ide.Type,
 			IDEName:    ide.Name,
@@ -772,16 +777,13 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 			Models:     ide.Models,
 			ConfigPath: ide.ConfigPath,
 			Source:     "config",
+			Provider:   getProviderForIDE(ide.Type),
+			CanImport:  canImport,
 		}
 
-		// Try to get API key from config
-		key, masked := d.ExtractAPIKey(ide.Type, ide.ConfigPath)
-		if key != "" {
+		if canImport {
 			config.APIKey = masked // Only return masked version
 		}
-
-		// Determine provider type
-		config.Provider = getProviderForIDE(ide.Type)
 
 		configs = append(configs, config)
 	}
@@ -793,10 +795,12 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 			found := false
 			for _, c := range configs {
 				if c.IDEType == ideType {
-					if c.APIKey == "" {
+					// Update existing config with env key if it didn't have one
+					if !c.CanImport {
 						c.APIKey = maskAPIKey(key)
 						c.EnvVar = envVar
 						c.Source = "env"
+						c.CanImport = true
 					}
 					found = true
 					break
@@ -804,12 +808,13 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 			}
 			if !found {
 				configs = append(configs, &ImportConfig{
-					IDEType:  ideType,
-					IDEName:  getIDEName(ideType),
-					APIKey:   maskAPIKey(key),
-					EnvVar:   envVar,
-					Provider: getProviderForIDE(ideType),
-					Source:   "env",
+					IDEType:   ideType,
+					IDEName:   getIDEName(ideType),
+					APIKey:    maskAPIKey(key),
+					EnvVar:    envVar,
+					Provider:  getProviderForIDE(ideType),
+					Source:    "env",
+					CanImport: true,
 				})
 			}
 		}

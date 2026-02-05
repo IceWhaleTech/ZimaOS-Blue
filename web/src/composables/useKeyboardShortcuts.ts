@@ -1,5 +1,8 @@
 import { onMounted, onUnmounted } from 'vue'
 
+// Detect macOS
+const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
+
 export interface KeyboardShortcut {
   key: string
   ctrl?: boolean
@@ -16,7 +19,8 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]) {
       const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase()
       const ctrlMatch = !!shortcut.ctrl === (event.ctrlKey || event.metaKey)
       const shiftMatch = !!shortcut.shift === event.shiftKey
-      const altMatch = !!shortcut.alt === event.altKey
+      // On macOS, use metaKey (Cmd) instead of altKey for alt shortcuts
+      const altMatch = !!shortcut.alt === (isMac ? event.metaKey : event.altKey)
 
       if (keyMatch && ctrlMatch && shiftMatch && altMatch) {
         // Don't trigger shortcuts when typing in input fields

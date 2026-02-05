@@ -151,6 +151,7 @@ export interface ImportConfig {
   config_path?: string
   env_var?: string
   source: 'config' | 'env' | 'cc-switch'
+  can_import: boolean
 }
 
 export interface EnvHint {

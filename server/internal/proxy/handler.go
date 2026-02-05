@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -97,6 +98,8 @@ func (ph *ProxyHandler) extractRoutingMode(r *http.Request) string {
 
 // ServeHTTP implements http.Handler.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("[Proxy] ServeHTTP: method=%s, path=%s\n", r.Method, r.URL.Path)
+
 	// Handle /v1/models specially
 	if r.URL.Path == "/v1/models" || strings.HasSuffix(r.URL.Path, "/models") {
 		ph.handleModels(w, r)
@@ -120,11 +123,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			isStreaming = s
 		}
 	}
+	fmt.Printf("[Proxy] request: model=%s, streaming=%v\n", model, isStreaming)
 
 	// Try cache lookup (non-streaming only)
 	if ph.cache != nil && !isStreaming {
 		cacheKey := ph.cache.GenerateKey(r, bodyBytes)
 		if entry, ok := ph.cache.Get(cacheKey); ok && entry != nil {
+			fmt.Printf("[Proxy] cache HIT\n")
 			w.Header().Set("X-Cache", "HIT")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(entry.StatusCode)
@@ -136,9 +141,11 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Route request
 	route, err := ph.routeRequestWithMode(model, ph.extractRoutingMode(r))
 	if err != nil {
+		fmt.Printf("[Proxy] routing error: %v\n", err)
 		http.Error(w, "No available provider: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	fmt.Printf("[Proxy] routed to provider=%s, model=%v\n", route.Provider.ID, route.Model)
 
 	// Map model name if needed
 	forwardBody := bodyBytes

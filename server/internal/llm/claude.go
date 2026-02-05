@@ -32,6 +32,8 @@ func NewClaudeProvider(apiKey, baseURL string) *ClaudeProvider {
 	}
 	// Remove trailing slash to avoid double slashes in URL
 	baseURL = strings.TrimSuffix(baseURL, "/")
+	// Remove trailing /v1 as it will be added when making requests
+	baseURL = strings.TrimSuffix(baseURL, "/v1")
 	return &ClaudeProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
@@ -249,6 +251,13 @@ func (p *ClaudeProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 // ChatStreamCallback sends a streaming chat completion request and calls the callback for each chunk.
 func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest, callback StreamCallback) error {
+	// Mask API key for logging (show first 8 and last 4 chars)
+	maskedKey := p.apiKey
+	if len(p.apiKey) > 12 {
+		maskedKey = p.apiKey[:8] + "..." + p.apiKey[len(p.apiKey)-4:]
+	}
+	fmt.Printf("[ClaudeProvider] ChatStreamCallback: model=%s, messages=%d, baseURL=%s, apiKey=%s\n", req.Model, len(req.Messages), p.baseURL, maskedKey)
+
 	// Set stream flag
 	req.Stream = true
 	claudeReq := p.convertRequest(req)
@@ -269,18 +278,22 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
 	httpReq.Header.Set("Accept", "text/event-stream")
+	fmt.Printf("[ClaudeProvider] sending request to %s\n", p.baseURL+"/v1/messages")
 
 	// Send request
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		fmt.Printf("[ClaudeProvider] request error: %v\n", err)
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+	fmt.Printf("[ClaudeProvider] response status: %d\n", resp.StatusCode)
 
 	// Check for HTTP error
 	if resp.StatusCode != http.StatusOK {
 		// Read error body for more details
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Printf("[ClaudeProvider] error response: %s\n", string(bodyBytes))
 		return fmt.Errorf("Claude API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -290,7 +303,7 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 
 // parseSSEStreamCallback parses SSE stream and calls callback for each chunk.
 func (p *ClaudeProvider) parseSSEStreamCallback(ctx context.Context, reader io.Reader, model string, callback StreamCallback) error {
-	// Read directly without buffering for immediate response
+	// Read byte by byte for immediate streaming without buffering
 	var messageID string
 	var inputTokens, outputTokens int
 	var lineBuffer strings.Builder
@@ -303,13 +316,19 @@ func (p *ClaudeProvider) parseSSEStreamCallback(ctx context.Context, reader io.R
 		default:
 		}
 
-		// Read byte by byte directly from reader (no buffering)
 		n, err := reader.Read(buf)
 		if err != nil {
 			if err == io.EOF {
+				// Process any remaining data
+				if lineBuffer.Len() > 0 {
+					line := strings.TrimSpace(lineBuffer.String())
+					if line != "" {
+						p.processSSELineCallback(ctx, line, &messageID, &inputTokens, &outputTokens, model, callback)
+					}
+				}
 				return nil
 			}
-			continue
+			return err
 		}
 		if n == 0 {
 			continue

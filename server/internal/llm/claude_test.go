@@ -27,6 +27,50 @@ func TestNewClaudeProviderCustomBaseURL(t *testing.T) {
 	}
 }
 
+// Test Claude provider base URL normalization
+func TestNewClaudeProviderBaseURLNormalization(t *testing.T) {
+	tests := []struct {
+		name        string
+		inputURL    string
+		expectedURL string
+	}{
+		{
+			name:        "no trailing slash",
+			inputURL:    "https://api.example.com",
+			expectedURL: "https://api.example.com",
+		},
+		{
+			name:        "trailing slash",
+			inputURL:    "https://api.example.com/",
+			expectedURL: "https://api.example.com",
+		},
+		{
+			name:        "trailing /v1",
+			inputURL:    "https://api.example.com/v1",
+			expectedURL: "https://api.example.com",
+		},
+		{
+			name:        "trailing /v1/",
+			inputURL:    "https://api.example.com/v1/",
+			expectedURL: "https://api.example.com",
+		},
+		{
+			name:        "double slash before v1",
+			inputURL:    "https://api.example.com//v1",
+			expectedURL: "https://api.example.com/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := NewClaudeProvider("test-api-key", tt.inputURL)
+			if provider.baseURL != tt.expectedURL {
+				t.Errorf("expected baseURL '%s', got '%s'", tt.expectedURL, provider.baseURL)
+			}
+		})
+	}
+}
+
 // Test Claude provider models
 func TestClaudeProviderModels(t *testing.T) {
 	provider := NewClaudeProvider("test-api-key", "")

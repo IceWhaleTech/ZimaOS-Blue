@@ -780,6 +780,13 @@ export default {
     disableFailed: 'サービスの無効化に失敗しました',
     actionFailed: '操作に失敗しました',
     fetchFailed: 'サービス情報の取得に失敗しました',
+    // Install method hints
+    installMethodStandard: '標準インストールが利用可能',
+    installMethodSystemd: '/etc/systemd/system にインストールします',
+    installMethodUsrLib: '/usr/lib/systemd/system にインストールします',
+    installMethodVarLib: '/var/lib/systemd/system にインストールします',
+    installMethodSysext: 'システム拡張 (sysext) 経由でインストールします（イミュータブルファイルシステム用）',
+    installMethodNone: 'インストール不可：ファイルシステムが読み取り専用で sysext 非対応',
   },
   autoReply: {
     ...enUS.autoReply,

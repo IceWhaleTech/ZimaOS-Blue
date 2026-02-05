@@ -139,46 +139,48 @@ start_all() {
     echo -e "${CYAN}========================================${NC}"
     echo ""
     echo -e "  Backend:  ${YELLOW}http://localhost:23456${NC}"
-    echo -e "  Frontend: ${YELLOW}http://localhost:3000${NC}"
+    echo -e "  Frontend: ${YELLOW}http://localhost:3000${NC} (background)"
     echo ""
     if command_exists air; then
         echo -e "  ${GREEN}Hot reload enabled for backend${NC}"
     fi
-    echo -e "  Press ${YELLOW}Ctrl+C${NC} to stop all services"
+    echo -e "  Press ${YELLOW}Ctrl+C${NC} to stop backend server"
     echo ""
 
     # Trap to cleanup background processes
     trap cleanup EXIT INT TERM
 
-    # Start server in background with hot reload
+    # Start web in background (Go server proxies to it)
+    info "Starting Vite dev server in background..."
+    cd "$PROJECT_ROOT/web"
+    npm run dev &
+    WEB_PID=$!
+
+    # Give Vite time to start
+    sleep 3
+
+    # Start server in foreground with hot reload
+    info "Starting Go server (dev mode)..."
     cd "$PROJECT_ROOT/server"
     if command_exists air; then
-        air &
+        air
     else
-        go build -o echo ./cmd/echo
-        ./echo &
+        go build -tags dev -o echo ./cmd/echo
+        ./echo
     fi
-    SERVER_PID=$!
-
-    # Give server time to start
-    sleep 2
-
-    # Start web in foreground
-    cd "$PROJECT_ROOT/web"
-    npm run dev
 }
 
 # Cleanup function
 cleanup() {
     info "Stopping services..."
 
-    # Kill server if running
-    if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
-        kill "$SERVER_PID" 2>/dev/null || true
+    # Kill web dev server if running
+    if [ -n "$WEB_PID" ] && kill -0 "$WEB_PID" 2>/dev/null; then
+        kill "$WEB_PID" 2>/dev/null || true
     fi
 
-    # Kill any remaining echo processes
-    pkill -f "echo" 2>/dev/null || true
+    # Kill any remaining vite processes
+    pkill -f "vite" 2>/dev/null || true
 
     # Kill air if running
     pkill -f "air" 2>/dev/null || true

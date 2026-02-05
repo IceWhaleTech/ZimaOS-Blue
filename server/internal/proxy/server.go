@@ -638,8 +638,8 @@ func (ps *ProxyServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Re
 
 		resp, statusCode, err := ps.tryAnthropicProvider(r.Context(), provider, apiKey, bodyBytes, isStreaming)
 		if err == nil && statusCode < 500 {
-			// Success - copy response to client
-			ps.copyAnthropicResponse(w, resp, isStreaming)
+			// Success - copy response to client with actual provider/model info
+			ps.copyAnthropicResponse(w, resp, isStreaming, provider.Name, model)
 			return
 		}
 
@@ -707,7 +707,7 @@ func (ps *ProxyServer) tryAnthropicProvider(
 }
 
 // copyAnthropicResponse copies the response to the client
-func (ps *ProxyServer) copyAnthropicResponse(w http.ResponseWriter, resp *http.Response, isStreaming bool) {
+func (ps *ProxyServer) copyAnthropicResponse(w http.ResponseWriter, resp *http.Response, isStreaming bool, providerName, model string) {
 	defer resp.Body.Close()
 
 	// Copy response headers
@@ -718,6 +718,10 @@ func (ps *ProxyServer) copyAnthropicResponse(w http.ResponseWriter, resp *http.R
 			}
 		}
 	}
+
+	// Add actual provider/model info headers
+	w.Header().Set("X-Actual-Provider", providerName)
+	w.Header().Set("X-Actual-Model", model)
 
 	// Handle streaming vs non-streaming response
 	if isStreaming || strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {

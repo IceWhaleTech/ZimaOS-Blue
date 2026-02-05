@@ -3,12 +3,13 @@ import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { serviceApi } from '@/api/service'
 import { systemApi } from '@/api/system'
-import type { ServiceInfo } from '@/api/service'
+import type { ServiceInfo, InstallCheckResult } from '@/api/service'
 
 const { t } = useI18n()
 
 // State
 const serviceInfo = ref<ServiceInfo | null>(null)
+const installCheck = ref<InstallCheckResult | null>(null)
 const loading = ref(false)
 const actionLoading = ref<string | null>(null)
 const error = ref<string | null>(null)
@@ -95,11 +96,13 @@ async function fetchServiceInfo() {
   loading.value = true
   error.value = null
   try {
-    const [serviceResponse, configResponse] = await Promise.all([
+    const [serviceResponse, configResponse, installCheckResponse] = await Promise.all([
       serviceApi.getInfo(),
       systemApi.getConfig(),
+      serviceApi.checkInstall(),
     ])
     serviceInfo.value = serviceResponse.data
+    installCheck.value = installCheckResponse.data
     const config = configResponse.data as { server?: ServerConfig }
     if (config.server) {
       serverConfig.value = config.server
@@ -644,6 +647,24 @@ onUnmounted(() => {
 
       <!-- Action Buttons -->
       <div class="flex flex-wrap gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <!-- Install Method Info (shown when not installed) -->
+        <div
+          v-if="!serviceInfo.installed && installCheck"
+          class="w-full mb-3 p-3 rounded-lg text-sm"
+          :class="{
+            'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300': installCheck.can_install,
+            'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300': !installCheck.can_install
+          }"
+        >
+          <div class="font-medium">{{ t(installCheck.message_key) }}</div>
+          <div v-if="installCheck.path" class="text-xs mt-1 font-mono opacity-75">
+            {{ t('service.installPath') }}: {{ installCheck.path }}
+          </div>
+          <div v-if="installCheck.method === 'sysext'" class="text-xs mt-1">
+            {{ t('service.sysextNote') }}
+          </div>
+        </div>
+
         <!-- Install/Uninstall -->
         <template v-if="!serviceInfo.installed">
           <button

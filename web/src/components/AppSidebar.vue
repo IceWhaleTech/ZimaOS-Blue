@@ -20,10 +20,12 @@ const isOpen = ref(false)
 // Collapsed state (desktop only)
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 const isCollapsed = ref(false)
+const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
-// Keyboard shortcut handler (Alt+B)
+// Keyboard shortcut handler (Cmd+B on macOS, Alt+B on others)
 function handleKeydown(e: KeyboardEvent) {
-  if (e.altKey && e.key.toLowerCase() === 'b') {
+  const modifierKey = isMac ? e.metaKey : e.altKey
+  if (modifierKey && e.key.toLowerCase() === 'b') {
     e.preventDefault()
     toggleCollapse()
   }
@@ -208,7 +210,7 @@ const navItems = computed(() => {
         <!-- Collapse toggle button (desktop only) -->
         <button
           class="hidden lg:flex p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-          :title="(isCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')) + ' (Alt+B)'"
+          :title="(isCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')) + (isMac ? ' (⌘B)' : ' (Alt+B)')"
           @click="toggleCollapse"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform duration-300" :class="isCollapsed ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">

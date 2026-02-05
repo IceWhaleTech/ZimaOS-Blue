@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -268,6 +269,10 @@ type ChannelConfigHandler struct {
 	store   *ChannelConfigStore
 	manager *channel.Manager
 	factory *ChannelFactory
+
+	// Periodic stats persistence
+	stopPersist chan struct{}
+	persistOnce sync.Once
 }
 
 // NewChannelConfigHandler creates a new channel config handler.
@@ -281,11 +286,25 @@ func (h *ChannelConfigHandler) SetManager(manager *channel.Manager) {
 	// Register hook to persist stats when manager stops
 	if manager != nil {
 		manager.OnStop(h.persistAllStats)
+		// Start periodic stats persistence
+		h.startPeriodicPersist()
 	}
 }
 
 // persistAllStats saves all channel statistics to persistent storage.
 func (h *ChannelConfigHandler) persistAllStats() {
+	if h.manager == nil {
+		return
+	}
+	// Stop periodic persistence
+	if h.stopPersist != nil {
+		close(h.stopPersist)
+	}
+	h.doPeristStats()
+}
+
+// doPeristStats performs the actual stats persistence.
+func (h *ChannelConfigHandler) doPeristStats() {
 	if h.manager == nil {
 		return
 	}
@@ -312,6 +331,25 @@ func (h *ChannelConfigHandler) persistAllStats() {
 			h.store.UpdateStats(cfg.ID, totalReceived, totalSent, lastMsgAt, lastReplyAt)
 		}
 	}
+}
+
+// startPeriodicPersist starts a goroutine to periodically persist stats.
+func (h *ChannelConfigHandler) startPeriodicPersist() {
+	h.persistOnce.Do(func() {
+		h.stopPersist = make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					h.doPeristStats()
+				case <-h.stopPersist:
+					return
+				}
+			}
+		}()
+	})
 }
 
 // SetFactory sets the channel factory for creating channel instances.

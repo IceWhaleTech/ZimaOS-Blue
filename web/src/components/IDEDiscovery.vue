@@ -82,7 +82,15 @@ const scanCompleted = computed(() => {
 })
 
 const hasImportableConfigs = computed(() => {
-  return importableConfigs.value.length > 0
+  return importableConfigs.value.some(c => c.can_import)
+})
+
+const canImportConfigs = computed(() => {
+  return importableConfigs.value.filter(c => c.can_import)
+})
+
+const installedOnlyConfigs = computed(() => {
+  return importableConfigs.value.filter(c => !c.can_import)
 })
 
 // Methods
@@ -304,12 +312,12 @@ function getSourceLabel(source: string): string {
         <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        {{ t('ideDiscovery.availableConfigs') }} ({{ importableConfigs.length }})
+        {{ t('ideDiscovery.availableConfigs') }} ({{ canImportConfigs.length }})
       </h4>
 
       <div class="space-y-3">
         <div
-          v-for="config in importableConfigs"
+          v-for="config in canImportConfigs"
           :key="config.ide_type"
           class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
         >
@@ -364,6 +372,40 @@ function getSourceLabel(source: string): string {
             </svg>
             {{ importing === config.ide_type ? t('ideDiscovery.importing') : t('ideDiscovery.import') }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Installed but not importable Section -->
+    <div v-if="installedOnlyConfigs.length > 0" class="border-t border-gray-200 dark:border-gray-700 pt-6">
+      <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {{ t('ideDiscovery.installedOnly') }} ({{ installedOnlyConfigs.length }})
+      </h4>
+
+      <div class="space-y-2">
+        <div
+          v-for="config in installedOnlyConfigs"
+          :key="config.ide_type"
+          class="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
+              <img
+                v-if="getIDELogo(config.ide_type)"
+                :src="getIDELogo(config.ide_type) ?? undefined"
+                :alt="config.ide_name"
+                class="w-5 h-5 object-contain opacity-50"
+              />
+              <span v-else class="text-lg opacity-50">{{ getIDEIcon(config.ide_type) }}</span>
+            </div>
+            <div class="flex-1">
+              <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ config.ide_name }}</h5>
+              <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('ideDiscovery.noApiKeyFound') }}</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

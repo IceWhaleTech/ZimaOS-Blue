@@ -759,6 +759,13 @@ export default {
     disableFailed: '서비스 비활성화에 실패했습니다',
     actionFailed: '작업 실패',
     fetchFailed: '서비스 정보를 가져오는데 실패했습니다',
+    // Install method hints
+    installMethodStandard: '표준 설치 가능',
+    installMethodSystemd: '/etc/systemd/system에 설치됩니다',
+    installMethodUsrLib: '/usr/lib/systemd/system에 설치됩니다',
+    installMethodVarLib: '/var/lib/systemd/system에 설치됩니다',
+    installMethodSysext: '시스템 확장 (sysext)을 통해 설치됩니다 (불변 파일시스템용)',
+    installMethodNone: '설치 불가: 파일시스템이 읽기 전용이며 sysext 미지원',
   },
   autoReply: {
     ...enUS.autoReply,

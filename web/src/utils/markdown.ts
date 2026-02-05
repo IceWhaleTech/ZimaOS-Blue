@@ -1,5 +1,89 @@
 // Simple markdown renderer with code syntax highlighting support
-// Uses a lightweight approach without heavy dependencies
+// Uses highlight.js for syntax highlighting (common languages only)
+
+import hljs from 'highlight.js/lib/core'
+import javascript from 'highlight.js/lib/languages/javascript'
+import typescript from 'highlight.js/lib/languages/typescript'
+import python from 'highlight.js/lib/languages/python'
+import go from 'highlight.js/lib/languages/go'
+import bash from 'highlight.js/lib/languages/bash'
+import json from 'highlight.js/lib/languages/json'
+import yaml from 'highlight.js/lib/languages/yaml'
+import xml from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import sql from 'highlight.js/lib/languages/sql'
+import rust from 'highlight.js/lib/languages/rust'
+import java from 'highlight.js/lib/languages/java'
+import cpp from 'highlight.js/lib/languages/cpp'
+import markdown from 'highlight.js/lib/languages/markdown'
+import php from 'highlight.js/lib/languages/php'
+import ruby from 'highlight.js/lib/languages/ruby'
+import swift from 'highlight.js/lib/languages/swift'
+import kotlin from 'highlight.js/lib/languages/kotlin'
+import csharp from 'highlight.js/lib/languages/csharp'
+import scala from 'highlight.js/lib/languages/scala'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import nginx from 'highlight.js/lib/languages/nginx'
+import ini from 'highlight.js/lib/languages/ini'
+import diff from 'highlight.js/lib/languages/diff'
+import plaintext from 'highlight.js/lib/languages/plaintext'
+
+// Register languages
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('jsx', javascript)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('tsx', typescript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('py', python)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('golang', go)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('zsh', bash)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('yml', yaml)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('vue', xml)
+hljs.registerLanguage('svg', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('scss', css)
+hljs.registerLanguage('less', css)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('rs', rust)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('cpp', cpp)
+hljs.registerLanguage('c', cpp)
+hljs.registerLanguage('cc', cpp)
+hljs.registerLanguage('h', cpp)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('md', markdown)
+hljs.registerLanguage('php', php)
+hljs.registerLanguage('ruby', ruby)
+hljs.registerLanguage('rb', ruby)
+hljs.registerLanguage('swift', swift)
+hljs.registerLanguage('kotlin', kotlin)
+hljs.registerLanguage('kt', kotlin)
+hljs.registerLanguage('csharp', csharp)
+hljs.registerLanguage('cs', csharp)
+hljs.registerLanguage('scala', scala)
+hljs.registerLanguage('dockerfile', dockerfile)
+hljs.registerLanguage('docker', dockerfile)
+hljs.registerLanguage('nginx', nginx)
+hljs.registerLanguage('ini', ini)
+hljs.registerLanguage('toml', ini)
+hljs.registerLanguage('conf', ini)
+hljs.registerLanguage('env', ini)
+hljs.registerLanguage('diff', diff)
+hljs.registerLanguage('patch', diff)
+hljs.registerLanguage('plaintext', plaintext)
+hljs.registerLanguage('text', plaintext)
+hljs.registerLanguage('txt', plaintext)
 
 export interface RenderOptions {
   sanitize?: boolean
@@ -59,477 +143,21 @@ function detectLanguage(lang: string): string {
   return aliases[lang.toLowerCase()] || lang.toLowerCase()
 }
 
-// Simple syntax highlighting for common languages
+// Simple syntax highlighting using highlight.js
 export function highlightCode(code: string, language: string): string {
-  const escaped = escapeHtml(code)
-
-  // Keywords for common languages
-  const keywords: Record<string, string[]> = {
-    javascript: [
-      'const',
-      'let',
-      'var',
-      'function',
-      'return',
-      'if',
-      'else',
-      'for',
-      'while',
-      'class',
-      'import',
-      'export',
-      'from',
-      'async',
-      'await',
-      'try',
-      'catch',
-      'throw',
-      'new',
-      'this',
-      'true',
-      'false',
-      'null',
-      'undefined',
-      'typeof',
-      'instanceof',
-      'delete',
-      'void',
-      'break',
-      'continue',
-      'switch',
-      'case',
-      'default',
-      'finally',
-      'yield',
-      'static',
-      'get',
-      'set',
-      'of',
-    ],
-    typescript: [
-      'const',
-      'let',
-      'var',
-      'function',
-      'return',
-      'if',
-      'else',
-      'for',
-      'while',
-      'class',
-      'import',
-      'export',
-      'from',
-      'async',
-      'await',
-      'try',
-      'catch',
-      'throw',
-      'new',
-      'this',
-      'true',
-      'false',
-      'null',
-      'undefined',
-      'interface',
-      'type',
-      'enum',
-      'implements',
-      'extends',
-      'public',
-      'private',
-      'protected',
-      'readonly',
-      'abstract',
-      'as',
-      'is',
-      'keyof',
-      'typeof',
-      'infer',
-      'never',
-      'unknown',
-      'any',
-      'void',
-      'namespace',
-      'module',
-      'declare',
-      'static',
-    ],
-    python: [
-      'def',
-      'class',
-      'import',
-      'from',
-      'return',
-      'if',
-      'elif',
-      'else',
-      'for',
-      'while',
-      'try',
-      'except',
-      'finally',
-      'with',
-      'as',
-      'True',
-      'False',
-      'None',
-      'and',
-      'or',
-      'not',
-      'in',
-      'is',
-      'lambda',
-      'yield',
-      'async',
-      'await',
-      'pass',
-      'break',
-      'continue',
-      'raise',
-      'assert',
-      'global',
-      'nonlocal',
-      'del',
-    ],
-    go: [
-      'func',
-      'package',
-      'import',
-      'return',
-      'if',
-      'else',
-      'for',
-      'range',
-      'switch',
-      'case',
-      'default',
-      'struct',
-      'interface',
-      'type',
-      'var',
-      'const',
-      'true',
-      'false',
-      'nil',
-      'go',
-      'defer',
-      'chan',
-      'select',
-      'map',
-      'make',
-      'new',
-      'append',
-      'len',
-      'cap',
-      'copy',
-      'delete',
-      'panic',
-      'recover',
-      'break',
-      'continue',
-      'fallthrough',
-      'goto',
-    ],
-    bash: [
-      'if',
-      'then',
-      'else',
-      'elif',
-      'fi',
-      'for',
-      'while',
-      'do',
-      'done',
-      'case',
-      'esac',
-      'function',
-      'return',
-      'export',
-      'local',
-      'echo',
-      'exit',
-      'read',
-      'source',
-      'alias',
-      'unset',
-      'shift',
-      'trap',
-      'eval',
-      'exec',
-      'set',
-      'declare',
-      'readonly',
-      'typeset',
-    ],
-    rust: [
-      'fn',
-      'let',
-      'mut',
-      'const',
-      'static',
-      'struct',
-      'enum',
-      'impl',
-      'trait',
-      'type',
-      'where',
-      'for',
-      'loop',
-      'while',
-      'if',
-      'else',
-      'match',
-      'return',
-      'break',
-      'continue',
-      'pub',
-      'mod',
-      'use',
-      'crate',
-      'self',
-      'super',
-      'as',
-      'in',
-      'ref',
-      'move',
-      'async',
-      'await',
-      'dyn',
-      'unsafe',
-      'extern',
-      'true',
-      'false',
-      'Some',
-      'None',
-      'Ok',
-      'Err',
-    ],
-    java: [
-      'public',
-      'private',
-      'protected',
-      'class',
-      'interface',
-      'extends',
-      'implements',
-      'static',
-      'final',
-      'abstract',
-      'new',
-      'return',
-      'if',
-      'else',
-      'for',
-      'while',
-      'do',
-      'switch',
-      'case',
-      'default',
-      'break',
-      'continue',
-      'try',
-      'catch',
-      'finally',
-      'throw',
-      'throws',
-      'import',
-      'package',
-      'void',
-      'int',
-      'long',
-      'double',
-      'float',
-      'boolean',
-      'char',
-      'byte',
-      'short',
-      'true',
-      'false',
-      'null',
-      'this',
-      'super',
-      'instanceof',
-      'enum',
-      'synchronized',
-      'volatile',
-      'transient',
-    ],
-    cpp: [
-      'int',
-      'long',
-      'short',
-      'float',
-      'double',
-      'char',
-      'bool',
-      'void',
-      'auto',
-      'const',
-      'static',
-      'extern',
-      'register',
-      'volatile',
-      'inline',
-      'virtual',
-      'explicit',
-      'class',
-      'struct',
-      'union',
-      'enum',
-      'namespace',
-      'using',
-      'template',
-      'typename',
-      'public',
-      'private',
-      'protected',
-      'friend',
-      'new',
-      'delete',
-      'return',
-      'if',
-      'else',
-      'for',
-      'while',
-      'do',
-      'switch',
-      'case',
-      'default',
-      'break',
-      'continue',
-      'try',
-      'catch',
-      'throw',
-      'true',
-      'false',
-      'nullptr',
-      'this',
-      'sizeof',
-      'typedef',
-      'constexpr',
-      'noexcept',
-      'override',
-      'final',
-    ],
-    sql: [
-      'SELECT',
-      'FROM',
-      'WHERE',
-      'AND',
-      'OR',
-      'NOT',
-      'IN',
-      'LIKE',
-      'BETWEEN',
-      'IS',
-      'NULL',
-      'ORDER',
-      'BY',
-      'ASC',
-      'DESC',
-      'LIMIT',
-      'OFFSET',
-      'JOIN',
-      'LEFT',
-      'RIGHT',
-      'INNER',
-      'OUTER',
-      'ON',
-      'GROUP',
-      'HAVING',
-      'UNION',
-      'INSERT',
-      'INTO',
-      'VALUES',
-      'UPDATE',
-      'SET',
-      'DELETE',
-      'CREATE',
-      'TABLE',
-      'INDEX',
-      'VIEW',
-      'DROP',
-      'ALTER',
-      'ADD',
-      'PRIMARY',
-      'KEY',
-      'FOREIGN',
-      'REFERENCES',
-      'UNIQUE',
-      'DEFAULT',
-      'CHECK',
-      'CONSTRAINT',
-      'CASCADE',
-      'AS',
-      'DISTINCT',
-      'COUNT',
-      'SUM',
-      'AVG',
-      'MIN',
-      'MAX',
-      'CASE',
-      'WHEN',
-      'THEN',
-      'ELSE',
-      'END',
-      'TRUE',
-      'FALSE',
-    ],
-    json: [],
-    yaml: [],
-    html: [],
-    css: [
-      'important',
-      'inherit',
-      'initial',
-      'unset',
-      'none',
-      'auto',
-      'block',
-      'inline',
-      'flex',
-      'grid',
-      'absolute',
-      'relative',
-      'fixed',
-      'sticky',
-      'static',
-      'hidden',
-      'visible',
-      'scroll',
-      'solid',
-      'dashed',
-      'dotted',
-      'transparent',
-    ],
+  if (language && hljs.getLanguage(language)) {
+    try {
+      return hljs.highlight(code, { language }).value
+    } catch {
+      // Fall back to escaped code on error
+    }
   }
-
-  const langKeywords = keywords[language] || []
-  if (langKeywords.length === 0) {
-    return escaped
+  // Auto-detect language if not specified or not supported
+  try {
+    return hljs.highlightAuto(code).value
+  } catch {
+    return escapeHtml(code)
   }
-
-  let result = escaped
-
-  // Highlight strings
-  result = result.replace(
-    /(["'`])(?:(?!\1)[^\\]|\\.)*\1/g,
-    '<span class="text-green-400">$&</span>'
-  )
-
-  // Highlight comments
-  result = result.replace(/(\/\/.*$|#.*$)/gm, '<span class="text-gray-500">$&</span>')
-  result = result.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="text-gray-500">$&</span>')
-
-  // Highlight keywords
-  const keywordPattern = new RegExp(`\\b(${langKeywords.join('|')})\\b`, 'g')
-  result = result.replace(keywordPattern, '<span class="text-purple-400">$1</span>')
-
-  // Highlight numbers
-  result = result.replace(/\b(\d+\.?\d*)\b/g, '<span class="text-orange-400">$1</span>')
-
-  return result
 }
 
 // Parse a table row into cells

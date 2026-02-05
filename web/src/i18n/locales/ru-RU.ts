@@ -631,6 +631,13 @@ export default {
     disableFailed: 'Не удалось отключить службу',
     actionFailed: 'Действие не выполнено',
     fetchFailed: 'Не удалось получить информацию о службе',
+    // Install method hints
+    installMethodStandard: 'Доступна стандартная установка',
+    installMethodSystemd: 'Будет установлено в /etc/systemd/system',
+    installMethodUsrLib: 'Будет установлено в /usr/lib/systemd/system',
+    installMethodVarLib: 'Будет установлено в /var/lib/systemd/system',
+    installMethodSysext: 'Будет установлено через системное расширение (sysext) для неизменяемой файловой системы',
+    installMethodNone: 'Установка невозможна: файловая система только для чтения и sysext не поддерживается',
   },
   autoReply: {
     ...enUS.autoReply,
