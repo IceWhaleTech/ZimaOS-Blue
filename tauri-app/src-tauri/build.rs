@@ -15,9 +15,15 @@ fn main() {
         // Link Go runtime dependencies
         println!("cargo:rustc-link-lib=resolv");
 
-        // Link espeak-ng for TTS support (from third_party)
+        // Link espeak-ng and its dependencies (from third_party)
         println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/libespeak-ng");
+        println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/speechPlayer");
+        println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/ucd-tools");
+        println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build");
         println!("cargo:rustc-link-lib=static=espeak-ng");
+        println!("cargo:rustc-link-lib=static=speechPlayer");
+        println!("cargo:rustc-link-lib=static=ucd");
+        println!("cargo:rustc-link-lib=static=sonic");
 
         // Link whisper.cpp for STT support (from third_party)
         println!("cargo:rustc-link-search=native=../../third_party/whisper.cpp/build/src");
