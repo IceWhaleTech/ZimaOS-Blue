@@ -164,6 +164,20 @@ async function downloadAndEnableEspeak() {
   }
 }
 
+// Get localized ASR model name
+function getAsrModelName(model: { id: string; name: string }): string {
+  // Backend returns i18n key like "speech.asrModelInfo.whisperTiny.name"
+  const translated = t(model.name)
+  return translated === model.name ? model.name : translated
+}
+
+// Get localized ASR model description
+function getAsrModelDescription(model: { id: string; description: string }): string {
+  // Backend returns i18n key like "speech.asrModelInfo.whisperTiny.description"
+  const translated = t(model.description)
+  return translated === model.description ? model.description : translated
+}
+
 function saveTTSModel() {
   localStorage.setItem('tts-model', selectedTTSModel.value)
   if (selectedTTSModel.value) {
@@ -408,8 +422,8 @@ onMounted(() => {
             class="flex items-center justify-between p-3 border rounded-lg"
             :class="model.downloaded ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'">
             <div class="flex-1">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</span>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ model.description }} · {{ model.size }}</p>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ getAsrModelName(model) }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ getAsrModelDescription(model) }} · {{ model.size }}</p>
             </div>
             <button v-if="!model.downloaded"
               @click="downloadASRModel(model.id)"

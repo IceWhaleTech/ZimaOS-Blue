@@ -225,6 +225,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, event *larkim.P2MessageR
 		IsGroup:     msg.ChatType != nil && *msg.ChatType == "group",
 		Metadata: map[string]interface{}{
 			"msg_type": msgType,
+			"language": "zh-CN", // Feishu is primarily used in China
 		},
 	}
 

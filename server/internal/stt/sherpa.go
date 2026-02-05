@@ -41,6 +41,7 @@ type SherpaASRModelInfo struct {
 	Size        string   `json:"size"`
 	Streaming   bool     `json:"streaming"`
 	Downloaded  bool     `json:"downloaded"`
+	Recommended bool     `json:"recommended"`
 }
 
 // Model download URLs
@@ -56,36 +57,45 @@ var sherpaASRModelPackages = map[string]string{
 	"sensevoice-small": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
 }
 
+// Model order for stable listing
+var sherpaASRModelOrder = []string{
+	"whisper-base",
+	"whisper-tiny",
+	"sensevoice-small",
+	"zipformer-en",
+}
+
 // Model metadata - using i18n keys for name and description
 var sherpaASRModelMeta = map[string]SherpaASRModelInfo{
 	"whisper-tiny": {
 		ID:          "whisper-tiny",
-		Name:        "speech.asrModels.whisperTiny.name",
-		Description: "speech.asrModels.whisperTiny.description",
+		Name:        "speech.asrModelInfo.whisperTiny.name",
+		Description: "speech.asrModelInfo.whisperTiny.description",
 		Languages:   []string{"en", "zh", "ja", "ko", "de", "fr", "es", "it", "pt", "ru"},
 		Size:        "~75MB",
 		Streaming:   false,
 	},
 	"whisper-base": {
 		ID:          "whisper-base",
-		Name:        "speech.asrModels.whisperBase.name",
-		Description: "speech.asrModels.whisperBase.description",
+		Name:        "speech.asrModelInfo.whisperBase.name",
+		Description: "speech.asrModelInfo.whisperBase.description",
 		Languages:   []string{"en", "zh", "ja", "ko", "de", "fr", "es", "it", "pt", "ru"},
 		Size:        "~150MB",
 		Streaming:   false,
+		Recommended: true,
 	},
 	"zipformer-en": {
 		ID:          "zipformer-en",
-		Name:        "speech.asrModels.zipformerEn.name",
-		Description: "speech.asrModels.zipformerEn.description",
+		Name:        "speech.asrModelInfo.zipformerEn.name",
+		Description: "speech.asrModelInfo.zipformerEn.description",
 		Languages:   []string{"en"},
 		Size:        "~50MB",
 		Streaming:   true,
 	},
 	"sensevoice-small": {
 		ID:          "sensevoice-small",
-		Name:        "speech.asrModels.sensevoiceSmall.name",
-		Description: "speech.asrModels.sensevoiceSmall.description",
+		Name:        "speech.asrModelInfo.sensevoiceSmall.name",
+		Description: "speech.asrModelInfo.sensevoiceSmall.description",
 		Languages:   []string{"zh", "en", "ja", "ko", "yue"},
 		Size:        "~100MB",
 		Streaming:   false,
@@ -337,22 +347,26 @@ func (p *SherpaProvider) SetOnProgress(callback func(progress SherpaASRDownloadP
 
 // ListModels returns all available ASR models with download status.
 func (p *SherpaProvider) ListModels() []interface{} {
-	models := make([]interface{}, 0, len(sherpaASRModelMeta))
-	for _, meta := range sherpaASRModelMeta {
-		model := meta
-		model.Downloaded = p.downloadMgr.IsModelComplete(meta.ID)
-		models = append(models, model)
+	models := make([]interface{}, 0, len(sherpaASRModelOrder))
+	for _, id := range sherpaASRModelOrder {
+		if meta, ok := sherpaASRModelMeta[id]; ok {
+			model := meta
+			model.Downloaded = p.downloadMgr.IsModelComplete(meta.ID)
+			models = append(models, model)
+		}
 	}
 	return models
 }
 
 // ListASRModels returns all available ASR models with download status (typed version).
 func (p *SherpaProvider) ListASRModels() []SherpaASRModelInfo {
-	models := make([]SherpaASRModelInfo, 0, len(sherpaASRModelMeta))
-	for _, meta := range sherpaASRModelMeta {
-		model := meta
-		model.Downloaded = p.downloadMgr.IsModelComplete(meta.ID)
-		models = append(models, model)
+	models := make([]SherpaASRModelInfo, 0, len(sherpaASRModelOrder))
+	for _, id := range sherpaASRModelOrder {
+		if meta, ok := sherpaASRModelMeta[id]; ok {
+			model := meta
+			model.Downloaded = p.downloadMgr.IsModelComplete(meta.ID)
+			models = append(models, model)
+		}
 	}
 	return models
 }
@@ -427,9 +441,11 @@ type SherpaASRModelStatus struct {
 // GetAvailableASRModels returns all available ASR models metadata (without download status).
 // This can be called without an initialized provider.
 func GetAvailableASRModels() []SherpaASRModelInfo {
-	models := make([]SherpaASRModelInfo, 0, len(sherpaASRModelMeta))
-	for _, meta := range sherpaASRModelMeta {
-		models = append(models, meta)
+	models := make([]SherpaASRModelInfo, 0, len(sherpaASRModelOrder))
+	for _, id := range sherpaASRModelOrder {
+		if meta, ok := sherpaASRModelMeta[id]; ok {
+			models = append(models, meta)
+		}
 	}
 	return models
 }

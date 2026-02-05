@@ -15,6 +15,12 @@ import MemoryChartCard from './cards/MemoryChartCard.vue'
 import GoroutinesChartCard from './cards/GoroutinesChartCard.vue'
 import HeapChartCard from './cards/HeapChartCard.vue'
 import FailoverStatusCard from './cards/FailoverStatusCard.vue'
+// Metrics cards
+import MetricsOverviewCard from './cards/MetricsOverviewCard.vue'
+import TokenUsageChartCard from './cards/TokenUsageChartCard.vue'
+import LatencyChartCard from './cards/LatencyChartCard.vue'
+import ModelStatsCard from './cards/ModelStatsCard.vue'
+import CacheStatsCard from './cards/CacheStatsCard.vue'
 
 defineProps<{
   metricsHistory?: Array<{
@@ -41,6 +47,12 @@ const componentMap: Record<string, Component> = {
   GoroutinesChartCard: markRaw(GoroutinesChartCard),
   HeapChartCard: markRaw(HeapChartCard),
   FailoverStatusCard: markRaw(FailoverStatusCard),
+  // Metrics cards
+  MetricsOverviewCard: markRaw(MetricsOverviewCard),
+  TokenUsageChartCard: markRaw(TokenUsageChartCard),
+  LatencyChartCard: markRaw(LatencyChartCard),
+  ModelStatsCard: markRaw(ModelStatsCard),
+  CacheStatsCard: markRaw(CacheStatsCard),
 }
 
 // Get component from config

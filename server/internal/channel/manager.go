@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/i18n"
 )
 
 // Manager manages all messaging channels.
@@ -207,6 +209,26 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 			zap.String("channel", ch.Name()),
 			zap.String("message_id", msg.ID),
 			zap.Error(err))
+
+		// Send error message back to the channel user
+		// Get language from message metadata, default to English
+		lang := i18n.DefaultLanguage
+		if msg.Metadata != nil {
+			if langStr, ok := msg.Metadata["language"].(string); ok {
+				lang = i18n.ParseLanguage(langStr)
+			}
+		}
+		errorResponse := OutgoingMessage{
+			ChatID:    msg.ChatID,
+			ReplyToID: msg.ID,
+			Content:   i18n.T(lang, i18n.MsgProcessingError, err),
+		}
+		if sendErr := ch.Send(ctx, errorResponse); sendErr != nil {
+			m.logger.Error("error sending error response",
+				zap.String("channel", ch.Name()),
+				zap.String("chat_id", msg.ChatID),
+				zap.Error(sendErr))
+		}
 		return
 	}
 
@@ -220,11 +242,42 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 			response.ReplyToID = msg.ID
 		}
 
-		if err := ch.Send(ctx, *response); err != nil {
-			m.logger.Error("error sending response",
+		// Prepare response: strip AI tags and split if too long
+		parts := PrepareResponse(response.Content, m.config.MaxMessageLength)
+		if len(parts) == 0 {
+			m.logger.Warn("response content is empty after processing",
 				zap.String("channel", ch.Name()),
-				zap.String("chat_id", response.ChatID),
-				zap.Error(err))
+				zap.String("chat_id", response.ChatID))
+			return
+		}
+
+		// Send each part
+		for i, part := range parts {
+			outMsg := OutgoingMessage{
+				ChatID:      response.ChatID,
+				Content:     part,
+				Format:      response.Format,
+				Attachments: response.Attachments,
+				Metadata:    response.Metadata,
+			}
+			// Only set ReplyToID for the first message
+			if i == 0 {
+				outMsg.ReplyToID = response.ReplyToID
+			}
+			// Only include attachments in the last message
+			if i < len(parts)-1 {
+				outMsg.Attachments = nil
+			}
+
+			if err := ch.Send(ctx, outMsg); err != nil {
+				m.logger.Error("error sending response",
+					zap.String("channel", ch.Name()),
+					zap.String("chat_id", outMsg.ChatID),
+					zap.Int("part", i+1),
+					zap.Int("total_parts", len(parts)),
+					zap.Error(err))
+				break
+			}
 		}
 	}
 }

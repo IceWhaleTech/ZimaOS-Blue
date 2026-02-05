@@ -30,6 +30,8 @@ func NewClaudeProvider(apiKey, baseURL string) *ClaudeProvider {
 	if baseURL == "" {
 		baseURL = defaultClaudeBaseURL
 	}
+	// Remove trailing slash to avoid double slashes in URL
+	baseURL = strings.TrimSuffix(baseURL, "/")
 	return &ClaudeProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
@@ -167,7 +169,12 @@ func (p *ClaudeProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	// Parse response
 	var claudeResp claudeResponse
 	if err := json.Unmarshal(respBody, &claudeResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		// Log raw response for debugging (truncate if too long)
+		rawResp := string(respBody)
+		if len(rawResp) > 500 {
+			rawResp = rawResp[:500] + "...(truncated)"
+		}
+		return nil, fmt.Errorf("failed to parse response: %w, raw response: %s", err, rawResp)
 	}
 
 	// Check for API error

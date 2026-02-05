@@ -22,6 +22,7 @@ export default {
     optional: '可选',
     status: '状态',
     enabled: '已启用',
+    download: '下载',
     downloaded: '已下载',
     disabled: '已禁用',
     online: '在线',
@@ -285,6 +286,14 @@ export default {
     // 连接错误页
     connectionFailedDesc: '无法连接到服务器，请检查服务是否运行后重试。',
     checkingConnection: '正在检查连接...',
+    // 频道错误消息
+    processing: '抱歉，处理您的消息时发生错误：{error}',
+    channelNotConnected: '频道未连接，请稍后重试。',
+    rateLimited: '请求过于频繁，请稍等片刻后重试。',
+    serviceUnavailable: '服务暂时不可用，请稍后重试。',
+    invalidRequest: '无效的请求，请检查您的输入后重试。',
+    unauthorized: '您没有权限执行此操作。',
+    internal: '发生内部错误，请稍后重试。',
   },
   chat: {
     newChat: '新对话',
@@ -436,6 +445,7 @@ export default {
       all: '全部',
       overview: '概览',
       system: '系统',
+      metrics: '指标',
     },
     cards: {
       systemStatus: '系统状态',
@@ -448,6 +458,11 @@ export default {
       goroutinesChart: '协程趋势',
       heapChart: '堆内存',
       systemInfo: '系统信息',
+      metricsOverview: 'API 指标',
+      tokenUsageChart: 'Token 使用量',
+      latencyChart: '延迟',
+      modelStats: '模型统计',
+      cacheStats: '缓存统计',
     },
   },
   // 内置技能（技能商店/扩展 i18n）
@@ -2223,7 +2238,7 @@ export default {
     teamsHint: '在 Azure Bot Framework 中创建机器人',
     mattermostHint: '在 Mattermost 中创建机器人',
     googleChatHint: '在 Google Cloud 中创建服务账号',
-    feishuHint: '在飞书开放平台创建机器人。必须：1) 启用「使用长连接接收事件」；2) 订阅「im.message.receive_v1」事件；3) 添加「im:message:send_as_bot」发送消息权限',
+    feishuHint: '在飞书开放平台创建机器人。必须：1) 启用「使用长连接接收事件」；2) 订阅「im.message.receive_v1」事件；3) 添加「im:message:send_as_bot」发送消息权限；4) 发布新版本',
     dingtalkHint: '在钉钉开放平台创建机器人',
     qqHint: '在 QQ 开放平台创建机器人',
     wechatHint: '在企业微信中创建机器人',
@@ -3771,7 +3786,7 @@ export default {
     },
     downloadAndUse: '下载并使用',
     streaming: '流式',
-    asrModels: {
+    asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
         description: '快速多语言语音识别',

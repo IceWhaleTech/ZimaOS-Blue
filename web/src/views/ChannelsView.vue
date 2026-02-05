@@ -53,8 +53,8 @@ const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
 const showMoreChannels = ref(false)
 
-// Primary channels shown by default (top 8)
-const primaryChannelIds = ['telegram', 'discord', 'slack', 'whatsapp', 'wechat', 'feishu', 'dingtalk', 'teams']
+// Primary channels shown by default (top 7)
+const primaryChannelIds = ['telegram', 'discord', 'slack', 'whatsapp', 'wechat', 'feishu', 'dingtalk']
 
 // Remote Access state
 type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'

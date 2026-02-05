@@ -243,6 +243,15 @@ export function useFormFillerWidget() {
       if (globalState.clipboardData.trim()) {
         return
       }
+      // Don't hide if paste area is expanded (user is interacting with it)
+      const pasteArea = document.querySelector('.formfiller-widget textarea')
+      if (pasteArea) {
+        return
+      }
+      // Don't hide if there's an error being displayed
+      if (globalState.error) {
+        return
+      }
       globalState.isVisible = false
       globalState.focusedElement = null
     }, 200)

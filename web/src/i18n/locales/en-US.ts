@@ -21,6 +21,7 @@ export default {
     optional: 'Optional',
     status: 'Status',
     enabled: 'Enabled',
+    download: 'Download',
     downloaded: 'Downloaded',
     disabled: 'Disabled',
     online: 'Online',
@@ -283,6 +284,14 @@ export default {
     checkingConnection: 'Checking connection...',
     unknownError: 'An unknown error occurred',
     pleaseRetry: 'Please try again',
+    // Channel error messages
+    processing: 'Sorry, an error occurred while processing your message: {error}',
+    channelNotConnected: 'The channel is not connected. Please try again later.',
+    rateLimited: 'Too many requests. Please wait a moment and try again.',
+    serviceUnavailable: 'The service is temporarily unavailable. Please try again later.',
+    invalidRequest: 'Invalid request. Please check your input and try again.',
+    unauthorized: 'You are not authorized to perform this action.',
+    internal: 'An internal error occurred. Please try again later.',
   },
   chat: {
     newChat: 'New Chat',
@@ -435,6 +444,7 @@ export default {
       all: 'All',
       overview: 'Overview',
       system: 'System',
+      metrics: 'Metrics',
     },
     cards: {
       systemStatus: 'System Status',
@@ -447,6 +457,11 @@ export default {
       goroutinesChart: 'Goroutines',
       heapChart: 'Heap Memory',
       systemInfo: 'System Information',
+      metricsOverview: 'API Metrics',
+      tokenUsageChart: 'Token Usage',
+      latencyChart: 'Latency',
+      modelStats: 'Model Statistics',
+      cacheStats: 'Cache Statistics',
     },
   },
   // Built-in skills (i18n for skill store / extensions)
@@ -3784,7 +3799,7 @@ export default {
     },
     downloadAndUse: 'Download & Use',
     streaming: 'Streaming',
-    asrModels: {
+    asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
         description: 'Fast multilingual speech recognition',

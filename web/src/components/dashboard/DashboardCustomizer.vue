@@ -8,12 +8,13 @@ const { t } = useI18n()
 const dashboardStore = useDashboardStore()
 
 const isOpen = ref(false)
-const activeCategory = ref<'all' | 'overview' | 'system'>('all')
+const activeCategory = ref<'all' | 'overview' | 'system' | 'metrics'>('all')
 
 const categories = [
   { id: 'all', labelKey: 'dashboard.categories.all' },
   { id: 'overview', labelKey: 'dashboard.categories.overview' },
   { id: 'system', labelKey: 'dashboard.categories.system' },
+  { id: 'metrics', labelKey: 'dashboard.categories.metrics' },
 ]
 
 const filteredCards = computed(() => {
