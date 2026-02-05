@@ -1813,6 +1813,8 @@ export default {
     privacyWarning: 'Edge-TTS è un servizio online. Il testo viene inviato ai server Microsoft per la sintesi.',
     downloadFailed: 'Download fallito',
     ttsProvider: 'Provider TTS',
+    edgeTTSDesc: 'Voci neurali online di alta qualità (richiede internet)',
+    espeakNGDesc: 'Motore leggero offline (funziona senza internet)',
     espeakNote: 'Offline - leggero (~8,5 MB)',
     sherpaNote: 'Offline - alta qualità (download richiesto)',
   },

@@ -436,12 +436,11 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	go func() {
 		defer initWg.Done()
 		sttService, _ = stt.NewService(&stt.ServiceConfig{
-			DefaultProvider: stt.ProviderWhisperAPI,
+			DefaultProvider: stt.ProviderSherpa,
 			Providers: []stt.ProviderConfig{
 				{
-					Type:    stt.ProviderWhisperAPI,
+					Type:    stt.ProviderSherpa,
 					Enabled: true,
-					APIKey:  os.Getenv("OPENAI_API_KEY"),
 				},
 			},
 		})
@@ -451,9 +450,9 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	go func() {
 		defer initWg.Done()
 		ttsService, _ = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderEdge,
+			DefaultProvider: tts.ProviderEspeakNG,
 			Providers: []tts.ProviderConfig{
-				{Type: tts.ProviderEdge, Enabled: true},
+				{Type: tts.ProviderEspeakNG, Enabled: true},
 				{Type: tts.ProviderOpenAI, Enabled: os.Getenv("OPENAI_API_KEY") != "", APIKey: os.Getenv("OPENAI_API_KEY")},
 			},
 		})

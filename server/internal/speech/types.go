@@ -12,8 +12,11 @@ type Config struct {
 
 // TTSConfig holds TTS-specific configuration.
 type TTSConfig struct {
-	Provider string `json:"provider" yaml:"provider" mapstructure:"provider"`
-	Model    string `json:"model" yaml:"model" mapstructure:"model"`
+	Provider string  `json:"provider" yaml:"provider" mapstructure:"provider"`
+	Model    string  `json:"model" yaml:"model" mapstructure:"model"`
+	Speed    float32 `json:"speed" yaml:"speed" mapstructure:"speed"`    // Speech rate (0.5-2.0, default 1.0)
+	Pitch    float32 `json:"pitch" yaml:"pitch" mapstructure:"pitch"`    // Pitch adjustment (-10 to 10, default 0)
+	Volume   float32 `json:"volume" yaml:"volume" mapstructure:"volume"` // Volume (0-100, default 100)
 }
 
 // ASRConfig holds ASR-specific configuration.

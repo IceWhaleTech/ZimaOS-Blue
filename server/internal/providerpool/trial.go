@@ -12,13 +12,10 @@ import (
 
 const (
 	// TrialProviderID is the ID of the trial provider
-	TrialProviderID = "zimaos-trial"
+	TrialProviderID = "zimaos-echo-trial"
 
 	// TrialTokenLimit is the maximum number of tokens allowed for trial
-	TrialTokenLimit int64 = 5000
-
-	// TrialConversationLimit is the maximum number of conversations allowed for trial
-	TrialConversationLimit int64 = 5
+	TrialTokenLimit int64 = 10000
 
 	// trialExhaustedMarkerFile is the filename for the trial exhausted marker
 	// This file is stored in a location that is NOT backed up to prevent
@@ -33,15 +30,12 @@ var (
 
 // TrialQuotaStatus represents the current trial quota status
 type TrialQuotaStatus struct {
-	TokensUsed        int64     `json:"tokens_used"`
-	TokensRemaining   int64     `json:"tokens_remaining"`
-	TokenLimit        int64     `json:"token_limit"`
-	ConversationsUsed int64     `json:"conversations_used"`
-	ConversationsLeft int64     `json:"conversations_left"`
-	ConversationLimit int64     `json:"conversation_limit"`
-	IsExhausted       bool      `json:"is_exhausted"`
-	ExhaustedReason   string    `json:"exhausted_reason,omitempty"`
-	LastUpdated       time.Time `json:"last_updated"`
+	TokensUsed      int64     `json:"tokens_used"`
+	TokensRemaining int64     `json:"tokens_remaining"`
+	TokenLimit      int64     `json:"token_limit"`
+	IsExhausted     bool      `json:"is_exhausted"`
+	ExhaustedReason string    `json:"exhausted_reason,omitempty"`
+	LastUpdated     time.Time `json:"last_updated"`
 }
 
 // TrialQuotaManager manages trial quota tracking
@@ -53,12 +47,11 @@ type TrialQuotaManager struct {
 	// This should be a system directory that is NOT backed up
 	markerDir string
 
-	mu                sync.RWMutex
-	tokensUsed        int64
-	conversationsUsed int64
-	exhausted         bool
-	exhaustedReason   string
-	lastUpdated       time.Time
+	mu              sync.RWMutex
+	tokensUsed      int64
+	exhausted       bool
+	exhaustedReason string
+	lastUpdated     time.Time
 }
 
 // NewTrialQuotaManager creates a new trial quota manager
@@ -181,18 +174,12 @@ func (m *TrialQuotaManager) loadFromStorage() {
 
 	m.mu.Lock()
 	m.tokensUsed = totalTokens
-	m.conversationsUsed = int64(len(conversationSet))
 	m.lastUpdated = time.Now()
 
 	// Check if exhausted
 	if m.tokensUsed >= TrialTokenLimit {
 		m.exhausted = true
 		m.exhaustedReason = "token_limit"
-		// Write marker to prevent restore
-		m.writeExhaustedMarker()
-	} else if m.conversationsUsed >= TrialConversationLimit {
-		m.exhausted = true
-		m.exhaustedReason = "conversation_limit"
 		// Write marker to prevent restore
 		m.writeExhaustedMarker()
 	}
@@ -249,21 +236,13 @@ func (m *TrialQuotaManager) GetStatus() *TrialQuotaStatus {
 		tokensRemaining = 0
 	}
 
-	conversationsLeft := TrialConversationLimit - m.conversationsUsed
-	if conversationsLeft < 0 {
-		conversationsLeft = 0
-	}
-
 	return &TrialQuotaStatus{
-		TokensUsed:        m.tokensUsed,
-		TokensRemaining:   tokensRemaining,
-		TokenLimit:        TrialTokenLimit,
-		ConversationsUsed: m.conversationsUsed,
-		ConversationsLeft: conversationsLeft,
-		ConversationLimit: TrialConversationLimit,
-		IsExhausted:       m.exhausted,
-		ExhaustedReason:   m.exhaustedReason,
-		LastUpdated:       m.lastUpdated,
+		TokensUsed:      m.tokensUsed,
+		TokensRemaining: tokensRemaining,
+		TokenLimit:      TrialTokenLimit,
+		IsExhausted:     m.exhausted,
+		ExhaustedReason: m.exhaustedReason,
+		LastUpdated:     m.lastUpdated,
 	}
 }
 
@@ -303,8 +282,6 @@ func (m *TrialQuotaManager) HandleQuotaExhausted() (message string, err error) {
 	switch status.ExhaustedReason {
 	case "token_limit":
 		return "trial_quota_exhausted_tokens", nil
-	case "conversation_limit":
-		return "trial_quota_exhausted_conversations", nil
 	default:
 		return "trial_quota_exhausted", nil
 	}
@@ -316,7 +293,6 @@ func (m *TrialQuotaManager) Reset() {
 	defer m.mu.Unlock()
 
 	m.tokensUsed = 0
-	m.conversationsUsed = 0
 	m.exhausted = false
 	m.exhaustedReason = ""
 	m.lastUpdated = time.Now()

@@ -53,48 +53,39 @@ var sherpaASRModelPackages = map[string]string{
 	"whisper-tiny":     "sherpa-onnx-whisper-tiny.tar.bz2",
 	"whisper-base":     "sherpa-onnx-whisper-base.tar.bz2",
 	"zipformer-en":     "sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
-	"paraformer-zh":    "sherpa-onnx-paraformer-zh-2023-09-14.tar.bz2",
 	"sensevoice-small": "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
 }
 
-// Model metadata
+// Model metadata - using i18n keys for name and description
 var sherpaASRModelMeta = map[string]SherpaASRModelInfo{
 	"whisper-tiny": {
 		ID:          "whisper-tiny",
-		Name:        "Whisper Tiny",
-		Description: "Fast multilingual ASR (~75MB)",
+		Name:        "speech.asrModels.whisperTiny.name",
+		Description: "speech.asrModels.whisperTiny.description",
 		Languages:   []string{"en", "zh", "ja", "ko", "de", "fr", "es", "it", "pt", "ru"},
 		Size:        "~75MB",
 		Streaming:   false,
 	},
 	"whisper-base": {
 		ID:          "whisper-base",
-		Name:        "Whisper Base",
-		Description: "Balanced multilingual ASR (~150MB)",
+		Name:        "speech.asrModels.whisperBase.name",
+		Description: "speech.asrModels.whisperBase.description",
 		Languages:   []string{"en", "zh", "ja", "ko", "de", "fr", "es", "it", "pt", "ru"},
 		Size:        "~150MB",
 		Streaming:   false,
 	},
 	"zipformer-en": {
 		ID:          "zipformer-en",
-		Name:        "Zipformer English Streaming",
-		Description: "Real-time English ASR (~50MB)",
+		Name:        "speech.asrModels.zipformerEn.name",
+		Description: "speech.asrModels.zipformerEn.description",
 		Languages:   []string{"en"},
 		Size:        "~50MB",
 		Streaming:   true,
 	},
-	"paraformer-zh": {
-		ID:          "paraformer-zh",
-		Name:        "Paraformer Chinese",
-		Description: "High accuracy Chinese ASR (~220MB)",
-		Languages:   []string{"zh"},
-		Size:        "~220MB",
-		Streaming:   false,
-	},
 	"sensevoice-small": {
 		ID:          "sensevoice-small",
-		Name:        "SenseVoice Small",
-		Description: "Multi-language with emotion detection (~100MB)",
+		Name:        "speech.asrModels.sensevoiceSmall.name",
+		Description: "speech.asrModels.sensevoiceSmall.description",
 		Languages:   []string{"zh", "en", "ja", "ko", "yue"},
 		Size:        "~100MB",
 		Streaming:   false,
@@ -345,7 +336,18 @@ func (p *SherpaProvider) SetOnProgress(callback func(progress SherpaASRDownloadP
 }
 
 // ListModels returns all available ASR models with download status.
-func (p *SherpaProvider) ListModels() []SherpaASRModelInfo {
+func (p *SherpaProvider) ListModels() []interface{} {
+	models := make([]interface{}, 0, len(sherpaASRModelMeta))
+	for _, meta := range sherpaASRModelMeta {
+		model := meta
+		model.Downloaded = p.downloadMgr.IsModelComplete(meta.ID)
+		models = append(models, model)
+	}
+	return models
+}
+
+// ListASRModels returns all available ASR models with download status (typed version).
+func (p *SherpaProvider) ListASRModels() []SherpaASRModelInfo {
 	models := make([]SherpaASRModelInfo, 0, len(sherpaASRModelMeta))
 	for _, meta := range sherpaASRModelMeta {
 		model := meta
@@ -420,6 +422,16 @@ type SherpaASRModelStatus struct {
 	HasPending         bool                      `json:"has_pending"`
 	PendingModel       string                    `json:"pending_model,omitempty"`
 	SavedProgress      *SherpaASRDownloadProgress `json:"saved_progress,omitempty"`
+}
+
+// GetAvailableASRModels returns all available ASR models metadata (without download status).
+// This can be called without an initialized provider.
+func GetAvailableASRModels() []SherpaASRModelInfo {
+	models := make([]SherpaASRModelInfo, 0, len(sherpaASRModelMeta))
+	for _, meta := range sherpaASRModelMeta {
+		models = append(models, meta)
+	}
+	return models
 }
 
 // audioToWAV converts audio bytes to WAV format if needed.

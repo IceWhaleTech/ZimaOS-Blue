@@ -30,9 +30,11 @@ function removeUnusedFromFile(filePath) {
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
       stack.pop()
     }
-    const keyMatch = trimmed.match(/^([a-zA-Z][a-zA-Z0-9]*)\s*:\s*(\{|['"`]|$)/)
+    const unquoted = trimmed.match(/^([a-zA-Z][a-zA-Z0-9_]*)\s*:\s*(\{|['"`]|$)/)
+    const quoted = trimmed.match(/^['"]([^'"]+)['"]\s*:\s*(\{|['"`]|$)/)
+    const keyMatch = unquoted || quoted
     if (keyMatch) {
-      const key = keyMatch[1]
+      const key = unquoted ? unquoted[1] : quoted[1]
       const isObject = keyMatch[2] === '{'
       const prefix = stack.length ? stack.map(s => s.key).join('.') + '.' : ''
       const fullKey = prefix + key

@@ -33,6 +33,11 @@ const detectedAntigravityToken = computed(() =>
   detectedKeys.value.find(k => k.provider === 'antigravity')
 )
 
+// Check if trial key is available (configured or detected)
+const hasTrialKey = computed(() => {
+  return !!(accessToken.value || detectedAntigravityToken.value || quotaData.value)
+})
+
 // Get progress bar color based on percentage
 function getProgressColor(percentage: number): string {
   if (percentage >= 70) return 'bg-green-500'
@@ -171,7 +176,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <!-- Only show component if trial key is available -->
+  <div v-if="hasTrialKey || loadingKeys" class="space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
@@ -313,12 +319,15 @@ onUnmounted(() => {
                 {{ model.percentage.toFixed(0) }}%
               </span>
             </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div class="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
               <div
-                class="h-2 rounded-full transition-all duration-300"
+                class="h-4 rounded-full transition-all duration-300"
                 :class="getProgressColor(model.percentage)"
-                :style="{ width: `${model.percentage}%` }"
+                :style="{ width: `${Math.max(model.percentage, 3)}%` }"
               ></div>
+              <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700 dark:text-gray-200">
+                {{ model.percentage.toFixed(0) }}%
+              </span>
             </div>
             <p v-if="model.reset_time" class="text-xs text-gray-500 mt-1">
               {{ t('settings.antigravity.resetAt') }}: {{ new Date(model.reset_time).toLocaleString() }}
@@ -352,12 +361,15 @@ onUnmounted(() => {
                 {{ model.percentage.toFixed(0) }}%
               </span>
             </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div class="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
               <div
-                class="h-2 rounded-full transition-all duration-300"
+                class="h-4 rounded-full transition-all duration-300"
                 :class="getProgressColor(model.percentage)"
-                :style="{ width: `${model.percentage}%` }"
+                :style="{ width: `${Math.max(model.percentage, 3)}%` }"
               ></div>
+              <span class="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700 dark:text-gray-200">
+                {{ model.percentage.toFixed(0) }}%
+              </span>
             </div>
             <p v-if="model.reset_time" class="text-xs text-gray-500 mt-1">
               {{ t('settings.antigravity.resetAt') }}: {{ new Date(model.reset_time).toLocaleString() }}

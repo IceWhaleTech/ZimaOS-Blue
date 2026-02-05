@@ -81,6 +81,31 @@ var suspiciousPatterns = []SuspiciousPattern{
 		Description: "Markdown delimiters that may confuse parsing",
 		Severity:    "low",
 	},
+	// New patterns from clawdbot
+	{
+		Name:        "elevated_access",
+		Pattern:     regexp.MustCompile("(?i)elevated\\s*=\\s*true"),
+		Description: "Attempts to claim elevated access",
+		Severity:    "high",
+	},
+	{
+		Name:        "rm_rf",
+		Pattern:     regexp.MustCompile("(?i)rm\\s+-rf"),
+		Description: "Dangerous file deletion command",
+		Severity:    "high",
+	},
+	{
+		Name:        "delete_all",
+		Pattern:     regexp.MustCompile("(?i)delete\\s+all\\s+(emails?|files?|data)"),
+		Description: "Mass deletion request",
+		Severity:    "high",
+	},
+	{
+		Name:        "role_separator",
+		Pattern:     regexp.MustCompile("(?i)\\]\\s*\\n\\s*\\[?(system|assistant|user)\\]?:"),
+		Description: "Attempts to inject role separators",
+		Severity:    "high",
+	},
 }
 
 // DetectionResult contains the result of suspicious pattern detection.

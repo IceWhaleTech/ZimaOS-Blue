@@ -572,11 +572,14 @@ onUnmounted(() => {
             >{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
           </div>
           <div class="flex items-center gap-2">
-            <div class="w-20 h-1.5 bg-blue-200 dark:bg-blue-800/50 rounded-full overflow-hidden">
+            <div class="relative w-20 h-4 bg-blue-200 dark:bg-blue-800/50 rounded-full overflow-hidden">
               <div
                 class="h-full rounded-full transition-all duration-500 ease-out bg-blue-500 dark:bg-blue-400"
-                :style="{ width: `${Math.min(100, (providerPoolStore.trialQuota.tokens_used / providerPoolStore.trialQuota.token_limit) * 100)}%` }"
+                :style="{ width: `${Math.max(3, Math.min(100, (providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100))}%` }"
               ></div>
+              <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm">
+                {{ Math.round((providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100) }}%
+              </span>
             </div>
             <router-link
               to="/settings?tab=llm"

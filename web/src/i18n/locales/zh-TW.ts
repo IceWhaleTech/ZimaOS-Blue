@@ -2472,6 +2472,8 @@ export default {
     privacyWarning: 'Edge-TTS 為線上服務，文字會發送至 Microsoft 伺服器進行合成。',
     downloadFailed: '下載失敗',
     ttsProvider: 'TTS 提供商',
+    edgeTTSDesc: '高品質線上神經網路語音（需要網路）',
+    espeakNGDesc: '離線輕量級引擎（無需網路）',
     espeakNote: '離線 - 輕量級（約 8.5MB）',
     sherpaNote: '離線 - 高品質（需下載模型）',
   },

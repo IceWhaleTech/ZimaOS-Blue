@@ -121,6 +121,12 @@ export const voiceApi = {
   // List available voices
   listVoices: () => api.get<Voice[]>('/voice/voices'),
 
+  // Streaming TTS via SSE - synthesize text and stream audio chunks
+  synthesizeStream: (text: string, format?: string): EventSource => {
+    const params = new URLSearchParams({ text, format: format || 'mp3' })
+    return new EventSource(`/api/v1/voice/synthesize/stream?${params.toString()}`)
+  },
+
   // Create voice session
   createSession: (data: CreateSessionRequest) =>
     api.post<VoiceSession>('/voice/sessions', data),
@@ -461,6 +467,114 @@ class TTSAudioManager {
 
 // Singleton instance
 export const ttsAudioManager = new TTSAudioManager()
+
+// Streaming TTS Queue Manager - plays sentences as they arrive
+class StreamingTTSManager {
+  private queue: Array<{ text: string; audio?: string; contentType?: string }> = []
+  private isPlaying = false
+  private isStopped = false
+  private currentEventSource: EventSource | null = null
+  public onSentenceStart: ((index: number) => void) | null = null
+  public onComplete: (() => void) | null = null
+
+  // Split text into sentences
+  private splitIntoSentences(text: string): string[] {
+    // Split by sentence-ending punctuation, keeping the punctuation
+    const sentences = text.match(/[^.!?。！？]+[.!?。！？]+|[^.!?。！？]+$/g) || [text]
+    return sentences.map(s => s.trim()).filter(s => s.length > 0)
+  }
+
+  // Start streaming TTS for text
+  async streamText(text: string): Promise<void> {
+    this.stop()
+    this.isStopped = false
+    this.queue = []
+
+    const sentences = this.splitIntoSentences(text)
+    if (sentences.length === 0) return
+
+    // Initialize queue with sentences
+    this.queue = sentences.map(s => ({ text: s }))
+
+    // Start fetching audio for all sentences in parallel
+    sentences.forEach((sentence, index) => {
+      this.fetchAudio(sentence, index)
+    })
+
+    // Start playing
+    this.playNext()
+  }
+
+  private async fetchAudio(text: string, index: number) {
+    if (this.isStopped) return
+
+    try {
+      const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}&format=mp3`)
+
+      es.addEventListener('audio', (e) => {
+        if (this.isStopped) { es.close(); return }
+        const data = JSON.parse(e.data)
+        if (this.queue[index]) {
+          this.queue[index].audio = data.audio
+          this.queue[index].contentType = data.content_type
+        }
+        es.close()
+      })
+
+      es.addEventListener('error', () => es.close())
+    } catch (e) {
+      console.error('Failed to fetch TTS audio:', e)
+    }
+  }
+
+  private async playNext() {
+    if (this.isStopped || this.isPlaying) return
+
+    // Find next sentence with audio ready
+    const index = this.queue.findIndex(item => item.audio && item.contentType)
+    if (index === -1) {
+      // No audio ready yet, wait and retry
+      if (this.queue.some(item => !item.audio)) {
+        setTimeout(() => this.playNext(), 100)
+      } else {
+        this.onComplete?.()
+      }
+      return
+    }
+
+    const item = this.queue[index]
+    if (!item.audio || !item.contentType) return
+
+    this.isPlaying = true
+    this.onSentenceStart?.(index)
+
+    try {
+      await ttsAudioManager.play(item.audio, item.contentType)
+    } catch (e) {
+      console.error('Failed to play audio:', e)
+    }
+
+    // Remove played item and continue
+    this.queue.splice(index, 1)
+    this.isPlaying = false
+
+    if (!this.isStopped && this.queue.length > 0) {
+      this.playNext()
+    } else if (this.queue.length === 0) {
+      this.onComplete?.()
+    }
+  }
+
+  stop() {
+    this.isStopped = true
+    this.isPlaying = false
+    this.queue = []
+    this.currentEventSource?.close()
+    ttsAudioManager.stop()
+  }
+}
+
+export const streamingTTSManager = new StreamingTTSManager()
 
 // Helper to play audio from base64
 export function playAudioFromBase64(base64: string, contentType: string): Promise<void> {

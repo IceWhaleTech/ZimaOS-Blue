@@ -37,6 +37,10 @@ const (
 	ProviderKokoro ProviderType = "kokoro"
 	// ProviderSherpa is local TTS using sherpa-onnx (native Go, no Python).
 	ProviderSherpa ProviderType = "sherpa"
+	// ProviderEspeakNG is local eSpeak-NG TTS.
+	ProviderEspeakNG ProviderType = "espeak-ng"
+	// ProviderEdge is Microsoft Edge TTS.
+	ProviderEdge ProviderType = "edge-tts"
 )
 
 // AudioFormat represents the output audio format.
@@ -85,6 +89,8 @@ type SynthesizeRequest struct {
 	Speed float32
 	// Pitch is the speech pitch adjustment.
 	Pitch float32
+	// Volume is the speech volume (0-200, default 100).
+	Volume float32
 }
 
 // SynthesizeResponse represents a synthesis response.
@@ -154,4 +160,10 @@ type Service interface {
 	GetDefaultProvider() ProviderType
 	// SetDefaultProvider sets the default provider type.
 	SetDefaultProvider(providerType ProviderType) error
+	// GetProvider returns the provider instance for a given provider type.
+	GetProvider(providerType ProviderType) Provider
+	// GetConfig returns the current TTS configuration (speed, pitch, volume).
+	GetConfig() (speed, pitch, volume float32)
+	// SetConfig sets the TTS configuration (speed, pitch, volume).
+	SetConfig(speed, pitch, volume float32)
 }

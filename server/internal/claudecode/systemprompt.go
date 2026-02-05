@@ -35,6 +35,9 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 	// Add identity
 	parts = append(parts, "You are a personal assistant running inside ZimaOS Echo.")
 
+	// Add safety guardrails
+	parts = append(parts, b.buildSafetyGuidance())
+
 	// Add tool call style guidance
 	parts = append(parts, b.buildToolCallStyleGuidance())
 
@@ -158,6 +161,20 @@ func (b *SystemPromptBuilder) buildToolCallStyleGuidance() string {
 	return strings.Join(lines, "\n")
 }
 
+// buildSafetyGuidance builds safety guardrails for the system prompt.
+// Inspired by Anthropic's constitution and clawdbot's safety guidelines.
+func (b *SystemPromptBuilder) buildSafetyGuidance() string {
+	var lines []string
+
+	lines = append(lines, "# Safety")
+	lines = append(lines, "")
+	lines = append(lines, "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.")
+	lines = append(lines, "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards.")
+	lines = append(lines, "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.")
+
+	return strings.Join(lines, "\n")
+}
+
 // buildSilentReplyGuidance builds guidance for silent replies.
 func (b *SystemPromptBuilder) buildSilentReplyGuidance() string {
 	var lines []string
@@ -199,6 +216,9 @@ func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt 
 
 	// Add identity
 	parts = append(parts, "You are a personal assistant running inside ZimaOS Echo.")
+
+	// Add safety guardrails
+	parts = append(parts, b.buildSafetyGuidance())
 
 	// Add tool call style guidance
 	parts = append(parts, b.buildToolCallStyleGuidance())

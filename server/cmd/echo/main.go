@@ -533,9 +533,14 @@ func main() {
 	// Use conc/pool for safer parallel initialization with automatic panic recovery
 	initPool := concpool.New().WithMaxGoroutines(20)
 
-	// Group 1: Independent services (no dependencies on each other)
-	// Async initialization for non-critical services to speed up startup
+	// Use WaitGroup to coordinate critical service initialization
+	var criticalServicesWg sync.WaitGroup
+
+	// Group 1: Critical services that must be ready before server starts
+	// Initialize metrics synchronously to ensure it's ready for first request
+	criticalServicesWg.Add(1)
 	go func() {
+		defer criticalServicesWg.Done()
 		// Metrics collector (collect every 5 seconds, keep 10 minutes of history)
 		metricsCollector = metrics.NewCollector(5*time.Second, 120)
 		metricsCollector.Start()
@@ -545,7 +550,13 @@ func main() {
 		metricsWriter = metrics.NewMetricsWriter(nil, metricsConfig)
 		metricsWriter.Start()
 		logger.Info().Msg("Metrics services initialized")
+
+		// Set metrics recorder on chat handler after initialization
+		chatHandler.SetMetricsRecorder(metricsWriter)
+		logger.Info().Msg("Metrics recorder set on chat handler")
 	}()
+
+	// Group 2: Non-critical services (async initialization for faster startup)
 
 	go func() {
 		// Backup manager
@@ -575,19 +586,25 @@ func main() {
 		logger.Info().Msg("Browser automation handler initialized")
 	}()
 
-	// Initialize TTS service (disabled by default, no providers configured)
-	go func() {
-		var err error
-		ttsService, err = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: "",
-			Providers:       []tts.ProviderConfig{},
-		})
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize TTS service")
-			return
-		}
-		logger.Info().Msg("TTS service initialized with Edge TTS")
-	}()
+	// Initialize TTS service with Edge TTS as default (high quality), eSpeak-NG as fallback (offline)
+	ttsService, err = tts.NewService(&tts.ServiceConfig{
+		DefaultProvider: tts.ProviderEdge,
+		Providers: []tts.ProviderConfig{
+			{
+				Type:    tts.ProviderEdge,
+				Enabled: true,
+			},
+			{
+				Type:    tts.ProviderEspeakNG,
+				Enabled: true,
+			},
+		},
+	})
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize TTS service")
+	} else {
+		logger.Info().Msg("TTS service initialized with Edge TTS (default) and eSpeak-NG (fallback)")
+	}
 
 	// Critical services in parallel pool
 	initPool.Go(func() {
@@ -695,6 +712,10 @@ func main() {
 	// Wait for all parallel initializations to complete
 	initPool.Wait()
 
+	// Wait for critical services to be ready before continuing
+	criticalServicesWg.Wait()
+	logger.Info().Msg("Critical services initialized and ready")
+
 	// Get Sherpa ASR provider from the STT service
 	var sherpaASRProvider *stt.SherpaProvider
 	if sttService != nil {
@@ -745,8 +766,7 @@ func main() {
 	ngrokTunnelMgr = ngrok.NewSDKTunnelManager(nil)
 	logger.Info().Msg("Ngrok tunnel services initialized (lightweight)")
 
-	// Set metrics recorder on chat handler for API call tracking
-	chatHandler.SetMetricsRecorder(metricsWriter)
+	// Note: Metrics recorder is set on chat handler asynchronously after metrics initialization completes
 
 	// Initialize HTTP server
 	srv := server.New(&cfg.Server)
@@ -1094,23 +1114,36 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Register unified speech routes (ASR + TTS) - /api/v1/speech/*
-	speechService := speech.NewServiceWithInitConfig(&speech.Config{
+	speechService := speech.NewService(&speech.Config{
 		TTS: speech.TTSConfig{
-			Provider: "edge-tts",
+			Provider: "edge",
 			Model:    "",
 		},
 		ASR: speech.ASRConfig{
 			Enabled:        true,
+			Provider:       "sherpa",
 			EditBeforeSend: true,
 		},
-	}, &speech.InitConfig{
-		DataDir:      dataDir,
-		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
-	})
+	}, nil, ttsService)
+	// Set initial TTS provider from TTS service (no need to call Initialize)
+	if ttsService != nil {
+		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
+			speechService.SetTTSProvider(provider)
+			logger.Info().Msg("Initial TTS provider set to Edge TTS")
+		}
+	}
 	speechHandler := speech.NewHandler(speechService)
 	speechGroup := v1.Group("/speech")
 	speechHandler.RegisterRoutes(speechGroup)
-	logger.Info().Msg("Speech routes registered (lazy initialization)")
+	logger.Info().Msg("Speech routes registered")
+
+	// Note: With static CGO linking, all eSpeak-NG languages are built-in
+	// No need to sync language packs dynamically
+	if ttsService != nil {
+		if provider := ttsService.GetProvider(tts.ProviderEspeakNG); provider != nil {
+			logger.Info().Msg("eSpeak-NG provider initialized with all languages built-in")
+		}
+	}
 
 	// Register form filler routes (protected) - /api/v1/formfiller/*
 	if formfillerHandler != nil {

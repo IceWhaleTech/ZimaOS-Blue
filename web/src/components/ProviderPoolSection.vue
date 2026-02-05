@@ -1043,21 +1043,27 @@ onMounted(() => {
             <h3 class="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">{{ t('providerPool.trial.name') }}</h3>
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs">
-                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.tokensUsed', { used: store.trialQuota.tokens_used, total: store.trialQuota.token_limit }) }}</span>
-                <div class="w-24 h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.tokensUsed', { remaining: store.trialQuota.token_limit - store.trialQuota.tokens_used, total: store.trialQuota.token_limit }) }}</span>
+                <div class="relative w-24 h-4 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
                   <div
                     class="h-full bg-blue-500 dark:bg-blue-400 transition-all"
-                    :style="{ width: `${Math.min(100, (store.trialQuota.tokens_used / store.trialQuota.token_limit) * 100)}%` }"
+                    :style="{ width: `${Math.max(3, Math.min(100, ((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100))}%` }"
                   />
+                  <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm">
+                    {{ Math.round(((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100) }}%
+                  </span>
                 </div>
               </div>
               <div class="flex items-center justify-between text-xs">
-                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.conversationsUsed', { used: store.trialQuota.conversations_used, total: store.trialQuota.conversation_limit }) }}</span>
-                <div class="w-24 h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.conversationsUsed', { remaining: store.trialQuota.conversation_limit - store.trialQuota.conversations_used, total: store.trialQuota.conversation_limit }) }}</span>
+                <div class="relative w-24 h-4 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
                   <div
                     class="h-full bg-blue-500 dark:bg-blue-400 transition-all"
-                    :style="{ width: `${Math.min(100, (store.trialQuota.conversations_used / store.trialQuota.conversation_limit) * 100)}%` }"
+                    :style="{ width: `${Math.max(3, Math.min(100, ((store.trialQuota.conversation_limit - store.trialQuota.conversations_used) / store.trialQuota.conversation_limit) * 100))}%` }"
                   />
+                  <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm">
+                    {{ Math.round(((store.trialQuota.conversation_limit - store.trialQuota.conversations_used) / store.trialQuota.conversation_limit) * 100) }}%
+                  </span>
                 </div>
               </div>
               <p v-if="store.trialQuota.exhausted" class="text-xs text-red-600 dark:text-red-400 mt-2">

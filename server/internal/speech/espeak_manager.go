@@ -1,10 +1,15 @@
 package speech
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 )
 
@@ -16,13 +21,14 @@ type EspeakLanguagePack struct {
 	Size       string `json:"size"`
 }
 
-// EspeakManager manages eSpeak-NG language packs
+// EspeakManager manages eSpeak-NG language packs and library
 type EspeakManager struct {
 	dataDir      string
 	stateFile    string
 	mu           sync.RWMutex
 	packs        map[string]*EspeakLanguagePack
 	allLanguages map[string]*EspeakLanguagePack
+	libInstalled bool
 }
 
 // NewEspeakManager creates a new eSpeak manager
@@ -70,7 +76,139 @@ func NewEspeakManager(dataDir string) *EspeakManager {
 	// Load state from disk
 	em.loadState()
 
+	// Check if library is installed
+	em.checkLibraryInstalled()
+
 	return em
+}
+
+// checkLibraryInstalled checks if eSpeak-NG library is installed
+func (em *EspeakManager) checkLibraryInstalled() {
+	libPath := em.GetLibraryPath()
+	_, err := os.Stat(libPath)
+	em.libInstalled = err == nil
+}
+
+// GetLibraryPath returns the path to the eSpeak-NG library
+func (em *EspeakManager) GetLibraryPath() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(em.dataDir, "lib", "libespeak-ng.dylib")
+	case "linux":
+		return filepath.Join(em.dataDir, "lib", "libespeak-ng.so.1")
+	case "windows":
+		return filepath.Join(em.dataDir, "lib", "espeak-ng.dll")
+	default:
+		return ""
+	}
+}
+
+// IsLibraryInstalled returns whether the eSpeak-NG library is installed
+func (em *EspeakManager) IsLibraryInstalled() bool {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+	return em.libInstalled
+}
+
+// DownloadLibrary downloads the eSpeak-NG library for the current platform
+func (em *EspeakManager) DownloadLibrary() error {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	if em.libInstalled {
+		return fmt.Errorf("library already installed")
+	}
+
+	// Get download URL based on platform
+	downloadURL := em.getLibraryDownloadURL()
+	if downloadURL == "" {
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	// Create lib directory
+	libDir := filepath.Join(em.dataDir, "lib")
+	if err := os.MkdirAll(libDir, 0755); err != nil {
+		return fmt.Errorf("failed to create lib directory: %w", err)
+	}
+
+	// Download library
+	resp, err := http.Get(downloadURL)
+	if err != nil {
+		return fmt.Errorf("failed to download library: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download library: HTTP %d", resp.StatusCode)
+	}
+
+	// Extract archive
+	if err := em.extractLibrary(resp.Body, libDir); err != nil {
+		return fmt.Errorf("failed to extract library: %w", err)
+	}
+
+	em.libInstalled = true
+	return nil
+}
+
+// getLibraryDownloadURL returns the download URL for the current platform
+func (em *EspeakManager) getLibraryDownloadURL() string {
+	// These are placeholder URLs - replace with actual download URLs
+	switch runtime.GOOS {
+	case "darwin":
+		if runtime.GOARCH == "arm64" {
+			return "https://github.com/espeak-ng/espeak-ng/releases/download/1.51/espeak-ng-1.51-macos-arm64.tar.gz"
+		}
+		return "https://github.com/espeak-ng/espeak-ng/releases/download/1.51/espeak-ng-1.51-macos-x64.tar.gz"
+	case "linux":
+		if runtime.GOARCH == "arm64" {
+			return "https://github.com/espeak-ng/espeak-ng/releases/download/1.51/espeak-ng-1.51-linux-arm64.tar.gz"
+		}
+		return "https://github.com/espeak-ng/espeak-ng/releases/download/1.51/espeak-ng-1.51-linux-x64.tar.gz"
+	case "windows":
+		return "https://github.com/espeak-ng/espeak-ng/releases/download/1.51/espeak-ng-1.51-windows-x64.zip"
+	default:
+		return ""
+	}
+}
+
+// extractLibrary extracts the library from the downloaded archive
+func (em *EspeakManager) extractLibrary(r io.Reader, destDir string) error {
+	// For tar.gz files
+	gzr, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		// Only extract library files
+		if header.Typeflag == tar.TypeReg {
+			target := filepath.Join(destDir, filepath.Base(header.Name))
+
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return err
+			}
+			f.Close()
+		}
+	}
+
+	return nil
 }
 
 // loadState loads the state from disk

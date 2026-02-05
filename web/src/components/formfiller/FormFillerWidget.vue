@@ -170,7 +170,7 @@ watch(() => state.clipboardData, (newVal) => {
   <Teleport to="body">
     <div
       v-if="state.isVisible"
-      class="fixed z-[99999] w-[280px] rounded-lg shadow-lg overflow-hidden font-sans text-[13px]
+      class="formfiller-widget fixed z-[99999] w-[280px] rounded-lg shadow-lg overflow-hidden font-sans text-[13px]
              bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
              border border-gray-200 dark:border-gray-700"
       :style="positionStyle"

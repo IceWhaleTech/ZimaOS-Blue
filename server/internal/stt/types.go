@@ -28,14 +28,6 @@ var (
 type ProviderType string
 
 const (
-	// ProviderWhisperAPI is OpenAI's Whisper API.
-	ProviderWhisperAPI ProviderType = "whisper_api"
-	// ProviderWhisperLocal is local Whisper via Ollama.
-	ProviderWhisperLocal ProviderType = "whisper_local"
-	// ProviderGoogleSTT is Google Speech-to-Text.
-	ProviderGoogleSTT ProviderType = "google_stt"
-	// ProviderAzureSTT is Azure Speech Services.
-	ProviderAzureSTT ProviderType = "azure_stt"
 	// ProviderSherpa is local Sherpa-ONNX ASR.
 	ProviderSherpa ProviderType = "sherpa"
 )

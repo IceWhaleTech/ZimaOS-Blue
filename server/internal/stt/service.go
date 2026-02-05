@@ -53,19 +53,6 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 // createProvider creates a provider based on the configuration.
 func createProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {
-	case ProviderWhisperAPI:
-		return NewWhisperAPIProvider(&WhisperAPIConfig{
-			APIKey:      cfg.APIKey,
-			BaseURL:     cfg.BaseURL,
-			Model:       cfg.Model,
-			MaxDuration: cfg.MaxDuration,
-		}), nil
-	case ProviderWhisperLocal:
-		return NewWhisperLocalProvider(&WhisperLocalConfig{
-			BaseURL:     cfg.BaseURL,
-			Model:       cfg.Model,
-			MaxDuration: cfg.MaxDuration,
-		}), nil
 	case ProviderSherpa:
 		return NewSherpaProvider(&SherpaConfig{
 			ModelDir:    cfg.ModelDir,

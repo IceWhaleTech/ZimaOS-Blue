@@ -8,6 +8,9 @@ setlocal enabledelayedexpansion
 set "PROJECT_ROOT=%~dp0"
 set "COMMAND=%~1"
 
+:: Enable CGO for eSpeak-NG static linking
+set "CGO_ENABLED=1"
+
 if "%COMMAND%"=="" set "COMMAND=start"
 
 :: Subroutines must be defined before goto (Windows batch quirk)

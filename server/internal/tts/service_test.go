@@ -355,7 +355,7 @@ func TestAudioFormats(t *testing.T) {
 }
 
 func TestProviderTypes(t *testing.T) {
-	types := []ProviderType{ProviderOpenAI, ProviderElevenLabs, ProviderPiper, ProviderEdge}
+	types := []ProviderType{ProviderOpenAI, ProviderElevenLabs, ProviderPiper, ProviderEspeakNG}
 
 	for _, pt := range types {
 		if pt == "" {

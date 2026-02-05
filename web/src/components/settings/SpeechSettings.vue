@@ -5,6 +5,9 @@ import { speechApi, type SpeechStatus, type ASRModel, type TTSModel } from '@/ap
 
 const { t } = useI18n()
 
+// Tab state
+const activeTab = ref<'asr' | 'tts'>('asr')
+
 const status = ref<SpeechStatus | null>(null)
 const asrModels = ref<ASRModel[]>([])
 const ttsModels = ref<TTSModel[]>([])
@@ -19,7 +22,15 @@ const asrReady = computed(() => status.value?.asr?.ready ?? false)
 const ttsReady = computed(() => status.value?.tts?.ready ?? false)
 const currentASRModel = computed(() => status.value?.asr?.model_type ?? '')
 const currentTTSModel = computed(() => status.value?.tts?.model_type ?? '')
-const editBeforeSend = computed(() => status.value?.asr?.edit_before_send ?? false)
+const editBeforeSend = computed({
+  get: () => status.value?.asr?.edit_before_send ?? false,
+  set: async (value: boolean) => {
+    // TODO: Add API call to update edit_before_send setting
+    if (status.value?.asr) {
+      status.value.asr.edit_before_send = value
+    }
+  }
+})
 
 // TTS Provider selection
 const selectedProvider = ref(localStorage.getItem('tts-provider') || '')
@@ -119,13 +130,38 @@ async function downloadEspeakLanguage(langCode: string) {
   }
 }
 
-function saveProvider() {
+async function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
-  // Call API to switch provider
-  speechApi.switchTTSProvider(selectedProvider.value).catch(err => {
+  // Call API to switch provider and enable
+  try {
+    await speechApi.switchTTSProvider(selectedProvider.value)
+    await fetchStatus()
+  } catch (err) {
     console.error('Failed to switch TTS provider:', err)
     error.value = t('speech.switchError')
-  })
+  }
+}
+
+// Download and enable eSpeak-NG directly
+async function downloadAndEnableEspeak() {
+  espeak_downloading.value = true
+  espeak_download_progress.value = 0
+  error.value = null
+  try {
+    // Download all language packs
+    await speechApi.downloadAllEspeakLanguages()
+    await syncEspeakLanguages()
+
+    // Enable eSpeak-NG provider
+    selectedProvider.value = 'espeak-ng'
+    await speechApi.switchTTSProvider('espeak-ng')
+    await fetchStatus()
+  } catch (e: any) {
+    console.error('Failed to download and enable eSpeak:', e)
+    error.value = t('speech.downloadError')
+  } finally {
+    espeak_downloading.value = false
+  }
 }
 
 function saveTTSModel() {
@@ -142,16 +178,27 @@ function saveASRModel() {
   }
 }
 
-function saveSpeechRate() {
+async function saveSpeechRate() {
   localStorage.setItem('tts-speech-rate', speechRate.value.toString())
+  await saveTTSConfig()
 }
 
-function saveSpeechPitch() {
+async function saveSpeechPitch() {
   localStorage.setItem('tts-speech-pitch', speechPitch.value.toString())
+  await saveTTSConfig()
 }
 
-function saveSpeechVolume() {
+async function saveSpeechVolume() {
   localStorage.setItem('tts-speech-volume', speechVolume.value.toString())
+  await saveTTSConfig()
+}
+
+async function saveTTSConfig() {
+  try {
+    await speechApi.setTTSConfig(speechRate.value, speechPitch.value, speechVolume.value)
+  } catch (err) {
+    console.error('Failed to save TTS config:', err)
+  }
 }
 
 function saveAutoPlayTTS() {
@@ -313,266 +360,206 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Speech Status Overview -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
-      <div v-if="loading" class="flex items-center justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-      </div>
-
-      <div v-else-if="status" class="space-y-6">
-        <!-- ASR Section -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="font-medium text-gray-900 dark:text-white">{{ t('speech.asrStatus') }}</h4>
-            <span
-              :class="asrReady ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'"
-              class="px-2 py-1 rounded text-xs font-medium"
-            >
-              {{ asrReady ? t('speech.ready') : t('speech.notReady') }}
-            </span>
-          </div>
-          <div v-if="currentASRModel" class="text-sm text-gray-600 dark:text-gray-400">
-            {{ t('speech.currentASRModel') }}: <span class="font-medium text-gray-900 dark:text-white">{{ currentASRModel }}</span>
-          </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            {{ t('speech.editBeforeSend') }}:
-            <span
-              :class="editBeforeSend ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-500'"
-              class="font-medium"
-            >
-              {{ editBeforeSend ? t('common.enabled') : t('common.disabled') }}
-            </span>
-          </div>
-        </div>
-
-        <div class="border-t border-gray-200 dark:border-gray-700"></div>
-
-        <!-- TTS Section -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="font-medium text-gray-900 dark:text-white">{{ t('speech.ttsStatus') }}</h4>
-            <span
-              :class="ttsReady ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'"
-              class="px-2 py-1 rounded text-xs font-medium"
-            >
-              {{ ttsReady ? t('speech.ready') : t('speech.notReady') }}
-            </span>
-          </div>
-          <div v-if="currentTTSModel" class="text-sm text-gray-600 dark:text-gray-400">
-            {{ t('speech.currentTTSModel') }}: <span class="font-medium text-gray-900 dark:text-white">{{ currentTTSModel }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="error" class="mt-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
-        {{ error }}
+    <!-- Tab Navigation -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+      <div class="flex border-b border-gray-200 dark:border-gray-700">
+        <button
+          @click="activeTab = 'asr'"
+          :class="[
+            'flex-1 px-4 py-3 text-sm font-medium transition-colors',
+            activeTab === 'asr'
+              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+          ]"
+        >
+          {{ t('speech.asrTab') }}
+        </button>
+        <button
+          @click="activeTab = 'tts'"
+          :class="[
+            'flex-1 px-4 py-3 text-sm font-medium transition-colors',
+            activeTab === 'tts'
+              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+          ]"
+        >
+          {{ t('speech.ttsTab') }}
+        </button>
       </div>
     </div>
 
-    <!-- ASR Models Section -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-        {{ t('speech.asrModels') }}
-      </h3>
+    <!-- Error Message -->
+    <div v-if="error" class="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm">
+      {{ error }}
+    </div>
 
-      <div class="space-y-4">
-        <!-- ASR Models List -->
-        <div v-if="asrDownloading" class="mb-4">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
-            <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(asrDownloadProgress) }}%</span>
-          </div>
-          <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-            <div
-              class="bg-blue-500 h-2 rounded-full transition-all duration-300"
-              :style="{ width: `${Math.floor(asrDownloadProgress)}%` }"
-            ></div>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('speech.resumeSupported') }}</p>
+    <!-- ASR Tab Content -->
+    <div v-show="activeTab === 'asr'" class="space-y-6">
+      <!-- ASR Models -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
+          {{ t('speech.asrModels') }}
+        </h4>
+        <div v-if="asrModels.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('speech.noModelsAvailable') }}
         </div>
-
-        <div class="space-y-3">
-          <div
-            v-for="model in asrModels"
-            :key="model.id"
-            class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
-          >
+        <div v-else class="space-y-2">
+          <div v-for="model in asrModels" :key="model.id"
+            class="flex items-center justify-between p-3 border rounded-lg"
+            :class="model.downloaded ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'">
             <div class="flex-1">
-              <div class="font-medium text-gray-900 dark:text-white">{{ model.name }}</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">
-                {{ model.description }} · {{ model.size }}
-              </div>
-              <div v-if="model.languages?.length" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                {{ model.languages.join(', ') }}
-              </div>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ model.description }} · {{ model.size }}</p>
             </div>
-
-            <div class="flex items-center gap-2 ml-4">
-              <template v-if="model.downloaded">
-                <button
-                  v-if="currentASRModel !== model.id"
-                  class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                  @click="switchASRModel(model.id)"
-                >
-                  {{ t('speech.use') }}
-                </button>
-                <span v-else class="px-3 py-1.5 text-sm bg-green-500/20 text-green-500 rounded-lg">
-                  {{ t('speech.inUse') }}
-                </span>
-                <button
-                  class="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                  :title="t('common.delete')"
-                  @click="deleteASRModel(model.id)"
-                >
-                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </template>
-              <button
-                v-else
-                class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
-                :disabled="asrDownloading"
-                @click="downloadASRModel(model.id)"
-              >
-                {{ t('speech.download') }}
-              </button>
-            </div>
+            <button v-if="!model.downloaded"
+              @click="downloadASRModel(model.id)"
+              :disabled="asrDownloading"
+              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 text-xs font-medium">
+              {{ asrDownloading ? t('speech.downloading') : t('common.download') }}
+            </button>
+            <span v-else class="text-green-600 dark:text-green-400 text-xs font-medium">
+              {{ t('common.downloaded') }}
+            </span>
           </div>
+        </div>
+      </div>
 
-          <div v-if="asrModels.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
-            {{ t('speech.noModels') }}
+      <!-- Edit Before Send Toggle -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.editBeforeSend') }}</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('speech.editBeforeSendDesc') }}</p>
           </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              v-model="editBeforeSend"
+              type="checkbox"
+              class="sr-only peer"
+            />
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+          </label>
         </div>
       </div>
     </div>
 
-    <!-- TTS Settings -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-        {{ t('speech.ttsSettings') }}
-      </h3>
-
-      <div class="space-y-6">
-        <!-- Provider Selection -->
-        <div>
-          <label class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-            {{ t('speech.provider') }}
+    <!-- TTS Tab Content -->
+    <div v-show="activeTab === 'tts'" class="space-y-6">
+      <!-- TTS Provider Selection -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
+          {{ t('speech.ttsProvider') }}
+        </h4>
+        <div class="space-y-2">
+          <label class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
+            :class="selectedProvider === 'edge-tts' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            <input type="radio" v-model="selectedProvider" value="edge-tts" class="sr-only" @change="saveProvider" />
+            <div class="flex-1">
+              <span class="text-sm font-medium text-gray-900 dark:text-white">Edge TTS</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.edgeTTSDesc') }}</p>
+            </div>
+            <span v-if="selectedProvider === 'edge-tts'" class="text-blue-500">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            </span>
           </label>
-          <div class="flex gap-2">
-            <select
-              v-model="selectedProvider"
-              class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-            >
-              <option value="">{{ t('common.select') }} TTS {{ t('common.provider') }}</option>
-              <option value="espeak-ng">eSpeak-NG</option>
-            </select>
-            <button
-              type="button"
-              @click="saveProvider"
-              class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700 transition-colors text-sm font-medium whitespace-nowrap"
-            >
-              {{ t('common.save') }}
-            </button>
-          </div>
+          <label class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
+            :class="selectedProvider === 'espeak-ng' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            <input type="radio" v-model="selectedProvider" value="espeak-ng" class="sr-only" @change="saveProvider" />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-gray-900 dark:text-white">eSpeak-NG</span>
+                <span class="text-xs text-gray-400">8.7 MB</span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.espeakNGDesc') }}</p>
+              <!-- Download Progress (inline) -->
+              <div v-if="espeak_downloading" class="mt-2">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                    <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(espeak_download_progress)}%` }"></div>
+                  </div>
+                  <span class="text-xs text-gray-500">{{ Math.floor(espeak_download_progress) }}%</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 ml-2">
+              <button
+                v-if="!allPacksDownloaded"
+                @click.prevent="downloadAndEnableEspeak"
+                :disabled="espeak_downloading"
+                class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+              >
+                {{ espeak_downloading ? t('speech.downloading') : t('common.download') }}
+              </button>
+              <span v-else class="text-xs text-green-600 dark:text-green-400">{{ t('common.downloaded') }}</span>
+              <span v-if="selectedProvider === 'espeak-ng'" class="text-blue-500">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              </span>
+            </div>
+          </label>
         </div>
+      </div>
 
-        <!-- eSpeak-NG Language Packs (show when eSpeak-NG is selected) -->
-        <div v-if="selectedProvider === 'espeak-ng'" class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
-            {{ t('speech.languagePacks') }}
-          </h4>
-
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            {{ t('speech.allPacksInfo', { count: 27, size: '8.5 MB' }) }}
-          </p>
-
-          <button
-            @click="downloadAllEspeakLanguages"
-            :disabled="espeak_downloading || allPacksDownloaded"
-            class="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-          >
-            {{ allPacksDownloaded ? t('speech.allDownloaded') : t('speech.downloadAll') }}
-          </button>
-
-          <div v-if="espeak_downloading" class="mt-4">
+      <!-- Voice Customization -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
+          {{ t('speech.voiceSettings') }}
+        </h4>
+        <div class="space-y-4">
+          <!-- Speech Rate -->
+          <div>
             <div class="flex items-center justify-between mb-2">
-              <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('speech.downloading') }}</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Math.floor(espeak_download_progress) }}%</span>
+              <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.rate') }}</label>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechRate.toFixed(1) }}x</span>
             </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div
-                class="bg-purple-500 h-2 rounded-full transition-all duration-300"
-                :style="{ width: `${Math.floor(espeak_download_progress)}%` }"
-              ></div>
+            <input
+              v-model.number="speechRate"
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              @change="saveSpeechRate"
+            />
+          </div>
+
+          <!-- Speech Pitch -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.pitch') }}</label>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechPitch }}</span>
             </div>
+            <input
+              v-model.number="speechPitch"
+              type="range"
+              min="-50"
+              max="50"
+              step="1"
+              class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              @change="saveSpeechPitch"
+            />
+          </div>
+
+          <!-- Speech Volume -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.volume') }}</label>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechVolume }}%</span>
+            </div>
+            <input
+              v-model.number="speechVolume"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              @change="saveSpeechVolume"
+            />
           </div>
         </div>
+      </div>
 
-        <div class="border-t border-gray-200 dark:border-gray-700"></div>
-
-        <!-- Voice Customization -->
-        <div>
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
-            {{ t('speech.voiceSettings') }}
-          </h4>
-          <div class="space-y-4">
-            <!-- Speech Rate -->
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.rate') }}</label>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechRate.toFixed(1) }}x</span>
-              </div>
-              <input
-                v-model.number="speechRate"
-                type="range"
-                min="0.5"
-                max="2.0"
-                step="0.1"
-                class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-accent"
-                @change="saveSpeechRate"
-              />
-            </div>
-
-            <!-- Speech Pitch -->
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.pitch') }}</label>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechPitch }}</span>
-              </div>
-              <input
-                v-model.number="speechPitch"
-                type="range"
-                min="-50"
-                max="50"
-                step="1"
-                class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-accent"
-                @change="saveSpeechPitch"
-              />
-            </div>
-
-            <!-- Speech Volume -->
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.volume') }}</label>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechVolume }}%</span>
-              </div>
-              <input
-                v-model.number="speechVolume"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-accent"
-                @change="saveSpeechVolume"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div class="border-t border-gray-200 dark:border-gray-700"></div>
-
-        <!-- Auto-play TTS -->
+      <!-- Auto-play TTS -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
             <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.autoPlayTTS') }}</label>
@@ -585,7 +572,7 @@ onMounted(() => {
               class="sr-only peer"
               @change="saveAutoPlayTTS"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/20 dark:peer-focus:ring-accent/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
           </label>
         </div>
       </div>

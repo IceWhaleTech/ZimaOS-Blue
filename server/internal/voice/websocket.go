@@ -257,8 +257,7 @@ func (h *WSHandler) handleAudioMessage(ctx context.Context, conn *wsConnection, 
 		})
 
 		audioResponse, contentType, err := h.service.Synthesize(ctx, &SynthesizeRequest{
-			Text:  response,
-			Voice: conn.config.Voice,
+			Text: response,
 		})
 		if err != nil {
 			conn.sendError("synthesis failed: " + err.Error())

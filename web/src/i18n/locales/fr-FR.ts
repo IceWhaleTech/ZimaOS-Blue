@@ -47,6 +47,14 @@ export default {
     done: 'Terminé',
     filterByIp: 'Filtrer par IP',
     allIps: 'Toutes les IP',
+    // Clés générales supplémentaires
+    generate: 'Générer',
+    generating: 'Génération en cours...',
+    requesting: 'Requête en cours...',
+    toolCalls: 'Appels d’outils',
+    totalTokens: 'Total de tokens',
+    upload: 'Téléverser',
+    uploading: 'Téléversement en cours...',
   },
   theme: {
     styles: {
@@ -1989,6 +1997,8 @@ export default {
     privacyWarning: 'Edge-TTS est un service en ligne. Le texte est envoyé aux serveurs Microsoft pour la synthèse.',
     downloadFailed: 'Échec du téléchargement',
     ttsProvider: 'Fournisseur TTS',
+    edgeTTSDesc: 'Voix neuronales en ligne de haute qualité (internet requis)',
+    espeakNGDesc: 'Moteur léger hors ligne (fonctionne sans internet)',
     espeakNote: 'Hors ligne - léger (~8,5 Mo)',
     sherpaNote: 'Hors ligne - haute qualité (téléchargement requis)',
   },

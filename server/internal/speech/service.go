@@ -35,6 +35,8 @@ type Service interface {
 	Initialize() error
 	// IsInitialized returns whether services have been initialized.
 	IsInitialized() bool
+	// SetTTSProvider sets the TTS provider.
+	SetTTSProvider(provider tts.Provider)
 }
 
 // service implements the Service interface.
@@ -112,9 +114,30 @@ func (s *service) Initialize() error {
 	// No direct provider creation here anymore
 
 	// Initialize ASR provider based on configuration
-	// ASR is optional and can be configured separately
 	if s.config.ASR.Provider == "" {
 		s.config.ASR.Provider = "none" // No default ASR provider
+	}
+
+	// Create Sherpa ASR provider if configured
+	if s.config.ASR.Provider == "sherpa" {
+		modelDir := s.config.ASR.ModelDir
+		if modelDir == "" {
+			modelDir = s.initConfig.DataDir + "/sherpa-asr"
+		}
+
+		modelType := s.config.ASR.Model
+		if modelType == "" {
+			modelType = "whisper-tiny" // Default model
+		}
+
+		sherpaProvider := stt.NewSherpaProvider(&stt.SherpaConfig{
+			ModelDir:    modelDir,
+			ModelType:   modelType,
+			DefaultLang: s.config.ASR.DefaultLang,
+			MaxDuration: s.config.ASR.MaxDuration,
+		})
+
+		s.asrProvider = sherpaProvider
 	}
 
 	return nil

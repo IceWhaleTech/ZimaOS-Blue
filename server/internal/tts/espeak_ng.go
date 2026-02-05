@@ -1,35 +1,314 @@
+//go:build cgo
+
 package tts
+
+/*
+#cgo CFLAGS: -I${SRCDIR}/../../../third_party/espeak-ng/src/include
+#cgo darwin LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lstdc++ -lm
+#cgo linux LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lstdc++ -lm -lpthread
+
+#include <stdlib.h>
+#include <string.h>
+#include <espeak-ng/speak_lib.h>
+
+// Global buffer for audio data
+static short* g_audio_buffer = NULL;
+static int g_audio_size = 0;
+static int g_audio_capacity = 0;
+static int g_sample_rate = 0;
+
+// Callback function for synthesis
+static int synth_callback(short *wav, int numsamples, espeak_EVENT *events) {
+    if (wav == NULL) {
+        return 0;
+    }
+
+    // Expand buffer if needed
+    int new_size = g_audio_size + numsamples;
+    if (new_size > g_audio_capacity) {
+        int new_capacity = g_audio_capacity == 0 ? 65536 : g_audio_capacity * 2;
+        while (new_capacity < new_size) {
+            new_capacity *= 2;
+        }
+        short* new_buffer = (short*)realloc(g_audio_buffer, new_capacity * sizeof(short));
+        if (new_buffer == NULL) {
+            return 1; // abort
+        }
+        g_audio_buffer = new_buffer;
+        g_audio_capacity = new_capacity;
+    }
+
+    // Copy samples
+    memcpy(g_audio_buffer + g_audio_size, wav, numsamples * sizeof(short));
+    g_audio_size += numsamples;
+
+    return 0;
+}
+
+// Initialize eSpeak-NG
+int espeak_cgo_init(const char* data_path) {
+    g_sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, data_path, 0);
+    if (g_sample_rate <= 0) {
+        return -1;
+    }
+    espeak_SetSynthCallback(synth_callback);
+    return g_sample_rate;
+}
+
+// Synthesize text to audio
+int espeak_cgo_synth(const char* text, const char* voice, int rate, int pitch, int volume) {
+    // Reset buffer
+    g_audio_size = 0;
+
+    // Set voice
+    if (espeak_SetVoiceByName(voice) != EE_OK) {
+        return -1;
+    }
+
+    // Set parameters
+    espeak_SetParameter(espeakRATE, rate, 0);
+    espeak_SetParameter(espeakPITCH, pitch, 0);
+    espeak_SetParameter(espeakVOLUME, volume, 0);
+
+    // Synthesize
+    unsigned int flags = espeakCHARS_UTF8 | espeakENDPAUSE;
+    if (espeak_Synth(text, strlen(text) + 1, 0, POS_CHARACTER, 0, flags, NULL, NULL) != EE_OK) {
+        return -2;
+    }
+
+    // Wait for completion
+    espeak_Synchronize();
+
+    return g_audio_size;
+}
+
+// Get audio buffer pointer
+short* espeak_cgo_get_audio() {
+    return g_audio_buffer;
+}
+
+// Get sample rate
+int espeak_cgo_get_sample_rate() {
+    return g_sample_rate;
+}
+
+// Cleanup
+void espeak_cgo_cleanup() {
+    if (g_audio_buffer != NULL) {
+        free(g_audio_buffer);
+        g_audio_buffer = NULL;
+    }
+    g_audio_size = 0;
+    g_audio_capacity = 0;
+    espeak_Terminate();
+}
+*/
+import "C"
 
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
+	"unsafe"
 )
-
-// EspeakNGProvider implements TTS using eSpeak-NG
-type EspeakNGProvider struct {
-	dataPath   string
-	voicePacks map[string]bool // Downloaded language packs
-	mu         sync.RWMutex
-}
 
 // EspeakNGRequest represents a synthesis request
 type EspeakNGRequest struct {
 	Text     string `json:"text"`
-	Language string `json:"language"` // e.g., "en", "zh", "ja"
-	Rate     int    `json:"rate"`     // 80-500 (words per minute)
+	Language string `json:"language"` // e.g., "en", "cmn", "ja"
+	Voice    string `json:"voice"`    // e.g., "f3", "m1", "whisper" (optional variant)
+	Rate     int    `json:"rate"`     // 80-450 (words per minute)
 	Pitch    int    `json:"pitch"`    // 0-99
-	Volume   int    `json:"volume"`   // 0-100
+	Volume   int    `json:"volume"`   // 0-200
+}
+
+// EspeakNGProvider implements TTS using eSpeak-NG via CGO static linking
+type EspeakNGProvider struct {
+	dataPath    string
+	initialized bool
+	sampleRate  int
+	mu          sync.Mutex
 }
 
 // NewEspeakNGProvider creates a new eSpeak-NG provider
 func NewEspeakNGProvider(dataPath string) *EspeakNGProvider {
-	return &EspeakNGProvider{
-		dataPath:   dataPath,
-		voicePacks: make(map[string]bool),
+	// Auto-detect data path if not provided
+	if dataPath == "" {
+		dataPath = findEspeakDataPath()
 	}
+	return &EspeakNGProvider{
+		dataPath: dataPath,
+	}
+}
+
+// findEspeakDataPath searches for espeak-ng-data in common locations
+func findEspeakDataPath() string {
+	// Check environment variable first
+	if envPath := os.Getenv("ESPEAK_DATA_PATH"); envPath != "" {
+		return envPath
+	}
+
+	// Get executable directory
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		// Check relative to executable
+		candidates := []string{
+			filepath.Join(execDir, "espeak-ng-data"),
+			filepath.Join(execDir, "..", "third_party", "espeak-ng", "build"),
+			filepath.Join(execDir, "..", "..", "third_party", "espeak-ng", "build"),
+		}
+		for _, path := range candidates {
+			if _, err := os.Stat(filepath.Join(path, "espeak-ng-data", "phontab")); err == nil {
+				return path
+			}
+			if _, err := os.Stat(filepath.Join(path, "phontab")); err == nil {
+				return filepath.Dir(path)
+			}
+		}
+	}
+
+	// Check working directory
+	if cwd, err := os.Getwd(); err == nil {
+		candidates := []string{
+			filepath.Join(cwd, "data", "espeak-ng-data"),
+			filepath.Join(cwd, "data", "espeak-ng"),
+			filepath.Join(cwd, "..", "third_party", "espeak-ng", "build"),
+			filepath.Join(cwd, "third_party", "espeak-ng", "build"),
+		}
+		for _, path := range candidates {
+			if _, err := os.Stat(filepath.Join(path, "phontab")); err == nil {
+				return filepath.Dir(path)
+			}
+			if _, err := os.Stat(filepath.Join(path, "espeak-ng-data", "phontab")); err == nil {
+				return path
+			}
+		}
+	}
+
+	// System paths
+	systemPaths := []string{
+		"/usr/share/espeak-ng-data",
+		"/usr/local/share/espeak-ng-data",
+		"/opt/homebrew/share/espeak-ng-data",
+	}
+	for _, path := range systemPaths {
+		if _, err := os.Stat(filepath.Join(path, "phontab")); err == nil {
+			return filepath.Dir(path)
+		}
+	}
+
+	return ""
+}
+
+// Initialize initializes the eSpeak-NG library
+func (p *EspeakNGProvider) Initialize() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.initialized {
+		return nil
+	}
+
+	var cDataPath *C.char
+	if p.dataPath != "" {
+		cDataPath = C.CString(p.dataPath)
+		defer C.free(unsafe.Pointer(cDataPath))
+	}
+
+	sampleRate := C.espeak_cgo_init(cDataPath)
+	if sampleRate < 0 {
+		return fmt.Errorf("failed to initialize eSpeak-NG")
+	}
+
+	p.sampleRate = int(sampleRate)
+	p.initialized = true
+	return nil
+}
+
+// Synthesize generates speech from text
+func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest) (io.ReadCloser, error) {
+	if err := p.Initialize(); err != nil {
+		return nil, err
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Validate parameters
+	if req.Text == "" {
+		return nil, fmt.Errorf("text cannot be empty")
+	}
+
+	voice := req.Language
+	if voice == "" {
+		voice = "en"
+	}
+
+	// Add voice variant if specified (e.g., "en+f3", "cmn+m1")
+	if req.Voice != "" {
+		voice = voice + "+" + req.Voice
+	}
+
+	rate := req.Rate
+	if rate < 80 {
+		rate = 80
+	}
+	if rate > 450 {
+		rate = 450
+	}
+
+	pitch := req.Pitch
+	if pitch < 0 {
+		pitch = 0
+	}
+	if pitch > 99 {
+		pitch = 99
+	}
+
+	volume := req.Volume
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 200 {
+		volume = 200
+	}
+
+	// Convert strings to C
+	cText := C.CString(req.Text)
+	defer C.free(unsafe.Pointer(cText))
+
+	cVoice := C.CString(voice)
+	defer C.free(unsafe.Pointer(cVoice))
+
+	// Synthesize
+	numSamples := C.espeak_cgo_synth(cText, cVoice, C.int(rate), C.int(pitch), C.int(volume))
+	if numSamples < 0 {
+		return nil, fmt.Errorf("synthesis failed with code: %d", numSamples)
+	}
+
+	// Get audio data
+	audioPtr := C.espeak_cgo_get_audio()
+	if audioPtr == nil || numSamples == 0 {
+		return nil, fmt.Errorf("no audio data generated")
+	}
+
+	// Copy audio data to Go slice
+	pcmData := make([]byte, int(numSamples)*2)
+	samples := unsafe.Slice((*int16)(unsafe.Pointer(audioPtr)), int(numSamples))
+	for i, sample := range samples {
+		pcmData[i*2] = byte(sample)
+		pcmData[i*2+1] = byte(sample >> 8)
+	}
+
+	// Convert to WAV
+	wavData := pcmToWav(pcmData, p.sampleRate)
+	return io.NopCloser(bytes.NewReader(wavData)), nil
 }
 
 // Name returns the provider name
@@ -45,187 +324,47 @@ func (p *EspeakNGProvider) Type() string {
 // SupportedLanguages returns list of supported languages
 func (p *EspeakNGProvider) SupportedLanguages() []string {
 	return []string{
-		"en", "es", "fr", "de", "it", "pt", "ru", "pl", "nl", "sv",
-		"no", "da", "fi", "cs", "sk", "hu", "ro", "el", "tr", "ar",
-		"he", "fa", "zh", "ja", "ko", "vi", "th",
+		"en", "cmn", "yue", "ja", "ko", "es", "fr", "de", "it", "pt",
+		"ru", "pl", "nl", "sv", "no", "da", "fi", "cs", "sk", "hu",
+		"ro", "el", "tr", "ar", "he", "fa", "vi", "th",
 	}
 }
 
-// IsLanguageAvailable checks if a language pack is downloaded
-func (p *EspeakNGProvider) IsLanguageAvailable(lang string) bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.voicePacks[lang]
-}
-
-// MarkLanguageAvailable marks a language as available
-func (p *EspeakNGProvider) MarkLanguageAvailable(lang string, available bool) {
+// Close cleans up resources
+func (p *EspeakNGProvider) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if available {
-		p.voicePacks[lang] = true
-	} else {
-		delete(p.voicePacks, lang)
+
+	if p.initialized {
+		C.espeak_cgo_cleanup()
+		p.initialized = false
 	}
 }
 
-// Synthesize generates speech from text
-func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest) (io.ReadCloser, error) {
-	if req.Text == "" {
-		return nil, fmt.Errorf("text cannot be empty")
-	}
-
-	if len(req.Text) > 5000 {
-		return nil, fmt.Errorf("text too long (max 5000 characters)")
-	}
-
-	// Validate language
-	if req.Language == "" {
-		req.Language = "en"
-	}
-
-	// Check if language is available
-	if !p.IsLanguageAvailable(req.Language) {
-		return nil, fmt.Errorf("language pack not downloaded: %s", req.Language)
-	}
-
-	// Validate parameters
-	if req.Rate < 80 {
-		req.Rate = 80
-	}
-	if req.Rate > 500 {
-		req.Rate = 500
-	}
-
-	if req.Pitch < 0 {
-		req.Pitch = 0
-	}
-	if req.Pitch > 99 {
-		req.Pitch = 99
-	}
-
-	if req.Volume < 0 {
-		req.Volume = 0
-	}
-	if req.Volume > 100 {
-		req.Volume = 100
-	}
-
-	// TODO: Implement actual eSpeak-NG synthesis using purego
-	// For now, return audio with proper duration
-	audioData := p.generateAudioWithDuration(req)
-	return io.NopCloser(bytes.NewReader(audioData)), nil
-}
-
-// generateAudioWithDuration generates WAV audio with duration based on text and rate
-func (p *EspeakNGProvider) generateAudioWithDuration(req *EspeakNGRequest) []byte {
-	// Estimate duration: average 150 words per minute
-	words := bytes.Fields([]byte(req.Text))
-	wordCount := len(words)
-
-	// Calculate duration in milliseconds
-	baseDurationMs := (wordCount * 60000) / 150
-	actualDurationMs := (baseDurationMs * 150) / req.Rate
-
-	if actualDurationMs < 500 {
-		actualDurationMs = 500
-	}
-
-	sampleRate := 22050
-	samples := (actualDurationMs * sampleRate) / 1000
-	dataSize := samples * 2
-
+// pcmToWav converts PCM data to WAV format
+func pcmToWav(pcmData []byte, sampleRate int) []byte {
+	dataSize := len(pcmData)
 	buf := new(bytes.Buffer)
-	buf.WriteString("RIFF")
-	buf.Write([]byte{byte(36 + dataSize), byte((36 + dataSize) >> 8), byte((36 + dataSize) >> 16), byte((36 + dataSize) >> 24)})
-	buf.WriteString("WAVEfmt ")
-	buf.Write([]byte{16, 0, 0, 0})
-	buf.Write([]byte{1, 0})
-	buf.Write([]byte{1, 0})
-	buf.Write([]byte{byte(sampleRate), byte(sampleRate >> 8), byte(sampleRate >> 16), byte(sampleRate >> 24)})
-	buf.Write([]byte{byte(sampleRate * 2), byte(sampleRate * 2 >> 8), byte(sampleRate * 2 >> 16), byte(sampleRate * 2 >> 24)})
-	buf.Write([]byte{2, 0})
-	buf.Write([]byte{16, 0})
-	buf.WriteString("data")
-	buf.Write([]byte{byte(dataSize), byte(dataSize >> 8), byte(dataSize >> 16), byte(dataSize >> 24)})
 
-	// Generate simple sine wave audio
-	for i := 0; i < samples; i++ {
-		buf.Write([]byte{0, 0})
-	}
+	// RIFF header
+	buf.WriteString("RIFF")
+	binary.Write(buf, binary.LittleEndian, uint32(36+dataSize))
+	buf.WriteString("WAVE")
+
+	// fmt chunk
+	buf.WriteString("fmt ")
+	binary.Write(buf, binary.LittleEndian, uint32(16))           // chunk size
+	binary.Write(buf, binary.LittleEndian, uint16(1))            // audio format (PCM)
+	binary.Write(buf, binary.LittleEndian, uint16(1))            // num channels (mono)
+	binary.Write(buf, binary.LittleEndian, uint32(sampleRate))   // sample rate
+	binary.Write(buf, binary.LittleEndian, uint32(sampleRate*2)) // byte rate
+	binary.Write(buf, binary.LittleEndian, uint16(2))            // block align
+	binary.Write(buf, binary.LittleEndian, uint16(16))           // bits per sample
+
+	// data chunk
+	buf.WriteString("data")
+	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
+	buf.Write(pcmData)
 
 	return buf.Bytes()
-}
-
-// GetAvailableLanguages returns list of downloaded language packs
-func (p *EspeakNGProvider) GetAvailableLanguages() []string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	langs := make([]string, 0, len(p.voicePacks))
-	for lang := range p.voicePacks {
-		langs = append(langs, lang)
-	}
-	return langs
-}
-
-// GetLanguagePackInfo returns info about a language pack
-type LanguagePackInfo struct {
-	Language    string `json:"language"`
-	Name        string `json:"name"`
-	SizeKB      int    `json:"size_kb"`
-	Downloaded  bool   `json:"downloaded"`
-	Downloading bool   `json:"downloading"`
-}
-
-// GetAllLanguagePackInfo returns info for all supported languages
-func (p *EspeakNGProvider) GetAllLanguagePackInfo() []LanguagePackInfo {
-	langNames := map[string]string{
-		"en": "English", "es": "Spanish", "fr": "French", "de": "German",
-		"it": "Italian", "pt": "Portuguese", "ru": "Russian", "pl": "Polish",
-		"nl": "Dutch", "sv": "Swedish", "no": "Norwegian", "da": "Danish",
-		"fi": "Finnish", "cs": "Czech", "sk": "Slovak", "hu": "Hungarian",
-		"ro": "Romanian", "el": "Greek", "tr": "Turkish", "ar": "Arabic",
-		"he": "Hebrew", "fa": "Persian", "zh": "Chinese", "ja": "Japanese",
-		"ko": "Korean", "vi": "Vietnamese", "th": "Thai",
-	}
-
-	langSizes := map[string]int{
-		"en": 250, "es": 280, "fr": 300, "de": 320, "it": 290, "pt": 310,
-		"ru": 350, "pl": 320, "nl": 300, "sv": 280, "no": 270, "da": 260,
-		"fi": 290, "cs": 310, "sk": 300, "hu": 330, "ro": 310, "el": 320,
-		"tr": 340, "ar": 380, "he": 350, "fa": 360, "zh": 400, "ja": 420,
-		"ko": 410, "vi": 330, "th": 350,
-	}
-
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	infos := make([]LanguagePackInfo, 0)
-	for _, lang := range p.SupportedLanguages() {
-		infos = append(infos, LanguagePackInfo{
-			Language:   lang,
-			Name:       langNames[lang],
-			SizeKB:     langSizes[lang],
-			Downloaded: p.voicePacks[lang],
-		})
-	}
-	return infos
-}
-
-// GetTotalLanguagePackSize returns the total size of all language packs in KB
-func (p *EspeakNGProvider) GetTotalLanguagePackSize() int {
-	langSizes := map[string]int{
-		"en": 250, "es": 280, "fr": 300, "de": 320, "it": 290, "pt": 310,
-		"ru": 350, "pl": 320, "nl": 300, "sv": 280, "no": 270, "da": 260,
-		"fi": 290, "cs": 310, "sk": 300, "hu": 330, "ro": 310, "el": 320,
-		"tr": 340, "ar": 380, "he": 350, "fa": 360, "zh": 400, "ja": 420,
-		"ko": 410, "vi": 330, "th": 350,
-	}
-
-	total := 0
-	for _, size := range langSizes {
-		total += size
-	}
-	return total
 }

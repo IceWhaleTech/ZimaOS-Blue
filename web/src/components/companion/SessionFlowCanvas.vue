@@ -457,10 +457,13 @@ onUnmounted(() => {
   }
 })
 
-// Watch for changes
+// Watch for changes - optimized without deep watch for better performance
 watch([() => props.events, () => props.selectedEventId], () => {
-  nextTick(draw)
-}, { deep: true })
+  // Use requestAnimationFrame for smoother rendering
+  requestAnimationFrame(() => {
+    nextTick(draw)
+  })
+})
 
 // Auto scroll to bottom when new events arrive
 watch(() => props.events.length, (newLen, oldLen) => {
@@ -573,7 +576,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
         <div>{{ t('companion.flow.type') }}: {{ t(`companion.eventType.${hoveredNode.event_type}`) }}</div>
         <div>{{ t('companion.flow.time') }}: {{ formatTime(hoveredNode.timestamp) }}</div>
         <div v-if="hoveredNode.duration">{{ t('companion.flow.duration') }}: {{ formatDuration(hoveredNode.duration) }}</div>
-        <div>{{ t('companion.flow.status') }}: {{ t(`companion.status.${hoveredNode.status}`) }}</div>
+        <div v-if="hoveredNode.status">{{ t('companion.flow.status') }}: {{ t(`companion.status.${hoveredNode.status}`, hoveredNode.status) }}</div>
       </div>
     </div>
   </div>

@@ -2509,6 +2509,8 @@ export default {
     privacyWarning: 'Edge-TTS はオンラインサービスです。テキストは Microsoft サーバーに送信されて合成されます。',
     downloadFailed: 'ダウンロードに失敗しました',
     ttsProvider: 'TTS プロバイダー',
+    edgeTTSDesc: '高品質オンラインニューラル音声（インターネット必要）',
+    espeakNGDesc: 'オフライン軽量エンジン（インターネット不要）',
     espeakNote: 'オフライン - 軽量（約 8.5MB）',
     sherpaNote: 'オフライン - 高品質（ダウンロードが必要）',
   },

@@ -1470,14 +1470,10 @@ func (h *Handler) GetLocationStats(c echo.Context) error {
 func (h *Handler) GetTrialQuota(c echo.Context) error {
 	if h.pool == nil || h.pool.TrialQuotaManager == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"tokens_used":         0,
-			"tokens_remaining":    TrialTokenLimit,
-			"token_limit":         TrialTokenLimit,
-			"conversations_used":  0,
-			"conversations_left":  TrialConversationLimit,
-			"conversation_limit":  TrialConversationLimit,
-			"exhausted":           false,
-			"exhausted_by_tokens": false,
+			"tokens_used":      0,
+			"tokens_remaining": TrialTokenLimit,
+			"token_limit":      TrialTokenLimit,
+			"exhausted":        false,
 		})
 	}
 

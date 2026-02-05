@@ -10,6 +10,9 @@ import (
 type service struct {
 	providers       map[ProviderType]Provider
 	defaultProvider ProviderType
+	speed           float32
+	pitch           float32
+	volume          float32
 	mu              sync.RWMutex
 }
 
@@ -24,6 +27,9 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 	s := &service{
 		providers:       make(map[ProviderType]Provider),
 		defaultProvider: cfg.DefaultProvider,
+		speed:           1.0,
+		pitch:           0,
+		volume:          100,
 	}
 
 	// Initialize providers
@@ -53,14 +59,14 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 // createProvider creates a provider based on the configuration.
 func createProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {
-	case ProviderOpenAI:
-		return NewOpenAIProvider(&OpenAIConfig{
-			APIKey:        cfg.APIKey,
-			BaseURL:       cfg.BaseURL,
-			DefaultVoice:  cfg.DefaultVoice,
-			DefaultFormat: cfg.DefaultFormat,
-			MaxTextLength: cfg.MaxTextLength,
-		}), nil
+	case ProviderEspeakNG:
+		dataPath := "./data"
+		if cfg.BaseURL != "" {
+			dataPath = cfg.BaseURL
+		}
+		return NewEspeakNGAdapter(dataPath), nil
+	case ProviderEdge:
+		return NewEdgeTTSProvider(), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}
@@ -159,4 +165,31 @@ func (s *service) SetDefaultProvider(providerType ProviderType) error {
 
 	s.defaultProvider = providerType
 	return nil
+}
+
+// GetProvider returns the provider instance for a given provider type.
+func (s *service) GetProvider(providerType ProviderType) Provider {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.providers[providerType]
+}
+
+// GetConfig returns the current TTS configuration (speed, pitch, volume).
+func (s *service) GetConfig() (speed, pitch, volume float32) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.speed, s.pitch, s.volume
+}
+
+// SetConfig sets the TTS configuration (speed, pitch, volume).
+func (s *service) SetConfig(speed, pitch, volume float32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if speed > 0 {
+		s.speed = speed
+	}
+	s.pitch = pitch
+	if volume >= 0 {
+		s.volume = volume
+	}
 }

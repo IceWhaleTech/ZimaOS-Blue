@@ -98,14 +98,8 @@ type TranscribeResponse struct {
 type SynthesizeRequest struct {
 	// Text is the text to synthesize.
 	Text string `json:"text"`
-	// Voice is the voice ID.
-	Voice string `json:"voice,omitempty"`
 	// Format is the output format.
 	Format string `json:"format,omitempty"`
-	// Speed is the speech speed.
-	Speed float32 `json:"speed,omitempty"`
-	// Provider is the TTS provider (espeak-ng, edge-tts, sherpa-onnx).
-	Provider string `json:"provider,omitempty"`
 }
 
 // VoiceConfig represents voice configuration.

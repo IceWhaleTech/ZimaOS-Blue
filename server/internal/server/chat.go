@@ -891,7 +891,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Try to get from cache first
 	var messages []memory.Message
-	var err error
 	cachedMessages, cacheHit := h.conversationCache.Get(convID)
 	if cacheHit {
 		messages = cachedMessages

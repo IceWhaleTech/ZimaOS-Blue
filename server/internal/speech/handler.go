@@ -25,6 +25,11 @@ func NewHandler(svc Service) *Handler {
 	}
 }
 
+// GetEspeakManager returns the EspeakManager instance.
+func (h *Handler) GetEspeakManager() *EspeakManager {
+	return h.espeakManager
+}
+
 // RegisterRoutes registers unified speech management routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Lazy initialization endpoint
@@ -50,6 +55,8 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	tts.POST("/switch", h.SwitchTTSModel)
 	tts.DELETE("/model", h.DeleteTTSModel)
 	tts.POST("/provider", h.SwitchTTSProvider)
+	tts.GET("/config", h.GetTTSConfig)
+	tts.POST("/config", h.SetTTSConfig)
 
 	// Transcription with edit support
 	g.POST("/transcribe", h.Transcribe)
@@ -61,6 +68,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	espeak.POST("/download", h.DownloadEspeakLanguage)
 	espeak.POST("/download-all", h.DownloadAllEspeakLanguages)
 	espeak.DELETE("/language", h.DeleteEspeakLanguage)
+
+	// eSpeak-NG library management
+	espeak.GET("/library/status", h.GetEspeakLibraryStatus)
+	espeak.POST("/library/download", h.DownloadEspeakLibrary)
 }
 
 // GetStatus returns the unified speech status.
@@ -116,22 +127,22 @@ func (h *Handler) GetASRStatus(c echo.Context) error {
 // ListASRModels returns available ASR models.
 func (h *Handler) ListASRModels(c echo.Context) error {
 	provider := h.service.GetASRProvider()
-	if provider == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"models": []interface{}{},
-		})
+
+	// If provider is initialized, use its ListModels method (includes download status)
+	if provider != nil {
+		if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
+			models := lister.ListModels()
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"models": models,
+			})
+		}
 	}
 
-	// For providers that support model listing
-	if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
-		models := lister.ListModels()
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"models": models,
-		})
-	}
-
+	// If provider is not initialized, return available models from metadata
+	// This allows users to see what models are available for download
+	models := stt.GetAvailableASRModels()
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": []interface{}{},
+		"models": models,
 	})
 }
 
@@ -421,10 +432,68 @@ func (h *Handler) SwitchTTSProvider(c echo.Context) error {
 		})
 	}
 
+	// Update the speech service's TTS provider
+	provider := ttsSvc.GetProvider(tts.ProviderType(req.Provider))
+	if provider != nil {
+		h.service.SetTTSProvider(provider)
+	}
+
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":   "switched",
 		"message":  "Switched to provider: " + req.Provider,
 		"provider": req.Provider,
+	})
+}
+
+// TTSConfigRequest represents a TTS config update request.
+type TTSConfigRequest struct {
+	Speed  float32 `json:"speed"`
+	Pitch  float32 `json:"pitch"`
+	Volume float32 `json:"volume"`
+}
+
+// GetTTSConfig returns the current TTS configuration.
+func (h *Handler) GetTTSConfig(c echo.Context) error {
+	ttsSvc := h.service.GetTTSService()
+	if ttsSvc == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"speed":  1.0,
+			"pitch":  0.0,
+			"volume": 100.0,
+		})
+	}
+
+	speed, pitch, volume := ttsSvc.GetConfig()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"speed":  speed,
+		"pitch":  pitch,
+		"volume": volume,
+	})
+}
+
+// SetTTSConfig updates the TTS configuration.
+func (h *Handler) SetTTSConfig(c echo.Context) error {
+	var req TTSConfigRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request",
+		})
+	}
+
+	ttsSvc := h.service.GetTTSService()
+	if ttsSvc == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "TTS service not available",
+		})
+	}
+
+	ttsSvc.SetConfig(req.Speed, req.Pitch, req.Volume)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status": "updated",
+		"speed":  req.Speed,
+		"pitch":  req.Pitch,
+		"volume": req.Volume,
 	})
 }
 
@@ -453,6 +522,9 @@ func (h *Handler) DownloadEspeakLanguage(c echo.Context) error {
 		})
 	}
 
+	// Note: With static CGO linking, all languages are built-in
+	// No need to mark languages as available dynamically
+
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":  "downloaded",
 		"message": "Language pack downloaded: " + req.LangCode,
@@ -466,6 +538,9 @@ func (h *Handler) DownloadAllEspeakLanguages(c echo.Context) error {
 			"error": err.Error(),
 		})
 	}
+
+	// Note: With static CGO linking, all languages are built-in
+	// No need to mark languages as available dynamically
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":  "downloaded",
@@ -491,5 +566,28 @@ func (h *Handler) DeleteEspeakLanguage(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":  "deleted",
 		"message": "Language pack deleted: " + langCode,
+	})
+}
+
+// GetEspeakLibraryStatus returns the eSpeak-NG library installation status.
+func (h *Handler) GetEspeakLibraryStatus(c echo.Context) error {
+	installed := h.espeakManager.IsLibraryInstalled()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"installed": installed,
+		"path":      h.espeakManager.GetLibraryPath(),
+	})
+}
+
+// DownloadEspeakLibrary downloads the eSpeak-NG library.
+func (h *Handler) DownloadEspeakLibrary(c echo.Context) error {
+	if err := h.espeakManager.DownloadLibrary(); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloaded",
+		"message": "eSpeak-NG library downloaded successfully",
 	})
 }

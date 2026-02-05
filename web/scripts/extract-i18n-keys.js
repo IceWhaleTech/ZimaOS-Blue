@@ -20,7 +20,8 @@ function walk(dir, exts, exclude, files = []) {
 const srcDir = path.join(__dirname, '..', 'src')
 const files = walk(srcDir, ['.vue', '.ts', '.tsx'], ['auto-imports.d.ts', 'i18n/locales'])
 const used = new Set()
-const re = /t\s*\(\s*['"]([a-zA-Z][a-zA-Z0-9_.]*)['"]/g
+// Match i18n usage: t('foo.bar') but avoid false positives like impor[t]('x')
+const re = /\bt\s*\(\s*['"]([a-zA-Z][a-zA-Z0-9_.]*)['"]/g
 for (const file of files) {
   const s = fs.readFileSync(file, 'utf8')
   let m
@@ -35,9 +36,12 @@ function extractEnKeys(content) {
   for (const line of lines) {
     const trimmed = line.trimStart()
     const indent = line.length - trimmed.length
-    const keyMatch = trimmed.match(/^([a-zA-Z][a-zA-Z0-9]*)\s*:\s*(\{|['"`]|$)/)
+    // Support unquoted keys with underscores, and quoted keys (e.g. 'session_start')
+    const unquoted = trimmed.match(/^([a-zA-Z][a-zA-Z0-9_]*)\s*:\s*(\{|['"`]|$)/)
+    const quoted = trimmed.match(/^['"]([^'"]+)['"]\s*:\s*(\{|['"`]|$)/)
+    const keyMatch = unquoted || quoted
     if (!keyMatch) continue
-    const key = keyMatch[1]
+    const key = unquoted ? unquoted[1] : quoted[1]
     const isObject = keyMatch[2] === '{'
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop()
     const prefix = stack.length ? stack.map(s => s.key).join('.') + '.' : ''
@@ -86,3 +90,11 @@ fs.writeFileSync(
 )
 console.log('\nUnused keys list written to scripts/unused-i18n-keys.txt')
 console.log('Note: Do not remove keys without auditing - many are used dynamically (e.g. errors.http*, settings.tab.*, system.*, service.*, companion.*).')
+
+// Write missing list to file for review/fix
+fs.writeFileSync(
+  path.join(__dirname, 'missing-i18n-keys.txt'),
+  missing.join('\n'),
+  'utf8'
+)
+console.log('Missing keys list written to scripts/missing-i18n-keys.txt')

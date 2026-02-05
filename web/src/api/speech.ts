@@ -136,6 +136,12 @@ export const speechApi = {
   switchTTSProvider: (provider: string) =>
     api.post<{ status: string; message: string; provider: string }>('/speech/tts/provider', { provider }),
 
+  getTTSConfig: () =>
+    api.get<{ speed: number; pitch: number; volume: number }>('/speech/tts/config'),
+
+  setTTSConfig: (speed: number, pitch: number, volume: number) =>
+    api.post<{ status: string; speed: number; pitch: number; volume: number }>('/speech/tts/config', { speed, pitch, volume }),
+
   // Transcription with edit support
   transcribe: async (audio: Blob, format: string, language?: string): Promise<TranscriptionResult> => {
     const formData = new FormData()
@@ -171,6 +177,9 @@ export const speechApi = {
 
   downloadEspeakLanguage: (langCode: string) =>
     api.post<{ status: string; message: string }>('/speech/espeak/download', { lang_code: langCode }),
+
+  downloadAllEspeakLanguages: () =>
+    api.post<{ status: string; message: string }>('/speech/espeak/download-all'),
 
   deleteEspeakLanguage: (langCode: string) =>
     api.delete<{ status: string; message: string }>(`/speech/espeak/language?lang_code=${langCode}`),

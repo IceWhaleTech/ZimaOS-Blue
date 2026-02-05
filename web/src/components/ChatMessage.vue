@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
 import { cardActionApi } from '@/api/chat'
@@ -9,7 +9,7 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
 import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
-import { voiceApi, ttsAudioManager } from '@/api/voice'
+import { voiceApi, ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { detectLanguage, detectVoiceForText } from '@/utils/language'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
@@ -43,6 +43,11 @@ const hasAttachments = computed(() => isUser.value && props.message.attachments 
 
 // Copy button state
 const copyState = ref<'idle' | 'copied'>('idle')
+
+// Mobile long-press state
+const showMobileActions = ref(false)
+const longPressTimer = ref<number | null>(null)
+const longPressThreshold = 500 // ms
 
 // TTS playback state
 const isSpeaking = ref(false)
@@ -219,6 +224,86 @@ onUnmounted(() => {
   // Stop any playing audio for this message
   if (isSpeaking.value) {
     ttsAudioManager.stop()
+    streamingTTSManager.stop()
+  }
+})
+
+// Auto-play TTS - supports streaming mode (play while receiving)
+const hasAutoPlayed = ref(false)
+const lastPlayedLength = ref(0)
+
+// Watch for content changes during streaming to play incrementally
+watch(() => props.message.content, async (newContent, oldContent) => {
+  if (!props.isStreaming || !isAssistant.value) return
+
+  const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
+  if (!autoPlayEnabled) return
+
+  // Extract clean text
+  const textContent = newContent
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]+`/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[#*_~]/g, '')
+    .trim()
+
+  // Find new complete sentences
+  const sentences = textContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
+  const completeSentences = sentences.join('')
+
+  // Play new sentences that haven't been played yet
+  if (completeSentences.length > lastPlayedLength.value) {
+    const newText = completeSentences.slice(lastPlayedLength.value)
+    lastPlayedLength.value = completeSentences.length
+
+    if (newText.trim()) {
+      isSpeaking.value = true
+      hasAutoPlayed.value = true
+      await streamingTTSManager.streamText(newText)
+      isSpeaking.value = false
+    }
+  }
+})
+
+// Play remaining text when streaming completes
+watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
+  if (wasStreaming && !isStreaming && isAssistant.value) {
+    const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
+    if (!autoPlayEnabled) return
+
+    // Extract text content
+    const textContent = props.message.content
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]+`/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[#*_~]/g, '')
+      .trim()
+
+    if (!textContent) return
+
+    // If we already played during streaming, only play remaining incomplete sentence
+    if (hasAutoPlayed.value) {
+      const sentences = textContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
+      const completeSentences = sentences.join('')
+      const remaining = textContent.slice(completeSentences.length).trim()
+
+      if (remaining) {
+        isSpeaking.value = true
+        const provider = localStorage.getItem('tts-provider') || 'edge-tts'
+        await playTTSAudio(remaining, provider)
+        isSpeaking.value = false
+      }
+    } else {
+      // Play full text if nothing was played during streaming
+      hasAutoPlayed.value = true
+      isSpeaking.value = true
+      const provider = localStorage.getItem('tts-provider') || 'edge-tts'
+      await playTTSAudio(textContent, provider)
+      isSpeaking.value = false
+    }
+
+    // Reset for next message
+    lastPlayedLength.value = 0
   }
 })
 
@@ -554,6 +639,49 @@ function getFileIcon(filename: string): string {
 function closeAttachmentPreview() {
   previewAttachment.value = null
 }
+
+// Mobile touch handlers for long-press
+function handleTouchStart(event: TouchEvent) {
+  // Start long-press timer
+  longPressTimer.value = window.setTimeout(() => {
+    showMobileActions.value = true
+    // Haptic feedback if available
+    if ('vibrate' in navigator) {
+      navigator.vibrate(50)
+    }
+  }, longPressThreshold)
+}
+
+function handleTouchEnd() {
+  // Cancel long-press timer if touch ends before threshold
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+}
+
+function handleTouchMove() {
+  // Cancel long-press if user moves finger (scrolling)
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+}
+
+function closeMobileActions() {
+  showMobileActions.value = false
+}
+
+async function handleMobileCopy() {
+  await handleCopyMessage()
+  closeMobileActions()
+}
+
+async function handleMobileTTS() {
+  await handlePlayTTS()
+  closeMobileActions()
+}
+
 </script>
 
 <template>
@@ -565,6 +693,9 @@ function closeAttachmentPreview() {
     }"
     @contextmenu="handleContextMenu"
     @click="handleClick"
+    @touchstart="handleTouchStart"
+    @touchend="handleTouchEnd"
+    @touchmove="handleTouchMove"
   >
     <!-- Selection checkbox in multi-select mode (absolute left) -->
     <div
@@ -848,6 +979,61 @@ function closeAttachmentPreview() {
       @downloaded="handlePlayTTS"
     />
 
+    <!-- Mobile Action Menu (Bottom Sheet) -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showMobileActions"
+          class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:hidden"
+          @click="closeMobileActions"
+        >
+          <div
+            class="w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-xl transform transition-transform"
+            @click.stop
+          >
+            <!-- Handle bar -->
+            <div class="flex justify-center pt-3 pb-2">
+              <div class="w-12 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+            </div>
+
+            <!-- Actions -->
+            <div class="px-4 pb-6">
+              <!-- Copy action -->
+              <button
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                @click="handleMobileCopy"
+              >
+                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.copyMessage') }}</span>
+              </button>
+
+              <!-- TTS action (only for assistant messages) -->
+              <button
+                v-if="isAssistant"
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                @click="handleMobileTTS"
+              >
+                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{ isSpeaking ? t('chat.stopTTS') : t('chat.playTTS') }}</span>
+              </button>
+
+              <!-- Cancel button -->
+              <button
+                class="w-full mt-2 px-4 py-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                @click="closeMobileActions"
+              >
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('common.cancel') }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Language Pack Download Prompt -->
     <Teleport to="body">
       <div
@@ -896,6 +1082,30 @@ function closeAttachmentPreview() {
 [data-theme="light"] .assistant-message {
   background: #F8FAFC;
   border: 1px solid #E2E8F0;
+}
+
+/* Fade transition for mobile action menu */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.fade-enter-active > div,
+.fade-leave-active > div {
+  transition: transform 0.3s ease;
+}
+
+.fade-enter-from > div {
+  transform: translateY(100%);
+}
+
+.fade-leave-to > div {
+  transform: translateY(100%);
 }
 
 .prose :deep(pre) {

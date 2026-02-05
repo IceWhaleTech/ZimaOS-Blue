@@ -150,6 +150,7 @@ func (s *service) Transcribe(ctx context.Context, req *TranscribeRequest, audio 
 }
 
 // Synthesize synthesizes text to speech.
+// Provider, voice, and speed are determined internally based on text content.
 func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byte, string, error) {
 	if req.Text == "" {
 		return nil, "", fmt.Errorf("text is required")
@@ -159,17 +160,8 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 		return nil, "", fmt.Errorf("TTS service not configured")
 	}
 
-	// Generate cache key
-	cacheKey := fmt.Sprintf("%s:%s:%s:%s:%.1f", req.Text, req.Voice, req.Format, req.Provider, req.Speed)
-
-	// Check cache
-	s.ttsCacheMu.RLock()
-	if entry, exists := s.ttsCache[cacheKey]; exists {
-		s.ttsCacheMu.RUnlock()
-		// Cache hit - return cached result
-		return entry.audio, entry.contentType, nil
-	}
-	s.ttsCacheMu.RUnlock()
+	// Get TTS config (speed, pitch, volume)
+	speed, pitch, volume := s.ttsService.GetConfig()
 
 	// Determine format
 	format := tts.AudioFormat(req.Format)
@@ -177,37 +169,27 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 		format = tts.FormatMP3
 	}
 
-	// Create TTS request
+	// Generate cache key including config settings
+	cacheKey := fmt.Sprintf("%s:%s:%.2f:%.2f:%.2f", req.Text, format, speed, pitch, volume)
+
+	// Check cache
+	s.ttsCacheMu.RLock()
+	if entry, exists := s.ttsCache[cacheKey]; exists {
+		s.ttsCacheMu.RUnlock()
+		return entry.audio, entry.contentType, nil
+	}
+	s.ttsCacheMu.RUnlock()
+
+	// Create TTS request with config settings
 	ttsReq := &tts.SynthesizeRequest{
 		Text:   req.Text,
-		Voice:  req.Voice,
 		Format: format,
-		Speed:  req.Speed,
+		Speed:  speed,
+		Pitch:  pitch,
+		Volume: volume,
 	}
 
-	// If provider specified, try to use it
-	if req.Provider != "" {
-		result, err := s.ttsService.SynthesizeWithProvider(ctx, tts.ProviderType(req.Provider), ttsReq)
-		if err == nil {
-			defer result.Audio.Close()
-			audioData, err := io.ReadAll(result.Audio)
-			if err != nil {
-				return nil, "", fmt.Errorf("failed to read audio: %w", err)
-			}
-			// Cache the result
-			s.ttsCacheMu.Lock()
-			s.ttsCache[cacheKey] = &ttsCacheEntry{
-				audio:       audioData,
-				contentType: result.ContentType,
-				createdAt:   time.Now(),
-			}
-			s.ttsCacheMu.Unlock()
-			return audioData, result.ContentType, nil
-		}
-		// If specified provider fails, fall through to default
-	}
-
-	// Use default provider
+	// Use default provider (Edge TTS with language detection)
 	result, err := s.ttsService.Synthesize(ctx, ttsReq)
 	if err != nil {
 		return nil, "", fmt.Errorf("synthesis failed: %w", err)

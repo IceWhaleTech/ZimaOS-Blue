@@ -2419,6 +2419,8 @@ export default {
     privacyWarning: 'Edge-TTS는 온라인 서비스입니다. 텍스트가 Microsoft 서버로 전송되어 합성됩니다.',
     downloadFailed: '다운로드에 실패했습니다',
     ttsProvider: 'TTS 공급자',
+    edgeTTSDesc: '고품질 온라인 신경망 음성 (인터넷 필요)',
+    espeakNGDesc: '오프라인 경량 엔진 (인터넷 없이 작동)',
     espeakNote: '오프라인 - 경량 (~8.5MB)',
     sherpaNote: '오프라인 - 고품질 (다운로드 필요)',
   },

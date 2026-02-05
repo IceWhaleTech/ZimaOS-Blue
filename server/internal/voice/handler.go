@@ -27,6 +27,7 @@ func (h *Handler) Service() Service {
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/transcribe", h.Transcribe)
 	g.POST("/synthesize", h.Synthesize)
+	g.GET("/synthesize/stream", h.SynthesizeStream)
 	g.GET("/voices", h.ListVoices)
 	g.POST("/sessions", h.CreateSession)
 	g.GET("/sessions/:id", h.GetSession)
@@ -108,11 +109,8 @@ func (h *Handler) Transcribe(c echo.Context) error {
 
 // SynthesizeRequest represents the synthesize API request.
 type synthesizeAPIRequest struct {
-	Text     string  `json:"text"`
-	Voice    string  `json:"voice"`
-	Format   string  `json:"format"`
-	Speed    float32 `json:"speed"`
-	Provider string  `json:"provider"`
+	Text   string `json:"text"`
+	Format string `json:"format"`
 }
 
 // Synthesize handles text-to-speech requests.
@@ -131,13 +129,10 @@ func (h *Handler) Synthesize(c echo.Context) error {
 		req.Format = "mp3"
 	}
 
-	// Synthesize
+	// Synthesize - voice/speed/provider are determined internally
 	audioData, contentType, err := h.service.Synthesize(c.Request().Context(), &SynthesizeRequest{
-		Text:     req.Text,
-		Voice:    req.Voice,
-		Format:   req.Format,
-		Speed:    req.Speed,
-		Provider: req.Provider,
+		Text:   req.Text,
+		Format: req.Format,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -154,6 +149,48 @@ func (h *Handler) Synthesize(c echo.Context) error {
 
 	// Return audio directly
 	return c.Blob(http.StatusOK, contentType, audioData)
+}
+
+// SynthesizeStream handles streaming text-to-speech requests via SSE.
+// Client sends sentences as query params, server streams back audio chunks.
+func (h *Handler) SynthesizeStream(c echo.Context) error {
+	text := c.QueryParam("text")
+	if text == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "text is required")
+	}
+
+	format := c.QueryParam("format")
+	if format == "" {
+		format = "mp3"
+	}
+
+	// Set SSE headers
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	c.Response().WriteHeader(http.StatusOK)
+
+	// Synthesize audio
+	audioData, contentType, err := h.service.Synthesize(c.Request().Context(), &SynthesizeRequest{
+		Text:   text,
+		Format: format,
+	})
+	if err != nil {
+		c.Response().Write([]byte("event: error\ndata: " + err.Error() + "\n\n"))
+		c.Response().Flush()
+		return nil
+	}
+
+	// Send audio as base64 in SSE event
+	audioBase64 := base64.StdEncoding.EncodeToString(audioData)
+	c.Response().Write([]byte("event: audio\ndata: {\"audio\":\"" + audioBase64 + "\",\"content_type\":\"" + contentType + "\"}\n\n"))
+	c.Response().Flush()
+
+	// Send done event
+	c.Response().Write([]byte("event: done\ndata: {}\n\n"))
+	c.Response().Flush()
+
+	return nil
 }
 
 // ListVoices returns available TTS voices.
