@@ -9,6 +9,7 @@ export interface ASRModel {
   size: string
   streaming: boolean
   downloaded: boolean
+  active: boolean
 }
 
 // TTS Model types
@@ -112,6 +113,9 @@ export const speechApi = {
 
   downloadASRModel: (modelType: string) =>
     api.post<{ status: string; message: string }>('/speech/asr/download', { model_type: modelType }),
+
+  cancelASRDownload: () =>
+    api.post<{ status: string; message: string }>('/speech/asr/download/cancel'),
 
   switchASRModel: (modelType: string) =>
     api.post<{ status: string; message: string }>('/speech/asr/switch', { model_type: modelType }),

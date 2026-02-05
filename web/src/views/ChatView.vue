@@ -560,10 +560,10 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <!-- Trial Quota Banner (only show when not exhausted) -->
+      <!-- Trial Quota Banner (only show when not exhausted and user hasn't configured their own providers) -->
       <Transition name="slide-fade">
         <div
-          v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted"
+          v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted && !providerPoolStore.hasUserConfiguredProviders"
           class="px-4 py-2 flex items-center justify-between text-sm border-b bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
           :class="{ 'trial-quota-pulse': tokenAnimating }"
         >
@@ -653,7 +653,7 @@ onUnmounted(() => {
           <!-- Preset Questions -->
           <PresetQuestions @select="handlePresetQuestionSelect" />
 
-          <div v-if="!isMobile" class="mt-8 text-xs text-gray-400 dark:text-slate-500">
+          <div v-if="!isMobile" class="mt-8 text-xs text-gray-400 dark:text-slate-500 text-center">
             <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
             <p class="space-x-4">
               <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{ isMac ? '⌘N' : 'Alt+N' }}</span> {{ t('chat.newChatShortcut') }}
@@ -713,7 +713,7 @@ onUnmounted(() => {
               <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span class="break-all">{{ chatStore.streamError }}</span>
+              <span class="break-all">{{ chatStore.streamError === 'NO_STREAM_DATA' ? t('chat.noStreamData') : chatStore.streamError }}</span>
               <button
                 class="ml-2 text-gray-400 hover:text-gray-300 cursor-pointer"
                 @click="chatStore.clearStreamError"

@@ -292,6 +292,9 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 
 	if isStreamingResponse(resp) || isStreaming {
 		w.Header().Set("X-Cache", "BYPASS")
+		if ph.cache != nil {
+			ph.cache.RecordBypass()
+		}
 		w.WriteHeader(resp.StatusCode)
 		ph.copyStreamingResponse(w, resp)
 		return
@@ -317,6 +320,9 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 		w.Header().Set("X-Cache", "MISS")
 	} else {
 		w.Header().Set("X-Cache", "BYPASS")
+		if ph.cache != nil {
+			ph.cache.RecordBypass()
+		}
 	}
 
 	w.WriteHeader(resp.StatusCode)

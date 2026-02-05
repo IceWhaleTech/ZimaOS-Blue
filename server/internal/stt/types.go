@@ -28,8 +28,8 @@ var (
 type ProviderType string
 
 const (
-	// ProviderSherpa is local Sherpa-ONNX ASR.
-	ProviderSherpa ProviderType = "sherpa"
+	// ProviderWhisper is local whisper.cpp ASR.
+	ProviderWhisper ProviderType = "whisper"
 )
 
 // AudioFormat represents the audio format.
@@ -143,6 +143,6 @@ type Service interface {
 	ListProviders() []ProviderType
 	// GetDefaultProvider returns the default provider type.
 	GetDefaultProvider() ProviderType
-	// GetSherpaProvider returns the Sherpa ASR provider if available.
-	GetSherpaProvider() *SherpaProvider
+	// GetWhisperProvider returns the Whisper ASR provider if available.
+	GetWhisperProvider() *WhisperProvider
 }

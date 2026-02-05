@@ -1827,6 +1827,24 @@ export default {
     espeakNGDesc: 'Motor leve offline (funciona sem internet)',
     espeakNote: 'Offline - leve (~8,5 MB)',
     sherpaNote: 'Offline - alta qualidade (download necessário)',
+    asrModelInfo: {
+      whisperTiny: {
+        name: 'Whisper Tiny',
+        description: '75MB - Menor modelo Whisper. Otimizado para dispositivos com recursos limitados.',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description: '142MB - Bom equilíbrio entre precisão e desempenho. Adequado para reconhecimento de voz geral.',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description: '466MB - Maior precisão que Base. Melhor para áudios complexos.',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [Recomendado]',
+        description: '809MB - Modelo grande destilado - 6x mais rápido que large-v3 com precisão similar.',
+      },
+    },
   },
   remoteAccess: {
     title: 'Acesso remoto',

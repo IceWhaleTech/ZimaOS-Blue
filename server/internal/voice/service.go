@@ -122,6 +122,10 @@ func (s *service) Transcribe(ctx context.Context, req *TranscribeRequest, audio 
 		return nil, ErrInvalidAudio
 	}
 
+	if s.sttService == nil {
+		return nil, fmt.Errorf("STT service not initialized")
+	}
+
 	// Determine audio format
 	format := stt.AudioFormat(req.Format)
 	if format == "" {

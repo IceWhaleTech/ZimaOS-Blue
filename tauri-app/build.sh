@@ -45,6 +45,44 @@ GOARCH=$(go env GOARCH)
 
 echo "Platform: $GOOS-$GOARCH"
 
+# Step 0: Install required dependencies (macOS only)
+if [ "$GOOS" = "darwin" ]; then
+    print_step "Checking and installing macOS dependencies..."
+
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        print_error "Homebrew is not installed. Please install it first: https://brew.sh"
+        exit 1
+    fi
+
+    # Install Rust if not present
+    if ! command -v cargo &> /dev/null; then
+        print_step "Installing Rust..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+    fi
+
+    # Install espeak-ng for TTS support
+    if ! brew list espeak-ng &> /dev/null; then
+        print_step "Installing espeak-ng..."
+        brew install espeak-ng
+    fi
+
+    # Install fileicon for setting DMG icon
+    if ! command -v fileicon &> /dev/null; then
+        print_step "Installing fileicon..."
+        brew install fileicon
+    fi
+
+    # Install create-dmg for LZMA compression (optional)
+    if ! command -v create-dmg &> /dev/null; then
+        print_step "Installing create-dmg..."
+        brew install create-dmg
+    fi
+
+    print_step "All macOS dependencies installed"
+fi
+
 # Step 1: Clean and prepare embed directory
 print_step "Cleaning embed directory..."
 EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"

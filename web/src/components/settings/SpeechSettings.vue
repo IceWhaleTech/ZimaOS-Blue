@@ -12,11 +12,37 @@ const status = ref<SpeechStatus | null>(null)
 const asrModels = ref<ASRModel[]>([])
 const ttsModels = ref<TTSModel[]>([])
 const loading = ref(false)
-const asrDownloading = ref(false)
-const ttsDownloading = ref(false)
+const switchingModelId = ref<string | null>(null)  // Track which model is switching
+const asrDownloadingModelId = ref<string | null>(null)  // Track which model is downloading
+const ttsDownloadingModelId = ref<string | null>(null)
 const asrDownloadProgress = ref(0)
 const ttsDownloadProgress = ref(0)
 const error = ref<string | null>(null)
+
+// Computed: get all downloading models from server status
+const serverDownloadingASRModels = computed(() => {
+  const downloads = status.value?.asr?.downloads || []
+  return downloads.map((d: any) => d.model_type)
+})
+
+// Get progress for a specific model
+function getModelProgress(modelId: string) {
+  const downloads = status.value?.asr?.downloads || []
+  const download = downloads.find((d: any) => d.model_type === modelId)
+  if (!download) return null
+  return {
+    percentage: download.progress.percentage || 0,
+    downloaded: download.progress.downloaded,
+    total: download.progress.total,
+    speed: download.progress.speed_human,
+    eta: download.progress.eta
+  }
+}
+
+// Check if a specific model is downloading
+function isModelDownloading(modelId: string) {
+  return serverDownloadingASRModels.value.includes(modelId) || asrDownloadingModelId.value === modelId
+}
 
 const asrReady = computed(() => status.value?.asr?.ready ?? false)
 const ttsReady = computed(() => status.value?.tts?.ready ?? false)
@@ -252,28 +278,23 @@ async function fetchTTSModels() {
 }
 
 async function downloadASRModel(modelType: string) {
-  asrDownloading.value = true
-  asrDownloadProgress.value = 0
+  asrDownloadingModelId.value = modelType
   error.value = null
   try {
     await speechApi.downloadASRModel(modelType)
-    // Poll for progress
+    // Poll for progress by fetching full status (includes model_type and progress)
     const pollInterval = setInterval(async () => {
-      const res = await speechApi.getASRStatus()
-      if (res.data?.progress) {
-        asrDownloadProgress.value = res.data.progress.percentage
-      }
-      if (!res.data?.downloading) {
+      await fetchStatus()
+      if (!status.value?.asr?.downloading) {
         clearInterval(pollInterval)
-        asrDownloading.value = false
-        await fetchStatus()
+        asrDownloadingModelId.value = null
         await fetchASRModels()
       }
     }, 1000)
   } catch (e) {
     console.error('Failed to download ASR model:', e)
     error.value = t('speech.downloadError')
-    asrDownloading.value = false
+    asrDownloadingModelId.value = null
   }
 }
 
@@ -305,11 +326,14 @@ async function downloadTTSModel(modelType: string) {
 
 async function switchASRModel(modelType: string) {
   try {
+    switchingModelId.value = modelType
     await speechApi.switchASRModel(modelType)
     await fetchStatus()
   } catch (e) {
     console.error('Failed to switch ASR model:', e)
     error.value = t('speech.switchError')
+  } finally {
+    switchingModelId.value = null
   }
 }
 
@@ -332,6 +356,18 @@ async function deleteASRModel(modelType?: string) {
   } catch (e) {
     console.error('Failed to delete ASR model:', e)
     error.value = t('speech.deleteError')
+  }
+}
+
+async function cancelASRDownload() {
+  try {
+    await speechApi.cancelASRDownload()
+    asrDownloadingModelId.value = null
+    await fetchStatus()
+    await fetchASRModels()
+  } catch (e) {
+    console.error('Failed to cancel download:', e)
+    error.value = t('speech.cancelError')
   }
 }
 
@@ -422,18 +458,58 @@ onMounted(() => {
             class="flex items-center justify-between p-3 border rounded-lg"
             :class="model.downloaded ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'">
             <div class="flex-1">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ getAsrModelName(model) }}</span>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ getAsrModelDescription(model) }} · {{ model.size }}</p>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t(model.description) }}</p>
+              <!-- Download progress for this specific model -->
+              <div v-if="isModelDownloading(model.id)" class="mt-2">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                    <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%` }"></div>
+                  </div>
+                  <span class="text-xs text-gray-500">{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span>
+                  <button @click="cancelASRDownload" class="text-red-500 hover:text-red-600 text-xs">
+                    {{ t('common.cancel') }}
+                  </button>
+                </div>
+                <!-- Detailed progress info -->
+                <div v-if="getModelProgress(model.id)" class="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                  <span v-if="getModelProgress(model.id)?.speed">{{ getModelProgress(model.id)?.speed }}</span>
+                  <span v-if="getModelProgress(model.id)?.eta">ETA: {{ getModelProgress(model.id)?.eta }}</span>
+                  <span v-if="getModelProgress(model.id)?.total">{{ Math.round((getModelProgress(model.id)?.downloaded || 0) / 1024 / 1024) }}MB / {{ Math.round((getModelProgress(model.id)?.total || 0) / 1024 / 1024) }}MB</span>
+                </div>
+              </div>
             </div>
-            <button v-if="!model.downloaded"
+            <!-- Download button for not downloaded models -->
+            <button v-if="!model.downloaded && !isModelDownloading(model.id)"
               @click="downloadASRModel(model.id)"
-              :disabled="asrDownloading"
-              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 text-xs font-medium">
-              {{ asrDownloading ? t('speech.downloading') : t('common.download') }}
+              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium">
+              {{ t('common.download') }}
             </button>
-            <span v-else class="text-green-600 dark:text-green-400 text-xs font-medium">
-              {{ t('common.downloaded') }}
+            <!-- Downloading indicator -->
+            <span v-else-if="isModelDownloading(model.id)"
+              class="text-blue-500 text-xs font-medium">
+              {{ t('speech.downloading') }}
             </span>
+            <!-- Switch button for downloaded models -->
+            <div v-else class="flex items-center gap-2">
+              <button
+                v-if="currentASRModel !== model.id && switchingModelId !== model.id"
+                @click="switchASRModel(model.id)"
+                :disabled="!!switchingModelId"
+                class="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xs font-medium disabled:opacity-50">
+                {{ t('common.use') }}
+              </button>
+              <span v-else-if="switchingModelId === model.id" class="text-blue-500 text-xs font-medium flex items-center gap-1">
+                <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ t('speech.switching') }}
+              </span>
+              <span v-else class="text-green-600 dark:text-green-400 text-xs font-medium">
+                {{ t('common.inUse') }}
+              </span>
+            </div>
           </div>
         </div>
       </div>

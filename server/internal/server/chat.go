@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -319,6 +321,9 @@ type ChatHandler struct {
 	// System prompt builder for channel messages
 	systemPromptBuilder *claudecode.SystemPromptBuilder
 
+	// STT service for audio transcription
+	sttService stt.Service
+
 	// Performance optimization: async event queue
 	eventQueue chan func()
 	eventStop  chan struct{}
@@ -416,6 +421,11 @@ func (h *ChatHandler) SetSystemPromptBuilder(builder *claudecode.SystemPromptBui
 	h.systemPromptBuilder = builder
 }
 
+// SetSTTService sets the STT service for audio transcription.
+func (h *ChatHandler) SetSTTService(service stt.Service) {
+	h.sttService = service
+}
+
 // SetCompanionManager sets the companion manager for session tracking.
 func (h *ChatHandler) SetCompanionManager(manager *companion.Manager) {
 	h.companionManager = manager
@@ -456,6 +466,35 @@ func (h *ChatHandler) GetProviderRegistry() *llm.ProviderRegistry {
 	return h.providers
 }
 
+// isTextFile checks if a file is a text-based file that can be read as plain text.
+func isTextFile(filename, mimeType string) bool {
+	// Check MIME type first
+	textMimeTypes := []string{
+		"text/", "application/json", "application/xml", "application/javascript",
+		"application/x-yaml", "application/yaml", "application/toml",
+	}
+	for _, t := range textMimeTypes {
+		if strings.HasPrefix(mimeType, t) || mimeType == t {
+			return true
+		}
+	}
+
+	// Check file extension
+	textExtensions := []string{
+		".txt", ".md", ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+		".log", ".csv", ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
+		".py", ".go", ".java", ".c", ".cpp", ".h", ".hpp", ".rs", ".rb", ".php",
+		".sh", ".bash", ".zsh", ".sql", ".graphql", ".vue", ".svelte",
+	}
+	lowerName := strings.ToLower(filename)
+	for _, ext := range textExtensions {
+		if strings.HasSuffix(lowerName, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessChannelMessage processes a message from a channel (e.g., Feishu) and returns AI response.
 func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Message) (string, error) {
 	logger.Info().
@@ -466,8 +505,8 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		Bool("has_claude_code", h.claudeCodeHandler != nil).
 		Msg("ProcessChannelMessage called")
 
-	// Validate input
-	if msg.Content == "" {
+	// Validate input - allow empty content if there are attachments
+	if msg.Content == "" && len(msg.Attachments) == 0 {
 		logger.Warn().Str("channel", msg.ChannelName).Msg("empty message content")
 		return "", fmt.Errorf("empty message content")
 	}
@@ -486,11 +525,110 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 	}
 
-	// Add user message
-	messages = append(messages, llm.Message{
+	// Add user message with attachments support
+	userMsg := llm.Message{
 		Role:    "user",
 		Content: msg.Content,
-	})
+	}
+
+	// Convert channel attachments to LLM content parts for multimodal support
+	if len(msg.Attachments) > 0 {
+		var contentParts []llm.ContentPart
+		var transcribedTexts []string
+
+		// Add text content if present
+		if msg.Content != "" {
+			contentParts = append(contentParts, llm.ContentPart{
+				Type: "text",
+				Text: msg.Content,
+			})
+		}
+
+		// Process attachments
+		for _, att := range msg.Attachments {
+			switch att.Type {
+			case channel.MessageTypeImage:
+				if len(att.Data) > 0 {
+					mediaType := att.MimeType
+					if mediaType == "" {
+						mediaType = "image/png"
+					}
+					encoded := base64.StdEncoding.EncodeToString(att.Data)
+					contentParts = append(contentParts, llm.ContentPart{
+						Type:      "image",
+						MediaType: mediaType,
+						Data:      encoded,
+					})
+					logger.Info().
+						Str("channel", msg.ChannelName).
+						Str("attachment_id", att.ID).
+						Int64("size", att.Size).
+						Msg("Added image attachment to LLM message")
+				}
+
+			case channel.MessageTypeAudio:
+				// Try to transcribe audio using STT service
+				if h.sttService != nil && len(att.Data) > 0 {
+					format := stt.FormatOGG // Default for opus
+					if strings.Contains(att.MimeType, "wav") {
+						format = stt.FormatWAV
+					} else if strings.Contains(att.MimeType, "mp3") {
+						format = stt.FormatMP3
+					}
+
+					resp, err := h.sttService.Transcribe(ctx, &stt.TranscribeRequest{
+						Audio:  bytes.NewReader(att.Data),
+						Format: format,
+					})
+					if err != nil {
+						logger.Warn().Err(err).Str("attachment_id", att.ID).Msg("Failed to transcribe audio")
+						transcribedTexts = append(transcribedTexts, "[语音消息，转写失败]")
+					} else if resp.Text != "" {
+						transcribedTexts = append(transcribedTexts, fmt.Sprintf("[语音消息]: %s", resp.Text))
+						logger.Info().
+							Str("channel", msg.ChannelName).
+							Str("transcribed", resp.Text).
+							Msg("Transcribed audio attachment")
+					}
+				} else {
+					transcribedTexts = append(transcribedTexts, "[语音消息，暂不支持转写]")
+				}
+
+			case channel.MessageTypeFile:
+				// Try to extract text from text-based files
+				if len(att.Data) > 0 && isTextFile(att.Name, att.MimeType) {
+					textContent := string(att.Data)
+					// Limit text content to avoid token overflow
+					if len(textContent) > 10000 {
+						textContent = textContent[:10000] + "\n...[内容过长，已截断]"
+					}
+					transcribedTexts = append(transcribedTexts, fmt.Sprintf("[文件: %s]\n%s", att.Name, textContent))
+					logger.Info().
+						Str("channel", msg.ChannelName).
+						Str("filename", att.Name).
+						Int("size", len(att.Data)).
+						Msg("Extracted text from file attachment")
+				} else {
+					transcribedTexts = append(transcribedTexts, fmt.Sprintf("[文件: %s，暂不支持处理]", att.Name))
+				}
+			}
+		}
+
+		// Add transcribed texts as text content
+		if len(transcribedTexts) > 0 {
+			contentParts = append(contentParts, llm.ContentPart{
+				Type: "text",
+				Text: strings.Join(transcribedTexts, "\n"),
+			})
+		}
+
+		if len(contentParts) > 0 {
+			userMsg.ContentParts = contentParts
+			userMsg.Content = "" // Clear content when using content parts
+		}
+	}
+
+	messages = append(messages, userMsg)
 
 	var responseContent string
 

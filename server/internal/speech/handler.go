@@ -2,6 +2,7 @@ package speech
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 
@@ -44,6 +45,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	asr.GET("/status", h.GetASRStatus)
 	asr.GET("/models", h.ListASRModels)
 	asr.POST("/download", h.DownloadASRModel)
+	asr.POST("/download/cancel", h.CancelASRDownload)
 	asr.POST("/switch", h.SwitchASRModel)
 	asr.DELETE("/model", h.DeleteASRModel)
 
@@ -116,7 +118,13 @@ func (h *Handler) GetASRStatus(c echo.Context) error {
 		})
 	}
 
-	// Return basic status
+	// Check if provider is Whisper (has detailed status with download progress)
+	if whisperProvider, ok := provider.(*stt.WhisperProvider); ok {
+		status := whisperProvider.GetModelStatus()
+		return c.JSON(http.StatusOK, status)
+	}
+
+	// Return basic status for other providers
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"ready":    true,
 		"provider": provider.Type(),
@@ -162,9 +170,47 @@ func (h *Handler) DownloadASRModel(c echo.Context) error {
 		})
 	}
 
-	// Current providers don't support model downloads
-	return c.JSON(http.StatusBadRequest, map[string]string{
-		"error": "current provider does not support model downloads",
+	// Check if provider is Whisper (supports model downloads)
+	whisperProvider, ok := provider.(*stt.WhisperProvider)
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "current provider does not support model downloads",
+		})
+	}
+
+	// Start download in background with a new context (not tied to request)
+	go func() {
+		ctx := context.Background()
+		_ = whisperProvider.DownloadModel(ctx, req.ModelType)
+	}()
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloading",
+		"message": "Model download started for " + req.ModelType,
+	})
+}
+
+// CancelASRDownload cancels the current ASR model download.
+func (h *Handler) CancelASRDownload(c echo.Context) error {
+	provider := h.service.GetASRProvider()
+	if provider == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ASR provider not configured",
+		})
+	}
+
+	whisperProvider, ok := provider.(*stt.WhisperProvider)
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "current provider does not support download cancellation",
+		})
+	}
+
+	whisperProvider.CancelDownload()
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "cancelled",
+		"message": "Download cancelled",
 	})
 }
 
@@ -184,7 +230,19 @@ func (h *Handler) SwitchASRModel(c echo.Context) error {
 		})
 	}
 
-	// Current providers don't support model switching
+	// Check if provider supports model switching
+	if switcher, ok := provider.(interface{ SwitchModel(string) error }); ok {
+		if err := switcher.SwitchModel(req.ModelType); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":  "switched",
+			"message": "Switched to model " + req.ModelType,
+		})
+	}
+
 	return c.JSON(http.StatusBadRequest, map[string]string{
 		"error": "current provider does not support model switching",
 	})

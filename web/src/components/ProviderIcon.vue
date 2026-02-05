@@ -49,6 +49,7 @@ const icons: Record<string, string> = {
   bedrock: awsIcon,
   glm: glmIcon,
   'zimaos-trial': zimaosTrialIcon,
+  'zimaos-echo-trial': zimaosTrialIcon,
 }
 
 // Use custom icon if provided, otherwise fall back to built-in icons

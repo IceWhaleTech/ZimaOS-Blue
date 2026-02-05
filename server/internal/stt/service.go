@@ -50,13 +50,22 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 	return s, nil
 }
 
+// NewServiceWithProvider creates a new STT service with an existing provider.
+func NewServiceWithProvider(provider *WhisperProvider) Service {
+	s := &service{
+		providers:       make(map[ProviderType]Provider),
+		defaultProvider: ProviderWhisper,
+	}
+	s.providers[ProviderWhisper] = provider
+	return s
+}
+
 // createProvider creates a provider based on the configuration.
 func createProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {
-	case ProviderSherpa:
-		return NewSherpaProvider(&SherpaConfig{
-			ModelDir:    cfg.ModelDir,
-			ModelType:   cfg.Model,
+	case ProviderWhisper:
+		return NewWhisperProvider(&WhisperConfig{
+			ModelPath:   cfg.Model,
 			DefaultLang: cfg.DefaultLanguage,
 			MaxDuration: cfg.MaxDuration,
 		}), nil
@@ -113,13 +122,13 @@ func (s *service) GetDefaultProvider() ProviderType {
 	return s.defaultProvider
 }
 
-// GetSherpaProvider returns the Sherpa ASR provider if available.
-func (s *service) GetSherpaProvider() *SherpaProvider {
+// GetWhisperProvider returns the Whisper ASR provider if available.
+func (s *service) GetWhisperProvider() *WhisperProvider {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if p, ok := s.providers[ProviderSherpa]; ok {
-		if sp, ok := p.(*SherpaProvider); ok {
-			return sp
+	if p, ok := s.providers[ProviderWhisper]; ok {
+		if wp, ok := p.(*WhisperProvider); ok {
+			return wp
 		}
 	}
 	return nil

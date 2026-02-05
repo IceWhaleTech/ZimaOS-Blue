@@ -2428,8 +2428,26 @@ export default {
     ttsProvider: 'TTS 공급자',
     edgeTTSDesc: '고품질 온라인 신경망 음성 (인터넷 필요)',
     espeakNGDesc: '오프라인 경량 엔진 (인터넷 없이 작동)',
-    espeakNote: '오프라인 - 경량 (~8.5MB)',
+    espeakNote: '오프라인 - 경량 (8.7MB)',
     sherpaNote: '오프라인 - 고품질 (다운로드 필요)',
+    asrModelInfo: {
+      whisperTiny: {
+        name: 'Whisper Tiny',
+        description: '75MB - 가장 작은 Whisper 모델. 저사양 기기와 빠른 시작에 최적화. 정확도는 큰 모델보다 낮음.',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description: '142MB - 정확도와 성능의 균형. 일반적인 음성 인식에 적합.',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description: '466MB - Base보다 높은 정확도. 복잡한 오디오나 정확도가 중요한 경우에 적합.',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [권장]',
+        description: '809MB - 증류된 대형 모델 - large-v3보다 6배 빠르고 비슷한 정확도. 속도와 품질의 최적 균형.',
+      },
+    },
   },
   remoteAccess: {
     title: '원격 액세스',

@@ -51,6 +51,10 @@ export default {
     select: 'Select',
     provider: 'Provider',
     downloading: 'Downloading',
+    download: 'Download',
+    downloaded: 'Downloaded',
+    use: 'Use',
+    inUse: 'In Use',
     loadingActions: 'Loading actions...',
     noActionsAvailable: 'No actions available',
     loadingActivity: 'Loading activity...',
@@ -394,6 +398,7 @@ export default {
     // Provider status
     noProviderConfigured: 'No provider configured. Click to add one.',
     allProvidersFailed: 'All providers failed. Click to check settings.',
+    noStreamData: 'No response received. Please check your LLM provider configuration or try again later.',
     providerActive: 'Provider is active and ready.',
     providerPending: 'Provider status is being checked...',
     // Trial quota
@@ -435,6 +440,7 @@ export default {
       all: 'All',
       overview: 'Overview',
       system: 'System',
+      metrics: 'Metrics',
     },
     cards: {
       systemStatus: 'System Status',
@@ -442,6 +448,11 @@ export default {
       memoryUsage: 'Memory Usage',
       goroutines: 'Goroutines',
       failoverStatus: 'Failover Status',
+      metricsOverview: 'Metrics Overview',
+      tokenUsageChart: 'Token Usage',
+      latencyChart: 'Request Latency',
+      modelStats: 'Model Statistics',
+      cacheStats: 'Cache Statistics',
       cpuChart: 'CPU Usage',
       memoryChart: 'Memory Usage',
       goroutinesChart: 'Goroutines',
@@ -3762,6 +3773,7 @@ export default {
     asrModels: 'Speech Recognition Models',
     ttsModels: 'Text-to-Speech Models',
     downloading: 'Downloading...',
+    downloadingModel: 'Downloading {name}',
     resumeSupported: 'Resume supported - download will continue if interrupted',
     download: 'Download',
     use: 'Use',
@@ -3771,7 +3783,9 @@ export default {
     fetchError: 'Failed to fetch speech status',
     downloadError: 'Failed to download model',
     switchError: 'Failed to switch model',
+    switching: 'Switching...',
     deleteError: 'Failed to delete model',
+    cancelError: 'Failed to cancel download',
     confirmDelete: 'Are you sure you want to delete this model?',
     espeakDesc: 'Offline lightweight speech synthesis engine',
     downloadAndEnable: 'Download & Enable',
@@ -3788,6 +3802,7 @@ export default {
       ttsDescription: 'To play audio, please download a text-to-speech model.',
     },
     downloadAndUse: 'Download & Use',
+    allModelsDownloaded: 'All models have been downloaded',
     streaming: 'Streaming',
     ttsSettings: 'TTS Settings',
     speechSpeed: 'Speech Speed',
@@ -3807,13 +3822,38 @@ export default {
     allDownloaded: 'All Packs Downloaded',
     privacyWarning: 'Edge-TTS is an online service. Text is sent to Microsoft servers for synthesis.',
     downloadFailed: 'Download failed',
-    espeakNote: 'Offline - lightweight (~8.5MB)',
+    espeakNote: 'Offline - lightweight (8.7MB)',
     sherpaNote: 'Offline - premium quality (requires download)',
     asrModelInfo: {
-      whisperBase: {
-        name: 'Whisper Base [Recommended]',
+      whisperTiny: {
+        name: 'Whisper Tiny',
         description:
-          'Balanced accuracy and performance. Recommended for most general-purpose speech recognition scenarios.',
+          '75MB - Smallest Whisper model. Optimized for low-resource devices and quick startup, with lower accuracy than larger models.',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description:
+          '142MB - Balanced accuracy and performance. Suitable for most general-purpose speech recognition scenarios.',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description:
+          '466MB - Higher accuracy than Base model. Better for complex audio or when accuracy is more important than speed.',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [Recommended]',
+        description:
+          '809MB - Distilled large model - 6x faster than large-v3 with similar accuracy. Best balance of speed and quality.',
+      },
+      zipformerEn: {
+        name: 'Zipformer EN (Streaming)',
+        description:
+          'English-only streaming ASR model. Ideal for low-latency, real-time transcription in English.',
+      },
+      sensevoiceSmall: {
+        name: 'SenseVoice Small (Multilingual)',
+        description:
+          'Multilingual ASR model (ZH/EN/JA/KO/YUE). Good accuracy across several languages, suitable for mixed-language scenarios.',
       },
     },
   },

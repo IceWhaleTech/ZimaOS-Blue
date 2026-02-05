@@ -436,10 +436,10 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	go func() {
 		defer initWg.Done()
 		sttService, _ = stt.NewService(&stt.ServiceConfig{
-			DefaultProvider: stt.ProviderSherpa,
+			DefaultProvider: stt.ProviderWhisper,
 			Providers: []stt.ProviderConfig{
 				{
-					Type:    stt.ProviderSherpa,
+					Type:    stt.ProviderWhisper,
 					Enabled: true,
 				},
 			},

@@ -68,7 +68,17 @@ export class SSEClient {
             // Fall through to generic error
           }
         }
-        throw new Error(`HTTP error! status: ${response.status}`)
+        // Handle authentication error (401) or other errors with message
+        try {
+          const data = await response.json()
+          const message = data.error?.message || data.message || `HTTP error! status: ${response.status}`
+          throw new Error(message)
+        } catch (e) {
+          if (e instanceof Error && e.message !== `HTTP error! status: ${response.status}`) {
+            throw e
+          }
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
       }
 
       const reader = response.body?.getReader()
@@ -78,6 +88,7 @@ export class SSEClient {
 
       const decoder = new TextDecoder()
       let buffer = ''
+      let receivedData = false
 
       while (this.isConnected) {
         const { done, value } = await reader.read()
@@ -95,17 +106,31 @@ export class SSEClient {
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              options.onComplete?.()
+              // Check if we received any actual data
+              if (!receivedData) {
+                options.onError?.(new Error('NO_STREAM_DATA'))
+              } else {
+                options.onComplete?.()
+              }
               this.isConnected = false
               break
             }
 
             try {
               const chunk: StreamChunk = JSON.parse(data)
+              // Mark that we received actual content
+              if (chunk.delta) {
+                receivedData = true
+              }
               options.onMessage(chunk)
 
               if (chunk.done) {
-                options.onComplete?.(chunk)
+                // Check if we received any actual data
+                if (!receivedData && !chunk.delta) {
+                  options.onError?.(new Error('NO_STREAM_DATA'))
+                } else {
+                  options.onComplete?.(chunk)
+                }
                 this.isConnected = false
                 break
               }

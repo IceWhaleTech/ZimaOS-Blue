@@ -415,6 +415,19 @@ export default {
   settings: {
     ...enUS.settings,
     title: '設定',
+    tab: {
+      general: '一般',
+      llm: 'LLM',
+      network: 'ネットワーク',
+      speech: '音声',
+      metrics: 'メトリクス',
+      config: '設定',
+      backup: 'バックアップ',
+      userdata: 'ユーザーデータ',
+      logs: 'ログ',
+      service: 'サービス',
+      retention: '保持',
+    },
     general: '一般',
     appearance: '外観',
     notifications: '通知',
@@ -473,17 +486,6 @@ export default {
     maxTokens: '内容上限',
     availableTools: '利用可能なツール',
     noToolsAvailable: '利用可能なツールがありません',
-    tab: {
-      general: '一般',
-      llm: 'LLM',
-      metrics: '使用量',
-      remote: 'リモートアクセス',
-      config: '設定',
-      backup: 'バックアップ',
-      logs: 'ログ',
-      service: 'サービス',
-      retention: '保持',
-    },
     failover: {
       title: 'スマートフェイルオーバー状態',
       totalFailovers: '総フェイルオーバー',
@@ -2520,6 +2522,24 @@ export default {
     espeakNGDesc: 'オフライン軽量エンジン（インターネット不要）',
     espeakNote: 'オフライン - 軽量（約 8.5MB）',
     sherpaNote: 'オフライン - 高品質（ダウンロードが必要）',
+    asrModelInfo: {
+      whisperTiny: {
+        name: 'Whisper Tiny',
+        description: '75MB - 最小の Whisper モデル。リソース制限のあるデバイスや高速起動に最適。精度は大きいモデルより低い。',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description: '142MB - 精度とパフォーマンスのバランスが良い。一般的な音声認識に適している。',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description: '466MB - Base より高精度。複雑な音声や精度重視の場面に適している。',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [推奨]',
+        description: '809MB - 蒸留版大規模モデル - large-v3 の 6 倍高速で同等の精度。速度と品質の最適なバランス。',
+      },
+    },
   },
   connections: {
     total: '総接続数',

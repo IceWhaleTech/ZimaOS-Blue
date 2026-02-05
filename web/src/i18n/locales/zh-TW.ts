@@ -2483,6 +2483,24 @@ export default {
     espeakNGDesc: '離線輕量級引擎（無需網路）',
     espeakNote: '離線 - 輕量級（約 8.5MB）',
     sherpaNote: '離線 - 高品質（需下載模型）',
+    asrModelInfo: {
+      whisperTiny: {
+        name: 'Whisper Tiny',
+        description: '75MB - Whisper 系列中體積最小的模型，適合資源受限設備和快速啟動場景。',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description: '142MB - 在精度與效能之間取得良好平衡，適合大多數通用語音識別場景。',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description: '466MB - 比 Base 模型精度更高，適合複雜音訊或對準確性要求較高的場景。',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [推薦]',
+        description: '809MB - 蒸餾版大模型 - 比 large-v3 快 6 倍，精度相近。速度與品質的最佳平衡。',
+      },
+    },
   },
   localeNames: {
     'ca-ES': '加泰羅尼亞語',

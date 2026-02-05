@@ -8,7 +8,6 @@ const minimalMessages = {
 }
 
 export type LocaleKey =
-  | 'ar-SA'
   | 'ca-ES'
   | 'cs-CZ'
   | 'da-DK'
@@ -17,13 +16,10 @@ export type LocaleKey =
   | 'en-GB'
   | 'en-US'
   | 'es-ES'
-  | 'fi-FI'
   | 'fr-FR'
   | 'ga-IE'
-  | 'hi-IN'
   | 'hr-HR'
   | 'hu-HU'
-  | 'id-ID'
   | 'it-IT'
   | 'ja-JP'
   | 'ko-KR'
@@ -37,9 +33,6 @@ export type LocaleKey =
   | 'ru-RU'
   | 'sk-SK'
   | 'sv-SE'
-  | 'th-TH'
-  | 'tr-TR'
-  | 'vi-VN'
   | 'zh-CN'
   | 'zh-TW'
 
@@ -47,7 +40,6 @@ const LOCALE_KEY = 'zimaos-echo-locale'
 
 // Map browser language codes to our locale keys
 const browserLocaleMap: Record<string, LocaleKey> = {
-  ar: 'ar-SA',
   ca: 'ca-ES',
   cs: 'cs-CZ',
   da: 'da-DK',
@@ -57,13 +49,10 @@ const browserLocaleMap: Record<string, LocaleKey> = {
   'en-GB': 'en-GB',
   'en-US': 'en-US',
   es: 'es-ES',
-  fi: 'fi-FI',
   fr: 'fr-FR',
   ga: 'ga-IE',
-  hi: 'hi-IN',
   hr: 'hr-HR',
   hu: 'hu-HU',
-  id: 'id-ID',
   it: 'it-IT',
   ja: 'ja-JP',
   ko: 'ko-KR',
@@ -79,9 +68,6 @@ const browserLocaleMap: Record<string, LocaleKey> = {
   ru: 'ru-RU',
   sk: 'sk-SK',
   sv: 'sv-SE',
-  th: 'th-TH',
-  tr: 'tr-TR',
-  vi: 'vi-VN',
   zh: 'zh-CN',
   'zh-CN': 'zh-CN',
   'zh-TW': 'zh-TW',
@@ -89,7 +75,6 @@ const browserLocaleMap: Record<string, LocaleKey> = {
 }
 
 export const localeOptions = [
-  { value: 'ar-SA', label: 'العربية' },
   { value: 'ca-ES', label: 'Català' },
   { value: 'cs-CZ', label: 'Čeština' },
   { value: 'da-DK', label: 'Dansk' },
@@ -98,13 +83,10 @@ export const localeOptions = [
   { value: 'en-GB', label: 'English (UK)' },
   { value: 'en-US', label: 'English (US)' },
   { value: 'es-ES', label: 'Español' },
-  { value: 'fi-FI', label: 'Suomi' },
   { value: 'fr-FR', label: 'Français' },
   { value: 'ga-IE', label: 'Gaeilge' },
-  { value: 'hi-IN', label: 'हिन्दी' },
   { value: 'hr-HR', label: 'Hrvatski' },
   { value: 'hu-HU', label: 'Magyar' },
-  { value: 'id-ID', label: 'Bahasa Indonesia' },
   { value: 'it-IT', label: 'Italiano' },
   { value: 'ja-JP', label: '日本語' },
   { value: 'ko-KR', label: '한국어' },
@@ -118,9 +100,6 @@ export const localeOptions = [
   { value: 'ru-RU', label: 'Русский' },
   { value: 'sk-SK', label: 'Slovenčina' },
   { value: 'sv-SE', label: 'Svenska' },
-  { value: 'th-TH', label: 'ไทย' },
-  { value: 'tr-TR', label: 'Türkçe' },
-  { value: 'vi-VN', label: 'Tiếng Việt' },
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
 ] as const

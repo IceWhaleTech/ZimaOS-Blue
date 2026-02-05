@@ -16,6 +16,10 @@ fn main() {
         // Link Go runtime dependencies
         println!("cargo:rustc-link-lib=resolv");
 
+        // Link espeak-ng for TTS support
+        println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
+        println!("cargo:rustc-link-lib=dylib=espeak-ng");
+
         // Rerun if the library changes
         println!("cargo:rerun-if-changed=lib/libecho.a");
     }

@@ -1824,6 +1824,24 @@ export default {
     espeakNGDesc: 'Motore leggero offline (funziona senza internet)',
     espeakNote: 'Offline - leggero (~8,5 MB)',
     sherpaNote: 'Offline - alta qualità (download richiesto)',
+    asrModelInfo: {
+      whisperTiny: {
+        name: 'Whisper Tiny',
+        description: '75MB - Modello Whisper più piccolo. Ottimizzato per dispositivi con risorse limitate.',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description: '142MB - Buon equilibrio tra precisione e prestazioni. Adatto al riconoscimento vocale generale.',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description: '466MB - Maggiore precisione rispetto a Base. Migliore per audio complessi.',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [Consigliato]',
+        description: '809MB - Modello grande distillato - 6x più veloce di large-v3 con precisione simile.',
+      },
+    },
   },
   remoteAccess: {
     title: 'Accesso remoto',
@@ -1924,5 +1942,87 @@ export default {
     noSkillsAvailable: 'Nessuna competenza disponibile al momento',
     clearSearch: 'Cancella ricerca',
     allLoaded: 'Tutte le {count} competenze caricate',
+  },
+  authProviders: {
+    title: 'Provider di autenticazione',
+    noProviders: 'Nessun provider di autenticazione configurato',
+    addProvider: 'Aggiungi provider',
+    editProvider: 'Modifica provider',
+    types: {
+      generic: 'OIDC generico',
+      google: 'Google',
+      github: 'GitHub',
+      microsoft: 'Microsoft / Azure AD',
+      keycloak: 'Keycloak',
+      authentik: 'Authentik',
+      auth0: 'Auth0',
+    },
+  },
+  memory: {
+    title: 'Memoria',
+    addMemory: 'Aggiungi ricordo',
+    deleteMemory: 'Elimina ricordo',
+  },
+  backup: {
+    title: 'Backup',
+    createBackup: 'Crea backup',
+    restoreBackup: 'Ripristina backup',
+  },
+  audit: {
+    title: 'Registro di audit',
+    action: 'Azione',
+    user: 'Utente',
+  },
+  mfa: {
+    title: 'Autenticazione a due fattori',
+    enable: 'Attiva MFA',
+    disable: 'Disattiva MFA',
+  },
+  webauthn: {
+    title: 'Chiavi di sicurezza',
+    addKey: 'Aggiungi chiave di sicurezza',
+  },
+  automation: {
+    title: 'Automazione',
+    createAutomation: 'Crea automazione',
+    trigger: 'Trigger',
+    action: 'Azione',
+  },
+  workflow: {
+    title: 'Workflow',
+    createWorkflow: 'Crea workflow',
+  },
+  cron: {
+    title: 'Attività pianificate',
+    createCronJob: 'Crea attività pianificata',
+  },
+  webhook: {
+    title: 'Webhook',
+    createWebhook: 'Crea webhook',
+  },
+  homeAssistant: {
+    title: 'Home Assistant',
+    devices: 'Dispositivi',
+    entities: 'Entità',
+    automations: 'Automazioni',
+    scenes: 'Scene',
+  },
+  skills: {
+    title: 'Competenze',
+    install: 'Installa',
+    uninstall: 'Disinstalla',
+  },
+  tools: {
+    title: 'Strumenti',
+    toolName: 'Nome strumento',
+    parameters: 'Parametri',
+  },
+  claudecode: {
+    title: 'Claude Code',
+    subtitle: 'Integrazione Claude Code',
+  },
+  companion: {
+    title: 'Companion',
+    subtitle: 'Assistente companion',
   },
 } as typeof enUS

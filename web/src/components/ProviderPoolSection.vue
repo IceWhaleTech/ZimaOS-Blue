@@ -715,7 +715,7 @@ onMounted(() => {
             <div
               class="h-full rounded-full transition-all"
               :class="store.trialQuota.exhausted ? 'bg-red-500' : 'bg-blue-500'"
-              :style="{ width: `${Math.min(100, (store.trialQuota.tokens_used / store.trialQuota.token_limit) * 100)}%` }"
+              :style="{ width: `${Math.max(0, Math.min(100, (store.trialQuota.tokens_remaining / store.trialQuota.token_limit) * 100))}%` }"
             ></div>
           </div>
         </div>

@@ -24,7 +24,7 @@ func (m *MemorySearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "memory_search",
 		Description: "Searches memories using semantic/hybrid search. Returns relevant memories based on the query with similarity scores.",
-		Icon:        "memory-search",
+		Icon:        "brain",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -131,7 +131,7 @@ func (m *MemoryGetTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "memory_get",
 		Description: "Retrieves a specific memory by its ID. Returns the full content and metadata of the memory.",
-		Icon:        "memory-get",
+		Icon:        "brain",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -192,7 +192,7 @@ func (m *MemoryStatsTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "memory_stats",
 		Description: "Returns statistics about the memory system including total memories, storage size, and backend information.",
-		Icon:        "memory-stats",
+		Icon:        "brain",
 		Parameters: map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},

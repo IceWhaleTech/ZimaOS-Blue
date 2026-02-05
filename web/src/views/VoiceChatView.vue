@@ -8,7 +8,10 @@ import {
   voiceApi,
 } from '@/api/voice'
 import type { VoiceSessionState, Voice } from '@/api/voice'
+import { speechApi } from '@/api/speech'
 import { WakeWordDetector } from '@/utils/wakeword'
+import { convertToWav } from '@/utils/audioConverter'
+import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 
 // State
 const isConnected = ref(false)
@@ -30,6 +33,9 @@ const wakeWordEnabled = ref(false)
 const wakeWord = ref('hey echo')
 const wakeWordListening = ref(false)
 const wakeWordSupported = ref(WakeWordDetector.isSupported())
+
+// ASR model download prompt
+const showASRDownloadPrompt = ref(false)
 
 // WebSocket, recorder, and wake word detector
 let ws: VoiceWebSocket | null = null
@@ -59,9 +65,23 @@ const canRecord = computed(() => {
 // Lifecycle
 onMounted(async () => {
   await loadVoices()
-  await connectWebSocket()
+  await checkAndConnect()
   initWakeWordDetector()
 })
+
+// Check ASR model and connect
+async function checkAndConnect() {
+  try {
+    const res = await speechApi.getASRStatus()
+    if (!res.data?.ready) {
+      showASRDownloadPrompt.value = true
+      return
+    }
+  } catch {
+    // Assume ready if check fails
+  }
+  await connectWebSocket()
+}
 
 onUnmounted(() => {
   disconnect()
@@ -155,9 +175,10 @@ async function startRecording() {
   recorder.onStop = async (audio) => {
     isRecording.value = false
     try {
-      const base64 = await blobToBase64(audio)
-      const format = getFormatFromMimeType(recorder?.mimeType || 'audio/webm')
-      ws?.sendAudio(base64, format)
+      // Convert webm to wav for whisper.cpp
+      const wavBlob = await convertToWav(audio)
+      const base64 = await blobToBase64(wavBlob)
+      ws?.sendAudio(base64, 'wav')
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to process audio'
     }
@@ -182,14 +203,6 @@ function stopRecording() {
   if (recorder?.isRecording) {
     recorder.stop()
   }
-}
-
-function getFormatFromMimeType(mimeType: string): string {
-  if (mimeType.includes('webm')) return 'webm'
-  if (mimeType.includes('ogg')) return 'ogg'
-  if (mimeType.includes('mp4')) return 'mp4'
-  if (mimeType.includes('wav')) return 'wav'
-  return 'webm'
 }
 
 function updateConfig() {
@@ -496,5 +509,12 @@ watch(wakeWordEnabled, () => {
         Clear conversation
       </button>
     </div>
+
+    <!-- ASR Model Download Prompt -->
+    <ModelDownloadPrompt
+      v-model:model-visible="showASRDownloadPrompt"
+      type="asr"
+      @downloaded="connectWebSocket"
+    />
   </div>
 </template>

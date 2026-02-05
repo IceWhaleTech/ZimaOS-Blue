@@ -53,6 +53,11 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const hasCloudProviders = computed(() => cloudProviders.value.length > 0)
   const hasLocalProviders = computed(() => localProviders.value.length > 0)
 
+  // Check if user has configured their own providers (non-trial)
+  const hasUserConfiguredProviders = computed(() =>
+    providers.value.some(p => p.enabled && p.type !== 'trial')
+  )
+
   const selectedProvider = computed(() =>
     providers.value.find(p => p.id === selectedProviderId.value)
   )
@@ -539,6 +544,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     localProviders,
     hasCloudProviders,
     hasLocalProviders,
+    hasUserConfiguredProviders,
     selectedProvider,
     providerModels,
 

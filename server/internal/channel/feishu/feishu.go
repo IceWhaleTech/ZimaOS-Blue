@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -167,6 +168,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, event *larkim.P2MessageR
 
 	// Parse message content
 	var content string
+	var attachment *channel.Attachment
 	msgType := ""
 	if msg.MessageType != nil {
 		msgType = *msg.MessageType
@@ -180,6 +182,86 @@ func (c *Channel) onMessageReceive(ctx context.Context, event *larkim.P2MessageR
 		if msg.Content != nil {
 			if err := json.Unmarshal([]byte(*msg.Content), &textContent); err == nil {
 				content = textContent.Text
+			}
+		}
+	case "image":
+		// Parse image_key from content
+		var imageContent struct {
+			ImageKey string `json:"image_key"`
+		}
+		if msg.Content != nil {
+			if err := json.Unmarshal([]byte(*msg.Content), &imageContent); err == nil {
+				content = imageContent.ImageKey
+			}
+		}
+		// Download image data
+		if imageContent.ImageKey != "" && msg.MessageId != nil {
+			imageData, err := c.downloadResource(ctx, *msg.MessageId, imageContent.ImageKey, "image")
+			if err != nil {
+				c.logger.Warn("failed to download image", zap.Error(err), zap.String("image_key", imageContent.ImageKey))
+			} else {
+				attachment = &channel.Attachment{
+					ID:       imageContent.ImageKey,
+					Type:     channel.MessageTypeImage,
+					Name:     imageContent.ImageKey + ".png",
+					Data:     imageData,
+					Size:     int64(len(imageData)),
+					MimeType: "image/png",
+				}
+			}
+		}
+	case "audio":
+		// Parse file_key from audio content
+		var audioContent struct {
+			FileKey  string `json:"file_key"`
+			Duration int    `json:"duration"`
+		}
+		if msg.Content != nil {
+			if err := json.Unmarshal([]byte(*msg.Content), &audioContent); err == nil {
+				content = audioContent.FileKey
+			}
+		}
+		// Download audio data
+		if audioContent.FileKey != "" && msg.MessageId != nil {
+			audioData, err := c.downloadResource(ctx, *msg.MessageId, audioContent.FileKey, "file")
+			if err != nil {
+				c.logger.Warn("failed to download audio", zap.Error(err), zap.String("file_key", audioContent.FileKey))
+			} else {
+				attachment = &channel.Attachment{
+					ID:       audioContent.FileKey,
+					Type:     channel.MessageTypeAudio,
+					Name:     audioContent.FileKey + ".opus",
+					Data:     audioData,
+					Size:     int64(len(audioData)),
+					MimeType: "audio/opus",
+				}
+			}
+		}
+	case "file":
+		// Parse file content
+		var fileContent struct {
+			FileKey  string `json:"file_key"`
+			FileName string `json:"file_name"`
+		}
+		if msg.Content != nil {
+			if err := json.Unmarshal([]byte(*msg.Content), &fileContent); err == nil {
+				content = fileContent.FileName
+			}
+		}
+		// Download file data
+		if fileContent.FileKey != "" && msg.MessageId != nil {
+			fileData, err := c.downloadResource(ctx, *msg.MessageId, fileContent.FileKey, "file")
+			if err != nil {
+				c.logger.Warn("failed to download file", zap.Error(err), zap.String("file_key", fileContent.FileKey))
+			} else {
+				attachment = &channel.Attachment{
+					ID:       fileContent.FileKey,
+					Type:     channel.MessageTypeFile,
+					Name:     fileContent.FileName,
+					Data:     fileData,
+					Size:     int64(len(fileData)),
+					MimeType: "application/octet-stream",
+				}
 			}
 		}
 	default:
@@ -227,6 +309,11 @@ func (c *Channel) onMessageReceive(ctx context.Context, event *larkim.P2MessageR
 			"msg_type": msgType,
 			"language": "zh-CN", // Feishu is primarily used in China
 		},
+	}
+
+	// Add attachment if present
+	if attachment != nil {
+		channelMsg.Attachments = []channel.Attachment{*attachment}
 	}
 
 	c.msgCount.Add(1)
@@ -584,6 +671,32 @@ func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args strin
 // GetClient returns the Lark client for advanced usage.
 func (c *Channel) GetClient() *lark.Client {
 	return c.client
+}
+
+// downloadResource downloads a resource (image, audio, file) from Feishu using the message resource API.
+func (c *Channel) downloadResource(ctx context.Context, messageID string, fileKey string, resourceType string) ([]byte, error) {
+	req := larkim.NewGetMessageResourceReqBuilder().
+		MessageId(messageID).
+		FileKey(fileKey).
+		Type(resourceType).
+		Build()
+
+	resp, err := c.client.Im.V1.MessageResource.Get(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resource: %w", err)
+	}
+
+	if !resp.Success() {
+		return nil, fmt.Errorf("feishu API error: %d - %s", resp.Code, resp.Msg)
+	}
+
+	// Read the data from response
+	data, err := io.ReadAll(resp.File)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read resource data: %w", err)
+	}
+
+	return data, nil
 }
 
 // SendStreaming sends a message with streaming support.

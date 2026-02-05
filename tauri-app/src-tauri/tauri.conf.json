@@ -20,9 +20,6 @@
     "shortDescription": "AI Gateway for Local LLM Integration",
     "longDescription": "ZimaOS Echo is an AI gateway that provides seamless integration with local LLM providers like Ollama, enabling AI-powered features across your local network.",
     "copyright": "Copyright © 2024 ZimaOS Team",
-    "externalBin": [
-      "bin/echo-server"
-    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
@@ -105,10 +102,7 @@
         "decorations": true,
         "transparent": false,
         "visible": false,
-        "url": "about:blank",
-        "webviewAttributes": {
-          "preload": null
-        }
+        "url": "about:blank"
       }
     ],
     "security": {

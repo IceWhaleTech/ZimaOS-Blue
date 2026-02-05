@@ -305,9 +305,15 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onError: (err) => {
-          streamError.value = err.message
+          // Handle special error for no stream data
+          if (err.message === 'NO_STREAM_DATA') {
+            streamError.value = 'NO_STREAM_DATA'
+          } else {
+            streamError.value = err.message
+          }
           // Remove the placeholder message on error
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+          streaming.value = false
         },
         onBlocked: (message, threatLevel) => {
           securityBlocked.value = { message, threatLevel }

@@ -4,7 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { AudioRecorder, VoiceWebSocket, playAudioFromBase64 } from '@/api/voice'
 import type { VoiceSessionState } from '@/api/voice'
 import { speechApi } from '@/api/speech'
+import { convertToWav } from '@/utils/audioConverter'
 import TranscriptionEditor from './TranscriptionEditor.vue'
+import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 const { t } = useI18n()
 
 const props = defineProps<{
@@ -36,6 +38,9 @@ const pendingTranscription = ref('')
 const transcriptionLanguage = ref('')
 const transcriptionConfidence = ref(0)
 
+// ASR model download prompt
+const showASRDownloadPrompt = ref(false)
+
 // Audio visualization
 const audioLevel = ref(0)
 const audioLevelInterval = ref<number | null>(null)
@@ -47,9 +52,26 @@ const recordedChunks = ref<Blob[]>([])
 let voiceWs: VoiceWebSocket | null = null
 let recorder: AudioRecorder | null = null
 
+// Check if ASR model is ready
+async function checkASRModelReady(): Promise<boolean> {
+  try {
+    const res = await speechApi.getASRStatus()
+    return res.data?.ready ?? false
+  } catch {
+    return true // Assume ready if check fails
+  }
+}
+
 // Connect to voice WebSocket
 async function connect() {
   if (voiceWs?.isConnected) return
+
+  // Check if ASR model is ready first
+  const ready = await checkASRModelReady()
+  if (!ready) {
+    showASRDownloadPrompt.value = true
+    return
+  }
 
   error.value = null
   voiceWs = new VoiceWebSocket()
@@ -135,22 +157,8 @@ async function startListening() {
   recorder = new AudioRecorder()
 
   recorder.onDataAvailable = async (data: Blob) => {
-    // Collect chunks for local ASR in walkie-talkie mode
-    if (talkMode.value === 'walkie-talkie' && props.editBeforeSend) {
-      recordedChunks.value.push(data)
-    }
-
-    if (voiceWs?.isConnected) {
-      // Convert blob to base64 and send
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const base64 = (reader.result as string).split(',')[1]
-        if (base64) {
-          voiceWs?.sendAudio(base64, recorder?.mimeType.split('/')[1] || 'webm')
-        }
-      }
-      reader.readAsDataURL(data)
-    }
+    // Collect all chunks for conversion at the end
+    recordedChunks.value.push(data)
   }
 
   recorder.onError = (err: Error) => {
@@ -194,7 +202,9 @@ async function transcribeLocally() {
 
   try {
     const audioBlob = new Blob(recordedChunks.value, { type: 'audio/webm' })
-    const result = await speechApi.transcribe(audioBlob, 'webm')
+    // Convert webm to wav for whisper.cpp
+    const wavBlob = await convertToWav(audioBlob)
+    const result = await speechApi.transcribe(wavBlob, 'wav')
 
     if (result.text) {
       pendingTranscription.value = result.text
@@ -448,6 +458,13 @@ onUnmounted(() => {
             :confidence="transcriptionConfidence"
             @confirm="handleTranscriptionConfirm"
             @cancel="handleTranscriptionCancel"
+          />
+
+          <!-- ASR Model Download Prompt -->
+          <ModelDownloadPrompt
+            v-model:model-visible="showASRDownloadPrompt"
+            type="asr"
+            @downloaded="connect"
           />
 
           <!-- Error message -->

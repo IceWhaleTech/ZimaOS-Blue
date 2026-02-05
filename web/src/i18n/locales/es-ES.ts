@@ -2003,6 +2003,24 @@ export default {
     ttsProvider: 'Proveedor TTS',
     espeakNote: 'Sin conexión - ligero (~8,5 MB)',
     sherpaNote: 'Sin conexión - alta calidad (requiere descarga)',
+    asrModelInfo: {
+      whisperTiny: {
+        name: 'Whisper Tiny',
+        description: '75MB - Modelo Whisper más pequeño. Optimizado para dispositivos con recursos limitados.',
+      },
+      whisperBase: {
+        name: 'Whisper Base',
+        description: '142MB - Buen equilibrio entre precisión y rendimiento. Adecuado para reconocimiento de voz general.',
+      },
+      whisperSmall: {
+        name: 'Whisper Small',
+        description: '466MB - Mayor precisión que Base. Mejor para audio complejo o cuando la precisión es prioritaria.',
+      },
+      whisperLargeTurbo: {
+        name: 'Whisper Large v3 Turbo [Recomendado]',
+        description: '809MB - Modelo grande destilado - 6x más rápido que large-v3 con precisión similar.',
+      },
+    },
   },
   remoteAccess: {
     title: 'Acceso remoto',
@@ -2123,5 +2141,84 @@ export default {
     noSkillsAvailable: 'No hay habilidades disponibles en este momento',
     clearSearch: 'Borrar búsqueda',
     allLoaded: 'Todas las {count} habilidades cargadas',
+  },
+  authProviders: {
+    title: 'Proveedores de autenticación',
+    noProviders: 'No hay proveedores de autenticación configurados',
+    addProvider: 'Añadir proveedor',
+    editProvider: 'Editar proveedor',
+    disable: 'Desactivar',
+    types: {
+      generic: 'OIDC genérico',
+      google: 'Google',
+      github: 'GitHub',
+      microsoft: 'Microsoft / Azure AD',
+      keycloak: 'Keycloak',
+      authentik: 'Authentik',
+      auth0: 'Auth0',
+    },
+  },
+  memory: {
+    title: 'Memoria',
+    subtitle: 'Gestionar la memoria y contexto de la IA',
+    addMemory: 'Añadir recuerdo',
+    deleteMemory: 'Eliminar recuerdo',
+  },
+  backup: {
+    title: 'Copia de seguridad',
+    createBackup: 'Crear copia de seguridad',
+    restoreBackup: 'Restaurar copia de seguridad',
+  },
+  audit: {
+    title: 'Registro de auditoría',
+    action: 'Acción',
+    user: 'Usuario',
+    timestamp: 'Marca de tiempo',
+  },
+  mfa: {
+    title: 'Autenticación de dos factores',
+    enable: 'Activar MFA',
+    disable: 'Desactivar MFA',
+    verificationCode: 'Código de verificación',
+  },
+  webauthn: {
+    title: 'Claves de seguridad',
+    addKey: 'Añadir clave de seguridad',
+  },
+  automation: {
+    title: 'Automatización',
+    createAutomation: 'Crear automatización',
+    trigger: 'Disparador',
+    action: 'Acción',
+  },
+  workflow: {
+    title: 'Flujos de trabajo',
+    createWorkflow: 'Crear flujo de trabajo',
+  },
+  cron: {
+    title: 'Tareas programadas',
+    createCronJob: 'Crear tarea programada',
+    nextRun: 'Próxima ejecución',
+  },
+  webhook: {
+    title: 'Webhooks',
+    createWebhook: 'Crear webhook',
+  },
+  homeAssistant: {
+    title: 'Home Assistant',
+    devices: 'Dispositivos',
+    entities: 'Entidades',
+    automations: 'Automatizaciones',
+    scenes: 'Escenas',
+  },
+  skills: {
+    title: 'Habilidades',
+    install: 'Instalar',
+    uninstall: 'Desinstalar',
+  },
+  tools: {
+    title: 'Herramientas',
+    toolName: 'Nombre de herramienta',
+    parameters: 'Parámetros',
   },
 } as typeof enUS

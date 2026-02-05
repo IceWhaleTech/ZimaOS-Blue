@@ -61,14 +61,21 @@ type TTSStatus struct {
 
 // ASRStatus represents ASR status.
 type ASRStatus struct {
-	Ready              bool    `json:"ready"`
-	Provider           string  `json:"provider"`
-	ModelType          string  `json:"model_type,omitempty"`
-	StreamingSupported bool    `json:"streaming_supported"`
-	EditBeforeSend     bool    `json:"edit_before_send"`
-	Downloading        bool    `json:"downloading"`
-	Progress           *Progress `json:"progress,omitempty"`
-	HasPending         bool    `json:"has_pending"`
+	Ready              bool              `json:"ready"`
+	Provider           string            `json:"provider"`
+	ModelType          string            `json:"model_type,omitempty"`
+	StreamingSupported bool              `json:"streaming_supported"`
+	EditBeforeSend     bool              `json:"edit_before_send"`
+	Downloading        bool              `json:"downloading"`
+	Progress           *Progress         `json:"progress,omitempty"`
+	Downloads          []DownloadStatus  `json:"downloads,omitempty"` // All active downloads
+	HasPending         bool              `json:"has_pending"`
+}
+
+// DownloadStatus represents a single model download status.
+type DownloadStatus struct {
+	ModelType  string   `json:"model_type"`
+	Progress   Progress `json:"progress"`
 }
 
 // Progress represents download progress.

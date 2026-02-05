@@ -3,6 +3,7 @@ import { ref, computed, onUnmounted, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
+import { convertToWav } from '@/utils/audioConverter'
 import ImagePreview from '@/components/chat/ImagePreview.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 
@@ -325,12 +326,11 @@ async function startRecording() {
     isTranscribing.value = true
 
     try {
-      // Get format from mime type
-      const mimeType = recorder.value?.mimeType || 'audio/webm'
-      const format = mimeType.includes('webm') ? 'webm' : mimeType.includes('ogg') ? 'ogg' : 'wav'
+      // Convert webm to wav for whisper.cpp
+      const wavBlob = await convertToWav(audioBlob)
 
       // Transcribe audio
-      const response = await voiceApi.transcribe(audioBlob, format)
+      const response = await voiceApi.transcribe(wavBlob, 'wav')
       if (response.data.text) {
         // Append transcribed text to message
         if (message.value.trim()) {

@@ -37,6 +37,8 @@ type Service interface {
 	IsInitialized() bool
 	// SetTTSProvider sets the TTS provider.
 	SetTTSProvider(provider tts.Provider)
+	// SetASRProvider sets the ASR provider.
+	SetASRProvider(provider stt.Provider)
 }
 
 // service implements the Service interface.
@@ -122,7 +124,7 @@ func (s *service) Initialize() error {
 	if s.config.ASR.Provider == "sherpa" {
 		modelDir := s.config.ASR.ModelDir
 		if modelDir == "" {
-			modelDir = s.initConfig.DataDir + "/sherpa-asr"
+			modelDir = s.initConfig.DataDir + "/whisper-models"
 		}
 
 		modelType := s.config.ASR.Model
@@ -130,14 +132,13 @@ func (s *service) Initialize() error {
 			modelType = "whisper-tiny" // Default model
 		}
 
-		sherpaProvider := stt.NewSherpaProvider(&stt.SherpaConfig{
-			ModelDir:    modelDir,
-			ModelType:   modelType,
+		whisperProvider := stt.NewWhisperProvider(&stt.WhisperConfig{
+			ModelPath:   modelDir,
 			DefaultLang: s.config.ASR.DefaultLang,
 			MaxDuration: s.config.ASR.MaxDuration,
 		})
 
-		s.asrProvider = sherpaProvider
+		s.asrProvider = whisperProvider
 	}
 
 	return nil
@@ -179,6 +180,41 @@ func (s *service) GetStatus() *StatusResponse {
 		if s.asrProvider != nil {
 			resp.ASR.Ready = true
 			resp.ASR.ModelType = s.asrProvider.Name()
+
+			// Get download status from Whisper provider
+			if whisperProvider, ok := s.asrProvider.(*stt.WhisperProvider); ok {
+				status := whisperProvider.GetModelStatus()
+				resp.ASR.Downloading = status.Downloading
+				resp.ASR.HasPending = status.HasPending
+				// Use the actual model type from status (e.g., "whisper-tiny")
+				if status.ModelType != "" {
+					resp.ASR.ModelType = status.ModelType
+				}
+				if status.Downloading && status.Progress != nil {
+					// Add to downloads list
+					resp.ASR.Downloads = []DownloadStatus{{
+						ModelType: status.ModelType,
+						Progress: Progress{
+							File:       status.Progress.File,
+							Downloaded: status.Progress.Downloaded,
+							Total:      status.Progress.Total,
+							Percentage: status.Progress.Percentage,
+							SpeedHuman: status.Progress.SpeedHuman,
+							ETA:        status.Progress.ETA,
+						},
+					}}
+					// Keep backward compatibility
+					resp.ASR.ModelType = status.ModelType
+					resp.ASR.Progress = &Progress{
+						File:       status.Progress.File,
+						Downloaded: status.Progress.Downloaded,
+						Total:      status.Progress.Total,
+						Percentage: status.Progress.Percentage,
+						SpeedHuman: status.Progress.SpeedHuman,
+						ETA:        status.Progress.ETA,
+					}
+				}
+			}
 		}
 	}
 
