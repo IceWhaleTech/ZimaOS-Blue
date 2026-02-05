@@ -25,14 +25,25 @@ fn main() {
         println!("cargo:rustc-link-lib=static=ucd");
         println!("cargo:rustc-link-lib=static=sonic");
 
-        // Link whisper.cpp for STT support (from third_party)
+        // Link whisper.cpp and ggml (from third_party)
         println!("cargo:rustc-link-search=native=../../third_party/whisper.cpp/build/src");
+        println!("cargo:rustc-link-search=native=../../third_party/whisper.cpp/build/ggml/src");
+        println!("cargo:rustc-link-search=native=../../third_party/whisper.cpp/build/ggml/src/ggml-metal");
+        println!("cargo:rustc-link-search=native=../../third_party/whisper.cpp/build/ggml/src/ggml-blas");
         println!("cargo:rustc-link-lib=static=whisper");
+        println!("cargo:rustc-link-lib=static=ggml");
+        println!("cargo:rustc-link-lib=static=ggml-base");
+        println!("cargo:rustc-link-lib=static=ggml-cpu");
+        println!("cargo:rustc-link-lib=static=ggml-metal");
+        println!("cargo:rustc-link-lib=static=ggml-blas");
 
-        // Link Accelerate framework for whisper-cpp
+        // Link frameworks for whisper/ggml
         println!("cargo:rustc-link-lib=framework=Accelerate");
+        println!("cargo:rustc-link-lib=framework=Metal");
+        println!("cargo:rustc-link-lib=framework=MetalKit");
+        println!("cargo:rustc-link-lib=framework=Foundation");
 
-        // Link C++ standard library for whisper-cpp
+        // Link C++ standard library
         println!("cargo:rustc-link-lib=c++");
 
         // Rerun if the library changes
