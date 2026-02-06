@@ -49,6 +49,7 @@ static HTTP_CLIENT: once_cell::sync::Lazy<reqwest::Client> = once_cell::sync::La
         .timeout(Duration::from_secs(1))
         .pool_max_idle_per_host(2)
         .no_proxy() // Bypass system proxy for localhost connections
+        .danger_accept_invalid_certs(true) // Trust self-signed certificates for localhost
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 });

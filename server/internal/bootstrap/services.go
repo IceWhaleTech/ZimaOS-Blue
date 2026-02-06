@@ -2,6 +2,7 @@
 package bootstrap
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -14,12 +15,13 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
 )
 
 // Services holds all initialized services
@@ -35,6 +37,7 @@ type Services struct {
 	LLMRegistry   *llm.ProviderRegistry
 	ToolRegistry  *tools.Registry
 	SkillRegistry *skill.Registry
+	WorkerPool    *worker.Pool
 	DataDir       string
 }
 
@@ -122,6 +125,9 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	// Skill registry
 	s.SkillRegistry = skill.NewRegistry()
 	builtin.RegisterAll(s.SkillRegistry)
+
+	// Worker pool (shared by echo and echolib)
+	s.WorkerPool = worker.NewPool(context.Background(), 10)
 
 	return s, nil
 }

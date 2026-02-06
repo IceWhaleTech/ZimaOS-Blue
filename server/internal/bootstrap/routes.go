@@ -175,11 +175,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 
 	// Worker stats endpoint (public, for bootstrap/health checks)
 	v1.GET("/workers/stats", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"pool_size": 10,
-			"running":   0,
-			"total":     0,
-		})
+		// Return real worker pool statistics
+		stats := s.WorkerPool.Stats()
+		return c.JSON(http.StatusOK, stats)
 	})
 
 	// Public auth routes
@@ -272,12 +270,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		}
 	}
 
-	// System routes
+	// System routes (protected)
 	systemHandler := server.NewSystemHandler(cfg.Version, cfg.BuildTime, cfg.GitCommit, cfg.DataDir)
-	systemHandler.RegisterRoutes(v1)
+	systemHandler.RegisterRoutes(protected)
 
 	serviceHandler := server.NewServiceHandler()
-	serviceHandler.RegisterRoutes(v1)
+	serviceHandler.RegisterRoutes(protected)
 
 	// Connection monitoring routes
 	connHandler := connection.NewHandler(connManager)
@@ -415,9 +413,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		}
 	}
 
-	// Speech routes - /api/v1/speech/*
+	// Speech routes - /api/v1/speech/* (protected)
 	if deps.SpeechHandler != nil {
-		speechGroup := v1.Group("/speech")
+		speechGroup := protected.Group("/speech")
 		deps.SpeechHandler.RegisterRoutes(speechGroup)
 	}
 
