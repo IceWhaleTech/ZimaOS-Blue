@@ -370,7 +370,7 @@ onMounted(() => {
 
 .btn-clear-search {
   padding: 8px 16px;
-  background: var(--color-gray-900);
+  background: #374151;
   color: white;
   border: none;
   border-radius: 6px;
@@ -407,7 +407,7 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 500;
   color: white;
-  background: var(--color-gray-900);
+  background: #374151;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -415,7 +415,7 @@ onMounted(() => {
 }
 
 .btn-install:hover:not(:disabled) {
-  background: var(--color-gray-800);
+  background: #4b5563;
 }
 
 .btn-install:disabled {

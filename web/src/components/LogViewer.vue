@@ -109,7 +109,7 @@ function getMethodColor(method: string): string {
     case 'GET':
       return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
     case 'POST':
-      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
     case 'PUT':
       return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'PATCH':

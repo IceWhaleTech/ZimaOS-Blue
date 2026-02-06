@@ -184,7 +184,7 @@ watch(() => props.modelVisible, (visible) => {
                 model.downloaded
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                   : downloadingModelId === model.id
-                    ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+                    ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600'
                     : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
               ]"
             >

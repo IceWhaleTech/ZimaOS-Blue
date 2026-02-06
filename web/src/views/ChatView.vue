@@ -509,8 +509,7 @@ onUnmounted(() => {
               :class="{
                 'text-red-500 dark:text-red-400': providerStatus.status === 'error',
                 'text-green-500 dark:text-green-400': providerStatus.status === 'active' && routingModeInfo.color === 'green',
-                'text-gray-900 dark:text-gray-300': providerStatus.status === 'active' && routingModeInfo.color === 'gray',
-                'text-gray-900 dark:text-gray-300': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
+                'text-gray-900 dark:text-gray-300': providerStatus.status === 'active' && (routingModeInfo.color === 'gray' || routingModeInfo.color === 'accent'),
                 'text-yellow-500 dark:text-yellow-400': providerStatus.status === 'pending',
               }"
               :title="providerStatus.message"
@@ -522,8 +521,7 @@ onUnmounted(() => {
                 :class="{
                   'bg-red-500 animate-pulse': providerStatus.status === 'error',
                   'bg-green-500': providerStatus.status === 'active' && routingModeInfo.color === 'green',
-                  'bg-gray-700 dark:bg-gray-700': providerStatus.status === 'active' && routingModeInfo.color === 'gray',
-                  'bg-gray-700 dark:bg-gray-700': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
+                  'bg-gray-700 dark:bg-gray-700': providerStatus.status === 'active' && (routingModeInfo.color === 'gray' || routingModeInfo.color === 'accent'),
                   'bg-yellow-500 animate-pulse': providerStatus.status === 'pending',
                 }"
               />

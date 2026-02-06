@@ -72,5 +72,5 @@ const sizeClass = computed(() => {
 </script>
 
 <template>
-  <img :src="iconSrc" :alt="providerId" :class="sizeClass" class="inline-block" />
+  <img :src="iconSrc" :alt="providerId" :class="[sizeClass, 'dark:brightness-150']" class="inline-block" />
 </template>
