@@ -105,7 +105,8 @@ pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&s
     }
 }
 
-/// Start the Echo server via FFI
+/// Start the Echo server via FFI (legacy, without args)
+pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
     if SERVER_STARTED.load(Ordering::SeqCst) {
         info!("Echo server already started via FFI");
         return Ok(());
