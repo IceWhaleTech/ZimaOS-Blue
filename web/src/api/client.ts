@@ -23,6 +23,17 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // Fix SSL/HTTPS issues in Tauri by allowing localhost to use HTTP
+    // When HTTPS-only mode is enabled, localhost connections skip HTTPS redirect
+    // so we keep HTTP protocol for localhost connections
+    if (isTauri && config.url) {
+      // Ensure localhost uses HTTP (server skips HTTPS redirect for localhost)
+      if (config.url.startsWith('https://localhost') || config.url.startsWith('https://127.0.0.1')) {
+        config.url = config.url.replace('https://', 'http://')
+      }
+    }
+
     return config
   },
   (error) => {

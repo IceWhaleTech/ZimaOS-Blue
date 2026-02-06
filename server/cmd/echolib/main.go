@@ -65,6 +65,49 @@ var (
 	httpServer   *http.Server
 )
 
+//export EchoServerStartWithArgs
+func EchoServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+
+	if isRunning {
+		return 1 // Already running
+	}
+
+	goPort := int(port)
+	goDataDir := C.GoString(dataDir)
+	goArgs := C.GoString(args)
+
+	// Set environment variables for config
+	if goPort > 0 {
+		os.Setenv("ECHO_SERVER_PORT", fmt.Sprintf("%d", goPort))
+	}
+	if goDataDir != "" {
+		os.Setenv("ECHO_DATA_DIR", goDataDir)
+	}
+
+	// Parse and apply command-line arguments
+	if goArgs != "" {
+		// Parse arguments string (space-separated)
+		// Example: "--config /path/to/config.yaml --debug"
+		os.Setenv("ECHO_ARGS", goArgs)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serverCancel = cancel
+	serverDone = make(chan struct{})
+
+	go func() {
+		defer close(serverDone)
+		if err := runServer(ctx, goPort, goDataDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+		}
+	}()
+
+	isRunning = true
+	return 0
+}
+
 //export EchoServerStart
 func EchoServerStart(port C.int, dataDir *C.char) C.int {
 	serverMu.Lock()

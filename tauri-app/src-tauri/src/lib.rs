@@ -60,10 +60,62 @@ async fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
-/// Start the server using platform-specific approach
+/// Start server with command-line arguments (macOS specific)
+#[tauri::command]
+async fn start_server_with_args(app: tauri::AppHandle, args: Option<String>) -> Result<(), String> {
+    start_server_platform_with_args(&app, args).await
+}
+
+/// Start the server using platform-specific approach with optional command-line arguments
 /// - macOS: Uses CGO library (FFI to Go static library) for faster startup
 /// - Windows: Uses sidecar process
-async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
+async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<String>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        info!("Starting Echo server via CGO library (macOS) with args: {:?}", args);
+
+        // Get data directory
+        let data_dir = app.path().app_data_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .ok();
+
+        // Start server via FFI with args
+        echo_ffi::start_server_with_args(23456, data_dir.as_deref(), args.as_deref())?;
+
+        // Update app state
+        if let Some(state) = app.try_state::<AppState>() {
+            *state.server_port.lock().unwrap() = 23456;
+            *state.server_running.lock().unwrap() = true;
+        }
+
+        // Wait for server to be ready
+        let url = "http://localhost:23456/api/v1/health";
+        let mut delay_ms = 25u64;
+        let max_delay_ms = 100u64;
+        let max_attempts = 8;
+
+        for i in 0..max_attempts {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            if reqwest::get(url).await.is_ok() {
+                info!("Server ready after attempt {} with args", i + 1);
+                return Ok(());
+            }
+            delay_ms = std::cmp::min(delay_ms * 2, max_delay_ms);
+        }
+
+        info!("Server may not be fully ready, but FFI call succeeded");
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Windows/Linux: Use sidecar process approach
+        info!("Starting Echo server via sidecar process with args: {:?}", args);
+        server::start_sidecar_server(app).await
+    }
+}
+
+/// Start the server using platform-specific approach
     #[cfg(target_os = "macos")]
     {
         info!("Starting Echo server via CGO library (macOS)");
@@ -165,6 +217,7 @@ pub fn run() {
             is_server_running,
             get_server_port,
             open_url,
+            start_server_with_args,
             server::start_server,
             server::stop_server,
             server::restart_server,

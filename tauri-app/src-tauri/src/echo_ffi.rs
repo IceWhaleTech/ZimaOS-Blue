@@ -15,7 +15,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // FFI declarations for the Go library exports
 #[link(name = "echo", kind = "static")]
 extern "C" {
-    /// Start the Echo server
+    /// Start the Echo server with command-line arguments
+    /// port: The port to listen on (0 for auto-select)
+    /// data_dir: Path to the data directory (can be null for default)
+    /// args: Command-line arguments as a single string (can be null)
+    /// Returns: 0 on success, non-zero on error
+    fn EchoServerStartWithArgs(port: c_int, data_dir: *const c_char, args: *const c_char) -> c_int;
+
+    /// Start the Echo server (legacy, without args)
     /// port: The port to listen on (0 for auto-select)
     /// data_dir: Path to the data directory (can be null for default)
     /// Returns: 0 on success, non-zero on error
@@ -40,16 +47,65 @@ extern "C" {
 /// Track if we've started the server (to prevent double-start)
 static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 
-/// Start the Echo server via FFI
+/// Start the Echo server via FFI with command-line arguments
 ///
 /// # Arguments
 /// * `port` - The port to listen on (use 0 for auto-select)
 /// * `data_dir` - Optional path to the data directory
+/// * `args` - Optional command-line arguments string
 ///
 /// # Returns
 /// * `Ok(())` on success
 /// * `Err(String)` with error message on failure
-pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
+pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&str>) -> Result<(), String> {
+    if SERVER_STARTED.load(Ordering::SeqCst) {
+        info!("Echo server already started via FFI");
+        return Ok(());
+    }
+
+    info!("Starting Echo server via FFI on port {} with args: {:?}", port, args);
+
+    let c_data_dir = match data_dir {
+        Some(dir) => {
+            CString::new(dir).map_err(|e| format!("Invalid data_dir path: {}", e))?
+        }
+        None => CString::new("").unwrap(),
+    };
+
+    let c_args = match args {
+        Some(arg_str) => {
+            CString::new(arg_str).map_err(|e| format!("Invalid args: {}", e))?
+        }
+        None => CString::new("").unwrap(),
+    };
+
+    let result = unsafe {
+        EchoServerStartWithArgs(
+            port as c_int,
+            if data_dir.is_some() {
+                c_data_dir.as_ptr()
+            } else {
+                std::ptr::null()
+            },
+            if args.is_some() {
+                c_args.as_ptr()
+            } else {
+                std::ptr::null()
+            },
+        )
+    };
+
+    if result == 0 {
+        SERVER_STARTED.store(true, Ordering::SeqCst);
+        info!("Echo server started successfully via FFI with args");
+        Ok(())
+    } else {
+        error!("Failed to start Echo server via FFI, error code: {}", result);
+        Err(format!("Failed to start Echo server, error code: {}", result))
+    }
+}
+
+/// Start the Echo server via FFI
     if SERVER_STARTED.load(Ordering::SeqCst) {
         info!("Echo server already started via FFI");
         return Ok(());

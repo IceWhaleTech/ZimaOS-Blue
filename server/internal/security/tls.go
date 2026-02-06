@@ -663,8 +663,13 @@ func (m *TLSManager) HTTPSRedirectMiddleware() echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			// Redirect to HTTPS
+			// Skip HTTPS redirect for localhost/127.0.0.1 (Tauri desktop app)
 			host := c.Request().Host
+			if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
+				return next(c)
+			}
+
+			// Redirect to HTTPS
 			httpsPort := m.GetHTTPSPort()
 			if httpsPort != 443 {
 				// Remove existing port if present

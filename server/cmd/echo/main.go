@@ -739,141 +739,38 @@ func main() {
 
 func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager) {
 	e := srv.Echo()
+	logger := zapLogger
 
-	// Initialize connection manager and add middleware for tracking all connections
-	connManager := connection.NewManager(10000, 5*time.Second)
-	e.Use(connManager.Middleware())
-
-	// Preview mode routes (no auth required - for preview mode detection and upgrade)
-	previewModeService := preview.NewModeService(userService)
-	previewUpgradeService := preview.NewUpgradeService(userService, db)
-	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, jwtService)
-	previewHandler.RegisterRoutes(e)
-	logger.Info().Msg("Preview mode routes registered")
-
-	// API v1 group
-	v1 := e.Group("/api/v1")
-
-	// API group (for routes that don't use /api/v1 prefix)
-	api := e.Group("/api")
-
-	// Public auth routes (login, logout, providers list)
-	v1.POST("/auth/login", userHandler.Login)
-	v1.POST("/auth/logout", userHandler.Logout)
-
-	// Public worker stats endpoint (for bootstrap/health checks)
-	v1.GET("/workers/stats", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, pool.Stats())
-	})
-
-	// Register external auth routes (OAuth/OIDC providers) - public routes
-	authGroup := v1.Group("/auth")
-	extauthHandler.RegisterRoutes(authGroup)
-
-	// Protected routes - require authentication
-	protected := v1.Group("")
-	protected.Use(authMiddleware.Authenticate())
-
-	// Register protected external auth routes (account linking)
-	protectedAuthGroup := protected.Group("/auth")
-	extauthHandler.RegisterProtectedRoutes(protectedAuthGroup)
-
-	// Register MFA routes (protected) - /api/v1/auth/mfa/*
-	mfaHandler.RegisterRoutes(protected)
-
-	// User routes (protected)
-	usersGroup := protected.Group("/users")
-	usersGroup.GET("/me", userHandler.GetCurrentUser)
-	usersGroup.PUT("/me", userHandler.UpdateCurrentUser)
-	usersGroup.GET("", userHandler.ListUsers)
-	usersGroup.POST("", userHandler.CreateUser)
-	usersGroup.GET("/:id", userHandler.GetUser)
-	usersGroup.PUT("/:id", userHandler.UpdateUser)
-	usersGroup.DELETE("/:id", userHandler.DeleteUser)
-	usersGroup.POST("/:id/lock", userHandler.LockUser)
-	usersGroup.POST("/:id/unlock", userHandler.UnlockUser)
-	usersGroup.POST("/:id/reset-password", userHandler.ResetPassword)
-
-	// Permission routes (protected)
-	permissionHandler.RegisterRoutes(protected)
-	logger.Info().Msg("Permission routes registered")
-
-	// Password change (protected)
-	protected.POST("/auth/password", userHandler.ChangePassword)
-
-	// API Keys routes (protected)
-	apiKeysGroup := protected.Group("/apikeys")
-	apiKeyHandler.RegisterRoutes(apiKeysGroup)
-
-	// Set up companion manager and prompt guard for chat handler
-	if companionManager != nil {
-		chatHandler.SetCompanionManager(companionManager)
-		logger.Info().Msg("Companion manager set on chat handler")
+	// Initialize voice WebSocket handler
+	var voiceWSHandler *voice.WSHandler
+	if voiceHandler != nil {
+		voiceWSHandler = voice.NewWSHandler(voiceHandler.Service())
 	}
-	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
-	chatHandler.SetPromptGuard(promptGuard)
-	logger.Info().Msg("Prompt guard set on chat handler")
 
-	// Register chat routes (conversations, providers, tools)
-	chatHandler.RegisterRoutes(v1)
-
-	// Register auto-reply routes
-	autoreplyHandler.RegisterRoutes(v1)
-
-	// Register health routes under /api/v1 as well
-	srv.RegisterHealthRoutesOnGroup(v1)
-
-	// Register network routes (public - for desktop app to get LAN addresses)
-	networkHandler := networkapi.NewNetworkHandler(server.GetActualPort())
-	networkHandler.RegisterRoutes(e)
-	logger.Info().Msg("Network routes registered")
-
-	// Initialize CORS origins after server starts (when actual port is known)
-	server.OnServerStart(func(port int) {
-		if err := networkHandler.InitializeCORSOrigins(); err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize CORS origins with local network addresses")
-		} else {
-			logger.Info().Int("port", port).Msg("CORS origins initialized with local network addresses")
+	// Initialize speech handler
+	speechService := speech.NewService(&speech.Config{
+		TTS: speech.TTSConfig{Provider: "edge", Model: ""},
+		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper", EditBeforeSend: true},
+	}, nil, ttsService)
+	if ttsService != nil {
+		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
+			speechService.SetTTSProvider(provider)
 		}
-	})
+	}
+	speechHandler := speech.NewHandler(speechService)
+	if sttService != nil {
+		if wp := sttService.GetWhisperProvider(); wp != nil {
+			speechService.SetASRProvider(wp)
+		}
+	}
 
-	// Register link preview routes (public - for fetching URL metadata)
-	linkPreviewHandler := networkapi.NewLinkPreviewHandler()
-	linkPreviewHandler.RegisterRoutes(v1)
-	logger.Info().Msg("Link preview routes registered")
+	// Initialize Claude Code handler
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: dataDir})
+	systemPromptBuilder.SetToolRegistry(toolRegistry)
+	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
-	// Register metrics routes (system metrics from collector)
-	metricsHandler := server.NewMetricsHandler(metricsCollector)
-	metricsHandler.RegisterRoutes(v1)
-
-	// Register detailed metrics routes (API call stats, token usage, latency, etc.)
-	detailedMetricsHandler := metrics.NewHandler(metricsWriter)
-	metricsGroup := v1.Group("/metrics")
-	detailedMetricsHandler.RegisterRoutes(metricsGroup)
-	logger.Info().Msg("Detailed metrics routes registered")
-
-	// Register system routes (logs, config, info)
-	systemHandler := server.NewSystemHandler(version, buildTime, gitCommit, dataDir)
-	systemHandler.RegisterRoutes(v1)
-
-	// Register update routes
-	updateHandler := update.NewHandler(version, &update.Config{
-		Enabled:        true,
-		CheckInterval:  24 * time.Hour,
-		ReleaseChannel: "stable",
-		BackupCount:    3,
-		StoragePath:    filepath.Join(dataDir, "updates"),
-	})
-	updateHandler.RegisterRoutes(v1)
-
-	// Register service management routes
-	serviceHandler := server.NewServiceHandler()
-	serviceHandler.RegisterRoutes(v1)
-
-	// Register backup routes
-	backupHandler.RegisterRoutes(v1)
-
-	// Initialize and register memory handler (vector store for AI memory)
+	// Initialize memory handler
 	var memoryHandler *server.MemoryHandler
 	vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
 	vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
@@ -881,10 +778,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
 		MaxChunks:    10000,
 		EnableFTS:    true,
-		EnableVec:    true, // Enable sqlite-vec for fast vector search
+		EnableVec:    true,
 	})
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize vector store, memory features disabled")
+		logger.Warn("Failed to initialize vector store", zap.Error(err))
 	} else {
 		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
 		memoryService := memory.NewMemoryService(hybridSearcher)
@@ -892,286 +789,21 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		memoryHandler = server.NewMemoryHandler(memoryService)
 		memoryHandler.SetUnifiedService(unifiedService)
 
-		// Initialize LayeredMemoryService for dual-layer memory architecture
 		memoryDir := filepath.Join(dataDir, "memory")
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 			BaseDir:            memoryDir,
 			DailyRetentionDays: 30,
 		})
 		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize layered memory service")
+			logger.Warn("Failed to initialize layered memory service", zap.Error(err))
 		} else {
 			memoryHandler.SetLayeredService(layeredService)
-			logger.Info().Str("dir", memoryDir).Msg("Layered memory service initialized")
 		}
-
-		memoryHandler.RegisterRoutes(v1)
-
-		// Register memory tools for AI agent access
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
-		logger.Info().Msg("Memory tools registered for AI agent")
-
-		logger.Info().Bool("vec_enabled", vectorStore.IsVecEnabled()).Msg("Memory handler initialized")
 	}
 
-	// Register skill routes (skills and skill store)
-	skillHandler := server.NewSkillHandler(skillRegistry)
-
-	// Initialize skill store for database persistence (v0.10.15)
-	skillStoreDb, err := skillstore.NewStore(db)
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize skill store, skill store features will be disabled")
-	} else {
-		skillHandler.SetStore(skillStoreDb)
-		logger.Info().Msg("Skill store initialized")
-
-		// Load installed skills from database and register them
-		installedSkills, err := skillStoreDb.GetInstalledSkills(context.Background())
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to load installed skills from database")
-		} else {
-			loadedCount := 0
-			for _, s := range installedSkills {
-				// Create a remote skill adapter for each installed skill
-				manifest := &skill.Manifest{
-					ID:          s.ID,
-					Name:        s.Name,
-					Version:     s.Version,
-					Description: s.Summary,
-					Author:      s.Author,
-					Category:    s.Category,
-					Tags:        strings.Split(s.Tags, ","),
-					Metadata: map[string]string{
-						"source_id":   s.SourceID,
-						"source_name": s.SourceName,
-						"homepage":    s.Homepage,
-					},
-				}
-				adapter := server.NewRemoteSkillAdapter(manifest)
-				if err := skillRegistry.Register(adapter, false); err != nil {
-					logger.Warn().Err(err).Str("skill_id", s.ID).Msg("Failed to register installed skill")
-				} else {
-					loadedCount++
-				}
-			}
-			logger.Info().Int("count", loadedCount).Msg("Installed skills loaded from database")
-		}
-
-		// Initialize sync service for periodic skill updates
-		syncConfig := skillstore.DefaultSyncServiceConfig()
-		syncService := skillstore.NewSyncService(skillStoreDb, syncConfig, slog.Default())
-		skillHandler.SetSyncService(syncService)
-
-		// Start sync service (will sync on startup and periodically)
-		syncService.Start(lm.Context())
-		logger.Info().Msg("Skill sync service started (will fetch skills on startup)")
-
-		// Register shutdown hook for sync service
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			syncService.Stop()
-			return nil
-		})
-	}
-
-	// Initialize featured skills loader (v0.10.8)
-	featuredDataPath := filepath.Join(dataDir, "featured_skills.json")
-	featuredLoader := skillstore.NewFeaturedSkillsLoader(featuredDataPath)
-	if err := featuredLoader.Load(); err != nil {
-		logger.Warn().Err(err).Msg("Failed to load featured skills, featured fallback will be disabled")
-	} else {
-		skillHandler.SetFeaturedLoader(featuredLoader)
-		logger.Info().Int("count", len(featuredLoader.GetAll())).Msg("Featured skills loaded")
-	}
-
-	// Initialize local skill scanner (v0.10.8)
-	localScanner := skillstore.NewLocalSkillScanner("")
-	skillHandler.SetLocalScanner(localScanner)
-	logger.Info().Msg("Local skill scanner initialized")
-
-	skillHandler.RegisterRoutes(v1)
-
-	// Register plugin routes (installed plugins management)
-	pluginHandler := server.NewPluginHandler(pluginRegistry)
-	pluginHandler.RegisterRoutes(v1)
-
-	// Register plugin store routes
-	pluginStoreHandler := server.NewPluginStoreHandler(pluginStore)
-	pluginStoreHandler.RegisterRoutes(v1)
-
-	// Register tool store routes (tools and tool store)
-	toolStoreHandler := server.NewToolStoreHandler(toolRegistry)
-	toolStoreHandler.RegisterRoutes(v1)
-
-	// Register security routes (protected)
-	securityGroup := protected.Group("/security")
-	securityHandler.RegisterRoutes(securityGroup)
-
-	// Register connection monitoring routes (protected) - uses connManager from middleware setup
-	connHandler := connection.NewHandler(connManager)
-	connGroup := protected.Group("/connections")
-	connHandler.RegisterRoutes(connGroup)
-
-	// Register sandbox routes (protected)
-	if sandboxHandler != nil {
-		sandboxGroup := protected.Group("/sandbox")
-		sandboxHandler.RegisterRoutes(sandboxGroup)
-	}
-
-	// Register cron routes under /api (protected via middleware on api group)
-	apiProtected := api.Group("")
-	apiProtected.Use(authMiddleware.Authenticate())
-
-	// Register cron routes (protected) - /api/cron/*
-	cronHandler.RegisterRoutes(apiProtected)
-
-	// Register Home Assistant routes (protected) - /api/homeassistant/*
-	haGroup := apiProtected.Group("/homeassistant")
-	haHandler.RegisterRoutes(haGroup)
-
-	// Register browser automation routes (protected) - /api/browser/*
-	if browserHandler != nil {
-		browserGroup := apiProtected.Group("/browser")
-		browserHandler.RegisterRoutes(browserGroup)
-	}
-
-	// Register workflow routes - /api/v1/workflows/*
-	if workflowHandler != nil {
-		workflowHandler.RegisterRoutes(e)
-	}
-
-	// Register voice routes (public for transcribe/synthesize) - /api/v1/voice/*
-	if voiceHandler != nil {
-		voiceGroup := v1.Group("/voice")
-		voiceHandler.RegisterRoutes(voiceGroup)
-		// WebSocket handler for voice streaming
-		voiceWSHandler := voice.NewWSHandler(voiceHandler.Service())
-		voiceWSHandler.RegisterRoutes(voiceGroup)
-		logger.Info().Msg("Voice routes registered")
-	}
-
-	// Register unified speech routes (ASR + TTS) - /api/v1/speech/*
-	speechService := speech.NewService(&speech.Config{
-		TTS: speech.TTSConfig{
-			Provider: "edge",
-			Model:    "",
-		},
-		ASR: speech.ASRConfig{
-			Enabled:        true,
-			Provider:       "whisper",
-			EditBeforeSend: true,
-		},
-	}, nil, ttsService)
-	// Set initial TTS provider from TTS service (no need to call Initialize)
-	if ttsService != nil {
-		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
-			speechService.SetTTSProvider(provider)
-			logger.Info().Msg("Initial TTS provider set to Edge TTS")
-		}
-	}
-	speechHandler := speech.NewHandler(speechService)
-	// Set ASR provider from lazy STT service (will initialize on first use)
-	if sttService != nil {
-		// Get provider lazily - it will be initialized when first accessed
-		if wp := sttService.GetWhisperProvider(); wp != nil {
-			speechService.SetASRProvider(wp)
-			logger.Info().Msg("ASR provider configured (lazy initialization)")
-		}
-	}
-	speechGroup := v1.Group("/speech")
-	speechHandler.RegisterRoutes(speechGroup)
-	logger.Info().Msg("Speech routes registered")
-
-	// Note: With static CGO linking, all eSpeak-NG languages are built-in
-	// No need to sync language packs dynamically
-	if ttsService != nil {
-		if provider := ttsService.GetProvider(tts.ProviderEspeakNG); provider != nil {
-			logger.Info().Msg("eSpeak-NG provider initialized with all languages built-in")
-		}
-	}
-
-	// Register form filler routes (protected) - /api/v1/formfiller/*
-	if formfillerHandler != nil {
-		formfillerGroup := protected.Group("/formfiller")
-		formfillerHandler.RegisterRoutes(formfillerGroup)
-		logger.Info().Msg("Form filler routes registered")
-	}
-
-	// Register Claude Code CLI version management routes (protected) - /api/v1/claudecode/*
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
-	claudeCodeGroup := protected.Group("/claudecode")
-	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
-	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
-
-	// Set up system prompt builder for channel messages
-	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
-		WorkspaceDir: dataDir,
-	})
-	systemPromptBuilder.SetToolRegistry(toolRegistry)
-	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
-	logger.Info().Msg("Claude Code CLI routes registered")
-
-	// Register ngrok remote access routes (SDK-based) - /api/v1/remote-access/*
-	// Also register multi-provider tunnel routes - /api/v1/tunnel/*
-	remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(ngrokTunnelMgr, ngrokConfigStore, cfg.Server.Port)
-	remoteAccessHandler.RegisterRoutes(e)
-	tunnelHandler := networkapi.NewTunnelHandler(ngrokConfigStore, cfg.Server.Port)
-	tunnelHandler.RegisterRoutes(e)
-	logger.Info().Msg("Remote access and tunnel routes registered")
-
-	// Register provider settings routes (protected) - /api/v1/providers/settings/*
-	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)
-	providerSettingsGroup := protected.Group("/providers/settings")
-	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
-	logger.Info().Msg("Provider settings routes registered")
-
-	// Register provider pool routes (protected) - /api/v1/providers/*
-	providerPoolPath := filepath.Join(dataDir, "providerpool")
-
-	// Create provider pool (no encryption) - lightweight creation
-	providerPool, err := providerpool.NewPool(providerPoolPath)
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize provider pool, provider pool features will be disabled")
-		// Create empty pool to allow route registration
-		providerPool = nil
-	}
-
-	// Initialize provider pool synchronously (required for chat to work immediately)
-	// Only health checks run asynchronously after server starts
-	if providerPool != nil {
-		// Load providers from Provider Pool and register them in LLM registry
-		bootstrap.LoadProvidersFromPool(providerPool, llmRegistry)
-
-		// Set provider pool on chat handler for auto-selecting providers
-		chatHandler.SetProviderPool(providerPool)
-
-		// Auto-migrate from legacy provider settings (synchronous, usually fast)
-		if providerpool.CheckMigrationNeeded(dataDir) {
-			logger.Info().Msg("Legacy provider settings detected, starting migration...")
-			result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
-			if err != nil {
-				logger.Warn().Err(err).Msg("Failed to migrate legacy provider settings")
-			} else if result.Migrated > 0 {
-				logger.Info().
-					Int("migrated", result.Migrated).
-					Int("skipped", result.Skipped).
-					Strs("migrated_names", result.MigratedNames).
-					Str("backup_path", result.BackupPath).
-					Msg("Legacy provider settings migrated successfully")
-			}
-		}
-
-		// Start health checks asynchronously after server starts (non-blocking)
-		server.OnServerStart(func(port int) {
-			go func() {
-				logger.Info().Msg("Starting provider pool health checks (post-startup)")
-				providerPool.Start(context.Background())
-				logger.Info().Msg("Provider pool health checks started")
-			}()
-		})
-	}
-
-	// Initialize shared cache (cc-cache) for both proxy and chat
+	// Initialize shared cache
 	var sharedCache *proxy.CCCache
 	cacheConfig := proxy.DefaultCacheConfig()
 	if cfg.Proxy != nil && cfg.Proxy.Cache != nil {
@@ -1179,263 +811,154 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 	sharedCache = proxy.NewCCCache(cacheConfig)
 	chatHandler.SetCache(sharedCache)
-	detailedMetricsHandler.SetCacheProvider(sharedCache)
-	logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Shared cache (cc-cache) initialized for chat")
 
-	providerPoolHandler := providerpool.NewHandler(providerPool)
-	providersGroup := protected.Group("/providers")
-	providerPoolHandler.RegisterRoutes(providersGroup)
-	// Register model routes
-	modelsGroup := protected.Group("/models")
-	providerPoolHandler.RegisterModelRoutes(modelsGroup)
-	// Register IDE routes
-	ideGroup := protected.Group("/ide")
-	providerPoolHandler.RegisterIDERoutes(ideGroup)
-	// Register pricing routes
-	pricingGroup := protected.Group("/pricing")
-	providerPoolHandler.RegisterPricingRoutes(pricingGroup)
-	// Register config routes
-	configGroup := protected.Group("/config")
-	providerPoolHandler.RegisterConfigRoutes(configGroup)
-	logger.Info().Msg("Provider pool routes registered")
+	// Initialize channel config store
+	channelConfigStore := server.NewChannelConfigStore(dataDir)
 
-	// Register proxy failover routes
-	failoverConfig := proxy.DefaultProxyConfig().Routing.Failover
-	failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
-	failoverGroup := protected.Group("/proxy/failover")
-	failoverHandler.RegisterRoutes(failoverGroup)
-	logger.Info().Msg("Proxy failover routes registered")
-
-	// Register OpenAI-compatible proxy routes on /v1/* (unified port architecture)
-	// This allows external apps and Claude Code CLI to use Echo as an OpenAI-compatible API
-	if cfg.Proxy != nil && cfg.Proxy.Enabled {
-		logger.Info().Msg("Initializing OpenAI-compatible proxy on /v1/*")
-
-		// Use Routing config (prefer Route over deprecated Routing field)
-		routingConfig := &cfg.Proxy.Routing
-		if cfg.Proxy.Route != nil {
-			routingConfig = cfg.Proxy.Route
-		}
-
-		// Create proxy components
-		proxyRouter := proxy.NewRouter(routingConfig)
-		proxyConnPool := proxy.NewConnectionPool(&cfg.Proxy.Connection)
-		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
-		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
-
-		// Use shared cache for proxy (same instance as chat)
-		proxyHandler.SetCache(sharedCache)
-		logger.Info().Bool("enabled", cacheConfig.Enabled).Msg("Proxy using shared cache (cc-cache)")
-
-		// Register cache API routes - /api/v1/proxy/cache/*
-		cacheAPIHandler := proxy.NewCacheAPIHandler(sharedCache, cacheConfig)
-		proxyCacheGroup := v1.Group("/proxy/cache")
-		cacheAPIHandler.RegisterRoutes(proxyCacheGroup)
-		logger.Info().Msg("Proxy cache API routes registered")
-
-		// Set Provider Pool for API key lookup
-		if providerPool != nil {
-			proxyHandler.SetProviderPool(providerPool)
-		}
-
-		// Set API key validator for routing mode detection
-		proxyHandler.SetAPIKeyValidator(func(key string) ([]string, error) {
-			info, err := apiKeyService.ValidateKey(context.Background(), key)
-			if err != nil {
-				return nil, err
-			}
-			return info.Scopes, nil
-		})
-
-		// Create /v1 group (no /api prefix - OpenAI-compatible)
-		v1ProxyGroup := e.Group("/v1")
-
-		// Optional: Add authentication middleware if configured
-		// For now, we'll make it public to allow easy integration with Claude Code CLI
-		// Users can add authentication via API keys in the provider configuration
-
-		// Register OpenAI-compatible endpoints
-		// These endpoints forward requests to configured providers (Anthropic, OpenAI, etc.)
-		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
-		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
-		v1ProxyGroup.Any("/embeddings", echo.WrapHandler(proxyHandler))
-		v1ProxyGroup.Any("/models", echo.WrapHandler(proxyHandler))
-
-		// Register Anthropic-compatible endpoints for Claude Code CLI
-		// CC CLI uses Anthropic API format (/v1/messages)
-		v1ProxyGroup.Any("/messages", echo.WrapHandler(proxyHandler))
-
-		logger.Info().
-			Str("path", "/v1/*").
-			Str("providers", fmt.Sprintf("%d configured", len(routingConfig.Providers))).
-			Str("load_balancing", routingConfig.LoadBalancing).
-			Bool("failover", routingConfig.Failover.Enabled).
-			Msg("OpenAI-compatible proxy routes registered (unified port)")
+	// Initialize provider pool
+	var providerPool *providerpool.Pool
+	providerPoolPath := filepath.Join(dataDir, "providerpool")
+	providerPool, err = providerpool.NewPool(providerPoolPath)
+	if err != nil {
+		logger.Warn("Failed to initialize provider pool", zap.Error(err))
+		providerPool = nil
 	}
 
-	// Register companion routes (Echo Companion - real-time AI Agent monitoring)
+	if providerPool != nil {
+		bootstrap.LoadProvidersFromPool(providerPool, llmRegistry)
+		chatHandler.SetProviderPool(providerPool)
+
+		if providerpool.CheckMigrationNeeded(dataDir) {
+			result, err := providerpool.MigrateFromLegacy(dataDir, providerPool)
+			if err != nil {
+				logger.Warn("Failed to migrate legacy provider settings", zap.Error(err))
+			} else if result.Migrated > 0 {
+				logger.Info("Legacy provider settings migrated", zap.Int("migrated", result.Migrated))
+			}
+		}
+
+		server.OnServerStart(func(port int) {
+			go func() {
+				providerPool.Start(context.Background())
+			}()
+		})
+	}
+
+	// Call bootstrap.RegisterAllRoutes with all dependencies
+	deps := &bootstrap.RoutesDeps{
+		DB:     db,
+		Config: cfg,
+		ServerConfig: &bootstrap.ServerConfig{
+			Version:   version,
+			BuildTime: buildTime,
+			GitCommit: gitCommit,
+			DataDir:   dataDir,
+			Port:      cfg.Server.Port,
+		},
+		Services: &bootstrap.Services{
+			DB:            db,
+			UserService:   userService,
+			JWTService:    jwtService,
+			SkillRegistry: skillRegistry,
+			ToolRegistry:  toolRegistry,
+		},
+		Logger:             zapLogger,
+		Ctx:                lm.Context(),
+		MetricsWriter:      metricsWriter,
+		MetricsCollector:   metricsCollector,
+		ChatHandler:        chatHandler,
+		PluginRegistry:     pluginRegistry,
+		PluginStore:        pluginStore,
+		ExtauthHandler:     extauthHandler,
+		AutoreplyService:   autoreplyService,
+		AutoreplyHandler:   autoreplyHandler,
+		AuthMiddleware:     authMiddleware,
+		APIKeyHandler:      apiKeyHandler,
+		UserHandler:        userHandler,
+		BackupHandler:      backupHandler,
+		SecurityHandler:    securityHandler,
+		SandboxHandler:     sandboxHandler,
+		CronHandler:        cronHandler,
+		HAHandler:          haHandler,
+		BrowserHandler:     browserHandler,
+		WorkflowHandler:    workflowHandler,
+		VoiceHandler:       voiceHandler,
+		VoiceWSHandler:     voiceWSHandler,
+		FormfillerHandler:  formfillerHandler,
+		CompanionHandler:   companionHandler,
+		CompanionWSHandler: companionWSHandler,
+		ProviderPool:       providerPool,
+		APIKeyService:      apiKeyService,
+		SpeechHandler:      speechHandler,
+		NgrokTunnelMgr:     ngrokTunnelMgr,
+		NgrokConfigStore:   ngrokConfigStore,
+		ClaudeCodeHandler:  claudeCodeHandler,
+		MemoryHandler:      memoryHandler,
+		ChannelConfigStore: channelConfigStore,
+		SharedCache:        sharedCache,
+	}
+
+	bootstrap.RegisterAllRoutes(e, deps)
+
+	// Register companion and channel routes (after bootstrap)
 	if companionHandler != nil {
 		companionHandler.RegisterRoutes(e)
-		logger.Info().Msg("Companion REST routes registered")
 	}
 	if companionWSHandler != nil {
 		companionWSHandler.RegisterRoutes(e)
-		logger.Info().Msg("Companion WebSocket routes registered")
 	}
 
-	// Register channel config routes (public for now, channels page needs to work without auth)
-	channelConfigStore := server.NewChannelConfigStore(dataDir)
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
-
-	// Initialize channel manager for connection lifecycle management
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)
 	channelFactory := server.NewChannelFactory(zapLogger)
 
-	// Set global message handler for all channels (auto-reply first, then AI)
 	channelManager.SetHandler(func(ctx context.Context, msg channel.Message) (*channel.OutgoingMessage, error) {
-		// 1. Check auto-reply rules first
 		if autoreplyService != nil {
 			response, rule, err := autoreplyService.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
-			if err != nil {
-				logger.Warn().Err(err).Msg("Auto-reply match error")
-			}
-			if response != "" && rule != nil {
-				logger.Info().Str("rule_id", rule.ID).Str("channel", msg.ChannelName).Msg("Auto-reply rule matched")
-				return &channel.OutgoingMessage{
-					ChatID:  msg.ChatID,
-					Content: response,
-				}, nil
+			if err == nil && response != "" && rule != nil {
+				return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: response}, nil
 			}
 		}
-
-		// 2. No auto-reply matched, call AI via chat handler
 		if chatHandler != nil {
 			aiResponse, err := chatHandler.ProcessChannelMessage(ctx, msg)
-			if err != nil {
-				logger.Error().Err(err).Msg("Failed to process message via AI")
-				return nil, err
-			}
-			if aiResponse != "" {
-				return &channel.OutgoingMessage{
-					ChatID:  msg.ChatID,
-					Content: aiResponse,
-				}, nil
+			if err == nil && aiResponse != "" {
+				return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: aiResponse}, nil
 			}
 		}
-
 		return nil, nil
 	})
 
-	// Register channels from saved configurations and start enabled ones in parallel
 	enabledChannels := channelConfigStore.GetEnabled()
 	if len(enabledChannels) > 0 {
 		var wg sync.WaitGroup
-		var mu sync.Mutex // Protect channelConfigStore writes
-
 		for _, cfg := range enabledChannels {
 			wg.Add(1)
 			go func(cfg *server.ChannelConfig) {
 				defer wg.Done()
-
 				ch, err := channelFactory.CreateChannel(cfg)
-				if err != nil {
-					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to create channel")
+				if err != nil || ch == nil {
 					return
 				}
-				if ch == nil {
-					return // Unknown channel type
-				}
-
-				// Set message handler for Feishu channel (auto-reply first, then proxy)
-				if feishuCh, ok := ch.(*feishu.Channel); ok {
-					// Set session manager for monitoring
-					if companionManager != nil {
-						feishuSessionManager := channel.NewBotSessionManager(companionManager, companion.PlatformFeishu)
-						feishuCh.SetSessionManager(feishuSessionManager)
-					}
-
-					feishuCh.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
-						// 1. Check auto-reply rules first
-						if autoreplyService != nil {
-							response, rule, err := autoreplyService.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
-							if err != nil {
-								logger.Warn().Err(err).Msg("Auto-reply match error")
-							}
-							if response != "" && rule != nil {
-								logger.Info().Str("rule_id", rule.ID).Str("channel", msg.ChannelName).Msg("Auto-reply rule matched")
-								return response, nil
-							}
-						}
-
-						// 2. No auto-reply matched, call AI via chat handler
-						if chatHandler != nil {
-							// Use chat handler to get AI response
-							aiResponse, err := chatHandler.ProcessChannelMessage(ctx, msg)
-							if err != nil {
-								logger.Error().Err(err).Msg("Failed to process message via AI")
-								return "", err
-							}
-							return aiResponse, nil
-						}
-
-						return "", nil
-					})
-					logger.Info().Str("channel", cfg.ID).Msg("Message handler set for channel")
-				}
-
 				if err := channelManager.Register(ch); err != nil {
-					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to register channel")
 					return
 				}
-				// Start the channel
 				if err := channelManager.StartChannel(context.Background(), cfg.ID); err != nil {
-					logger.Warn().Str("channel", cfg.ID).Err(err).Msg("Failed to start channel")
-					// Update config status to error
-					mu.Lock()
 					cfg.Status = "error"
 					cfg.LastError = err.Error()
 					_ = channelConfigStore.Set(cfg.ID, cfg)
-					mu.Unlock()
 				} else {
-					// Update config status to connected
-					mu.Lock()
 					cfg.Status = "connected"
 					cfg.LastError = ""
 					_ = channelConfigStore.Set(cfg.ID, cfg)
-					mu.Unlock()
-					logger.Info().Str("channel", cfg.ID).Msg("Channel started successfully")
 				}
 			}(cfg)
 		}
-
-		// Wait for all channels to start (with timeout)
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			logger.Info().Int("count", len(enabledChannels)).Msg("All channels started")
-		case <-time.After(10 * time.Second):
-			logger.Warn().Msg("Channel startup timed out, some channels may still be starting")
-		}
+		wg.Wait()
 	}
 
-	// Set manager on handler for runtime connection management
 	channelConfigHandler.SetManager(channelManager)
 	channelConfigHandler.SetFactory(channelFactory)
-	channelConfigHandler.RegisterRoutes(api)
-	logger.Info().Msg("Channel config routes registered")
-
-	// Register static file routes for embedded frontend (must be last)
-	if web.IsEmbedded() {
-		logger.Info().Msg("Serving embedded frontend assets")
-	} else {
-		logger.Info().Msg("Development mode: proxying to Vite dev server")
-	}
-	web.RegisterStaticRoutes(e)
+	channelConfigHandler.RegisterRoutes(e.Group("/api"))
 }
 
 // convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.

@@ -51,7 +51,7 @@ async function handleOpenInBrowser() {
     v-if="showButton"
     type="button"
     :disabled="opening || loading"
-    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/40 rounded-lg border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white transition-colors disabled:opacity-50"
+    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-900 bg-gray-100 dark:bg-gray-700/30 hover:bg-gray-200 dark:hover:bg-gray-700/40 rounded-lg border border-gray-200 dark:border-gray-600 transition-colors disabled:opacity-50"
     :title="t('network.openInBrowser')"
     @click="handleOpenInBrowser"
   >

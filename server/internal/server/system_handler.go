@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sysinfo"
 )
 
@@ -67,6 +70,7 @@ func (h *SystemHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/system/config", h.GetConfig)
 	g.PUT("/system/config", h.UpdateConfig)
 	g.POST("/system/restart", h.RestartService)
+	g.GET("/system/certificate", h.GetCertificate)
 }
 
 // SystemInfo represents system information
@@ -310,3 +314,53 @@ func (h *SystemHandler) RestartService(c echo.Context) error {
 		"message": "Service restart via API is not supported for security reasons. Please use systemctl or your container orchestrator.",
 	})
 }
+
+// CertificateResponse represents the certificate export response
+type CertificateResponse struct {
+	Certificate string `json:"certificate"`
+	IsSelfSigned bool   `json:"is_self_signed"`
+	Subject     string `json:"subject"`
+	Issuer      string `json:"issuer"`
+	NotBefore   string `json:"not_before"`
+	NotAfter    string `json:"not_after"`
+}
+
+// GetCertificate exports the server's TLS certificate for client trust
+func (h *SystemHandler) GetCertificate(c echo.Context) error {
+	tlsMgr := security.GetGlobalTLSManager()
+	certInfo := tlsMgr.GetCertificateInfo()
+
+	if certInfo == nil {
+		return c.JSON(http.StatusNotFound, map[string]interface{}{
+			"error": "No certificate available",
+		})
+	}
+
+	// Read certificate file
+	cert := tlsMgr.GetCertificate()
+	if cert == nil || len(cert.Certificate) == 0 {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error": "Failed to load certificate",
+		})
+	}
+
+	// Encode certificate to PEM format
+	certPEM := ""
+	for _, certBytes := range cert.Certificate {
+		block := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: certBytes,
+		}
+		certPEM += string(pem.EncodeToMemory(block))
+	}
+
+	return c.JSON(http.StatusOK, CertificateResponse{
+		Certificate: certPEM,
+		IsSelfSigned: certInfo.IsSelfSigned,
+		Subject:     certInfo.Subject,
+		Issuer:      certInfo.Issuer,
+		NotBefore:   certInfo.NotBefore.String(),
+		NotAfter:    certInfo.NotAfter.String(),
+	})
+}
+
