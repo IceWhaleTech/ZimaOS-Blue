@@ -120,11 +120,12 @@ func TestModeService_GetSystemMode_Preview(t *testing.T) {
 	if !mode.Features["chat"] {
 		t.Error("GetSystemMode().Features[chat] = false, want true")
 	}
-	if mode.Features["admin"] {
-		t.Error("GetSystemMode().Features[admin] = true, want false in preview mode")
+	// In preview mode, user is treated as admin with all features
+	if !mode.Features["admin"] {
+		t.Error("GetSystemMode().Features[admin] = false, want true in preview mode")
 	}
-	if mode.Features["user_management"] {
-		t.Error("GetSystemMode().Features[user_management] = true, want false in preview mode")
+	if !mode.Features["user_management"] {
+		t.Error("GetSystemMode().Features[user_management] = false, want true in preview mode")
 	}
 }
 
