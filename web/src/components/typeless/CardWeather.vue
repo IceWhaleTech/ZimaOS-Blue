@@ -27,7 +27,7 @@ function getForecastIcon(condition: string): string {
 </script>
 
 <template>
-  <div class="weather-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gradient-to-br from-blue-400 to-blue-600 dark:from-blue-600 dark:to-blue-800 text-white">
+  <div class="weather-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gradient-to-br from-gray-600 to-gray-800 dark:from-gray-700 dark:to-gray-900 text-white">
     <!-- Main weather -->
     <div class="p-6">
       <div class="flex items-start justify-between">

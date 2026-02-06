@@ -479,7 +479,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-hidden bg-gray-50 dark:bg-gray-900 rounded-lg">
+  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg">
     <!-- Canvas fills container -->
     <canvas
       ref="canvasRef"
@@ -504,7 +504,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
     <!-- Controls -->
     <div class="absolute bottom-4 left-4 flex gap-2 z-10">
       <button
-        class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomIn')"
         @click="scale = Math.min(scale + 0.1, 3); draw()"
       >
@@ -513,7 +513,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
         </svg>
       </button>
       <button
-        class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomOut')"
         @click="scale = Math.max(scale - 0.1, 0.3); draw()"
       >
@@ -522,7 +522,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
         </svg>
       </button>
       <button
-        class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.reset')"
         @click="scale = 1; offsetX = 0; offsetY = 0; draw()"
       >
@@ -533,7 +533,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
     </div>
 
     <!-- Legend - moved to bottom right to avoid blocking content -->
-    <div class="absolute bottom-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 z-10">
+    <div class="absolute bottom-4 right-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
       <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">{{ t('companion.flow.legend') }}</div>
       <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
         <div class="flex items-center gap-2">
@@ -566,7 +566,7 @@ watch(() => props.events.length, (newLen, oldLen) => {
     <!-- Hovered node tooltip -->
     <div
       v-if="hoveredNode"
-      class="absolute bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 z-20 pointer-events-none max-w-xs"
+      class="absolute bg-white dark:bg-gray-700 rounded-lg shadow-lg p-3 z-20 pointer-events-none max-w-xs"
       :style="{ top: '50%', right: '16px', transform: 'translateY(-50%)' }"
     >
       <div class="text-sm font-medium text-gray-900 dark:text-white mb-1">

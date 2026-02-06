@@ -165,7 +165,7 @@ function closeRecoveryCodes() {
           <button
             v-if="!mfaStatus.enabled"
             :disabled="loading"
-            class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
             @click="startSetup"
           >
             {{ t('mfa.setup') }}
@@ -223,7 +223,7 @@ function closeRecoveryCodes() {
               pattern="[0-9]*"
               maxlength="6"
               :placeholder="t('mfa.enterCode')"
-              class="flex-1 bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 text-center text-lg tracking-widest"
+              class="flex-1 bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600 text-center text-lg tracking-widest"
               @keyup.enter="verifySetup"
             />
           </div>
@@ -232,7 +232,7 @@ function closeRecoveryCodes() {
         <div class="flex gap-3">
           <button
             :disabled="loading || verificationCode.length !== 6"
-            class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
             @click="verifySetup"
           >
             {{ loading ? t('common.verifying') : t('mfa.verify') }}
@@ -280,7 +280,7 @@ function closeRecoveryCodes() {
 
           <div class="flex gap-3">
             <button
-              class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+              class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
               @click="copyRecoveryCodes"
             >
               <svg v-if="!copiedCodes" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -328,7 +328,7 @@ function closeRecoveryCodes() {
               v-model="disablePassword"
               type="password"
               :placeholder="t('mfa.passwordPlaceholder')"
-              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
             />
           </div>
 

@@ -30,7 +30,7 @@ const emit = defineEmits<{
 function getColorClasses(color: QuickAction['color'] = 'primary'): string {
   switch (color) {
     case 'primary':
-      return 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/30'
     case 'success':
       return 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
     case 'warning':
@@ -50,13 +50,13 @@ function handleAction(action: QuickAction) {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.quickActionsTitle') }}</h2>
     </div>
 
     <div v-if="loading" class="p-6 text-center">
-      <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+      <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingActions') }}</p>
     </div>
 

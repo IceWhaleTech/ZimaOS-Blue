@@ -188,14 +188,14 @@ watch(() => state.clipboardData, (newVal) => {
     <div
       v-if="state.isVisible"
       class="formfiller-widget fixed z-[99999] w-[280px] rounded-lg shadow-lg overflow-hidden font-sans text-[13px]
-             bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
+             bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
              border border-gray-200 dark:border-gray-700"
       :style="positionStyle"
       @mousedown="preventFocusLoss"
     >
       <!-- Draggable Header -->
       <div
-        class="widget-header flex items-center gap-1.5 px-2.5 py-2 bg-blue-500 text-white cursor-move select-none"
+        class="widget-header flex items-center gap-1.5 px-2.5 py-2 bg-gray-700 dark:bg-gray-700 text-white cursor-move select-none"
         @mousedown="startDrag"
       >
         <span class="text-sm">📝</span>
@@ -275,7 +275,7 @@ class="flex justify-between items-center px-2 py-1.5 text-[11px]
               v-model="pasteText"
               :placeholder="t('formFiller.widget.pasteExample')"
               class="w-full p-2 text-[11px] font-mono resize-none outline-none
-                     bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
+                     bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
                      border-t border-gray-200 dark:border-gray-600
                      placeholder:text-gray-400 dark:placeholder:text-gray-500"
               rows="4"
@@ -326,8 +326,8 @@ class="flex justify-between items-center px-2 py-1
           </button>
           <button
             class="flex-1 px-2.5 py-2 rounded text-xs font-medium cursor-pointer transition-colors
-                   bg-blue-500 text-white border-none
-                   hover:bg-blue-600"
+                   bg-gray-700 dark:bg-gray-700 text-white border-none
+                   hover:bg-gray-700 dark:bg-gray-700"
             @click="handleFillAll"
           >
             {{ t('formFiller.widget.fillAll') }}

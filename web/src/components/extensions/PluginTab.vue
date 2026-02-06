@@ -237,7 +237,7 @@ function getLogLevelClass(level: string): string {
   switch (level) {
     case 'error': return 'text-red-400'
     case 'warn': return 'text-yellow-400'
-    case 'info': return 'text-blue-400'
+    case 'info': return 'text-gray-900 dark:text-white'
     case 'debug': return 'text-gray-400'
     default: return 'text-gray-300'
   }
@@ -706,7 +706,7 @@ function formatLogTime(timestamp: string): string {
 
 .text-red-400 { color: #f87171; }
 .text-yellow-400 { color: #facc15; }
-.text-blue-400 { color: #60a5fa; }
+.text-gray-900 dark:text-white { color: #60a5fa; }
 .text-gray-400 { color: #9ca3af; }
 .text-gray-300 { color: #d1d5db; }
 </style>

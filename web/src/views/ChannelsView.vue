@@ -875,11 +875,11 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
     <!-- Stats -->
     <div class="grid grid-cols-2 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ enabledCount }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('channels.enabledChannels') }}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ connectedCount }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('channels.connectedChannels') }}</div>
       </div>
@@ -887,26 +887,26 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
     <!-- Loading -->
     <div v-if="loading" class="text-center py-8">
-      <div class="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+      <div class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"></div>
       <p class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</p>
     </div>
 
     <!-- Channel List -->
     <div v-else class="space-y-3">
       <!-- Remote Access Card (Recommended) -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border-2 border-blue-500 dark:border-blue-400 overflow-hidden">
+      <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-900 dark:border-gray-400 overflow-hidden">
         <!-- Remote Access Header -->
         <div
           class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
           @click="toggleRemoteAccessExpanded"
         >
-          <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center overflow-hidden">
+          <div class="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
             <img src="/icons/tunnel/remote-access.svg" alt="Remote Access" class="w-8 h-8" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <h3 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.title') }}</h3>
-              <span class="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
+              <span class="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-full">
                 {{ t('remoteAccess.recommended') }}
               </span>
               <span
@@ -932,7 +932,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 class="sr-only peer"
                 @change="($event.target as HTMLInputElement).checked ? handleRemoteAccessStart() : handleRemoteAccessStop()"
               />
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 peer-disabled:opacity-50"></div>
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700 peer-disabled:opacity-50"></div>
             </label>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -950,11 +950,11 @@ watch(() => tunnelStatus.value?.active, (active) => {
         <!-- Remote Access Expanded Content -->
         <div
           v-if="remoteAccessExpanded"
-          class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50"
+          class="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/50"
         >
           <!-- Loading State -->
           <div v-if="remoteAccessState === 'loading'" class="flex items-center justify-center py-8">
-            <svg class="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
@@ -971,9 +971,9 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 <button
                   v-for="provider in tunnelProviders"
                   :key="provider.id"
-                  class="p-3 rounded-lg border-2 text-left transition-colors flex items-center gap-3"
+                  class="p-3 rounded-lg border text-left transition-colors flex items-center gap-3"
                   :class="selectedProvider === provider.id
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    ? 'border-gray-600 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/30'
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
                   @click="selectedProvider = provider.id"
                 >
@@ -983,7 +983,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
                     :alt="provider.name"
                     class="w-6 h-6 shrink-0 rounded object-contain"
                   />
-                  <div v-else class="w-6 h-6 shrink-0 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center">
+                  <div v-else class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-gray-700 rounded flex items-center justify-center">
                     <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                     </svg>
@@ -1006,14 +1006,14 @@ watch(() => tunnelStatus.value?.active, (active) => {
               <input
                 v-model="currentProviderToken"
                 type="password"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="selectedProviderInfo.key_hint || ''"
               />
               <a
                 v-if="selectedProviderInfo.doc_url"
                 :href="selectedProviderInfo.doc_url"
                 target="_blank"
-                class="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                class="inline-flex items-center gap-1 text-xs text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:underline"
               >
                 <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -1031,19 +1031,19 @@ watch(() => tunnelStatus.value?.active, (active) => {
               <input
                 v-model="ngrokDomain"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
               />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('remoteAccess.ngrokDomainHint') }}
-                <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">
+                <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:underline">
                   {{ t('remoteAccess.ngrokClaimDomain') }}
                 </a>
               </p>
             </div>
 
             <button
-              class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              class="w-full px-4 py-3 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
               :class="{ 'opacity-50 cursor-not-allowed': selectedProviderInfo?.requires_key && !currentProviderToken }"
               @click="handleRemoteAccessStart"
@@ -1062,7 +1062,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
           <div v-else-if="remoteAccessState === 'connecting'" class="space-y-4">
             <div class="flex items-center justify-center py-4">
               <div class="text-center">
-                <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-white mx-auto mb-4" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
@@ -1123,7 +1123,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
       <!-- Load More Button -->
       <button
         v-if="!showMoreChannels && secondaryChannels.length > 0"
-        class="w-full py-3 px-4 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium transition-colors flex items-center justify-center gap-2"
+        class="w-full py-3 px-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium transition-colors flex items-center justify-center gap-2"
         @click="showMoreChannels = true"
       >
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

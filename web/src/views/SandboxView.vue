@@ -49,7 +49,7 @@ function getStatusColor(status: string): string {
     case 'completed':
       return 'text-green-500 bg-green-500/10'
     case 'running':
-      return 'text-blue-500 bg-blue-500/10'
+      return 'text-gray-900 dark:text-white bg-gray-700 dark:bg-gray-700/10'
     case 'pending':
       return 'text-yellow-500 bg-yellow-500/10'
     case 'failed':
@@ -175,7 +175,7 @@ onMounted(async () => {
 
     <!-- Loading State -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-700"></div>
     </div>
 
     <!-- Not Supported Warning -->
@@ -309,7 +309,7 @@ onMounted(async () => {
             <!-- Actions -->
             <div class="flex items-center space-x-3 pt-2">
               <button
-                class="px-6 py-2 rounded-lg bg-accent text-white hover:bg-accent-light transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="px-6 py-2 rounded-lg bg-gray-700 dark:bg-gray-700 text-white hover:bg-gray-700 dark:bg-gray-700-light transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="executing || !command.trim()"
                 @click="executeCommand"
               >
@@ -395,13 +395,13 @@ onMounted(async () => {
           <!-- Stdout -->
           <div v-if="currentResult.stdout" class="mb-4">
             <div class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">{{ t('sandbox.stdout') }}</div>
-            <pre class="p-4 rounded-lg bg-gray-900 text-green-400 text-sm overflow-x-auto max-h-64 overflow-y-auto font-mono">{{ currentResult.stdout }}</pre>
+            <pre class="p-4 rounded-lg bg-gray-200 text-green-400 text-sm overflow-x-auto max-h-64 overflow-y-auto font-mono">{{ currentResult.stdout }}</pre>
           </div>
 
           <!-- Stderr -->
           <div v-if="currentResult.stderr" class="mb-4">
             <div class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">{{ t('sandbox.stderr') }}</div>
-            <pre class="p-4 rounded-lg bg-gray-900 text-red-400 text-sm overflow-x-auto max-h-64 overflow-y-auto font-mono">{{ currentResult.stderr }}</pre>
+            <pre class="p-4 rounded-lg bg-gray-200 text-red-400 text-sm overflow-x-auto max-h-64 overflow-y-auto font-mono">{{ currentResult.stderr }}</pre>
           </div>
 
           <!-- Error -->

@@ -112,6 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.10.4] - Previous Release
+## [0.10.22] - Previous Release
 
 See previous release notes for earlier changes.

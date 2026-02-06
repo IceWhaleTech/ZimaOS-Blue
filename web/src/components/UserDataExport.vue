@@ -449,7 +449,7 @@ function cancelCleanup() {
         :class="[
           'flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center justify-center gap-2',
           activeTab === 'export'
-            ? 'border-accent text-accent'
+            ? 'border-gray-900 dark:border-gray-700 text-gray-900 dark:text-gray-300'
             : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
         ]"
         @click="activeTab = 'export'"
@@ -463,7 +463,7 @@ function cancelCleanup() {
         :class="[
           'flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center justify-center gap-2',
           activeTab === 'import'
-            ? 'border-accent text-accent'
+            ? 'border-gray-900 dark:border-gray-700 text-gray-900 dark:text-gray-300'
             : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
         ]"
         @click="activeTab = 'import'"
@@ -487,7 +487,7 @@ function cancelCleanup() {
             :class="[
               'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
               exportFormat === 'json'
-                ? 'bg-accent text-white'
+                ? 'bg-gray-700 dark:bg-gray-700 text-white'
                 : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
             ]"
             @click="exportFormat = 'json'"
@@ -498,7 +498,7 @@ function cancelCleanup() {
             :class="[
               'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
               exportFormat === 'encrypted'
-                ? 'bg-accent text-white'
+                ? 'bg-gray-700 dark:bg-gray-700 text-white'
                 : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
             ]"
             @click="exportFormat = 'encrypted'"
@@ -519,7 +519,7 @@ function cancelCleanup() {
             v-model="exportPassword"
             type="password"
             :placeholder="t('userdata.passwordPlaceholder')"
-            class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+            class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
           />
         </div>
         <div>
@@ -528,7 +528,7 @@ function cancelCleanup() {
             v-model="exportConfirmPassword"
             type="password"
             :placeholder="t('userdata.confirmPasswordPlaceholder')"
-            class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+            class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
             :class="{ 'border-red-500': exportConfirmPassword && !exportPasswordsMatch }"
           />
           <p v-if="exportConfirmPassword && !exportPasswordsMatch" class="text-xs text-red-500 mt-1">
@@ -545,7 +545,7 @@ function cancelCleanup() {
       <!-- Export Button -->
       <button
         :disabled="!canExport || exporting"
-        class="w-full px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         @click="handleExport"
       >
         <svg v-if="exporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -599,7 +599,7 @@ function cancelCleanup() {
           v-model="importPassword"
           type="password"
           :placeholder="t('userdata.importPasswordPlaceholder')"
-          class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+          class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
         />
       </div>
 
@@ -646,7 +646,7 @@ function cancelCleanup() {
         </button>
         <button
           :disabled="!canImport || importing || !importPreview"
-          class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           @click="handleImport"
         >
           <svg v-if="importing" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -769,7 +769,7 @@ function cancelCleanup() {
             <!-- Save Button -->
             <button
               :disabled="retentionLoading"
-              class="w-full px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               @click="saveRetentionSettings"
             >
               {{ retentionLoading ? t('common.loading') : t('common.save') }}
@@ -882,14 +882,14 @@ function cancelCleanup() {
 
             <!-- Step 2: Preview (Authorization) -->
             <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
-              <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+              <div class="bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-3">
                 <div class="flex items-start gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-900 dark:text-white flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
-                  <div class="text-sm text-blue-700 dark:text-blue-300">
+                  <div class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
                     <p class="font-medium">{{ t('userdata.cleanup.authorizationStep') }}</p>
-                    <p class="mt-1 text-blue-600 dark:text-blue-400">{{ t('userdata.cleanup.authorizationHint') }}</p>
+                    <p class="mt-1 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ t('userdata.cleanup.authorizationHint') }}</p>
                   </div>
                 </div>
               </div>

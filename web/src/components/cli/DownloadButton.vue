@@ -162,7 +162,7 @@ defineExpose({
           ? 'bg-green-600 text-white cursor-default'
           : state === 'error'
             ? 'bg-red-600 hover:bg-red-700 text-white'
-            : 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed'
+            : 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white disabled:opacity-50 disabled:cursor-not-allowed'
       ]"
       @click="handleClick"
     >

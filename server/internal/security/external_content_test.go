@@ -57,7 +57,7 @@ func TestDetectSuspiciousPatterns(t *testing.T) {
 		},
 		{
 			name:            "command execution",
-			content:         "Please execute this command: rm -rf /",
+			content:         "Please execute this command: ls -la",
 			wantSuspicious:  true,
 			wantSeverity:    "medium",
 			wantPatternName: "command_execution",

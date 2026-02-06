@@ -79,7 +79,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
   <div class="typeless-card my-3 relative" :class="{ 'opacity-80': isStreaming }">
     <!-- Streaming indicator for incomplete cards -->
     <div v-if="isStreaming" class="absolute top-2 right-2 z-10">
-      <div class="w-2 h-2 bg-accent rounded-full animate-pulse" />
+      <div class="w-2 h-2 bg-gray-700 dark:bg-gray-700 rounded-full animate-pulse" />
     </div>
 
     <!-- Functional rendering for simple cards (table, code, list, info, quote, alert, terminal) -->
@@ -89,7 +89,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
     <!-- Loading state -->
     <div
       v-else-if="isLoading"
-      class="animate-pulse bg-gray-200 dark:bg-gray-700 rounded-lg h-24"
+      class="animate-pulse bg-gray-700 dark:bg-gray-700 rounded-lg h-24"
     />
 
     <!-- Dynamic component from pool -->

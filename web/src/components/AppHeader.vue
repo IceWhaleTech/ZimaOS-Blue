@@ -88,7 +88,7 @@ function handleLogout() {
         </button>
         <!-- Logo/Brand -->
         <div class="flex items-center space-x-3">
-          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-accent to-cta flex items-center justify-center">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -146,7 +146,7 @@ function handleLogout() {
             class="flex items-center space-x-2 px-2 py-1.5 rounded-lg transition-colors"
             :class="
               showUserMenu || route.path === '/profile'
-                ? 'bg-accent/20 text-accent'
+                ? 'bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-gray-300'
                 : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
             "
             @click="showUserMenu = !showUserMenu"
@@ -162,7 +162,7 @@ function handleLogout() {
           <!-- Dropdown menu -->
           <div
             v-if="showUserMenu"
-            class="absolute right-0 mt-1 w-40 rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
+            class="absolute right-0 mt-1 w-40 rounded-lg bg-white dark:bg-gray-700 shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
           >
             <RouterLink
               to="/profile"

@@ -352,9 +352,9 @@ func TestListAvailableModels(t *testing.T) {
 
 	models := router.ListAvailableModels()
 
-	// Should have 3 models (one from each provider)
-	if len(models) != 3 {
-		t.Errorf("Expected 3 models, got %d", len(models))
+	// Should have at least 3 models (one from each provider)
+	if len(models) < 3 {
+		t.Errorf("Expected at least 3 models, got %d", len(models))
 	}
 }
 

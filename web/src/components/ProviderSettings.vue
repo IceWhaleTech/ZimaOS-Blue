@@ -219,14 +219,14 @@ function clearApiKey() {
     <div class="glass-card p-4">
       <!-- Loading state -->
       <div v-if="loading" class="flex items-center justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-700" />
       </div>
 
       <!-- Error state -->
       <div v-else-if="error && providers.length === 0" class="text-center py-8">
         <p class="text-red-500 dark:text-red-400 mb-4">{{ error }}</p>
         <button
-          class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
           @click="loadProviders"
         >
           {{ t('common.retry') }}
@@ -242,7 +242,7 @@ function clearApiKey() {
           </label>
           <select
             v-model="selectedProvider"
-            class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+            class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
           >
             <option
               v-for="provider in providers"
@@ -286,7 +286,7 @@ function clearApiKey() {
               v-model="baseUrl"
               type="text"
               :placeholder="currentMeta.defaultUrl || t('settings.baseUrlPlaceholder')"
-              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
             />
             <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">
               {{ t('providerSettings.baseUrlHint', { default: currentMeta.defaultUrl }) }}
@@ -349,7 +349,7 @@ function clearApiKey() {
               v-model="apiKey"
               type="password"
               :placeholder="currentProvider.has_api_key ? t('settings.enterNewApiKey') : t('settings.enterApiKey')"
-              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
             />
           </div>
 
@@ -357,7 +357,7 @@ function clearApiKey() {
           <div class="flex items-center gap-3 pt-2">
             <button
               :disabled="!hasChanges || saving"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               @click="saveConfig"
             >
               <span v-if="saving" class="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />

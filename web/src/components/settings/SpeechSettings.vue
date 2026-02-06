@@ -364,13 +364,13 @@ onMounted(() => {
 <template>
   <div class="space-y-6">
     <!-- Tab Navigation -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+    <div class="bg-white dark:bg-gray-700 rounded-lg shadow-sm">
       <div class="flex border-b border-gray-200 dark:border-gray-700">
         <button
           :class="[
             'flex-1 px-4 py-3 text-sm font-medium transition-colors',
             activeTab === 'asr'
-              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+              ? 'text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           ]"
           @click="activeTab = 'asr'"
@@ -381,7 +381,7 @@ onMounted(() => {
           :class="[
             'flex-1 px-4 py-3 text-sm font-medium transition-colors',
             activeTab === 'tts'
-              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+              ? 'text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           ]"
           @click="activeTab = 'tts'"
@@ -399,7 +399,7 @@ onMounted(() => {
     <!-- ASR Tab Content -->
     <div v-show="activeTab === 'asr'" class="space-y-6">
       <!-- ASR Models -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.asrModels') }}
         </h4>
@@ -410,7 +410,7 @@ onMounted(() => {
           <div
 v-for="model in asrModels" :key="model.id"
             class="flex items-center justify-between p-3 border rounded-lg"
-            :class="model.downloaded ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'">
+            :class="model.downloaded ? 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/20' : 'border-gray-200 dark:border-gray-700'">
             <div class="flex-1">
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
               <span class="text-xs text-gray-400 ml-2">{{ model.size }}</span>
@@ -418,8 +418,8 @@ v-for="model in asrModels" :key="model.id"
               <!-- Download progress for this specific model -->
               <div v-if="isModelDownloading(model.id)" class="mt-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                    <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%` }"></div>
+                  <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
+                    <div class="bg-gray-400 dark:bg-gray-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%` }"></div>
                   </div>
                   <span class="text-xs text-gray-500">{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span>
                   <button class="text-red-500 hover:text-red-600 text-xs" @click="cancelASRDownload">
@@ -437,14 +437,14 @@ v-for="model in asrModels" :key="model.id"
             <!-- Download button for not downloaded models -->
             <button
 v-if="!model.downloaded && !isModelDownloading(model.id)"
-              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium"
+              class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-black dark:hover:bg-gray-600 text-xs font-medium"
               @click="downloadASRModel(model.id)">
               {{ t('common.download') }}
             </button>
             <!-- Downloading indicator -->
             <span
 v-else-if="isModelDownloading(model.id)"
-              class="text-blue-500 text-xs font-medium">
+              class="text-gray-900 dark:text-white text-xs font-medium">
               {{ t('speech.downloading') }}
             </span>
             <!-- Switch button for downloaded models -->
@@ -456,7 +456,7 @@ v-else-if="isModelDownloading(model.id)"
                 @click="switchASRModel(model.id)">
                 {{ t('common.use') }}
               </button>
-              <span v-else-if="switchingModelId === model.id" class="text-blue-500 text-xs font-medium flex items-center gap-1">
+              <span v-else-if="switchingModelId === model.id" class="text-gray-900 dark:text-white text-xs font-medium flex items-center gap-1">
                 <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -472,7 +472,7 @@ v-else-if="isModelDownloading(model.id)"
       </div>
 
       <!-- Edit Before Send Toggle -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
             <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.editBeforeSend') }}</label>
@@ -484,7 +484,7 @@ v-else-if="isModelDownloading(model.id)"
               type="checkbox"
               class="sr-only peer"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600"></div>
           </label>
         </div>
       </div>
@@ -493,26 +493,26 @@ v-else-if="isModelDownloading(model.id)"
     <!-- TTS Tab Content -->
     <div v-show="activeTab === 'tts'" class="space-y-6">
       <!-- TTS Provider Selection -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.ttsProvider') }}
         </h4>
         <div class="space-y-2">
           <label
 class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
-            :class="selectedProvider === 'edge-tts' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            :class="selectedProvider === 'edge-tts' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
             <input v-model="selectedProvider" type="radio" value="edge-tts" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
               <span class="text-sm font-medium text-gray-900 dark:text-white">Edge TTS</span>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.edgeTTSDesc') }}</p>
             </div>
-            <span v-if="selectedProvider === 'edge-tts'" class="text-blue-500">
+            <span v-if="selectedProvider === 'edge-tts'" class="text-gray-900 dark:text-white">
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
             </span>
           </label>
           <label
 class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
-            :class="selectedProvider === 'espeak-ng' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            :class="selectedProvider === 'espeak-ng' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
             <input v-model="selectedProvider" type="radio" value="espeak-ng" class="sr-only" @change="saveProvider" />
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
@@ -523,8 +523,8 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               <!-- Download Progress (inline) -->
               <div v-if="espeak_downloading" class="mt-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                    <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(espeak_download_progress)}%` }"></div>
+                  <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
+                    <div class="bg-gray-400 dark:bg-gray-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(espeak_download_progress)}%` }"></div>
                   </div>
                   <span class="text-xs text-gray-500">{{ Math.floor(espeak_download_progress) }}%</span>
                 </div>
@@ -534,13 +534,13 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               <button
                 v-if="!allPacksDownloaded"
                 :disabled="espeak_downloading"
-                class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                class="px-2 py-1 bg-gray-700 dark:bg-gray-700 text-white rounded text-xs hover:bg-gray-700 dark:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                 @click.prevent="downloadAndEnableEspeak"
               >
                 {{ espeak_downloading ? t('speech.downloading') : t('common.download') }}
               </button>
               <span v-else class="text-xs text-green-600 dark:text-green-400">{{ t('common.downloaded') }}</span>
-              <span v-if="selectedProvider === 'espeak-ng'" class="text-blue-500">
+              <span v-if="selectedProvider === 'espeak-ng'" class="text-gray-900 dark:text-white">
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
               </span>
             </div>
@@ -549,7 +549,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
       </div>
 
       <!-- Voice Customization -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
           {{ t('speech.voiceSettings') }}
         </h4>
@@ -566,7 +566,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               min="0.5"
               max="2.0"
               step="0.1"
-              class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              class="w-full h-2 bg-gray-100 dark:bg-gray-700/30 rounded-lg appearance-none cursor-pointer accent-gray-900 dark:accent-gray-400"
               @change="saveSpeechRate"
             />
           </div>
@@ -583,7 +583,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               min="-50"
               max="50"
               step="1"
-              class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              class="w-full h-2 bg-gray-100 dark:bg-gray-700/30 rounded-lg appearance-none cursor-pointer accent-gray-900 dark:accent-gray-400"
               @change="saveSpeechPitch"
             />
           </div>
@@ -600,7 +600,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               min="0"
               max="100"
               step="1"
-              class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              class="w-full h-2 bg-gray-100 dark:bg-gray-700/30 rounded-lg appearance-none cursor-pointer accent-gray-900 dark:accent-gray-400"
               @change="saveSpeechVolume"
             />
           </div>
@@ -608,7 +608,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
       </div>
 
       <!-- Auto-play TTS -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
             <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.autoPlayTTS') }}</label>
@@ -621,15 +621,15 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               class="sr-only peer"
               @change="saveAutoPlayTTS"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600"></div>
           </label>
         </div>
       </div>
     </div>
 
     <!-- Info -->
-    <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-      <p class="text-sm text-blue-700 dark:text-blue-300">
+    <div class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
+      <p class="text-sm text-gray-700 dark:text-gray-400">
         {{ t('speech.info') }}
       </p>
     </div>

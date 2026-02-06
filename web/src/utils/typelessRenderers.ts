@@ -202,34 +202,34 @@ function escapeHtml(text: string): string {
  */
 function renderTable(card: TypelessCardTable): string {
   const titleHtml = card.title
-    ? `<div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+    ? `<div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
         <h4 class="font-medium text-gray-900 dark:text-white">${escapeHtml(card.title)}</h4>
       </div>`
     : ''
 
   const headersHtml = card.headers.length > 0
     ? `<thead>
-        <tr class="bg-gray-50 dark:bg-gray-800/50">
+        <tr class="bg-gray-50 dark:bg-gray-700/50">
           ${card.headers.map(h => `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseInline(String(h))}</th>`).join('')}
         </tr>
       </thead>`
     : ''
 
   const rowsHtml = card.rows.map((row, rowIndex) => {
-    const stripedClass = card.striped && rowIndex % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800/30' : ''
+    const stripedClass = card.striped && rowIndex % 2 === 1 ? 'bg-gray-50 dark:bg-gray-700/30' : ''
     const cells = row.map(cell =>
       `<td class="px-4 py-3 text-gray-700 dark:text-gray-300${card.compact ? ' py-2' : ''}">${parseInline(String(cell))}</td>`
     ).join('')
-    return `<tr class="${stripedClass} hover:bg-gray-50 dark:hover:bg-gray-800/50">${cells}</tr>`
+    return `<tr class="${stripedClass} hover:bg-gray-50 dark:hover:bg-gray-700/50">${cells}</tr>`
   }).join('')
 
   const footerHtml = card.footer
-    ? `<div class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+    ? `<div class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
         <p class="text-xs text-gray-500 dark:text-gray-400">${escapeHtml(card.footer)}</p>
       </div>`
     : ''
 
-  return `<div class="table-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  return `<div class="table-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     ${titleHtml}
     <div class="overflow-x-auto">
       <table class="w-full${card.compact ? ' text-sm' : ''}">
@@ -303,8 +303,8 @@ function renderCode(card: TypelessCardCode): string {
     content: card.code,
   }).replace(/"/g, '&quot;')
 
-  return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('code', '${fullscreenData.replace(/'/g, "\\'")}')">
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+  return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('code', '${fullscreenData.replace(/'/g, "\\'")}')">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-2">
         <div class="flex gap-1">
           <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
@@ -377,7 +377,7 @@ function renderList(card: TypelessCardList): string {
     const listClass = card.ordered ? 'list-decimal list-inside' : ''
     const itemsHtml = card.items.map(item => renderListItem(item)).join('')
 
-    return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+    return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
       ${titleHtml}
       <${tag} class="p-4 space-y-2 ${listClass}">
         ${itemsHtml}
@@ -393,7 +393,7 @@ function renderList(card: TypelessCardList): string {
     const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
 
     // Progress header
-    const progressHtml = `<div class="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+    const progressHtml = `<div class="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -402,7 +402,7 @@ function renderList(card: TypelessCardList): string {
       </div>
       <div class="flex items-center gap-2">
         <div class="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div class="h-full ${completedItems === totalItems ? 'bg-green-500' : 'bg-blue-500'} rounded-full transition-all duration-300" style="width: ${progressPercent}%"></div>
+          <div class="h-full ${completedItems === totalItems ? 'bg-green-500' : 'bg-gray-700 dark:bg-gray-700'} rounded-full transition-all duration-300" style="width: ${progressPercent}%"></div>
         </div>
         <span class="text-xs text-gray-500 dark:text-gray-400">${progressPercent}%</span>
       </div>
@@ -412,7 +412,7 @@ function renderList(card: TypelessCardList): string {
       const checked = item.checked || false
       const checkboxBg = checked
         ? 'bg-green-500 border-green-500'
-        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600'
+        : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
       const checkIcon = checked
         ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
@@ -423,7 +423,7 @@ function renderList(card: TypelessCardList): string {
         : 'text-gray-700 dark:text-gray-300'
       const rowBg = checked
         ? 'bg-green-50/50 dark:bg-green-900/10'
-        : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+        : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
 
       return `<li class="flex items-center gap-3 px-4 py-2.5 ${rowBg} transition-colors" data-item-index="${index}">
         <div class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${checkboxBg} transition-colors">
@@ -434,7 +434,7 @@ function renderList(card: TypelessCardList): string {
       </li>`
     }).join('')
 
-    return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+    return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
       ${titleHtml}
       ${progressHtml}
       <ul class="divide-y divide-gray-100 dark:divide-gray-700/50">
@@ -447,14 +447,14 @@ function renderList(card: TypelessCardList): string {
   if (card.variant === 'timeline') {
     const itemsHtml = card.items.map((item, index) => {
       const dotClass = index === 0
-        ? 'border-blue-500 bg-blue-500'
+        ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700'
         : 'border-gray-300 dark:border-gray-600'
       const timestampHtml = item.timestamp
         ? `<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">${escapeHtml(item.timestamp)}</p>`
         : ''
 
       return `<div class="relative flex items-start gap-4 pb-4 last:pb-0">
-        <div class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-800 ${dotClass}"></div>
+        <div class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700 ${dotClass}"></div>
         <div class="flex-1 min-w-0 ml-6">
           <p class="text-gray-700 dark:text-gray-300">${parseInline(item.content)}</p>
           ${timestampHtml}
@@ -462,7 +462,7 @@ function renderList(card: TypelessCardList): string {
       </div>`
     }).join('')
 
-    return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+    return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
       ${titleHtml}
       <div class="p-4">
         <div class="relative">
@@ -474,7 +474,7 @@ function renderList(card: TypelessCardList): string {
   }
 
   // Fallback
-  return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 p-4">
+  return `<div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700 p-4">
     <p class="text-gray-500">Unknown list variant: ${card.variant}</p>
   </div>`
 }
@@ -483,7 +483,7 @@ function renderList(card: TypelessCardList): string {
  * Render info card
  */
 function renderInfo(card: TypelessCardInfo): string {
-  const defaultStyle = { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', icon: 'text-blue-500' }
+  const defaultStyle = { bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20', border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white', icon: 'text-gray-900 dark:text-white' }
   const variantStyles: Record<string, { bg: string; border: string; icon: string }> = {
     default: defaultStyle,
     success: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', icon: 'text-green-500' },
@@ -524,8 +524,8 @@ function renderQuote(card: TypelessCardQuote): string {
     ? `<footer class="mt-2 text-sm text-gray-500 dark:text-gray-400">— ${escapeHtml(card.author)}${card.source ? `, <cite>${escapeHtml(card.source)}</cite>` : ''}</footer>`
     : ''
 
-  return `<div class="quote-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
-    <blockquote class="p-4 border-l-4 border-blue-500">
+  return `<div class="quote-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
+    <blockquote class="p-4 border-l-4 border-gray-900 dark:border-white">
       <p class="text-gray-700 dark:text-gray-300 italic">${parseInline(card.content)}</p>
       ${authorHtml}
     </blockquote>
@@ -537,9 +537,9 @@ function renderQuote(card: TypelessCardQuote): string {
  */
 function renderAlert(card: TypelessCardAlert): string {
   const defaultStyle = {
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    border: 'border-blue-200 dark:border-blue-800',
-    text: 'text-blue-800 dark:text-blue-200',
+    bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20',
+    border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
+    text: 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
     icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
   }
   const variantStyles: Record<string, { bg: string; border: string; text: string; icon: string }> = {
@@ -716,7 +716,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
   const plainContent = stripAnsi(card.content)
 
   // Theme classes
-  const themeClass = card.theme === 'light' ? 'bg-gray-100' : 'bg-gray-900'
+  const themeClass = card.theme === 'light' ? 'bg-gray-100' : 'bg-gray-700'
   const textClass = card.theme === 'light' ? 'text-gray-900' : 'text-gray-100'
 
   // Max height style
@@ -729,7 +729,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
   }).replace(/"/g, '&quot;')
 
   return `<div class="terminal-card rounded-lg border border-gray-700 overflow-hidden" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('terminal', '${fullscreenData.replace(/'/g, "\\'")}')">
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-700 border-b border-gray-700">
       <div class="flex items-center gap-2">
         <div class="flex gap-1">
           <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>

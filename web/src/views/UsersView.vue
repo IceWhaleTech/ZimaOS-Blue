@@ -134,7 +134,7 @@ function getRoleClass(role: string) {
     case 'admin':
       return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
     case 'user':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
     case 'guest':
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-400'
     default:
@@ -160,7 +160,7 @@ onMounted(() => {
         </p>
       </div>
       <button
-        class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors flex items-center gap-2"
         @click="showCreateModal = true"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -177,13 +177,13 @@ onMounted(() => {
           v-model="searchQuery"
           type="text"
           :placeholder="t('users.searchPlaceholder')"
-          class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+          class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
           @input="currentPage = 1; fetchUsers()"
         />
       </div>
       <select
         v-model="statusFilter"
-        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
         @change="currentPage = 1; fetchUsers()"
       >
         <option value="">{{ t('users.allStatuses') }}</option>
@@ -193,7 +193,7 @@ onMounted(() => {
       </select>
       <select
         v-model="roleFilter"
-        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
         @change="currentPage = 1; fetchUsers()"
       >
         <option value="">{{ t('users.allRoles') }}</option>
@@ -210,14 +210,14 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
-      <svg class="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-gray-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
     </div>
 
     <!-- Users Table -->
-    <div v-else-if="users.length > 0" class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+    <div v-else-if="users.length > 0" class="bg-white dark:bg-gray-700 rounded-xl shadow overflow-hidden">
       <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>
@@ -245,8 +245,8 @@ onMounted(() => {
           <tr v-for="user in users" :key="user.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <td class="px-6 py-4 whitespace-nowrap">
               <div class="flex items-center">
-                <div class="h-10 w-10 rounded-full bg-accent/20 flex items-center justify-center">
-                  <span class="text-accent font-medium">{{ user.username.charAt(0).toUpperCase() }}</span>
+                <div class="h-10 w-10 rounded-full bg-gray-700 dark:bg-gray-700/20 flex items-center justify-center">
+                  <span class="text-gray-900 dark:text-gray-300 font-medium">{{ user.username.charAt(0).toUpperCase() }}</span>
                 </div>
                 <div class="ml-4">
                   <div class="text-sm font-medium text-gray-900 dark:text-white">{{ user.username }}</div>
@@ -279,7 +279,7 @@ onMounted(() => {
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
               <div class="flex items-center justify-end gap-2">
                 <button
-                  class="p-2 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  class="p-2 text-gray-500 hover:text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                   :title="t('users.edit')"
                   @click="openEditModal(user)"
                 >
@@ -348,7 +348,7 @@ onMounted(() => {
     </div>
 
     <!-- Empty State -->
-    <div v-else class="text-center py-12 bg-white dark:bg-gray-800 rounded-xl">
+    <div v-else class="text-center py-12 bg-white dark:bg-gray-700 rounded-xl">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
       </svg>

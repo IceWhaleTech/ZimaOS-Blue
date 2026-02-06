@@ -73,11 +73,11 @@ watch(searchQuery, (query) => {
 </script>
 
 <template>
-  <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-900">
+  <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-700">
     <!-- Header -->
     <div class="p-4 border-b border-gray-200 dark:border-gray-700">
       <button
-        class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+        class="w-full py-2 px-4 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
         @click="handleCreate"
       >
         <svg
@@ -105,7 +105,7 @@ watch(searchQuery, (query) => {
           v-model="searchQuery"
           type="text"
           :placeholder="t('chat.searchConversations')"
-          class="w-full bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
         />
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -128,7 +128,7 @@ watch(searchQuery, (query) => {
     <div class="flex-1 overflow-y-auto">
       <!-- Loading state -->
       <div v-if="loading || searching" class="p-4 text-center text-gray-500 dark:text-gray-400">
-        <div class="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto" />
+        <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto" />
         <p class="mt-2">{{ searching ? t('chat.searching') : t('common.loading') }}</p>
       </div>
 
@@ -162,10 +162,10 @@ watch(searchQuery, (query) => {
           v-for="conversation in conversations"
           :key="conversation.id"
           class="conversation-item relative group"
-          :class="{ 'bg-blue-50 dark:bg-gray-800': conversation.id === currentId }"
+          :class="{ 'bg-gray-100 dark:bg-gray-700': conversation.id === currentId }"
         >
           <button
-            class="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            class="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             @click="handleSelect(conversation.id)"
           >
             <div class="flex items-start justify-between gap-2">
@@ -205,7 +205,7 @@ watch(searchQuery, (query) => {
           <!-- Delete confirmation -->
           <div
             v-if="showDeleteConfirm === conversation.id"
-            class="absolute inset-0 bg-white/95 dark:bg-gray-900/95 flex items-center justify-center gap-2 p-2"
+            class="absolute inset-0 bg-white/95 dark:bg-gray-700/95 flex items-center justify-center gap-2 p-2"
           >
             <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('chat.confirmDelete') }}</span>
             <button
@@ -215,7 +215,7 @@ watch(searchQuery, (query) => {
               {{ t('common.yes') }}
             </button>
             <button
-              class="px-3 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white text-sm rounded transition-colors"
+              class="px-3 py-1 bg-gray-100 dark:bg-gray-700/30 hover:bg-gray-200 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300 text-sm rounded transition-colors"
               @click.stop="cancelDelete"
             >
               {{ t('common.no') }}

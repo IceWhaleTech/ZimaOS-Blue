@@ -160,7 +160,7 @@ onUnmounted(() => {
       <p class="hero-cta">
         <i18n-t keypath="home.startChatCta" tag="span">
           <template #link>
-            <router-link to="/chat" class="text-accent hover:underline font-medium">{{ t('nav.chat') }}</router-link>
+            <router-link to="/chat" class="px-2 py-1 bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:underline font-medium rounded">{{ t('nav.chat') }}</router-link>
           </template>
         </i18n-t>
       </p>
@@ -181,9 +181,9 @@ onUnmounted(() => {
     <!-- Detailed System Info Toggle -->
     <div class="glass-card p-6 mb-4">
       <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('system.detailedSystemInfo') }}</h3>
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-white">{{ t('system.detailedSystemInfo') }}</h3>
         <button
-          class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors"
           @click="toggleDetailedInfo"
         >
           {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}
@@ -199,38 +199,38 @@ onUnmounted(() => {
       <template v-else-if="detailedInfo">
         <!-- OS Info -->
         <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.osInfo') }}</h4>
+          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.osInfo') }}</h4>
           <div class="grid md:grid-cols-3 gap-4 text-sm">
             <div>
               <span class="text-gray-500 dark:text-gray-400">{{ t('system.osVersion') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.version || '-' }}</span>
+              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.version || '-' }}</span>
             </div>
             <div>
               <span class="text-gray-500 dark:text-gray-400">{{ t('system.kernel') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.kernel || '-' }}</span>
+              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.kernel || '-' }}</span>
             </div>
             <div>
               <span class="text-gray-500 dark:text-gray-400">{{ t('system.architecture') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.architecture || '-' }}</span>
+              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.architecture || '-' }}</span>
             </div>
             <div>
               <span class="text-gray-500 dark:text-gray-400">{{ t('system.hostname') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.hostname || '-' }}</span>
+              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.hostname || '-' }}</span>
             </div>
             <div>
               <span class="text-gray-500 dark:text-gray-400">{{ t('system.uptime') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.uptime_human || '-' }}</span>
+              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.uptime_human || '-' }}</span>
             </div>
             <div>
               <span class="text-gray-500 dark:text-gray-400">{{ t('system.bootTime') }}:</span>
-              <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.os.boot_time ? new Date(detailedInfo.os.boot_time * 1000).toLocaleString() : '-' }}</span>
+              <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.os.boot_time ? new Date(detailedInfo.os.boot_time * 1000).toLocaleString() : '-' }}</span>
             </div>
           </div>
         </div>
 
         <!-- CPU Info -->
         <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.cpuInfo') }}</h4>
+          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.cpuInfo') }}</h4>
           <div class="flex flex-col md:flex-row gap-6">
             <div class="flex-shrink-0 flex justify-center">
               <DonutChart
@@ -244,15 +244,15 @@ onUnmounted(() => {
             <div class="flex-1 grid sm:grid-cols-2 gap-4 text-sm">
               <div class="sm:col-span-2">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuModel') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.model || '-' }}</span>
+                <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.model || '-' }}</span>
               </div>
               <div>
                 <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuCores') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cores || '-' }} {{ t('system.cores') }} / {{ detailedInfo.hardware.cpu.threads || '-' }} {{ t('system.threads') }}</span>
+                <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.cores || '-' }} {{ t('system.cores') }} / {{ detailedInfo.hardware.cpu.threads || '-' }} {{ t('system.threads') }}</span>
               </div>
               <div>
                 <span class="text-gray-500 dark:text-gray-400">{{ t('system.cpuFrequency') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.frequency ? `${detailedInfo.hardware.cpu.frequency.toFixed(0)} MHz` : '-' }}</span>
+                <span class="text-gray-700 dark:text-white ml-2">{{ detailedInfo.hardware.cpu.frequency ? `${detailedInfo.hardware.cpu.frequency.toFixed(0)} MHz` : '-' }}</span>
               </div>
             </div>
           </div>
@@ -260,7 +260,7 @@ onUnmounted(() => {
 
         <!-- Memory Info -->
         <div class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.memoryInfo') }}</h4>
+          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.memoryInfo') }}</h4>
           <div class="flex flex-col md:flex-row gap-6">
             <div class="flex-shrink-0 flex gap-6 justify-center">
               <DonutChart
@@ -285,7 +285,7 @@ onUnmounted(() => {
               <div>
                 <div class="flex justify-between text-sm mb-1">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('system.ram') }}</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.used) }} / {{ formatBytes(detailedInfo.hardware.memory.total) }}</span>
+                  <span class="text-gray-700 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.used) }} / {{ formatBytes(detailedInfo.hardware.memory.total) }}</span>
                 </div>
                 <ProgressBar
                   :value="detailedInfo.hardware.memory.used"
@@ -298,7 +298,7 @@ onUnmounted(() => {
               <div v-if="detailedInfo.hardware.memory.swap_total > 0">
                 <div class="flex justify-between text-sm mb-1">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('system.swap') }}</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.swap_used) }} / {{ formatBytes(detailedInfo.hardware.memory.swap_total) }}</span>
+                  <span class="text-gray-700 dark:text-white">{{ formatBytes(detailedInfo.hardware.memory.swap_used) }} / {{ formatBytes(detailedInfo.hardware.memory.swap_total) }}</span>
                 </div>
                 <ProgressBar
                   :value="detailedInfo.hardware.memory.swap_used"
@@ -314,7 +314,7 @@ onUnmounted(() => {
 
         <!-- Disk Info -->
         <div v-if="detailedInfo.hardware.disk?.length" class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.diskInfo') }}</h4>
+          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.diskInfo') }}</h4>
           <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div
               v-for="disk in detailedInfo.hardware.disk.slice(0, 6)"
@@ -322,7 +322,7 @@ onUnmounted(() => {
               class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"
             >
               <div class="flex items-center justify-between mb-2">
-                <span class="font-medium text-gray-900 dark:text-white text-sm truncate" :title="disk.mount_point">{{ disk.mount_point }}</span>
+                <span class="font-medium text-gray-700 dark:text-white text-sm truncate" :title="disk.mount_point">{{ disk.mount_point }}</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ disk.fs_type }}</span>
               </div>
               <ProgressBar
@@ -342,11 +342,11 @@ onUnmounted(() => {
 
         <!-- Network Info -->
         <div v-if="detailedInfo.network?.interfaces?.length" class="glass-card p-6">
-          <h4 class="text-base font-semibold text-gray-900 dark:text-white mb-4">{{ t('system.networkInfo') }}</h4>
+          <h4 class="text-base font-semibold text-gray-700 dark:text-white mb-4">{{ t('system.networkInfo') }}</h4>
           <div class="space-y-4">
             <div v-for="iface in detailedInfo.network.interfaces.filter(i => !i.is_loopback && i.is_up)" :key="iface.name" class="border-b border-gray-100 dark:border-gray-700/50 pb-4 last:border-0 last:pb-0">
               <div class="flex items-center gap-2 mb-2">
-                <span class="font-medium text-gray-900 dark:text-white">{{ iface.name }}</span>
+                <span class="font-medium text-gray-700 dark:text-white">{{ iface.name }}</span>
                 <span class="px-2 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                   {{ t('system.interfaceUp') }}
                 </span>
@@ -354,15 +354,15 @@ onUnmounted(() => {
               <div class="grid md:grid-cols-3 gap-2 text-sm">
                 <div v-if="iface.mac">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('system.macAddress') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2 font-mono text-xs">{{ iface.mac }}</span>
+                  <span class="text-gray-700 dark:text-white ml-2 font-mono text-xs">{{ iface.mac }}</span>
                 </div>
                 <div v-if="iface.ipv4?.length">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('system.ipv4Address') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2 font-mono text-xs">{{ iface.ipv4.join(', ') }}</span>
+                  <span class="text-gray-700 dark:text-white ml-2 font-mono text-xs">{{ iface.ipv4.join(', ') }}</span>
                 </div>
                 <div>
                   <span class="text-gray-500 dark:text-gray-400">{{ t('system.mtu') }}:</span>
-                  <span class="text-gray-900 dark:text-white ml-2">{{ iface.mtu }}</span>
+                  <span class="text-gray-700 dark:text-white ml-2">{{ iface.mtu }}</span>
                 </div>
               </div>
             </div>
@@ -395,11 +395,11 @@ onUnmounted(() => {
   height: 64px;
   margin: 0 auto 16px;
   border-radius: 16px;
-  background: linear-gradient(135deg, var(--color-accent, #3B82F6), var(--color-cta, #10B981));
+  background: linear-gradient(135deg, #a855f7, #ec4899);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.3);
 }
 
 .hero-title {
@@ -417,6 +417,14 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
+.hero-cta {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  max-width: 480px;
+  margin: 24px auto 0;
+  line-height: 1.5;
+}
+
 .toggle-label {
   display: flex;
   align-items: center;
@@ -431,7 +439,7 @@ onUnmounted(() => {
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   cursor: pointer;
-  accent-color: var(--color-accent);
+  accent-color: var(--color-gray-900);
 }
 
 .toggle-text {

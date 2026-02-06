@@ -82,7 +82,7 @@ function handleRetry() {
         >
           Technical details
         </summary>
-        <div class="mt-2 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs font-mono">
+        <div class="mt-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs font-mono">
           <p class="text-red-600 dark:text-red-400 break-all">{{ errorMessage }}</p>
           <pre
             v-if="errorStack"
@@ -95,7 +95,7 @@ function handleRetry() {
       <!-- Retry button -->
       <button
         v-if="showRetry"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
         @click="handleRetry"
       >
         <svg

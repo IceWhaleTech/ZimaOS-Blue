@@ -26,7 +26,7 @@ const bgColor = computed(() => {
     case 'medium':
       return 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-600'
     case 'low':
-      return 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-600'
+      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
     default:
       return 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-600'
   }
@@ -41,7 +41,7 @@ const iconColor = computed(() => {
     case 'medium':
       return 'text-yellow-500 dark:text-yellow-400'
     case 'low':
-      return 'text-blue-500 dark:text-blue-400'
+      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
     default:
       return 'text-green-500 dark:text-green-400'
   }
@@ -76,7 +76,7 @@ const actionBadgeColor = computed(() => {
     <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
 
     <div class="flex items-start gap-3">
-      <div :class="['p-2 rounded-full bg-white dark:bg-gray-800', iconColor]">
+      <div :class="['p-2 rounded-full bg-white dark:bg-gray-700', iconColor]">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="iconPath" />
         </svg>

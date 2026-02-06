@@ -19,7 +19,7 @@ const emit = defineEmits<{
 function getThreatColor(level: ThreatLevel): string {
   const colors: Record<ThreatLevel, string> = {
     none: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
-    low: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300',
+    low: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
     medium: 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300',
     high: 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300',
     critical: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300',
@@ -106,7 +106,7 @@ function formatDuration(ms: number): string {
         :class="[
           'glass-card p-4 cursor-pointer transition-all',
           selectedId === session.id
-            ? 'ring-2 ring-accent bg-accent/5'
+            ? 'ring-2 ring-accent bg-gray-700 dark:bg-gray-700/5'
             : 'hover:bg-gray-50 dark:hover:bg-slate-700/50'
         ]"
         @click="emit('select', session)"
@@ -180,7 +180,7 @@ function formatDuration(ms: number): string {
       <!-- Load More -->
       <button
         v-if="hasMore"
-        class="w-full py-3 text-sm text-accent hover:text-accent-hover transition-colors"
+        class="w-full py-3 text-sm text-gray-900 dark:text-gray-300 hover:text-gray-900 dark:text-gray-300-hover transition-colors"
         :disabled="loading"
         @click="emit('loadMore')"
       >

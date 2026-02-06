@@ -142,7 +142,7 @@ const nodeTypes = {
     <!-- Loading state -->
     <div
       v-if="loading"
-      class="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-900/80 z-10"
+      class="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-700/80 z-10"
     >
       <div class="flex items-center gap-3 text-gray-600 dark:text-gray-400">
         <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
@@ -164,7 +164,7 @@ const nodeTypes = {
         </svg>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ error }}</p>
         <button
-          class="mt-4 px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent/90"
+          class="mt-4 px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90"
           @click="loadFlow"
         >
           {{ t('companion.flow.retry') }}
@@ -195,7 +195,7 @@ const nodeTypes = {
       :min-zoom="0.1"
       :max-zoom="2"
       fit-view-on-init
-      class="bg-gray-50 dark:bg-gray-900"
+      class="bg-gray-50 dark:bg-gray-700"
       @node-click="onNodeClick"
     >
       <Background pattern-color="#e5e7eb" :gap="20" />
@@ -217,7 +217,7 @@ const nodeTypes = {
     <!-- Zoom controls (custom) -->
     <div class="absolute bottom-4 left-4 flex gap-2 z-10">
       <button
-        class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomIn')"
         @click="zoomIn()"
       >
@@ -226,7 +226,7 @@ const nodeTypes = {
         </svg>
       </button>
       <button
-        class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.zoomOut')"
         @click="zoomOut()"
       >
@@ -235,7 +235,7 @@ const nodeTypes = {
         </svg>
       </button>
       <button
-        class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        class="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         :title="t('companion.flow.fitView')"
         @click="fitView({ padding: 0.2 })"
       >
@@ -246,11 +246,11 @@ const nodeTypes = {
     </div>
 
     <!-- Legend -->
-    <div class="absolute top-4 left-4 bg-white dark:bg-gray-800 rounded-lg shadow-md p-3 z-10">
+    <div class="absolute top-4 left-4 bg-white dark:bg-gray-700 rounded-lg shadow-md p-3 z-10">
       <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">{{ t('companion.flow.legend') }}</div>
       <div class="space-y-1.5">
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded bg-blue-500" />
+          <div class="w-3 h-3 rounded bg-gray-700 dark:bg-gray-700" />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.message') }}</span>
         </div>
         <div class="flex items-center gap-2">

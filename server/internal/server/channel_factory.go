@@ -7,15 +7,18 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/bluebubbles"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/dingtalk"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/discord"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/feishu"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/matrix"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/mattermost"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/signal"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/slack"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/teams"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/telegram"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/validator"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/wechat"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/whatsapp"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/zalo"
 )
 
@@ -52,8 +55,14 @@ func (f *ChannelFactory) CreateChannel(cfg *ChannelConfig) (channel.Channel, err
 		return f.createBlueBubbles(cfg)
 	case "zalo":
 		return f.createZalo(cfg)
+	case "whatsapp":
+		return f.createWhatsApp(cfg)
+	case "signal":
+		return f.createSignal(cfg)
+	case "dingtalk":
+		return f.createDingTalk(cfg)
 	// These channels are not yet fully implemented or require special setup
-	case "whatsapp", "signal", "googlechat", "dingtalk", "qq", "imessage":
+	case "googlechat", "qq", "imessage":
 		return nil, nil // Not supported yet
 	default:
 		return nil, nil // Unknown channel type
@@ -158,6 +167,41 @@ func (f *ChannelFactory) createZalo(cfg *ChannelConfig) (channel.Channel, error)
 	return zalo.New(zaloCfg, f.logger), nil
 }
 
+func (f *ChannelFactory) createWhatsApp(cfg *ChannelConfig) (channel.Channel, error) {
+	whatsappCfg := whatsapp.Config{
+		Enabled:     cfg.Enabled,
+		PhoneNumber: cfg.Config["phone_number"],
+		SessionPath: cfg.Config["session_path"],
+	}
+	if whatsappCfg.SessionPath == "" {
+		whatsappCfg.SessionPath = "./data/whatsapp"
+	}
+	return whatsapp.New(whatsappCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createSignal(cfg *ChannelConfig) (channel.Channel, error) {
+	signalCfg := signal.Config{
+		Enabled:     cfg.Enabled,
+		PhoneNumber: cfg.Config["phone_number"],
+		ConfigPath:  cfg.Config["config_path"],
+	}
+	if signalCfg.ConfigPath == "" {
+		signalCfg.ConfigPath = "./data/signal"
+	}
+	return signal.New(signalCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createDingTalk(cfg *ChannelConfig) (channel.Channel, error) {
+	dingtalkCfg := dingtalk.Config{
+		Enabled:    cfg.Enabled,
+		AppKey:     cfg.Config["app_key"],
+		AppSecret:  cfg.Config["app_secret"],
+		RobotCode:  cfg.Config["robot_code"],
+		WebhookURL: cfg.Config["webhook_url"],
+	}
+	return dingtalk.New(dingtalkCfg, f.logger), nil
+}
+
 // ValidationResult represents the result of a connection validation.
 type ValidationResult struct {
 	Success    bool                   `json:"success"`
@@ -191,6 +235,15 @@ func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType str
 		v = bluebubbles.NewValidator()
 	case "zalo":
 		v = zalo.NewValidator()
+	case "whatsapp", "signal":
+		// These channels don't have validators yet, return success for config save
+		return ValidationResult{
+			Success:    true,
+			Message:    "Configuration saved (validation not available)",
+			MessageKey: "channels.configSaved",
+		}
+	case "dingtalk":
+		v = dingtalk.NewValidator()
 	default:
 		return ValidationResult{
 			Success: false,

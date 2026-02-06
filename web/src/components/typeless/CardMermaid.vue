@@ -138,9 +138,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mermaid-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 flex flex-col h-full">
+  <div class="mermaid-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700 flex flex-col h-full">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
       <div class="flex items-center gap-2">
         <!-- Mermaid icon -->
         <svg class="w-4 h-4 text-pink-500" viewBox="0 0 24 24" fill="currentColor">

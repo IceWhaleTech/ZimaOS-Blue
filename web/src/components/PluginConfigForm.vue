@@ -114,7 +114,7 @@ function handleSubmit() {
             :value="formData[key] as string"
             type="text"
             :required="isRequired(key)"
-            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             :placeholder="prop.default as string || ''"
             @input="updateField(key, ($event.target as HTMLInputElement).value)"
           />
@@ -127,7 +127,7 @@ function handleSubmit() {
             :required="isRequired(key)"
             :min="prop.minimum"
             :max="prop.maximum"
-            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             :placeholder="String(prop.default || '')"
             @input="updateField(key, parseFloat(($event.target as HTMLInputElement).value))"
           />
@@ -140,7 +140,7 @@ function handleSubmit() {
             <input
               :checked="formData[key] as boolean"
               type="checkbox"
-              class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-blue-600 focus:ring-blue-500"
+              class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateField(key, ($event.target as HTMLInputElement).checked)"
             />
             <span class="text-gray-700 dark:text-gray-300">{{ prop.title || key }}</span>
@@ -151,7 +151,7 @@ function handleSubmit() {
             v-else-if="getFieldType(prop) === 'select'"
             :value="formData[key] as string"
             :required="isRequired(key)"
-            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             @change="updateField(key, ($event.target as HTMLSelectElement).value)"
           >
             <option value="" disabled>Select an option</option>
@@ -170,7 +170,7 @@ function handleSubmit() {
               <input
                 :value="item"
                 type="text"
-                class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+                class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
                 @input="updateArrayField(key, index, ($event.target as HTMLInputElement).value)"
               />
               <button
@@ -196,7 +196,7 @@ function handleSubmit() {
             </div>
             <button
               type="button"
-              class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1"
+              class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white flex items-center gap-1"
               @click="addArrayItem(key)"
             >
               <svg
@@ -222,7 +222,7 @@ function handleSubmit() {
             v-else-if="getFieldType(prop) === 'object'"
             :value="JSON.stringify(formData[key] || {}, null, 2)"
             rows="4"
-            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm border border-gray-300 dark:border-gray-600"
+            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 font-mono text-sm border border-gray-300 dark:border-gray-600"
             @input="updateJsonField(key, ($event.target as HTMLTextAreaElement).value)"
           ></textarea>
         </div>
@@ -237,7 +237,7 @@ function handleSubmit() {
         <button
           type="submit"
           :disabled="loading"
-          class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
         >
           {{ loading ? 'Saving...' : 'Save Configuration' }}
         </button>

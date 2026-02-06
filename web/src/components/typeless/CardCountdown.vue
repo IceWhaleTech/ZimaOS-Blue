@@ -47,7 +47,7 @@ function padZero(num: number): string {
 
 <template>
   <div
-    class="countdown-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800"
+    class="countdown-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
     :class="{ 'p-4': card.variant === 'compact', 'p-6': card.variant !== 'compact' }"
   >
     <!-- Title -->

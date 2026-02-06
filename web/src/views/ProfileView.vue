@@ -319,7 +319,7 @@ function getScopeLabel(scope: string): string {
               :class="
                 authStore.user.role === 'admin'
                   ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
-                  : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+                  : 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
               "
             >
               {{ authStore.user.role }}
@@ -336,7 +336,7 @@ function getScopeLabel(scope: string): string {
               v-else
               v-model="editEmail"
               type="email"
-              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+              class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
               :placeholder="$t('profile.enterEmailAddress')"
             />
           </div>
@@ -348,7 +348,7 @@ function getScopeLabel(scope: string): string {
               <input
                 v-model="editPassword"
                 type="password"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :placeholder="$t('profile.leaveBlankToKeepPassword')"
               />
             </div>
@@ -357,7 +357,7 @@ function getScopeLabel(scope: string): string {
               <input
                 v-model="editPasswordConfirm"
                 type="password"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :class="{ 'ring-2 ring-red-500': editPassword && !passwordsMatch }"
                 :placeholder="$t('profile.confirmNewPasswordPlaceholder')"
               />
@@ -377,14 +377,14 @@ function getScopeLabel(scope: string): string {
           <div class="flex gap-3 pt-4">
             <button
               v-if="!isEditingProfile"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
               @click="startEditProfile"
             >
               {{ $t('profile.editProfile') }}
             </button>
             <template v-else>
               <button
-                class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
                 :disabled="authStore.loading || (editPassword && !passwordsMatch) || false"
                 @click="saveProfile"
               >
@@ -526,7 +526,7 @@ function getScopeLabel(scope: string): string {
             <button
               v-else
               :disabled="linkingProvider === provider.id"
-              class="px-3 sm:px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+              class="px-3 sm:px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
               @click="linkProvider(provider)"
             >
               {{ linkingProvider === provider.id ? $t('profile.connecting') : $t('profile.connect') }}
@@ -557,7 +557,7 @@ function getScopeLabel(scope: string): string {
           <span class="truncate">{{ $t('profile.apiKeys') }}</span>
         </h2>
         <button
-          class="px-3 sm:px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2 flex-shrink-0"
+          class="px-3 sm:px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2 flex-shrink-0"
           @click="openCreateKeyModal"
         >
           <svg
@@ -651,11 +651,11 @@ function getScopeLabel(scope: string): string {
                 {{ $t('profile.copyApiKeyWarning') }}
               </p>
               <div class="flex items-center gap-2">
-                <code class="flex-1 bg-gray-100 dark:bg-gray-900 px-3 py-2 rounded text-green-600 dark:text-green-400 text-sm break-all">
+                <code class="flex-1 bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded text-green-600 dark:text-green-400 text-sm break-all">
                   {{ createdKey }}
                 </code>
                 <button
-                  class="p-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  class="p-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
                   :class="{ 'bg-green-500 dark:bg-green-600': copiedKey }"
                   @click="copyKey"
                 >
@@ -709,7 +709,7 @@ function getScopeLabel(scope: string): string {
                 v-model="newKeyName"
                 type="text"
                 required
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :placeholder="$t('profile.apiKeyNamePlaceholder')"
               />
             </div>
@@ -726,7 +726,7 @@ function getScopeLabel(scope: string): string {
                   <input
                     type="checkbox"
                     :checked="newKeyScopes.includes(scope.value)"
-                    class="mt-1 w-4 h-4 rounded border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-accent focus:ring-accent"
+                    class="mt-1 w-4 h-4 rounded border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-300 focus:ring-gray-400"
                     @change="toggleScope(scope.value)"
                   />
                   <div>
@@ -742,7 +742,7 @@ function getScopeLabel(scope: string): string {
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ $t('profile.expiration') }}</label>
               <select
                 v-model="newKeyExpiry"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
               >
                 <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">
                   {{ opt.label }}
@@ -755,7 +755,7 @@ function getScopeLabel(scope: string): string {
               <button
                 type="submit"
                 :disabled="authStore.loading || !newKeyName || newKeyScopes.length === 0"
-                class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ authStore.loading ? $t('profile.creating') : $t('profile.createApiKey') }}
               </button>

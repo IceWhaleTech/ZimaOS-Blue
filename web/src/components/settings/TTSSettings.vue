@@ -157,7 +157,7 @@ onUnmounted(() => {
         </p>
       </div>
       <button
-        class="text-sm text-accent hover:text-accent/80"
+        class="text-sm text-gray-900 dark:text-gray-300 hover:text-gray-900 dark:text-gray-300/80"
         :disabled="loading"
         @click="loadStatus"
       >
@@ -172,12 +172,12 @@ onUnmounted(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-700"></div>
     </div>
 
     <!-- Providers List -->
     <div v-else class="space-y-4">
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h4 class="font-medium text-gray-900 dark:text-white">
             {{ t('settings.tts.providers') }}
@@ -206,7 +206,7 @@ onUnmounted(() => {
             </div>
             <span
               v-if="provider.type === defaultProvider"
-              class="px-2 py-1 text-xs bg-accent/10 text-accent rounded"
+              class="px-2 py-1 text-xs bg-gray-700 dark:bg-gray-700/10 text-gray-900 dark:text-gray-300 rounded"
             >
               {{ t('common.default') }}
             </span>
@@ -215,7 +215,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Sherpa Local TTS Section -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div class="flex items-center justify-between">
             <div>
@@ -265,9 +265,9 @@ onUnmounted(() => {
                   {{ downloadProgress.percentage.toFixed(1) }}% - {{ downloadProgress.speed_human }}
                 </span>
               </div>
-              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div class="w-full bg-gray-700 dark:bg-gray-700 rounded-full h-2">
                 <div
-                  class="bg-accent h-2 rounded-full transition-all"
+                  class="bg-gray-700 dark:bg-gray-700 h-2 rounded-full transition-all"
                   :style="{ width: `${downloadProgress.percentage}%` }"
                 ></div>
               </div>
@@ -322,7 +322,7 @@ onUnmounted(() => {
               </div>
 
               <button
-                class="w-full px-3 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50"
+                class="w-full px-3 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 disabled:opacity-50"
                 :disabled="downloading"
                 @click="downloadModel()"
               >
@@ -346,7 +346,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Available Models List -->
-      <div v-if="availableModels.length > 0" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div v-if="availableModels.length > 0" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h4 class="font-medium text-gray-900 dark:text-white">
             {{ t('settings.tts.availableModels') }}
@@ -369,7 +369,7 @@ onUnmounted(() => {
                 </span>
                 <span
                   v-if="sherpaStatus?.model_type === model.id"
-                  class="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded"
+                  class="ml-2 px-2 py-0.5 text-xs bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white rounded"
                 >
                   {{ t('settings.tts.inUse') }}
                 </span>
@@ -384,7 +384,7 @@ onUnmounted(() => {
             <div class="flex items-center gap-2">
               <button
                 v-if="model.downloaded && sherpaStatus?.model_type !== model.id"
-                class="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                class="px-3 py-1 text-xs bg-gray-700 dark:bg-gray-700 text-white rounded hover:bg-gray-700 dark:bg-gray-700"
                 :disabled="isDownloading"
                 @click="switchModel(model.id)"
               >
@@ -392,7 +392,7 @@ onUnmounted(() => {
               </button>
               <button
                 v-if="!model.downloaded && !isDownloading"
-                class="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90"
+                class="px-3 py-1 text-xs bg-gray-700 dark:bg-gray-700 text-white rounded hover:bg-gray-700 dark:bg-gray-700/90"
                 @click="downloadModel(model.id)"
               >
                 {{ t('settings.tts.download') }}

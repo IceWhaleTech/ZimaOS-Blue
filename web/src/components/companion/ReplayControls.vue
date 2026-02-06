@@ -72,18 +72,18 @@ watch(showSpeedMenu, (isOpen) => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow-md p-4">
     <!-- Progress bar -->
     <div
-      class="relative h-2 bg-gray-200 dark:bg-gray-700 rounded-full cursor-pointer mb-4 group"
+      class="relative h-2 bg-gray-700 dark:bg-gray-700 rounded-full cursor-pointer mb-4 group"
       @click="handleSeek"
     >
       <div
-        class="absolute h-full bg-accent rounded-full transition-all"
+        class="absolute h-full bg-gray-700 dark:bg-gray-700 rounded-full transition-all"
         :style="{ width: `${progress}%` }"
       />
       <div
-        class="absolute w-4 h-4 bg-accent rounded-full -top-1 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+        class="absolute w-4 h-4 bg-gray-700 dark:bg-gray-700 rounded-full -top-1 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
         :style="{ left: `${progress}%` }"
       />
     </div>
@@ -111,7 +111,7 @@ watch(showSpeedMenu, (isOpen) => {
 
         <!-- Play/Pause -->
         <button
-          class="p-3 bg-accent text-white rounded-full hover:bg-accent/90 transition-colors"
+          class="p-3 bg-gray-700 dark:bg-gray-700 text-white rounded-full hover:bg-gray-700 dark:bg-gray-700/90 transition-colors"
           @click="isPlaying ? emit('pause') : emit('play')"
         >
           <svg v-if="!isPlaying" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -161,14 +161,14 @@ watch(showSpeedMenu, (isOpen) => {
           >
             <div
               v-if="showSpeedMenu"
-              class="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[80px]"
+              class="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[80px]"
             >
               <button
                 v-for="s in speeds"
                 :key="s"
                 :class="[
                   'w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
-                  s === speed ? 'text-accent font-medium' : 'text-gray-700 dark:text-gray-300'
+                  s === speed ? 'text-gray-900 dark:text-gray-300 font-medium' : 'text-gray-700 dark:text-gray-300'
                 ]"
                 @click="handleSpeedChange(s)"
               >

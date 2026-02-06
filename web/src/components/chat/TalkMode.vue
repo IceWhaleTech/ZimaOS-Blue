@@ -406,7 +406,7 @@ onUnmounted(() => {
             <button
               class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               :class="talkMode === 'conversation'
-                ? 'bg-accent text-white'
+                ? 'bg-gray-700 dark:bg-gray-700 text-white'
                 : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/20'"
               @click="switchMode('conversation')"
             >
@@ -420,7 +420,7 @@ onUnmounted(() => {
             <button
               class="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               :class="talkMode === 'walkie-talkie'
-                ? 'bg-accent text-white'
+                ? 'bg-gray-700 dark:bg-gray-700 text-white'
                 : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/20'"
               @click="switchMode('walkie-talkie')"
             >
@@ -440,9 +440,9 @@ onUnmounted(() => {
               class="relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer"
               :class="{
                 'bg-red-500 hover:bg-red-600 animate-pulse': isListening,
-                'bg-accent hover:bg-accent-light': !isListening && isConnected,
+                'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-light': !isListening && isConnected,
                 'bg-gray-400': !isConnected,
-                'bg-blue-500': isSpeaking,
+                'bg-gray-600 dark:bg-gray-500': isSpeaking,
                 'bg-yellow-500': isProcessing,
               }"
               :disabled="!isConnected || isSpeaking || isProcessing"
@@ -527,8 +527,8 @@ onUnmounted(() => {
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('chat.talkMode.you') }}</p>
               <p class="text-sm text-gray-900 dark:text-white">{{ transcript }}</p>
             </div>
-            <div v-if="response" class="p-3 rounded-lg bg-accent/10">
-              <p class="text-xs text-accent mb-1">{{ t('chat.talkMode.assistant') }}</p>
+            <div v-if="response" class="p-3 rounded-lg bg-gray-100 dark:bg-gray-700/30">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('chat.talkMode.assistant') }}</p>
               <p class="text-sm text-gray-900 dark:text-white">{{ response }}</p>
             </div>
           </div>

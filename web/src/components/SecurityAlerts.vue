@@ -30,9 +30,9 @@ const severityColor = (severity: string) => {
     case 'medium':
       return 'text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900/30'
     case 'low':
-      return 'text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30'
+      return 'text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50'
     default:
-      return 'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-900/30'
+      return 'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-700/30'
   }
 }
 
@@ -115,7 +115,7 @@ onUnmounted(() => {
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Security Alerts</h2>
       <button
         :disabled="loading"
-        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
         @click="fetchData"
       >
         {{ loading ? 'Refreshing...' : 'Refresh' }}
@@ -144,13 +144,13 @@ onUnmounted(() => {
         </div>
         <div class="text-sm text-yellow-600/70 dark:text-yellow-400/70">Medium</div>
       </div>
-      <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+      <div class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
           {{ lowAlerts.length }}
         </div>
-        <div class="text-sm text-blue-600/70 dark:text-blue-400/70">Low</div>
+        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-gray-900 dark:text-white/70">Low</div>
       </div>
-      <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
         <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
           {{ unresolvedAlerts }}
         </div>
@@ -159,7 +159,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Guard Stats -->
-    <div v-if="guardStats" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div v-if="guardStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
       <h3 class="font-medium text-gray-900 dark:text-white mb-3">Prompt Guard Status</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
@@ -184,7 +184,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Auth Stats -->
-    <div v-if="authStats" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div v-if="authStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
       <h3 class="font-medium text-gray-900 dark:text-white mb-3">Authentication Status</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
@@ -221,7 +221,7 @@ onUnmounted(() => {
       <div
         v-for="alert in alerts"
         :key="alert.id"
-        class="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+        class="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
       >
         <div class="flex items-start gap-3">
           <span class="text-xl">{{ typeIcon(alert.type) }}</span>

@@ -32,15 +32,15 @@ const statusConfig = {
     iconColor: 'text-amber-500',
   },
   info: {
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    border: 'border-blue-200 dark:border-blue-800',
+    bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20',
+    border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
     icon: 'ℹ',
-    iconColor: 'text-blue-500',
+    iconColor: 'text-gray-900 dark:text-white',
   },
 }
 
 const buttonClasses = {
-  primary: 'bg-accent hover:bg-accent-light text-white',
+  primary: 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-light text-white',
   secondary: 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }

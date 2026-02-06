@@ -160,7 +160,7 @@ function getLinePrefix(type: string): string {
 </script>
 
 <template>
-  <div class="diff-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800" @dblclick="handleDoubleClick">
+  <div class="diff-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700" @dblclick="handleDoubleClick">
     <!-- Header -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-3">
@@ -183,14 +183,14 @@ function getLinePrefix(type: string): string {
         <div class="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <button
             class="px-3 py-1 text-xs font-medium transition-colors"
-            :class="viewMode === 'unified' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'"
+            :class="viewMode === 'unified' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
             @click.stop="viewMode = 'unified'"
           >
             Unified
           </button>
           <button
             class="px-3 py-1 text-xs font-medium transition-colors"
-            :class="viewMode === 'split' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'"
+            :class="viewMode === 'split' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
             @click.stop="viewMode = 'split'"
           >
             Split
@@ -230,7 +230,7 @@ function getLinePrefix(type: string): string {
       <div class="flex-1 border-r border-gray-200 dark:border-gray-700">
         <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
               class="flex"
-              :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-800/50'"
+              :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
             ><span class="w-10 px-2 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
                 v-if="line"
                 class="w-6 text-center flex-shrink-0"
@@ -241,7 +241,7 @@ function getLinePrefix(type: string): string {
       <div class="flex-1">
         <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
               class="flex"
-              :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-800/50'"
+              :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
             ><span class="w-10 px-2 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
                 v-if="line"
                 class="w-6 text-center flex-shrink-0"

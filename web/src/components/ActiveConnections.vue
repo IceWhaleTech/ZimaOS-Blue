@@ -66,7 +66,7 @@ function getTypeColor(type: Connection['type']): string {
     case 'websocket':
       return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
     case 'sse':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
     case 'http':
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
   }
@@ -95,7 +95,7 @@ function toggleSort(field: typeof sortBy.value) {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.activeConnectionsTitle') }}</h2>
       <div class="flex items-center gap-4">
@@ -104,7 +104,7 @@ function toggleSort(field: typeof sortBy.value) {
           <label class="text-sm text-gray-500 dark:text-gray-400">{{ t('common.filterByIp') }}:</label>
           <select
             v-model="selectedIp"
-            class="text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
           >
             <option value="all">{{ t('common.allIps') }}</option>
             <option v-for="ip in uniqueIps" :key="ip" :value="ip">{{ ip }}</option>
@@ -117,7 +117,7 @@ function toggleSort(field: typeof sortBy.value) {
     </div>
 
     <div v-if="loading" class="p-6 text-center">
-      <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+      <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingConnections') }}</p>
     </div>
 

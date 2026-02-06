@@ -63,7 +63,7 @@ onMounted(() => {
     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
     @click.self="handleClose"
   >
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div class="bg-white dark:bg-gray-700 rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
       <!-- Header -->
       <div class="p-6 border-b border-gray-200 dark:border-gray-700">
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
@@ -78,7 +78,7 @@ onMounted(() => {
       <div class="p-6 space-y-6">
         <!-- Loading -->
         <div v-if="loading" class="flex items-center justify-center py-8">
-          <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-500" />
+          <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-900 dark:border-t-gray-400" />
         </div>
 
         <template v-else-if="consentInfo">
@@ -131,7 +131,7 @@ onMounted(() => {
                 :key="item"
                 class="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300"
               >
-                <svg class="h-5 w-5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg class="h-5 w-5 text-gray-900 dark:text-white flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>{{ item }}</span>
@@ -160,7 +160,7 @@ onMounted(() => {
         </button>
         <button
           :disabled="saving"
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
           @click="handleConsent(true)"
         >
           {{ saving ? t('common.saving') : t('stats.consent.accept') }}

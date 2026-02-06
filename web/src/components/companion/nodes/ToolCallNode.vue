@@ -80,7 +80,7 @@ function formatDuration(ms?: number): string {
     <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
 
     <div class="flex items-start gap-3">
-      <div :class="['p-2 rounded-full bg-white dark:bg-gray-800', iconColor]">
+      <div :class="['p-2 rounded-full bg-white dark:bg-gray-700', iconColor]">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="statusIcon" />
         </svg>

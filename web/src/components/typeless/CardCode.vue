@@ -63,9 +63,9 @@ function getLanguageDisplay(): string {
 </script>
 
 <template>
-  <div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-900">
+  <div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-200">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-700 border-b border-gray-700">
       <div class="flex items-center gap-2">
         <!-- Window controls -->
         <div class="flex gap-1">

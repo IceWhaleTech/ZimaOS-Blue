@@ -106,7 +106,7 @@ function getProviderIconSvg(type: ProviderType): string {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-700 px-4">
     <div class="max-w-md w-full">
       <!-- Logo and Title -->
       <div class="text-center mb-8">
@@ -116,7 +116,7 @@ function getProviderIconSvg(type: ProviderType): string {
       </div>
 
       <!-- Login Form -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-xl">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-6 shadow-xl">
         <form class="space-y-6" @submit.prevent="handleSubmit">
           <!-- Error Message -->
           <div
@@ -154,7 +154,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 type="text"
                 autocomplete="username"
                 required
-                class="block w-full pl-10 pr-3 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                class="block w-full pl-10 pr-3 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.enterUsername')"
               />
             </div>
@@ -188,7 +188,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 :type="showPassword ? 'text' : 'password'"
                 autocomplete="current-password"
                 required
-                class="block w-full pl-10 pr-10 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                class="block w-full pl-10 pr-10 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.enterPassword')"
               />
               <button
@@ -242,7 +242,7 @@ function getProviderIconSvg(type: ProviderType): string {
               <input
                 v-model="rememberMe"
                 type="checkbox"
-                class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-white dark:focus:ring-offset-gray-800"
+                class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-white dark:focus:ring-offset-gray-800"
               />
               <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{{ t('auth.rememberMe') }}</span>
             </label>
@@ -252,7 +252,7 @@ function getProviderIconSvg(type: ProviderType): string {
           <button
             type="submit"
             :disabled="authStore.loading || !username || !password"
-            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <svg
               v-if="authStore.loading"
@@ -285,7 +285,7 @@ function getProviderIconSvg(type: ProviderType): string {
             <div class="w-full border-t border-gray-300 dark:border-gray-600"></div>
           </div>
           <div class="relative flex justify-center text-sm">
-            <span class="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">{{ t('auth.orContinueWith') }}</span>
+            <span class="px-2 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400">{{ t('auth.orContinueWith') }}</span>
           </div>
         </div>
 

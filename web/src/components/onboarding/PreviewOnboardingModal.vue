@@ -73,11 +73,11 @@ async function handleClose() {
 
       <!-- Tooltip with arrow pointing up -->
       <div
-        class="absolute w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden"
+        class="absolute w-80 bg-white dark:bg-gray-700 rounded-xl shadow-2xl overflow-hidden"
         :style="tooltipStyle"
       >
         <!-- Arrow pointing up -->
-        <div class="absolute -top-2 right-6 w-4 h-4 bg-white dark:bg-gray-800 transform rotate-45" />
+        <div class="absolute -top-2 right-6 w-4 h-4 bg-white dark:bg-gray-700 transform rotate-45" />
 
         <!-- Content -->
         <div class="relative p-4">
@@ -109,7 +109,7 @@ async function handleClose() {
 
           <!-- Got it button -->
           <button
-            class="w-full py-2.5 px-4 bg-accent hover:bg-accent/90 text-white font-medium rounded-lg transition-colors"
+            class="w-full py-2.5 px-4 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700/90 text-white font-medium rounded-lg transition-colors"
             @click="handleClose"
           >
             {{ t('onboarding.gotIt') }}

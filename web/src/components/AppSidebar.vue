@@ -104,13 +104,13 @@ const allNavItems: NavItem[] = [
   {
     name: 'nav.automation',
     path: '/automation',
-    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+    icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15M9 12l2 2 4-4',
     permission: PagePermissions.AUTOMATION,
   },
   {
     name: 'nav.plugins',
     path: '/plugins',
-    icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
     permission: PagePermissions.PLUGINS,
   },
   {
@@ -181,7 +181,7 @@ const navItems = computed(() => {
         class="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 cursor-pointer group"
         :class="[
           route.path === item.path
-            ? 'bg-accent/20 text-accent border border-accent/30'
+            ? 'bg-gray-100 dark:bg-gray-700/20 text-gray-900 dark:text-gray-300 border border-gray-900/30 dark:border-gray-700/30'
             : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white border border-transparent',
           isCollapsed ? 'justify-center' : 'space-x-3'
         ]"

@@ -259,7 +259,7 @@ async function installSkill() {
   --text-secondary: var(--color-text-secondary, #94A3B8);
   --text-muted: var(--color-text-muted, #64748B);
   --border: var(--glass-border, rgba(255, 255, 255, 0.1));
-  --primary: var(--color-accent, #3B82F6);
+  --primary: var(--color-gray-900, #3B82F6);
 }
 
 :root.light .plugins-page,
@@ -302,7 +302,7 @@ async function installSkill() {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: linear-gradient(135deg, var(--primary), #6366f1);
+  background: #1f2937;
   color: white;
   border: none;
   border-radius: 8px;
@@ -313,8 +313,8 @@ async function installSkill() {
 }
 
 .btn-upload:hover {
+  background: #111827;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
 }
 
 .btn-upload svg {
@@ -360,9 +360,8 @@ async function installSkill() {
 }
 
 .main-tab.active {
-  background: linear-gradient(135deg, var(--primary), #6366f1);
+  background: #1f2937;
   color: white;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .tab-content {
@@ -458,9 +457,9 @@ async function installSkill() {
 }
 
 .method-tab.active {
-  background: var(--primary-light, rgba(99, 102, 241, 0.1));
-  border-color: var(--primary);
-  color: var(--primary);
+  background: #f3f4f6;
+  border-color: #1f2937;
+  color: #1f2937;
 }
 
 .method-tab svg {
@@ -523,7 +522,7 @@ async function installSkill() {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: linear-gradient(135deg, var(--primary), #6366f1);
+  background: #1f2937;
   border: none;
   border-radius: 8px;
   color: white;

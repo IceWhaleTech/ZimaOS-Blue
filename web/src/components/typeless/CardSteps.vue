@@ -14,22 +14,22 @@ function getStepStatus(step: StepItem, index: number, currentStep?: number): str
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
-  current: 'bg-blue-500 text-white ring-4 ring-blue-100 dark:ring-blue-900',
+  pending: 'bg-gray-700 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+  current: 'bg-gray-700 dark:bg-gray-700 text-white ring-4 ring-gray-200 dark:ring-gray-800',
   completed: 'bg-green-500 text-white',
   error: 'bg-red-500 text-white',
 }
 
 const lineColors: Record<string, string> = {
-  pending: 'bg-gray-200 dark:bg-gray-700',
-  current: 'bg-gray-200 dark:bg-gray-700',
+  pending: 'bg-gray-700 dark:bg-gray-700',
+  current: 'bg-gray-700 dark:bg-gray-700',
   completed: 'bg-green-500',
   error: 'bg-red-500',
 }
 </script>
 
 <template>
-  <div class="steps-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="steps-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -67,7 +67,7 @@ const lineColors: Record<string, string> = {
             <div class="mt-3 text-center">
               <p
                 class="text-sm font-medium"
-                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'"
+                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white' : 'text-gray-900 dark:text-white'"
               >
                 {{ step.title }}
               </p>
@@ -120,7 +120,7 @@ const lineColors: Record<string, string> = {
             <div class="flex-1 pt-1">
               <p
                 class="font-medium"
-                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'"
+                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white' : 'text-gray-900 dark:text-white'"
               >
                 {{ step.title }}
               </p>

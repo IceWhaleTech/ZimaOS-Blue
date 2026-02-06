@@ -303,7 +303,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow">
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center justify-between">
@@ -317,13 +317,13 @@ onMounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <button
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
             @click="showAddModal = true"
           >
             {{ t('memory.add') }}
           </button>
           <button
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
             :title="t('userdata.memory.title')"
             @click="showExportImportModal = true"
           >
@@ -347,10 +347,10 @@ onMounted(() => {
     </div>
 
     <!-- Backend indicator -->
-    <div v-if="stats?.backend" class="px-6 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-gray-200 dark:border-gray-700">
+    <div v-if="stats?.backend" class="px-6 py-2 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-2 text-sm">
         <span class="text-gray-600 dark:text-gray-400">{{ t('memory.backend') }}:</span>
-        <span class="font-medium text-blue-600 dark:text-blue-400">
+        <span class="font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
           {{ stats.backend === 'supermemory' ? 'Supermemory' : t('memory.localBackend') }}
         </span>
       </div>
@@ -382,20 +382,20 @@ onMounted(() => {
             v-model="searchQuery"
             type="text"
             :placeholder="t('memory.searchPlaceholder')"
-            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
             @keyup.enter="searchMemories"
           />
         </div>
         <select
           v-model="searchType"
-          class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+          class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
         >
           <option value="hybrid">{{ t('memory.searchTypes.hybrid') }}</option>
           <option value="vector">{{ t('memory.searchTypes.vector') }}</option>
           <option value="keyword">{{ t('memory.searchTypes.keyword') }}</option>
         </select>
         <button
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
           :disabled="searching || !searchQuery.trim()"
           @click="searchMemories"
         >
@@ -407,7 +407,7 @@ onMounted(() => {
 
     <!-- Results -->
     <div v-if="searching" class="p-6 text-center">
-      <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+      <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
       <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('memory.searching') }}</p>
     </div>
 
@@ -432,7 +432,7 @@ onMounted(() => {
               <span
                 v-for="matchType in memory.match_types"
                 :key="matchType"
-                class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white"
               >
                 {{ matchType }}
               </span>
@@ -490,7 +490,7 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showAddModal = false"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('memory.addTitle') }}</h3>
           </div>
@@ -504,7 +504,7 @@ onMounted(() => {
                 v-model="newMemoryContent"
                 rows="4"
                 :placeholder="t('memory.contentPlaceholder')"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent resize-none"
               ></textarea>
             </div>
 
@@ -516,7 +516,7 @@ onMounted(() => {
                 v-model="newMemoryTags"
                 type="text"
                 :placeholder="t('memory.tagsPlaceholder')"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
               />
             </div>
           </div>
@@ -529,7 +529,7 @@ onMounted(() => {
               {{ t('common.cancel') }}
             </button>
             <button
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
               :disabled="loading || !newMemoryContent.trim()"
               @click="addMemory"
             >
@@ -547,7 +547,7 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showClearConfirm = false"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-md w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-red-600 dark:text-red-400">{{ t('memory.clearAllTitle') }}</h3>
           </div>
@@ -582,7 +582,7 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showSettingsModal = false"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('memory.settingsTitle') }}</h3>
           </div>
@@ -596,14 +596,14 @@ onMounted(() => {
               <div class="flex gap-2">
                 <button
                   class="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  :class="activeBackend === 'local' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                  :class="activeBackend === 'local' ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
                   @click="switchBackend('local')"
                 >
                   {{ t('memory.localBackend') }}
                 </button>
                 <button
                   class="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  :class="activeBackend === 'supermemory' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                  :class="activeBackend === 'supermemory' ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
                   :disabled="!supermemoryEnabled"
                   @click="switchBackend('supermemory')"
                 >
@@ -625,7 +625,7 @@ onMounted(() => {
                     v-model="supermemoryApiKey"
                     type="password"
                     :placeholder="t('memory.apiKeyPlaceholder')"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                   />
                 </div>
 
@@ -637,7 +637,7 @@ onMounted(() => {
                     v-model="supermemoryBaseUrl"
                     type="text"
                     placeholder="https://api.supermemory.ai/v3"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                   />
                 </div>
 
@@ -665,7 +665,7 @@ onMounted(() => {
               {{ t('common.cancel') }}
             </button>
             <button
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
               :disabled="loading"
               @click="saveSupermemoryConfig"
             >
@@ -683,10 +683,10 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="closeExportImportModal"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
-          <div class="sticky top-0 bg-white dark:bg-gray-800 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div class="sticky top-0 bg-white dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
               {{ t('userdata.memory.title') }}
@@ -707,7 +707,7 @@ onMounted(() => {
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('userdata.memory.exportDesc') }}</p>
               <button
                 :disabled="memoryExporting"
-                class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 @click="handleMemoryExport"
               >
                 <svg v-if="memoryExporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -756,7 +756,7 @@ onMounted(() => {
                     :class="[
                       'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                       memoryImportMode === 'append'
-                        ? 'bg-purple-600 text-white'
+                        ? 'bg-gray-700 dark:bg-gray-700 text-white'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                     ]"
                     @click="memoryImportMode = 'append'"
@@ -783,7 +783,7 @@ onMounted(() => {
               <!-- Import Button -->
               <button
                 :disabled="!memoryImportFile || memoryImporting"
-                class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 @click="handleMemoryImport"
               >
                 <svg v-if="memoryImporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

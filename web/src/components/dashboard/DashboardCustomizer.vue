@@ -80,7 +80,7 @@ defineExpose({ open, close })
         <div class="absolute inset-0 bg-black/50" @click="close"></div>
 
         <!-- Modal Content -->
-        <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div class="relative bg-white dark:bg-gray-700 rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
           <!-- Header -->
           <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -97,14 +97,14 @@ defineExpose({ open, close })
           </div>
 
           <!-- Category Tabs -->
-          <div class="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+          <div class="sticky top-0 bg-white dark:bg-gray-700 flex gap-2 p-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto z-10">
             <button
               v-for="cat in categories"
               :key="cat.id"
               class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
               :class="
                 activeCategory === cat.id
-                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                  ? 'bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               "
               @click="activeCategory = cat.id as typeof activeCategory"
@@ -143,7 +143,7 @@ defineExpose({ open, close })
                     @change="toggleCard(card.config.id)"
                   />
                   <div
-                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"
+                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600"
                   ></div>
                 </label>
               </div>
@@ -159,7 +159,7 @@ defineExpose({ open, close })
               {{ t('dashboard.resetToDefaults') }}
             </button>
             <button
-              class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
               @click="close"
             >
               {{ t('common.done') }}

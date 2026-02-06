@@ -126,7 +126,7 @@ onUnmounted(() => {
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Proxy Metrics</h2>
       <button
         :disabled="loading"
-        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
         @click="fetchData"
       >
         {{ loading ? 'Refreshing...' : 'Refresh' }}
@@ -143,25 +143,25 @@ onUnmounted(() => {
 
     <!-- Overview Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ formatNumber(totalRequests) }}
         </div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Total Requests</div>
       </div>
-      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold" :class="Number(successRate) >= 95 ? 'text-green-600' : Number(successRate) >= 80 ? 'text-yellow-600' : 'text-red-600'">
           {{ successRate }}%
         </div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Success Rate</div>
       </div>
-      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+      <div class="p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
           {{ avgLatency }}ms
         </div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Avg Latency</div>
       </div>
-      <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
           {{ providerList.length }}
         </div>
@@ -170,7 +170,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Latency Percentiles -->
-    <div v-if="latencyStats" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div v-if="latencyStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
       <h3 class="font-medium text-gray-900 dark:text-white mb-3">Latency Distribution</h3>
 
       <!-- Bar Chart Visualization -->
@@ -196,7 +196,7 @@ onUnmounted(() => {
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P50:</span>
-          <span class="ml-2 font-medium text-blue-600 dark:text-blue-400">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P90:</span>
@@ -218,7 +218,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Token Usage -->
-    <div v-if="metrics" class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div v-if="metrics" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
       <h3 class="font-medium text-gray-900 dark:text-white mb-3">Token Usage</h3>
       <div class="grid grid-cols-3 gap-4 text-sm">
         <div>
@@ -249,8 +249,8 @@ onUnmounted(() => {
       <div
         v-for="[name, provider] in providerList"
         :key="name"
-        class="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
-        :class="{ 'border-blue-500 dark:border-blue-500': selectedProvider === name }"
+        class="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-gray-900 dark:border-white dark:hover:border-gray-900 dark:border-white transition-colors"
+        :class="{ 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white': selectedProvider === name }"
         @click="selectProvider(name)"
       >
         <div class="flex items-center justify-between">

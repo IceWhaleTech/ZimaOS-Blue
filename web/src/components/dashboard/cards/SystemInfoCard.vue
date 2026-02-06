@@ -21,13 +21,13 @@ function formatDate(dateStr: string | undefined): string {
 <template>
   <div class="grid grid-cols-2 gap-3">
     <!-- Version -->
-    <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-white dark:bg-gray-800">
+    <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-white dark:bg-gray-700">
       <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('system.version') }}</p>
       <p class="text-base font-semibold text-gray-900 dark:text-white">{{ systemStore.health?.version || '-' }}</p>
     </div>
 
     <!-- Timestamp -->
-    <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-white dark:bg-gray-800">
+    <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-white dark:bg-gray-700">
       <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('system.timestamp') }}</p>
       <p class="text-base font-semibold text-gray-900 dark:text-white">{{ formatDate(systemStore.health?.timestamp) }}</p>
     </div>

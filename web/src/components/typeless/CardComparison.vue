@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="comparison-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="comparison-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -18,21 +18,21 @@ defineProps<{
         <!-- Item headers -->
         <thead>
           <tr>
-            <th class="p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 w-40">
+            <th class="p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 w-40">
               Feature
             </th>
             <th
               v-for="(item, index) in card.items"
               :key="index"
               class="p-4 text-center min-w-[150px]"
-              :class="{ 'bg-blue-50 dark:bg-blue-900/20': item.highlighted }"
+              :class="{ 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20': item.highlighted }"
             >
               <div class="flex flex-col items-center gap-2">
                 <!-- Badge -->
                 <span
                   v-if="item.badge"
                   class="px-2 py-0.5 text-xs font-medium rounded-full"
-                  :class="item.highlighted ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'"
+                  :class="item.highlighted ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-700 dark:bg-gray-700 text-gray-600 dark:text-gray-300'"
                 >
                   {{ item.badge }}
                 </span>
@@ -49,7 +49,7 @@ defineProps<{
 
         <!-- Features -->
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-          <tr v-for="(feature, fIndex) in card.features" :key="fIndex" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+          <tr v-for="(feature, fIndex) in card.features" :key="fIndex" class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <td class="p-4 text-sm text-gray-600 dark:text-gray-400 font-medium">
               {{ feature.name }}
             </td>
@@ -57,7 +57,7 @@ defineProps<{
               v-for="(value, vIndex) in feature.values"
               :key="vIndex"
               class="p-4 text-center"
-              :class="{ 'bg-blue-50/50 dark:bg-blue-900/10': card.items[vIndex]?.highlighted }"
+              :class="{ 'bg-gray-700 dark:bg-gray-700/50 dark:bg-gray-700 dark:bg-gray-700/10': card.items[vIndex]?.highlighted }"
             >
               <!-- Boolean value -->
               <template v-if="typeof value === 'boolean'">

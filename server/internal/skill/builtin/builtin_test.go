@@ -145,11 +145,8 @@ func TestSystemInfo(t *testing.T) {
 		if data["os"] == nil {
 			t.Error("expected os info")
 		}
-		if data["memory"] == nil {
-			t.Error("expected memory info")
-		}
-		if data["cpu"] == nil {
-			t.Error("expected cpu info")
+		if data["hardware"] == nil {
+			t.Error("expected hardware info")
 		}
 	})
 

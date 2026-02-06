@@ -42,7 +42,7 @@ function getThreatTypeIcon(type: string): string {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow-lg overflow-hidden">
     <!-- Header -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">
@@ -89,7 +89,7 @@ function getThreatTypeIcon(type: string): string {
           <span class="text-gray-500 dark:text-gray-400">{{ t('companion.security.score') }}</span>
           <span class="font-medium text-gray-900 dark:text-white">{{ security.threatScore }}/100</span>
         </div>
-        <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
           <div
             class="h-full rounded-full transition-all duration-300"
             :class="{

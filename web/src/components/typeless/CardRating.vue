@@ -21,7 +21,7 @@ function getBarWidth(percentage?: number, count?: number): string {
 </script>
 
 <template>
-  <div class="rating-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="rating-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -74,7 +74,7 @@ function getBarWidth(percentage?: number, count?: number): string {
           </div>
           <div
             v-else
-            class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium flex-shrink-0"
+            class="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-white font-medium flex-shrink-0"
           >
             {{ card.review.author?.[0]?.toUpperCase() ?? '?' }}
           </div>

@@ -75,14 +75,14 @@ onMounted(() => {
   <div class="stats-dashboard">
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-500" />
+      <div class="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-900 dark:border-t-gray-400" />
     </div>
 
     <!-- Error -->
     <div v-else-if="error" class="text-center py-12">
       <p class="text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
       <button
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg"
         @click="loadData"
       >
         {{ t('common.retry') }}
@@ -133,7 +133,7 @@ onMounted(() => {
       </div>
 
       <!-- No Data -->
-      <div v-if="!hasData" class="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+      <div v-if="!hasData" class="text-center py-12 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
         <svg class="h-12 w-12 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
@@ -144,25 +144,25 @@ onMounted(() => {
       <div v-else class="space-y-6">
         <!-- Summary Cards -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+          <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('stats.totalCalls') }}</p>
             <p class="text-2xl font-semibold text-gray-900 dark:text-white">
               {{ stats.total_calls.toLocaleString() }}
             </p>
           </div>
-          <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+          <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('stats.inputTokens') }}</p>
             <p class="text-2xl font-semibold text-gray-900 dark:text-white">
               {{ stats.input_tokens.toLocaleString() }}
             </p>
           </div>
-          <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+          <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('stats.outputTokens') }}</p>
             <p class="text-2xl font-semibold text-gray-900 dark:text-white">
               {{ stats.output_tokens.toLocaleString() }}
             </p>
           </div>
-          <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+          <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('stats.errors') }}</p>
             <p class="text-2xl font-semibold text-gray-900 dark:text-white">
               {{ stats.error_count.toLocaleString() }}

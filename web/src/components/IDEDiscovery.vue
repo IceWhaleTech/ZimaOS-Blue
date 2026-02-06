@@ -67,7 +67,7 @@ const ideIcons: Record<string, string> = {
 const providerColors: Record<string, string> = {
   anthropic: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   openai: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  google: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  google: 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700 dark:text-gray-900 dark:text-white',
   custom: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
   github: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
 }
@@ -197,7 +197,7 @@ function getSourceLabel(source: string): string {
       </p>
       <button
         :disabled="scanning"
-        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        class="px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         @click="startScan"
       >
         <svg v-if="scanning" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -218,7 +218,7 @@ function getSourceLabel(source: string): string {
     </div>
 
     <!-- Scan Summary (after scan completes) -->
-    <div v-if="scanCompleted" class="mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+    <div v-if="scanCompleted" class="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg">
       <div class="flex items-center gap-2 text-sm">
         <span class="text-green-500 font-medium">{{ foundCount }}</span>
         <span class="text-gray-400">/</span>
@@ -240,10 +240,10 @@ function getSourceLabel(source: string): string {
           :key="state.ide_type"
           class="flex items-center gap-2 p-3 rounded-lg border transition-all"
           :class="{
-            'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700': state.status === 'pending',
-            'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800': state.status === 'scanning',
+            'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-700': state.status === 'pending',
+            'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600': state.status === 'scanning',
             'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800': state.status === 'found',
-            'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60': state.status === 'not_found',
+            'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-700 opacity-60': state.status === 'not_found',
           }"
         >
           <!-- IDE Icon -->
@@ -251,7 +251,7 @@ function getSourceLabel(source: string): string {
             class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg"
             :class="{
               'bg-gray-100 dark:bg-gray-700': state.status === 'pending' || state.status === 'not_found',
-              'bg-blue-100 dark:bg-blue-800': state.status === 'scanning',
+              'bg-gray-100 dark:bg-gray-700/30': state.status === 'scanning',
               'bg-white dark:bg-gray-700 shadow-sm': state.status === 'found',
             }"
           >
@@ -287,7 +287,7 @@ function getSourceLabel(source: string): string {
             </span>
 
             <!-- Scanning -->
-            <svg v-else-if="state.status === 'scanning'" class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg v-else-if="state.status === 'scanning'" class="animate-spin h-4 w-4 text-gray-900 dark:text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -319,7 +319,7 @@ function getSourceLabel(source: string): string {
         <div
           v-for="config in canImportConfigs"
           :key="config.ide_type"
-          class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg"
+          class="p-4 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg"
         >
           <div class="flex items-start justify-between mb-3">
             <div class="flex items-center gap-3">
@@ -363,7 +363,7 @@ function getSourceLabel(source: string): string {
 
           <button
             :disabled="importing === config.ide_type || !config.api_key"
-            class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             @click="importConfig(config.ide_type)"
           >
             <svg v-if="importing === config.ide_type" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -389,7 +389,7 @@ function getSourceLabel(source: string): string {
         <div
           v-for="config in installedOnlyConfigs"
           :key="config.ide_type"
-          class="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg"
+          class="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg"
         >
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">

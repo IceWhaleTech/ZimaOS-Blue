@@ -166,7 +166,7 @@ watch(() => props.modelVisible, (visible) => {
         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
         @click.self="handleClose"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+        <div class="bg-white dark:bg-gray-700 rounded-xl shadow-xl max-w-md w-full p-6">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
             {{ title }}
           </h3>
@@ -184,7 +184,7 @@ watch(() => props.modelVisible, (visible) => {
                 model.downloaded
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                   : downloadingModelId === model.id
-                    ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                    ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
                     : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600'
               ]"
             >
@@ -193,7 +193,7 @@ watch(() => props.modelVisible, (visible) => {
                 <svg v-if="model.downloaded" class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                 </svg>
-                <svg v-else-if="downloadingModelId === model.id" class="w-5 h-5 text-blue-500 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                <svg v-else-if="downloadingModelId === model.id" class="w-5 h-5 text-gray-900 dark:text-white flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -225,7 +225,7 @@ watch(() => props.modelVisible, (visible) => {
                 <!-- Download button -->
                 <button
                   v-if="!model.downloaded && downloadingModelId !== model.id"
-                  class="px-3 py-1.5 text-sm text-white bg-accent rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
+                  class="px-3 py-1.5 text-sm text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50"
                   :disabled="!!downloadingModelId"
                   @click="handleDownload(model.id)"
                 >
@@ -241,7 +241,7 @@ watch(() => props.modelVisible, (visible) => {
                   {{ t('common.use') }}
                 </button>
                 <!-- Switching indicator -->
-                <span v-else-if="switchingModelId === model.id" class="text-blue-500 text-sm flex items-center gap-1">
+                <span v-else-if="switchingModelId === model.id" class="text-gray-900 dark:text-white text-sm flex items-center gap-1">
                   <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -254,7 +254,7 @@ watch(() => props.modelVisible, (visible) => {
               <div v-if="downloadingModelId === model.id" class="mt-3">
                 <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mb-1">
                   <div
-                    class="bg-accent h-2 rounded-full transition-all duration-300"
+                    class="bg-gray-700 dark:bg-gray-700 h-2 rounded-full transition-all duration-300"
                     :style="{ width: `${progress?.percentage || 0}%` }"
                   ></div>
                 </div>

@@ -73,7 +73,7 @@ function handlePreview() {
 </script>
 
 <template>
-  <div class="file-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="file-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <div class="p-4 flex items-center gap-4">
       <!-- File icon -->
       <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl">
@@ -112,7 +112,7 @@ function handlePreview() {
         </button>
         <button
           v-if="card.downloadUrl"
-          class="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+          class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
           title="Download"
           @click="handleDownload"
         >

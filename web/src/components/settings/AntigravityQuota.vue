@@ -65,7 +65,7 @@ function getProviderColor(provider: string): string {
   const colors: Record<string, string> = {
     anthropic: 'text-orange-500',
     openai: 'text-green-500',
-    google: 'text-blue-500',
+    google: 'text-gray-900 dark:text-white',
     'azure-openai': 'text-cyan-500',
     cohere: 'text-purple-500',
     mistral: 'text-indigo-500',
@@ -197,7 +197,7 @@ onUnmounted(() => {
           {{ t('common.logout') }}
         </button>
         <button
-          class="text-sm text-accent hover:text-accent/80"
+          class="text-sm text-gray-900 dark:text-gray-300 hover:text-gray-900 dark:text-gray-300/80"
           :disabled="loading"
           @click="loadQuota"
         >
@@ -207,7 +207,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Detected API Keys Section -->
-    <div v-if="detectedKeys.length > 0" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div v-if="detectedKeys.length > 0" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h4 class="font-medium text-gray-900 dark:text-white flex items-center gap-2">
           <svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -246,7 +246,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Token Input -->
-    <div v-if="showTokenInput" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+    <div v-if="showTokenInput" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         {{ t('settings.antigravity.accessToken') }}
       </label>
@@ -260,12 +260,12 @@ onUnmounted(() => {
         <input
           v-model="accessToken"
           type="password"
-          class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+          class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
           :placeholder="t('settings.antigravity.tokenPlaceholder')"
           @keyup.enter="loadQuota"
         />
         <button
-          class="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50"
+          class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 disabled:opacity-50"
           :disabled="loading || !accessToken"
           @click="loadQuota"
         >
@@ -279,7 +279,7 @@ onUnmounted(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-8">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-700"></div>
     </div>
 
     <!-- Quota Display -->
@@ -289,15 +289,15 @@ onUnmounted(() => {
         <span class="text-sm text-gray-600 dark:text-gray-400">
           {{ t('settings.antigravity.tier') }}:
         </span>
-        <span class="px-2 py-1 text-xs font-medium bg-accent/10 text-accent rounded">
+        <span class="px-2 py-1 text-xs font-medium bg-gray-700 dark:bg-gray-700/10 text-gray-900 dark:text-gray-300 rounded">
           {{ quotaData.subscription_tier }}
         </span>
       </div>
 
       <!-- Gemini Models -->
-      <div v-if="geminiModels.length > 0" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div v-if="geminiModels.length > 0" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-          <svg class="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+          <svg class="w-5 h-5 text-gray-900 dark:text-white" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
           </svg>
           <h4 class="font-medium text-gray-900 dark:text-white">
@@ -319,7 +319,7 @@ onUnmounted(() => {
                 {{ model.percentage.toFixed(0) }}%
               </span>
             </div>
-            <div class="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+            <div class="relative w-full bg-gray-700 dark:bg-gray-700 rounded-full h-4">
               <div
                 class="h-4 rounded-full transition-all duration-300"
                 :class="getProgressColor(model.percentage)"
@@ -337,7 +337,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Claude Models -->
-      <div v-if="claudeModels.length > 0" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div v-if="claudeModels.length > 0" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
           <svg class="w-5 h-5 text-orange-500" viewBox="0 0 24 24" fill="currentColor">
             <circle cx="12" cy="12" r="10"/>
@@ -361,7 +361,7 @@ onUnmounted(() => {
                 {{ model.percentage.toFixed(0) }}%
               </span>
             </div>
-            <div class="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+            <div class="relative w-full bg-gray-700 dark:bg-gray-700 rounded-full h-4">
               <div
                 class="h-4 rounded-full transition-all duration-300"
                 :class="getProgressColor(model.percentage)"

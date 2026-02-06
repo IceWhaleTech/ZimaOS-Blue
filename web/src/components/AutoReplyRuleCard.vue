@@ -26,7 +26,7 @@ function getTriggerTypeLabel(type: string): string {
 
 function getTriggerTypeColor(type: string): string {
   const colors: Record<string, string> = {
-    keyword: 'bg-blue-500/20 text-blue-400',
+    keyword: 'bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-white',
     regex: 'bg-purple-500/20 text-purple-400',
     contains: 'bg-green-500/20 text-green-400',
     prefix: 'bg-yellow-500/20 text-yellow-400',
@@ -46,7 +46,7 @@ function formatDate(dateStr: string): string {
 
 <template>
   <div
-    class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors shadow"
+    class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors shadow"
     :class="{ 'opacity-60': !rule.enabled }"
   >
     <!-- Header -->
@@ -64,8 +64,8 @@ function formatDate(dateStr: string): string {
         </div>
       </div>
       <button
-        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800"
-        :class="rule.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800"
+        :class="rule.enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600'"
         :disabled="loading"
         @click="emit('toggle')"
       >
@@ -79,7 +79,7 @@ function formatDate(dateStr: string): string {
     <!-- Trigger Value -->
     <div class="mb-3">
       <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">Trigger</div>
-      <code class="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded block truncate">
+      <code class="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded block truncate">
         {{ rule.trigger_value }}
       </code>
     </div>
@@ -127,7 +127,7 @@ function formatDate(dateStr: string): string {
         Edit
       </button>
       <button
-        class="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition-colors"
+        class="flex-1 px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded text-sm transition-colors"
         :disabled="loading"
         @click="emit('test')"
       >

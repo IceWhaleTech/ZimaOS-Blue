@@ -33,13 +33,13 @@ const sizeClasses = computed(() => {
 const colorClasses = computed(() => {
   switch (props.color) {
     case 'primary':
-      return 'text-blue-600 dark:text-blue-400'
+      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
     case 'secondary':
       return 'text-gray-600 dark:text-gray-400'
     case 'white':
       return 'text-white'
     default:
-      return 'text-blue-600 dark:text-blue-400'
+      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
   }
 })
 </script>
@@ -47,7 +47,7 @@ const colorClasses = computed(() => {
 <template>
   <div
     v-if="fullscreen"
-    class="fixed inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-50"
+    class="fixed inset-0 bg-white/80 dark:bg-gray-700/80 backdrop-blur-sm flex items-center justify-center z-50"
   >
     <div class="flex flex-col items-center gap-4">
       <svg

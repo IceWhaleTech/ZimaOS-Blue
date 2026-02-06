@@ -82,7 +82,7 @@ const percentileBars = computed(() => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg p-6 shadow">
     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       {{ t('metrics.latencyPerformance') }}
     </h3>
@@ -120,7 +120,7 @@ const percentileBars = computed(() => {
         </div>
         <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p50') }}</div>
-          <div class="text-lg font-bold text-blue-600 dark:text-blue-400">{{ formatLatency(latencyData.p50 ?? 0) }}</div>
+          <div class="text-lg font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ formatLatency(latencyData.p50 ?? 0) }}</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p95') }}</div>

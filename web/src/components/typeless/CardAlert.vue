@@ -15,11 +15,11 @@ const dismissed = ref(false)
 
 const variantStyles = {
   info: {
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    border: 'border-blue-200 dark:border-blue-800',
-    icon: 'text-blue-500',
-    title: 'text-blue-800 dark:text-blue-200',
-    text: 'text-blue-700 dark:text-blue-300',
+    bg: 'bg-gray-100 dark:bg-gray-700/50',
+    border: 'border-gray-300 dark:border-gray-700',
+    icon: 'text-gray-700 dark:text-gray-300',
+    title: 'text-gray-900 dark:text-gray-200',
+    text: 'text-gray-700 dark:text-gray-300',
   },
   success: {
     bg: 'bg-green-50 dark:bg-green-900/20',
@@ -89,8 +89,8 @@ function handleAction(actionId: string) {
             :key="action.id"
             class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
             :class="{
-              'bg-blue-600 text-white hover:bg-blue-700': action.variant === 'primary',
-              'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700': action.variant !== 'primary' && action.variant !== 'danger',
+              'bg-gray-700 dark:bg-gray-700 text-white hover:bg-gray-700 dark:bg-gray-700': action.variant === 'primary',
+              'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700': action.variant !== 'primary' && action.variant !== 'danger',
               'bg-red-600 text-white hover:bg-red-700': action.variant === 'danger',
             }"
             :disabled="action.disabled"

@@ -39,13 +39,13 @@ const colorClass = computed(() => {
     return 'stroke-green-500'
   }
   const colors: Record<string, string> = {
-    blue: 'stroke-blue-500',
+    blue: 'stroke-gray-900 dark:stroke-gray-400',
     green: 'stroke-green-500',
     red: 'stroke-red-500',
     orange: 'stroke-orange-500',
     purple: 'stroke-purple-500',
   }
-  return colors[props.color] ?? 'stroke-blue-500'
+  return colors[props.color] ?? 'stroke-gray-900 dark:stroke-gray-400'
 })
 </script>
 

@@ -109,7 +109,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-white dark:bg-gray-800">
+  <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-white dark:bg-gray-700">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <!-- Left: Key Metrics -->
       <div class="flex items-center gap-6">
@@ -123,7 +123,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Divider -->
-        <div class="w-px h-10 bg-gray-200 dark:bg-gray-700"></div>
+        <div class="w-px h-10 bg-gray-700 dark:bg-gray-700"></div>
 
         <!-- Total -->
         <div>
@@ -181,7 +181,7 @@ onUnmounted(() => {
           <span :class="config?.enabled ? 'text-green-500' : 'text-gray-400'">
             {{ config?.enabled ? 'ON' : 'OFF' }}
           </span>
-          <span v-if="config?.circuit_breaker" class="text-blue-500">CB</span>
+          <span v-if="config?.circuit_breaker" class="text-gray-900 dark:text-white">CB</span>
           <span v-if="config?.streaming_anomaly?.enabled" class="text-purple-500">AD</span>
         </div>
       </div>

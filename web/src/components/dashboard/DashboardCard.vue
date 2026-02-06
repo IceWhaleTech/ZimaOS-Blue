@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const iconColorClass = computed(() => {
   const colors: Record<string, string> = {
-    blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+    blue: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
     green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
     purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
     orange: 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400',
@@ -42,7 +42,7 @@ const iconColorClass = computed(() => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow overflow-hidden">
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
       <div class="flex items-center gap-3">
@@ -83,7 +83,7 @@ const iconColorClass = computed(() => {
     <div v-show="!collapsed" class="p-4">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
       </div>
 
       <!-- Error State -->

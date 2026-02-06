@@ -26,7 +26,7 @@ const severityColors: Record<string, string> = {
   critical: 'border-l-red-500 bg-red-50 dark:bg-red-900/30',
   high: 'border-l-orange-500 bg-orange-50 dark:bg-orange-900/30',
   warning: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/30',
-  info: 'border-l-blue-500 bg-blue-50 dark:bg-blue-900/30',
+  info: 'border-l-gray-900 dark:border-l-gray-400 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30',
 }
 
 const severityIcons: Record<string, string> = {
@@ -140,9 +140,9 @@ onUnmounted(() => {
       @mouseleave="startTimer"
     >
       <!-- Progress bar -->
-      <div class="absolute top-0 left-0 right-0 h-1 bg-gray-200 dark:bg-gray-700">
+      <div class="absolute top-0 left-0 right-0 h-1 bg-gray-700 dark:bg-gray-700">
         <div
-          class="h-full bg-accent transition-all duration-50"
+          class="h-full bg-gray-700 dark:bg-gray-700 transition-all duration-50"
           :style="{ width: `${progress}%` }"
         />
       </div>
@@ -173,7 +173,7 @@ onUnmounted(() => {
             <!-- Actions -->
             <div class="mt-3 flex items-center gap-2">
               <button
-                class="px-2 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90 transition-colors"
+                class="px-2 py-1 text-xs bg-gray-700 dark:bg-gray-700 text-white rounded hover:bg-gray-700 dark:bg-gray-700/90 transition-colors"
                 @click="emit('acknowledge', alert.id)"
               >
                 {{ t('companion.acknowledge') }}

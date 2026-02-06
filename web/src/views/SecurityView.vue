@@ -296,10 +296,10 @@ function getScanItemDescription(item: ScanItem): string {
 // Get scan item status icon and color
 function getScanStatusClass(status: string): string {
   switch (status) {
-    case 'passed': return 'text-green-500'
+    case 'passed': return 'text-green-600'
     case 'warning': return 'text-yellow-500'
     case 'failed': return 'text-red-500'
-    case 'scanning': return 'text-blue-500 animate-pulse'
+    case 'scanning': return 'text-gray-900 dark:text-white animate-pulse'
     default: return 'text-gray-400'
   }
 }
@@ -437,7 +437,7 @@ onUnmounted(() => {
           :class="[
             'px-4 py-2 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-2',
             activeTab === tab.id
-              ? 'bg-white dark:bg-slate-800 text-accent border-b-2 border-accent -mb-px'
+              ? 'bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-300 border-b-2 border-gray-900 dark:border-gray-700 -mb-px'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700/50'
           ]"
           @click="activeTab = tab.id"
@@ -472,15 +472,15 @@ onUnmounted(() => {
             ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
             : securityStatus === 'failed'
               ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
-              : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+              : 'bg-gray-100 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600'
       ]">
         <div class="flex items-center gap-3">
           <div
 :class="[
             'w-10 h-10 rounded-full flex items-center justify-center',
-            securityStatus === 'passed' ? 'bg-green-500' :
+            securityStatus === 'passed' ? 'bg-green-400' :
             securityStatus === 'warning' ? 'bg-yellow-500' :
-            securityStatus === 'failed' ? 'bg-red-500' : 'bg-blue-500'
+            securityStatus === 'failed' ? 'bg-red-500' : 'bg-gray-700 dark:bg-gray-700'
           ]">
             <svg v-if="securityStatus === 'passed'" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -499,10 +499,10 @@ onUnmounted(() => {
             <h2
 :class="[
               'text-lg font-semibold',
-              securityStatus === 'passed' ? 'text-green-800 dark:text-green-200' :
+              securityStatus === 'passed' ? 'text-green-800 dark:text-green-600' :
               securityStatus === 'warning' ? 'text-yellow-800 dark:text-yellow-200' :
               securityStatus === 'failed' ? 'text-red-800 dark:text-red-200' :
-              'text-blue-800 dark:text-blue-200'
+              'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
             ]">
               {{ securityStatus === 'passed' ? t('security.statusSecure') :
                  securityStatus === 'warning' ? t('security.statusWarning') :
@@ -512,10 +512,10 @@ onUnmounted(() => {
             <p
 :class="[
               'text-sm',
-              securityStatus === 'passed' ? 'text-green-600 dark:text-green-400' :
+              securityStatus === 'passed' ? 'text-green-400 dark:text-green-400' :
               securityStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
               securityStatus === 'failed' ? 'text-red-600 dark:text-red-400' :
-              'text-blue-600 dark:text-blue-400'
+              'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
             ]">
               {{ scanCompleted
                 ? t('security.scanSummary', { passed: scanSummary.passed, warnings: scanSummary.warnings, failed: scanSummary.failed })
@@ -538,7 +538,7 @@ onUnmounted(() => {
           <button
             v-if="fixableCount > 0 && !isScanning"
             :disabled="!!fixingItem"
-            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50"
+            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-50"
             @click="fixAllIssues"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -553,7 +553,7 @@ onUnmounted(() => {
               'px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2',
               isScanning
                 ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-accent hover:bg-accent/90'
+                : 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700/90'
             ]"
             @click="startSecurityScan"
           >
@@ -579,7 +579,7 @@ onUnmounted(() => {
         </div>
         <div class="h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
           <div
-            class="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300 ease-out"
+            class="h-full bg-gradient-to-r from-blue-500 dark:from-blue-400 to-green-500 dark:to-green-400 transition-all duration-300 ease-out"
             :style="{ width: `${scanProgress}%` }"
           ></div>
         </div>
@@ -588,8 +588,8 @@ onUnmounted(() => {
       <!-- Scan Summary -->
       <div v-if="scanCompleted" class="grid grid-cols-3 gap-4 mb-4">
         <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
-          <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ scanSummary.passed }}</div>
-          <div class="text-xs text-green-700 dark:text-green-300">{{ t('security.scan.passed') }}</div>
+          <div class="text-2xl font-bold text-green-400 dark:text-green-400">{{ scanSummary.passed }}</div>
+          <div class="text-xs text-green-200 dark:text-green-200">{{ t('security.scan.passed') }}</div>
         </div>
         <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 text-center">
           <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{ scanSummary.warnings }}</div>
@@ -636,8 +636,8 @@ onUnmounted(() => {
           <div
             :class="[
               'rounded-lg transition-all duration-200 cursor-pointer',
-              item.status === 'scanning' ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-700/50',
-              expandedItemId === item.id ? 'bg-gray-50 dark:bg-slate-700/50' : ''
+              item.status === 'scanning' ? 'bg-gray-100 dark:bg-gray-700/30' : 'hover:bg-gray-50 dark:hover:bg-slate-700/50',
+              expandedItemId === item.id ? 'bg-gray-100 dark:bg-gray-700/30' : ''
             ]"
             @click="expandedItemId = expandedItemId === item.id ? null : item.id"
           >
@@ -670,10 +670,10 @@ onUnmounted(() => {
                 <span
                   :class="[
                     'px-2 py-0.5 text-xs rounded-full font-medium',
-                    item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
+                    item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' :
                     item.status === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
                     item.status === 'failed' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' :
-                    'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+                    'bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400'
                   ]"
                 >
                   {{ item.status === 'scanning' ? t('security.scan.checking') :
@@ -685,7 +685,7 @@ onUnmounted(() => {
                 <button
                   v-if="item.auto_fixable && (item.status === 'warning' || item.status === 'failed')"
                   :disabled="fixingItem === item.id"
-                  class="px-2 py-0.5 text-xs rounded-full font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors disabled:opacity-50"
+                  class="px-2 py-0.5 text-xs rounded-full font-medium bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/40 transition-colors disabled:opacity-50"
                   @click.stop="fixScanIssue(item)"
                 >
                   <span v-if="fixingItem === item.id" class="flex items-center gap-1">
@@ -730,7 +730,7 @@ onUnmounted(() => {
                 <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ item.impact }}
               </div>
               <div v-if="item.remediation" class="text-xs text-gray-600 dark:text-slate-300">
-                <span class="font-medium text-green-600 dark:text-green-400">{{ t('security.scan.remediation') }}:</span> {{ item.remediation }}
+                <span class="font-medium text-green-400 dark:text-green-400">{{ t('security.scan.remediation') }}:</span> {{ item.remediation }}
               </div>
             </div>
           </div>
@@ -780,25 +780,25 @@ onUnmounted(() => {
 
         <!-- Stats Summary -->
         <div v-if="connectionStats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="text-lg font-bold text-gray-900 dark:text-white">{{ connectionStats.total_connections ?? 0 }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('connections.total') }}</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="flex items-center justify-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-              <span class="text-lg font-bold text-blue-600 dark:text-blue-400">{{ connectionStats.active_http ?? 0 }}</span>
+              <span class="w-2 h-2 rounded-full bg-gray-700 dark:bg-gray-700"></span>
+              <span class="text-lg font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ connectionStats.active_http ?? 0 }}</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">HTTP</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="flex items-center justify-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-green-500"></span>
-              <span class="text-lg font-bold text-green-600 dark:text-green-400">{{ connectionStats.active_websocket ?? 0 }}</span>
+              <span class="w-2 h-2 rounded-full bg-green-400"></span>
+              <span class="text-lg font-bold text-green-400 dark:text-green-400">{{ connectionStats.active_websocket ?? 0 }}</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">WebSocket</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="flex items-center justify-center gap-1">
               <span class="w-2 h-2 rounded-full bg-purple-500"></span>
               <span class="text-lg font-bold text-purple-600 dark:text-purple-400">{{ connectionStats.active_sse ?? 0 }}</span>
@@ -811,13 +811,13 @@ onUnmounted(() => {
         <div v-show="connectionExpanded" class="border-t border-gray-200 dark:border-gray-700 pt-4">
           <!-- Traffic Stats -->
           <div class="grid grid-cols-2 gap-3 mb-4">
-            <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div class="text-sm font-semibold text-gray-900 dark:text-white">
                 {{ formatBytes(connectionStats?.total_bytes_sent ?? 0) }}
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('connections.bytesSent') }}</div>
             </div>
-            <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div class="text-sm font-semibold text-gray-900 dark:text-white">
                 {{ formatBytes(connectionStats?.total_bytes_recv ?? 0) }}
               </div>
@@ -833,16 +833,16 @@ onUnmounted(() => {
             <div
               v-for="conn in connections"
               :key="conn.id"
-              class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+              class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
             >
               <div class="flex items-center justify-between mb-1">
                 <div class="flex items-center gap-2">
-                  <span :class="['w-2 h-2 rounded-full', conn.status === 'active' ? 'bg-green-500' : 'bg-gray-400']"></span>
+                  <span :class="['w-2 h-2 rounded-full', conn.status === 'active' ? 'bg-green-400' : 'bg-gray-400']"></span>
                   <span
 :class="[
                     'px-2 py-0.5 rounded text-xs font-medium uppercase',
-                    conn.type === 'http' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' :
-                    conn.type === 'websocket' ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300' :
+                    conn.type === 'http' ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white' :
+                    conn.type === 'websocket' ? 'bg-green-50 dark:bg-green-900/30 text-green-200 dark:text-green-200' :
                     'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
                   ]">
                     {{ conn.type }}
@@ -885,23 +885,23 @@ onUnmounted(() => {
 
         <!-- Stats Summary -->
         <div v-if="companionStats" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div class="text-lg font-bold text-green-600 dark:text-green-400">{{ companionStats.active_sessions }}</div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div class="text-lg font-bold text-green-400 dark:text-green-400">{{ companionStats.active_sessions }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.activeSessions') }}</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div class="text-lg font-bold text-blue-600 dark:text-blue-400">{{ companionStats.total_sessions }}</div>
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div class="text-lg font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ companionStats.total_sessions }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalSessions') }}</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="text-lg font-bold text-purple-600 dark:text-purple-400">{{ companionStats.total_events }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalEvents') }}</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="text-lg font-bold text-orange-600 dark:text-orange-400">{{ companionStats.total_alerts }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalAlerts') }}</div>
           </div>
-          <div class="text-center p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="text-lg font-bold text-red-600 dark:text-red-400">{{ companionStats.unacked_alerts }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.unackedAlerts') }}</div>
           </div>

@@ -52,7 +52,7 @@ const iconSizes = {
       'rounded-md transition-all duration-200',
       'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
       'hover:bg-gray-100 dark:hover:bg-white/10',
-      'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800',
+      'focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800',
       copied ? 'text-green-500 dark:text-green-400' : '',
     ]"
     :title="copied ? 'Copied!' : 'Copy to clipboard'"

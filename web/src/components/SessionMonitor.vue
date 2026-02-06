@@ -41,13 +41,13 @@ const statusColor = (status: string) => {
     case 'active':
       return 'text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900/30'
     case 'completed':
-      return 'text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30'
+      return 'text-gray-900 dark:text-white bg-gray-700 dark:bg-gray-700 dark:text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30'
     case 'error':
       return 'text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900/30'
     case 'timeout':
       return 'text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900/30'
     default:
-      return 'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-900/30'
+      return 'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-700/30'
   }
 }
 
@@ -157,7 +157,7 @@ onUnmounted(() => {
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('common.sessionMonitorTitle') }}</h2>
       <div class="flex items-center gap-2">
         <button
-          :class="showActiveOnly ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
+          :class="showActiveOnly ? 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
           class="px-3 py-1.5 text-sm rounded-md transition-colors"
           @click="toggleActiveFilter"
         >
@@ -165,7 +165,7 @@ onUnmounted(() => {
         </button>
         <button
           :disabled="loading"
-          class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+          class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
           @click="fetchData"
         >
           {{ loading ? t('common.refreshing') : t('common.refresh') }}
@@ -189,11 +189,11 @@ onUnmounted(() => {
         </div>
         <div class="text-sm text-green-600/70 dark:text-green-400/70">{{ t('common.active') }}</div>
       </div>
-      <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+      <div class="p-3 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 rounded-lg">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
           {{ totalSessions }}
         </div>
-        <div class="text-sm text-blue-600/70 dark:text-blue-400/70">{{ t('common.total') }}</div>
+        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-gray-900 dark:text-white/70">{{ t('common.total') }}</div>
       </div>
       <div class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
         <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
@@ -201,7 +201,7 @@ onUnmounted(() => {
         </div>
         <div class="text-sm text-purple-600/70 dark:text-purple-400/70">{{ t('common.avgDuration') }}</div>
       </div>
-      <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
         <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
           {{ stats?.total_requests ?? 0 }}
         </div>
@@ -230,8 +230,8 @@ onUnmounted(() => {
       <div
         v-for="session in filteredSessions"
         :key="session.id"
-        class="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
-        :class="{ 'border-blue-500 dark:border-blue-500': selectedSession === session.id }"
+        class="p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-gray-900 dark:border-white dark:hover:border-gray-900 dark:border-white transition-colors"
+        :class="{ 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white': selectedSession === session.id }"
         @click="selectSession(session.id)"
       >
         <div class="flex items-start justify-between">
@@ -302,9 +302,9 @@ onUnmounted(() => {
           <!-- Messages Preview -->
           <div v-if="session.messages && session.messages.length > 0" class="mt-3">
             <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Messages ({{ session.messages.length }})</div>
-            <div class="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs font-mono">
+            <div class="max-h-32 overflow-y-auto bg-gray-50 dark:bg-gray-700 rounded p-2 text-xs font-mono">
               <div v-for="(msg, idx) in session.messages.slice(0, 3)" :key="idx" class="mb-1">
-                <span class="text-blue-600 dark:text-blue-400">{{ msg.role }}:</span>
+                <span class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ msg.role }}:</span>
                 <span class="text-gray-700 dark:text-gray-300 ml-1">{{ msg.content?.substring(0, 100) }}{{ msg.content?.length > 100 ? '...' : '' }}</span>
               </div>
               <div v-if="session.messages.length > 3" class="text-gray-400">

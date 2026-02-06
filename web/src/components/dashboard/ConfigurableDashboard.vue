@@ -107,7 +107,7 @@ const largeCards = computed(() => {
       <div
         v-for="card in smallCards"
         :key="card.id"
-        class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow"
+        class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow"
       >
         <component
           :is="getComponent(card.config!)"
@@ -135,7 +135,7 @@ const largeCards = computed(() => {
     <!-- Empty State -->
     <div
       v-if="dashboardStore.enabledCards.length === 0"
-      class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow"
+      class="text-center py-12 bg-white dark:bg-gray-700 rounded-lg shadow"
     >
       <svg
         class="mx-auto h-12 w-12 text-gray-400"

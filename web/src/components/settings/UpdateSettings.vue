@@ -21,7 +21,7 @@
           <button
             @click="checkUpdate"
             :disabled="loading"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+            class="px-4 py-2 bg-gray-200 hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
           >
             <svg v-if="loading" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -48,8 +48,8 @@
             :aria-checked="autoCheck"
             @click="autoCheck = !autoCheck; saveSettings()"
             :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
-              autoCheck ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2',
+              autoCheck ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600'
             ]"
           >
             <span
@@ -68,8 +68,8 @@
             :aria-checked="autoDownload"
             @click="autoDownload = !autoDownload; saveSettings()"
             :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
-              autoDownload ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2',
+              autoDownload ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600'
             ]"
           >
             <span
@@ -87,7 +87,7 @@
     <Teleport to="body">
       <div v-if="showUpdateDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/50" @click="showUpdateDialog = false"/>
-        <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
+        <div class="relative bg-white dark:bg-gray-700 rounded-xl shadow-xl max-w-md w-full">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ $t('settings.update.newVersionAvailable') }}</h3>
             <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="showUpdateDialog = false">
@@ -109,8 +109,8 @@
               <pre class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap font-sans">{{ updateInfo?.release_notes || $t('settings.update.noReleaseNotes') }}</pre>
             </div>
             <div v-if="downloading" class="mt-4">
-              <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div class="h-full bg-blue-600 transition-all duration-300" :style="{ width: progress + '%' }"/>
+              <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full bg-gray-200 dark:bg-gray-400 transition-all duration-300" :style="{ width: progress + '%' }"/>
               </div>
               <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 text-center">{{ progress.toFixed(1) }}%</p>
             </div>
@@ -125,7 +125,7 @@
             <button
               v-if="!downloading && !downloaded"
               @click="downloadUpdate"
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              class="px-4 py-2 bg-gray-200 hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
             >
               {{ $t('settings.update.download') }}
             </button>

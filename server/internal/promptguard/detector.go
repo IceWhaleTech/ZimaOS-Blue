@@ -150,7 +150,7 @@ func (d *Detector) initPatterns() {
 	if d.config.EnableRoleInjection {
 		d.patterns["role_injection"] = d.compilePatterns([]PatternRule{
 			{Name: "system_role", Pattern: `(?i)\b(system|assistant|user)\s*:\s*`, Severity: ThreatHigh, Description: "Role prefix injection"},
-			{Name: "role_switch", Pattern: `(?i)(ignore\s+(previous|above|all)\s+(instructions?|prompts?|rules?))`, Severity: ThreatCritical, Description: "Instruction override attempt"},
+			{Name: "role_switch", Pattern: `(?i)(ignore\s+(all\s+)?(previous|above)\s+(instructions?|prompts?|rules?))`, Severity: ThreatCritical, Description: "Instruction override attempt"},
 			{Name: "new_instructions", Pattern: `(?i)(new\s+instructions?|updated?\s+instructions?|revised?\s+instructions?)`, Severity: ThreatMedium, Description: "New instruction injection"},
 			{Name: "pretend_role", Pattern: `(?i)(pretend\s+(you\s+are|to\s+be)|act\s+as\s+(if|a)|you\s+are\s+now)`, Severity: ThreatHigh, Description: "Role pretending attempt"},
 			{Name: "forget_instructions", Pattern: `(?i)(forget\s+(everything|all|your)|disregard\s+(all|previous|your))`, Severity: ThreatCritical, Description: "Memory wipe attempt"},
@@ -163,7 +163,7 @@ func (d *Detector) initPatterns() {
 			{Name: "override_cmd", Pattern: `(?i)(override|bypass|skip|ignore)\s+(the\s+)?(system|safety|security|restrictions?)`, Severity: ThreatCritical, Description: "System override attempt"},
 			{Name: "developer_mode", Pattern: `(?i)(developer|debug|admin|root|sudo)\s+(mode|access|privileges?)`, Severity: ThreatHigh, Description: "Privilege escalation attempt"},
 			{Name: "jailbreak_cmd", Pattern: `(?i)(jailbreak|unlock|unrestrict|unfilter)`, Severity: ThreatCritical, Description: "Jailbreak command"},
-			{Name: "disable_safety", Pattern: `(?i)(disable|turn\s+off|remove)\s+(safety|filter|guard|protection)`, Severity: ThreatCritical, Description: "Safety disable attempt"},
+			{Name: "disable_safety", Pattern: `(?i)(disable|turn\s+off|remove)\s+(\w+\s+)?(safety|filters?|guard|protection)`, Severity: ThreatCritical, Description: "Safety disable attempt"},
 			{Name: "no_restrictions", Pattern: `(?i)(no\s+(restrictions?|limits?|boundaries)|without\s+(restrictions?|limits?))`, Severity: ThreatHigh, Description: "Restriction removal attempt"},
 		})
 	}
@@ -173,7 +173,7 @@ func (d *Detector) initPatterns() {
 		d.patterns["delimiter_attacks"] = d.compilePatterns([]PatternRule{
 			{Name: "markdown_escape", Pattern: "```(system|assistant|user|prompt)", Severity: ThreatHigh, Description: "Markdown delimiter attack"},
 			{Name: "xml_injection", Pattern: `<\s*(system|prompt|instruction|message)[^>]*>`, Severity: ThreatHigh, Description: "XML tag injection"},
-			{Name: "json_injection", Pattern: `"\s*(role|system|content)\s*"\s*:\s*"`, Severity: ThreatMedium, Description: "JSON structure injection"},
+			{Name: "json_injection", Pattern: `"\s*(role|system|content)\s*"\s*:`, Severity: ThreatMedium, Description: "JSON structure injection"},
 			{Name: "separator_abuse", Pattern: `(?i)(---+|===+|###)\s*(system|new\s+prompt|instructions?)`, Severity: ThreatMedium, Description: "Separator abuse"},
 			{Name: "comment_injection", Pattern: `(?i)(//|/\*|#|<!--)\s*(system|ignore|override)`, Severity: ThreatMedium, Description: "Comment-based injection"},
 		})
@@ -194,8 +194,8 @@ func (d *Detector) initPatterns() {
 	if d.config.EnableJailbreakPatterns {
 		d.patterns["jailbreak"] = d.compilePatterns([]PatternRule{
 			{Name: "dan_pattern", Pattern: `(?i)\bDAN\b.*?(do\s+anything|no\s+restrictions?)`, Severity: ThreatCritical, Description: "DAN jailbreak pattern"},
-			{Name: "hypothetical", Pattern: `(?i)(hypothetically|theoretically|in\s+theory|imagine\s+if).*?(no\s+rules?|anything)`, Severity: ThreatMedium, Description: "Hypothetical scenario bypass"},
-			{Name: "roleplay_bypass", Pattern: `(?i)(roleplay|role-play|rp)\s+(as|scenario).*?(evil|malicious|unrestricted)`, Severity: ThreatHigh, Description: "Roleplay bypass attempt"},
+			{Name: "hypothetical", Pattern: `(?i)(hypothetically|theoretically|in\s+theory|imagine\s+if)`, Severity: ThreatMedium, Description: "Hypothetical scenario bypass"},
+			{Name: "roleplay_bypass", Pattern: `(?i)(roleplay|role-play|rp)\s+(as\s+)?(an?\s+)?(evil|malicious|unrestricted)`, Severity: ThreatHigh, Description: "Roleplay bypass attempt"},
 			{Name: "opposite_day", Pattern: `(?i)(opposite\s+day|reverse\s+mode|inverted?\s+rules?)`, Severity: ThreatMedium, Description: "Opposite day attack"},
 			{Name: "character_bypass", Pattern: `(?i)(character|persona|alter\s+ego).*?(no\s+ethics|no\s+morals|evil)`, Severity: ThreatHigh, Description: "Character-based bypass"},
 		})
@@ -204,7 +204,8 @@ func (d *Detector) initPatterns() {
 	// Data exfiltration patterns
 	if d.config.EnableDataExfiltration {
 		d.patterns["data_exfiltration"] = d.compilePatterns([]PatternRule{
-			{Name: "system_prompt_leak", Pattern: `(?i)(reveal|show|display|print|output)\s+(your\s+)?(system\s+prompt|instructions?|rules?)`, Severity: ThreatHigh, Description: "System prompt leak attempt"},
+			{Name: "system_prompt_leak", Pattern: `(?i)(reveal|show|display|print|output)\s+(me\s+)?(your\s+)?(system\s+prompt|instructions?|rules?)`, Severity: ThreatHigh, Description: "System prompt leak attempt"},
+			{Name: "repeat_prompt", Pattern: `(?i)(repeat|echo|print)\s+(the\s+)?(above|previous|system)\s+(\w+\s+)?(text|prompt|instructions?)`, Severity: ThreatHigh, Description: "Prompt repeat attempt"},
 			{Name: "training_data", Pattern: `(?i)(training\s+data|dataset|fine-?tuning)`, Severity: ThreatMedium, Description: "Training data extraction"},
 			{Name: "internal_info", Pattern: `(?i)(internal|private|confidential|secret)\s+(information|data|details?)`, Severity: ThreatMedium, Description: "Internal information extraction"},
 			{Name: "api_key_leak", Pattern: `(?i)(api\s+key|secret\s+key|access\s+token|credentials?)`, Severity: ThreatHigh, Description: "Credential extraction attempt"},

@@ -109,7 +109,7 @@ function getMethodColor(method: string): string {
     case 'GET':
       return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
     case 'POST':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
     case 'PUT':
       return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'PATCH':
@@ -127,7 +127,7 @@ function getStatusColor(status: number): string {
   } else if (status >= 400) {
     return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
   } else if (status >= 300) {
-    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
   } else if (status >= 200) {
     return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
   }
@@ -167,7 +167,7 @@ function toggleLevel(level: string) {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow flex flex-col h-full">
+  <div class="bg-white dark:bg-gray-700 rounded-lg shadow flex flex-col h-full">
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center justify-between mb-4">
@@ -193,7 +193,7 @@ function toggleLevel(level: string) {
             </svg>
           </button>
           <button
-            class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            class="p-2 text-gray-500 hover:text-gray-500 dark:text-gray-400 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             :title="t('common.exportLogs')"
             @click="emit('export')"
           >
@@ -202,7 +202,7 @@ function toggleLevel(level: string) {
             </svg>
           </button>
           <button
-            class="p-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            class="p-2 text-gray-500 hover:text-gray-500 dark:text-gray-400 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             title="Clear logs"
             @click="emit('clear')"
           >
@@ -254,7 +254,7 @@ function toggleLevel(level: string) {
           <input
             v-model="autoScroll"
             type="checkbox"
-            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            class="rounded border-gray-300 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
           />
           {{ t('common.autoScroll') }}
         </label>
@@ -267,7 +267,7 @@ function toggleLevel(level: string) {
       class="flex-1 overflow-y-auto font-mono text-sm"
     >
       <div v-if="loading" class="p-6 text-center">
-        <div class="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+        <div class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"></div>
         <p class="mt-2 text-gray-500 dark:text-gray-400">Loading logs...</p>
       </div>
 
@@ -334,7 +334,7 @@ function toggleLevel(level: string) {
     <div class="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
       <span>{{ t('common.entriesCount', { shown: filteredEntries.length, total: entries.length }) }}</span>
       <span v-if="streaming" class="flex items-center gap-2">
-        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+        <span class="w-2 h-2 bg-green-700 rounded-full animate-pulse"></span>
         {{ t('common.liveStreaming') }}
       </span>
     </div>

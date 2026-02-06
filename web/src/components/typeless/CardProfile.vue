@@ -20,9 +20,9 @@ function handleLinkClick(url: string) {
 </script>
 
 <template>
-  <div class="profile-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="profile-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Header with gradient -->
-    <div class="h-20 bg-gradient-to-r from-blue-500 to-purple-500" />
+    <div class="h-20 bg-gradient-to-r from-gray-700 to-gray-900" />
 
     <!-- Profile content -->
     <div class="px-6 pb-6">
@@ -36,14 +36,14 @@ function handleLinkClick(url: string) {
         </div>
         <div
           v-else
-          class="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold"
+          class="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-white text-2xl font-bold"
         >
           {{ getInitials() }}
         </div>
         <!-- Verified badge -->
         <div
           v-if="card.verified"
-          class="absolute bottom-0 right-0 w-7 h-7 bg-blue-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center"
+          class="absolute bottom-0 right-0 w-7 h-7 bg-gray-700 dark:bg-gray-700 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />

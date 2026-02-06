@@ -688,7 +688,7 @@ async function handleMobileTTS() {
   <div
     class="message group relative p-4 transition-colors duration-150"
     :class="{
-      'bg-accent/10': isSelected,
+      'bg-gray-700 dark:bg-gray-700/10': isSelected,
       'cursor-pointer': isMultiSelectMode,
     }"
     @contextmenu="handleContextMenu"
@@ -704,7 +704,7 @@ async function handleMobileTTS() {
     >
       <div
         class="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
-        :class="isSelected ? 'bg-accent border-accent' : 'border-gray-400 dark:border-gray-600'"
+        :class="isSelected ? 'bg-gray-700 dark:bg-gray-700 border-gray-900 dark:border-gray-700' : 'border-gray-400 dark:border-gray-600'"
       >
         <svg v-if="isSelected" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
@@ -723,7 +723,7 @@ async function handleMobileTTS() {
       <!-- Avatar (AI) -->
       <div
         v-if="isAssistant"
-        class="avatar flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold"
+        class="avatar flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-sm font-bold"
       >
         AI
       </div>
@@ -836,7 +836,7 @@ async function handleMobileTTS() {
               :title="isSpeaking ? t('chat.stopTTS') : t('chat.playTTS')"
               @click.stop="handlePlayTTS"
             >
-              <svg v-if="isSpeaking" class="w-4 h-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg v-if="isSpeaking" class="w-4 h-4 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
               </svg>
@@ -879,9 +879,9 @@ async function handleMobileTTS() {
         <!-- Streaming indicator -->
         <div v-if="isStreaming && isAssistant" class="streaming-indicator mt-2">
           <span class="inline-flex gap-1">
-            <span class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 0ms" />
-            <span class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 150ms" />
-            <span class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 300ms" />
+            <span class="w-2 h-2 bg-gray-700 dark:bg-gray-700 rounded-full animate-bounce" style="animation-delay: 0ms" />
+            <span class="w-2 h-2 bg-gray-700 dark:bg-gray-700 rounded-full animate-bounce" style="animation-delay: 150ms" />
+            <span class="w-2 h-2 bg-gray-700 dark:bg-gray-700 rounded-full animate-bounce" style="animation-delay: 300ms" />
           </span>
         </div>
 
@@ -921,7 +921,7 @@ async function handleMobileTTS() {
       <!-- User avatar -->
       <div
         v-if="isUser"
-        class="avatar flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center text-white text-sm font-bold"
+        class="avatar flex-shrink-0 w-8 h-8 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-sm font-bold"
       >
         U
       </div>
@@ -953,14 +953,14 @@ async function handleMobileTTS() {
           <!-- Text file preview -->
           <div
             v-else-if="previewAttachment.type === 'text'"
-            class="bg-gray-900 rounded-lg p-4 max-w-[80vw] max-h-[80vh] overflow-auto"
+            class="bg-gray-200 rounded-lg p-4 max-w-[80vw] max-h-[80vh] overflow-auto"
           >
             <pre class="text-sm text-gray-100 whitespace-pre-wrap font-mono">{{ previewAttachment.content }}</pre>
           </div>
           <!-- Generic file preview -->
           <div
             v-else
-            class="bg-gray-800 rounded-lg p-8 flex flex-col items-center gap-4"
+            class="bg-gray-700 rounded-lg p-8 flex flex-col items-center gap-4"
           >
             <svg class="w-16 h-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -988,7 +988,7 @@ async function handleMobileTTS() {
           @click="closeMobileActions"
         >
           <div
-            class="w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-xl transform transition-transform"
+            class="w-full bg-white dark:bg-gray-700 rounded-t-2xl shadow-xl transform transition-transform"
             @click.stop
           >
             <!-- Handle bar -->
@@ -1041,7 +1041,7 @@ async function handleMobileTTS() {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showLanguagePackPrompt = false"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full mx-4 p-6">
+        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-sm w-full mx-4 p-6">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">
             {{ t('chat.languagePackRequired') }}
           </h3>
@@ -1056,7 +1056,7 @@ async function handleMobileTTS() {
               {{ t('common.cancel') }}
             </button>
             <button
-              class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
               :disabled="downloadingLanguagePack"
               @click="downloadLanguagePackAndPlay"
             >
@@ -1147,7 +1147,12 @@ async function handleMobileTTS() {
 }
 
 .prose :deep(a) {
-  color: #3b82f6;
+  color: #1f2937;
+}
+
+:root.dark .prose :deep(a),
+[data-theme="dark"] .prose :deep(a) {
+  color: #9ca3af;
 }
 
 .prose :deep(a:hover) {

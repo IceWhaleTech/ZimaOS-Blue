@@ -358,7 +358,7 @@ onUnmounted(() => {
         {{ t('service.title') }}
       </h3>
       <button
-        class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+        class="px-3 py-1.5 text-sm bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg transition-colors"
         :disabled="loading"
         @click="fetchServiceInfo"
       >
@@ -385,19 +385,19 @@ onUnmounted(() => {
     <!-- Port Change Confirmation Dialog -->
     <div
       v-if="portChangeConfirm"
-      class="mb-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg"
+      class="mb-4 p-4 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg"
     >
       <div class="flex items-center justify-between">
         <div>
-          <div class="font-medium text-blue-800 dark:text-blue-200">
+          <div class="font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
             {{ t('service.portChangeConfirmTitle') }}
           </div>
-          <div class="text-sm text-blue-600 dark:text-blue-300 mt-1">
+          <div class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white mt-1">
             {{ t('service.portChangeConfirmDesc', { seconds: portChangeCountdown }) }}
           </div>
         </div>
         <div class="flex items-center gap-3">
-          <div class="text-2xl font-bold text-blue-600 dark:text-blue-400 w-10 text-center">
+          <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white w-10 text-center">
             {{ portChangeCountdown }}
           </div>
           <button
@@ -424,7 +424,7 @@ onUnmounted(() => {
     <!-- Service Info -->
     <div v-else-if="serviceInfo" class="space-y-4">
       <!-- Port Configuration -->
-      <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+      <div class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div>
             <div class="font-medium text-gray-900 dark:text-white">{{ t('service.port') }}</div>
@@ -458,13 +458,13 @@ onUnmounted(() => {
                 type="number"
                 min="1"
                 max="65535"
-                class="w-24 px-3 py-1.5 text-sm font-mono bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-24 px-3 py-1.5 text-sm font-mono bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                 :class="{ 'border-red-500': !validatePort(portInput) }"
                 @keyup.enter="savePort"
                 @keyup.escape="cancelEditPort"
               />
               <button
-                class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-1"
+                class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors flex items-center gap-1"
                 :disabled="!validatePort(portInput) || actionLoading === 'savePort'"
                 @click="savePort"
               >
@@ -513,7 +513,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Status Card -->
-      <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+      <div class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <!-- Platform Icon -->
@@ -522,7 +522,7 @@ onUnmounted(() => {
             >
               <svg
                 v-if="platformIcon === 'windows'"
-                class="w-6 h-6 text-blue-500"
+                class="w-6 h-6 text-gray-900 dark:text-white"
                 viewBox="0 0 24 24"
                 fill="currentColor"
               >
@@ -632,8 +632,8 @@ onUnmounted(() => {
         </div>
         <button
           v-if="serviceInfo.installed"
-          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          :class="serviceInfo.enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'"
+          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-2"
+          :class="serviceInfo.enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-gray-600'"
           :disabled="actionLoading !== null"
           @click="serviceInfo.enabled ? disableService() : enableService()"
         >
@@ -668,7 +668,7 @@ onUnmounted(() => {
         <!-- Install/Uninstall -->
         <template v-if="!serviceInfo.installed">
           <button
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
             :disabled="actionLoading !== null"
             @click="installService"
           >
@@ -755,7 +755,7 @@ onUnmounted(() => {
           </button>
           <button
             v-if="serviceInfo.running"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
             :disabled="actionLoading !== null"
             @click="restartService"
           >
@@ -814,7 +814,7 @@ onUnmounted(() => {
 
       <!-- Platform-specific Help -->
       <div
-        class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-700 dark:text-blue-300"
+        class="mt-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg text-sm text-gray-900 dark:text-white"
       >
         <div class="font-medium mb-1">{{ t('service.platformHelp') }}</div>
         <div v-if="serviceInfo.platform === 'windows'" class="text-xs space-y-1">

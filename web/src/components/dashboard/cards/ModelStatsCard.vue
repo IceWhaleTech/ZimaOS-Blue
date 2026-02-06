@@ -7,7 +7,7 @@ const metricsStore = useMetricsStore()
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow border border-gray-200 dark:border-gray-700">
+  <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow border border-gray-200 dark:border-gray-700">
     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('metrics.modelStats') }}</h3>
     <div v-if="metricsStore.modelStats?.models?.length" class="overflow-x-auto">
       <table class="w-full text-sm">
@@ -25,7 +25,7 @@ const metricsStore = useMetricsStore()
           <tr
             v-for="model in metricsStore.modelStats.models"
             :key="model.model"
-            class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+            class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50"
           >
             <td class="py-3 px-2 font-medium text-gray-900 dark:text-white">{{ model.model }}</td>
             <td class="py-3 px-2 text-right text-gray-700 dark:text-gray-300">{{ model.calls ?? 0 }}</td>

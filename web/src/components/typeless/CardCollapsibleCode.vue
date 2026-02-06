@@ -81,9 +81,9 @@ function getLanguageDisplay(): string {
 </script>
 
 <template>
-  <div class="collapsible-code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-900" @dblclick="handleDoubleClick">
+  <div class="collapsible-code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-200" @dblclick="handleDoubleClick">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+    <div class="flex items-center justify-between px-4 py-2 bg-gray-700 border-b border-gray-700">
       <div class="flex items-center gap-3">
         <!-- Window controls -->
         <div class="flex gap-1.5">
@@ -146,7 +146,7 @@ function getLanguageDisplay(): string {
     <!-- Expand/Collapse button -->
     <div v-if="shouldCollapse" class="border-t border-gray-700">
       <button
-        class="w-full px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+        class="w-full px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
         @click.stop="toggleExpand"
       >
         <svg

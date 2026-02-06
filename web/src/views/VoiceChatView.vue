@@ -311,7 +311,7 @@ watch(wakeWordEnabled, () => {
     </div>
 
     <!-- Settings -->
-    <div class="bg-gray-800 rounded-lg p-4 mb-6">
+    <div class="bg-gray-700 rounded-lg p-4 mb-6">
       <h2 class="text-sm font-medium text-gray-400 mb-3">Settings</h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <!-- Language -->
@@ -319,7 +319,7 @@ watch(wakeWordEnabled, () => {
           <label class="block text-xs text-gray-500 mb-1">Language</label>
           <select
             v-model="selectedLanguage"
-            class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
             @change="updateConfig"
           >
             <option value="en">English</option>
@@ -337,7 +337,7 @@ watch(wakeWordEnabled, () => {
           <label class="block text-xs text-gray-500 mb-1">Voice</label>
           <select
             v-model="selectedVoice"
-            class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
             @change="updateConfig"
           >
             <option v-for="voice in voices" :key="voice.id" :value="voice.id">
@@ -352,7 +352,7 @@ watch(wakeWordEnabled, () => {
             <input
               v-model="autoPlayResponse"
               type="checkbox"
-              class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+              class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateConfig"
             />
             <span class="text-sm text-gray-300">Auto-play</span>
@@ -365,7 +365,7 @@ watch(wakeWordEnabled, () => {
             <input
               v-model="continuousListening"
               type="checkbox"
-              class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+              class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateConfig"
             />
             <span class="text-sm text-gray-300">Continuous</span>
@@ -381,7 +381,7 @@ watch(wakeWordEnabled, () => {
             <input
               v-model="wakeWordEnabled"
               type="checkbox"
-              class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+              class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
             />
             <span class="text-sm text-gray-300">Enable</span>
           </label>
@@ -392,7 +392,7 @@ watch(wakeWordEnabled, () => {
             <input
               v-model="wakeWord"
               type="text"
-              class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
               placeholder="e.g., hey echo"
               @change="updateWakeWord"
             />
@@ -411,7 +411,7 @@ watch(wakeWordEnabled, () => {
     </div>
 
     <!-- Messages -->
-    <div class="bg-gray-800 rounded-lg mb-6 min-h-[300px] max-h-[400px] overflow-y-auto">
+    <div class="bg-gray-700 rounded-lg mb-6 min-h-[300px] max-h-[400px] overflow-y-auto">
       <div v-if="messages.length === 0" class="p-8 text-center text-gray-500">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -427,7 +427,7 @@ watch(wakeWordEnabled, () => {
         >
           <div
             class="max-w-[80%] rounded-lg px-4 py-2"
-            :class="msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'"
+            :class="msg.role === 'user' ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-700 text-gray-200'"
           >
             {{ msg.text }}
           </div>
@@ -445,7 +445,7 @@ watch(wakeWordEnabled, () => {
             'text-gray-400': sessionState === 'idle',
             'text-green-400': sessionState === 'listening',
             'text-yellow-400': sessionState === 'processing',
-            'text-blue-400': sessionState === 'speaking',
+            'text-gray-900 dark:text-white': sessionState === 'speaking',
           }"
         >
           {{ stateText }}
@@ -462,7 +462,7 @@ watch(wakeWordEnabled, () => {
         :class="{
           'bg-gray-700 cursor-not-allowed': !isConnected || sessionState !== 'idle',
           'bg-red-600 hover:bg-red-700 scale-110': isRecording,
-          'bg-blue-600 hover:bg-blue-700': canRecord && !isRecording,
+          'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700': canRecord && !isRecording,
         }"
         @mousedown="startRecording"
         @mouseup="stopRecording"

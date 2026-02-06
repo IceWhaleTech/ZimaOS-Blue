@@ -66,7 +66,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="audio-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="audio-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <div class="p-4 flex items-center gap-4">
       <!-- Cover image or placeholder -->
       <div class="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500">
@@ -89,7 +89,7 @@ onUnmounted(() => {
 
         <!-- Progress bar -->
         <div
-          class="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full cursor-pointer group"
+          class="h-1.5 bg-gray-700 dark:bg-gray-700 rounded-full cursor-pointer group"
           @click="handleSeek"
         >
           <div

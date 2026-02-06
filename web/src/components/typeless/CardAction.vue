@@ -10,7 +10,7 @@ const emit = defineEmits<{
 }>()
 
 const buttonClasses = {
-  primary: 'bg-accent hover:bg-accent-light text-white',
+  primary: 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-light text-white',
   secondary: 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }
@@ -21,7 +21,7 @@ function handleClick(actionId: string) {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 p-4">
     <h4 class="font-medium text-gray-900 dark:text-white mb-1">
       {{ card.title }}
     </h4>

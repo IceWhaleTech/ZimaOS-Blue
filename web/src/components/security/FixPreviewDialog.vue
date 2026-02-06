@@ -73,7 +73,7 @@ async function handleApply() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       @click.self="emit('close')"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
         <!-- Header -->
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -93,7 +93,7 @@ async function handleApply() {
         <div class="p-6 space-y-4 overflow-y-auto flex-1">
           <!-- Loading state -->
           <div v-if="loading" class="flex items-center justify-center py-8">
-            <svg class="animate-spin w-8 h-8 text-accent" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin w-8 h-8 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
@@ -136,7 +136,7 @@ async function handleApply() {
                   :key="index"
                   class="flex items-start gap-2 text-sm"
                 >
-                  <svg class="w-4 h-4 text-accent mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-4 h-4 text-gray-900 dark:text-gray-300 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                   </svg>
                   <span class="text-gray-600 dark:text-gray-400">{{ change }}</span>
@@ -180,7 +180,7 @@ async function handleApply() {
             {{ t('common.cancel') }}
           </button>
           <button
-            class="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             :disabled="loading || applying || !!error"
             @click="handleApply"
           >

@@ -336,7 +336,7 @@ onMounted(() => {
 }
 
 .item-stats .stat:first-child svg {
-  color: var(--color-accent);
+  color: var(--color-gray-900);
 }
 
 .empty-state {
@@ -370,7 +370,7 @@ onMounted(() => {
 
 .btn-clear-search {
   padding: 8px 16px;
-  background: var(--color-accent);
+  background: var(--color-gray-900);
   color: white;
   border: none;
   border-radius: 6px;
@@ -407,7 +407,7 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 500;
   color: white;
-  background: var(--color-accent);
+  background: var(--color-gray-900);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -415,7 +415,7 @@ onMounted(() => {
 }
 
 .btn-install:hover:not(:disabled) {
-  background: var(--color-accent-hover);
+  background: var(--color-gray-800);
 }
 
 .btn-install:disabled {
@@ -457,8 +457,8 @@ onMounted(() => {
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-accent);
-  background: rgba(var(--color-accent-rgb, 59, 130, 246), 0.1);
+  color: var(--color-gray-900);
+  background: rgba(var(--color-gray-900-rgb, 17, 24, 39), 0.1);
   border-radius: 4px;
 }
 

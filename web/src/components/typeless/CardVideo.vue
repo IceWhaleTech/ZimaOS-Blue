@@ -160,7 +160,7 @@ onUnmounted(() => {
     <!-- Title (only when not fullscreen) -->
     <div
       v-if="card.title && !isFullscreen"
-      class="px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
+      class="px-4 py-3 bg-white dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
     >
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
     </div>
@@ -220,10 +220,10 @@ onUnmounted(() => {
           @click="handleSeek"
         >
           <div
-            class="h-full bg-blue-500 rounded-full relative transition-all"
+            class="h-full bg-gray-700 dark:bg-gray-700 rounded-full relative transition-all"
             :style="{ width: `${progress}%` }"
           >
-            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         </div>
 
@@ -231,7 +231,7 @@ onUnmounted(() => {
         <div class="flex items-center gap-3">
           <!-- Play/Pause button -->
           <button
-            class="text-white hover:text-blue-400 transition-colors"
+            class="text-white hover:text-gray-900 dark:text-white transition-colors"
             @click.stop="togglePlay"
           >
             <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
@@ -252,7 +252,7 @@ onUnmounted(() => {
           <!-- Volume control -->
           <div class="flex items-center gap-2 group/volume">
             <button
-              class="text-white hover:text-blue-400 transition-colors"
+              class="text-white hover:text-gray-900 dark:text-white transition-colors"
               @click.stop="toggleMute"
             >
               <svg v-if="isMuted || volume === 0" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -279,7 +279,7 @@ onUnmounted(() => {
 
           <!-- Fullscreen button -->
           <button
-            class="text-white hover:text-blue-400 transition-colors"
+            class="text-white hover:text-gray-900 dark:text-white transition-colors"
             @click.stop="toggleFullscreen"
           >
             <svg v-if="!isFullscreen" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

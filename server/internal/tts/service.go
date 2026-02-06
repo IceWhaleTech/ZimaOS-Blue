@@ -193,3 +193,16 @@ func (s *service) SetConfig(speed, pitch, volume float32) {
 		s.volume = volume
 	}
 }
+
+// Close cleans up all provider resources.
+func (s *service) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Close eSpeak-NG adapter if it exists
+	if p, ok := s.providers[ProviderEspeakNG]; ok {
+		if esp, ok := p.(*EspeakNGAdapter); ok {
+			esp.Close()
+		}
+	}
+}

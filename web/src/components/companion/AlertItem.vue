@@ -34,8 +34,8 @@ const severityConfig = computed(() => {
     },
     info: {
       icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-      color: 'text-blue-600 dark:text-blue-400',
-      bg: 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700',
+      color: 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
+      bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
     },
     error: {
       icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
@@ -76,7 +76,7 @@ function formatTime(timestamp: string): string {
   >
     <div class="flex items-start gap-3">
       <!-- Severity Icon -->
-      <div :class="['flex-shrink-0 p-2 rounded-full bg-white dark:bg-gray-800', severityConfig.color]">
+      <div :class="['flex-shrink-0 p-2 rounded-full bg-white dark:bg-gray-700', severityConfig.color]">
         <svg :class="compact ? 'w-4 h-4' : 'w-5 h-5'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="severityConfig.icon" />
         </svg>
@@ -89,7 +89,7 @@ function formatTime(timestamp: string): string {
             :class="[
               'px-2 py-0.5 text-xs font-medium rounded-full uppercase',
               severityConfig.color,
-              'bg-white/50 dark:bg-gray-800/50'
+              'bg-white/50 dark:bg-gray-700/50'
             ]"
           >
             {{ alert.severity }}
@@ -116,7 +116,7 @@ function formatTime(timestamp: string): string {
         <!-- Session Link -->
         <div v-if="alert.session_id" class="mt-2 flex items-center gap-2">
           <button
-            class="text-xs text-accent hover:underline flex items-center gap-1"
+            class="text-xs text-gray-900 dark:text-gray-300 hover:underline flex items-center gap-1"
             @click="emit('viewSession', alert.session_id)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,7 +136,7 @@ function formatTime(timestamp: string): string {
       <!-- Actions -->
       <div v-if="!alert.acknowledged" class="flex-shrink-0">
         <button
-          class="px-3 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          class="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           @click="emit('acknowledge', alert.id)"
         >
           {{ t('companion.acknowledge') }}

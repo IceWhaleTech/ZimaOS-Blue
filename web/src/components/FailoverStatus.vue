@@ -157,7 +157,7 @@ onUnmounted(() => {
     <!-- Overview Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <!-- Total Failovers -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.totalFailovers', 'Total Failovers') }}
         </div>
@@ -167,7 +167,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Success Rate -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.successRate', 'Success Rate') }}
         </div>
@@ -177,7 +177,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Stream Anomalies -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.streamAnomalies', 'Stream Anomalies') }}
         </div>
@@ -187,7 +187,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Failed Failovers -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-sm text-gray-500 dark:text-gray-400">
           {{ t('settings.failover.failedFailovers', 'Failed Failovers') }}
         </div>
@@ -198,7 +198,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Circuit Breakers -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
         <h4 class="font-medium text-gray-900 dark:text-white">
           {{ t('settings.failover.circuitBreakers', 'Circuit Breakers') }}
@@ -240,7 +240,7 @@ onUnmounted(() => {
     <!-- Error Distribution -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <!-- Top Errors -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h4 class="font-medium text-gray-900 dark:text-white">
             {{ t('settings.failover.topErrors', 'Top Error Types') }}
@@ -260,7 +260,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Provider Failovers -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h4 class="font-medium text-gray-900 dark:text-white">
             {{ t('settings.failover.providerFailovers', 'Failovers by Provider') }}
@@ -281,7 +281,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Configuration Summary -->
-    <div v-if="config" class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div v-if="config" class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h4 class="font-medium text-gray-900 dark:text-white">
           {{ t('settings.failover.configuration', 'Configuration') }}

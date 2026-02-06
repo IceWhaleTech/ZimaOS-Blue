@@ -6,14 +6,14 @@ defineProps<{
 }>()
 
 const variantClasses = {
-  default: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
+  default: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
   warning: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800',
   success: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800',
   error: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800',
 }
 
 const iconClasses = {
-  default: 'text-blue-500',
+  default: 'text-gray-900 dark:text-white',
   warning: 'text-amber-500',
   success: 'text-green-500',
   error: 'text-red-500',

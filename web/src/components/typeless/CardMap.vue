@@ -25,7 +25,7 @@ function openInMaps() {
 </script>
 
 <template>
-  <div class="map-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="map-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -58,7 +58,7 @@ function openInMaps() {
         </div>
       </div>
       <button
-        class="flex-shrink-0 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+        class="flex-shrink-0 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
         @click="openInMaps"
       >
         Open in Maps

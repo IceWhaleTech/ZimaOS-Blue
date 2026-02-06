@@ -50,7 +50,7 @@ function handleNodeHover(_event: SessionEvent | null) {
 function getThreatColor(level: ThreatLevel): string {
   const colors: Record<ThreatLevel, string> = {
     none: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
-    low: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300',
+    low: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
     medium: 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300',
     high: 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300',
     critical: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300',
@@ -88,7 +88,7 @@ function getEventColor(type: string): string {
   const colors: Record<string, string> = {
     session_start: 'border-l-green-500',
     session_end: 'border-l-gray-500',
-    message_received: 'border-l-blue-500',
+    message_received: 'border-l-gray-900 dark:border-l-gray-400',
     message_sent: 'border-l-indigo-500',
     tool_call: 'border-l-purple-500',
     llm_request: 'border-l-orange-500',
@@ -338,7 +338,7 @@ function formatDuration(ms: number): string {
           <!-- Load More -->
           <button
             v-if="companionStore.hasMoreEvents"
-            class="w-full py-2 text-sm text-accent hover:text-accent-hover"
+            class="w-full py-2 text-sm text-gray-900 dark:text-gray-300 hover:text-gray-900 dark:text-gray-300-hover"
             @click="companionStore.loadMoreEvents()"
           >
             {{ t('common.loadMore') }}

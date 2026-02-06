@@ -43,7 +43,7 @@ function formatLatency(ms: number | undefined | null): string {
 <template>
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Total Calls Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.totalCalls') }}</p>
@@ -66,7 +66,7 @@ function formatLatency(ms: number | undefined | null): string {
     </div>
 
     <!-- Token Usage Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.tokenUsage') }}</p>
@@ -87,7 +87,7 @@ function formatLatency(ms: number | undefined | null): string {
     </div>
 
     <!-- Latency Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</p>
@@ -109,7 +109,7 @@ function formatLatency(ms: number | undefined | null): string {
     </div>
 
     <!-- Speed Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.speed') }}</p>

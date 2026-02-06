@@ -166,4 +166,6 @@ type Service interface {
 	GetConfig() (speed, pitch, volume float32)
 	// SetConfig sets the TTS configuration (speed, pitch, volume).
 	SetConfig(speed, pitch, volume float32)
+	// Close cleans up all provider resources.
+	Close()
 }

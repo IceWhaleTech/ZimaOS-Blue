@@ -26,7 +26,7 @@ const costLevel = computed(() => {
 </script>
 
 <template>
-  <div class="cost-estimate bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+  <div class="cost-estimate bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
     <div class="flex items-center justify-between">
       <div>
         <h3 class="font-medium text-gray-900 dark:text-white">

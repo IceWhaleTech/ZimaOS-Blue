@@ -532,7 +532,7 @@ defineExpose({ focus, setInput })
           </svg>
           <svg
             v-else-if="getFileIcon(attachment.type) === 'text'"
-            class="w-6 h-6 text-accent"
+            class="w-6 h-6 text-gray-900 dark:text-gray-300"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -574,7 +574,7 @@ defineExpose({ focus, setInput })
         <button
           :disabled="disabled || streaming"
           class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          :class="{ 'bg-accent/20 text-accent': showMobileMenu }"
+          :class="{ 'bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-gray-300': showMobileMenu }"
           :title="t('chat.moreActions')"
           @click.stop="toggleMobileMenu"
         >
@@ -819,7 +819,7 @@ defineExpose({ focus, setInput })
       <button
         v-else
         :disabled="!canSend"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-r from-accent to-cta text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
+        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
         :title="t('chat.send')"
         @click="handleSend"
       >

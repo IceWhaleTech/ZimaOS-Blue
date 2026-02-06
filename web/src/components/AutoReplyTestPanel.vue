@@ -67,7 +67,7 @@ defineExpose({
         v-model="testMessage"
         rows="3"
         :placeholder="t('autoReply.enterTestMessage')"
-        class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none border border-gray-300 dark:border-gray-600"
+        class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 resize-none border border-gray-300 dark:border-gray-600"
         @keydown.ctrl.enter="handleTest"
       />
     </div>
@@ -77,7 +77,7 @@ defineExpose({
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('autoReply.channelOptional') }}</label>
       <select
         v-model="testChannel"
-        class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+        class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
       >
         <option v-for="channel in channels" :key="channel.value" :value="channel.value">
           {{ channel.label }}
@@ -87,7 +87,7 @@ defineExpose({
 
     <!-- Test Button -->
     <button
-      class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :disabled="loading || !testMessage.trim()"
       @click="handleTest"
     >
@@ -126,7 +126,7 @@ defineExpose({
           </div>
           <div>
             <span class="text-gray-500 dark:text-gray-400">{{ t('autoReply.response') }}:</span>
-            <div class="mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-gray-700 dark:text-gray-300">
+            <div class="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300">
               {{ testResult.response }}
             </div>
           </div>
@@ -135,7 +135,7 @@ defineExpose({
 
       <div
         v-else
-        class="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+        class="bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
       >
         <div class="flex items-center gap-2">
           <svg
@@ -161,7 +161,7 @@ defineExpose({
     <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
       <button
         type="button"
-        class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
         @click="reset"
       >
         {{ t('autoReply.reset') }}

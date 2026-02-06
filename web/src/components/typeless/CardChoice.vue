@@ -59,7 +59,7 @@ function emitSelection() {
 </script>
 
 <template>
-  <div class="choice-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="choice-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Header -->
     <div v-if="card.title || card.description" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white">
@@ -81,7 +81,7 @@ function emitSelection() {
         :key="option.id"
         class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3"
         :class="{
-          'border-blue-500 bg-blue-50 dark:bg-blue-900/20': isSelected(option.id),
+          'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20': isSelected(option.id),
           'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !isSelected(option.id) && !option.disabled,
           'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': option.disabled,
         }"
@@ -93,7 +93,7 @@ function emitSelection() {
           class="flex-shrink-0 w-5 h-5 mt-0.5 rounded flex items-center justify-center border-2 transition-colors"
           :class="{
             'rounded-full': !card.multiple,
-            'border-blue-500 bg-blue-500': isSelected(option.id),
+            'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700': isSelected(option.id),
             'border-gray-300 dark:border-gray-600': !isSelected(option.id),
           }"
         >
@@ -126,7 +126,7 @@ function emitSelection() {
         <button
           class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3"
           :class="{
-            'border-blue-500 bg-blue-50 dark:bg-blue-900/20': otherSelected,
+            'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20': otherSelected,
             'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !otherSelected,
           }"
           @click="toggleOther"
@@ -136,7 +136,7 @@ function emitSelection() {
             class="flex-shrink-0 w-5 h-5 mt-0.5 rounded flex items-center justify-center border-2 transition-colors"
             :class="{
               'rounded-full': !card.multiple,
-              'border-blue-500 bg-blue-500': otherSelected,
+              'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700': otherSelected,
               'border-gray-300 dark:border-gray-600': !otherSelected,
             }"
           >
@@ -161,7 +161,7 @@ function emitSelection() {
             v-model="otherText"
             type="text"
             :placeholder="card.otherPlaceholder || 'Please specify...'"
-            class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
             @input="handleOtherInput"
           />
         </div>

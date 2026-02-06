@@ -141,7 +141,7 @@ onMounted(() => {
         {{ t('chat.presetQuestions.title') }}
       </h3>
       <button
-        class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-accent transition-colors disabled:opacity-50"
+        class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-300 transition-colors disabled:opacity-50"
         :disabled="refreshing"
         @click="refreshQuestions"
       >
@@ -169,7 +169,7 @@ onMounted(() => {
       <div
         v-for="i in 4"
         :key="i"
-        class="h-14 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse"
+        class="h-14 rounded-xl bg-gray-100 dark:bg-gray-700 animate-pulse"
       />
     </div>
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">

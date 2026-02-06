@@ -61,6 +61,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/web"
@@ -69,7 +70,7 @@ import (
 )
 
 var (
-	version   = "0.10.4"
+	version   = "0.10.22"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -727,6 +728,12 @@ func main() {
 		logger.Warn().Err(err).Msg("Worker pool error during shutdown")
 	}
 
+	// Clean up TTS service (important for CGO resources like eSpeak-NG)
+	if ttsService != nil {
+		ttsService.Close()
+		logger.Info().Msg("TTS service cleaned up")
+	}
+
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
@@ -848,6 +855,16 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register system routes (logs, config, info)
 	systemHandler := server.NewSystemHandler(version, buildTime, gitCommit, dataDir)
 	systemHandler.RegisterRoutes(v1)
+
+	// Register update routes
+	updateHandler := update.NewHandler(version, &update.Config{
+		Enabled:        true,
+		CheckInterval:  24 * time.Hour,
+		ReleaseChannel: "stable",
+		BackupCount:    3,
+		StoragePath:    filepath.Join(dataDir, "updates"),
+	})
+	updateHandler.RegisterRoutes(v1)
 
 	// Register service management routes
 	serviceHandler := server.NewServiceHandler()

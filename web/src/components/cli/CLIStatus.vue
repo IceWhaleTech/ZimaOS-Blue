@@ -76,12 +76,12 @@ defineExpose({
       props.compact ? 'p-3' : 'p-4',
       statusColor === 'green' ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20' :
       statusColor === 'yellow' ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20' :
-      'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+      'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50'
     ]"
   >
     <!-- Loading State -->
     <div v-if="loading" class="flex items-center gap-3">
-      <div class="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-blue-500" />
+      <div class="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-gray-900 dark:border-t-gray-400" />
       <span class="text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</span>
     </div>
 
@@ -130,7 +130,7 @@ defineExpose({
           <div v-if="status?.source && !props.compact" class="text-sm text-gray-500 dark:text-gray-400">
             {{ t('cli.status.source', { source: status.source }) }}
           </div>
-          <div v-if="status?.update_available" class="text-sm text-blue-600 dark:text-blue-400">
+          <div v-if="status?.update_available" class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
             {{ t('cli.status.updateAvailable', { version: status.latest_version }) }}
           </div>
         </div>
@@ -140,14 +140,14 @@ defineExpose({
       <div class="flex items-center gap-2">
         <button
           v-if="!status?.installed"
-          class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm rounded-lg transition-colors"
           @click="handleDownloadClick"
         >
           {{ t('cli.download') }}
         </button>
         <button
           v-else-if="status?.update_available"
-          class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm rounded-lg transition-colors"
           @click="handleUpdateClick"
         >
           {{ t('cli.update') }}

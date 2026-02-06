@@ -25,13 +25,13 @@ const iconPath = computed(() => {
 
 const bgColor = computed(() => {
   return isInbound.value
-    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700'
+    ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
     : 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
 })
 
 const iconColor = computed(() => {
   return isInbound.value
-    ? 'text-blue-500 dark:text-blue-400'
+    ? 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
     : 'text-green-500 dark:text-green-400'
 })
 </script>
@@ -46,7 +46,7 @@ const iconColor = computed(() => {
     <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
 
     <div class="flex items-start gap-3">
-      <div :class="['p-2 rounded-full bg-white dark:bg-gray-800', iconColor]">
+      <div :class="['p-2 rounded-full bg-white dark:bg-gray-700', iconColor]">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="iconPath" />
         </svg>

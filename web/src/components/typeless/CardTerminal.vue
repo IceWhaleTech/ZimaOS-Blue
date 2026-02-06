@@ -15,7 +15,7 @@ const ansiColors: Record<number, string> = {
   31: 'text-red-600 dark:text-red-400',
   32: 'text-green-600 dark:text-green-400',
   33: 'text-yellow-600 dark:text-yellow-400',
-  34: 'text-blue-600 dark:text-blue-400',
+  34: 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
   35: 'text-purple-600 dark:text-purple-400',
   36: 'text-cyan-600 dark:text-cyan-400',
   37: 'text-gray-200 dark:text-gray-100',
@@ -24,7 +24,7 @@ const ansiColors: Record<number, string> = {
   91: 'text-red-500 dark:text-red-300',
   92: 'text-green-500 dark:text-green-300',
   93: 'text-yellow-500 dark:text-yellow-300',
-  94: 'text-blue-500 dark:text-blue-300',
+  94: 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
   95: 'text-purple-500 dark:text-purple-300',
   96: 'text-cyan-500 dark:text-cyan-300',
   97: 'text-white',
@@ -33,7 +33,7 @@ const ansiColors: Record<number, string> = {
   41: 'bg-red-600',
   42: 'bg-green-600',
   43: 'bg-yellow-600',
-  44: 'bg-blue-600',
+  44: 'bg-gray-700 dark:bg-gray-700',
   45: 'bg-purple-600',
   46: 'bg-cyan-600',
   47: 'bg-gray-200',
@@ -42,7 +42,7 @@ const ansiColors: Record<number, string> = {
   101: 'bg-red-500',
   102: 'bg-green-500',
   103: 'bg-yellow-500',
-  104: 'bg-blue-500',
+  104: 'bg-gray-700 dark:bg-gray-700',
   105: 'bg-purple-500',
   106: 'bg-cyan-500',
   107: 'bg-white',
@@ -167,14 +167,14 @@ const themeClasses = computed(() => {
   if (props.card.theme === 'light') {
     return 'bg-gray-100 text-gray-900'
   }
-  return 'bg-gray-900 text-gray-100'
+  return 'bg-gray-700 text-gray-100'
 })
 </script>
 
 <template>
   <div class="terminal-card rounded-lg border border-gray-700 overflow-hidden">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+    <div class="flex items-center justify-between px-4 py-2 bg-gray-700 border-b border-gray-700">
       <div class="flex items-center gap-3">
         <!-- Window controls -->
         <div class="flex gap-1.5">

@@ -77,11 +77,11 @@ function goToLogin() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-700 px-4">
     <div class="max-w-md w-full text-center">
       <!-- Loading State -->
       <div v-if="status === 'loading'" class="space-y-6">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-600">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700 dark:bg-gray-700">
           <svg
             class="animate-spin h-8 w-8 text-white"
             xmlns="http://www.w3.org/2000/svg"
@@ -157,7 +157,7 @@ function goToLogin() {
         </div>
         <button
           type="button"
-          class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+          class="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-400 transition-colors"
           @click="goToLogin"
         >
           {{ t('auth.backToLogin') }}

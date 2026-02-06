@@ -139,9 +139,9 @@ onMounted(() => {
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div class="w-full max-w-lg bg-white dark:bg-gray-800 rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
+      <div class="w-full max-w-lg bg-white dark:bg-gray-700 rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-700">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('users.editUser') }}: {{ user.username }}
           </h2>
@@ -192,7 +192,7 @@ onMounted(() => {
               <input
                 v-model="email"
                 type="email"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('users.emailPlaceholder')"
               />
             </div>
@@ -204,7 +204,7 @@ onMounted(() => {
               </label>
               <select
                 v-model="role"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               >
                 <option value="user">{{ t('users.roleUser') }}</option>
                 <option value="guest">{{ t('users.roleGuest') }}</option>
@@ -226,7 +226,7 @@ onMounted(() => {
                     v-model="selectedPermissions"
                     type="checkbox"
                     :value="perm.key"
-                    class="w-4 h-4 text-accent border-gray-300 rounded focus:ring-accent"
+                    class="w-4 h-4 text-gray-900 dark:text-gray-300 border-gray-300 rounded focus:ring-gray-400"
                   />
                   <div>
                     <span class="text-sm text-gray-900 dark:text-white">{{ perm.name }}</span>
@@ -240,7 +240,7 @@ onMounted(() => {
             <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
               <button
                 type="button"
-                class="text-sm text-accent hover:underline"
+                class="text-sm text-gray-900 dark:text-gray-300 hover:underline"
                 @click="showPasswordReset = !showPasswordReset"
               >
                 {{ showPasswordReset ? t('users.hidePasswordReset') : t('users.resetPassword') }}
@@ -256,7 +256,7 @@ onMounted(() => {
                     <input
                       v-model="newPassword"
                       :type="showPassword ? 'text' : 'password'"
-                      class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+                      class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                     />
                     <button
                       type="button"
@@ -332,7 +332,7 @@ onMounted(() => {
               </button>
               <button
                 type="submit"
-                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50"
                 :disabled="loading"
               >
                 <span v-if="loading">{{ t('common.saving') }}</span>

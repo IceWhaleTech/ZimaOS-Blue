@@ -169,9 +169,9 @@ function getEventTypeColor(eventType: string) {
     case 'connected':
       return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
     case 'stopped':
-      return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800'
+      return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'
     default:
-      return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20'
   }
 }
 
@@ -220,16 +220,16 @@ watch(
     </div>
 
     <!-- URL Display (show when URL is available; active or connecting with url) -->
-    <div v-if="status.url" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-4">
+    <div v-if="status.url" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
       <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
         {{ t('remoteAccess.accessUrl') }}
       </div>
       <div class="flex items-center gap-2">
-        <code class="flex-1 text-sm bg-white dark:bg-gray-900 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+        <code class="flex-1 text-sm bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
           {{ status.url }}
         </code>
         <button
-          class="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
           :title="t('common.copy')"
           @click="copyUrl"
         >
@@ -238,7 +238,7 @@ watch(
           </svg>
         </button>
         <button
-          class="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
           :title="t('common.openInNewTab')"
           @click="openUrl"
         >
@@ -247,7 +247,7 @@ watch(
           </svg>
         </button>
         <button
-          class="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
           :title="t('remoteAccess.showQRCode')"
           @click="loadQRCode"
         >
@@ -263,11 +263,11 @@ watch(
           {{ t('remoteAccess.tunnelPassword') }}
         </div>
         <div class="flex items-center gap-2">
-          <code class="flex-1 text-sm bg-white dark:bg-gray-900 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+          <code class="flex-1 text-sm bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
             {{ status.tunnel_password }}
           </code>
           <button
-            class="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
             :title="t('common.copy')"
             @click="copyTunnelPassword"
           >
@@ -281,7 +281,7 @@ watch(
       <!-- QR Code Display (auto-show when URL available) -->
       <div v-if="status.url" class="mt-3 flex justify-center">
         <div v-if="qrCodeLoading" class="py-4">
-          <svg class="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+          <svg class="animate-spin h-8 w-8 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
@@ -337,8 +337,8 @@ watch(
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="showDiagnostics
-          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+          ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
         @click="toggleDiagnostics"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -349,8 +349,8 @@ watch(
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="showLogs
-          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+          ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
         @click="toggleLogs"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -361,11 +361,11 @@ watch(
     </div>
 
     <!-- Diagnostics Panel -->
-    <div v-if="showDiagnostics" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-4">
+    <div v-if="showDiagnostics" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
       <div class="flex items-center justify-between mb-3">
         <h4 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.diagnosticsTitle') }}</h4>
         <button
-          class="p-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          class="p-1 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
           :title="t('common.refresh')"
           @click="loadDiagnostics"
         >
@@ -376,7 +376,7 @@ watch(
       </div>
 
       <div v-if="diagnosticsLoading && !diagnostics" class="flex items-center justify-center py-4">
-        <svg class="animate-spin h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+        <svg class="animate-spin h-6 w-6 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
@@ -457,7 +457,7 @@ watch(
         <!-- Active Session -->
         <div v-if="diagnostics.active_session">
           <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('remoteAccess.activeSession') }}</p>
-          <div class="text-xs bg-white dark:bg-gray-900 rounded p-2 border border-gray-200 dark:border-gray-700">
+          <div class="text-xs bg-white dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-700">
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <span class="text-gray-500 dark:text-gray-400">ID:</span>
@@ -482,11 +482,11 @@ watch(
     </div>
 
     <!-- Logs Panel -->
-    <div v-if="showLogs" class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+    <div v-if="showLogs" class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
       <div class="flex items-center justify-between mb-3">
         <h4 class="font-medium text-gray-900 dark:text-white">{{ t('remoteAccess.logsTitle') }}</h4>
         <button
-          class="p-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          class="p-1 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
           :title="t('common.refresh')"
           @click="loadLogs"
         >
@@ -497,7 +497,7 @@ watch(
       </div>
 
       <div v-if="logsLoading && (!logs || logs.length === 0)" class="flex items-center justify-center py-4">
-        <svg class="animate-spin h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+        <svg class="animate-spin h-6 w-6 text-gray-900 dark:text-white" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>

@@ -97,7 +97,7 @@ const routingModeInfo = computed(() => {
       icon: 'cloud',
       label: t('chat.routingMode.cloud'),
       count: cloudCount,
-      color: 'blue'
+      color: 'gray'
     }
   } else if (mode === 'local') {
     return {
@@ -476,7 +476,7 @@ onUnmounted(() => {
           <router-link
             v-else
             to="/settings?tab=claudecode"
-            class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
+            class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
             :title="t('chat.enableClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -509,8 +509,8 @@ onUnmounted(() => {
               :class="{
                 'text-red-500 dark:text-red-400': providerStatus.status === 'error',
                 'text-green-500 dark:text-green-400': providerStatus.status === 'active' && routingModeInfo.color === 'green',
-                'text-blue-500 dark:text-blue-400': providerStatus.status === 'active' && routingModeInfo.color === 'blue',
-                'text-accent': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
+                'text-gray-900 dark:text-gray-300': providerStatus.status === 'active' && routingModeInfo.color === 'gray',
+                'text-gray-900 dark:text-gray-300': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
                 'text-yellow-500 dark:text-yellow-400': providerStatus.status === 'pending',
               }"
               :title="providerStatus.message"
@@ -522,8 +522,8 @@ onUnmounted(() => {
                 :class="{
                   'bg-red-500 animate-pulse': providerStatus.status === 'error',
                   'bg-green-500': providerStatus.status === 'active' && routingModeInfo.color === 'green',
-                  'bg-blue-500': providerStatus.status === 'active' && routingModeInfo.color === 'blue',
-                  'bg-accent': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
+                  'bg-gray-700 dark:bg-gray-700': providerStatus.status === 'active' && routingModeInfo.color === 'gray',
+                  'bg-gray-700 dark:bg-gray-700': providerStatus.status === 'active' && routingModeInfo.color === 'accent',
                   'bg-yellow-500 animate-pulse': providerStatus.status === 'pending',
                 }"
               />
@@ -571,7 +571,7 @@ onUnmounted(() => {
       <Transition name="slide-fade">
         <div
           v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted && !providerPoolStore.hasUserConfiguredProviders"
-          class="px-4 py-2 flex items-center justify-between text-sm border-b bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300"
+          class="px-4 py-2 flex items-center justify-between text-sm border-b bg-gray-100 dark:bg-gray-700/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white"
           :class="{ 'trial-quota-pulse': tokenAnimating }"
         >
           <div class="flex items-center gap-2">
@@ -582,9 +582,9 @@ onUnmounted(() => {
             >{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
           </div>
           <div class="flex items-center gap-2">
-            <div class="relative w-20 h-4 bg-blue-200 dark:bg-blue-800/50 rounded-full overflow-hidden">
+            <div class="relative w-20 h-4 bg-gray-300 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
-                class="h-full rounded-full transition-all duration-500 ease-out bg-blue-500 dark:bg-blue-400"
+                class="h-full rounded-full transition-all duration-500 ease-out bg-gray-700 dark:bg-gray-400"
                 :style="{ width: `${Math.max(3, Math.min(100, (providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100))}%` }"
               ></div>
               <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm">
@@ -613,7 +613,7 @@ onUnmounted(() => {
           class="flex justify-center py-4"
         >
           <div class="flex items-center gap-2 text-gray-500 dark:text-slate-400 text-sm">
-            <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+            <div class="w-4 h-4 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full animate-spin"></div>
             {{ t('chat.loadingOlderMessages') }}
           </div>
         </div>
@@ -624,7 +624,7 @@ onUnmounted(() => {
           class="flex justify-center py-4"
         >
           <button
-            class="text-sm text-accent hover:text-accent-light px-4 py-2 transition-colors cursor-pointer"
+            class="text-sm text-gray-900 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 px-4 py-2 transition-colors cursor-pointer"
             @click="chatStore.loadMoreMessages()"
           >
             {{ t('chat.loadOlderMessages') }}
@@ -637,7 +637,7 @@ onUnmounted(() => {
           class="h-full flex flex-col items-center justify-center p-4"
         >
           <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">
-            <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent to-cta flex items-center justify-center shadow-glow">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-glow">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="h-8 w-8 sm:h-10 sm:w-10 text-white"
@@ -654,7 +654,7 @@ onUnmounted(() => {
               </svg>
             </div>
             <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ t('chat.startConversation') }}</h3>
-            <p class="text-sm sm:text-base text-gray-500 dark:text-slate-400">{{ t('chat.startConversationDesc') }}</p>
+            <p class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mt-8 mb-6">{{ t('chat.startConversationDesc') }}</p>
           </div>
 
           <!-- Preset Questions -->
@@ -806,7 +806,7 @@ onUnmounted(() => {
           <!-- Auto mode -->
           <button
             class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors cursor-pointer"
-            :class="providerPoolStore.routingMode === 'auto' ? 'bg-accent/20 text-accent' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+            :class="providerPoolStore.routingMode === 'auto' ? 'bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
             @click="selectRoutingMode('auto')"
           >
             <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -822,7 +822,7 @@ onUnmounted(() => {
           <!-- Cloud mode -->
           <button
             class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors cursor-pointer"
-            :class="providerPoolStore.routingMode === 'cloud' ? 'bg-blue-500/20 text-blue-500' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+            :class="providerPoolStore.routingMode === 'cloud' ? 'bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
             :disabled="!providerPoolStore.hasCloudProviders"
             @click="selectRoutingMode('cloud')"
           >
@@ -839,7 +839,7 @@ onUnmounted(() => {
           <!-- Local mode -->
           <button
             class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left transition-colors cursor-pointer"
-            :class="providerPoolStore.routingMode === 'local' ? 'bg-green-500/20 text-green-500' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+            :class="providerPoolStore.routingMode === 'local' ? 'bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
             :disabled="!providerPoolStore.hasLocalProviders"
             @click="selectRoutingMode('local')"
           >
@@ -884,7 +884,7 @@ onUnmounted(() => {
               v-for="style in THEME_STYLES"
               :key="style.id"
               class="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer"
-              :class="settingsStore.themeStyle === style.id ? 'bg-accent/20 text-accent' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
+              :class="settingsStore.themeStyle === style.id ? 'bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300' : 'hover:bg-white/10 text-gray-700 dark:text-gray-300'"
               @click="selectThemeStyle(style.id)"
             >
               <span
@@ -974,7 +974,7 @@ onUnmounted(() => {
         </div>
         <router-link
           to="/settings?tab=llm"
-          class="text-blue-400 hover:text-blue-300 flex-shrink-0 px-3 py-1 rounded hover:bg-blue-500/10 transition-colors"
+          class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white flex-shrink-0 px-3 py-1 rounded hover:bg-gray-700 dark:bg-gray-700/10 transition-colors"
         >
           {{ t('chat.configureProvider') }}
         </router-link>

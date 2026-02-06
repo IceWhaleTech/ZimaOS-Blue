@@ -87,7 +87,7 @@ async function handleSubmit() {
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-    <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-xl">
+    <div class="w-full max-w-md bg-white dark:bg-gray-700 rounded-xl shadow-xl">
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
         <div class="flex items-center space-x-3">
@@ -150,7 +150,7 @@ async function handleSubmit() {
             <input
               v-model="username"
               type="text"
-              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               :placeholder="t('auth.usernamePlaceholder')"
               required
               minlength="3"
@@ -166,7 +166,7 @@ async function handleSubmit() {
               <input
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
-                class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+                class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.passwordPlaceholder')"
                 required
                 minlength="8"
@@ -250,7 +250,7 @@ async function handleSubmit() {
             <input
               v-model="confirmPassword"
               :type="showPassword ? 'text' : 'password'"
-              class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+              class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
               :placeholder="t('auth.confirmPasswordPlaceholder')"
               required
@@ -271,7 +271,7 @@ async function handleSubmit() {
             </button>
             <button
               type="submit"
-              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="!isValid || loading"
             >
               <span v-if="loading" class="flex items-center justify-center space-x-2">

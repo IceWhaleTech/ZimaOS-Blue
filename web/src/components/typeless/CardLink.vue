@@ -74,7 +74,7 @@ onMounted(() => {
 
 <template>
   <div
-    class="link-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+    class="link-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700 cursor-pointer hover:border-gray-900 dark:border-white dark:hover:border-gray-900 dark:border-white transition-colors"
     @click="handleClick"
   >
     <div class="flex">
@@ -99,7 +99,7 @@ onMounted(() => {
         <!-- Title -->
         <h4
           v-if="!isLoading"
-          class="font-medium text-gray-900 dark:text-white line-clamp-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          class="font-medium text-gray-900 dark:text-white line-clamp-1 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
         >
           {{ displayTitle }}
         </h4>

@@ -42,7 +42,7 @@ async function fetchData() {
 
 function getTypeColor(type: ConnectionType): string {
   const colors: Record<ConnectionType, string> = {
-    http: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300',
+    http: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300',
     websocket: 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300',
     sse: 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
   }
@@ -53,7 +53,7 @@ function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     active: 'bg-green-500',
     idle: 'bg-yellow-500',
-    completed: 'bg-blue-500',
+    completed: 'bg-gray-600',
     closed: 'bg-gray-500'
   }
   return colors[status] || 'bg-gray-500'
@@ -102,7 +102,7 @@ onUnmounted(() => {
       </div>
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
         <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+          <span class="w-3 h-3 rounded-full bg-gray-600"></span>
           <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ httpCount }}</span>
         </div>
         <div class="text-sm text-gray-500 dark:text-slate-400">HTTP</div>

@@ -195,11 +195,11 @@ const languageDisplay = computed(() => {
     <Transition name="fullscreen">
       <div
         v-if="isFullscreen && fullscreenContent"
-        class="fixed inset-0 z-[9999] bg-gray-900 flex flex-col"
+        class="fixed inset-0 z-[9999] bg-gray-200 flex flex-col"
         @click.self="close"
       >
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 bg-gray-800 border-b border-gray-700">
+        <div class="flex items-center justify-between px-6 py-4 bg-gray-700 border-b border-gray-700">
           <div class="flex items-center gap-4">
             <!-- Window controls -->
             <div class="flex gap-1.5">
@@ -281,14 +281,14 @@ const languageDisplay = computed(() => {
         <div class="flex-1 overflow-auto">
           <!-- Code / Terminal content -->
           <template v-if="fullscreenContent.type === 'code' || fullscreenContent.type === 'terminal'">
-            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-gray-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-gray-800/50"><span class="inline-block w-12 text-right mr-6 text-gray-500 select-none">{{ index + 1 }}</span>{{ line }}
+            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-gray-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-gray-700/50"><span class="inline-block w-12 text-right mr-6 text-gray-500 select-none">{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
           </template>
 
           <!-- Diff unified view -->
           <template v-else-if="fullscreenContent.type === 'diff' && viewMode === 'unified'">
             <pre class="text-sm min-h-full"><code><template v-for="(line, index) in diffLines" :key="index"><div
-                  class="flex hover:bg-gray-800/30"
+                  class="flex hover:bg-gray-700/30"
                   :class="getLineClass(line.type)"
                 ><span class="w-16 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
                     class="w-8 text-center flex-shrink-0"
@@ -306,8 +306,8 @@ const languageDisplay = computed(() => {
               <!-- Left (old) -->
               <div class="flex-1 border-r border-gray-700">
                 <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
-                      class="flex hover:bg-gray-800/30"
-                      :class="line ? getLineClass(line.type) : 'bg-gray-800/50'"
+                      class="flex hover:bg-gray-700/30"
+                      :class="line ? getLineClass(line.type) : 'bg-gray-700/50'"
                     ><span class="w-14 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
@@ -317,8 +317,8 @@ const languageDisplay = computed(() => {
               <!-- Right (new) -->
               <div class="flex-1">
                 <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
-                      class="flex hover:bg-gray-800/30"
-                      :class="line ? getLineClass(line.type) : 'bg-gray-800/50'"
+                      class="flex hover:bg-gray-700/30"
+                      :class="line ? getLineClass(line.type) : 'bg-gray-700/50'"
                     ><span class="w-14 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
@@ -330,7 +330,7 @@ const languageDisplay = computed(() => {
         </div>
 
         <!-- Footer hint -->
-        <div class="px-6 py-2 bg-gray-800 border-t border-gray-700 text-center">
+        <div class="px-6 py-2 bg-gray-700 border-t border-gray-700 text-center">
           <span class="text-xs text-gray-500">Press <kbd class="px-1.5 py-0.5 bg-gray-700 rounded text-gray-400">Esc</kbd> or double-click to exit fullscreen</span>
         </div>
       </div>

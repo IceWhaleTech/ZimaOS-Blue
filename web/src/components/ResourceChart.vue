@@ -25,7 +25,7 @@ const props = withDefaults(
 
 const colorClasses = computed(() => {
   const colors: Record<string, { line: string; fill: string; text: string }> = {
-    blue: { line: 'stroke-blue-500', fill: 'fill-blue-500/20', text: 'text-blue-400' },
+    blue: { line: 'stroke-gray-900 dark:stroke-gray-400', fill: 'fill-gray-900/10 dark:fill-gray-400/10', text: 'text-gray-900 dark:text-gray-400' },
     green: { line: 'stroke-green-500', fill: 'fill-green-500/20', text: 'text-green-400' },
     purple: { line: 'stroke-purple-500', fill: 'fill-purple-500/20', text: 'text-purple-400' },
     orange: { line: 'stroke-orange-500', fill: 'fill-orange-500/20', text: 'text-orange-400' },
@@ -100,7 +100,7 @@ const lastChartPoint = computed(() => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ title }}</h3>
       <span :class="['text-lg font-bold', colorClasses.text]">

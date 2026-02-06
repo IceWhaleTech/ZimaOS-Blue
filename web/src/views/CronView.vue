@@ -247,7 +247,7 @@ function getNextRunText(job: CronJob): string {
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{{ t('cron.title') }}</h1>
       <button
-        class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="openCreateModal"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -268,7 +268,7 @@ function getNextRunText(job: CronJob): string {
       </svg>
       <p class="text-gray-500 dark:text-slate-400">{{ t('cron.noJobs') }}</p>
       <button
-        class="mt-4 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors"
+        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
         @click="openCreateModal"
       >
         {{ t('cron.createFirst') }}
@@ -299,12 +299,12 @@ function getNextRunText(job: CronJob): string {
             <p v-if="job.description" class="text-sm text-gray-500 dark:text-slate-400 mb-2">
               {{ job.description }}
             </p>
-            <div class="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-slate-400">
+            <div class="flex flex-wrap items-center gap-4 text-xs text-blue-600 dark:text-blue-400">
               <div class="flex items-center gap-1">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <code class="bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded">{{ job.schedule }}</code>
+                <code class="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded text-blue-700 dark:text-blue-300">{{ job.schedule }}</code>
               </div>
               <div>
                 {{ t('cron.nextRun') }}: {{ getNextRunText(job) }}
@@ -327,7 +327,7 @@ function getNextRunText(job: CronJob): string {
             <button
               v-if="job.enabled"
               :title="t('cron.triggerNow')"
-              class="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+              class="p-2 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
               @click="triggerJob(job)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -396,7 +396,7 @@ function getNextRunText(job: CronJob): string {
                 type="text"
                 required
                 :placeholder="t('cron.namePlaceholder')"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
               />
             </div>
 
@@ -406,7 +406,7 @@ function getNextRunText(job: CronJob): string {
                 v-model="jobForm.description"
                 type="text"
                 :placeholder="t('cron.descriptionPlaceholder')"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
               />
             </div>
 
@@ -417,7 +417,7 @@ function getNextRunText(job: CronJob): string {
                 type="text"
                 required
                 placeholder="* * * * *"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono"
+                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600 font-mono"
               />
               <div class="flex flex-wrap gap-2 mt-2">
                 <button
@@ -442,7 +442,7 @@ function getNextRunText(job: CronJob): string {
                   :class="[
                     'p-3 rounded-lg border-2 text-left transition-colors',
                     jobForm.handler === ht.value
-                      ? 'border-accent bg-accent/10 dark:bg-accent/20'
+                      ? 'border-gray-900 dark:border-gray-700 bg-gray-700 dark:bg-gray-700/10 dark:bg-gray-700 dark:bg-gray-700/20'
                       : 'border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500'
                   ]"
                   @click="jobForm.handler = ht.value"
@@ -462,7 +462,7 @@ function getNextRunText(job: CronJob): string {
                   type="text"
                   required
                   :placeholder="t('cron.commandPlaceholder')"
-                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600 font-mono text-sm"
                 />
                 <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">{{ t('cron.commandHint') }}</p>
               </div>
@@ -472,7 +472,7 @@ function getNextRunText(job: CronJob): string {
                   v-model="jobForm.workdir"
                   type="text"
                   :placeholder="t('cron.workdirPlaceholder')"
-                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600 font-mono text-sm"
                 />
               </div>
               <div>
@@ -482,7 +482,7 @@ function getNextRunText(job: CronJob): string {
                   type="number"
                   min="1"
                   max="3600"
-                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 />
               </div>
             </div>
@@ -496,14 +496,14 @@ function getNextRunText(job: CronJob): string {
                   type="url"
                   required
                   placeholder="https://example.com/api/webhook"
-                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600 font-mono text-sm"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600 font-mono text-sm"
                 />
               </div>
               <div>
                 <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('cron.httpMethod') }}</label>
                 <select
                   v-model="jobForm.method"
-                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 >
                   <option value="GET">GET</option>
                   <option value="POST">POST</option>
@@ -518,7 +518,7 @@ function getNextRunText(job: CronJob): string {
                   type="number"
                   min="1"
                   max="300"
-                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-slate-600"
+                  class="w-full bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 />
               </div>
             </div>
@@ -527,7 +527,7 @@ function getNextRunText(job: CronJob): string {
               <button
                 type="submit"
                 :disabled="loading || !jobForm.name || !jobForm.schedule || (showCreateModal && !jobForm.handler) || (jobForm.handler === 'command' && !jobForm.command) || (jobForm.handler === 'http' && !jobForm.url)"
-                class="flex-1 px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ loading ? t('common.saving') : (showCreateModal ? t('cron.create') : t('common.save')) }}
               </button>

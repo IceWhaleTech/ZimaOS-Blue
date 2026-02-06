@@ -66,17 +66,26 @@ func (h *Handler) Check(c echo.Context) error {
 
 	ctx := c.Request().Context()
 	latest, err := h.github.GetLatestVersion(ctx, h.config.ReleaseChannel)
+
+	h.mu.Lock()
+	h.status.State = StateIdle
+	h.status.LastChecked = time.Now()
+
 	if err != nil {
-		h.setError(err.Error())
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		// Network error or repo not found - return "no update available" instead of error
+		h.latestInfo = &UpdateInfo{
+			CurrentVersion:  h.currentVersion,
+			LatestVersion:   h.currentVersion,
+			UpdateAvailable: false,
+			ReleaseChannel:  h.config.ReleaseChannel,
+		}
+		h.mu.Unlock()
+		return c.JSON(http.StatusOK, h.latestInfo)
 	}
 
 	current, _ := ParseVersion(h.currentVersion)
 	updateAvailable := latest.IsNewerThan(current)
 
-	h.mu.Lock()
-	h.status.State = StateIdle
-	h.status.LastChecked = time.Now()
 	h.latestInfo = &UpdateInfo{
 		CurrentVersion:  h.currentVersion,
 		LatestVersion:   latest.String(),

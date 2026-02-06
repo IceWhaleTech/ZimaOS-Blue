@@ -19,7 +19,7 @@ const statusColor = computed(() => {
     case 'running':
       return 'bg-green-500'
     case 'loaded':
-      return 'bg-blue-500'
+      return 'bg-gray-700 dark:bg-gray-700'
     case 'stopped':
       return 'bg-gray-500'
     case 'error':
@@ -73,7 +73,7 @@ const typeLabel = computed(() => {
 
 <template>
   <div
-    class="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors"
+    class="bg-gray-700 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors"
   >
     <!-- Header -->
     <div class="flex items-start justify-between mb-3">
@@ -82,7 +82,7 @@ const typeLabel = computed(() => {
         <div class="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5 text-blue-400"
+            class="h-5 w-5 text-gray-900 dark:text-white"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -128,7 +128,7 @@ const typeLabel = computed(() => {
       <span
         v-for="cap in plugin.capabilities?.slice(0, 3)"
         :key="cap"
-        class="text-xs bg-blue-900/30 px-2 py-1 rounded text-blue-300"
+        class="text-xs bg-gray-700 dark:bg-gray-700/30 px-2 py-1 rounded text-gray-900 dark:text-white"
       >
         {{ cap }}
       </span>
@@ -152,7 +152,7 @@ const typeLabel = computed(() => {
           @change="emit('toggle')"
         />
         <div
-          class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 peer-disabled:opacity-50"
+          class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600 peer-disabled:opacity-50"
         ></div>
         <span class="ml-2 text-sm text-gray-400">
           {{ plugin.enabled ? 'Enabled' : 'Disabled' }}

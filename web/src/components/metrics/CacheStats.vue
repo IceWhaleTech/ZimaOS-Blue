@@ -75,7 +75,7 @@ defineExpose({ refresh: fetchStats })
             :disabled="toggling"
             :class="[
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              stats?.enabled ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600',
+              stats?.enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600',
               toggling ? 'opacity-50 cursor-not-allowed' : ''
             ]"
             @click="toggleCache"
@@ -109,7 +109,7 @@ defineExpose({ refresh: fetchStats })
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Cache Entries Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.entries') }}</p>
@@ -117,8 +117,8 @@ defineExpose({ refresh: fetchStats })
             {{ stats?.entries ?? '-' }}
           </p>
         </div>
-        <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-          <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-full">
+          <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
           </svg>
         </div>
@@ -129,7 +129,7 @@ defineExpose({ refresh: fetchStats })
     </div>
 
     <!-- Hit Rate Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.hitRate') }}</p>
@@ -153,7 +153,7 @@ defineExpose({ refresh: fetchStats })
     </div>
 
     <!-- Bypasses Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.bypasses') }}</p>
@@ -173,7 +173,7 @@ defineExpose({ refresh: fetchStats })
     </div>
 
     <!-- Status Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.status') }}</p>

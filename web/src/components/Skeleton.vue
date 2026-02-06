@@ -9,7 +9,7 @@ defineProps<{
 
 <template>
   <div
-    class="animate-pulse bg-gray-200 dark:bg-gray-700"
+    class="animate-pulse bg-gray-700 dark:bg-gray-700"
     :class="[
       rounded === 'none' ? '' : rounded === 'sm' ? 'rounded-sm' : rounded === 'md' ? 'rounded-md' : rounded === 'lg' ? 'rounded-lg' : rounded === 'full' ? 'rounded-full' : 'rounded',
       $props.class

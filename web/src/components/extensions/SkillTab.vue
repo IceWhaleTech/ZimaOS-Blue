@@ -535,7 +535,7 @@ function renderMarkdown(content: string): string {
 }
 
 .skill-content :deep(a) {
-  color: var(--color-accent, #3b82f6);
+  color: var(--color-gray-900, #3b82f6);
   text-decoration: none;
 }
 

@@ -409,8 +409,8 @@ function formatDate(dateStr?: string) {
         <!-- Main Toggle -->
         <button
           :disabled="togglingEnabled || loading"
-          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="isEnabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="isEnabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
           role="switch"
           :aria-checked="isEnabled ? 'true' : 'false'"
           @click.stop="toggleEnabled"
@@ -435,7 +435,7 @@ function formatDate(dateStr?: string) {
       <div v-else-if="error && !versionInfo" class="text-center py-4">
         <p class="text-red-500 dark:text-red-400 mb-4">{{ error }}</p>
         <button
-          class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
           @click="loadVersionInfo"
         >
           {{ t('common.retry') }}
@@ -490,7 +490,7 @@ function formatDate(dateStr?: string) {
           <p class="text-sm text-gray-400 dark:text-slate-500 mb-4">{{ t('claudecode.platform') }}: {{ versionInfo.platform }}</p>
           <button
             :disabled="downloading"
-            class="px-6 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+            class="px-6 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
             @click="downloadCLI"
           >
             <svg v-if="downloading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -532,8 +532,8 @@ function formatDate(dateStr?: string) {
               </div>
               <button
                 :disabled="togglingSandbox || !isInstalled"
-                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                :class="configInfo?.sandbox_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                :class="configInfo?.sandbox_enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
                 role="switch"
                 :aria-checked="configInfo?.sandbox_enabled ? 'true' : 'false'"
                 @click="toggleSandbox"
@@ -556,8 +556,8 @@ function formatDate(dateStr?: string) {
                   </div>
                   <button
                     :disabled="togglingNetwork || !isInstalled"
-                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    :class="configInfo?.network_enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    :class="configInfo?.network_enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
                     role="switch"
                     :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
                     @click="toggleNetwork"
@@ -589,8 +589,8 @@ function formatDate(dateStr?: string) {
                     </div>
                     <button
                       :disabled="togglingWhitelist || !isInstalled"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      :class="isWhitelistEnabled ? 'bg-accent' : 'bg-gray-200 dark:bg-slate-600'"
+                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      :class="isWhitelistEnabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
                       role="switch"
                       :aria-checked="isWhitelistEnabled ? 'true' : 'false'"
                       @click.stop="toggleWhitelist"
@@ -650,13 +650,13 @@ function formatDate(dateStr?: string) {
                               <input
                                 v-model="editPath"
                                 type="text"
-                                class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-accent focus:border-accent"
+                                class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
                                 :placeholder="t('claudecode.directoryPathPlaceholder')"
                               />
                               <input
                                 v-model="editAlias"
                                 type="text"
-                                class="sm:w-32 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-accent focus:border-accent"
+                                class="sm:w-32 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
                                 :placeholder="t('claudecode.directoryAliasPlaceholder')"
                               />
                             </div>
@@ -693,20 +693,20 @@ function formatDate(dateStr?: string) {
                         <input
                           v-model="newDirPath"
                           type="text"
-                          class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-accent"
+                          class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
                           :placeholder="t('claudecode.directoryPathPlaceholder')"
                           @keyup.enter="addDirectory"
                         />
                         <input
                           v-model="newDirAlias"
                           type="text"
-                          class="sm:w-32 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-accent"
+                          class="sm:w-32 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
                           :placeholder="t('claudecode.directoryAliasPlaceholder')"
                           @keyup.enter="addDirectory"
                         />
                         <button
                           :disabled="savingWhitelist || !newDirPath.trim()"
-                          class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                           @click="addDirectory"
                         >
                           <svg v-if="savingWhitelist" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -736,7 +736,7 @@ function formatDate(dateStr?: string) {
                 href="https://docs.anthropic.com/en/docs/claude-code"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-mono transition-colors"
+                class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white text-sm font-mono transition-colors"
                 :title="t('claudecode.viewDocs')"
               >
                 ({{ latestVersionDisplay }} {{ t('claudecode.available') }})
@@ -753,20 +753,20 @@ function formatDate(dateStr?: string) {
           <!-- Update Available Banner -->
           <div
             v-if="updateInfo?.update_available || versionInfo.update_available"
-            class="bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-600 rounded-lg p-4 mb-4"
+            class="bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-4 mb-4"
           >
             <div class="flex items-center justify-between flex-wrap gap-3">
               <div>
-                <p class="text-blue-800 dark:text-blue-200 font-medium">
+                <p class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white font-medium">
                   {{ t('claudecode.updateAvailableBanner') }}
                 </p>
-                <p class="text-blue-600 dark:text-blue-300 text-sm">
+                <p class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white text-sm">
                   {{ t('claudecode.latestVersion') }}: {{ updateInfo?.latest_version || t('common.unknown') }}
                 </p>
               </div>
               <button
                 :disabled="updating"
-                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
                 @click="updateCLI"
               >
                 <svg v-if="updating" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -792,7 +792,7 @@ function formatDate(dateStr?: string) {
           <div class="flex flex-wrap gap-3">
             <button
               :disabled="checking"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
               @click="checkForUpdates"
             >
               <svg v-if="checking" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

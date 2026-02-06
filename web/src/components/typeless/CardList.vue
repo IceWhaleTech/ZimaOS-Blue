@@ -20,7 +20,7 @@ function renderContent(content: string): string {
 </script>
 
 <template>
-  <div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -97,7 +97,7 @@ function renderContent(content: string): string {
     <div v-else-if="card.variant === 'timeline'" class="p-4">
       <div class="relative">
         <!-- Timeline line -->
-        <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-gray-700" />
+        <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-700 dark:bg-gray-700" />
 
         <!-- Timeline items -->
         <div class="space-y-4">
@@ -108,10 +108,10 @@ function renderContent(content: string): string {
           >
             <!-- Timeline dot -->
             <div
-              class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-800"
+              class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700"
               :class="
                 index === 0
-                  ? 'border-blue-500 bg-blue-500'
+                  ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700'
                   : 'border-gray-300 dark:border-gray-600'
               "
             />

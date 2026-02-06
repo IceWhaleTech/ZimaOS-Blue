@@ -2,6 +2,7 @@
 package security
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -20,14 +21,17 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // TLSManager manages TLS certificates.
 type TLSManager struct {
-	mu          sync.RWMutex
-	config      *TLSManagerConfig
-	certificate *tls.Certificate
-	certInfo    *CertificateInfo
+	mu            sync.RWMutex
+	config        *TLSManagerConfig
+	certificate   *tls.Certificate
+	certInfo      *CertificateInfo
+	autocertMgr   *autocert.Manager
+	renewalCancel context.CancelFunc
 }
 
 // TLSManagerConfig holds TLS manager configuration.
@@ -196,7 +200,20 @@ func (m *TLSManager) GetCertificateInfo() *CertificateInfo {
 // The config uses GetCertificate callback for hot-reload support.
 func (m *TLSManager) GetTLSConfig() *tls.Config {
 	return &tls.Config{
-		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			// Try autocert first if configured
+			m.mu.RLock()
+			autocertMgr := m.autocertMgr
+			m.mu.RUnlock()
+
+			if autocertMgr != nil {
+				cert, err := autocertMgr.GetCertificate(hello)
+				if err == nil {
+					return cert, nil
+				}
+			}
+
+			// Fall back to loaded certificate
 			cert := m.GetCertificate()
 			if cert == nil {
 				return nil, fmt.Errorf("no certificate loaded")
@@ -388,12 +405,15 @@ type ACMEConfig struct {
 
 // ACMEStatus represents the status of ACME certificate.
 type ACMEStatus struct {
-	Configured bool             `json:"configured"`
-	Email      string           `json:"email"`
-	Domains    []string         `json:"domains"`
-	Provider   string           `json:"provider"`
-	CertInfo   *CertificateInfo `json:"cert_info,omitempty"`
-	Error      string           `json:"error,omitempty"`
+	Configured    bool             `json:"configured"`
+	Email         string           `json:"email"`
+	Domains       []string         `json:"domains"`
+	Provider      string           `json:"provider"`
+	CertInfo      *CertificateInfo `json:"cert_info,omitempty"`
+	Error         string           `json:"error,omitempty"`
+	AutoRenewal   bool             `json:"auto_renewal"`
+	NextRenewal   *time.Time       `json:"next_renewal,omitempty"`
+	DaysUntilExp  int              `json:"days_until_expiry,omitempty"`
 }
 
 // RequestACMECertificate requests a certificate from an ACME provider.
@@ -426,11 +446,134 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 		return fmt.Errorf("failed to create ACME cache directory: %w", err)
 	}
 
-	// Note: Full ACME implementation requires golang.org/x/crypto/acme/autocert
-	// For now, we save the configuration and return instructions
-	// The actual certificate request happens when the HTTPS server starts
+	// Initialize autocert manager
+	m.autocertMgr = &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Email:      config.Email,
+		HostPolicy: autocert.HostWhitelist(config.Domains...),
+		Cache:      autocert.DirCache(cacheDir),
+	}
+
+	// Start renewal checker
+	m.startRenewalChecker()
 
 	return nil
+}
+
+// startRenewalChecker starts a background goroutine to check certificate expiry
+func (m *TLSManager) startRenewalChecker() {
+	if m.renewalCancel != nil {
+		m.renewalCancel()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.renewalCancel = cancel
+
+	go func() {
+		ticker := time.NewTicker(12 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.checkAndRenew()
+			}
+		}
+	}()
+}
+
+// checkAndRenew checks if certificate needs renewal and renews if necessary
+func (m *TLSManager) checkAndRenew() {
+	m.mu.RLock()
+	certInfo := m.certInfo
+	autocertMgr := m.autocertMgr
+	domains := m.config.ACMEDomains
+	m.mu.RUnlock()
+
+	if certInfo == nil || autocertMgr == nil || len(domains) == 0 {
+		return
+	}
+
+	// Renew if certificate expires within 30 days
+	if time.Until(certInfo.NotAfter) < 30*24*time.Hour {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		// Force renewal by getting certificate
+		cert, err := autocertMgr.GetCertificate(&tls.ClientHelloInfo{
+			ServerName: domains[0],
+		})
+		if err != nil {
+			return
+		}
+
+		m.mu.Lock()
+		m.certificate = cert
+		if len(cert.Certificate) > 0 {
+			if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
+				m.certInfo = parseCertInfo(x509Cert)
+			}
+		}
+		m.mu.Unlock()
+
+		// Save to disk
+		_ = m.saveCertToDisk(cert)
+		_ = ctx
+	}
+}
+
+// saveCertToDisk saves the certificate to configured file paths
+func (m *TLSManager) saveCertToDisk(cert *tls.Certificate) error {
+	if m.config.CertFile == "" || m.config.KeyFile == "" || len(cert.Certificate) == 0 {
+		return nil
+	}
+
+	// Encode certificate
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
+
+	// Encode private key
+	var keyPEM []byte
+	switch key := cert.PrivateKey.(type) {
+	case *ecdsa.PrivateKey:
+		keyDER, err := x509.MarshalECPrivateKey(key)
+		if err != nil {
+			return err
+		}
+		keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	default:
+		keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return err
+		}
+		keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	}
+
+	if err := os.MkdirAll(filepath.Dir(m.config.CertFile), 0750); err != nil {
+		return err
+	}
+	if err := os.WriteFile(m.config.CertFile, certPEM, 0644); err != nil {
+		return err
+	}
+	return os.WriteFile(m.config.KeyFile, keyPEM, 0600)
+}
+
+// GetAutocertManager returns the autocert manager for use with HTTP server
+func (m *TLSManager) GetAutocertManager() *autocert.Manager {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.autocertMgr
+}
+
+// StopRenewalChecker stops the background renewal checker
+func (m *TLSManager) StopRenewalChecker() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.renewalCancel != nil {
+		m.renewalCancel()
+		m.renewalCancel = nil
+	}
 }
 
 // GetACMEStatus returns the current ACME configuration status.
@@ -439,17 +582,35 @@ func (m *TLSManager) GetACMEStatus() *ACMEStatus {
 	defer m.mu.RUnlock()
 
 	status := &ACMEStatus{
-		Configured: m.config.ACMEEmail != "" && len(m.config.ACMEDomains) > 0,
-		Email:      m.config.ACMEEmail,
-		Domains:    m.config.ACMEDomains,
-		Provider:   m.config.ACMEProvider,
+		Configured:  m.config.ACMEEmail != "" && len(m.config.ACMEDomains) > 0,
+		Email:       m.config.ACMEEmail,
+		Domains:     m.config.ACMEDomains,
+		Provider:    m.config.ACMEProvider,
+		AutoRenewal: m.autocertMgr != nil,
 	}
 
 	if m.certInfo != nil {
 		status.CertInfo = m.certInfo
+		status.DaysUntilExp = int(time.Until(m.certInfo.NotAfter).Hours() / 24)
+		// Renewal happens 30 days before expiry
+		renewalTime := m.certInfo.NotAfter.Add(-30 * 24 * time.Hour)
+		status.NextRenewal = &renewalTime
 	}
 
 	return status
+}
+
+// GetHTTPHandler returns an HTTP handler for ACME HTTP-01 challenges.
+// This should be mounted on port 80 to handle Let's Encrypt challenges.
+func (m *TLSManager) GetHTTPHandler() http.Handler {
+	m.mu.RLock()
+	autocertMgr := m.autocertMgr
+	m.mu.RUnlock()
+
+	if autocertMgr != nil {
+		return autocertMgr.HTTPHandler(nil)
+	}
+	return nil
 }
 
 // SetHTTPSOnly enables or disables HTTPS-only mode.

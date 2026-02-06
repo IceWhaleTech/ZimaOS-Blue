@@ -122,7 +122,7 @@ export function parseInline(text: string): string {
   // Links: [text](url)
   result = result.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">$1</a>'
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-gray-900 dark:text-white hover:underline">$1</a>'
   )
 
   return result
@@ -256,7 +256,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           result.push('</thead>')
           result.push('<tbody>')
         } else {
-          result.push('<tr class="even:bg-gray-50 dark:even:bg-gray-800/50">')
+          result.push('<tr class="even:bg-gray-50 dark:even:bg-gray-700/50">')
           row.forEach(cell => {
             result.push(`<td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${parseInline(cell)}</td>`)
           })
@@ -302,8 +302,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         const code = codeBlockContent.join('\n')
         const highlighted = highlightCode(code, codeBlockLang)
         result.push(
-          `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-900">` +
-            `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-800 text-gray-400 text-sm">` +
+          `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
+            `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
             `<span>${codeBlockLang || 'code'}</span>` +
             `<button class="copy-btn hover:text-white" data-code="${escapeHtml(code)}">Copy</button>` +
             `</div>` +

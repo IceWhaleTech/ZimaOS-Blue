@@ -97,10 +97,55 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	s := deps.Services
 	cfg := deps.ServerConfig
 	logger := deps.Logger
+	dataDir := cfg.DataDir
+
+	// Initialize TLS manager with correct data directory
+	certsDir := filepath.Join(dataDir, "certs")
+	acmeDir := deps.Config.Server.TLS.ACMEDir
+	if acmeDir == "" {
+		acmeDir = filepath.Join(certsDir, "acme")
+	}
+	security.SetGlobalTLSManagerConfig(&security.TLSManagerConfig{
+		CertFile:     filepath.Join(certsDir, "server.crt"),
+		KeyFile:      filepath.Join(certsDir, "server.key"),
+		ACMEDir:      acmeDir,
+		SelfSigned:   deps.Config.Server.TLS.SelfSigned,
+		ACMEEmail:    deps.Config.Server.TLS.ACMEEmail,
+		ACMEDomains:  strings.Split(deps.Config.Server.TLS.ACMEDomains, ","),
+		ACMEProvider: deps.Config.Server.TLS.ACMEProvider,
+		AutoCert:     deps.Config.Server.TLS.AutoCert,
+		HTTPSOnly:    deps.Config.Server.TLS.Enabled,
+		HTTPSPort:    deps.Config.Server.TLS.Port,
+	})
 
 	// HTTPS redirect middleware (must be first)
 	tlsManager := security.GetGlobalTLSManager()
 	if tlsManager != nil {
+		// Try to load existing certificate from disk
+		if err := tlsManager.LoadCertificate(); err != nil {
+			logger.Debug("No existing TLS certificate found", zap.Error(err))
+		} else {
+			logger.Info("TLS certificate loaded from disk")
+		}
+
+		// Start ACME auto-renewal if configured
+		if deps.Config.Server.TLS.AutoCert && deps.Config.Server.TLS.ACMEEmail != "" && deps.Config.Server.TLS.ACMEDomains != "" {
+			domains := strings.Split(deps.Config.Server.TLS.ACMEDomains, ",")
+			for i := range domains {
+				domains[i] = strings.TrimSpace(domains[i])
+			}
+			if err := tlsManager.RequestACMECertificate(&security.ACMEConfig{
+				Email:    deps.Config.Server.TLS.ACMEEmail,
+				Domains:  domains,
+				Provider: deps.Config.Server.TLS.ACMEProvider,
+				CacheDir: acmeDir,
+			}); err != nil {
+				logger.Warn("Failed to initialize ACME auto-renewal", zap.Error(err))
+			} else {
+				logger.Info("ACME auto-renewal initialized", zap.Strings("domains", domains))
+			}
+		}
+
 		e.Use(tlsManager.HTTPSRedirectMiddleware())
 	}
 

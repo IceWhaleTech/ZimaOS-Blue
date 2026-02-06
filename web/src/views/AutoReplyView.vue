@@ -165,7 +165,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
           {{ t('autoReply.testRules') }}
         </button>
         <button
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
           @click="openCreateModal"
         >
           <svg
@@ -189,26 +189,26 @@ async function handleTest(message: string, channel?: string): Promise<void> {
 
     <!-- Stats Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
         <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ stats.total }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('autoReply.totalRules') }}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
         <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ stats.enabled }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('autoReply.enabled') }}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
         <div class="text-2xl font-bold text-gray-500 dark:text-gray-400">{{ stats.disabled }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('autoReply.disabled') }}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
-        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ stats.totalMatches }}</div>
+      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ stats.totalMatches }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('autoReply.totalMatches') }}</div>
       </div>
     </div>
 
     <!-- Filters -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 mb-6 shadow">
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 mb-6 shadow">
       <div class="flex flex-col md:flex-row gap-4">
         <!-- Search -->
         <div class="flex-1">
@@ -231,7 +231,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
               v-model="searchQuery"
               type="text"
               :placeholder="t('autoReply.searchRules')"
-              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             />
           </div>
         </div>
@@ -239,7 +239,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
         <!-- Type Filter -->
         <select
           v-model="filterType"
-          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
         >
           <option value="all">{{ t('autoReply.allTypes') }}</option>
           <option value="keyword">{{ t('autoReply.keyword') }}</option>
@@ -252,7 +252,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
         <!-- Status Filter -->
         <select
           v-model="filterStatus"
-          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 dark:border-gray-600"
+          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
         >
           <option value="all">{{ t('autoReply.allStatus') }}</option>
           <option value="enabled">{{ t('autoReply.enabled') }}</option>
@@ -284,7 +284,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
     </div>
 
     <!-- Empty State -->
-    <div v-else class="bg-white dark:bg-gray-800 rounded-lg p-12 text-center shadow">
+    <div v-else class="bg-white dark:bg-gray-700 rounded-lg p-12 text-center shadow">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         class="h-12 w-12 mx-auto text-gray-600 mb-4"
@@ -309,7 +309,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
       </p>
       <button
         v-if="!searchQuery && filterType === 'all' && filterStatus === 'all'"
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
         @click="openCreateModal"
       >
         {{ t('autoReply.createRule') }}
@@ -322,7 +322,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="closeModals"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
+      <div class="bg-white dark:bg-gray-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
         <div class="p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('autoReply.createRule') }}</h3>
@@ -358,7 +358,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="closeModals"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
+      <div class="bg-white dark:bg-gray-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
         <div class="p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('autoReply.editRule', { name: selectedRule.name }) }}</h3>
@@ -395,7 +395,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="closeModals"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
+      <div class="bg-white dark:bg-gray-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
         <div class="p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('autoReply.testAutoReplyRules') }}</h3>
@@ -432,7 +432,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="closeModals"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6 shadow-xl">
+      <div class="bg-white dark:bg-gray-700 rounded-lg max-w-md w-full p-6 shadow-xl">
         <div class="flex items-center gap-3 mb-4">
           <div class="p-2 bg-red-100 dark:bg-red-600/20 rounded-full">
             <svg
@@ -457,7 +457,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
         </p>
         <div class="flex justify-end gap-3">
           <button
-            class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
             @click="closeModals"
           >
             {{ t('common.cancel') }}

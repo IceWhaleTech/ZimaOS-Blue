@@ -104,7 +104,7 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg p-6 shadow">
     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       {{ t('metrics.tokenUsage') }}
     </h3>

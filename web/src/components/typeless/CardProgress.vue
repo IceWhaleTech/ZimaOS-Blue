@@ -7,7 +7,7 @@ const props = defineProps<{
 }>()
 
 const statusColors = {
-  running: 'bg-blue-500',
+  running: 'bg-gray-700 dark:bg-gray-700',
   completed: 'bg-green-500',
   failed: 'bg-red-500',
   paused: 'bg-amber-500',
@@ -24,7 +24,7 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 p-4">
     <div class="flex items-center justify-between mb-3">
       <h4 class="font-medium text-gray-900 dark:text-white">
         {{ card.title }}
@@ -33,7 +33,7 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
         v-if="card.status"
         class="text-sm flex items-center gap-1"
         :class="{
-          'text-blue-500': card.status === 'running',
+          'text-gray-900 dark:text-white': card.status === 'running',
           'text-green-500': card.status === 'completed',
           'text-red-500': card.status === 'failed',
           'text-amber-500': card.status === 'paused',
@@ -45,7 +45,7 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
     </div>
 
     <!-- Progress bar -->
-    <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
+    <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
       <div
         class="h-full transition-all duration-300 rounded-full"
         :class="statusColors[card.status || 'running']"
@@ -69,8 +69,8 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
         <span
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs"
           :class="{
-            'bg-gray-200 dark:bg-gray-700 text-gray-500': step.status === 'pending',
-            'bg-blue-100 dark:bg-blue-900/30 text-blue-500': step.status === 'running',
+            'bg-gray-700 dark:bg-gray-700 text-gray-500': step.status === 'pending',
+            'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 text-gray-900 dark:text-white': step.status === 'running',
             'bg-green-100 dark:bg-green-900/30 text-green-500': step.status === 'completed',
             'bg-red-100 dark:bg-red-900/30 text-red-500': step.status === 'failed',
           }"

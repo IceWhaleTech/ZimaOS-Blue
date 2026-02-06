@@ -39,7 +39,7 @@ function getChangeIcon(item: MetricItem): string {
 </script>
 
 <template>
-  <div class="metric-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+  <div class="metric-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
     <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
@@ -50,7 +50,7 @@ function getChangeIcon(item: MetricItem): string {
       <div
         v-for="(metric, index) in card.metrics"
         :key="index"
-        class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+        class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
       >
         <!-- Icon and Label -->
         <div class="flex items-center gap-2 mb-2">

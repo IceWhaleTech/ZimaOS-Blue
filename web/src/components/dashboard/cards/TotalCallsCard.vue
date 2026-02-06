@@ -38,7 +38,7 @@ function formatNumber(num: number): string {
       </div>
     </div>
     <div class="mt-2 flex items-center text-sm">
-      <span :class="stats && stats.successRate >= 95 ? 'text-green-500' : 'text-orange-500'">
+      <span :class="stats && stats.successRate >= 95 ? 'text-green-700' : 'text-orange-500'">
         {{ stats ? stats.successRate.toFixed(1) : '-' }}%
       </span>
       <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('metrics.successRate') }}</span>

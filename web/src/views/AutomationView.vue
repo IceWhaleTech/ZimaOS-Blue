@@ -176,12 +176,12 @@ onUnmounted(() => {
 
       <!-- Cron Jobs Card -->
       <div
-        class="glass-card p-6 cursor-pointer hover:scale-[1.02] transition-all duration-200 group"
+        class="glass-card p-6 cursor-pointer hover:scale-[1.02] transition-all duration-200 group bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20"
         @click="navigateToPage('/cron')"
       >
         <div class="flex items-start justify-between">
           <div class="flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -396,15 +396,6 @@ onUnmounted(() => {
           <span>{{ t('automation.actions.controlLights') }}</span>
         </button>
         <button
-          class="px-4 py-2 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-colors flex items-center space-x-2"
-          @click="navigateToPage('/cron')"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          <span>{{ t('automation.actions.createJob') }}</span>
-        </button>
-        <button
           class="px-4 py-2 rounded-lg bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 transition-colors flex items-center space-x-2"
           @click="navigateToPage('/workflows')"
         >
@@ -423,7 +414,7 @@ onUnmounted(() => {
           <span>{{ t('automation.actions.createRule') }}</span>
         </button>
         <button
-          class="px-4 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors flex items-center space-x-2"
+          class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 text-blue-600 dark:text-blue-400 hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-900/50 dark:hover:to-blue-800/50 transition-colors flex items-center space-x-2"
           @click="navigateToPage('/browser-automation')"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

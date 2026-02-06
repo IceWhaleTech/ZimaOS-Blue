@@ -646,7 +646,7 @@ onMounted(() => {
       </div>
       <div class="flex gap-2">
         <button
-          class="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
+          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
           @click="showAddModal = true"
         >
           <span>+</span>
@@ -663,7 +663,7 @@ onMounted(() => {
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
           activeTab === tab
-            ? 'bg-accent text-white'
+            ? 'bg-gray-700 dark:bg-gray-700 text-white'
             : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600'
         ]"
         @click="activeTab = tab"
@@ -683,7 +683,7 @@ onMounted(() => {
         :placeholder="t('providerPool.search')"
         autocomplete="off"
         data-form-filler-ignore
-        class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+        class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
       />
     </div>
 
@@ -694,27 +694,27 @@ onMounted(() => {
         'mb-4 p-3 rounded-lg border',
         store.trialQuota.exhausted
           ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-          : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+          : 'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600'
       ]"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-lg">{{ store.trialQuota.exhausted ? '⚠️' : '🎁' }}</span>
           <div>
-            <h4 class="font-medium text-sm" :class="store.trialQuota.exhausted ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'">
+            <h4 class="font-medium text-sm" :class="store.trialQuota.exhausted ? 'text-red-700 dark:text-red-300' : 'text-gray-600 dark:text-gray-400'">
               {{ t('providerPool.trialQuota.title') }}
             </h4>
-            <p class="text-xs" :class="store.trialQuota.exhausted ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'">
+            <p class="text-xs" :class="store.trialQuota.exhausted ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
               {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: store.trialQuota.tokens_remaining }) }}
             </p>
           </div>
         </div>
-        <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'">
+        <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
           <div>{{ t('providerPool.trialQuota.tokensRemaining', { remaining: store.trialQuota.tokens_remaining, limit: store.trialQuota.token_limit }) }}</div>
-          <div class="mt-1 w-24 h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+          <div class="mt-1 w-24 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all"
-              :class="store.trialQuota.exhausted ? 'bg-red-500' : 'bg-blue-500'"
+              :class="store.trialQuota.exhausted ? 'bg-red-500' : 'bg-gray-400 dark:bg-gray-500'"
               :style="{ width: `${Math.max(0, Math.min(100, (store.trialQuota.tokens_remaining / store.trialQuota.token_limit) * 100))}%` }"
             ></div>
           </div>
@@ -724,7 +724,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="store.loading" class="text-center py-8">
-      <div class="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full mx-auto"></div>
+      <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full mx-auto"></div>
       <p class="text-gray-400 mt-2 text-sm">{{ t('common.loading') }}</p>
     </div>
 
@@ -750,7 +750,7 @@ onMounted(() => {
             {{ t('ideDiscovery.noConfigsHint') }}
           </p>
           <button
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors"
             @click="showIDEDiscoveryModal = true"
           >
             {{ t('ideDiscovery.scan') }}
@@ -770,9 +770,9 @@ onMounted(() => {
           :class="[
             'p-3 rounded-lg border transition-all select-none group/card',
             store.selectedProviderId === provider.id
-              ? 'bg-accent/10 dark:bg-accent/20 border-accent'
+              ? 'bg-gray-100 dark:bg-gray-700/20 border-gray-300 dark:border-gray-600'
               : 'bg-gray-50 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600',
-            dragOverProvider === provider.id ? 'border-accent border-dashed bg-accent/5' : '',
+            dragOverProvider === provider.id ? 'border-gray-300 dark:border-gray-600 border-dashed bg-gray-100 dark:bg-gray-700/10' : '',
             draggedProvider?.id === provider.id ? 'opacity-50' : '',
             draggedProvider ? 'cursor-grabbing' : 'cursor-pointer'
           ]"
@@ -831,7 +831,7 @@ onMounted(() => {
                   class="sr-only peer"
                   @change="toggleProvider(provider)"
                 />
-                <div class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-accent"></div>
+                <div class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-gray-700 dark:bg-gray-700"></div>
               </label>
             </div>
           </div>
@@ -844,7 +844,7 @@ onMounted(() => {
 
       <!-- Provider Details -->
       <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
-        <div v-if="currentTabSelectedProvider" class="bg-gray-50 dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+        <div v-if="currentTabSelectedProvider" class="bg-white dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
               <div class="relative group">
@@ -892,7 +892,7 @@ onMounted(() => {
                     :class="[
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
                       currentTabSelectedProvider.location === 'cloud'
-                        ? 'bg-blue-500 text-white'
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                         : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
                     ]"
                     @click="updateProviderLocation(currentTabSelectedProvider!.id, 'cloud')"
@@ -951,7 +951,7 @@ onMounted(() => {
                   {{ detectingCapabilities === currentTabSelectedProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
                 </button>
                 <button
-                  class="px-2 py-1 bg-accent hover:bg-accent-hover text-white rounded text-xs"
+                  class="px-2 py-1 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded text-xs"
                   @click="openParamsModal"
                 >
                   {{ t('common.edit') }}
@@ -975,7 +975,7 @@ onMounted(() => {
                 </span>
                 <span
                   v-else-if="currentTabSelectedProvider!.model_params?.detected_max_tokens"
-                  class="text-accent ml-1"
+                  class="text-gray-900 dark:text-gray-300 ml-1"
                   :title="t('providerPool.detectedMax')"
                 >
                   {{ currentTabSelectedProvider!.model_params.detected_max_tokens }}
@@ -994,7 +994,7 @@ onMounted(() => {
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
               <button
                 v-if="currentTabSelectedProvider!.type !== 'trial'"
-                class="px-2 py-1 bg-accent hover:bg-accent-hover text-white rounded text-xs"
+                class="px-2 py-1 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded text-xs"
                 @click="openKeyModal(currentTabSelectedProvider!.id)"
               >
                 + {{ t('providerPool.addKey') }}
@@ -1039,17 +1039,17 @@ onMounted(() => {
           </div>
 
           <!-- Trial Quota Section (only for trial providers) -->
-          <div v-if="currentTabSelectedProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <h3 class="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">{{ t('providerPool.trial.name') }}</h3>
+          <div v-if="currentTabSelectedProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
+            <h3 class="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">{{ t('providerPool.trial.name') }}</h3>
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs">
-                <span class="text-blue-700 dark:text-blue-300">{{ t('providerPool.trial.tokensUsed', { remaining: store.trialQuota.token_limit - store.trialQuota.tokens_used, total: store.trialQuota.token_limit }) }}</span>
-                <div class="relative w-24 h-4 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                <span class="text-gray-700 dark:text-gray-400">{{ t('providerPool.trial.tokensUsed', { remaining: store.trialQuota.token_limit - store.trialQuota.tokens_used, total: store.trialQuota.token_limit }) }}</span>
+                <div class="relative w-24 h-4 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
                   <div
-                    class="h-full bg-blue-500 dark:bg-blue-400 transition-all"
+                    class="h-full bg-gray-400 dark:bg-gray-500 transition-all"
                     :style="{ width: `${Math.max(3, Math.min(100, ((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100))}%` }"
                   />
-                  <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm">
+                  <span class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-gray-900 dark:text-gray-700 drop-shadow-sm">
                     {{ Math.round(((store.trialQuota.token_limit - store.trialQuota.tokens_used) / store.trialQuota.token_limit) * 100) }}%
                   </span>
                 </div>
@@ -1068,7 +1068,7 @@ onMounted(() => {
                 <span class="text-gray-500 text-xs ml-1">({{ selectedProviderModels.length }})</span>
                 <span
                   v-if="currentTabSelectedProvider?.allowed_models?.length"
-                  class="text-accent text-xs ml-1"
+                  class="text-gray-900 dark:text-gray-300 text-xs ml-1"
                   :title="t('providerPool.filteredModels')"
                 >
                   ({{ t('providerPool.filtered') }})
@@ -1098,7 +1098,7 @@ onMounted(() => {
                     </span>
                     <!-- Pricing display -->
                     <span
-                      :class="hasCustomPricing(model.id) ? 'text-accent' : 'text-green-500'"
+                      :class="hasCustomPricing(model.id) ? 'text-gray-900 dark:text-gray-300' : 'text-green-500'"
                       class="whitespace-nowrap cursor-pointer hover:underline"
                       :title="hasCustomPricing(model.id) ? t('providerPool.customPricing') : t('providerPool.defaultPricing')"
                       @click.stop="openPricingModal(model)"
@@ -1140,7 +1140,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-else class="bg-gray-50 dark:bg-slate-800/30 rounded-lg border border-gray-200 dark:border-slate-700 p-8 text-center">
+        <div v-else class="bg-white dark:bg-slate-800/30 rounded-lg border border-gray-200 dark:border-slate-700 p-8 text-center">
           <p class="text-gray-500 dark:text-gray-400 text-sm">{{ t('providerPool.selectProvider') }}</p>
         </div>
       </div>
@@ -1157,7 +1157,7 @@ onMounted(() => {
               v-model="newProvider.name"
               type="text"
               required
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -1167,7 +1167,7 @@ onMounted(() => {
               type="url"
               required
               placeholder="https://api.example.com/v1"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -1178,7 +1178,7 @@ onMounted(() => {
                 :class="[
                   'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-colors',
                   newProvider.location === 'cloud'
-                    ? 'bg-blue-500/20 border-blue-500 text-blue-500'
+                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
                     : 'bg-gray-100 dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'
                 ]"
                 @click="newProvider.location = 'cloud'"
@@ -1216,7 +1216,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
             >
               {{ t('common.add') }}
             </button>
@@ -1237,7 +1237,7 @@ onMounted(() => {
               type="password"
               required
               placeholder="sk-..."
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -1246,7 +1246,7 @@ onMounted(() => {
               v-model="newKey.label"
               type="text"
               :placeholder="t('providerPool.keyLabelPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div class="flex justify-end gap-3 mt-6">
@@ -1259,7 +1259,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
             >
               {{ t('common.add') }}
             </button>
@@ -1280,7 +1280,7 @@ onMounted(() => {
               type="text"
               required
               placeholder="gpt-4, claude-3-opus, etc."
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div>
@@ -1289,7 +1289,7 @@ onMounted(() => {
               v-model="pricingForm.providerId"
               type="text"
               :placeholder="t('providerPool.modelIdPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
           <div class="grid grid-cols-3 gap-3">
@@ -1301,7 +1301,7 @@ onMounted(() => {
                 step="0.01"
                 min="0"
                 required
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -1312,7 +1312,7 @@ onMounted(() => {
                 step="0.01"
                 min="0"
                 required
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
             <div>
@@ -1322,7 +1322,7 @@ onMounted(() => {
                 type="number"
                 step="0.01"
                 min="0"
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
               />
             </div>
           </div>
@@ -1337,7 +1337,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
             >
               {{ t('common.save') }}
             </button>
@@ -1360,7 +1360,7 @@ onMounted(() => {
               min="0"
               max="2"
               :placeholder="t('providerPool.defaultPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
             <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.temperatureHint') }}</p>
           </div>
@@ -1372,11 +1372,11 @@ onMounted(() => {
               step="1"
               min="1"
               :placeholder="t('providerPool.defaultPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
             <p class="text-xs text-gray-400 mt-1">
               {{ t('providerPool.maxTokensHint') }}
-              <span v-if="currentTabSelectedProvider?.model_params?.detected_max_tokens" class="text-accent">
+              <span v-if="currentTabSelectedProvider?.model_params?.detected_max_tokens" class="text-gray-900 dark:text-gray-300">
                 ({{ t('providerPool.detectedMax') }}: {{ currentTabSelectedProvider.model_params.detected_max_tokens }})
               </span>
             </p>
@@ -1390,7 +1390,7 @@ onMounted(() => {
               min="0"
               max="1"
               :placeholder="t('providerPool.defaultPlaceholder')"
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
             <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.topPHint') }}</p>
           </div>
@@ -1404,7 +1404,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
             >
               {{ t('common.save') }}
             </button>
@@ -1421,7 +1421,7 @@ onMounted(() => {
 
         <!-- Loading state -->
         <div v-if="loadingAllModels" class="flex-1 flex items-center justify-center">
-          <div class="animate-spin w-6 h-6 border-2 border-accent border-t-transparent rounded-full"></div>
+          <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full"></div>
         </div>
 
         <!-- Model list -->
@@ -1457,7 +1457,7 @@ onMounted(() => {
               <input
                 type="checkbox"
                 :checked="allowedModelsForm.includes(model.id)"
-                class="w-4 h-4 text-accent bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-accent"
+                class="w-4 h-4 text-gray-900 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-gray-400"
                 @change="toggleModelInAllowedList(model.id)"
               />
               <div class="flex-1 min-w-0">
@@ -1486,7 +1486,7 @@ onMounted(() => {
           <button
             type="button"
             :disabled="savingAllowedModels"
-            class="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg disabled:opacity-50"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg disabled:opacity-50"
             @click="saveAllowedModels"
           >
             {{ savingAllowedModels ? t('common.saving') : t('common.save') }}

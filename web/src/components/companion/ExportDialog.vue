@@ -115,7 +115,7 @@ function toggleSelectAll() {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       @click.self="emit('close')"
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
         <!-- Header -->
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -145,7 +145,7 @@ function toggleSelectAll() {
                 :class="[
                   'p-3 rounded-lg border-2 text-left transition-colors',
                   format === opt.value
-                    ? 'border-accent bg-accent/5'
+                    ? 'border-gray-900 dark:border-gray-700 bg-gray-700 dark:bg-gray-700/5'
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
                 ]"
                 @click="format = opt.value as 'json' | 'csv'"
@@ -165,7 +165,7 @@ function toggleSelectAll() {
             </label>
             <select
               v-model="dateRange"
-              class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent"
+              class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             >
               <option v-for="opt in dateRangeOptions" :key="opt.value" :value="opt.value">
                 {{ t(opt.label) }}
@@ -209,7 +209,7 @@ function toggleSelectAll() {
                 <input
                   type="checkbox"
                   :checked="selectAllSessions"
-                  class="w-4 h-4 text-accent rounded border-gray-300 dark:border-gray-600 focus:ring-accent"
+                  class="w-4 h-4 text-gray-900 dark:text-gray-300 rounded border-gray-300 dark:border-gray-600 focus:ring-gray-400"
                   @change="toggleSelectAll"
                 />
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -228,7 +228,7 @@ function toggleSelectAll() {
                     type="checkbox"
                     :checked="selectAllSessions || selectedSessions.includes(session.id)"
                     :disabled="selectAllSessions"
-                    class="w-4 h-4 text-accent rounded border-gray-300 dark:border-gray-600 focus:ring-accent disabled:opacity-50"
+                    class="w-4 h-4 text-gray-900 dark:text-gray-300 rounded border-gray-300 dark:border-gray-600 focus:ring-gray-400 disabled:opacity-50"
                     @change="toggleSession(session.id)"
                   />
                   <div class="flex-1 min-w-0">
@@ -254,7 +254,7 @@ function toggleSelectAll() {
             {{ t('common.cancel') }}
           </button>
           <button
-            class="px-4 py-2 text-sm bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             :disabled="exporting"
             @click="handleExport"
           >

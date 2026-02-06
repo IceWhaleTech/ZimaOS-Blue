@@ -28,14 +28,14 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
   <!-- Only render in Tauri desktop app -->
   <div
     v-if="isTauri"
-    class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden"
+    class="bg-white dark:bg-gray-700 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden"
   >
     <!-- Header -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          class="w-5 h-5 text-blue-500"
+          class="w-5 h-5 text-gray-900 dark:text-white"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -97,8 +97,8 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
 
       <!-- Loading state -->
       <div v-else-if="loading && !addresses" class="space-y-3">
-        <div class="h-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-        <div class="h-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+        <div class="h-10 bg-gray-700 dark:bg-gray-700 rounded animate-pulse" />
+        <div class="h-10 bg-gray-700 dark:bg-gray-700 rounded animate-pulse" />
       </div>
 
       <!-- Addresses -->

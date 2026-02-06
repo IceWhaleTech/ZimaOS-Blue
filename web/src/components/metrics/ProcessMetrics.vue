@@ -90,13 +90,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+  <div class="bg-white dark:bg-gray-700 rounded-lg p-6 shadow">
     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       {{ t('metrics.processMetrics') }}
     </h3>
 
     <div v-if="loading && !echoStats" class="flex items-center justify-center py-8">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
     </div>
 
     <div v-else-if="error" class="text-center py-8 text-red-500">

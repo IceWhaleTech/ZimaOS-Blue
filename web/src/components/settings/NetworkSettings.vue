@@ -225,7 +225,7 @@ onMounted(() => {
             {{ t('settings.network.tls.acme.request') }}
           </button>
           <button
-            class="px-3 py-1.5 text-sm bg-accent text-white rounded-lg hover:bg-accent/90"
+            class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90"
             @click="showUploadDialog = true"
           >
             {{ t('settings.network.tls.uploadCert') }}
@@ -285,7 +285,7 @@ onMounted(() => {
       </div>
 
       <!-- HTTPS-Only Toggle -->
-      <div v-if="tlsConfig?.has_cert" class="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <div v-if="tlsConfig?.has_cert" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
         <div class="flex items-center justify-between">
           <div>
             <h4 class="font-medium text-gray-900 dark:text-white">{{ t('settings.network.tls.httpsOnly') }}</h4>
@@ -299,13 +299,13 @@ onMounted(() => {
               class="sr-only peer"
               @change="updateHTTPSOnly(($event.target as HTMLInputElement).checked)"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/20 dark:peer-focus:ring-accent/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-400/20 dark:peer-focus:ring-gray-400/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:bg-gray-700"></div>
           </label>
         </div>
       </div>
 
       <!-- No Certificate -->
-      <div v-else class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
+      <div v-else class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-center">
         <svg class="w-12 h-12 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
@@ -326,7 +326,7 @@ onMounted(() => {
       </div>
 
       <div v-if="loading" class="flex items-center justify-center py-8">
-        <svg class="animate-spin w-6 h-6 text-accent" fill="none" viewBox="0 0 24 24">
+        <svg class="animate-spin w-6 h-6 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
@@ -334,14 +334,14 @@ onMounted(() => {
 
       <template v-else-if="corsConfig">
         <div class="flex gap-2 mb-4">
-          <input v-model="newOrigin" type="text" :placeholder="t('settings.network.originPlaceholder')" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-accent border border-gray-200 dark:border-gray-600" @keyup.enter="addOrigin" />
-          <button class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50" :disabled="addingOrigin || !newOrigin.trim()" @click="addOrigin">{{ t('common.add') }}</button>
+          <input v-model="newOrigin" type="text" :placeholder="t('settings.network.originPlaceholder')" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-gray-600" @keyup.enter="addOrigin" />
+          <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 disabled:opacity-50" :disabled="addingOrigin || !newOrigin.trim()" @click="addOrigin">{{ t('common.add') }}</button>
         </div>
 
         <div v-if="corsConfig.dynamic_origins.length > 0" class="mb-4">
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('settings.network.dynamicOrigins') }}</h4>
           <div class="space-y-2">
-            <div v-for="origin in corsConfig.dynamic_origins" :key="origin" class="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <div v-for="origin in corsConfig.dynamic_origins" :key="origin" class="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
               <span class="text-sm text-gray-900 dark:text-white font-mono">{{ origin }}</span>
               <button class="p-1 text-gray-400 hover:text-red-500 transition-colors" @click="removeOrigin(origin)">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -353,7 +353,7 @@ onMounted(() => {
         <div>
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('settings.network.defaultOrigins') }}</h4>
           <div class="space-y-2">
-            <div v-for="origin in corsConfig.allowed_origins.filter(o => !corsConfig!.dynamic_origins.includes(o))" :key="origin" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div v-for="origin in corsConfig.allowed_origins.filter(o => !corsConfig!.dynamic_origins.includes(o))" :key="origin" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <span class="text-sm text-gray-600 dark:text-gray-400 font-mono">{{ origin }}</span>
               <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('settings.network.builtIn') }}</span>
             </div>
@@ -365,14 +365,14 @@ onMounted(() => {
     <!-- Upload Certificate Dialog -->
     <Teleport to="body">
       <div v-if="showUploadDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showUploadDialog = false">
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-white dark:bg-gray-700 rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.uploadCert') }}</h3>
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('settings.network.tls.certPem') }}</label>
               <textarea v-model="certPem" rows="6" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 font-mono text-sm" :placeholder="t('settings.network.tls.certPlaceholder')" @blur="parseCert" />
             </div>
-            <div v-if="parsedCertInfo" class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
+            <div v-if="parsedCertInfo" class="p-3 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 rounded-lg text-sm">
               <div><strong>{{ t('settings.network.tls.domains') }}:</strong> {{ parsedCertInfo.domains.join(', ') }}</div>
               <div><strong>{{ t('settings.network.tls.validUntil') }}:</strong> {{ new Date(parsedCertInfo.not_after).toLocaleDateString() }}</div>
             </div>
@@ -383,7 +383,7 @@ onMounted(() => {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg" @click="showUploadDialog = false">{{ t('common.cancel') }}</button>
-            <button class="px-4 py-2 bg-accent text-white rounded-lg disabled:opacity-50" :disabled="uploading || !certPem || !keyPem" @click="uploadCertificate">
+            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg disabled:opacity-50" :disabled="uploading || !certPem || !keyPem" @click="uploadCertificate">
               {{ uploading ? t('common.uploading') : t('common.upload') }}
             </button>
           </div>
@@ -394,7 +394,7 @@ onMounted(() => {
     <!-- Self-Signed Dialog -->
     <Teleport to="body">
       <div v-if="showSelfSignedDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showSelfSignedDialog = false">
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+        <div class="bg-white dark:bg-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.generateSelfSigned') }}</h3>
           <div class="space-y-4">
             <div>
@@ -409,7 +409,7 @@ onMounted(() => {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg" @click="showSelfSignedDialog = false">{{ t('common.cancel') }}</button>
-            <button class="px-4 py-2 bg-accent text-white rounded-lg disabled:opacity-50" :disabled="generating" @click="generateSelfSigned">
+            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg disabled:opacity-50" :disabled="generating" @click="generateSelfSigned">
               {{ generating ? t('common.generating') : t('common.generate') }}
             </button>
           </div>
@@ -420,7 +420,7 @@ onMounted(() => {
     <!-- ACME Dialog -->
     <Teleport to="body">
       <div v-if="showACMEDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showACMEDialog = false">
-        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+        <div class="bg-white dark:bg-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.acme.title') }}</h3>
           <div class="space-y-4">
             <div>
