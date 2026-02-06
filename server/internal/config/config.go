@@ -33,6 +33,7 @@ type Config struct {
 	Statistics    StatisticsConfig    `mapstructure:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
 	Proxy         *proxy.ProxyConfig  `mapstructure:"proxy"`           // v0.10.5.1: API Proxy
+	Update        UpdateConfig        `mapstructure:"update"`          // OTA Update
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
 	ClaudeCode ClaudeCodeConfig `mapstructure:"claudecode"`
@@ -272,6 +273,17 @@ type CgroupCPUConfig struct {
 	Enabled    bool `mapstructure:"enabled"`
 	MaxPercent int  `mapstructure:"max_percent"`
 	Weight     int  `mapstructure:"weight"`
+}
+
+// UpdateConfig holds OTA update configuration.
+type UpdateConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	CheckInterval  time.Duration `mapstructure:"check_interval"`
+	AutoDownload   bool          `mapstructure:"auto_download"`
+	AutoApply      bool          `mapstructure:"auto_apply"`
+	ReleaseChannel string        `mapstructure:"release_channel"`
+	BackupCount    int           `mapstructure:"backup_count"`
+	StoragePath    string        `mapstructure:"storage_path"`
 }
 
 type ServerConfig struct {
@@ -791,4 +803,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("proxy.quota_monitor.critical_threshold", 5.0)
 	v.SetDefault("proxy.quota_monitor.track_tokens", true)
 	v.SetDefault("proxy.quota_monitor.track_requests", true)
+
+	// OTA Update defaults
+	v.SetDefault("update.enabled", true)
+	v.SetDefault("update.check_interval", "24h")
+	v.SetDefault("update.auto_download", false)
+	v.SetDefault("update.auto_apply", false)
+	v.SetDefault("update.release_channel", "stable")
+	v.SetDefault("update.backup_count", 3)
+	v.SetDefault("update.storage_path", "./data/updates")
 }

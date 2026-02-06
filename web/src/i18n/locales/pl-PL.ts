@@ -889,8 +889,8 @@ export default {
     trialQuota: {
       title: 'Limit próbny',
       exhausted: 'Limit próbny wyczerpany',
-      remaining: '{tokens} tokenów pozostało, {conversations} rozmów pozostało',
-      tokensUsed: '{used} / {limit} tokenów użytych',
+      remaining: '{tokens} tokenów pozostało',
+      tokensRemaining: '{remaining} / {limit} tokenów pozostało',
     },
     providers: 'Dostawcy',
     models: 'Modele',

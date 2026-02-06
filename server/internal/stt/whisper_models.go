@@ -22,6 +22,7 @@ type WhisperModelInfo struct {
 	Filename    string `json:"filename"`
 	Downloaded  bool   `json:"downloaded"`
 	Active      bool   `json:"active"`
+	Recommended bool   `json:"recommended"`
 }
 
 // DownloadProgress tracks download progress.
@@ -59,6 +60,7 @@ var whisperModels = []WhisperModelInfo{
 		Size:        "142 MB",
 		URL:         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
 		Filename:    "ggml-base.bin",
+		Recommended: true,
 	},
 	{
 		ID:          "whisper-small",
@@ -72,9 +74,9 @@ var whisperModels = []WhisperModelInfo{
 		ID:          "whisper-large-v3-turbo",
 		Name:        "speech.asrModelInfo.whisperLargeTurbo.name",
 		Description: "speech.asrModelInfo.whisperLargeTurbo.description",
-		Size:        "809 MB",
-		URL:         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
-		Filename:    "ggml-large-v3-turbo.bin",
+		Size:        "547 MB",
+		URL:         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+		Filename:    "ggml-large-v3-turbo-q5_0.bin",
 	},
 }
 
@@ -155,9 +157,15 @@ func (m *WhisperModelManager) GetModelStatus() ModelStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// When downloading, return the model being downloaded, not the active model
+	modelType := m.activeModel
+	if m.downloading && m.currentModel != "" {
+		modelType = m.currentModel
+	}
+
 	return ModelStatus{
 		Ready:       m.isModelDownloaded(m.activeModel),
-		ModelType:   m.activeModel,
+		ModelType:   modelType,
 		Downloading: m.downloading,
 		Progress:    m.progress,
 	}

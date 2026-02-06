@@ -133,3 +133,57 @@ func (s *service) GetWhisperProvider() *WhisperProvider {
 	}
 	return nil
 }
+
+// lazyService implements lazy initialization for STT service.
+type lazyService struct {
+	modelPath string
+	service   Service
+	provider  *WhisperProvider
+	once      sync.Once
+	mu        sync.RWMutex
+}
+
+// NewLazyService creates a new STT service that initializes Whisper on first use.
+func NewLazyService(modelPath string) Service {
+	return &lazyService{
+		modelPath: modelPath,
+	}
+}
+
+func (s *lazyService) init() {
+	s.once.Do(func() {
+		s.provider = NewWhisperProvider(&WhisperConfig{
+			ModelPath: s.modelPath,
+		})
+		s.service = NewServiceWithProvider(s.provider)
+	})
+}
+
+func (s *lazyService) Transcribe(ctx context.Context, req *TranscribeRequest) (*TranscribeResponse, error) {
+	s.init()
+	return s.service.Transcribe(ctx, req)
+}
+
+func (s *lazyService) TranscribeWithProvider(ctx context.Context, providerType ProviderType, req *TranscribeRequest) (*TranscribeResponse, error) {
+	s.init()
+	return s.service.TranscribeWithProvider(ctx, providerType, req)
+}
+
+func (s *lazyService) TranscribeStream(ctx context.Context, req *TranscribeRequest, callback StreamCallback) error {
+	s.init()
+	return s.service.TranscribeStream(ctx, req, callback)
+}
+
+func (s *lazyService) ListProviders() []ProviderType {
+	s.init()
+	return s.service.ListProviders()
+}
+
+func (s *lazyService) GetDefaultProvider() ProviderType {
+	return ProviderWhisper
+}
+
+func (s *lazyService) GetWhisperProvider() *WhisperProvider {
+	s.init()
+	return s.provider
+}

@@ -6,8 +6,10 @@ import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import ImagePreview from '@/components/chat/ImagePreview.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
+import { useLocaleStore } from '@/stores/locale'
 
 const { t } = useI18n()
+const localeStore = useLocaleStore()
 
 export interface FileAttachment {
   id: string
@@ -329,8 +331,9 @@ async function startRecording() {
       // Convert webm to wav for whisper.cpp
       const wavBlob = await convertToWav(audioBlob)
 
-      // Transcribe audio
-      const response = await voiceApi.transcribe(wavBlob, 'wav')
+      // Transcribe audio with user's locale language
+      const lang = localeStore.currentLocale.split('-')[0]
+      const response = await voiceApi.transcribe(wavBlob, 'wav', lang)
       if (response.data.text) {
         // Append transcribed text to message
         if (message.value.trim()) {

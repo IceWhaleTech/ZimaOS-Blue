@@ -130,7 +130,7 @@ func TestJSONLStorage(t *testing.T) {
 				ToolCall: &ToolCallEvent{
 					ToolName: "search",
 					ToolID:   "tool-1",
-					Duration: 100 * time.Millisecond,
+					Duration: DurationMs(100 * time.Millisecond),
 					Status:   "completed",
 				},
 			},
@@ -273,7 +273,7 @@ func TestJSONLStorage(t *testing.T) {
 				ThreatLevelNone: 8,
 				ThreatLevelLow:  2,
 			},
-			AvgSessionDuration: 5 * time.Minute,
+			AvgSessionDuration: DurationMs(5 * time.Minute),
 		}
 
 		err := storage.SaveDailyStats(ctx, stats)

@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Pokusna kvota',
       exhausted: 'Pokusna kvota iscrpljena',
-      remaining: '{tokens} tokena preostalo, {conversations} razgovora preostalo',
-      tokensUsed: '{used} / {limit} tokena korišteno',
+      remaining: '{tokens} tokena preostalo',
+      tokensRemaining: '{remaining} / {limit} tokena preostalo',
     },
     testConnection: 'Testiraj vezu',
     noProviders: 'Nema konfiguriranih pružatelja',

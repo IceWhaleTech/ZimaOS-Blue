@@ -1,6 +1,9 @@
 // Tray icon management module
 // Handles system tray functionality
 
+// Note: These utilities are kept for future tray menu implementation
+#![allow(dead_code)]
+
 use log::info;
 
 /// Tray menu item IDs

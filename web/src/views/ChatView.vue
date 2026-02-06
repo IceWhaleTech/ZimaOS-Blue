@@ -233,6 +233,13 @@ async function handleSend(message: string, attachments?: FileAttachment[]) {
   await chatStore.sendMessage(message, attachments)
 }
 
+// Handle voice transcript from TalkMode - auto send to AI
+async function handleVoiceTranscript(text: string) {
+  if (text.trim()) {
+    await chatStore.sendMessage(text)
+  }
+}
+
 function handleCancel() {
   chatStore.cancelStreaming()
 }
@@ -989,7 +996,7 @@ onUnmounted(() => {
       <TalkMode
         v-model="showTalkMode"
         :conversation-id="chatStore.currentConversationId || undefined"
-        @transcript="(text) => chatInputRef?.setInput(text)"
+        @transcript="handleVoiceTranscript"
       />
     </main>
   </div>

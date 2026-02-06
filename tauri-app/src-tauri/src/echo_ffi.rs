@@ -5,6 +5,7 @@
 // instead of the sidecar process approach used on Windows.
 
 #![cfg(target_os = "macos")]
+#![allow(dead_code)]
 
 use log::{error, info};
 use std::ffi::CString;

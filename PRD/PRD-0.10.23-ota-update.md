@@ -1,6 +1,6 @@
 # PRD: OTA Update System for ZimaOS-Echo
 
-**Version**: 0.x
+**Version**: 0.10.23
 **Author**: ZimaOS-Echo Team
 **Status**: Draft
 **Created**: 2026-01-28

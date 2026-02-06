@@ -5784,7 +5784,7 @@ dependencies = [
 
 [[package]]
 name = "zimaos-echo"
-version = "0.10.17"
+version = "0.10.22"
 dependencies = [
  "env_logger",
  "log",

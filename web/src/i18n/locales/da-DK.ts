@@ -811,8 +811,8 @@ export default {
     trialQuota: {
       title: 'Prøvekvote',
       exhausted: 'Prøvekvote opbrugt',
-      remaining: '{tokens} tokens tilbage, {conversations} samtaler tilbage',
-      tokensUsed: '{used} / {limit} tokens brugt',
+      remaining: '{tokens} tokens tilbage',
+      tokensRemaining: '{remaining} / {limit} tokens tilbage',
     },
     providers: 'Udbydere',
     models: 'Modeller',

@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Cuóta Triail',
       exhausted: 'Cuóta triail ídithe',
-      remaining: '{tokens} comharthaí fágtha, {conversations} comhrá fágtha',
-      tokensUsed: '{used} / {limit} comharthaí úsáidte',
+      remaining: '{tokens} comharthaí fágtha',
+      tokensRemaining: '{remaining} / {limit} comharthaí fágtha',
     },
     testConnection: 'Tástáil nasc',
     noProviders: 'Níl aon soláthraithe cumraithe',

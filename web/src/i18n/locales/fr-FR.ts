@@ -1245,8 +1245,8 @@ export default {
     trialQuota: {
       title: 'Quota d\'essai',
       exhausted: 'Quota d\'essai épuisé. Veuillez configurer un fournisseur.',
-      remaining: '{tokens} tokens restants, {conversations} conversations',
-      tokensUsed: '{used} / {limit} tokens',
+      remaining: '{tokens} tokens restants',
+      tokensRemaining: '{remaining} / {limit} tokens restants',
     },
     search: 'Rechercher des fournisseurs...',
     routingStrategy: 'Stratégie de routage',
@@ -2009,19 +2009,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: '75MB - Le plus petit modèle Whisper. Optimisé pour les appareils à ressources limitées et démarrage rapide.',
+        description: 'Le plus petit modèle Whisper. Optimisé pour les appareils à ressources limitées.',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: '142MB - Bon équilibre entre précision et performance. Adapté à la reconnaissance vocale générale.',
+        description: 'Bon équilibre entre précision et performance.',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description: '466MB - Plus précis que Base. Meilleur pour les audios complexes ou quand la précision est prioritaire.',
+        description: 'Plus précis que Base. Meilleur pour les audios complexes.',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [Recommandé]',
-        description: '809MB - Modèle large distillé - 6x plus rapide que large-v3 avec une précision similaire.',
+        description: 'Modèle large distillé - 6x plus rapide que large-v3.',
       },
     },
   },

@@ -94,6 +94,10 @@ export class SSEClient {
         const { done, value } = await reader.read()
 
         if (done) {
+          // Stream closed without [DONE] - check if we received any data
+          if (!receivedData) {
+            options.onError?.(new Error('NO_STREAM_DATA'))
+          }
           break
         }
 
@@ -118,6 +122,12 @@ export class SSEClient {
 
             try {
               const chunk: StreamChunk = JSON.parse(data)
+              // Check for error in chunk
+              if (chunk.error) {
+                options.onError?.(new Error(chunk.error))
+                this.isConnected = false
+                break
+              }
               // Mark that we received actual content
               if (chunk.delta) {
                 receivedData = true

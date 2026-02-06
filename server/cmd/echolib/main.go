@@ -7,9 +7,7 @@ import "C"
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,14 +16,13 @@ import (
 	"unsafe"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
 
-	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
@@ -34,30 +31,26 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/homeassistant"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/metrics"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/permission"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/voice"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/workflow"
 )
 
 var (
-	version   = "0.10.4"
+	version   = "0.10.22"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -168,6 +161,11 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		dataDir = "./data"
 	}
 
+	// Initialize logger with ring buffer for log viewing
+	if err := logger.Init(&cfg.Log); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
 	// Initialize zap logger
 	zapLogger, err := zap.NewProduction()
 	if err != nil {
@@ -183,120 +181,31 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		zap.String("data_dir", dataDir),
 	)
 
-	// Initialize database
-	if err := os.MkdirAll(dataDir, 0750); err != nil {
-		return fmt.Errorf("failed to create data directory: %w", err)
+	// Create server config
+	serverCfg := &bootstrap.ServerConfig{
+		Port:      cfg.Server.Port,
+		DataDir:   dataDir,
+		Version:   version,
+		BuildTime: buildTime,
+		GitCommit: gitCommit,
+		Mode:      "embedded",
 	}
 
-	dbPath := filepath.Join(dataDir, "echo.db")
-	db, err := sql.Open("sqlite", dbPath)
+	// Initialize services using bootstrap package
+	services, err := bootstrap.InitServices(serverCfg, cfg, zapLogger)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return fmt.Errorf("failed to initialize services: %w", err)
 	}
-	defer db.Close()
+	defer services.Close()
 
-	// Configure database
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Hour)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA foreign_keys=ON")
-
-	// Initialize user repository and service
-	userRepo, err := user.NewSQLiteRepository(db)
-	if err != nil {
-		return fmt.Errorf("failed to initialize user repository: %w", err)
-	}
-
-	passwordHasher := password.NewHasher(&password.Config{
-		Memory:      64 * 1024,
-		Iterations:  3,
-		Parallelism: 2,
-		SaltLength:  16,
-		KeyLength:   32,
-	})
-
-	passwordPolicy := password.NewPolicy(&password.PolicyConfig{
-		MinLength:        cfg.Security.Password.MinLength,
-		RequireUppercase: cfg.Security.Password.RequireUppercase,
-		RequireLowercase: cfg.Security.Password.RequireLowercase,
-		RequireNumber:    cfg.Security.Password.RequireNumber,
-		RequireSpecial:   cfg.Security.Password.RequireSpecial,
-	})
-
-	userService := user.NewService(userRepo, passwordHasher, passwordPolicy, nil)
-	userHandler := user.NewHandler(userService)
-
-	// Initialize memory store
-	memoryDbPath := filepath.Join(dataDir, "memory.db")
-	memoryStore, err := memory.NewStore(memoryDbPath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize memory store: %w", err)
-	}
-
-	// Initialize LLM provider registry
-	llmRegistry := llm.NewProviderRegistry()
-
-	// Register LLM providers from environment variables
-	openaiKey := os.Getenv("OPENAI_API_KEY")
-	if openaiKey != "" {
-		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, ""))
-	} else {
-		llmRegistry.Register(llm.NewOpenAIProvider("", ""))
-	}
-
-	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
-	claudeBaseURL := ""
-	if cfg.ClaudeCode.APIKey != "" {
-		claudeKey = cfg.ClaudeCode.APIKey
-	}
-	if cfg.ClaudeCode.BaseURL != "" {
-		claudeBaseURL = cfg.ClaudeCode.BaseURL
-	}
-	if claudeKey != "" {
-		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
-	} else {
-		llmRegistry.Register(llm.NewClaudeProvider("", ""))
-	}
-
-	ollamaURL := os.Getenv("OLLAMA_URL")
-	if ollamaURL == "" {
-		ollamaURL = "http://localhost:11434"
-	}
-	llmRegistry.Register(llm.NewOllamaProvider(ollamaURL))
-
-	customKey := os.Getenv("CUSTOM_API_KEY")
-	customURL := os.Getenv("CUSTOM_API_URL")
-	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
-
-	grokKey := os.Getenv("GROK_API_KEY")
-	if grokKey != "" {
-		llmRegistry.Register(llm.NewGrokProvider(grokKey, ""))
-	} else {
-		llmRegistry.Register(llm.NewGrokProvider("", ""))
-	}
-
-	qwenKey := os.Getenv("QWEN_API_KEY")
-	if qwenKey != "" {
-		llmRegistry.Register(llm.NewQwenProvider(qwenKey, ""))
-	} else {
-		llmRegistry.Register(llm.NewQwenProvider("", ""))
-	}
-
-	// Initialize tools registry
-	toolRegistry := tools.NewRegistry()
-	tools.RegisterBuiltinTools(toolRegistry)
-
-	// Initialize skill registry
-	skillRegistry := skill.NewRegistry()
-	builtin.RegisterAll(skillRegistry)
-
-	// Initialize plugin registry
-	pluginRegistry := plugin.NewRegistry()
-	pluginStore := plugin.NewStore(plugin.DefaultStoreConfig(), pluginRegistry)
+	// Initialize metrics
+	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir)
+	defer metricsCollector.Stop()
+	defer metricsWriter.Stop()
 
 	// Initialize chat handler
-	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
+	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
+	chatHandler.SetMetricsRecorder(metricsWriter)
 
 	// Initialize external auth service
 	extauthService, _ := extauth.NewService(&extauth.ServiceConfig{
@@ -307,399 +216,236 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	})
 	extauthHandler := extauth.NewHandler(extauthService)
 
-	// Initialize JWT service
-	jwtService := auth.NewJWTService(&auth.JWTConfig{
-		Secret:            cfg.Security.JWT.Secret,
-		Expiration:        cfg.Security.JWT.Expiration,
-		RefreshExpiration: cfg.Security.JWT.RefreshExpiration,
-		Issuer:            cfg.Security.JWT.Issuer,
-	})
-
-	// Initialize API Key service
-	apiKeyDbPath := filepath.Join(dataDir, "apikeys.db")
-	apiKeyService, err := auth.NewAPIKeyService(apiKeyDbPath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize API key service: %w", err)
-	}
-	defer apiKeyService.Close()
-
-	authMiddleware := auth.NewAuthMiddleware(jwtService, apiKeyService)
-	apiKeyHandler := auth.NewAPIKeyHandler(apiKeyService)
-	userHandler.SetJWTService(jwtService)
+	// Initialize plugin registry and store
+	pluginRegistry := plugin.NewRegistry()
+	pluginStore := plugin.NewStore(plugin.DefaultStoreConfig(), pluginRegistry)
 
 	// Initialize auto-reply service
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
 	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
 
-	// Initialize services in parallel
-	var (
-		metricsCollector   *metrics.Collector
-		metricsWriter      *metrics.MetricsWriter
-		backupManager      *backup.Manager
-		backupHandler      *backup.Handler
-		threatDetector     *security.ThreatDetector
-		securityHandler    *security.Handler
-		mfaHandler         *mfa.Handler
-		sandboxManager     *sandbox.Manager
-		sandboxHandler     *sandbox.Handler
-		cronService        *cron.Service
-		cronHandler        *cron.Handler
-		haService          *homeassistant.HAService
-		haHandler          *homeassistant.Handler
-		browserService     *browser.RodService
-		browserHandler     *browser.Handler
-		sttService         stt.Service
-		ttsService         tts.Service
-		voiceHandler       *voice.Handler
-		workflowRepo       *workflow.Repository
-		workflowHandler    *workflow.Handler
-		formfillerStore    *formfiller.Store
-		formfillerHandler  *formfiller.Handler
-		companionStorage   *companion.JSONLStorage
-		companionHandler   *companion.Handler
-		companionWSHandler *companion.WebSocketHandler
-		companionManager   *companion.Manager
-	)
+	// Initialize auth middleware and handlers
+	authMiddleware := auth.NewAuthMiddleware(services.JWTService, services.APIKeyService)
+	apiKeyHandler := auth.NewAPIKeyHandler(services.APIKeyService)
+	userHandler := user.NewHandler(services.UserService)
+	userHandler.SetJWTService(services.JWTService)
 
-	var initWg sync.WaitGroup
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		metricsCollector = metrics.NewCollector(5*time.Second, 120)
-		metricsCollector.Start()
-		metricsWriter = metrics.NewMetricsWriter(nil, metrics.DefaultWriterConfig())
-		metricsWriter.Start()
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		backupManager, _ = backup.NewManager(backup.Config{
-			Enabled:       true,
-			RetentionDays: 7,
-			Path:          filepath.Join(dataDir, "backups"),
-		}, dataDir, dataDir)
-		if backupManager != nil {
-			backupHandler = backup.NewHandler(backupManager)
-		}
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		threatDetector = security.NewThreatDetector()
-		securityHandler = security.NewHandler(threatDetector)
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		mfaHandler = mfa.NewHandler(nil, nil)
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		sandboxManager, _ = sandbox.NewManager(nil)
-		if sandboxManager != nil {
-			sandboxHandler = sandbox.NewHandler(sandboxManager)
-		}
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
-		cronService.RegisterBuiltinHandlers()
-		cronHandler = cron.NewHandler(cronService, zapLogger)
-		cronService.Start()
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		haService = homeassistant.NewHAService()
-		haHandler = homeassistant.NewHandler(haService)
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		browserService, _ = browser.NewService(nil)
-		if browserService != nil {
-			browserHandler = browser.NewHandler(browserService)
-		}
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		sttService, _ = stt.NewService(&stt.ServiceConfig{
-			DefaultProvider: stt.ProviderWhisper,
-			Providers: []stt.ProviderConfig{
-				{
-					Type:    stt.ProviderWhisper,
-					Enabled: true,
-				},
-			},
-		})
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		ttsService, _ = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderEspeakNG,
-			Providers: []tts.ProviderConfig{
-				{Type: tts.ProviderEspeakNG, Enabled: true},
-				{Type: tts.ProviderOpenAI, Enabled: os.Getenv("OPENAI_API_KEY") != "", APIKey: os.Getenv("OPENAI_API_KEY")},
-			},
-		})
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		workflowRepo, _ = workflow.NewRepository(db)
-		if workflowRepo != nil {
-			workflowService, _ := workflow.NewService(nil, workflowRepo)
-			if workflowService != nil {
-				workflowHandler = workflow.NewHandler(workflowService)
-			}
-		}
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		formfillerStore, _ = formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
-		if formfillerStore != nil {
-			formfillerHandler = formfiller.NewHandler(formfillerStore)
-		}
-	}()
-
-	initWg.Add(1)
-	go func() {
-		defer initWg.Done()
-		companionConfig := companion.DefaultConfig()
-		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
-		companionStorage, _ = companion.NewJSONLStorage(companionConfig.Storage.BasePath)
-		if companionStorage != nil {
-			companionStreamer := companion.NewEventStreamer(companionConfig)
-			companionStreamer.Start(ctx)
-			companionManager = companion.NewManager(companionStorage, companionStreamer, companionConfig)
-			companionHandler = companion.NewHandler(companionManager, companionStorage)
-			companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
-		}
-	}()
-
-	initWg.Wait()
-
-	// Initialize voice handler
-	if sttService != nil && ttsService != nil {
-		voiceService := voice.NewService(&voice.ServiceConfig{
-			STTService: sttService,
-			TTSService: ttsService,
-		})
-		voiceHandler = voice.NewHandler(voiceService)
+	// Initialize permission service and set on user handler
+	permRepo, _ := permission.NewRepository(services.DB)
+	if permRepo != nil {
+		permService := permission.NewService(permRepo, services.UserRepo)
+		userHandler.SetPermissionService(permService)
 	}
 
-	// Set metrics recorder on chat handler
-	if metricsWriter != nil {
-		chatHandler.SetMetricsRecorder(metricsWriter)
+	// Initialize backup handler
+	backupManager, _ := backup.NewManager(backup.Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          filepath.Join(dataDir, "backups"),
+	}, dataDir, dataDir)
+	var backupHandler *backup.Handler
+	if backupManager != nil {
+		backupHandler = backup.NewHandler(backupManager)
+	}
+
+	// Initialize security handler
+	threatDetector := security.NewThreatDetector()
+	securityHandler := security.NewHandler(threatDetector)
+
+	// Initialize sandbox handler
+	sandboxManager, _ := sandbox.NewManager(nil)
+	var sandboxHandler *sandbox.Handler
+	if sandboxManager != nil {
+		sandboxHandler = sandbox.NewHandler(sandboxManager)
+	}
+
+	// Initialize cron handler
+	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
+	cronService.RegisterBuiltinHandlers()
+	cronHandler := cron.NewHandler(cronService, zapLogger)
+	cronService.Start()
+
+	// Initialize Home Assistant handler
+	haService := homeassistant.NewHAService()
+	haHandler := homeassistant.NewHandler(haService)
+
+	// Initialize browser handler
+	browserService, _ := browser.NewService(nil)
+	var browserHandler *browser.Handler
+	if browserService != nil {
+		browserHandler = browser.NewHandler(browserService)
+	}
+
+	// Initialize formfiller handler
+	formfillerStore, _ := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
+	var formfillerHandler *formfiller.Handler
+	if formfillerStore != nil {
+		formfillerHandler = formfiller.NewHandler(formfillerStore)
+	}
+
+	// Initialize workflow handler
+	workflowRepo, _ := workflow.NewRepository(services.DB)
+	var workflowHandler *workflow.Handler
+	if workflowRepo != nil {
+		workflowService, _ := workflow.NewService(nil, workflowRepo)
+		if workflowService != nil {
+			workflowHandler = workflow.NewHandler(workflowService)
+		}
+	}
+
+	// Initialize Whisper ASR provider
+	whisperASRProvider := stt.NewWhisperProvider(&stt.WhisperConfig{
+		ModelPath: filepath.Join(dataDir, "whisper-models"),
+	})
+
+	// Create STT service from whisper provider
+	var sttService stt.Service
+	if whisperASRProvider != nil {
+		sttService = stt.NewServiceWithProvider(whisperASRProvider)
+		zapLogger.Info("STT service initialized with Whisper provider")
+	}
+
+	// Initialize voice handler with STT service
+	voiceService := voice.NewService(&voice.ServiceConfig{
+		STTService: sttService,
+	})
+	voiceHandler := voice.NewHandler(voiceService)
+
+	// Initialize speech handler with ASR provider
+	speechService := speech.NewService(&speech.Config{
+		TTS: speech.TTSConfig{Provider: "edge"},
+		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper"},
+	}, nil, nil)
+	if whisperASRProvider != nil {
+		speechService.SetASRProvider(whisperASRProvider)
+	}
+	speechHandler := speech.NewHandler(speechService)
+
+	// Initialize companion handler
+	companionConfig := companion.DefaultConfig()
+	companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+	companionStorage, _ := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+	var companionHandler *companion.Handler
+	var companionWSHandler *companion.WebSocketHandler
+	if companionStorage != nil {
+		companionStreamer := companion.NewEventStreamer(companionConfig)
+		companionStreamer.Start(ctx)
+		companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
+		companionHandler = companion.NewHandler(companionManager, companionStorage)
+		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
+		chatHandler.SetCompanionManager(companionManager)
+	}
+
+	// Initialize provider pool
+	providerPoolPath := filepath.Join(dataDir, "providerpool")
+	providerPool, _ := providerpool.NewPool(providerPoolPath)
+	if providerPool != nil {
+		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
+		chatHandler.SetProviderPool(providerPool)
+	}
+
+	// Initialize ngrok
+	ngrokConfigStore := ngrok.NewConfigStore(dataDir)
+	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
+
+	// Initialize claudecode handler
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+
+	// Set up system prompt builder
+	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
+		WorkspaceDir: dataDir,
+	})
+	systemPromptBuilder.SetToolRegistry(services.ToolRegistry)
+	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
+
+	// Initialize channel config store
+	channelConfigStore := server.NewChannelConfigStore(dataDir)
+
+	// Initialize shared cache
+	sharedCache := proxy.NewCCCache(proxy.DefaultCacheConfig())
+
+	// Initialize memory handler
+	var memoryHandler *server.MemoryHandler
+	vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
+	vectorStore, _ := memory.NewVectorStore(memory.VectorStoreConfig{
+		DBPath:       vectorDbPath,
+		EmbeddingDim: 1536,
+		MaxChunks:    10000,
+		EnableFTS:    true,
+		EnableVec:    true,
+	})
+	if vectorStore != nil {
+		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
+		memoryService := memory.NewMemoryService(hybridSearcher)
+		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
+		memoryHandler = server.NewMemoryHandler(memoryService)
+		memoryHandler.SetUnifiedService(unifiedService)
+
+		// Initialize LayeredMemoryService for dual-layer memory architecture
+		memoryDir := filepath.Join(dataDir, "memory")
+		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
+			BaseDir:            memoryDir,
+			DailyRetentionDays: 30,
+		})
+		if err != nil {
+			zapLogger.Warn("Failed to initialize layered memory service", zap.Error(err))
+		} else {
+			memoryHandler.SetLayeredService(layeredService)
+			zapLogger.Info("Layered memory service initialized", zap.String("dir", memoryDir))
+		}
+
+		// Register memory tools for AI agent access
+		toolsAdapter := memory.NewToolsAdapter(unifiedService)
+		tools.RegisterMemoryTools(services.ToolRegistry, toolsAdapter)
 	}
 
 	// Create Echo server
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
-
-	// Add middleware
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
-
-	// Store server reference
 	echoServer = e
 
-	// Register health endpoint
-	e.GET("/api/v1/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status":  "ok",
-			"service": "zimaos-echo",
-			"version": version,
-		})
+	// Register all routes using bootstrap package
+	bootstrap.RegisterAllRoutes(e, &bootstrap.RoutesDeps{
+		DB:                 services.DB,
+		Config:             cfg,
+		ServerConfig:       serverCfg,
+		Services:           services,
+		Logger:             zapLogger,
+		Ctx:                ctx,
+		MetricsWriter:      metricsWriter,
+		MetricsCollector:   metricsCollector,
+		ChatHandler:        chatHandler,
+		PluginRegistry:     pluginRegistry,
+		PluginStore:        pluginStore,
+		ExtauthService:     extauthService,
+		ExtauthHandler:     extauthHandler,
+		AutoreplyService:   autoreplyService,
+		AutoreplyHandler:   autoreplyHandler,
+		AuthMiddleware:     authMiddleware,
+		APIKeyHandler:      apiKeyHandler,
+		UserHandler:        userHandler,
+		BackupHandler:      backupHandler,
+		SecurityHandler:    securityHandler,
+		SandboxHandler:     sandboxHandler,
+		CronHandler:        cronHandler,
+		HAHandler:          haHandler,
+		BrowserHandler:     browserHandler,
+		VoiceHandler:       voiceHandler,
+		FormfillerHandler:  formfillerHandler,
+		WorkflowHandler:    workflowHandler,
+		CompanionHandler:   companionHandler,
+		CompanionWSHandler: companionWSHandler,
+		ProviderPool:       providerPool,
+		APIKeyService:      services.APIKeyService,
+		SpeechHandler:      speechHandler,
+		NgrokTunnelMgr:     ngrokTunnelMgr,
+		NgrokConfigStore:   ngrokConfigStore,
+		ClaudeCodeHandler:  claudeCodeHandler,
+		ChannelConfigStore: channelConfigStore,
+		SharedCache:        sharedCache,
+		MemoryHandler:      memoryHandler,
 	})
-
-	// Serve embedded frontend
-	web.RegisterStaticRoutes(e)
-
-	// API v1 group
-	v1 := e.Group("/api/v1")
-	api := e.Group("/api")
-
-	// Public auth routes
-	v1.POST("/auth/login", userHandler.Login)
-	v1.POST("/auth/logout", userHandler.Logout)
-
-	authGroup := v1.Group("/auth")
-	extauthHandler.RegisterRoutes(authGroup)
-
-	// Protected routes
-	protected := v1.Group("")
-	protected.Use(authMiddleware.Authenticate())
-
-	protectedAuthGroup := protected.Group("/auth")
-	extauthHandler.RegisterProtectedRoutes(protectedAuthGroup)
-
-	mfaHandler.RegisterRoutes(protected)
-
-	// User routes
-	usersGroup := protected.Group("/users")
-	usersGroup.GET("/me", userHandler.GetCurrentUser)
-	usersGroup.PUT("/me", userHandler.UpdateCurrentUser)
-	usersGroup.GET("", userHandler.ListUsers)
-	usersGroup.POST("", userHandler.CreateUser)
-	usersGroup.GET("/:id", userHandler.GetUser)
-	usersGroup.PUT("/:id", userHandler.UpdateUser)
-	usersGroup.DELETE("/:id", userHandler.DeleteUser)
-	usersGroup.POST("/:id/lock", userHandler.LockUser)
-	usersGroup.POST("/:id/unlock", userHandler.UnlockUser)
-
-	protected.POST("/auth/password", userHandler.ChangePassword)
-
-	apiKeysGroup := protected.Group("/apikeys")
-	apiKeyHandler.RegisterRoutes(apiKeysGroup)
-
-	// Set companion manager and prompt guard
-	if companionManager != nil {
-		chatHandler.SetCompanionManager(companionManager)
-	}
-	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
-	chatHandler.SetPromptGuard(promptGuard)
-
-	// Register chat routes
-	chatHandler.RegisterRoutes(v1)
-	autoreplyHandler.RegisterRoutes(v1)
-
-	// Register network routes
-	networkHandler := networkapi.NewNetworkHandler(cfg.Server.Port)
-	networkHandler.RegisterRoutes(e)
-
-	// Register metrics routes
-	if metricsCollector != nil {
-		metricsHandler := server.NewMetricsHandler(metricsCollector)
-		metricsHandler.RegisterRoutes(v1)
-	}
-	if metricsWriter != nil {
-		detailedMetricsHandler := metrics.NewHandler(metricsWriter)
-		metricsGroup := v1.Group("/metrics")
-		detailedMetricsHandler.RegisterRoutes(metricsGroup)
-	}
-
-	// Register system routes
-	systemHandler := server.NewSystemHandler(version, buildTime, gitCommit, dataDir)
-	systemHandler.RegisterRoutes(v1)
-
-	serviceHandler := server.NewServiceHandler()
-	serviceHandler.RegisterRoutes(v1)
-
-	if backupHandler != nil {
-		backupHandler.RegisterRoutes(v1)
-	}
-
-	skillHandler := server.NewSkillHandler(skillRegistry)
-
-	// Initialize skill store and sync service
-	skillStore, err := skillstore.NewStore(db)
-	if err != nil {
-		zapLogger.Warn("failed to initialize skill store, skill sync disabled", zap.Error(err))
-	} else {
-		skillHandler.SetStore(skillStore)
-
-		// Create sync service with slog logger
-		slogLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-		syncConfig := skillstore.DefaultSyncServiceConfig()
-		syncService := skillstore.NewSyncService(skillStore, syncConfig, slogLogger)
-		skillHandler.SetSyncService(syncService)
-
-		// Start sync service (will sync on startup if not synced today)
-		syncService.Start(ctx)
-		defer syncService.Stop()
-
-		zapLogger.Info("skill store and sync service initialized")
-	}
-
-	skillHandler.RegisterRoutes(v1)
-
-	pluginHandler := server.NewPluginHandler(pluginRegistry)
-	pluginHandler.RegisterRoutes(v1)
-
-	pluginStoreHandler := server.NewPluginStoreHandler(pluginStore)
-	pluginStoreHandler.RegisterRoutes(v1)
-
-	toolStoreHandler := server.NewToolStoreHandler(toolRegistry)
-	toolStoreHandler.RegisterRoutes(v1)
-
-	// Security routes
-	if securityHandler != nil {
-		securityGroup := protected.Group("/security")
-		securityHandler.RegisterRoutes(securityGroup)
-	}
-
-	if sandboxHandler != nil {
-		sandboxGroup := protected.Group("/sandbox")
-		sandboxHandler.RegisterRoutes(sandboxGroup)
-	}
-
-	// API protected routes
-	apiProtected := api.Group("")
-	apiProtected.Use(authMiddleware.Authenticate())
-
-	if cronHandler != nil {
-		cronHandler.RegisterRoutes(apiProtected)
-	}
-
-	if haHandler != nil {
-		haGroup := apiProtected.Group("/homeassistant")
-		haHandler.RegisterRoutes(haGroup)
-	}
-
-	if browserHandler != nil {
-		browserGroup := apiProtected.Group("/browser")
-		browserHandler.RegisterRoutes(browserGroup)
-	}
-
-	if workflowHandler != nil {
-		workflowHandler.RegisterRoutes(e)
-	}
-
-	if voiceHandler != nil {
-		voiceGroup := v1.Group("/voice")
-		voiceHandler.RegisterRoutes(voiceGroup)
-	}
-
-	if formfillerHandler != nil {
-		formfillerGroup := protected.Group("/formfiller")
-		formfillerHandler.RegisterRoutes(formfillerGroup)
-	}
-
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
-	claudeCodeGroup := protected.Group("/claudecode")
-	claudeCodeHandler.RegisterRoutes(claudeCodeGroup)
-	chatHandler.SetClaudeCodeHandler(claudeCodeHandler)
-
-	providerSettingsHandler := server.NewProviderSettingsHandler(chatHandler.GetProviderRegistry(), dataDir)
-	providerSettingsGroup := protected.Group("/providers/settings")
-	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
-
-	// Companion routes
-	if companionHandler != nil {
-		companionHandler.RegisterRoutes(e)
-	}
-	if companionWSHandler != nil {
-		companionWSHandler.RegisterRoutes(e)
-	}
 
 	// Start HTTP server
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
@@ -728,16 +474,8 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Stop services
-		if metricsCollector != nil {
-			metricsCollector.Stop()
-		}
-		if metricsWriter != nil {
-			metricsWriter.Stop()
-		}
-		if cronService != nil {
-			cronService.Stop(shutdownCtx)
-		}
+		metricsCollector.Stop()
+		metricsWriter.Stop()
 
 		return httpServer.Shutdown(shutdownCtx)
 	case err := <-errCh:

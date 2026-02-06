@@ -1308,8 +1308,8 @@ export default {
     trialQuota: {
       title: 'トライアル枠',
       exhausted: 'トライアル枠を使い切りました。プロバイダーを設定してください。',
-      remaining: '残り {tokens} トークン、{conversations} 会話',
-      tokensUsed: '{used} / {limit} トークン',
+      remaining: '残り {tokens} トークン',
+      tokensRemaining: '残り {remaining} / {limit} トークン',
     },
     search: 'プロバイダーを検索...',
     routingStrategy: 'ルーティング戦略',
@@ -1639,6 +1639,7 @@ export default {
       checkScanning: '確認中...',
       fix: '修正',
       fixAll: '一括修正',
+      manualFix: '手動修正',
       fixError: '修正に失敗しました',
       fixPreview: '修正プレビュー',
       fixDescription: '修正内容',
@@ -2525,19 +2526,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: '75MB - 最小の Whisper モデル。リソース制限のあるデバイスや高速起動に最適。精度は大きいモデルより低い。',
+        description: '最小の Whisper モデル。リソース制限のあるデバイスや高速起動に最適。',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: '142MB - 精度とパフォーマンスのバランスが良い。一般的な音声認識に適している。',
+        description: '精度とパフォーマンスのバランスが良い。一般的な音声認識に適している。',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description: '466MB - Base より高精度。複雑な音声や精度重視の場面に適している。',
+        description: 'Base より高精度。複雑な音声や精度重視の場面に適している。',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [推奨]',
-        description: '809MB - 蒸留版大規模モデル - large-v3 の 6 倍高速で同等の精度。速度と品質の最適なバランス。',
+        description: '蒸留版大規模モデル - large-v3 の 6 倍高速で同等の精度。',
       },
     },
   },

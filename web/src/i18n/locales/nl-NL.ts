@@ -889,8 +889,8 @@ export default {
     trialQuota: {
       title: 'Proefquotum',
       exhausted: 'Proefquotum opgebruikt',
-      remaining: '{tokens} tokens resterend, {conversations} gesprekken resterend',
-      tokensUsed: '{used} / {limit} tokens gebruikt',
+      remaining: '{tokens} tokens resterend',
+      tokensRemaining: '{remaining} / {limit} tokens resterend',
     },
     providers: 'Providers',
     models: 'Modellen',

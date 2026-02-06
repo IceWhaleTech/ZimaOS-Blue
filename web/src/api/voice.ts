@@ -155,7 +155,7 @@ export class VoiceWebSocket {
   public onConnect: (() => void) | null = null
   public onDisconnect: (() => void) | null = null
 
-  connect(): Promise<void> {
+  connect(language?: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const token = localStorage.getItem('token')
       if (!token) {
@@ -164,7 +164,8 @@ export class VoiceWebSocket {
       }
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${protocol}//${window.location.host}/api/v1/voice/stream?token=${token}`
+      const lang = language || 'en'
+      const wsUrl = `${protocol}//${window.location.host}/api/v1/voice/stream?token=${token}&language=${lang}`
 
       this.ws = new WebSocket(wsUrl)
 

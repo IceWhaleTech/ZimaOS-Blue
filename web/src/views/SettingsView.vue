@@ -15,6 +15,7 @@ import ServiceManagement from '@/components/ServiceManagement.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
+import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
 
@@ -28,7 +29,7 @@ const themeStore = useThemeStore()
 const saveStatus = ref<string | null>(null)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata' | 'logs'
+type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata' | 'update' | 'logs'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 // Timezone
@@ -266,7 +267,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata', 'logs'] as const"
+        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata', 'update', 'logs'] as const"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
@@ -357,7 +358,6 @@ onMounted(async () => {
 
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
-      <!-- Memory Manager -->
       <MemoryManager @status-change="showSaveStatus" />
 
       <UserDataExport @status-change="showSaveStatus" />
@@ -374,6 +374,11 @@ onMounted(async () => {
           @download="onBackupDownload"
         />
       </div>
+    </div>
+
+    <!-- Update Tab -->
+    <div v-if="activeTab === 'update'">
+      <UpdateSettings />
     </div>
 
     <!-- Logs Tab -->

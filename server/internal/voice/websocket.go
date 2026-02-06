@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -48,10 +47,17 @@ type wsConnection struct {
 
 // HandleStream handles WebSocket connections for voice streaming.
 func (h *WSHandler) HandleStream(c echo.Context) error {
-	// Get user ID from context
+	// Get user ID from context (optional - use anonymous if not authenticated)
 	userID := c.Get("user_id")
-	if userID == nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	userIDStr := "anonymous"
+	if userID != nil {
+		userIDStr = userID.(string)
+	}
+
+	// Get language from query param (default to "en")
+	language := c.QueryParam("language")
+	if language == "" {
+		language = "en"
 	}
 
 	// Upgrade to WebSocket
@@ -64,9 +70,9 @@ func (h *WSHandler) HandleStream(c echo.Context) error {
 	// Create connection wrapper
 	conn := &wsConnection{
 		conn:   ws,
-		userID: userID.(string),
+		userID: userIDStr,
 		config: &VoiceConfig{
-			Language:         "en",
+			Language:         language,
 			Voice:            "alloy",
 			AutoPlayResponse: true,
 		},

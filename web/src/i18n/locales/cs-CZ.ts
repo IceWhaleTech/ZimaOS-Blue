@@ -808,8 +808,8 @@ export default {
     trialQuota: {
       title: 'Zkušební kvóta',
       exhausted: 'Zkušební kvóta vyčerpána',
-      remaining: '{tokens} tokenů zbývá, {conversations} konverzací zbývá',
-      tokensUsed: '{used} / {limit} tokenů použito',
+      remaining: '{tokens} tokenů zbývá',
+      tokensRemaining: '{remaining} / {limit} tokenů zbývá',
     },
     providers: 'Poskytovatelé',
     models: 'Modely',

@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Prøvekvote',
       exhausted: 'Prøvekvote oppbrukt',
-      remaining: '{tokens} tokens gjenstår, {conversations} samtaler gjenstår',
-      tokensUsed: '{used} / {limit} tokens brukt',
+      remaining: '{tokens} tokens gjenstår',
+      tokensRemaining: '{remaining} / {limit} tokens gjenstår',
     },
     testConnection: 'Test tilkobling',
     noProviders: 'Ingen leverandører konfigurert',

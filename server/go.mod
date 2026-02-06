@@ -66,7 +66,6 @@ require (
 	github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getsentry/sentry-go v0.16.0 // indirect
-	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20260204113309-941bdabbe456 // indirect
 	github.com/go-chi/chi/v5 v5.0.8 // indirect
 	github.com/go-chi/cors v1.2.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect

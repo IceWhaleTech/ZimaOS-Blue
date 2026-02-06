@@ -815,8 +815,8 @@ export default {
     trialQuota: {
       title: 'ട്രയൽ ക്വോട്ട',
       exhausted: 'ട്രയൽ ക്വോട്ട തീരുന്നു',
-      remaining: '{tokens} ടോക്കണുകൾ ശേഷിക്കുന്നു, {conversations} സംഭാഷണങ്ങൾ ശേഷിക്കുന്നു',
-      tokensUsed: '{used} / {limit} ടോക്കണുകൾ ഉപയോഗിച്ചു',
+      remaining: '{tokens} ടോക്കണുകൾ ശേഷിക്കുന്നു',
+      tokensRemaining: '{remaining} / {limit} ടോക്കണുകൾ ശേഷിക്കുന്നു',
     },
     testConnection: 'കണക്ഷൻ പരിശോധിക്കുക',
     noProviders: 'പ്രൊവൈഡർമാർ കോൺഫിഗർ ചെയ്തിട്ടില്ല',

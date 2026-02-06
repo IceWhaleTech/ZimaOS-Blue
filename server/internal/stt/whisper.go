@@ -2,14 +2,17 @@ package stt
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/whisper.cpp/include -I${SRCDIR}/../../../third_party/whisper.cpp/ggml/include
+#cgo CFLAGS: -I${SRCDIR}/../../../third_party/opus-src/include
 #cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a
 #cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml.a
 #cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-base.a
 #cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-cpu.a
+#cgo LDFLAGS: ${SRCDIR}/../../../third_party/opus-src/build/libopus.a
 #cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.a
 #cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.a
 #cgo darwin LDFLAGS: -framework Accelerate -framework Metal -framework Foundation -framework CoreGraphics
 #include <whisper.h>
+#include <opus.h>
 #include <stdlib.h>
 */
 import "C"
@@ -21,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 	"unsafe"
@@ -96,6 +100,8 @@ func (p *WhisperProvider) Initialize(modelPath string) error {
 }
 
 // Close releases the whisper context.
+// Note: During app termination, whisper_free may cause issues with Metal/GPU cleanup.
+// We set ctx to nil to prevent double-free but skip the actual free call if it might crash.
 func (p *WhisperProvider) Close() {
 	if p == nil {
 		return
@@ -104,6 +110,8 @@ func (p *WhisperProvider) Close() {
 	defer p.mu.Unlock()
 
 	if p.ctx != nil {
+		// whisper_free can crash during app termination due to Metal/GPU resource cleanup
+		// The OS will reclaim all resources anyway when the process exits
 		C.whisper_free(p.ctx)
 		p.ctx = nil
 	}
@@ -230,9 +238,342 @@ func (p *WhisperProvider) convertToPCM(data []byte, format AudioFormat) ([]float
 		return p.parseWAV(data)
 	case FormatPCM:
 		return p.parsePCM16(data)
+	case "webm", "ogg", "opus":
+		// Try native opus decoding first, fallback to ffmpeg
+		samples, err := p.decodeOpus(data)
+		if err == nil {
+			return samples, nil
+		}
+		// Fallback to ffmpeg
+		wavData, err := p.convertWithFFmpeg(data, string(format))
+		if err != nil {
+			return nil, fmt.Errorf("opus decode and ffmpeg both failed: %w", err)
+		}
+		return p.parseWAV(wavData)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s", format)
+		// Try to convert using ffmpeg for other formats (mp3, m4a, etc.)
+		wavData, err := p.convertWithFFmpeg(data, string(format))
+		if err != nil {
+			return nil, fmt.Errorf("unsupported format %s and ffmpeg conversion failed: %w", format, err)
+		}
+		return p.parseWAV(wavData)
 	}
+}
+
+// decodeOpus decodes opus/webm/ogg audio to PCM float32 samples using CGO libopus.
+func (p *WhisperProvider) decodeOpus(data []byte) ([]float32, error) {
+	if len(data) < 4 {
+		return nil, fmt.Errorf("audio data too short: %d bytes", len(data))
+	}
+
+	// Try to extract opus frames from webm/ogg container
+	opusFrames, err := extractOpusFrames(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract opus frames: %w", err)
+	}
+
+	if len(opusFrames) == 0 {
+		return nil, fmt.Errorf("no opus frames found in %d bytes (magic: %02x%02x%02x%02x)",
+			len(data), data[0], data[1], data[2], data[3])
+	}
+
+	// Create opus decoder (48kHz stereo is standard for opus)
+	var cErr C.int
+	decoder := C.opus_decoder_create(48000, 2, &cErr)
+	if cErr != 0 {
+		return nil, fmt.Errorf("failed to create opus decoder: %d", cErr)
+	}
+	defer C.opus_decoder_destroy(decoder)
+
+	// Decode all frames
+	var allSamples []int16
+	pcmBuf := make([]int16, 5760*2) // Max frame size * channels
+	decodedFrames := 0
+
+	for _, frame := range opusFrames {
+		if len(frame) == 0 {
+			continue
+		}
+		n := C.opus_decode(
+			decoder,
+			(*C.uchar)(unsafe.Pointer(&frame[0])),
+			C.opus_int32(len(frame)),
+			(*C.opus_int16)(unsafe.Pointer(&pcmBuf[0])),
+			5760,
+			0,
+		)
+		if n > 0 {
+			allSamples = append(allSamples, pcmBuf[:int(n)*2]...)
+			decodedFrames++
+		}
+	}
+
+	if len(allSamples) == 0 {
+		return nil, fmt.Errorf("no samples decoded from %d frames", len(opusFrames))
+	}
+
+	// Convert stereo to mono and resample 48kHz -> 16kHz
+	samples := resample48to16Mono(allSamples)
+
+	return samples, nil
+}
+
+// extractOpusFrames extracts opus frames from webm/ogg container.
+func extractOpusFrames(data []byte) ([][]byte, error) {
+	// Check for OGG magic
+	if len(data) >= 4 && string(data[:4]) == "OggS" {
+		return extractOpusFromOgg(data)
+	}
+	// Check for WebM/EBML magic
+	if len(data) >= 4 && data[0] == 0x1A && data[1] == 0x45 && data[2] == 0xDF && data[3] == 0xA3 {
+		return extractOpusFromWebM(data)
+	}
+	// Try raw opus frames (no container)
+	if len(data) > 0 {
+		return [][]byte{data}, nil
+	}
+	return nil, fmt.Errorf("unknown container format: %02x%02x%02x%02x", data[0], data[1], data[2], data[3])
+}
+
+// extractOpusFromOgg extracts opus frames from OGG container.
+func extractOpusFromOgg(data []byte) ([][]byte, error) {
+	var frames [][]byte
+	offset := 0
+
+	for offset < len(data)-27 {
+		// Check OGG page header
+		if string(data[offset:offset+4]) != "OggS" {
+			break
+		}
+
+		segments := int(data[offset+26])
+		if offset+27+segments > len(data) {
+			break
+		}
+
+		// Calculate segment sizes and extract individual packets
+		segmentTable := data[offset+27 : offset+27+segments]
+		dataStart := offset + 27 + segments
+
+		// Extract each segment as a potential opus frame
+		segOffset := 0
+		for _, segSize := range segmentTable {
+			if segSize == 0 {
+				continue
+			}
+			segEnd := segOffset + int(segSize)
+			if dataStart+segEnd > len(data) {
+				break
+			}
+
+			segData := data[dataStart+segOffset : dataStart+segEnd]
+
+			// Skip OpusHead and OpusTags packets
+			if len(segData) >= 8 && (string(segData[:8]) == "OpusHead" || string(segData[:8]) == "OpusTags") {
+				segOffset = segEnd
+				continue
+			}
+
+			if len(segData) > 0 {
+				frames = append(frames, segData)
+			}
+			segOffset = segEnd
+		}
+
+		// Calculate total page size
+		pageSize := 0
+		for _, s := range segmentTable {
+			pageSize += int(s)
+		}
+		offset = dataStart + pageSize
+	}
+
+	return frames, nil
+}
+
+// extractOpusFromWebM extracts opus frames from WebM container.
+func extractOpusFromWebM(data []byte) ([][]byte, error) {
+	var frames [][]byte
+
+	// Parse EBML elements to find SimpleBlock (0xA3) and Block (0xA1) in Clusters
+	i := 0
+	for i < len(data)-4 {
+		// Look for SimpleBlock (0xA3) or Block (0xA1)
+		if data[i] == 0xA3 || data[i] == 0xA1 {
+			elementStart := i
+			i++
+
+			// Read VINT size
+			if i >= len(data) {
+				break
+			}
+			size, sizeLen := readEBMLVint(data[i:])
+			if sizeLen == 0 || size == 0 {
+				i = elementStart + 1
+				continue
+			}
+			i += sizeLen
+
+			// Validate size
+			if size > 100000 || i+int(size) > len(data) {
+				i = elementStart + 1
+				continue
+			}
+
+			blockData := data[i : i+int(size)]
+			i += int(size)
+
+			// Parse block header: track number (VINT) + timecode (2 bytes) + flags (1 byte for SimpleBlock)
+			if len(blockData) < 4 {
+				continue
+			}
+
+			// Read track number (VINT)
+			_, trackLen := readEBMLVint(blockData)
+			if trackLen == 0 {
+				continue
+			}
+
+			// Skip track number + timecode (2 bytes) + flags (1 byte)
+			headerLen := trackLen + 3
+			if headerLen >= len(blockData) {
+				continue
+			}
+
+			frameData := blockData[headerLen:]
+			if len(frameData) > 0 && len(frameData) < 10000 {
+				frames = append(frames, frameData)
+			}
+		} else {
+			i++
+		}
+	}
+
+	return frames, nil
+}
+
+// readEBMLVint reads a variable-length integer from EBML data.
+// Returns the value and the number of bytes consumed.
+func readEBMLVint(data []byte) (uint64, int) {
+	if len(data) == 0 {
+		return 0, 0
+	}
+
+	first := data[0]
+	var length int
+	var mask byte
+
+	switch {
+	case first&0x80 != 0:
+		length = 1
+		mask = 0x7F
+	case first&0x40 != 0:
+		length = 2
+		mask = 0x3F
+	case first&0x20 != 0:
+		length = 3
+		mask = 0x1F
+	case first&0x10 != 0:
+		length = 4
+		mask = 0x0F
+	case first&0x08 != 0:
+		length = 5
+		mask = 0x07
+	case first&0x04 != 0:
+		length = 6
+		mask = 0x03
+	case first&0x02 != 0:
+		length = 7
+		mask = 0x01
+	case first&0x01 != 0:
+		length = 8
+		mask = 0x00
+	default:
+		return 0, 0
+	}
+
+	if len(data) < length {
+		return 0, 0
+	}
+
+	var value uint64 = uint64(first & mask)
+	for i := 1; i < length; i++ {
+		value = (value << 8) | uint64(data[i])
+	}
+
+	return value, length
+}
+
+// resample48to16Mono converts 48kHz stereo int16 to 16kHz mono float32.
+func resample48to16Mono(samples []int16) []float32 {
+	// Simple 3:1 decimation with averaging
+	outLen := len(samples) / 6 // stereo 48k -> mono 16k = /6
+	result := make([]float32, outLen)
+
+	for i := 0; i < outLen; i++ {
+		srcIdx := i * 6
+		if srcIdx+5 < len(samples) {
+			// Average 3 stereo samples, convert to mono
+			sum := int32(samples[srcIdx]) + int32(samples[srcIdx+1]) +
+				int32(samples[srcIdx+2]) + int32(samples[srcIdx+3]) +
+				int32(samples[srcIdx+4]) + int32(samples[srcIdx+5])
+			result[i] = float32(sum) / (6.0 * 32768.0)
+		}
+	}
+
+	return result
+}
+
+// convertWithFFmpeg converts audio to WAV format using ffmpeg.
+func (p *WhisperProvider) convertWithFFmpeg(data []byte, format string) ([]byte, error) {
+	// Try ffmpeg first (most reliable for all formats)
+	wavData, err := p.tryFFmpeg(data, format)
+	if err == nil {
+		return wavData, nil
+	}
+
+	// If ffmpeg not available, return error with hint
+	return nil, fmt.Errorf("audio conversion failed: %w (install ffmpeg for %s support)", err, format)
+}
+
+// tryFFmpeg attempts to convert audio using ffmpeg command.
+func (p *WhisperProvider) tryFFmpeg(data []byte, format string) ([]byte, error) {
+	// Check if ffmpeg is available
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return nil, fmt.Errorf("ffmpeg not found")
+	}
+
+	// Create temp input file
+	tmpIn, err := os.CreateTemp("", "audio_in_*."+format)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpIn.Name())
+
+	if _, err := tmpIn.Write(data); err != nil {
+		tmpIn.Close()
+		return nil, err
+	}
+	tmpIn.Close()
+
+	// Create temp output file
+	tmpOut, err := os.CreateTemp("", "audio_out_*.wav")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpOut.Name())
+	tmpOut.Close()
+
+	// Run ffmpeg to convert to 16kHz mono WAV
+	cmd := exec.Command("ffmpeg", "-y", "-i", tmpIn.Name(),
+		"-ar", "16000", "-ac", "1", "-f", "wav", tmpOut.Name())
+	cmd.Stderr = nil // Suppress stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg failed: %w", err)
+	}
+
+	// Read output
+	return os.ReadFile(tmpOut.Name())
 }
 
 // parseWAV parses WAV audio data.

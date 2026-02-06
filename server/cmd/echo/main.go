@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/feishu"
@@ -72,84 +74,23 @@ var (
 	gitCommit = "unknown"
 )
 
-// loadProvidersFromPool loads providers from Provider Pool and registers them in LLM registry
-// This replaces the environment variable-based provider registration with encrypted storage
-func loadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderRegistry) {
-	if pool == nil || llmRegistry == nil {
-		return
+// getDataDir returns the appropriate data directory based on the platform.
+// On macOS, it uses ~/Library/Application Support/com.zimaos.echo/
+// On other platforms, it uses ./data
+func getDataDir() string {
+	// Check for environment variable override
+	if dir := os.Getenv("ECHO_DATA_DIR"); dir != "" {
+		return dir
 	}
 
-	// Get all enabled providers from the pool
-	providers := pool.Registry.ListEnabled()
-
-	registeredCount := 0
-	for _, provider := range providers {
-		// Get the first enabled API key
-		var apiKey string
-		var baseURL string
-
-		if len(provider.APIKeys) > 0 {
-			for _, key := range provider.APIKeys {
-				if key.Enabled && key.Key != "" {
-					apiKey = key.Key
-					break
-				}
-			}
-		}
-
-		baseURL = provider.BaseURL
-
-		// Map Provider Pool provider to LLM provider
-		var llmProvider llm.Provider
-
-		switch provider.ID {
-		case "openai":
-			llmProvider = llm.NewOpenAIProvider(apiKey, baseURL)
-		case "anthropic":
-			llmProvider = llm.NewClaudeProvider(apiKey, baseURL)
-		case "ollama":
-			// Ollama doesn't need API key
-			if baseURL == "" {
-				baseURL = "http://localhost:11434"
-			}
-			llmProvider = llm.NewOllamaProvider(baseURL)
-		case "custom":
-			llmProvider = llm.NewCustomProvider(apiKey, baseURL)
-		case "grok":
-			llmProvider = llm.NewGrokProvider(apiKey, baseURL)
-		case "qwen":
-			llmProvider = llm.NewQwenProvider(apiKey, baseURL)
-		case "venice":
-			llmProvider = llm.NewVeniceProvider(apiKey, baseURL)
-		case "bedrock":
-			llmProvider = llm.NewBedrockProvider(apiKey, baseURL)
-		case "glm":
-			llmProvider = llm.NewGLMProvider(apiKey, baseURL)
-		default:
-			// For unknown providers, try to use custom provider
-			logger.Debug().
-				Str("provider_id", provider.ID).
-				Str("provider_name", provider.Name).
-				Msg("Unknown provider type, skipping")
-			continue
-		}
-
-		if llmProvider != nil {
-			llmRegistry.Register(llmProvider)
-			registeredCount++
-			logger.Info().
-				Str("provider_id", provider.ID).
-				Str("provider_name", provider.Name).
-				Bool("has_api_key", apiKey != "").
-				Str("base_url", baseURL).
-				Msg("Registered provider from Provider Pool")
+	// On macOS (darwin), use Application Support directory
+	if runtime.GOOS == "darwin" {
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(homeDir, "Library", "Application Support", "com.zimaos.echo")
 		}
 	}
 
-	logger.Info().
-		Int("total_enabled", len(providers)).
-		Int("registered", registeredCount).
-		Msg("Loaded providers from Provider Pool")
+	return "./data"
 }
 
 // runServer is the main server entry point, called by cobra commands
@@ -216,7 +157,7 @@ func main() {
 	logger.Info().Int("pool_size", cfg.Worker.PoolSize).Msg("Worker pool initialized")
 
 	// Initialize database
-	dataDir := "./data"
+	dataDir := getDataDir()
 	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create data directory")
 	}
@@ -564,25 +505,28 @@ func main() {
 		logger.Info().Msg("Browser automation handler initialized")
 	}()
 
-	// Initialize TTS service with Edge TTS as default (high quality), eSpeak-NG as fallback (offline)
-	ttsService, err = tts.NewService(&tts.ServiceConfig{
-		DefaultProvider: tts.ProviderEdge,
-		Providers: []tts.ProviderConfig{
-			{
-				Type:    tts.ProviderEdge,
-				Enabled: true,
+	// Initialize TTS service asynchronously (non-blocking)
+	go func() {
+		var err error
+		ttsService, err = tts.NewService(&tts.ServiceConfig{
+			DefaultProvider: tts.ProviderEdge,
+			Providers: []tts.ProviderConfig{
+				{
+					Type:    tts.ProviderEdge,
+					Enabled: true,
+				},
+				{
+					Type:    tts.ProviderEspeakNG,
+					Enabled: true,
+				},
 			},
-			{
-				Type:    tts.ProviderEspeakNG,
-				Enabled: true,
-			},
-		},
-	})
-	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize TTS service")
-	} else {
-		logger.Info().Msg("TTS service initialized with Edge TTS (default) and eSpeak-NG (fallback)")
-	}
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize TTS service")
+		} else {
+			logger.Info().Msg("TTS service initialized with Edge TTS (default) and eSpeak-NG (fallback)")
+		}
+	}()
 
 	// Critical services in parallel pool
 	initPool.Go(func() {
@@ -694,36 +638,13 @@ func main() {
 	criticalServicesWg.Wait()
 	logger.Info().Msg("Critical services initialized and ready")
 
-	// Get Whisper ASR provider from the STT service
-	var whisperASRProvider *stt.WhisperProvider
-	if sttService != nil {
-		whisperASRProvider = sttService.GetWhisperProvider()
-		if whisperASRProvider != nil {
-			logger.Info().Msg("Using Whisper ASR provider from STT service")
-		}
-	}
+	// Whisper ASR provider will be initialized lazily on first use
+	// This significantly speeds up startup time
+	whisperModelPath := filepath.Join(dataDir, "whisper-models")
 
-	// Create standalone ASR provider if not available from services
-	if whisperASRProvider == nil {
-		whisperASRProvider = stt.NewWhisperProvider(&stt.WhisperConfig{
-			ModelPath: filepath.Join(dataDir, "whisper-models"),
-		})
-		logger.Info().Msg("Created standalone Whisper ASR provider")
-	}
-
-	// Register shutdown hook for Whisper ASR provider
-	if whisperASRProvider != nil {
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			whisperASRProvider.Close()
-			return nil
-		})
-	}
-
-	// Create STT service from whisper provider
-	if whisperASRProvider != nil {
-		sttService = stt.NewServiceWithProvider(whisperASRProvider)
-		logger.Info().Msg("STT service initialized with Whisper provider")
-	}
+	// Create a lazy-loading STT service that initializes Whisper on first use
+	sttService = stt.NewLazyService(whisperModelPath)
+	logger.Info().Msg("STT service configured for lazy initialization")
 
 	// Register deferred cleanup for metrics services
 	if metricsCollector != nil {
@@ -765,7 +686,7 @@ func main() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, whisperASRProvider)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -809,7 +730,7 @@ func main() {
 	logger.Info().Msg("ZimaOS-Echo stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, whisperASRProvider *stt.WhisperProvider) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager) {
 	e := srv.Echo()
 
 	// Initialize connection manager and add middleware for tracking all connections
@@ -832,6 +753,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Public auth routes (login, logout, providers list)
 	v1.POST("/auth/login", userHandler.Login)
 	v1.POST("/auth/logout", userHandler.Logout)
+
+	// Public worker stats endpoint (for bootstrap/health checks)
+	v1.GET("/workers/stats", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, pool.Stats())
+	})
 
 	// Register external auth routes (OAuth/OIDC providers) - public routes
 	authGroup := v1.Group("/auth")
@@ -1101,6 +1027,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	if voiceHandler != nil {
 		voiceGroup := v1.Group("/voice")
 		voiceHandler.RegisterRoutes(voiceGroup)
+		// WebSocket handler for voice streaming
+		voiceWSHandler := voice.NewWSHandler(voiceHandler.Service())
+		voiceWSHandler.RegisterRoutes(voiceGroup)
 		logger.Info().Msg("Voice routes registered")
 	}
 
@@ -1124,10 +1053,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		}
 	}
 	speechHandler := speech.NewHandler(speechService)
-	// Set ASR provider if available
-	if whisperASRProvider != nil {
-		speechService.SetASRProvider(whisperASRProvider)
-		logger.Info().Msg("ASR provider set to Whisper")
+	// Set ASR provider from lazy STT service (will initialize on first use)
+	if sttService != nil {
+		// Get provider lazily - it will be initialized when first accessed
+		if wp := sttService.GetWhisperProvider(); wp != nil {
+			speechService.SetASRProvider(wp)
+			logger.Info().Msg("ASR provider configured (lazy initialization)")
+		}
 	}
 	speechGroup := v1.Group("/speech")
 	speechHandler.RegisterRoutes(speechGroup)
@@ -1191,7 +1123,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Only health checks run asynchronously after server starts
 	if providerPool != nil {
 		// Load providers from Provider Pool and register them in LLM registry
-		loadProvidersFromPool(providerPool, llmRegistry)
+		bootstrap.LoadProvidersFromPool(providerPool, llmRegistry)
 
 		// Set provider pool on chat handler for auto-selecting providers
 		chatHandler.SetProviderPool(providerPool)
@@ -1479,11 +1411,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	channelConfigHandler.SetFactory(channelFactory)
 	channelConfigHandler.RegisterRoutes(api)
 	logger.Info().Msg("Channel config routes registered")
-
-	// Worker stats endpoint
-	v1.GET("/workers/stats", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, pool.Stats())
-	})
 
 	// Register static file routes for embedded frontend (must be last)
 	if web.IsEmbedded() {

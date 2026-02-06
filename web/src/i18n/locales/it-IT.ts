@@ -1582,8 +1582,8 @@ export default {
     trialQuota: {
       title: 'Quota di prova',
       exhausted: 'Quota di prova esaurita',
-      remaining: '{tokens} token rimanenti, {conversations} conversazioni rimanenti',
-      tokensUsed: '{used} / {limit} token utilizzati',
+      remaining: '{tokens} token rimanenti',
+      tokensRemaining: '{remaining} / {limit} token rimanenti',
     },
     providers: 'Provider',
     models: 'Modelli',
@@ -1827,19 +1827,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: '75MB - Modello Whisper più piccolo. Ottimizzato per dispositivi con risorse limitate.',
+        description: 'Modello Whisper più piccolo. Ottimizzato per dispositivi con risorse limitate.',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: '142MB - Buon equilibrio tra precisione e prestazioni. Adatto al riconoscimento vocale generale.',
+        description: 'Buon equilibrio tra precisione e prestazioni.',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description: '466MB - Maggiore precisione rispetto a Base. Migliore per audio complessi.',
+        description: 'Maggiore precisione rispetto a Base. Migliore per audio complessi.',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [Consigliato]',
-        description: '809MB - Modello grande distillato - 6x più veloce di large-v3 con precisione simile.',
+        description: 'Modello grande distillato - 6x più veloce di large-v3.',
       },
     },
   },

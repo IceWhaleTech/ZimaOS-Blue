@@ -62,9 +62,9 @@ func TestTunnelHandler_GetProviders(t *testing.T) {
 		t.Fatal("Response should contain providers array")
 	}
 
-	// Should have 4 providers: auto, ngrok, cloudflare, localtunnel
-	if len(providers) != 4 {
-		t.Errorf("Expected 4 providers, got %d", len(providers))
+	// Should have 3 providers: auto, ngrok, cloudflare
+	if len(providers) != 3 {
+		t.Errorf("Expected 3 providers, got %d", len(providers))
 	}
 
 	// Verify provider IDs
@@ -74,7 +74,7 @@ func TestTunnelHandler_GetProviders(t *testing.T) {
 		providerIDs[provider["id"].(string)] = true
 	}
 
-	expectedProviders := []string{"auto", "ngrok", "cloudflare", "localtunnel"}
+	expectedProviders := []string{"auto", "ngrok", "cloudflare"}
 	for _, expected := range expectedProviders {
 		if !providerIDs[expected] {
 			t.Errorf("Expected provider %s not found", expected)
@@ -382,9 +382,9 @@ func TestCloudflareManager_GetStatus_Initial(t *testing.T) {
 func TestProviderInfos(t *testing.T) {
 	infos := tunnel.GetProviderInfos()
 
-	// 4 providers: auto, ngrok, cloudflare, localtunnel
-	if len(infos) != 4 {
-		t.Errorf("Expected 4 provider infos, got %d", len(infos))
+	// 3 providers: auto, ngrok, cloudflare
+	if len(infos) != 3 {
+		t.Errorf("Expected 3 provider infos, got %d", len(infos))
 	}
 
 	// Check each provider has required fields

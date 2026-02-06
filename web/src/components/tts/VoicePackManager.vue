@@ -11,17 +11,17 @@
         </div>
         <button
           v-if="!pack.downloaded"
-          @click="downloadPack(pack.language)"
           :disabled="loading"
           class="btn-download"
+          @click="downloadPack(pack.language)"
         >
           {{ loading ? 'Downloading...' : 'Download' }}
         </button>
         <button
           v-else
-          @click="deletePack(pack.language)"
           :disabled="loading"
           class="btn-delete"
+          @click="deletePack(pack.language)"
         >
           Delete
         </button>
@@ -39,7 +39,7 @@ import { ref, onMounted } from 'vue'
 import { useTTSStore } from '@/stores/tts'
 
 const ttsStore = useTTSStore()
-const packs = ref<any[]>([])
+const packs = ref<{ id: string; name: string; downloaded: boolean }[]>([])
 const loading = ref(false)
 const error = ref('')
 

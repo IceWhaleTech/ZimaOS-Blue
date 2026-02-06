@@ -233,7 +233,7 @@ const hasAutoPlayed = ref(false)
 const lastPlayedLength = ref(0)
 
 // Watch for content changes during streaming to play incrementally
-watch(() => props.message.content, async (newContent, oldContent) => {
+watch(() => props.message.content, async (newContent, _oldContent) => {
   if (!props.isStreaming || !isAssistant.value) return
 
   const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
@@ -641,7 +641,7 @@ function closeAttachmentPreview() {
 }
 
 // Mobile touch handlers for long-press
-function handleTouchStart(event: TouchEvent) {
+function handleTouchStart(_event: TouchEvent) {
   // Start long-press timer
   longPressTimer.value = window.setTimeout(() => {
     showMobileActions.value = true

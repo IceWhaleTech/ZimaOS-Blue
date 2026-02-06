@@ -37,6 +37,10 @@ fn main() {
         println!("cargo:rustc-link-lib=static=ggml-metal");
         println!("cargo:rustc-link-lib=static=ggml-blas");
 
+        // Link libopus (from third_party)
+        println!("cargo:rustc-link-search=native=../../third_party/opus-src/build");
+        println!("cargo:rustc-link-lib=static=opus");
+
         // Link frameworks for whisper/ggml
         println!("cargo:rustc-link-lib=framework=Accelerate");
         println!("cargo:rustc-link-lib=framework=Metal");

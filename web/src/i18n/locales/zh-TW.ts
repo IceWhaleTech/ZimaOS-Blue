@@ -1324,8 +1324,8 @@ export default {
     trialQuota: {
       title: '試用額度',
       exhausted: '試用額度已用完，請設定您自己的提供商。',
-      remaining: '剩餘 {tokens} tokens，{conversations} 次對話',
-      tokensUsed: '{used} / {limit} tokens',
+      remaining: '剩餘 {tokens} tokens',
+      tokensRemaining: '剩餘 {remaining} / {limit} tokens',
     },
     search: '搜尋提供商...',
     routingStrategy: '路由策略',
@@ -2043,6 +2043,7 @@ export default {
       checkScanning: '檢查中...',
       fix: '修復',
       fixAll: '一鍵修復',
+      manualFix: '手動修復',
       fixError: '修復失敗',
       fixPreview: '修復預覽',
       fixDescription: '修復說明',
@@ -2486,19 +2487,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: '75MB - Whisper 系列中體積最小的模型，適合資源受限設備和快速啟動場景。',
+        description: 'Whisper 系列中體積最小的模型，適合資源受限設備和快速啟動場景。',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: '142MB - 在精度與效能之間取得良好平衡，適合大多數通用語音識別場景。',
+        description: '在精度與效能之間取得良好平衡，適合大多數通用語音識別場景。',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description: '466MB - 比 Base 模型精度更高，適合複雜音訊或對準確性要求較高的場景。',
+        description: '比 Base 模型精度更高，適合複雜音訊或對準確性要求較高的場景。',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [推薦]',
-        description: '809MB - 蒸餾版大模型 - 比 large-v3 快 6 倍，精度相近。速度與品質的最佳平衡。',
+        description: '蒸餾版大模型 - 比 large-v3 快 6 倍，精度相近。',
       },
     },
   },

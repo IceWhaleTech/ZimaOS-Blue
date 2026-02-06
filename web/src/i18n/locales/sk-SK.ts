@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Skúšobná kvóta',
       exhausted: 'Skúšobná kvóta vyčerpaná',
-      remaining: '{tokens} tokenov zostáva, {conversations} rozhovorov zostáva',
-      tokensUsed: '{used} / {limit} tokenov použitých',
+      remaining: '{tokens} tokenov zostáva',
+      tokensRemaining: '{remaining} / {limit} tokenov zostáva',
     },
     testConnection: 'Testovať pripojenie',
     noProviders: 'Žiadni nakonfigurovaní poskytovatelia',

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -330,8 +331,8 @@ func TestHandler_Stats_WithTimeRange(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	e := echo.New()
-	startTime := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
-	endTime := time.Now().Add(1 * time.Hour).Format(time.RFC3339)
+	startTime := url.QueryEscape(time.Now().Add(-1 * time.Hour).Format(time.RFC3339))
+	endTime := url.QueryEscape(time.Now().Add(1 * time.Hour).Format(time.RFC3339))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/stats?start_time="+startTime+"&end_time="+endTime, nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)

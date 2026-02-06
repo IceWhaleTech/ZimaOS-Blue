@@ -1284,8 +1284,8 @@ export default {
     trialQuota: {
       title: '체험 할당량',
       exhausted: '체험 할당량이 소진되었습니다. 제공자를 설정하세요.',
-      remaining: '남은 {tokens} 토큰, {conversations} 대화',
-      tokensUsed: '{used} / {limit} 토큰',
+      remaining: '남은 {tokens} 토큰',
+      tokensRemaining: '남은 {remaining} / {limit} 토큰',
     },
     search: '제공자 검색...',
     routingStrategy: '라우팅 전략',
@@ -1615,6 +1615,7 @@ export default {
       checkScanning: '확인 중...',
       fix: '수정',
       fixAll: '일괄 수정',
+      manualFix: '수동 수정',
       fixError: '수정에 실패했습니다',
       fixPreview: '수정 미리보기',
       fixDescription: '수정 내용',
@@ -2433,19 +2434,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: '75MB - 가장 작은 Whisper 모델. 저사양 기기와 빠른 시작에 최적화. 정확도는 큰 모델보다 낮음.',
+        description: '가장 작은 Whisper 모델. 저사양 기기와 빠른 시작에 최적화.',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: '142MB - 정확도와 성능의 균형. 일반적인 음성 인식에 적합.',
+        description: '정확도와 성능의 균형. 일반적인 음성 인식에 적합.',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description: '466MB - Base보다 높은 정확도. 복잡한 오디오나 정확도가 중요한 경우에 적합.',
+        description: 'Base보다 높은 정확도. 복잡한 오디오나 정확도가 중요한 경우에 적합.',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [권장]',
-        description: '809MB - 증류된 대형 모델 - large-v3보다 6배 빠르고 비슷한 정확도. 속도와 품질의 최적 균형.',
+        description: '증류된 대형 모델 - large-v3보다 6배 빠르고 비슷한 정확도.',
       },
     },
   },

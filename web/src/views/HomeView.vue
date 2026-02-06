@@ -157,6 +157,13 @@ onUnmounted(() => {
       </div>
       <h1 class="hero-title">{{ t('home.welcome') }}</h1>
       <p class="hero-description">{{ t('home.description') }}</p>
+      <p class="hero-cta">
+        <i18n-t keypath="home.startChatCta" tag="span">
+          <template #link>
+            <router-link to="/chat" class="text-accent hover:underline font-medium">{{ t('nav.chat') }}</router-link>
+          </template>
+        </i18n-t>
+      </p>
     </div>
 
     <!-- Dashboard Section -->
@@ -380,6 +387,7 @@ onUnmounted(() => {
 .hero-section {
   text-align: center;
   margin-bottom: 24px;
+  padding-top: 48px;
 }
 
 .hero-icon {

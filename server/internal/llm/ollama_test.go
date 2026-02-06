@@ -27,9 +27,24 @@ func TestNewOllamaProviderCustomBaseURL(t *testing.T) {
 	}
 }
 
-// Test Ollama provider models (static list)
+// Test Ollama provider models (fetches from API)
 func TestOllamaProviderModels(t *testing.T) {
-	provider := NewOllamaProvider("")
+	// Create mock server that returns model list
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"models": []map[string]interface{}{
+					{"name": "llama3.2"},
+					{"name": "mistral"},
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	provider := NewOllamaProvider(server.URL)
 	models := provider.Models()
 	if len(models) == 0 {
 		t.Error("expected at least one model")

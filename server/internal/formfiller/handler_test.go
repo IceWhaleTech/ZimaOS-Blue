@@ -414,7 +414,7 @@ func TestDetectFieldsHandler(t *testing.T) {
 	// Check that email was detected
 	var emailFound bool
 	for _, field := range response.Fields {
-		if field.FieldType == string(FieldEmail) {
+		if field.FieldType == FieldEmail {
 			emailFound = true
 			if field.Confidence < 0.8 {
 				t.Errorf("Expected high confidence for email field, got %f", field.Confidence)

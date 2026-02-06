@@ -4,10 +4,14 @@ import { useI18n } from 'vue-i18n'
 import { AudioRecorder, VoiceWebSocket, playAudioFromBase64 } from '@/api/voice'
 import type { VoiceSessionState } from '@/api/voice'
 import { speechApi } from '@/api/speech'
-import { convertToWav } from '@/utils/audioConverter'
 import TranscriptionEditor from './TranscriptionEditor.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
+import { useLocaleStore } from '@/stores/locale'
+import { useChatStore } from '@/stores/chat'
+
 const { t } = useI18n()
+const localeStore = useLocaleStore()
+const chatStore = useChatStore()
 
 const props = defineProps<{
   modelValue: boolean
@@ -28,6 +32,7 @@ const isConnected = ref(false)
 const isListening = ref(false)
 const isSpeaking = ref(false)
 const isProcessing = ref(false)
+const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') !== 'false') // Default to true in talk mode
 const error = ref<string | null>(null)
 const transcript = ref('')
 const response = ref('')
@@ -126,7 +131,9 @@ async function connect() {
   }
 
   try {
-    await voiceWs.connect()
+    // Pass user's locale language to WebSocket (e.g., 'zh-CN' -> 'zh')
+    const lang = localeStore.currentLocale.split('-')[0]
+    await voiceWs.connect(lang)
     // Configure for continuous listening in conversation mode
     voiceWs.updateConfig({
       continuous_listening: talkMode.value === 'conversation',
@@ -186,14 +193,14 @@ async function stopListening() {
   isListening.value = false
   stopAudioLevelMonitor()
 
-  // In walkie-talkie mode with edit-before-send, transcribe locally
-  if (talkMode.value === 'walkie-talkie' && props.editBeforeSend && recordedChunks.value.length > 0) {
+  // Transcribe recorded audio if we have any
+  if (recordedChunks.value.length > 0) {
     await transcribeLocally()
   }
   recordedChunks.value = []
 }
 
-// Transcribe audio locally using Sherpa ASR
+// Transcribe audio locally using Whisper ASR
 async function transcribeLocally() {
   if (recordedChunks.value.length === 0) return
 
@@ -201,16 +208,31 @@ async function transcribeLocally() {
   error.value = null
 
   try {
-    const audioBlob = new Blob(recordedChunks.value, { type: 'audio/webm' })
-    // Convert webm to wav for whisper.cpp
-    const wavBlob = await convertToWav(audioBlob)
-    const result = await speechApi.transcribe(wavBlob, 'wav')
+    // Get the actual mime type from recorder or default to webm
+    const mimeType = recorder?.mimeType || 'audio/webm'
+    const audioBlob = new Blob(recordedChunks.value, { type: mimeType })
+
+    // Determine format from mime type (e.g., 'audio/webm' -> 'webm')
+    const format = mimeType.split('/')[1]?.split(';')[0] || 'webm'
+
+    // Use user's locale language for transcription (e.g., 'zh-CN' -> 'zh')
+    const lang = localeStore.currentLocale.split('-')[0]
+
+    // Send directly to backend - backend will handle format conversion
+    const result = await speechApi.transcribe(audioBlob, format, lang)
 
     if (result.text) {
-      pendingTranscription.value = result.text
-      transcriptionLanguage.value = result.language || ''
-      transcriptionConfidence.value = result.confidence || 0
-      showTranscriptionEditor.value = true
+      // If editBeforeSend is enabled, show editor; otherwise emit directly
+      if (props.editBeforeSend) {
+        pendingTranscription.value = result.text
+        transcriptionLanguage.value = result.language || ''
+        transcriptionConfidence.value = result.confidence || 0
+        showTranscriptionEditor.value = true
+      } else {
+        // Emit transcript directly
+        transcript.value = result.text
+        emit('transcript', result.text)
+      }
     }
   } catch (e) {
     console.error('Local transcription failed:', e)
@@ -279,6 +301,12 @@ function close() {
   emit('update:modelValue', false)
 }
 
+// Toggle mute
+function toggleAutoPlay() {
+  autoPlayTTS.value = !autoPlayTTS.value
+  localStorage.setItem('tts-auto-play', autoPlayTTS.value.toString())
+}
+
 // Watch for modelValue changes
 watch(() => props.modelValue, (newValue) => {
   if (newValue) {
@@ -287,6 +315,39 @@ watch(() => props.modelValue, (newValue) => {
     disconnect()
   }
 })
+
+// Watch for AI response completion and play TTS
+watch(() => chatStore.streaming, async (streaming, wasStreaming) => {
+  // When streaming ends, get the last assistant message and play TTS
+  if (wasStreaming && !streaming && props.modelValue) {
+    const messages = chatStore.messages
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg.role === 'assistant' && lastMsg.content) {
+        response.value = lastMsg.content
+        // Play TTS for the response
+        await playResponseTTS(lastMsg.content)
+      }
+    }
+  }
+})
+
+// Play TTS for AI response
+async function playResponseTTS(text: string) {
+  if (!text.trim() || !autoPlayTTS.value) return
+
+  isSpeaking.value = true
+  try {
+    const result = await speechApi.synthesize(text)
+    if (result.audio) {
+      await playAudioFromBase64(result.audio, result.content_type || 'audio/mp3')
+    }
+  } catch (e) {
+    console.error('TTS playback failed:', e)
+  } finally {
+    isSpeaking.value = false
+  }
+}
 
 // Cleanup on unmount
 onUnmounted(() => {
@@ -308,14 +369,36 @@ onUnmounted(() => {
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('chat.talkMode.title') }}
             </h3>
-            <button
-              class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
-              @click="close"
-            >
-              <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div class="flex items-center gap-2">
+              <!-- Auto-play TTS toggle button -->
+              <button
+                class="p-2 rounded-lg transition-colors cursor-pointer"
+                :class="!autoPlayTTS
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-500 hover:bg-red-200 dark:hover:bg-red-900/50'
+                  : 'hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400'"
+                :title="autoPlayTTS ? t('chat.talkMode.mute') : t('chat.talkMode.unmute')"
+                @click="toggleAutoPlay"
+              >
+                <!-- Speaker icon (auto-play on) -->
+                <svg v-if="autoPlayTTS" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <!-- Muted icon (auto-play off) -->
+                <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                </svg>
+              </button>
+              <!-- Close button -->
+              <button
+                class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                @click="close"
+              >
+                <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <!-- Mode selector -->

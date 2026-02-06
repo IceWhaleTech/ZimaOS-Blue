@@ -887,8 +887,8 @@ export default {
     trialQuota: {
       title: 'Quota de prova',
       exhausted: 'Quota de prova esgotada',
-      remaining: '{tokens} tokens restants, {conversations} converses restants',
-      tokensUsed: '{used} / {limit} tokens utilitzats',
+      remaining: '{tokens} tokens restants',
+      tokensRemaining: '{remaining} / {limit} tokens restants',
     },
     providers: 'Proveïdors',
     models: 'Models',

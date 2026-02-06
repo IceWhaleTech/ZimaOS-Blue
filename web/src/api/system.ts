@@ -140,6 +140,10 @@ export interface SystemInfo {
 export const systemApi = {
   getLogs: (params?: LogQueryParams) => api.get<LogEntry[]>('/system/logs', { params }),
 
+  // Write a client-side log entry to the server
+  writeLog: (level: 'info' | 'warn' | 'error', message: string, source?: string) =>
+    api.post<{ success: boolean }>('/system/logs', { level, message, source: source || 'web-client' }),
+
   getMetrics: () => api.get<SystemMetrics>('/system/metrics'),
 
   getMetricsHistory: (duration?: string) =>

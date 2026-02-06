@@ -12,11 +12,14 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/labstack/echo/v4"
 )
 
 // TLSManager manages TLS certificates.
@@ -478,4 +481,40 @@ func (m *TLSManager) GetHTTPSPort() int {
 		return 443
 	}
 	return m.config.HTTPSPort
+}
+
+// HTTPSRedirectMiddleware returns an Echo middleware that redirects HTTP to HTTPS.
+func (m *TLSManager) HTTPSRedirectMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			// Check if HTTPS-only mode is enabled
+			if !m.IsHTTPSOnly() {
+				return next(c)
+			}
+
+			// Check if already HTTPS
+			if c.Scheme() == "https" || c.Request().TLS != nil {
+				return next(c)
+			}
+
+			// Check X-Forwarded-Proto header (for reverse proxy)
+			if c.Request().Header.Get("X-Forwarded-Proto") == "https" {
+				return next(c)
+			}
+
+			// Redirect to HTTPS
+			host := c.Request().Host
+			httpsPort := m.GetHTTPSPort()
+			if httpsPort != 443 {
+				// Remove existing port if present
+				if idx := strings.LastIndex(host, ":"); idx != -1 {
+					host = host[:idx]
+				}
+				host = fmt.Sprintf("%s:%d", host, httpsPort)
+			}
+
+			httpsURL := "https://" + host + c.Request().RequestURI
+			return c.Redirect(http.StatusMovedPermanently, httpsURL)
+		}
+	}
 }

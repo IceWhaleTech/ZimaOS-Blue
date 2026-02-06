@@ -1,7 +1,7 @@
 <template>
   <div class="provider-selector">
     <label>{{ t('speech.ttsProvider') }}</label>
-    <select v-model="selectedProvider" @change="handleChange" class="provider-select">
+    <select v-model="selectedProvider" class="provider-select" @change="handleChange">
       <option v-for="provider in providers" :key="provider.type" :value="provider.type">
         {{ provider.name }}
       </option>
@@ -24,7 +24,7 @@ const { t } = useI18n()
 
 const ttsStore = useTTSStore()
 const selectedProvider = ref('')
-const providers = ref<any[]>([])
+const providers = ref<{ id: string; name: string }[]>([])
 
 onMounted(async () => {
   await ttsStore.loadProviders()

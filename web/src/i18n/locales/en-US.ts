@@ -360,6 +360,8 @@ export default {
       walkieTalkieDesc: 'Push-to-talk mode - Hold button while speaking',
       connectionError: 'Failed to connect to voice service',
       transcriptionError: 'Failed to transcribe audio',
+      mute: 'Mute',
+      unmute: 'Unmute',
     },
     transcription: {
       title: 'Transcription',
@@ -508,6 +510,7 @@ export default {
   home: {
     welcome: 'Welcome to ZimaOS Echo',
     description: 'Your intelligent AI assistant for smart home control and automation',
+    startChatCta: 'Click {link} to start chatting with Echo',
   },
   settings: {
     title: 'Settings',
@@ -524,6 +527,25 @@ export default {
       logs: 'Logs',
       service: 'Service',
       retention: 'Retention',
+      update: 'Update',
+      memory: 'Memory',
+    },
+    // Update settings
+    update: {
+      title: 'System Update',
+      currentVersion: 'Current Version',
+      uptime: 'Uptime',
+      lastChecked: 'Last Checked',
+      autoCheck: 'Auto check for updates on startup',
+      autoDownload: 'Auto download updates',
+      checkNow: 'Check Now',
+      newVersionAvailable: 'New Version Available',
+      releaseNotes: 'Release Notes',
+      noReleaseNotes: 'No release notes available',
+      download: 'Download',
+      restartAndUpdate: 'Restart and Update',
+      downloading: 'Downloading...',
+      upToDate: 'Up to date',
     },
     // Network settings
     network: {
@@ -1071,6 +1093,22 @@ export default {
     totalAlloc: 'Total Alloc',
     sysMemory: 'Sys Memory',
     gcCount: 'GC Count',
+  },
+  update: {
+    title: 'System Update',
+    currentVersion: 'Current Version',
+    uptime: 'Uptime',
+    lastChecked: 'Last Checked',
+    autoCheck: 'Auto check for updates on startup',
+    autoDownload: 'Auto download updates',
+    checkNow: 'Check Now',
+    newVersionAvailable: 'New Version Available',
+    releaseNotes: 'Release Notes',
+    noReleaseNotes: 'No release notes available',
+    download: 'Download',
+    restartAndUpdate: 'Restart & Update',
+    downloading: 'Downloading...',
+    upToDate: 'You are up to date',
   },
   service: {
     title: 'Service Management',
@@ -1673,6 +1711,7 @@ export default {
       details: 'Scan Details',
       fix: 'Fix',
       fixAll: 'Fix All',
+      manualFix: 'Manual Fix',
       fixError: 'Failed to fix issue',
       fixPreview: 'Fix Preview',
       fixDescription: 'Fix Description',
@@ -2228,7 +2267,7 @@ export default {
     teamsHint: 'Create a bot in Azure Bot Framework',
     mattermostHint: 'Create a bot in Mattermost',
     googleChatHint: 'Create a service account in Google Cloud',
-    feishuHint: 'Create a bot in Feishu Open Platform. Required: 1) Enable "Long Connection" for events; 2) Subscribe to "im.message.receive_v1" event; 3) Add "im:message:send_as_bot" permission',
+    feishuHint: 'Create a bot in Feishu Open Platform. Required: 1) Enable "Long Connection" for events; 2) Subscribe to "im.message.receive_v1" event; 3) Add "im:message:send_as_bot" permission; 4) Publish the app',
     dingtalkHint: 'Create a bot in DingTalk Open Platform',
     qqHint: 'Create a bot in QQ Open Platform',
     wechatHint: 'Create a bot in WeChat Work',
@@ -2823,7 +2862,7 @@ export default {
       pasteData: 'Paste data to fill',
       pasteDataHint: 'Paste key-value pairs',
       readClipboard: 'Read from clipboard',
-      pasteExample: 'name: John Doe\nemail: john@example.com\nphone: 123-456-7890',
+      pasteExample: "name: John Doe\nemail: john{'@'}example.com\nphone: 123-456-7890",
       parsedFields: '{count} fields parsed',
       filledFields: 'Filled {count} fields',
       showPassword: 'Show password',
@@ -3285,8 +3324,8 @@ export default {
     trialQuota: {
       title: 'Trial Quota',
       exhausted: 'Trial quota exhausted. Please configure your own provider.',
-      remaining: '{tokens} tokens, {conversations} conversations remaining',
-      tokensUsed: '{used} / {limit} tokens',
+      remaining: '{tokens} tokens remaining',
+      tokensRemaining: '{remaining} / {limit} tokens remaining',
     },
     search: 'Search providers...',
     confirmDelete: 'Are you sure you want to delete this provider?',
@@ -3786,6 +3825,7 @@ export default {
     switching: 'Switching...',
     deleteError: 'Failed to delete model',
     cancelError: 'Failed to cancel download',
+    eta: 'ETA',
     confirmDelete: 'Are you sure you want to delete this model?',
     espeakDesc: 'Offline lightweight speech synthesis engine',
     downloadAndEnable: 'Download & Enable',
@@ -3827,23 +3867,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description:
-          '75MB - Smallest Whisper model. Optimized for low-resource devices and quick startup, with lower accuracy than larger models.',
+        description: 'Smallest Whisper model. Optimized for low-resource devices and quick startup.',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description:
-          '142MB - Balanced accuracy and performance. Suitable for most general-purpose speech recognition scenarios.',
+        description: 'Balanced accuracy and performance. Suitable for most general-purpose speech recognition.',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description:
-          '466MB - Higher accuracy than Base model. Better for complex audio or when accuracy is more important than speed.',
+        description: 'Higher accuracy than Base model. Better for complex audio scenarios.',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [Recommended]',
-        description:
-          '809MB - Distilled large model - 6x faster than large-v3 with similar accuracy. Best balance of speed and quality.',
+        description: 'Distilled large model - 6x faster than large-v3 with similar accuracy.',
       },
       zipformerEn: {
         name: 'Zipformer EN (Streaming)',

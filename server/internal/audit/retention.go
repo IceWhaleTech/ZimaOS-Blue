@@ -29,9 +29,10 @@ func DefaultRetentionConfig() *RetentionConfig {
 
 // RetentionManager manages audit log retention.
 type RetentionManager struct {
-	db     *sql.DB
-	config *RetentionConfig
-	done   chan struct{}
+	db      *sql.DB
+	config  *RetentionConfig
+	done    chan struct{}
+	stopped bool
 }
 
 // NewRetentionManager creates a new retention manager.
@@ -54,6 +55,10 @@ func (m *RetentionManager) Start() {
 
 // Stop stops the retention manager.
 func (m *RetentionManager) Stop() {
+	if m.stopped {
+		return
+	}
+	m.stopped = true
 	close(m.done)
 }
 
@@ -127,23 +132,48 @@ func (m *RetentionManager) GetRetentionStats(ctx context.Context) (*RetentionSta
 	}
 
 	// Get oldest entry
-	var oldest sql.NullTime
-	err = m.db.QueryRowContext(ctx, "SELECT MIN(timestamp) FROM audit_logs").Scan(&oldest)
+	var oldestStr sql.NullString
+	err = m.db.QueryRowContext(ctx, "SELECT MIN(timestamp) FROM audit_logs").Scan(&oldestStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get oldest entry: %w", err)
 	}
-	if oldest.Valid {
-		stats.OldestEntry = &oldest.Time
+	if oldestStr.Valid && oldestStr.String != "" {
+		// Try multiple time formats that SQLite might use
+		formats := []string{
+			time.RFC3339Nano,
+			time.RFC3339,
+			"2006-01-02 15:04:05.999999999-07:00",
+			"2006-01-02T15:04:05.999999999-07:00",
+			"2006-01-02 15:04:05",
+		}
+		for _, format := range formats {
+			if t, parseErr := time.Parse(format, oldestStr.String); parseErr == nil {
+				stats.OldestEntry = &t
+				break
+			}
+		}
 	}
 
 	// Get newest entry
-	var newest sql.NullTime
-	err = m.db.QueryRowContext(ctx, "SELECT MAX(timestamp) FROM audit_logs").Scan(&newest)
+	var newestStr sql.NullString
+	err = m.db.QueryRowContext(ctx, "SELECT MAX(timestamp) FROM audit_logs").Scan(&newestStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get newest entry: %w", err)
 	}
-	if newest.Valid {
-		stats.NewestEntry = &newest.Time
+	if newestStr.Valid && newestStr.String != "" {
+		formats := []string{
+			time.RFC3339Nano,
+			time.RFC3339,
+			"2006-01-02 15:04:05.999999999-07:00",
+			"2006-01-02T15:04:05.999999999-07:00",
+			"2006-01-02 15:04:05",
+		}
+		for _, format := range formats {
+			if t, parseErr := time.Parse(format, newestStr.String); parseErr == nil {
+				stats.NewestEntry = &t
+				break
+			}
+		}
 	}
 
 	// Get count of entries to be deleted

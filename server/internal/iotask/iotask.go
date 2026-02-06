@@ -381,6 +381,16 @@ func (m *Manager) calculateSize(path string) (int64, int64, error) {
 	var totalSize int64
 	var totalFiles int64
 
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// If it's a single file, return its size
+	if !info.IsDir() {
+		return info.Size(), 1, nil
+	}
+
 	// Use queue-based iteration instead of recursive walk
 	queue := []string{path}
 

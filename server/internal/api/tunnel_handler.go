@@ -464,9 +464,8 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 		"os": map[string]string{
 			"platform": runtime.GOOS,
 		},
-		"ssh_available":         checkSSHAvailable(),
-		"bore_available":        tunnel.CheckBoreAvailable(),
-// // 		"cloudflared_installed": tunnel.CheckCloudflaredInstalled(),
+		"ssh_available":  checkSSHAvailable(),
+		"bore_available": tunnel.CheckBoreAvailable(),
 	}
 
 	if active != nil {
@@ -484,8 +483,8 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 	// Generate hints
 	hints := []string{}
 	// Serveo uses built-in Go SSH, so system ssh is not required for Auto mode
-	if !diagnostics["cloudflared_installed"].(bool) {
-		hints = append(hints, "cloudflared is not installed. Install it to use Cloudflare Tunnel.")
+	if !diagnostics["bore_available"].(bool) {
+		hints = append(hints, "bore is not available. Auto mode may have limited options.")
 	}
 	if len(hints) == 0 {
 		hints = append(hints, "All tunnel providers are available.")

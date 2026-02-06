@@ -464,12 +464,12 @@ func TestBackupWithLargeFile(t *testing.T) {
 
 	os.MkdirAll(dataDir, 0755)
 
-	// Create a larger test file (1MB)
+	// Create a larger test file (1MB) - use .dat extension since .bin is excluded
 	largeData := make([]byte, 1024*1024)
 	for i := range largeData {
 		largeData[i] = byte(i % 256)
 	}
-	os.WriteFile(filepath.Join(dataDir, "large.bin"), largeData, 0644)
+	os.WriteFile(filepath.Join(dataDir, "large.dat"), largeData, 0644)
 
 	cfg := Config{
 		Enabled:       true,
@@ -512,9 +512,10 @@ func TestBackupWithLargeFile(t *testing.T) {
 	if !result.Success {
 		t.Errorf("restore not successful: %v", result.Errors)
 	}
+	t.Logf("Restore result: files=%d, skipped=%d, errors=%v", result.FilesRestored, result.FilesSkipped, result.Errors)
 
 	// Verify restored content matches original
-	restoredData, err := os.ReadFile(filepath.Join(restoreDir, "large.bin"))
+	restoredData, err := os.ReadFile(filepath.Join(restoreDir, "large.dat"))
 	if err != nil {
 		t.Fatalf("failed to read restored file: %v", err)
 	}
@@ -539,10 +540,10 @@ func TestBackupFileSizeConsistency(t *testing.T) {
 
 	os.MkdirAll(dataDir, 0755)
 
-	// Create multiple files of varying sizes
+	// Create multiple files of varying sizes - avoid .bin extension which is excluded
 	testFiles := map[string]int{
 		"small.txt":  100,
-		"medium.bin": 10 * 1024,
+		"medium.dat": 10 * 1024,
 		"large.dat":  100 * 1024,
 	}
 

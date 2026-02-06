@@ -162,6 +162,7 @@ declare module 'vue' {
     TTSSettingsNew: typeof import('./components/settings/TTSSettingsNew.vue')['default']
     TunnelStatus: typeof import('./components/remote-access/TunnelStatus.vue')['default']
     TypelessCard: typeof import('./components/typeless/TypelessCard.vue')['default']
+    UpdateSettings: typeof import('./components/settings/UpdateSettings.vue')['default']
     UptimeCard: typeof import('./components/dashboard/cards/UptimeCard.vue')['default']
     UsageChart: typeof import('./components/stats/UsageChart.vue')['default']
     UserDataExport: typeof import('./components/UserDataExport.vue')['default']

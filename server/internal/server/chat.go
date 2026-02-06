@@ -181,13 +181,7 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 		}
 	}
 
-	// Debug: Print provider info
-	maskedKey := apiKey
-	if len(apiKey) > 10 {
-		maskedKey = apiKey[:6] + "..." + apiKey[len(apiKey)-4:]
-	}
-	fmt.Printf("[getProviderFromPool] providerID=%s, APIFormat=%s, BaseURL=%s, APIKey=%s\n",
-		providerID, poolProvider.APIFormat, poolProvider.BaseURL, maskedKey)
+	logger.Debug().Str("provider_id", providerID).Str("api_format", string(poolProvider.APIFormat)).Str("base_url", poolProvider.BaseURL).Msg("[chat] getProviderFromPool")
 
 	// Create LLM provider based on API format
 	var provider llm.Provider
@@ -1327,7 +1321,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Auto-select provider and model from pool
 	provider, providerID, model, err := h.getDefaultProvider()
-	fmt.Printf("[StreamMessage] getDefaultProvider: providerID=%s, model=%s, err=%v, provider=%v\n", providerID, model, err, provider != nil)
+	logger.Debug().Str("provider_id", providerID).Str("model", model).Bool("provider_ok", provider != nil).Err(err).Msg("[chat] getDefaultProvider")
 	if err != nil {
 		// Check if this is a trial quota exhausted error
 		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
@@ -1345,7 +1339,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if req.Model != "" {
 		model = req.Model
 	}
-	fmt.Printf("[StreamMessage] using model=%s, providerName=%s\n", model, providerID)
+	logger.Debug().Str("model", model).Str("provider", providerID).Msg("[chat] using provider")
 	providerName := providerID
 	if h.providerPool != nil {
 		if poolProvider, err := h.providerPool.Registry.Get(providerID); err == nil {
@@ -1453,7 +1447,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		MaxTokens:   req.MaxTokens,
 		Stream:      true,
 	}
-	fmt.Printf("[StreamMessage] chatReq: model=%s, messages=%d, stream=%v\n", chatReq.Model, len(chatReq.Messages), chatReq.Stream)
+	logger.Debug().Str("model", chatReq.Model).Int("messages", len(chatReq.Messages)).Bool("stream", chatReq.Stream).Msg("[chat] request")
 
 	// Create cancellable context
 	streamID := uuid.New().String()
@@ -1490,10 +1484,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var actualProvider string // Track actual provider from response
 	userID := h.getUserID(c)
 
+	// Pre-allocate buffer for SSE writes to reduce allocations
+	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
+
 	// Use callback-based streaming to avoid channel issues
-	fmt.Printf("[StreamMessage] calling ChatStreamCallback on provider %T\n", provider)
+	logger.Debug().Str("stream_id", streamID).Str("provider_type", fmt.Sprintf("%T", provider)).Msg("[chat] starting stream")
 	err = provider.ChatStreamCallback(ctx, chatReq, func(chunk llm.StreamChunk) error {
-		fmt.Printf("[StreamMessage] received chunk: delta=%q, done=%v, error=%q\n", chunk.Delta, chunk.Done, chunk.Error)
 		// Track first chunk time for TTFT calculation
 		if firstChunkTime.IsZero() && chunk.Delta != "" {
 			firstChunkTime = time.Now()
@@ -1541,22 +1537,32 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 		// Write SSE data - for non-final chunks only
 		if !chunk.Done {
-			data := map[string]interface{}{
-				"delta":     chunk.Delta,
-				"done":      false,
-				"stream_id": streamID,
+			// Use pre-allocated buffer to reduce allocations
+			sseBuffer.Reset()
+			sseBuffer.WriteString(`data: {"delta":"`)
+			// Escape JSON string manually for performance
+			for _, r := range chunk.Delta {
+				switch r {
+				case '"':
+					sseBuffer.WriteString(`\"`)
+				case '\\':
+					sseBuffer.WriteString(`\\`)
+				case '\n':
+					sseBuffer.WriteString(`\n`)
+				case '\r':
+					sseBuffer.WriteString(`\r`)
+				case '\t':
+					sseBuffer.WriteString(`\t`)
+				default:
+					sseBuffer.WriteRune(r)
+				}
 			}
-			if chunk.Usage != nil {
-				data["usage"] = chunk.Usage
-			}
-
-			jsonData, _ := json.Marshal(data)
-			// Write with immediate flush for real-time streaming
-			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
+			sseBuffer.WriteString(`","done":false,"stream_id":"`)
+			sseBuffer.WriteString(streamID)
+			sseBuffer.WriteString(`"}`)
+			sseBuffer.WriteString("\n\n")
+			c.Response().Write(sseBuffer.Bytes())
 			flusher.Flush()
-
-			// Optional: Add small delay to prevent overwhelming client
-			// time.Sleep(time.Millisecond)
 		}
 
 		if chunk.Done {
@@ -1588,9 +1594,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				}
 
 				// Record trial usage if this is a trial provider
-				fmt.Printf("[StreamMessage] checking trial: providerID=%s, isTrialProvider=%v\n", providerID, providerpool.IsTrialProvider(providerID))
 				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(providerID) {
-					fmt.Printf("[StreamMessage] recording trial usage: input=%d, output=%d\n", totalInputTokens, totalOutputTokens)
+					logger.Debug().Str("provider_id", providerID).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
 					h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
 				}
 			}
@@ -1677,6 +1682,19 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 					h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
 				}
 			}
+
+			// Log completion metrics
+			logger.Info().
+				Str("stream_id", streamID).
+				Str("conv_id", convID).
+				Str("provider", finalProvider).
+				Str("model", finalModel).
+				Int("input_tokens", totalInputTokens).
+				Int("output_tokens", totalOutputTokens).
+				Float64("latency_ms", latencyMs).
+				Float64("ttft_ms", ttftMs).
+				Float64("tokens_per_sec", tokensPerSecond).
+				Msg("[chat] stream completed")
 		}
 
 		return nil
@@ -1720,6 +1738,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 // If aiResponse starts with a markdown heading (#), use that as the title.
 // targetLang specifies the language for the generated title (e.g., "en", "zh", "ja").
 // This function is safe to call in a goroutine - it recovers from panics.
+// If the conversation already has a custom title (not auto-generated), it will not be updated.
 func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse, targetLang string) {
 	// Recover from any panics to prevent crashing the server
 	defer func() {
@@ -1728,6 +1747,26 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse,
 			fmt.Printf("panic in generateConversationTitle: %v\n", r)
 		}
 	}()
+
+	// Check if conversation already has a custom title (not the default/auto-generated one)
+	conv, err := h.store.GetConversation(context.Background(), convID)
+	if err == nil && conv != nil && conv.Title != "" {
+		// If the title doesn't look like an auto-generated one (truncated user message),
+		// skip updating it. Auto-generated titles typically end with "..." or match the start of userMessage
+		currentTitle := conv.Title
+		// Check if current title is NOT a prefix of the user message (meaning it was manually set or from a previous conversation)
+		userMsgPrefix := userMessage
+		if len([]rune(userMsgPrefix)) > 50 {
+			userMsgPrefix = string([]rune(userMsgPrefix)[:50])
+		}
+		// If current title doesn't start with the same content as user message prefix, it's a custom title
+		if !strings.HasPrefix(userMsgPrefix, strings.TrimSuffix(currentTitle, "...")) &&
+			currentTitle != userMessage &&
+			len(currentTitle) > 0 {
+			// Title appears to be custom, don't overwrite it
+			return
+		}
+	}
 
 	// Check if AI response starts with a markdown heading
 	if title := extractMarkdownHeading(aiResponse); title != "" {

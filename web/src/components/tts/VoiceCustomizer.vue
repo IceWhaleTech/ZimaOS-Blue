@@ -27,9 +27,9 @@
     </div>
 
     <div class="button-group">
-      <button @click="playPreview" class="btn-preview">▶ Preview</button>
-      <button @click="resetDefaults" class="btn-reset">Reset</button>
-      <button @click="saveSettings" class="btn-save">Save</button>
+      <button class="btn-preview" @click="playPreview">▶ Preview</button>
+      <button class="btn-reset" @click="resetDefaults">Reset</button>
+      <button class="btn-save" @click="saveSettings">Save</button>
     </div>
   </div>
 </template>
@@ -39,8 +39,8 @@ import { ref, onMounted } from 'vue'
 import { useTTSStore } from '@/stores/tts'
 import { ttsApi } from '@/api/tts'
 
-const ttsStore = useTTSStore()
-const voices = ref<any[]>([])
+const _ttsStore = useTTSStore()
+const voices = ref<{ id: string; name: string }[]>([])
 const selectedVoice = ref('')
 const rate = ref(1.0)
 const pitch = ref(0)

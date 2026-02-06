@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
+import { useFormFillerWidget, setPasteAreaExpanded } from '@/composables/useFormFillerWidget'
 
 const { t } = useI18n()
 
@@ -26,6 +26,11 @@ const {
 
 // Local state
 const showPasteArea = ref(false)
+
+// Sync paste area state with composable for blur handling
+watch(showPasteArea, (expanded) => {
+  setPasteAreaExpanded(expanded)
+})
 const pasteText = ref('')
 const filledCount = ref(0)
 const showFilledMessage = ref(false)
@@ -77,6 +82,18 @@ function handlePasteInput() {
 async function handleReadClipboard() {
   await readFromClipboard()
   pasteText.value = state.clipboardData
+}
+
+// Handle smart paste: try clipboard first, expand paste area if failed
+async function handleSmartPaste() {
+  // First expand the paste area to prevent widget from hiding
+  showPasteArea.value = true
+  // Then try to read from clipboard
+  const success = await readFromClipboard()
+  if (success) {
+    pasteText.value = state.clipboardData
+  }
+  // If failed, paste area is already expanded for manual input
 }
 
 // Fill current field
@@ -234,7 +251,7 @@ watch(() => state.clipboardData, (newVal) => {
             class="w-full px-2 py-2 rounded text-xs cursor-pointer transition-colors
                    bg-gray-100 dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600
                    text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-700 dark:hover:text-gray-200"
-            @click="showPasteArea = true"
+            @click="handleSmartPaste"
           >
             📋 {{ t('formFiller.widget.pasteData') }}
           </button>

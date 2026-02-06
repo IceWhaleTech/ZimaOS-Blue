@@ -5,7 +5,7 @@
     <!-- Provider Selector -->
     <div class="setting-group">
       <label>{{ t('speech.provider') }}</label>
-      <select v-model="selectedProvider" @change="handleProviderChange" class="provider-select">
+      <select v-model="selectedProvider" class="provider-select" @change="handleProviderChange">
         <option value="espeak-ng">eSpeak-NG ({{ t('speech.offline') }})</option>
         <option value="sherpa-onnx">Sherpa-ONNX ({{ t('speech.offline') }})</option>
       </select>
@@ -36,9 +36,9 @@
       <div class="language-pack-download">
         <p class="pack-info">{{ t('speech.allPacksInfo', { count: 27, size: '8.5 MB' }) }}</p>
         <button
-          @click="downloadAllLanguagePacks"
           :disabled="downloading || allPacksDownloaded"
           class="btn-download-all"
+          @click="downloadAllLanguagePacks"
         >
           {{ allPacksDownloaded ? t('speech.allDownloaded') : t('speech.downloadAll') }}
         </button>
@@ -64,7 +64,7 @@ const selectedProvider = ref('espeak-ng')
 const rate = ref(1.0)
 const pitch = ref(0)
 const volume = ref(100)
-const languagePacks = ref<any[]>([])
+const languagePacks = ref<{ id: string; name: string; downloaded: boolean }[]>([])
 const downloading = ref(false)
 const error = ref('')
 

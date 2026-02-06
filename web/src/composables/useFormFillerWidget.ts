@@ -62,6 +62,13 @@ const currentDomain = ref<string>('')
 let keyboardListenerAdded = false
 let focusListenerAdded = false
 
+// Track if paste area is expanded (shared state for blur handling)
+let pasteAreaExpanded = false
+
+export function setPasteAreaExpanded(expanded: boolean) {
+  pasteAreaExpanded = expanded
+}
+
 // Routes where the form filler widget should be disabled
 const disabledRoutes = ['/chat']
 
@@ -244,8 +251,9 @@ export function useFormFillerWidget() {
         return
       }
       // Don't hide if paste area is expanded (user is interacting with it)
+      // Check both the DOM element and the tracked state
       const pasteArea = document.querySelector('.formfiller-widget textarea')
-      if (pasteArea) {
+      if (pasteArea || pasteAreaExpanded) {
         return
       }
       // Don't hide if there's an error being displayed
@@ -264,13 +272,16 @@ export function useFormFillerWidget() {
   }
 
   // Read from system clipboard
-  async function readFromClipboard() {
+  // Returns true if successful, false if failed (caller should show paste area)
+  async function readFromClipboard(): Promise<boolean> {
     try {
       const text = await navigator.clipboard.readText()
       setClipboardData(text)
+      return true
     } catch (e) {
       console.error('Failed to read clipboard:', e)
-      globalState.error = 'Failed to read clipboard. Please paste manually.'
+      // Don't show error - caller will expand paste area for manual input
+      return false
     }
   }
 

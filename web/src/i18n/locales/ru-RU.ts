@@ -1760,19 +1760,19 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: '75MB - Самая маленькая модель Whisper. Оптимизирована для устройств с ограниченными ресурсами.',
+        description: 'Самая маленькая модель Whisper. Оптимизирована для устройств с ограниченными ресурсами.',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: '142MB - Хороший баланс между точностью и производительностью.',
+        description: 'Хороший баланс между точностью и производительностью.',
       },
       whisperSmall: {
         name: 'Whisper Small',
-        description: '466MB - Выше точность чем Base. Лучше для сложного аудио.',
+        description: 'Выше точность чем Base. Лучше для сложного аудио.',
       },
       whisperLargeTurbo: {
         name: 'Whisper Large v3 Turbo [Рекомендуется]',
-        description: '809MB - Дистиллированная большая модель - в 6 раз быстрее large-v3 с аналогичной точностью.',
+        description: 'Дистиллированная большая модель - в 6 раз быстрее large-v3.',
       },
     },
   },

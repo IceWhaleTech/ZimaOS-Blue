@@ -63,6 +63,7 @@ func NewSystemHandlerWithConfig(version, buildTime, gitCommit, dataDir string, s
 func (h *SystemHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/system/info", h.GetInfo)
 	g.GET("/system/logs", h.GetLogs)
+	g.POST("/system/logs", h.WriteLog)
 	g.GET("/system/config", h.GetConfig)
 	g.PUT("/system/config", h.UpdateConfig)
 	g.POST("/system/restart", h.RestartService)
@@ -200,6 +201,38 @@ func (h *SystemHandler) GetLogs(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, entries)
+}
+
+// WriteLogRequest represents a client log write request
+type WriteLogRequest struct {
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	Source  string `json:"source"`
+}
+
+// WriteLog writes a client-side log entry
+func (h *SystemHandler) WriteLog(c echo.Context) error {
+	var req WriteLogRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	// Log based on level
+	source := req.Source
+	if source == "" {
+		source = "web-client"
+	}
+
+	switch req.Level {
+	case "error":
+		logger.Error().Str("source", source).Msg(req.Message)
+	case "warn":
+		logger.Warn().Str("source", source).Msg(req.Message)
+	default:
+		logger.Info().Str("source", source).Msg(req.Message)
+	}
+
+	return c.JSON(http.StatusOK, map[string]bool{"success": true})
 }
 
 // ConfigResponse represents the config response

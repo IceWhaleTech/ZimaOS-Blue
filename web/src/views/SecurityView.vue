@@ -696,6 +696,13 @@ onUnmounted(() => {
                   </span>
                   <span v-else>{{ t('security.scan.fix') }}</span>
                 </button>
+                <!-- Manual Fix Badge -->
+                <span
+                  v-else-if="!item.auto_fixable && (item.status === 'warning' || item.status === 'failed') && item.remediation"
+                  class="px-2 py-0.5 text-xs rounded-full font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
+                >
+                  {{ t('security.scan.manualFix') }}
+                </span>
                 <!-- Expand Icon -->
                 <svg
                   v-if="item.status !== 'scanning' && (item.risk || item.impact || item.remediation || item.details)"

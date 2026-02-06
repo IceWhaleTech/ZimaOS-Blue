@@ -14,21 +14,22 @@ const ttsModels = ref<TTSModel[]>([])
 const loading = ref(false)
 const switchingModelId = ref<string | null>(null)  // Track which model is switching
 const asrDownloadingModelId = ref<string | null>(null)  // Track which model is downloading
-const ttsDownloadingModelId = ref<string | null>(null)
-const asrDownloadProgress = ref(0)
+const _ttsDownloadingModelId = ref<string | null>(null)
+const _asrDownloadProgress = ref(0)
 const ttsDownloadProgress = ref(0)
+const ttsDownloading = ref(false)
 const error = ref<string | null>(null)
 
 // Computed: get all downloading models from server status
 const serverDownloadingASRModels = computed(() => {
   const downloads = status.value?.asr?.downloads || []
-  return downloads.map((d: any) => d.model_type)
+  return downloads.map((d: { model_type: string }) => d.model_type)
 })
 
 // Get progress for a specific model
 function getModelProgress(modelId: string) {
   const downloads = status.value?.asr?.downloads || []
-  const download = downloads.find((d: any) => d.model_type === modelId)
+  const download = downloads.find((d: { model_type: string }) => d.model_type === modelId)
   if (!download) return null
   return {
     percentage: download.progress.percentage || 0,
@@ -44,10 +45,10 @@ function isModelDownloading(modelId: string) {
   return serverDownloadingASRModels.value.includes(modelId) || asrDownloadingModelId.value === modelId
 }
 
-const asrReady = computed(() => status.value?.asr?.ready ?? false)
-const ttsReady = computed(() => status.value?.tts?.ready ?? false)
+const _asrReady = computed(() => status.value?.asr?.ready ?? false)
+const _ttsReady = computed(() => status.value?.tts?.ready ?? false)
 const currentASRModel = computed(() => status.value?.asr?.model_type ?? '')
-const currentTTSModel = computed(() => status.value?.tts?.model_type ?? '')
+const _currentTTSModel = computed(() => status.value?.tts?.model_type ?? '')
 const editBeforeSend = computed({
   get: () => status.value?.asr?.edit_before_send ?? false,
   set: async (value: boolean) => {
@@ -59,7 +60,7 @@ const editBeforeSend = computed({
 })
 
 // TTS Provider selection
-const selectedProvider = ref(localStorage.getItem('tts-provider') || '')
+const selectedProvider = ref(localStorage.getItem('tts-provider') || 'edge')
 const selectedTTSModel = ref(localStorage.getItem('tts-model') || 'piper-en')
 const selectedASRModel = ref(localStorage.getItem('asr-model') || '')
 
@@ -108,54 +109,6 @@ const allPacksDownloaded = computed(() => {
   return espeak_languages.value.every(lang => lang.downloaded)
 })
 
-async function downloadAllEspeakLanguages() {
-  espeak_downloading.value = true
-  espeak_download_progress.value = 0
-  error.value = null
-  try {
-    await speechApi.downloadAllEspeakLanguages()
-    // Sync state from server
-    await syncEspeakLanguages()
-  } catch (e: any) {
-    console.error('Failed to download all eSpeak languages:', e)
-    error.value = t('speech.downloadError')
-  } finally {
-    espeak_downloading.value = false
-  }
-}
-
-async function downloadEspeakLanguage(langCode: string) {
-  const lang = espeak_languages.value.find(l => l.code === langCode)
-  if (!lang) return
-
-  // If already downloaded, just toggle it
-  if (lang.downloaded) {
-    toggleEspeakLanguage(langCode)
-    return
-  }
-
-  espeak_downloading.value = true
-  espeak_download_progress.value = 0
-  error.value = null
-  try {
-    await speechApi.downloadEspeakLanguage(langCode)
-    lang.downloaded = true
-    // Sync state from server to ensure consistency
-    await syncEspeakLanguages()
-  } catch (e: any) {
-    // If already downloaded error, mark as downloaded anyway and sync
-    if (e.response?.data?.error?.includes('already downloaded')) {
-      lang.downloaded = true
-      await syncEspeakLanguages()
-    } else {
-      console.error('Failed to download eSpeak language:', e)
-      error.value = t('speech.downloadError')
-    }
-  } finally {
-    espeak_downloading.value = false
-  }
-}
-
 async function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
   // Call API to switch provider and enable
@@ -182,7 +135,7 @@ async function downloadAndEnableEspeak() {
     selectedProvider.value = 'espeak-ng'
     await speechApi.switchTTSProvider('espeak-ng')
     await fetchStatus()
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Failed to download and enable eSpeak:', e)
     error.value = t('speech.downloadError')
   } finally {
@@ -191,27 +144,27 @@ async function downloadAndEnableEspeak() {
 }
 
 // Get localized ASR model name
-function getAsrModelName(model: { id: string; name: string }): string {
+function _getAsrModelName(model: { id: string; name: string }): string {
   // Backend returns i18n key like "speech.asrModelInfo.whisperTiny.name"
   const translated = t(model.name)
   return translated === model.name ? model.name : translated
 }
 
 // Get localized ASR model description
-function getAsrModelDescription(model: { id: string; description: string }): string {
+function _getAsrModelDescription(model: { id: string; description: string }): string {
   // Backend returns i18n key like "speech.asrModelInfo.whisperTiny.description"
   const translated = t(model.description)
   return translated === model.description ? model.description : translated
 }
 
-function saveTTSModel() {
+function _saveTTSModel() {
   localStorage.setItem('tts-model', selectedTTSModel.value)
   if (selectedTTSModel.value) {
     switchTTSModel(selectedTTSModel.value)
   }
 }
 
-function saveASRModel() {
+function _saveASRModel() {
   localStorage.setItem('asr-model', selectedASRModel.value)
   if (selectedASRModel.value) {
     switchASRModel(selectedASRModel.value)
@@ -298,7 +251,7 @@ async function downloadASRModel(modelType: string) {
   }
 }
 
-async function downloadTTSModel(modelType: string) {
+async function _downloadTTSModel(modelType: string) {
   ttsDownloading.value = true
   ttsDownloadProgress.value = 0
   error.value = null
@@ -347,7 +300,7 @@ async function switchTTSModel(modelType: string) {
   }
 }
 
-async function deleteASRModel(modelType?: string) {
+async function _deleteASRModel(modelType?: string) {
   if (!confirm(t('speech.confirmDelete'))) return
   try {
     await speechApi.deleteASRModel(modelType)
@@ -371,7 +324,7 @@ async function cancelASRDownload() {
   }
 }
 
-async function deleteTTSModel(modelType?: string) {
+async function _deleteTTSModel(modelType?: string) {
   if (!confirm(t('speech.confirmDelete'))) return
   try {
     await speechApi.deleteTTSModel(modelType)
@@ -414,24 +367,24 @@ onMounted(() => {
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
       <div class="flex border-b border-gray-200 dark:border-gray-700">
         <button
-          @click="activeTab = 'asr'"
           :class="[
             'flex-1 px-4 py-3 text-sm font-medium transition-colors',
             activeTab === 'asr'
               ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           ]"
+          @click="activeTab = 'asr'"
         >
           {{ t('speech.asrTab') }}
         </button>
         <button
-          @click="activeTab = 'tts'"
           :class="[
             'flex-1 px-4 py-3 text-sm font-medium transition-colors',
             activeTab === 'tts'
               ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           ]"
+          @click="activeTab = 'tts'"
         >
           {{ t('speech.ttsTab') }}
         </button>
@@ -454,11 +407,13 @@ onMounted(() => {
           {{ t('speech.noModelsAvailable') }}
         </div>
         <div v-else class="space-y-2">
-          <div v-for="model in asrModels" :key="model.id"
+          <div
+v-for="model in asrModels" :key="model.id"
             class="flex items-center justify-between p-3 border rounded-lg"
             :class="model.downloaded ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'">
             <div class="flex-1">
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
+              <span class="text-xs text-gray-400 ml-2">{{ model.size }}</span>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t(model.description) }}</p>
               <!-- Download progress for this specific model -->
               <div v-if="isModelDownloading(model.id)" class="mt-2">
@@ -467,26 +422,28 @@ onMounted(() => {
                     <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%` }"></div>
                   </div>
                   <span class="text-xs text-gray-500">{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span>
-                  <button @click="cancelASRDownload" class="text-red-500 hover:text-red-600 text-xs">
+                  <button class="text-red-500 hover:text-red-600 text-xs" @click="cancelASRDownload">
                     {{ t('common.cancel') }}
                   </button>
                 </div>
                 <!-- Detailed progress info -->
                 <div v-if="getModelProgress(model.id)" class="flex items-center gap-3 mt-1 text-xs text-gray-400">
                   <span v-if="getModelProgress(model.id)?.speed">{{ getModelProgress(model.id)?.speed }}</span>
-                  <span v-if="getModelProgress(model.id)?.eta">ETA: {{ getModelProgress(model.id)?.eta }}</span>
+                  <span v-if="getModelProgress(model.id)?.eta">{{ $t('speech.eta') }}: {{ getModelProgress(model.id)?.eta }}</span>
                   <span v-if="getModelProgress(model.id)?.total">{{ Math.round((getModelProgress(model.id)?.downloaded || 0) / 1024 / 1024) }}MB / {{ Math.round((getModelProgress(model.id)?.total || 0) / 1024 / 1024) }}MB</span>
                 </div>
               </div>
             </div>
             <!-- Download button for not downloaded models -->
-            <button v-if="!model.downloaded && !isModelDownloading(model.id)"
-              @click="downloadASRModel(model.id)"
-              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium">
+            <button
+v-if="!model.downloaded && !isModelDownloading(model.id)"
+              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium"
+              @click="downloadASRModel(model.id)">
               {{ t('common.download') }}
             </button>
             <!-- Downloading indicator -->
-            <span v-else-if="isModelDownloading(model.id)"
+            <span
+v-else-if="isModelDownloading(model.id)"
               class="text-blue-500 text-xs font-medium">
               {{ t('speech.downloading') }}
             </span>
@@ -494,9 +451,9 @@ onMounted(() => {
             <div v-else class="flex items-center gap-2">
               <button
                 v-if="currentASRModel !== model.id && switchingModelId !== model.id"
-                @click="switchASRModel(model.id)"
                 :disabled="!!switchingModelId"
-                class="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xs font-medium disabled:opacity-50">
+                class="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xs font-medium disabled:opacity-50"
+                @click="switchASRModel(model.id)">
                 {{ t('common.use') }}
               </button>
               <span v-else-if="switchingModelId === model.id" class="text-blue-500 text-xs font-medium flex items-center gap-1">
@@ -541,9 +498,10 @@ onMounted(() => {
           {{ t('speech.ttsProvider') }}
         </h4>
         <div class="space-y-2">
-          <label class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
+          <label
+class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             :class="selectedProvider === 'edge-tts' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
-            <input type="radio" v-model="selectedProvider" value="edge-tts" class="sr-only" @change="saveProvider" />
+            <input v-model="selectedProvider" type="radio" value="edge-tts" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
               <span class="text-sm font-medium text-gray-900 dark:text-white">Edge TTS</span>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.edgeTTSDesc') }}</p>
@@ -552,9 +510,10 @@ onMounted(() => {
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
             </span>
           </label>
-          <label class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
+          <label
+class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
             :class="selectedProvider === 'espeak-ng' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
-            <input type="radio" v-model="selectedProvider" value="espeak-ng" class="sr-only" @change="saveProvider" />
+            <input v-model="selectedProvider" type="radio" value="espeak-ng" class="sr-only" @change="saveProvider" />
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium text-gray-900 dark:text-white">eSpeak-NG</span>
@@ -574,9 +533,9 @@ onMounted(() => {
             <div class="flex items-center gap-2 ml-2">
               <button
                 v-if="!allPacksDownloaded"
-                @click.prevent="downloadAndEnableEspeak"
                 :disabled="espeak_downloading"
                 class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                @click.prevent="downloadAndEnableEspeak"
               >
                 {{ espeak_downloading ? t('speech.downloading') : t('common.download') }}
               </button>

@@ -889,8 +889,8 @@ export default {
     trialQuota: {
       title: 'Provkvot',
       exhausted: 'Provkvot förbrukad',
-      remaining: '{tokens} tokens kvar, {conversations} samtal kvar',
-      tokensUsed: '{used} / {limit} tokens använd',
+      remaining: '{tokens} tokens kvar',
+      tokensRemaining: '{remaining} / {limit} tokens kvar',
     },
     providers: 'Leverantörer',
     models: 'Modeller',

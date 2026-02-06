@@ -110,9 +110,20 @@ function clearPollInterval() {
 }
 
 function handleClose() {
-  if (!downloadingModelId.value) {
+  clearPollInterval()
+  emit('update:modelVisible', false)
+}
+
+async function handleCancel() {
+  try {
+    if (props.type === 'asr') {
+      await speechApi.cancelASRDownload()
+    }
     clearPollInterval()
-    emit('update:modelVisible', false)
+    downloadingModelId.value = null
+    progress.value = null
+  } catch (e) {
+    console.error('Cancel failed:', e)
   }
 }
 
@@ -195,6 +206,7 @@ watch(() => props.modelVisible, (visible) => {
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-gray-900 dark:text-white">
                     {{ t(model.name) }}
+                    <span class="text-xs text-gray-400 ml-1">{{ model.size }}</span>
                     <span v-if="model.active" class="text-xs text-green-600 dark:text-green-400 ml-1">{{ t('speech.inUse') }}</span>
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
@@ -202,6 +214,14 @@ watch(() => props.modelVisible, (visible) => {
                   </div>
                 </div>
 
+                <!-- Cancel button when downloading -->
+                <button
+                  v-if="downloadingModelId === model.id"
+                  class="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                  @click="handleCancel"
+                >
+                  {{ t('common.cancel') }}
+                </button>
                 <!-- Download button -->
                 <button
                   v-if="!model.downloaded && downloadingModelId !== model.id"
@@ -253,8 +273,7 @@ watch(() => props.modelVisible, (visible) => {
 
           <!-- Close button -->
           <button
-            class="w-full px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
-            :disabled="!!downloadingModelId"
+            class="w-full px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             @click="handleClose"
           >
             {{ t('common.close') }}

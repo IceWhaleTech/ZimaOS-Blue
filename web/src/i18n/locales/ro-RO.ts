@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Cota de încercare',
       exhausted: 'Cota de încercare epuizată',
-      remaining: '{tokens} tokeni rămași, {conversations} conversații rămase',
-      tokensUsed: '{used} / {limit} tokeni utilizați',
+      remaining: '{tokens} tokeni rămași',
+      tokensRemaining: '{remaining} / {limit} tokeni rămași',
     },
     testConnection: 'Testează conexiunea',
     noProviders: 'Niciun furnizor configurat',

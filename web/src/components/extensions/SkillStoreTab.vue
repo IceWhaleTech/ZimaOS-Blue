@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, _onUnmounted, _computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { skillApi, type RemoteSkill, type SearchParams } from '@/api/skill'
 

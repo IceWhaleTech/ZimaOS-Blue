@@ -86,8 +86,8 @@ const canvasWidth = ref(800)
 const canvasHeight = ref(600)
 
 // Content dimensions based on nodes
-const contentWidth = computed(() => NODE_WIDTH + NODE_MARGIN_X * 2)
-const contentHeight = computed(() => {
+const _contentWidth = computed(() => NODE_WIDTH + NODE_MARGIN_X * 2)
+const _contentHeight = computed(() => {
   if (nodes.value.length === 0) return 400
   return nodes.value.length * (NODE_HEIGHT + NODE_MARGIN_Y) + NODE_MARGIN_Y
 })

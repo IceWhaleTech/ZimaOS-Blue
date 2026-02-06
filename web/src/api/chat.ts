@@ -71,6 +71,7 @@ export interface ToolDefinition {
 export interface StreamChunk {
   delta: string
   done: boolean
+  error?: string
   stream_id?: string
   provider?: string
   model?: string

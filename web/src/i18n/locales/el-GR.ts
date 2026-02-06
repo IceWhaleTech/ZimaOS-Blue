@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Δοκιμαστική ποσόστωση',
       exhausted: 'Η δοκιμαστική ποσόστωση εξαντλήθηκε',
-      remaining: '{tokens} tokens απομένουν, {conversations} συνομιλίες απομένουν',
-      tokensUsed: '{used} / {limit} tokens χρησιμοποιήθηκαν',
+      remaining: '{tokens} tokens απομένουν',
+      tokensRemaining: '{remaining} / {limit} tokens απομένουν',
     },
     testConnection: 'Δοκιμή σύνδεσης',
     noProviders: 'Δεν έχει ρυθμιστεί προμηθευτής',

@@ -809,8 +809,8 @@ export default {
     trialQuota: {
       title: 'Próba kvóta',
       exhausted: 'A próba kvóta kimerült',
-      remaining: '{tokens} token maradt, {conversations} beszélgetés maradt',
-      tokensUsed: '{used} / {limit} token felhasználva',
+      remaining: '{tokens} token maradt',
+      tokensRemaining: '{remaining} / {limit} token maradt',
     },
     testConnection: 'Kapcsolat tesztelése',
     noProviders: 'Nincsenek konfigurált szolgáltatók',

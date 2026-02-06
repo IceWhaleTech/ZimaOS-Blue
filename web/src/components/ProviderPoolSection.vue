@@ -705,12 +705,12 @@ onMounted(() => {
               {{ t('providerPool.trialQuota.title') }}
             </h4>
             <p class="text-xs" :class="store.trialQuota.exhausted ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'">
-              {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: store.trialQuota.tokens_remaining, conversations: store.trialQuota.conversations_left }) }}
+              {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: store.trialQuota.tokens_remaining }) }}
             </p>
           </div>
         </div>
         <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'">
-          <div>{{ t('providerPool.trialQuota.tokensUsed', { used: store.trialQuota.tokens_used, limit: store.trialQuota.token_limit }) }}</div>
+          <div>{{ t('providerPool.trialQuota.tokensRemaining', { remaining: store.trialQuota.tokens_remaining, limit: store.trialQuota.token_limit }) }}</div>
           <div class="mt-1 w-24 h-1.5 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all"

@@ -187,6 +187,22 @@ export const speechApi = {
 
   deleteEspeakLanguage: (langCode: string) =>
     api.delete<{ status: string; message: string }>(`/speech/espeak/language?lang_code=${langCode}`),
+
+  // TTS synthesis
+  synthesize: async (text: string): Promise<{ audio: string; content_type: string }> => {
+    const response = await fetch('/api/v1/voice/synthesize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ text }),
+    })
+    if (!response.ok) {
+      throw new Error('TTS synthesis failed')
+    }
+    return response.json()
+  },
 }
 
 export default speechApi

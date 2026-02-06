@@ -5,6 +5,7 @@ import { conversationApi, messageApi } from '@/api/chat'
 import { SSEClient } from '@/utils/sse'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
+import { systemApi } from '@/api/system'
 
 const PAGE_SIZE = 50
 
@@ -311,6 +312,8 @@ export const useChatStore = defineStore('chat', () => {
           } else {
             streamError.value = err.message
           }
+          // Log error to server
+          systemApi.writeLog('error', `Chat stream error: ${err.message}`, 'chat').catch(() => {})
           // Remove the placeholder message on error
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
           streaming.value = false

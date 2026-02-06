@@ -2,7 +2,7 @@
 // Handles starting, stopping, and monitoring the Echo Go server as a sidecar
 
 use crate::AppState;
-use log::{error, info, warn};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
