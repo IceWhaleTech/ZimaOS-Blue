@@ -270,12 +270,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		}
 	}
 
-	// System routes (protected)
+	// System routes
 	systemHandler := server.NewSystemHandler(cfg.Version, cfg.BuildTime, cfg.GitCommit, cfg.DataDir)
-	systemHandler.RegisterRoutes(protected)
+	systemHandler.RegisterRoutes(v1)
 
 	serviceHandler := server.NewServiceHandler()
-	serviceHandler.RegisterRoutes(protected)
+	serviceHandler.RegisterRoutes(v1)
 
 	// Connection monitoring routes
 	connHandler := connection.NewHandler(connManager)
@@ -413,9 +413,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		}
 	}
 
-	// Speech routes - /api/v1/speech/* (protected)
+	// Speech routes - /api/v1/speech/*
 	if deps.SpeechHandler != nil {
-		speechGroup := protected.Group("/speech")
+		speechGroup := v1.Group("/speech")
 		deps.SpeechHandler.RegisterRoutes(speechGroup)
 	}
 
