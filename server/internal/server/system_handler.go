@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/x509"
 	"encoding/pem"
 	"net/http"
 	"runtime"
