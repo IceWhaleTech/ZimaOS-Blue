@@ -116,6 +116,8 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
 }
 
 /// Start the server using platform-specific approach
+#[allow(dead_code)]
+async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         info!("Starting Echo server via CGO library (macOS)");
