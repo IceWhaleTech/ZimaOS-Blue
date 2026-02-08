@@ -322,7 +322,7 @@ router.beforeEach(async (to, from, next) => {
   // In preview mode, allow access to most routes without authentication
   if (inPreviewMode) {
     if (to.name === 'Login') {
-      next({ name: 'Chat' })
+      next({ name: 'Home' })
       return
     }
     next()

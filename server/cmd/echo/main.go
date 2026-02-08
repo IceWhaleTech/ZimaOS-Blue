@@ -67,11 +67,6 @@ var (
 // On macOS, it uses ~/Library/Application Support/com.zimaos.echo/
 // On other platforms, it uses ./data
 func getDataDir() string {
-	// Check for environment variable override
-	if dir := os.Getenv("ECHO_DATA_DIR"); dir != "" {
-		return dir
-	}
-
 	// On macOS (darwin), use Application Support directory
 	if runtime.GOOS == "darwin" {
 		if homeDir, err := os.UserHomeDir(); err == nil {
