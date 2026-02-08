@@ -195,6 +195,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	templatesHandler := server.NewTemplatesHandler()
 	templatesHandler.RegisterRoutes(v1)
 
+	// Public /me endpoint for preview mode
+	v1.GET("/users/me", deps.UserHandler.GetCurrentUser)
+	v1.PUT("/users/me", deps.UserHandler.UpdateCurrentUser)
+
 	// External auth routes
 	authGroup := v1.Group("/auth")
 	if deps.ExtauthHandler != nil {
