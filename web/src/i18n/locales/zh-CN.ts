@@ -1796,22 +1796,37 @@ export default {
         auth_password_length: {
           name: '密码最小长度',
           description: '检查密码最小长度是否满足安全要求',
+          risk: '短密码容易受到暴力破解和字典攻击',
+          impact: '攻击者可能猜测或破解弱密码，从而获得未授权访问用户账户',
+          remediation: '在安全设置中将密码最小长度设置为 12 个字符或更多',
         },
         auth_password_complexity: {
           name: '密码复杂性',
           description: '检查密码复杂性要求是否已启用',
+          risk: '没有混合字符类型的简单密码更容易被破解',
+          impact: '弱密码可能通过自动化攻击被破解，导致账户被接管',
+          remediation: '启用所有复杂性要求：大写字母、小写字母、数字和特殊字符',
         },
         auth_account_lockout: {
           name: '账户锁定策略',
           description: '检查账户锁定是否已配置',
+          risk: '没有锁定机制，攻击者可以进行无限次登录尝试',
+          impact: '暴力破解攻击最终可能成功，导致用户账户被攻破',
+          remediation: '配置账户锁定：在 5 次或更少失败尝试后锁定，锁定持续时间至少 15 分钟',
         },
         auth_jwt_secret: {
           name: 'JWT 密钥配置',
           description: '检查 JWT 密钥是否正确配置',
+          risk: '弱 JWT 密钥可能被暴力破解，允许令牌伪造',
+          impact: '攻击者可能伪造身份验证令牌并冒充任何用户',
+          remediation: '生成至少 32 字节的加密安全随机密钥',
         },
         auth_token_expiration: {
           name: '令牌过期',
           description: '检查令牌过期是否正确设置',
+          risk: '长期有效的令牌增加了令牌被盗和滥用的风险窗口',
+          impact: '被盗的令牌在较长时间内保持有效，使未授权访问得以持续',
+          remediation: '对于敏感操作，将令牌过期时间设置为 1 小时或更短',
         },
         auth_session_timeout: {
           name: '会话超时',
@@ -1862,10 +1877,16 @@ export default {
         ai_prompt_injection: {
           name: '提示注入保护',
           description: '检查提示注入保护是否已启用',
+          risk: '恶意提示可能操纵 AI 行为以绕过安全控制',
+          impact: '攻击者可能提取敏感数据、执行未授权操作或破坏系统完整性',
+          remediation: '启用 PromptGuard 以检测和阻止提示注入尝试',
         },
         ai_output_validation: {
           name: 'AI 输出验证',
           description: '检查 AI 输出是否在执行前经过验证',
+          risk: '未验证的 AI 输出可能包含恶意代码或有害内容',
+          impact: '恶意 AI 生成的内容可能被执行，导致代码注入或数据损坏',
+          remediation: '启用 AI 输出验证以清理和验证所有 AI 生成的内容',
         },
         ai_model_access: {
           name: '模型访问控制',
@@ -1874,23 +1895,38 @@ export default {
         ai_model_access_control: {
           name: '模型访问控制',
           description: '检查是否配置模型白名单以限制 AI 模型使用',
+          risk: '无限制的模型访问可能允许使用不受信任或易受攻击的模型',
+          impact: '恶意或受感染的模型可能产生有害输出或泄露数据',
+          remediation: '启用模型白名单并仅指定受信任、经过审查的 AI 模型',
         },
         ai_data_filtering: {
           name: '敏感数据过滤',
           description: '检查敏感数据是否从 AI 上下文中过滤',
+          risk: 'AI 提示中的敏感数据可能被记录、缓存或泄露给第三方',
+          impact: '个人身份信息、凭据或机密数据可能通过 AI 模型交互而暴露',
+          remediation: '启用敏感数据过滤，自动从 AI 上下文中删除个人身份信息和密钥',
         },
         // 网络安全
         network_rate_limiting: {
           name: 'API 速率限制',
           description: '检查速率限制是否已配置',
+          risk: '没有速率限制，API 容易受到滥用和拒绝服务攻击',
+          impact: '攻击者可能使系统过载，导致服务中断或资源耗尽',
+          remediation: '启用速率限制并设置适当的阈值（例如，每个客户端每秒 100 个请求）',
         },
         network_cors: {
           name: 'CORS 配置',
           description: '检查 CORS 是否正确配置',
+          risk: '宽松的 CORS 允许任何网站向您的 API 发出请求',
+          impact: '跨站请求伪造攻击可能窃取数据或执行未授权操作',
+          remediation: '在生产环境中将 CORS 限制为特定的受信任来源',
         },
         network_tls: {
           name: 'TLS/HTTPS 配置',
           description: '检查 TLS 是否正确配置',
+          risk: '未加密的流量可能被攻击者拦截和读取',
+          impact: '包括凭据和 API 密钥在内的敏感数据可能通过中间人攻击被窃取',
+          remediation: '启用 TLS 并配置有效证书，强制所有连接使用 HTTPS',
         },
         network_ip_blocking: {
           name: 'IP 阻止',
@@ -1904,6 +1940,9 @@ export default {
         sandbox_enabled: {
           name: '沙箱执行',
           description: '检查沙箱执行是否已启用',
+          risk: '未沙箱化的代码执行允许直接访问系统',
+          impact: '恶意代码可能访问文件、网络或破坏整个系统',
+          remediation: '启用沙箱执行以将不受信任的代码与主机系统隔离',
         },
         sandbox_resource_limits: {
           name: '资源限制',
@@ -1912,6 +1951,9 @@ export default {
         sandbox_memory_limit: {
           name: '内存限制',
           description: '检查沙箱内存限制是否已配置',
+          risk: '无限制的内存允许资源耗尽攻击',
+          impact: '恶意代码可能消耗所有可用内存，导致系统崩溃',
+          remediation: '为沙箱执行设置内存限制为 512MB 或更少',
         },
         sandbox_network_isolation: {
           name: '网络隔离',
@@ -1920,10 +1962,16 @@ export default {
         sandbox_network: {
           name: '网络隔离',
           description: '检查沙箱网络访问是否受限',
+          risk: '沙箱中的网络访问允许数据泄露',
+          impact: '恶意代码可能将敏感数据发送到外部服务器或下载额外的有效负载',
+          remediation: '除非特别需要，否则禁用沙箱中的网络访问',
         },
         sandbox_timeout: {
           name: '执行超时',
           description: '检查执行超时是否已配置',
+          risk: '没有超时允许无限循环或长时间运行的恶意代码',
+          impact: '系统资源可能被恶意代码无限期占用',
+          remediation: '将执行超时设置为 30 秒或更短',
         },
         // 数据保护
         data_encryption_rest: {
@@ -1945,6 +1993,9 @@ export default {
         data_directory_security: {
           name: '数据目录权限',
           description: '检查数据目录权限是否合理',
+          risk: '过于宽松的目录权限允许未授权访问敏感数据',
+          impact: '系统上的其他用户可能读取、修改或删除应用程序数据',
+          remediation: '将目录权限设置为 0750（所有者：rwx，组：r-x，其他：无）',
         },
         // 系统安全
         system_file_permissions: {
@@ -4015,5 +4066,40 @@ export default {
     secretWarning: '请妥善保存密钥，之后将无法再次查看。',
     confirmDelete: '确定要删除这个 Webhook 吗？',
     confirmRegenerate: '确定要重新生成密钥吗？现有集成在更新前将无法工作。',
+  },
+
+  personality: {
+    title: '人格管理',
+    description: '管理 AI 助手人格',
+    create: '创建人格',
+    createNew: '创建新人格',
+    createFirst: '创建您的第一个人格',
+    name: '名称',
+    namePlaceholder: '例如：Echo、助手',
+    description: '描述',
+    descriptionPlaceholder: '这个人格用于什么？',
+    systemPrompt: '系统提示词',
+    systemPromptPlaceholder: '输入此人格的系统提示词',
+    traits: '特征',
+    addTrait: '添加特征',
+    traitKey: '键',
+    traitValue: '值',
+    traitWeight: '权重',
+    noPersonalities: '暂无人格',
+    activate: '激活',
+    active: '活跃',
+    default: '默认',
+    edit: '编辑',
+    delete: '删除',
+    confirmDelete: '确定要删除这个人格吗？',
+    deleteSuccess: '人格删除成功',
+    createSuccess: '人格创建成功',
+    updateSuccess: '人格更新成功',
+    activateSuccess: '人格激活成功',
+    failedToLoad: '加载人格失败',
+    failedToCreate: '创建人格失败',
+    failedToUpdate: '更新人格失败',
+    failedToDelete: '删除人格失败',
+    failedToActivate: '激活人格失败',
   },
 }

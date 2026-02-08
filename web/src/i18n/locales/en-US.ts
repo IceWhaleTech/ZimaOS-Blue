@@ -1784,22 +1784,37 @@ export default {
         auth_password_length: {
           name: 'Password Minimum Length',
           description: 'Check if password minimum length meets security requirements',
+          risk: 'Short passwords are vulnerable to brute force and dictionary attacks',
+          impact: 'Attackers could guess or crack weak passwords, gaining unauthorized access to user accounts',
+          remediation: 'Set minimum password length to 12 or more characters in security settings',
         },
         auth_password_complexity: {
           name: 'Password Complexity Requirements',
           description: 'Check if password complexity requirements are properly configured',
+          risk: 'Simple passwords without mixed character types are easier to crack',
+          impact: 'Weak passwords can be compromised through automated attacks, leading to account takeover',
+          remediation: 'Enable all complexity requirements: uppercase, lowercase, numbers, and special characters',
         },
         auth_account_lockout: {
           name: 'Account Lockout Policy',
           description: 'Check if account lockout is configured to prevent brute force attacks',
+          risk: 'Without lockout, attackers can make unlimited login attempts',
+          impact: 'Brute force attacks can eventually succeed, compromising user accounts',
+          remediation: 'Configure account lockout after 5 or fewer failed attempts with a lockout duration of at least 15 minutes',
         },
         auth_jwt_secret: {
           name: 'JWT Secret Strength',
           description: 'Check if JWT secret is sufficiently strong',
+          risk: 'Weak JWT secrets can be brute-forced, allowing token forgery',
+          impact: 'Attackers could forge authentication tokens and impersonate any user',
+          remediation: 'Generate a cryptographically secure random secret of at least 32 bytes',
         },
         auth_token_expiration: {
           name: 'Token Expiration Time',
           description: 'Check if token expiration is set to a reasonable duration',
+          risk: 'Long-lived tokens increase the window for token theft and misuse',
+          impact: 'Stolen tokens remain valid for extended periods, enabling persistent unauthorized access',
+          remediation: 'Set token expiration to 1 hour or less for sensitive operations',
         },
         // New scanner ids
         auth_session_timeout: {
@@ -1852,10 +1867,16 @@ export default {
         ai_prompt_injection: {
           name: 'Prompt Injection Protection',
           description: 'Check if prompt injection detection is enabled',
+          risk: 'Malicious prompts can manipulate AI behavior to bypass security controls',
+          impact: 'Attackers could extract sensitive data, execute unauthorized actions, or compromise system integrity',
+          remediation: 'Enable PromptGuard to detect and block prompt injection attempts',
         },
         ai_output_validation: {
           name: 'AI Output Validation',
           description: 'Check if AI outputs are validated before execution',
+          risk: 'Unvalidated AI outputs may contain malicious code or harmful content',
+          impact: 'Malicious AI-generated content could be executed, leading to code injection or data corruption',
+          remediation: 'Enable AI output validation to sanitize and verify all AI-generated content',
         },
         ai_model_access: {
           name: 'Model Access Control',
@@ -1864,23 +1885,38 @@ export default {
         ai_model_access_control: {
           name: 'Model Access Control',
           description: 'Check if model whitelist is configured to restrict AI model usage',
+          risk: 'Unrestricted model access may allow use of untrusted or vulnerable models',
+          impact: 'Malicious or compromised models could produce harmful outputs or leak data',
+          remediation: 'Enable model whitelist and specify only trusted, vetted AI models',
         },
         ai_data_filtering: {
           name: 'Sensitive Data Filtering',
           description: 'Check if sensitive data is filtered from AI context',
+          risk: 'Sensitive data in AI prompts may be logged, cached, or leaked to third parties',
+          impact: 'PII, credentials, or confidential data could be exposed through AI model interactions',
+          remediation: 'Enable sensitive data filtering to automatically redact PII and secrets from AI context',
         },
         // Network Security
         network_rate_limiting: {
           name: 'API Rate Limiting',
           description: 'Check if rate limiting is configured to prevent abuse',
+          risk: 'Without rate limiting, APIs are vulnerable to abuse and denial of service',
+          impact: 'Attackers could overwhelm the system, causing service outages or resource exhaustion',
+          remediation: 'Enable rate limiting with appropriate thresholds (e.g., 100 requests/second per client)',
         },
         network_cors: {
           name: 'CORS Configuration',
           description: 'Check if CORS is properly restricted',
+          risk: 'Permissive CORS allows any website to make requests to your API',
+          impact: 'Cross-site request forgery attacks could steal data or perform unauthorized actions',
+          remediation: 'Restrict CORS to specific trusted origins in production environments',
         },
         network_tls: {
           name: 'TLS/HTTPS Configuration',
           description: 'Check if TLS is enabled for secure communication',
+          risk: 'Unencrypted traffic can be intercepted and read by attackers',
+          impact: 'Sensitive data including credentials and API keys could be stolen via man-in-the-middle attacks',
+          remediation: 'Enable TLS with a valid certificate and enforce HTTPS for all connections',
         },
         network_ip_blocking: {
           name: 'IP Blocking Capability',
@@ -1894,6 +1930,9 @@ export default {
         sandbox_enabled: {
           name: 'Sandbox Execution',
           description: 'Check if code execution is sandboxed',
+          risk: 'Unsandboxed code execution allows direct system access',
+          impact: 'Malicious code could access files, network, or compromise the entire system',
+          remediation: 'Enable sandbox execution to isolate untrusted code from the host system',
         },
         sandbox_resource_limits: {
           name: 'Resource Limits',
@@ -1902,6 +1941,9 @@ export default {
         sandbox_memory_limit: {
           name: 'Memory Limits',
           description: 'Check if sandbox memory limits are configured',
+          risk: 'Unlimited memory allows resource exhaustion attacks',
+          impact: 'Malicious code could consume all available memory, crashing the system',
+          remediation: 'Set memory limits to 512MB or less for sandboxed execution',
         },
         sandbox_network_isolation: {
           name: 'Network Isolation',
@@ -1910,10 +1952,16 @@ export default {
         sandbox_network: {
           name: 'Network Isolation',
           description: 'Check if sandbox network access is restricted',
+          risk: 'Network access from sandbox allows data exfiltration',
+          impact: 'Malicious code could send sensitive data to external servers or download additional payloads',
+          remediation: 'Disable network access in sandbox unless specifically required',
         },
         sandbox_timeout: {
           name: 'Execution Timeout',
           description: 'Check if execution timeout is configured',
+          risk: 'No timeout allows infinite loops or long-running malicious code',
+          impact: 'System resources could be tied up indefinitely by malicious code',
+          remediation: 'Set execution timeout to 30 seconds or less',
         },
         // Data Protection
         data_encryption_rest: {
@@ -1935,6 +1983,9 @@ export default {
         data_directory_security: {
           name: 'Data Directory Security',
           description: 'Check if data directories have appropriate permissions',
+          risk: 'Overly permissive directory permissions allow unauthorized access to sensitive data',
+          impact: 'Other users on the system could read, modify, or delete application data',
+          remediation: 'Set directory permissions to 0750 (owner: rwx, group: r-x, others: none)',
         },
         // System Security
         system_file_permissions: {
@@ -4030,5 +4081,40 @@ export default {
     secretWarning: 'Store this secret securely. You won’t be able to view it again.',
     confirmDelete: 'Are you sure you want to delete this webhook?',
     confirmRegenerate: 'Regenerate the secret? Existing integrations will stop working until updated.',
+  },
+
+  personality: {
+    title: 'Personalities',
+    description: 'Manage AI assistant personalities',
+    create: 'Create Personality',
+    createNew: 'Create new personality',
+    createFirst: 'Create your first personality',
+    name: 'Name',
+    namePlaceholder: 'e.g., Echo, Assistant',
+    description: 'Description',
+    descriptionPlaceholder: 'What is this personality for?',
+    systemPrompt: 'System Prompt',
+    systemPromptPlaceholder: 'Enter the system prompt for this personality',
+    traits: 'Traits',
+    addTrait: 'Add trait',
+    traitKey: 'Key',
+    traitValue: 'Value',
+    traitWeight: 'Weight',
+    noPersonalities: 'No personalities',
+    activate: 'Activate',
+    active: 'Active',
+    default: 'Default',
+    edit: 'Edit',
+    delete: 'Delete',
+    confirmDelete: 'Are you sure you want to delete this personality?',
+    deleteSuccess: 'Personality deleted successfully',
+    createSuccess: 'Personality created successfully',
+    updateSuccess: 'Personality updated successfully',
+    activateSuccess: 'Personality activated successfully',
+    failedToLoad: 'Failed to load personalities',
+    failedToCreate: 'Failed to create personality',
+    failedToUpdate: 'Failed to update personality',
+    failedToDelete: 'Failed to delete personality',
+    failedToActivate: 'Failed to activate personality',
   },
 }
