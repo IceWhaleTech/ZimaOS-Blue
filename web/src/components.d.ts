@@ -111,6 +111,8 @@ declare module 'vue' {
     NetworkSettings: typeof import('./components/settings/NetworkSettings.vue')['default']
     NotificationContainer: typeof import('./components/NotificationContainer.vue')['default']
     PasswordInput: typeof import('./components/ui/PasswordInput.vue')['default']
+    PersonalityForm: typeof import('./components/PersonalityForm.vue')['default']
+    PersonalityList: typeof import('./components/PersonalityList.vue')['default']
     PluginCard: typeof import('./components/PluginCard.vue')['default']
     PluginConfigForm: typeof import('./components/PluginConfigForm.vue')['default']
     PluginTab: typeof import('./components/extensions/PluginTab.vue')['default']

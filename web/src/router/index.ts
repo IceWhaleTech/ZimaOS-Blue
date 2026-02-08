@@ -3,6 +3,9 @@ import type { RouteRecordRaw } from 'vue-router'
 import { PagePermissions } from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
 
+// Detect if running in Tauri
+const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false
 let isPreviewMode = false
@@ -17,7 +20,9 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
 
-    const response = await fetch('/api/v1/system/mode', {
+    // Use absolute URL in Tauri, relative URL in browser
+    const url = isTauri ? 'http://localhost:23456/api/v1/system/mode' : '/api/v1/system/mode'
+    const response = await fetch(url, {
       signal: controller.signal,
     })
     clearTimeout(timeoutId)
@@ -64,7 +69,9 @@ async function fetchPreviewToken(): Promise<void> {
   }
 
   try {
-    const response = await fetch('/api/v1/preview/token', {
+    // Use absolute URL in Tauri, relative URL in browser
+    const url = isTauri ? 'http://localhost:23456/api/v1/preview/token' : '/api/v1/preview/token'
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
@@ -264,6 +271,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
+    path: '/personalities',
+    name: 'Personalities',
+    component: () => import('@/views/PersonalityView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),
@@ -276,7 +289,14 @@ const router = createRouter({
 })
 
 // Navigation guard for authentication, preview mode, and permissions
-router.beforeEach(async (to, _from, next) => {
+let isNavigating = false
+router.beforeEach(async (to, from, next) => {
+  // Prevent infinite redirect loops
+  if (isNavigating) {
+    next()
+    return
+  }
+
   const token = localStorage.getItem('token')
   const isAuthenticated = !!token
   const requiresAuth = to.meta.requiresAuth
@@ -295,95 +315,56 @@ router.beforeEach(async (to, _from, next) => {
 
   // If connection error (500 or network failure), redirect to error page
   if (connectionError) {
-    // Pass the original route so we can return after connection is restored
     next({ name: 'ConnectionError', query: { from: to.fullPath } })
     return
   }
 
   // In preview mode, allow access to most routes without authentication
   if (inPreviewMode) {
-    // In preview mode, users are treated as admin, so allow admin routes
-    // Allow all other routes in preview mode (no auth required)
     if (to.name === 'Login') {
-      // Redirect login to chat in preview mode
       next({ name: 'Chat' })
       return
     }
-
     next()
     return
   }
 
-  // Normal mode (users exist): standard authentication flow
-  // If we have a preview token but system is in normal mode, clear it and require login
+  // Normal mode: standard authentication flow
   const previewToken = localStorage.getItem('preview_token')
   if (previewToken && !inPreviewMode) {
-    // System has been upgraded from preview to normal mode
-    // Clear preview token and require proper authentication
     localStorage.removeItem('preview_token')
     localStorage.removeItem('token')
-
-    // If trying to access a protected route, redirect to login
     if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
     }
   }
 
-  // Routes with required permissions implicitly require authentication
+  // Redirect to login if auth required but not authenticated
   if ((requiresAuth || requiredPermission) && !isAuthenticated) {
-    // Redirect to login with return URL
     next({ name: 'Login', query: { redirect: to.fullPath } })
     return
   }
 
+  // Redirect authenticated users away from login
   if (to.name === 'Login' && isAuthenticated) {
-    // Already logged in, redirect to the requested page or stay on previous page
     const redirect = to.query.redirect as string
-    if (redirect) {
+    if (redirect && redirect !== '/login' && from.name !== 'Login') {
       next(redirect)
-    } else if (_from.name && _from.name !== 'Login') {
-      // Stay on the page they came from
-      next(_from)
     } else {
-      next({ name: 'Home' })
+      next({ name: 'Chat' })
     }
     return
   }
 
-  // Check admin requirement
-  if (requiresAdmin && isAuthenticated) {
-    const authStore = useAuthStore()
-    if (!authStore.isAdmin) {
-      // Not admin, redirect to chat
-      next({ name: 'Chat' })
-      return
-    }
-  }
-
-  // Check page permission requirement
-  if (requiredPermission && isAuthenticated) {
-    // Skip permission check if already going to Chat (prevent infinite loop)
-    if (to.name === 'Chat') {
-      next()
-      return
-    }
-
-    const authStore = useAuthStore()
-
-    // Admin has all permissions
-    if (!authStore.isAdmin && !authStore.hasPermission(requiredPermission)) {
-      // No permission, redirect to chat
-      next({ name: 'Chat' })
-      return
-    }
-  }
-
-  if (isPublic || isAuthenticated || !requiresAuth) {
-    next()
-  } else {
-    next()
-  }
+  next()
 })
+
+// Handle auth:unauthorized event for Tauri
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:unauthorized', () => {
+    router.push({ name: 'Login' })
+  })
+}
 
 export default router

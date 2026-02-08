@@ -888,18 +888,10 @@ export default {
     antivirusBlockedTitle: 'ngrok kan bli blokkert av antivirus',
     antivirusBlockedDesc: 'Hvis tilkoblingen mislykkes, sjekk om antivirusprogrammet blokkerer ngrok og legg det til i whitelisten.',
   },
-  ideDiscovery: {
-    ...enUS.ideDiscovery,
-  },
-  userdata: {
-    ...enUS.userdata,
-  },
-  connections: {
-    ...enUS.connections,
-  },
-  speech: {
-    ...enUS.speech,
-  },
+  ideDiscovery: enUS.ideDiscovery,
+  userdata: enUS.userdata,
+  connections: enUS.connections,
+  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'Katalansk',
     'cs-CZ': 'Tsjekkisk',

@@ -102,6 +102,7 @@ declare global {
   const useNetwork: typeof import('./composables/useNetwork').useNetwork
   const useNotificationStore: typeof import('./stores/notification').useNotificationStore
   const usePermissions: typeof import('./composables/usePermissions').usePermissions
+  const usePersonalityStore: typeof import('./stores/personality').usePersonalityStore
   const usePluginStore: typeof import('./stores/plugin').usePluginStore
   const usePreviewStore: typeof import('./stores/preview').usePreviewStore
   const useProviderPoolStore: typeof import('./stores/providerPool').useProviderPoolStore
@@ -261,6 +262,7 @@ declare module 'vue' {
     readonly useNetwork: UnwrapRef<typeof import('./composables/useNetwork')['useNetwork']>
     readonly useNotificationStore: UnwrapRef<typeof import('./stores/notification')['useNotificationStore']>
     readonly usePermissions: UnwrapRef<typeof import('./composables/usePermissions')['usePermissions']>
+    readonly usePersonalityStore: UnwrapRef<typeof import('./stores/personality')['usePersonalityStore']>
     readonly usePluginStore: UnwrapRef<typeof import('./stores/plugin')['usePluginStore']>
     readonly usePreviewStore: UnwrapRef<typeof import('./stores/preview')['usePreviewStore']>
     readonly useProviderPoolStore: UnwrapRef<typeof import('./stores/providerPool')['useProviderPoolStore']>

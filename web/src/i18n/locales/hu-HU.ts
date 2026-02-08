@@ -888,18 +888,10 @@ export default {
     antivirusBlockedTitle: 'Az ngrok blokkolva lehet az antivirus által',
     antivirusBlockedDesc: 'Ha a kapcsolat sikertelen, ellenőrizze, hogy az antivirus blokkolja-e az ngrok-ot, és adja hozzá a whitelisthez.',
   },
-  ideDiscovery: {
-    ...enUS.ideDiscovery,
-  },
-  userdata: {
-    ...enUS.userdata,
-  },
-  connections: {
-    ...enUS.connections,
-  },
-  speech: {
-    ...enUS.speech,
-  },
+  ideDiscovery: enUS.ideDiscovery,
+  userdata: enUS.userdata,
+  connections: enUS.connections,
+  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'Katalán',
     'cs-CZ': 'Cseh',

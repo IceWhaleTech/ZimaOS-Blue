@@ -894,18 +894,10 @@ export default {
     antivirusBlockedTitle: 'ngrok ആൻറിവൈറസ് ബ്ലോക്ക് ചെയ്യാം',
     antivirusBlockedDesc: 'കണക്ഷൻ പരാജയപ്പെട്ടാൽ, ആൻറിവൈറസ് ngrok ബ്ലോക്ക് ചെയ്യുന്നുണ്ടോ എന്ന് പരിശോധിച്ച് വൈറ്റ് ലിസ്റ്റിലേക്ക് ചേർക്കുക.',
   },
-  ideDiscovery: {
-    ...enUS.ideDiscovery,
-  },
-  userdata: {
-    ...enUS.userdata,
-  },
-  connections: {
-    ...enUS.connections,
-  },
-  speech: {
-    ...enUS.speech,
-  },
+  ideDiscovery: enUS.ideDiscovery,
+  userdata: enUS.userdata,
+  connections: enUS.connections,
+  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'കാറ്റലൻ',
     'cs-CZ': 'ചെക്ക്',

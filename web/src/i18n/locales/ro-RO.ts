@@ -888,18 +888,10 @@ export default {
     antivirusBlockedTitle: 'ngrok poate fi blocat de antivirus',
     antivirusBlockedDesc: 'Dacă conexiunea eșuează, verificați dacă antivirusul blochează ngrok și adăugați-l la whitelist.',
   },
-  ideDiscovery: {
-    ...enUS.ideDiscovery,
-  },
-  userdata: {
-    ...enUS.userdata,
-  },
-  connections: {
-    ...enUS.connections,
-  },
-  speech: {
-    ...enUS.speech,
-  },
+  ideDiscovery: enUS.ideDiscovery,
+  userdata: enUS.userdata,
+  connections: enUS.connections,
+  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'Catalană',
     'cs-CZ': 'Cehă',

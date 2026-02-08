@@ -47,7 +47,13 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+
+      // In Tauri, use custom event instead of window.location to avoid infinite redirect
+      if (isTauri) {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+      } else {
+        window.location.href = '/login'
+      }
     }
 
     // Enhance error with translated message

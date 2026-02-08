@@ -888,18 +888,10 @@ export default {
     antivirusBlockedTitle: 'ngrok môže byť blokovaný antivírusom',
     antivirusBlockedDesc: 'Ak sa pripojenie nepodarí, skontrolujte, či váš antivírus neblokuje ngrok a pridajte ho do whitelistu.',
   },
-  ideDiscovery: {
-    ...enUS.ideDiscovery,
-  },
-  userdata: {
-    ...enUS.userdata,
-  },
-  connections: {
-    ...enUS.connections,
-  },
-  speech: {
-    ...enUS.speech,
-  },
+  ideDiscovery: enUS.ideDiscovery,
+  userdata: enUS.userdata,
+  connections: enUS.connections,
+  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'Katalánčina',
     'cs-CZ': 'Čeština',
