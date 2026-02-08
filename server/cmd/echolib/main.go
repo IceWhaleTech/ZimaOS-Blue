@@ -55,6 +55,11 @@ var (
 	gitCommit = "unknown"
 )
 
+// getMacOSDataDir returns the macOS data directory path
+func getMacOSDataDir() string {
+	return filepath.Join(os.ExpandEnv("$HOME"), "Library", "Application Support", "com.zimaos.echo")
+}
+
 // Global state for the server
 var (
 	serverMu     sync.Mutex
@@ -75,21 +80,16 @@ func EchoServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 	}
 
 	goPort := int(port)
-	goDataDir := C.GoString(dataDir)
+	goDataDir := getMacOSDataDir()
 	goArgs := C.GoString(args)
 
 	// Set environment variables for config
 	if goPort > 0 {
 		os.Setenv("ECHO_SERVER_PORT", fmt.Sprintf("%d", goPort))
 	}
-	if goDataDir != "" {
-		os.Setenv("ECHO_DATA_DIR", goDataDir)
-	}
 
 	// Parse and apply command-line arguments
 	if goArgs != "" {
-		// Parse arguments string (space-separated)
-		// Example: "--config /path/to/config.yaml --debug"
 		os.Setenv("ECHO_ARGS", goArgs)
 	}
 
@@ -118,14 +118,11 @@ func EchoServerStart(port C.int, dataDir *C.char) C.int {
 	}
 
 	goPort := int(port)
-	goDataDir := C.GoString(dataDir)
+	goDataDir := getMacOSDataDir()
 
 	// Set environment variables for config
 	if goPort > 0 {
 		os.Setenv("ECHO_SERVER_PORT", fmt.Sprintf("%d", goPort))
-	}
-	if goDataDir != "" {
-		os.Setenv("ECHO_DATA_DIR", goDataDir)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -194,14 +191,22 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Initialize HotReloader for config changes
+	var hotReloader *config.HotReloader
+	hotReloader, _ = config.NewHotReloader("", cfg, &config.HotReloadConfig{
+		Enabled:             true,
+		WatchInterval:       5 * time.Second,
+		ValidateBeforeApply: true,
+	})
+
 	// Override port if specified
 	if port > 0 {
 		cfg.Server.Port = port
 	}
 
-	// Use provided data directory or default
-	if dataDir == "" {
-		dataDir = "./data"
+	// Ensure data directory exists
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// Initialize logger with ring buffer for log viewing
@@ -488,6 +493,7 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		ChannelConfigStore: channelConfigStore,
 		SharedCache:        sharedCache,
 		MemoryHandler:      memoryHandler,
+		HotReloader:        hotReloader,
 	})
 
 	// Start HTTP server

@@ -30,6 +30,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/permission"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/controller"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/model"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/view"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/preview"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
@@ -90,6 +93,7 @@ type RoutesDeps struct {
 	MemoryHandler      *server.MemoryHandler
 	ChannelConfigStore *server.ChannelConfigStore
 	SharedCache        *proxy.CCCache
+	HotReloader        *config.HotReloader
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance
@@ -157,6 +161,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	previewModeService := preview.NewModeService(s.UserService)
 	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
 	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService)
+	previewHandler.SetDataDir(dataDir)
 	previewHandler.RegisterRoutes(e)
 	logger.Info("Preview mode routes registered")
 
@@ -183,6 +188,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	// Public auth routes
 	v1.POST("/auth/login", deps.UserHandler.Login)
 	v1.POST("/auth/logout", deps.UserHandler.Logout)
+
+	// Public config and templates routes (no auth required)
+	configHandler := server.NewConfigHandler(deps.HotReloader)
+	configHandler.RegisterRoutes(v1)
+	templatesHandler := server.NewTemplatesHandler()
+	templatesHandler.RegisterRoutes(v1)
 
 	// External auth routes
 	authGroup := v1.Group("/auth")
@@ -503,6 +514,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	if deps.MemoryHandler != nil {
 		deps.MemoryHandler.RegisterRoutes(v1)
 	}
+
+	// Personality routes (protected)
+	personalityRepo := model.NewRepository(deps.DB)
+	personalityService := controller.NewService(personalityRepo)
+	personalityHandler := view.NewHandler(personalityService)
+	personalityGroup := protected.Group("/personalities")
+	personalityHandler.RegisterRoutes(personalityGroup)
+	logger.Info("Personality routes registered")
 
 	// OTA Update routes (always register, handler checks if enabled)
 	updateCfg := &update.Config{

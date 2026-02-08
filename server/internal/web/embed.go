@@ -3,36 +3,29 @@
 package web
 
 import (
-	"embed"
-	"io"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/labstack/echo/v4"
 )
 
-//go:embed dist/*
-var embeddedFiles embed.FS
-
-// distFS is the sub-filesystem for the dist directory
+// distFS is the file system for the dist directory
 var distFS fs.FS
 
 func init() {
-	var err error
-	distFS, err = fs.Sub(embeddedFiles, "dist")
-	if err != nil {
-		panic(err)
-	}
+	// Load dist directory from file system (not embedded)
+	distFS = os.DirFS("dist")
 }
 
-// GetFileSystem returns the embedded file system for production builds.
-// The files are embedded from the dist directory which contains the built frontend.
+// GetFileSystem returns the file system for production builds.
 func GetFileSystem() http.FileSystem {
 	return http.FS(distFS)
 }
 
-// GetEmbeddedFS returns the raw fs.FS for the dist directory.
+// GetEmbeddedFS returns the fs.FS for the dist directory.
 func GetEmbeddedFS() fs.FS {
 	return distFS
 }
@@ -42,10 +35,9 @@ func IsEmbedded() bool {
 	return true
 }
 
-// RegisterStaticRoutes registers the static file routes for the embedded frontend.
+// RegisterStaticRoutes registers the static file routes for the frontend.
 func RegisterStaticRoutes(e *echo.Echo) {
-	// Serve static files directly from embedded filesystem
-	// This avoids Echo's routing issues with wildcard routes
+	// Serve static files from dist directory
 	e.GET("/*", func(c echo.Context) error {
 		path := c.Param("*")
 		if path == "" {
@@ -57,7 +49,7 @@ func RegisterStaticRoutes(e *echo.Echo) {
 			return echo.ErrNotFound
 		}
 
-		// Legacy/incorrect request for index.js - redirect to root (Vite build uses hashed names like index-xxx.js)
+		// Legacy/incorrect request for index.js - redirect to root
 		if path == "index.js" {
 			return c.Redirect(http.StatusFound, "/")
 		}
@@ -66,7 +58,6 @@ func RegisterStaticRoutes(e *echo.Echo) {
 		f, err := distFS.Open(path)
 		if err != nil {
 			// File not found - serve index.html for SPA routing
-			// But only for non-asset paths
 			if isAssetPath(path) {
 				return echo.ErrNotFound
 			}
@@ -87,7 +78,7 @@ func RegisterStaticRoutes(e *echo.Echo) {
 		if stat.IsDir() {
 			// Try index.html in the directory
 			f.Close()
-			indexPath := path + "/index.html"
+			indexPath := filepath.Join(path, "index.html")
 			f, err = distFS.Open(indexPath)
 			if err != nil {
 				// Serve root index.html for SPA
@@ -103,7 +94,7 @@ func RegisterStaticRoutes(e *echo.Echo) {
 		}
 
 		// Read and serve the file
-		content, err := io.ReadAll(f)
+		content, err := os.ReadFile(filepath.Join("dist", path))
 		if err != nil {
 			return echo.ErrNotFound
 		}
