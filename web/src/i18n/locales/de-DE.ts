@@ -2345,7 +2345,6 @@ export default {
     toolDescription: 'Werkzeugbeschreibung',
     parameters: 'Parameter',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

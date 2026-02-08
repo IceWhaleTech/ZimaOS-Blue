@@ -1174,7 +1174,6 @@ export default {
     clearSearch: 'Εκκαθάριση αναζήτησης',
     allLoaded: 'Φορτώθηκαν όλες οι {count} δεξιότητες',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

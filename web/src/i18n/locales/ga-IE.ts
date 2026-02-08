@@ -1174,7 +1174,6 @@ export default {
     clearSearch: 'Glan cuardach',
     allLoaded: 'Gach {count} scil luchtaithe',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

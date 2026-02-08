@@ -960,7 +960,6 @@ export default {
     clearSearch: 'Ștergeți căutarea',
     allLoaded: 'Toate cele {count} abilități încărcate',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

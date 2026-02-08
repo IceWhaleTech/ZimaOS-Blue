@@ -960,7 +960,6 @@ export default {
     clearSearch: 'Vymazať vyhľadávanie',
     allLoaded: 'Načítaných všetkých {count} zručností',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

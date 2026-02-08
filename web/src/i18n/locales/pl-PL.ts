@@ -1192,7 +1192,6 @@ export default {
     clearSearch: 'Wyczyść wyszukiwanie',
     allLoaded: 'Załadowano wszystkie {count} umiejętności',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

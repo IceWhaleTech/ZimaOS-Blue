@@ -960,7 +960,6 @@ export default {
     clearSearch: 'Tøm søk',
     allLoaded: 'Alle {count} ferdigheter lastet',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

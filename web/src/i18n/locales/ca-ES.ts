@@ -1190,7 +1190,6 @@ export default {
     clearSearch: 'Esborrar cerca',
     allLoaded: 'Totes les {count} habilitats carregades',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

@@ -1946,7 +1946,6 @@ export default {
     clearSearch: 'Limpar busca',
     allLoaded: 'Todas as {count} habilidades carregadas',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

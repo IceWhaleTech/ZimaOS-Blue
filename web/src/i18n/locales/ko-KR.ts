@@ -2573,7 +2573,6 @@ export default {
     'zh-CN': '간체 중국어',
     'zh-TW': '번체 중국어',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

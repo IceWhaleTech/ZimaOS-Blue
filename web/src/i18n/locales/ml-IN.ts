@@ -966,7 +966,6 @@ export default {
     clearSearch: 'തിരയൽ മായ്ക്കുക',
     allLoaded: 'എല്ലാ {count} സ്കില്ലുകളും ലോഡ് ചെയ്തു',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

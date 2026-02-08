@@ -1192,7 +1192,6 @@ export default {
     clearSearch: 'Zoekopdracht wissen',
     allLoaded: 'Alle {count} vaardigheden geladen',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

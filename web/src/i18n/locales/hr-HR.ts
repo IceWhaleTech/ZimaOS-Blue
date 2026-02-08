@@ -960,7 +960,6 @@ export default {
     clearSearch: 'Očisti pretragu',
     allLoaded: 'Učitano svih {count} vještina',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

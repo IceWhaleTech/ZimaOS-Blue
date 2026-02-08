@@ -4091,7 +4091,7 @@ export default {
     createFirst: 'Create your first personality',
     name: 'Name',
     namePlaceholder: 'e.g., Echo, Assistant',
-    description: 'Description',
+    label: 'Description',
     descriptionPlaceholder: 'What is this personality for?',
     systemPrompt: 'System Prompt',
     systemPromptPlaceholder: 'Enter the system prompt for this personality',

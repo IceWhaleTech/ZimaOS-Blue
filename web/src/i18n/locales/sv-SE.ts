@@ -1192,7 +1192,6 @@ export default {
     clearSearch: 'Rensa sökning',
     allLoaded: 'Alla {count} färdigheter laddade',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

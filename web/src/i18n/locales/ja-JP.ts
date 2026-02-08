@@ -2603,7 +2603,6 @@ export default {
     'zh-CN': '簡体字中国語',
     'zh-TW': '繁体字中国語',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

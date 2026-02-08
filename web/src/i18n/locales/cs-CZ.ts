@@ -1111,7 +1111,6 @@ export default {
     clearSearch: 'Vymazat vyhledávání',
     allLoaded: 'Načteno všech {count} dovedností',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

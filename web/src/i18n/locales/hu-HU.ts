@@ -960,7 +960,6 @@ export default {
     clearSearch: 'Keresés törlése',
     allLoaded: 'Mind a {count} készség betöltve',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

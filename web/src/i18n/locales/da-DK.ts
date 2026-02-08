@@ -1114,7 +1114,6 @@ export default {
     clearSearch: 'Ryd søgning',
     allLoaded: 'Alle {count} færdigheder indlæst',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

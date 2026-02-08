@@ -1876,7 +1876,6 @@ export default {
     clearSearch: 'Очистить поиск',
     allLoaded: 'Все {count} навыков загружены',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

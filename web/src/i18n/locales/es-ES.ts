@@ -2221,7 +2221,6 @@ export default {
     toolName: 'Nombre de herramienta',
     parameters: 'Parámetros',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

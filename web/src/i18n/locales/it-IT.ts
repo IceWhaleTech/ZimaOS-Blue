@@ -2025,7 +2025,6 @@ export default {
     title: 'Companion',
     subtitle: 'Assistente companion',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",

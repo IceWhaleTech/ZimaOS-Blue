@@ -2532,7 +2532,6 @@ export default {
     'zh-CN': '簡體中文',
     'zh-TW': '繁體中文',
   },
- as typeof enUS
 
   personality: {
     title: "Personalities",
