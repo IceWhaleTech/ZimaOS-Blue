@@ -516,12 +516,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	}
 
 	// Personality routes (protected)
-	personalityRepo := model.NewRepository(deps.DB)
-	personalityService := controller.NewService(personalityRepo)
-	personalityHandler := view.NewHandler(personalityService)
-	personalityGroup := protected.Group("/personalities")
-	personalityHandler.RegisterRoutes(personalityGroup)
-	logger.Info("Personality routes registered")
+	personalityStorage, err := model.NewFileStorage(cfg.DataDir)
+	if err != nil {
+		logger.Error("Failed to initialize personality storage", zap.Error(err))
+	} else {
+		// Initialize default personality from SOUL.md
+		if err := model.InitializeDefaultPersonality(cfg.DataDir); err != nil {
+			logger.Warn("Failed to initialize default personality", zap.Error(err))
+		}
+		personalityService := controller.NewService(personalityStorage)
+		personalityHandler := view.NewHandler(personalityService)
+		personalityGroup := protected.Group("/personalities")
+		personalityHandler.RegisterRoutes(personalityGroup)
+		logger.Info("Personality routes registered")
+	}
 
 	// OTA Update routes (always register, handler checks if enabled)
 	updateCfg := &update.Config{
