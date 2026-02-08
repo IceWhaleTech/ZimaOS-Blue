@@ -199,6 +199,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	v1.GET("/users/me", deps.UserHandler.GetCurrentUser)
 	v1.PUT("/users/me", deps.UserHandler.UpdateCurrentUser)
 
+	// Public formfiller routes for preview mode
+	if deps.FormfillerHandler != nil {
+		formfillerGroup := v1.Group("/formfiller")
+		deps.FormfillerHandler.RegisterRoutes(formfillerGroup)
+	}
+
 	// External auth routes
 	authGroup := v1.Group("/auth")
 	if deps.ExtauthHandler != nil {
@@ -434,11 +440,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		deps.SpeechHandler.RegisterRoutes(speechGroup)
 	}
 
-	// Form filler routes (protected) - /api/v1/formfiller/*
-	if deps.FormfillerHandler != nil {
-		formfillerGroup := protected.Group("/formfiller")
-		deps.FormfillerHandler.RegisterRoutes(formfillerGroup)
-	}
+	// Form filler routes are now public (registered above in v1)
 
 	// Companion routes
 	if deps.CompanionHandler != nil {
