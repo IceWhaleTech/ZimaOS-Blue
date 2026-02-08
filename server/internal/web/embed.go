@@ -12,8 +12,25 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-//go:embed dist/*
-var distFS embed.FS
+// For production builds, we need to embed from the correct location
+// The dist directory is at the same level as the server directory
+// We'll use a workaround: embed the files and adjust paths accordingly
+
+//go:embed dist
+var embeddedDist embed.FS
+
+var distFS fs.FS
+
+func init() {
+	// Extract the dist subdirectory from embedded files
+	subFS, err := fs.Sub(embeddedDist, "dist")
+	if err != nil {
+		// Fallback if embedding fails
+		distFS = embeddedDist
+	} else {
+		distFS = subFS
+	}
+}
 
 // GetFileSystem returns the file system for production builds.
 func GetFileSystem() http.FileSystem {
