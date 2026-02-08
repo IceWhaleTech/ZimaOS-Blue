@@ -3,22 +3,17 @@
 package web
 
 import (
+	"embed"
 	"io/fs"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/labstack/echo/v4"
 )
 
-// distFS is the file system for the dist directory
-var distFS fs.FS
-
-func init() {
-	// Load dist directory from file system (not embedded)
-	distFS = os.DirFS("dist")
-}
+//go:embed dist/*
+var distFS embed.FS
 
 // GetFileSystem returns the file system for production builds.
 func GetFileSystem() http.FileSystem {
@@ -94,7 +89,7 @@ func RegisterStaticRoutes(e *echo.Echo) {
 		}
 
 		// Read and serve the file
-		content, err := os.ReadFile(filepath.Join("dist", path))
+		content, err := fs.ReadFile(distFS, path)
 		if err != nil {
 			return echo.ErrNotFound
 		}
