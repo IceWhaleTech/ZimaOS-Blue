@@ -10,3 +10,12 @@
 [submodule "third_party/clawdbot"]
 	path = third_party/clawdbot
 	url = https://github.com/clawdbot/clawdbot
+[submodule "third_party/espeak-ng"]
+	path = third_party/espeak-ng
+	url = https://github.com/espeak-ng/espeak-ng.git
+[submodule "third_party/whisper.cpp"]
+	path = third_party/whisper.cpp
+	url = https://github.com/ggerganov/whisper.cpp.git
+[submodule "third_party/opus-src"]
+	path = third_party/opus-src
+	url = https://github.com/xiph/opus.git
