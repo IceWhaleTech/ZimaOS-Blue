@@ -7,11 +7,39 @@ import type { User, ApiKey, CreateApiKeyRequest } from '@/api/auth'
 const TOKEN_KEY = 'token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 
+// Safe localStorage access for Safari compatibility
+function getStorageItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    // Safari private mode or other restrictions
+    return null
+  }
+}
+
+function setStorageItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Safari private mode or other restrictions
+    console.warn(`Failed to set localStorage item: ${key}`)
+  }
+}
+
+function removeStorageItem(key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // Safari private mode or other restrictions
+    console.warn(`Failed to remove localStorage item: ${key}`)
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<User | null>(null)
-  const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
-  const refreshToken = ref<string | null>(localStorage.getItem(REFRESH_TOKEN_KEY))
+  const token = ref<string | null>(getStorageItem(TOKEN_KEY))
+  const refreshToken = ref<string | null>(getStorageItem(REFRESH_TOKEN_KEY))
   const permissions = ref<string[]>([])
   const permissionsLoaded = ref(false) // Track if permissions have been loaded
   const apiKeys = ref<ApiKey[]>([])
@@ -55,8 +83,8 @@ export const useAuthStore = defineStore('auth', () => {
       refreshToken.value = data.refresh_token
       user.value = data.user
 
-      localStorage.setItem(TOKEN_KEY, data.token)
-      localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token)
+      setStorageItem(TOKEN_KEY, data.token)
+      setStorageItem(REFRESH_TOKEN_KEY, data.refresh_token)
 
       // Fetch permissions after login
       await fetchPermissions()
@@ -89,8 +117,8 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     permissions.value = []
     permissionsLoaded.value = false
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    removeStorageItem(TOKEN_KEY)
+    removeStorageItem(REFRESH_TOKEN_KEY)
   }
 
   async function fetchUser() {
@@ -134,7 +162,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authApi.refresh()
       token.value = response.data.token
-      localStorage.setItem(TOKEN_KEY, response.data.token)
+      setStorageItem(TOKEN_KEY, response.data.token)
       return true
     } catch {
       clearAuth()

@@ -113,6 +113,7 @@ declare module 'vue' {
     PasswordInput: typeof import('./components/ui/PasswordInput.vue')['default']
     PersonalityForm: typeof import('./components/PersonalityForm.vue')['default']
     PersonalityList: typeof import('./components/PersonalityList.vue')['default']
+    PersonalityManager: typeof import('./components/PersonalityManager.vue')['default']
     PluginCard: typeof import('./components/PluginCard.vue')['default']
     PluginConfigForm: typeof import('./components/PluginConfigForm.vue')['default']
     PluginTab: typeof import('./components/extensions/PluginTab.vue')['default']

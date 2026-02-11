@@ -55,7 +55,7 @@ onMounted(async () => {
     status.value = 'success'
 
     // Redirect after short delay
-    const redirectTo = sessionStorage.getItem('oauth_redirect') || '/chat'
+    const redirectTo = sessionStorage.getItem('oauth_redirect') || '/home'
     sessionStorage.removeItem('oauth_redirect')
 
     setTimeout(() => {

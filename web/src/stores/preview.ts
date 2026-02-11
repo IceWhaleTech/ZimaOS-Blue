@@ -5,6 +5,23 @@ import type { SystemMode, PreviewStatus } from '@/api/preview'
 
 const PREVIEW_TOKEN_KEY = 'preview_token'
 
+// Safe localStorage access for Safari compatibility
+function getStorageItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function setStorageItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    console.warn(`Failed to set localStorage item: ${key}`)
+  }
+}
+
 export const usePreviewStore = defineStore('preview', () => {
   // State
   const systemMode = ref<SystemMode | null>(null)
@@ -12,6 +29,7 @@ export const usePreviewStore = defineStore('preview', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const initialized = ref(false)
+  const previewTokenFetched = ref(false)
 
   // Computed
   const isPreviewMode = computed(() => systemMode.value?.mode === 'preview')
@@ -44,11 +62,15 @@ export const usePreviewStore = defineStore('preview', () => {
   }
 
   async function ensurePreviewToken() {
+    // Prevent multiple simultaneous token fetches
+    if (previewTokenFetched.value) return
+
     // Check if we already have a valid token
-    const existingToken = localStorage.getItem(PREVIEW_TOKEN_KEY)
+    const existingToken = getStorageItem(PREVIEW_TOKEN_KEY)
     if (existingToken) {
       // Set it as the auth token
-      localStorage.setItem('token', existingToken)
+      setStorageItem('token', existingToken)
+      previewTokenFetched.value = true
       return
     }
 
@@ -56,8 +78,9 @@ export const usePreviewStore = defineStore('preview', () => {
     try {
       const response = await previewApi.getPreviewToken()
       if (response.data.token) {
-        localStorage.setItem(PREVIEW_TOKEN_KEY, response.data.token)
-        localStorage.setItem('token', response.data.token)
+        setStorageItem(PREVIEW_TOKEN_KEY, response.data.token)
+        setStorageItem('token', response.data.token)
+        previewTokenFetched.value = true
       }
     } catch (e) {
       console.error('Failed to get preview token:', e)

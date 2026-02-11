@@ -85,7 +85,7 @@ interface NavItem {
 const allNavItems: NavItem[] = [
   {
     name: 'nav.dashboard',
-    path: '/home',
+    path: '/',
     icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z',
     permission: PagePermissions.HOME,
   },
@@ -118,12 +118,6 @@ const allNavItems: NavItem[] = [
     path: '/security',
     icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
     permission: PagePermissions.SECURITY,
-  },
-  {
-    name: 'nav.personalities',
-    path: '/personalities',
-    icon: 'M13 16h-1v-4h-2m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-    permission: PagePermissions.SETTINGS,
   },
   {
     name: 'nav.settings',

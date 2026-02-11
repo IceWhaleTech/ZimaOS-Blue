@@ -18,6 +18,7 @@ import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
+import PersonalityManager from '@/components/PersonalityManager.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -359,6 +360,11 @@ onMounted(async () => {
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
       <MemoryManager @status-change="showSaveStatus" />
+
+      <!-- Personality Management Section -->
+      <div class="glass-card p-4">
+        <PersonalityManager @status-change="showSaveStatus" />
+      </div>
 
       <UserDataExport @status-change="showSaveStatus" />
 

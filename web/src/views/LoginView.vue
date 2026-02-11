@@ -21,7 +21,7 @@ const loadingProviders = ref(false)
 const providerLoading = ref<string | null>(null)
 const serverVersion = ref<string>('0.0.0')
 
-const redirectTo = (route.query.redirect as string) || '/chat'
+const redirectTo = (route.query.redirect as string) || '/home'
 
 onMounted(async () => {
   // If already authenticated, redirect

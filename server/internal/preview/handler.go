@@ -207,6 +207,13 @@ type OnboardingStatusResponse struct {
 // GetOnboardingStatus returns whether the user has seen the onboarding modal.
 // GET /api/v1/preview/onboarding
 func (h *Handler) GetOnboardingStatus(c echo.Context) error {
+	// If dataDir is not set, return not seen
+	if h.dataDir == "" {
+		return c.JSON(http.StatusOK, OnboardingStatusResponse{
+			Seen: false,
+		})
+	}
+
 	// Check if the marker file exists
 	markerPath := filepath.Join(h.dataDir, ".onboarding_seen")
 	_, err := os.Stat(markerPath)
@@ -220,6 +227,13 @@ func (h *Handler) GetOnboardingStatus(c echo.Context) error {
 // SetOnboardingSeen marks the onboarding as seen.
 // POST /api/v1/preview/onboarding
 func (h *Handler) SetOnboardingSeen(c echo.Context) error {
+	// If dataDir is not set, just return success (for echolib/Tauri)
+	if h.dataDir == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+		})
+	}
+
 	// Create the marker file
 	markerPath := filepath.Join(h.dataDir, ".onboarding_seen")
 

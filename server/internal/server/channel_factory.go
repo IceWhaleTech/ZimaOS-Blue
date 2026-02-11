@@ -10,13 +10,22 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/dingtalk"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/discord"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/feishu"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/googlechat"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/imessage"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/instagram"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/line"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/matrix"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/mattermost"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/messenger"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/qq"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/signal"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/slack"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/teams"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/telegram"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/twitch"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/twitter"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/viber"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/wechat"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/whatsapp"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/zalo"
@@ -61,9 +70,24 @@ func (f *ChannelFactory) CreateChannel(cfg *ChannelConfig) (channel.Channel, err
 		return f.createSignal(cfg)
 	case "dingtalk":
 		return f.createDingTalk(cfg)
-	// These channels are not yet fully implemented or require special setup
-	case "googlechat", "qq", "imessage":
-		return nil, nil // Not supported yet
+	case "imessage":
+		return f.createIMessage(cfg)
+	case "googlechat":
+		return f.createGoogleChat(cfg)
+	case "line":
+		return f.createLine(cfg)
+	case "messenger":
+		return f.createMessenger(cfg)
+	case "viber":
+		return f.createViber(cfg)
+	case "twitter":
+		return f.createTwitter(cfg)
+	case "instagram":
+		return f.createInstagram(cfg)
+	case "twitch":
+		return f.createTwitch(cfg)
+	case "qq":
+		return f.createQQ(cfg)
 	default:
 		return nil, nil // Unknown channel type
 	}
@@ -202,6 +226,46 @@ func (f *ChannelFactory) createDingTalk(cfg *ChannelConfig) (channel.Channel, er
 	return dingtalk.New(dingtalkCfg, f.logger), nil
 }
 
+func (f *ChannelFactory) createIMessage(cfg *ChannelConfig) (channel.Channel, error) {
+	imessageCfg := imessage.Config{
+		Enabled:      cfg.Enabled,
+		DatabasePath: cfg.Config["database_path"],
+	}
+	return imessage.New(imessageCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createGoogleChat(cfg *ChannelConfig) (channel.Channel, error) {
+	return googlechat.New(googlechat.Config{Enabled: cfg.Enabled, WebhookURL: cfg.Config["webhook_url"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createLine(cfg *ChannelConfig) (channel.Channel, error) {
+	return line.New(line.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createMessenger(cfg *ChannelConfig) (channel.Channel, error) {
+	return messenger.New(messenger.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createViber(cfg *ChannelConfig) (channel.Channel, error) {
+	return viber.New(viber.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createTwitter(cfg *ChannelConfig) (channel.Channel, error) {
+	return twitter.New(twitter.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createInstagram(cfg *ChannelConfig) (channel.Channel, error) {
+	return instagram.New(instagram.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createTwitch(cfg *ChannelConfig) (channel.Channel, error) {
+	return twitch.New(twitch.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
+func (f *ChannelFactory) createQQ(cfg *ChannelConfig) (channel.Channel, error) {
+	return qq.New(qq.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+}
+
 // ValidationResult represents the result of a connection validation.
 type ValidationResult struct {
 	Success    bool                   `json:"success"`
@@ -236,14 +300,35 @@ func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType str
 	case "zalo":
 		v = zalo.NewValidator()
 	case "whatsapp", "signal":
-		// These channels don't have validators yet, return success for config save
-		return ValidationResult{
-			Success:    true,
-			Message:    "Configuration saved (validation not available)",
-			MessageKey: "channels.configSaved",
+		// These channels now have validators
+		if channelType == "whatsapp" {
+			v = whatsapp.NewValidator()
+		} else {
+			v = signal.NewValidator()
 		}
 	case "dingtalk":
 		v = dingtalk.NewValidator()
+	case "imessage":
+		v = imessage.NewValidator()
+	case "googlechat":
+		v = googlechat.NewValidator()
+	case "line", "messenger", "viber", "twitter", "instagram", "twitch", "qq":
+		// These channels have basic validators
+		if channelType == "line" {
+			v = line.NewValidator()
+		} else if channelType == "messenger" {
+			v = messenger.NewValidator()
+		} else if channelType == "viber" {
+			v = viber.NewValidator()
+		} else if channelType == "twitter" {
+			v = twitter.NewValidator()
+		} else if channelType == "instagram" {
+			v = instagram.NewValidator()
+		} else if channelType == "twitch" {
+			v = twitch.NewValidator()
+		} else {
+			v = qq.NewValidator()
+		}
 	default:
 		return ValidationResult{
 			Success: false,

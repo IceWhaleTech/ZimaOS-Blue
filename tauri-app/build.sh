@@ -99,13 +99,7 @@ if [ "$GOOS" = "darwin" ]; then
     print_step "All macOS dependencies installed"
 fi
 
-# Step 1: Clean and prepare embed directory
-print_step "Cleaning embed directory..."
-EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"
-rm -rf "$EMBED_DIR"
-mkdir -p "$EMBED_DIR"
-
-# Step 2: Build frontend (force fresh build)
+# Step 1: Build frontend first (force fresh build)
 print_step "Building frontend (fresh build)..."
 cd "$PROJECT_ROOT/web"
 # Clean previous build
@@ -119,17 +113,22 @@ if [ ! -d "$PROJECT_ROOT/web/dist" ] || [ -z "$(ls -A "$PROJECT_ROOT/web/dist")"
     exit 1
 fi
 
-# Step 3: Copy frontend to embed directory (excluding source maps)
-print_step "Copying frontend to embed directory..."
+print_step "Frontend built successfully ($(ls -1 "$PROJECT_ROOT/web/dist" | wc -l | tr -d ' ') files)"
+
+# Step 2: Copy frontend to server/internal/web/dist for Go embedding
+print_step "Copying frontend to server/internal/web/dist for Go embedding..."
+EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"
+rm -rf "$EMBED_DIR"
+mkdir -p "$EMBED_DIR"
 rsync -av --delete --exclude='*.map' "$PROJECT_ROOT/web/dist/" "$EMBED_DIR/"
 
 # Verify copy succeeded
 if [ ! -f "$EMBED_DIR/index.html" ]; then
-    print_error "Failed to copy frontend to embed directory"
+    print_error "Failed to copy frontend to server/internal/web/dist"
     exit 1
 fi
 
-print_step "Frontend embedded successfully ($(ls -1 "$EMBED_DIR" | wc -l | tr -d ' ') files)"
+print_step "Frontend copied to server/internal/web/dist ($(ls -1 "$EMBED_DIR" | wc -l | tr -d ' ') files)"
 
 # Step 4: Build backend (platform-specific)
 if [ "$GOOS" = "darwin" ]; then

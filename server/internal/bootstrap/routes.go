@@ -159,11 +159,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 
 	// Preview mode routes (no auth required)
 	previewModeService := preview.NewModeService(s.UserService)
+	previewModeService.SetDataDir(dataDir) // Set data dir for logging
 	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
 	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService)
 	previewHandler.SetDataDir(dataDir)
 	previewHandler.RegisterRoutes(e)
 	logger.Info("Preview mode routes registered")
+
+	// Set mode service to user handler for preview mode support
+	deps.UserHandler.SetModeService(previewModeService)
 
 	// API groups
 	v1 := e.Group("/api/v1")
@@ -181,8 +185,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	// Worker stats endpoint (public, for bootstrap/health checks)
 	v1.GET("/workers/stats", func(c echo.Context) error {
 		// Return real worker pool statistics
+		if s.WorkerPool == nil {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"active":    0,
+				"queued":    0,
+				"completed": 0,
+			})
+		}
 		stats := s.WorkerPool.Stats()
-		return c.JSON(http.StatusOK, stats)
+		// Map worker.Pool stats to expected format
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"active":    stats.Running,
+			"queued":    0, // worker.Pool doesn't track queued tasks
+			"completed": stats.Total - int64(stats.Running),
+		})
 	})
 
 	// Public auth routes
@@ -469,6 +485,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
 		failoverGroup := protected.Group("/proxy/failover")
 		failoverHandler.RegisterRoutes(failoverGroup)
+
+		// Proxy cache routes
+		if deps.SharedCache != nil {
+			cacheConfig := proxy.DefaultCacheConfig()
+			cacheHandler := proxy.NewCacheAPIHandler(deps.SharedCache, cacheConfig)
+			cacheGroup := v1.Group("/proxy/cache")
+			cacheHandler.RegisterRoutes(cacheGroup)
+		}
 	}
 
 	// OpenAI-compatible proxy routes on /v1/*

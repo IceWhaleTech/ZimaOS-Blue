@@ -26,6 +26,7 @@ type Handler struct {
 	service           *Service
 	jwtService        *auth.JWTService
 	permissionService PermissionService
+	modeService       interface{ IsPreviewMode(context.Context) (bool, error) }
 }
 
 // NewHandler creates a new user handler.
@@ -41,6 +42,11 @@ func (h *Handler) SetJWTService(jwtService *auth.JWTService) {
 // SetPermissionService sets the permission service.
 func (h *Handler) SetPermissionService(permissionService PermissionService) {
 	h.permissionService = permissionService
+}
+
+// SetModeService sets the mode service for preview mode detection.
+func (h *Handler) SetModeService(modeService interface{ IsPreviewMode(context.Context) (bool, error) }) {
+	h.modeService = modeService
 }
 
 // RegisterRoutes registers the user routes.
@@ -231,6 +237,19 @@ func (h *Handler) GetCurrentUser(c echo.Context) error {
 			Role:     RoleAdmin,
 			Status:   StatusActive,
 		})
+	}
+
+	// In preview mode without token, return preview user
+	if h.modeService != nil {
+		isPreview, err := h.modeService.IsPreviewMode(c.Request().Context())
+		if err == nil && isPreview {
+			return c.JSON(http.StatusOK, &User{
+				ID:       uuid.Nil,
+				Username: "preview",
+				Role:     RoleAdmin,
+				Status:   StatusActive,
+			})
+		}
 	}
 
 	userID := getUserIDFromContext(c)
