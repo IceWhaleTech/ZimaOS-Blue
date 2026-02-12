@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ZimaOS-Echo Development Script
+:: ZimaOS-Blue Development Script
 :: Usage: dev.bat [command]
 :: Commands: start (default), server, web, build, clean, prd
 
@@ -140,7 +140,7 @@ goto :%COMMAND% 2>nul || (
 :start
 echo.
 echo ========================================
-echo   ZimaOS-Echo Development Environment
+echo   ZimaOS-Blue Development Environment
 echo ========================================
 echo.
 echo   Backend:  http://localhost:23456
@@ -159,7 +159,7 @@ if errorlevel 1 exit /b 1
 
 :: Start Vite dev server in background FIRST (Go server proxies to it)
 echo [INFO] Starting Vite dev server in background...
-start "ZimaOS-Echo Web" /min cmd /c "cd /d "%PROJECT_ROOT%web" && npm run dev"
+start "ZimaOS-Blue Web" /min cmd /c "cd /d "%PROJECT_ROOT%web" && npm run dev"
 
 :: Wait for Vite to start
 timeout /t 3 /nobreak >nul
@@ -167,7 +167,7 @@ timeout /t 3 /nobreak >nul
 :: Start Go server in foreground (dev mode - proxies to Vite)
 echo [INFO] Starting Go server (dev mode)...
 cd /d "%PROJECT_ROOT%server"
-go run -tags dev ./cmd/echo
+go run -tags dev ./cmd/blue
 goto :eof
 
 :server
@@ -176,7 +176,7 @@ if errorlevel 1 exit /b 1
 
 echo [INFO] Starting Go server...
 cd /d "%PROJECT_ROOT%server"
-go run  -tags dev ./cmd/echo
+go run  -tags dev ./cmd/blue
 goto :eof
 
 :web
@@ -226,12 +226,12 @@ echo [OK] Web assets copied to server\internal\web\dist
 :: Build server (embeds the copied frontend)
 echo [INFO] Building Go server...
 cd /d "%PROJECT_ROOT%server"
-go build -ldflags="-s -w" -o echo.exe ./cmd/echo
+go build -ldflags="-s -w" -o blue.exe ./cmd/blue
 if errorlevel 1 (
     echo [ERROR] Failed to build server
     exit /b 1
 )
-echo [OK] Server built: server\echo.exe
+echo [OK] Server built: server\blue.exe
 
 echo [OK] Production build complete!
 goto :eof
@@ -266,13 +266,13 @@ echo [OK] Web assets copied to server\internal\web\dist
 :: Start server (production mode, no -tags dev, serves embedded frontend)
 echo [INFO] Starting Go server (production mode, http://localhost:23456)...
 cd /d "%PROJECT_ROOT%server"
-go run ./cmd/echo
+go run ./cmd/blue
 goto :eof
 
 :clean
 echo [INFO] Cleaning build artifacts...
 
-if exist "%PROJECT_ROOT%server\echo.exe" del /f "%PROJECT_ROOT%server\echo.exe"
+if exist "%PROJECT_ROOT%server\blue.exe" del /f "%PROJECT_ROOT%server\blue.exe"
 if exist "%PROJECT_ROOT%server\data" rmdir /s /q "%PROJECT_ROOT%server\data"
 if exist "%PROJECT_ROOT%web\dist" rmdir /s /q "%PROJECT_ROOT%web\dist"
 if exist "%PROJECT_ROOT%server\internal\web\dist" rmdir /s /q "%PROJECT_ROOT%server\internal\web\dist"

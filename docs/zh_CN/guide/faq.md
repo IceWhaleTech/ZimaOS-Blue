@@ -2,9 +2,9 @@
 
 ## 一般问题
 
-### 什么是 ZimaOS Echo？
+### 什么是 ZimaOS Blue？
 
-ZimaOS Echo 是面向家庭服务器和 NAS 设备的 AI 助手，提供：
+ZimaOS Blue 是面向家庭服务器和 NAS 设备的 AI 助手，提供：
 - 自然语言聊天界面
 - 通过 Home Assistant 的智能家居控制
 - 多通道消息（Telegram、Discord 等）
@@ -14,7 +14,7 @@ ZimaOS Echo 是面向家庭服务器和 NAS 设备的 AI 助手，提供：
 
 ### 支持哪些 LLM 提供商？
 
-ZimaOS Echo 支持多种 LLM 提供商：
+ZimaOS Blue 支持多种 LLM 提供商：
 - **OpenAI**：GPT-4o、GPT-4o-mini、GPT-4-turbo、GPT-3.5-turbo
 - **Anthropic**：Claude 3.5 Sonnet、Claude 3 Opus、Claude 3 Haiku
 - **Ollama**：本地模型（Llama 3.2、Mistral、CodeLlama 等）
@@ -34,9 +34,9 @@ ZimaOS Echo 支持多种 LLM 提供商：
 - 存储：10GB
 - 数据库使用 SSD
 
-### ZimaOS Echo 免费吗？
+### ZimaOS Blue 免费吗？
 
-是的，ZimaOS Echo 在 Apache 2.0 许可下开源。但您可能产生以下费用：
+是的，ZimaOS Blue 在 Apache 2.0 许可下开源。但您可能产生以下费用：
 - 云 LLM API 使用（OpenAI、Anthropic）
 - 云托管（若非自托管）
 
@@ -46,41 +46,41 @@ ZimaOS Echo 支持多种 LLM 提供商：
 
 ## 安装
 
-### 如何安装 ZimaOS Echo？
+### 如何安装 ZimaOS Blue？
 
 **Docker（推荐）：**
 ```bash
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   -p 23456:23456 \
   -v echo-data:/app/data \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 **二进制：**
 ```bash
 # 从发布页下载
-wget https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/zimaos-echo-linux-amd64
-chmod +x zimaos-echo-linux-amd64
-./zimaos-echo-linux-amd64
+wget https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/zimaos-blue-linux-amd64
+chmod +x zimaos-blue-linux-amd64
+./zimaos-blue-linux-amd64
 ```
 
-### 如何更新 ZimaOS Echo？
+### 如何更新 ZimaOS Blue？
 
 **Docker：**
 ```bash
-docker pull icewhale/zimaos-echo:latest
-docker stop zimaos-echo
-docker rm zimaos-echo
+docker pull icewhale/zimaos-blue:latest
+docker stop zimaos-blue
+docker rm zimaos-blue
 # 使用相同卷挂载重新运行
 ```
 
 **二进制：**
 下载新版本并替换二进制文件。数据目录中的数据会保留。
 
-### 能在树莓派上运行 ZimaOS Echo 吗？
+### 能在树莓派上运行 ZimaOS Blue 吗？
 
-可以。ZimaOS Echo 支持 ARM64 架构。建议：
+可以。ZimaOS Blue 支持 ARM64 架构。建议：
 - 使用 4GB+ 内存的树莓派 4
 - 使用 Ollama 搭配较小模型（Phi-3、TinyLlama）
 - 如需要可启用 swap
@@ -92,11 +92,11 @@ docker rm zimaos-echo
 ### 配置文件在哪里？
 
 默认位置：
-- `/etc/zimaos-echo/config.yaml`
+- `/etc/zimaos-blue/config.yaml`
 - `./config.yaml`（当前目录）
-- `~/.config/zimaos-echo/config.yaml`
+- `~/.config/zimaos-blue/config.yaml`
 
-或通过参数指定：`zimaos-echo --config /path/to/config.yaml`
+或通过参数指定：`zimaos-blue --config /path/to/config.yaml`
 
 ### 如何配置多个 LLM 提供商？
 
@@ -153,7 +153,7 @@ server:
 
 或通过环境变量：
 ```bash
-export ECHO_SERVER_PORT=8081
+export BLUE_SERVER_PORT=8081
 ```
 
 ---
@@ -330,7 +330,7 @@ security:
 ### 如何重置管理员密码？
 
 ```bash
-zimaos-echo reset-password --username admin
+zimaos-blue reset-password --username admin
 ```
 
 ---
@@ -363,7 +363,7 @@ curl -X POST http://localhost:23456/api/backup/restore/<backup-id> \
 
 ### 备份存在哪里？
 
-默认：`/var/lib/zimaos-echo/backups/`
+默认：`/var/lib/zimaos-blue/backups/`
 
 配置：
 ```yaml
@@ -391,7 +391,7 @@ curl http://localhost:23456/health
 ### 哪里可以获得帮助？
 
 - 文档：https://docs.zimaspace.com/echo
-- GitHub Issues：https://github.com/IceWhaleTech/ZimaOS-Echo/issues
+- GitHub Issues：https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord：https://discord.gg/zimaos
 
 ---
@@ -401,9 +401,9 @@ curl http://localhost:23456/health
 ### 如何从源码构建？
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o zimaos-blue ./cmd/server
 ```
 
 ### 如何运行测试？

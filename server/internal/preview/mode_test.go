@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	_ "github.com/mattn/go-sqlite3"
 )
 

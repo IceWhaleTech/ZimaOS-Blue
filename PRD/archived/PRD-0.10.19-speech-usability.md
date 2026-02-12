@@ -2,7 +2,7 @@
 
 ## Overview
 
-This PRD describes the enhancement of speech capabilities in ZimaOS-Echo v0.10.19, introducing multiple TTS providers (Edge-TTS, eSpeak-NG) alongside the existing Sherpa-ONNX implementation, with improved user experience, privacy controls, and voice customization options.
+This PRD describes the enhancement of speech capabilities in ZimaOS-Blue v0.10.19, introducing multiple TTS providers (Edge-TTS, eSpeak-NG) alongside the existing Sherpa-ONNX implementation, with improved user experience, privacy controls, and voice customization options.
 
 ## Goals
 
@@ -247,7 +247,7 @@ type EspeakNGRequest struct {
 ### 5.2 Voice Pack Storage
 
 ```
-~/.local/share/zimaos-echo/espeak-ng/
+~/.local/share/zimaos-blue/espeak-ng/
 ├── espeak-ng-data/          (base, ~3MB)
 ├── voices/
 │   ├── en/                  (included)

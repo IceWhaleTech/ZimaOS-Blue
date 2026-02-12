@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/api-reference.md)
 
-本文档提供 ZimaOS-Echo REST API 的完整参考。
+本文档提供 ZimaOS-Blue REST API 的完整参考。
 
 ## 基础 URL
 
@@ -12,7 +12,7 @@ http://localhost:23456/api/v1
 
 ## 认证
 
-大多数端点需要认证。ZimaOS-Echo 支持两种认证方式：
+大多数端点需要认证。ZimaOS-Blue 支持两种认证方式：
 
 ### JWT 令牌
 
@@ -899,7 +899,7 @@ ws://localhost:23456/api/v1/ws/chat?token=<jwt-token>
 package main
 
 import (
-    "github.com/IceWhaleTech/ZimaOS-Echo/sdk/go/echo"
+    "github.com/IceWhaleTech/ZimaOS-Blue/sdk/go/echo"
 )
 
 func main() {

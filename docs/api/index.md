@@ -1,6 +1,6 @@
 # API Reference
 
-ZimaOS Echo provides a RESTful API for monitoring and management.
+ZimaOS Blue provides a RESTful API for monitoring and management.
 
 ## Base URL
 

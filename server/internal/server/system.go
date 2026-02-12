@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/resources"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/scheduler"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/watcher"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/resources"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/scheduler"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/watcher"
 )
 
 // SystemStatus represents the complete system status.

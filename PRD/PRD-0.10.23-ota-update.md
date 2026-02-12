@@ -1,7 +1,7 @@
-# PRD: OTA Update System for ZimaOS-Echo
+# PRD: OTA Update System for ZimaOS-Blue
 
 **Version**: 0.10.23
-**Author**: ZimaOS-Echo Team
+**Author**: ZimaOS-Blue Team
 **Status**: Draft
 **Created**: 2026-01-28
 
@@ -11,7 +11,7 @@
 
 ### 1.1 Background
 
-ZimaOS-Echo is a single-binary Go service that runs on NAS devices. Currently, users must manually download and replace the binary to update the service, which is inconvenient and error-prone. An OTA (Over-The-Air) update system will significantly improve the user experience by enabling automatic updates with minimal service disruption.
+ZimaOS-Blue is a single-binary Go service that runs on NAS devices. Currently, users must manually download and replace the binary to update the service, which is inconvenient and error-prone. An OTA (Over-The-Air) update system will significantly improve the user experience by enabling automatic updates with minimal service disruption.
 
 ### 1.2 Goals
 
@@ -23,7 +23,7 @@ ZimaOS-Echo is a single-binary Go service that runs on NAS devices. Currently, u
 
 ### 1.3 Non-Goals
 
-1. Full system updates (only ZimaOS-Echo binary)
+1. Full system updates (only ZimaOS-Blue binary)
 2. Configuration migration between major versions
 3. Multi-node cluster updates (single instance only)
 
@@ -58,11 +58,11 @@ ZimaOS-Echo is a single-binary Go service that runs on NAS devices. Currently, u
 | FR-003 | System shall support pre-release versions (alpha, beta, rc) | P1 |
 | FR-004 | System shall cache version info to reduce API calls | P1 |
 
-**Version Source**: `https://github.com/IceWhaleTech/ZimaOS-Echo/tree/main/release-note`
+**Version Source**: `https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/release-note`
 
 **CDN Fallback** (for better accessibility in China):
-- Primary: `https://api.github.com/repos/IceWhaleTech/ZimaOS-Echo/contents/release-note`
-- Fallback: `https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Echo@main/release-note/`
+- Primary: `https://api.github.com/repos/IceWhaleTech/ZimaOS-Blue/contents/release-note`
+- Fallback: `https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Blue@main/release-note/`
 
 The system will:
 1. List directories in the release-note folder
@@ -80,8 +80,8 @@ The system will:
 | FR-008 | System shall show download progress | P1 |
 
 **Download URL Pattern**:
-- Primary: `https://github.com/IceWhaleTech/ZimaOS-Echo/releases/download/v{version}/zimaos-echo-{os}-{arch}`
-- Fallback: `https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Echo@v{version}/dist/zimaos-echo-{os}-{arch}`
+- Primary: `https://github.com/IceWhaleTech/ZimaOS-Blue/releases/download/v{version}/zimaos-blue-{os}-{arch}`
+- Fallback: `https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Blue@v{version}/dist/zimaos-blue-{os}-{arch}`
 
 ### 3.3 Hot Update (Cross-platform)
 
@@ -155,7 +155,7 @@ func (u *Updater) Apply() error {
     }
 
     // 3. Set uptime preservation env
-    os.Setenv("ECHO_START_TIME", u.startTime.Format(time.RFC3339))
+    os.Setenv("BLUE_START_TIME", u.startTime.Format(time.RFC3339))
 
     // 4. Exec new binary (replaces current process)
     return syscall.Exec(u.binaryPath, os.Args, os.Environ())
@@ -267,7 +267,7 @@ update:
   release_channel: stable
 
   # GitHub release URL base
-  release_url: "https://github.com/IceWhaleTech/ZimaOS-Echo/releases"
+  release_url: "https://github.com/IceWhaleTech/ZimaOS-Blue/releases"
 
   # Number of old versions to keep for rollback
   backup_count: 3
@@ -292,7 +292,7 @@ func (u *Updater) hotUpdateUnix() error {
     os.Rename(newBinary, currentBinary)
 
     // 3. Prepare environment for uptime continuity
-    env := append(os.Environ(), fmt.Sprintf("ECHO_START_TIME=%d", u.startTime.Unix()))
+    env := append(os.Environ(), fmt.Sprintf("BLUE_START_TIME=%d", u.startTime.Unix()))
 
     // 4. Exec new binary (replaces current process in-place)
     return syscall.Exec(currentBinary, os.Args, env)
@@ -313,7 +313,7 @@ func (u *Updater) hotUpdateWindows() error {
 
     // 3. Start new process with uptime env
     cmd := exec.Command(currentBinary, os.Args[1:]...)
-    cmd.Env = append(os.Environ(), fmt.Sprintf("ECHO_START_TIME=%d", u.startTime.Unix()))
+    cmd.Env = append(os.Environ(), fmt.Sprintf("BLUE_START_TIME=%d", u.startTime.Unix()))
     cmd.Start()
 
     // 4. Exit current process
@@ -334,7 +334,7 @@ func cleanupOldBinary() {
 ```go
 func getStartTime() time.Time {
     // Check if we're resuming from a hot update
-    if startTimeStr := os.Getenv("ECHO_START_TIME"); startTimeStr != "" {
+    if startTimeStr := os.Getenv("BLUE_START_TIME"); startTimeStr != "" {
         if ts, err := strconv.ParseInt(startTimeStr, 10, 64); err == nil {
             return time.Unix(ts, 0)
         }
@@ -366,7 +366,7 @@ func (u *Updater) gracefulRestart() error {
     // 3. Start new process
     cmd := exec.Command(u.binaryPath, os.Args[1:]...)
     cmd.Env = append(os.Environ(),
-        fmt.Sprintf("ECHO_START_TIME=%d", u.startTime.Unix()),
+        fmt.Sprintf("BLUE_START_TIME=%d", u.startTime.Unix()),
     )
     cmd.Stdout = os.Stdout
     cmd.Stderr = os.Stderr
@@ -402,7 +402,7 @@ When an update is available, show a notification in the web UI:
 │ 🔔 Update Available                                    [x]  │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  A new version of ZimaOS-Echo is available!                │
+│  A new version of ZimaOS-Blue is available!                │
 │                                                             │
 │  Current: v0.9                                           │
 │  Latest:  v0.9                                           │

@@ -65,7 +65,7 @@ func NewIntegration(cfg Config) *Integration {
 		cfg.APIEndpoint = "http://localhost:80"
 	}
 	if cfg.DataPath == "" {
-		cfg.DataPath = "/DATA/AppData/zimaos-echo"
+		cfg.DataPath = "/DATA/AppData/zimaos-blue"
 	}
 
 	return &Integration{

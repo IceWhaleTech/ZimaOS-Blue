@@ -14,15 +14,15 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-// TestOpenAIThroughEchoServer tests OpenAI requests through the echo server
-// This simulates how a CLI client would interact with the echo server
-// Run with: OPENAI_API_KEY=sk-xxx go test -v -run TestOpenAIThroughEchoServer
-func TestOpenAIThroughEchoServer(t *testing.T) {
+// TestOpenAIThroughBlueServer tests OpenAI requests through the Blue server
+// This simulates how a CLI client would interact with the Blue server
+// Run with: OPENAI_API_KEY=sk-xxx go test -v -run TestOpenAIThroughBlueServer
+func TestOpenAIThroughBlueServer(t *testing.T) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		t.Skip("Skipping E2E test: OPENAI_API_KEY not set")
@@ -194,7 +194,7 @@ func TestOpenAIProviderComparison(t *testing.T) {
 	})
 
 	// Test 2: Through echo server
-	t.Run("ThroughEchoServer", func(t *testing.T) {
+	t.Run("ThroughBlueServer", func(t *testing.T) {
 		e := echo.New()
 		store, err := memory.NewStore(":memory:")
 	if err != nil {

@@ -18,7 +18,7 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
 // Channel implements the channel.Channel interface for Feishu/Lark using official SDK.
@@ -665,7 +665,7 @@ func (c *Channel) handleHelpCommand(ctx context.Context, cmd string, args string
 
 // handleStartCommand handles the /start command.
 func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error) {
-	return "👋 欢迎使用 ZimaOS Echo\n\n我是您的 AI 助手，可以帮助您：\n• 回答问题\n• 处理任务\n• 提供建议\n\n直接发送消息开始对话吧！", nil
+	return "👋 欢迎使用 ZimaOS Blue\n\n我是您的 AI 助手，可以帮助您：\n• 回答问题\n• 处理任务\n• 提供建议\n\n直接发送消息开始对话吧！", nil
 }
 
 // GetClient returns the Lark client for advanced usage.

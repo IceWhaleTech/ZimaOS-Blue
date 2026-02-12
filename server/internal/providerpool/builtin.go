@@ -6,7 +6,7 @@ import (
 )
 
 // Build-time variables (injected via -ldflags)
-// Example: go build -ldflags "-X github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool.trialAPIKey=sk-xxx"
+// Example: go build -ldflags "-X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=sk-xxx"
 var (
 	trialAPIKey  string // Injected at build time
 	trialBaseURL string // Injected at build time (optional)
@@ -297,8 +297,8 @@ func BuiltinProviders() []*Provider {
 			UpdatedAt:   time.Now(),
 		},
 		{
-			ID:          "zimaos-echo-trial",
-			Name:        "ZimaOS Echo Trial",
+			ID:          "zimaos-blue-trial",
+			Name:        "ZimaOS Blue Trial",
 			Type:        ProviderTypeTrial,
 			Location:    ProviderLocationCloud,
 			Enabled:     true,
@@ -1302,11 +1302,11 @@ func BuiltinModels() map[string][]*Model {
 				OutputPrice:   1.4,
 			},
 		},
-		"zimaos-echo-trial": {
+		"zimaos-blue-trial": {
 			// Default models for trial provider
 			{
 				ID:          "claude-haiku-4-5",
-				ProviderID:  "zimaos-echo-trial",
+				ProviderID:  "zimaos-blue-trial",
 				Name:        "claude-haiku-4-5",
 				DisplayName: "Claude Haiku 4.5",
 				Enabled:     true,

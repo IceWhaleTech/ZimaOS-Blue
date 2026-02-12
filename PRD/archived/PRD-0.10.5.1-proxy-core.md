@@ -84,15 +84,15 @@ func DefaultPortConfig() *PortConfig {
         Port:        0,
         PortRange:   "9000-9100",
         BindAddress: "127.0.0.1",
-        PortFile:    "", // Will use default: ~/.local/share/zimaos-echo/proxy.port
+        PortFile:    "", // Will use default: ~/.local/share/zimaos-blue/proxy.port
     }
 }
 ```
 
 **Port Discovery Methods:**
 
-1. **Port File**: Write port to `~/.local/share/zimaos-echo/proxy.port`
-2. **Environment Variable**: Export as `ECHO_PROXY_PORT`
+1. **Port File**: Write port to `~/.local/share/zimaos-blue/proxy.port`
+2. **Environment Variable**: Export as `BLUE_PROXY_PORT`
 3. **API Endpoint**: Query `/api/v1/proxy/status` for current port
 
 ```go

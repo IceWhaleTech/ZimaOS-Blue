@@ -2,7 +2,7 @@
 
 ## Overview
 
-Version 0.10.9 introduces remote access functionality, allowing users to access their ZimaOS Echo instance from anywhere. The system supports multiple remote access solutions categorized into two types:
+Version 0.10.9 introduces remote access functionality, allowing users to access their ZimaOS Blue instance from anywhere. The system supports multiple remote access solutions categorized into two types:
 
 ### Supported Remote Access Solutions
 
@@ -146,7 +146,7 @@ CREATE TABLE remote_access_sessions (
 **Requirements**:
 - Use Windows COM API (`INetFwPolicy2`) instead of `netsh` commands
 - Add firewall rule for Echo executable (not ngrok binary)
-- Rule name: "ZimaOS-Echo-Remote-Access"
+- Rule name: "ZimaOS-Blue-Remote-Access"
 - Requires administrator privileges
 - Graceful fallback if permission denied
 
@@ -395,7 +395,7 @@ type RemoteAccessConfig struct {
 
 ### Firewall Configuration
 - Add firewall exception for **Echo executable** (not ngrok binary)
-- Rule name: "ZimaOS-Echo-Remote-Access"
+- Rule name: "ZimaOS-Blue-Remote-Access"
 - Only allow inbound connections to Echo's port
 - User can manually remove rule if desired
 
@@ -482,7 +482,7 @@ type RemoteAccessConfig struct {
 - ❌ Binary-based tunnel manager deprecated
 
 ### Migration Steps
-1. Remove old ngrok binary from `~/.local/share/zimaos-echo/ngrok/`
+1. Remove old ngrok binary from `~/.local/share/zimaos-blue/ngrok/`
 2. Update firewall rules to point to Echo executable
 3. Existing sessions will be migrated automatically
 4. No user action required

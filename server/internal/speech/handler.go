@@ -8,8 +8,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 )
 
 // Handler handles unified speech HTTP requests.

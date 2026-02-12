@@ -61,7 +61,7 @@ func healthHandler(c echo.Context) error {
 	uptime := time.Since(startTime)
 	status := HealthStatus{
 		Status:        "ok",
-		Service:       "zimaos-echo",
+		Service:       "zimaos-blue",
 		Timestamp:     time.Now(),
 		Uptime:        formatUptime(uptime),
 		UptimeSeconds: uptime.Seconds(),

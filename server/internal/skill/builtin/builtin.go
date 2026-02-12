@@ -2,7 +2,7 @@
 package builtin
 
 import (
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // Config holds configuration for built-in skills

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // Timer is a built-in timer skill

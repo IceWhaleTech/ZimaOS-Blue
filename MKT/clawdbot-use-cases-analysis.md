@@ -490,7 +490,7 @@
 
 ---
 
-## 五、对ZimaOS Echo的场景启示
+## 五、对ZimaOS Blue的场景启示
 
 ### 高价值场景优先级
 
@@ -506,7 +506,7 @@
 
 **与Clawdbot对比：**
 
-| 维度 | Clawdbot | ZimaOS Echo |
+| 维度 | Clawdbot | ZimaOS Blue |
 |-----|----------|-------------|
 | 部署难度 | 需要Mac mini/Linux知识 | 一键NAS部署 |
 | 家庭适配 | 单用户设计 | 多租户家庭 |

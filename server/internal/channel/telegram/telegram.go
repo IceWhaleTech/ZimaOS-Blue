@@ -14,7 +14,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
 // CommandHandler is a function that handles bot commands.
@@ -821,7 +821,7 @@ func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args strin
 		username = msg.From.UserName
 	}
 
-	text := fmt.Sprintf("👋 Hello %s! Welcome to ZimaOS Echo.\n\nI'm your AI assistant. You can:\n• Send me any message to chat\n• Use /help to see available commands\n\nHow can I help you today?", username)
+	text := fmt.Sprintf("👋 Hello %s! Welcome to ZimaOS Blue.\n\nI'm your AI assistant. You can:\n• Send me any message to chat\n• Use /help to see available commands\n\nHow can I help you today?", username)
 
 	keyboard := &InlineKeyboard{
 		Rows: [][]InlineButton{

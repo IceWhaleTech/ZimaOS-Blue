@@ -122,7 +122,7 @@ func (m *TLSManager) GenerateSelfSigned(domains []string, validDays int) error {
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"ZimaOS Echo"},
+			Organization: []string{"ZimaOS Blue"},
 			CommonName:   domains[0],
 		},
 		NotBefore:             time.Now(),

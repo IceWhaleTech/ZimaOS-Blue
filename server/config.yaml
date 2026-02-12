@@ -1,4 +1,4 @@
-# ZimaOS-Echo Configuration
+# ZimaOS-Blue Configuration
 
 server:
   host: "0.0.0.0"
@@ -138,14 +138,14 @@ claude_code_cli:
 
   # Installation settings
   install:
-    path: ""  # Empty = auto-detect or ~/.local/share/zimaos-echo/claude-code
+    path: ""  # Empty = auto-detect or ~/.local/share/zimaos-blue/claude-code
     auto_update: false
     verify_checksum: true
 
   # Download settings
   download:
     base_url: "https://storage.googleapis.com/anthropic-public/claude-code"
-    cache_dir: ""  # Empty = ~/.local/share/zimaos-echo/cache
+    cache_dir: ""  # Empty = ~/.local/share/zimaos-blue/cache
 
   # Feature toggles (only effective when enabled=true)
   features:
@@ -240,7 +240,7 @@ cc_switch:
 statistics:
   enabled: true
   opt_in_required: true
-  storage_path: ""  # Empty = ~/.local/share/zimaos-echo/stats
+  storage_path: ""  # Empty = ~/.local/share/zimaos-blue/stats
   retention_days: 90
 
 # Tool calling adapters

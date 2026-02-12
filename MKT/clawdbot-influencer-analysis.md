@@ -318,7 +318,7 @@ Day 7: 趋势持续，社区稳定增长
 
 ---
 
-## 五、对ZimaOS Echo的战略启示
+## 五、对ZimaOS Blue的战略启示
 
 ### 5.1 意见领袖合作策略
 
@@ -359,7 +359,7 @@ Day 7: 趋势持续，社区稳定增长
 
 **Clawdbot的局限 = Echo的机会：**
 
-| Clawdbot限制 | ZimaOS Echo优势 |
+| Clawdbot限制 | ZimaOS Blue优势 |
 |------------|----------------|
 | 安装复杂 | 一键部署 |
 | 需要Mac mini | 复用现有NAS |

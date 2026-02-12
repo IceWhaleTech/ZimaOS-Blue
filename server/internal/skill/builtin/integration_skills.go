@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // DockerContainer represents a Docker container

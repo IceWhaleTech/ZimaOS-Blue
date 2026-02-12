@@ -36,7 +36,7 @@ func NewBlacklist(dataDir string) (*Blacklist, error) {
 		if err != nil {
 			return nil, err
 		}
-		dataDir = filepath.Join(home, ".zimaos-echo")
+		dataDir = filepath.Join(home, ".zimaos-blue")
 	}
 
 	// Ensure directory exists

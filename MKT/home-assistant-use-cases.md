@@ -495,7 +495,7 @@ AFTER:
 
 ---
 
-## 六、对ZimaOS Echo的场景启发
+## 六、对ZimaOS Blue的场景启发
 
 ### 6.1 值得借鉴的场景
 

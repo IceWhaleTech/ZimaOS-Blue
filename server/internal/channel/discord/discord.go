@@ -12,7 +12,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
 // SlashCommand represents a Discord slash command.

@@ -1,4 +1,4 @@
-// Package service provides cross-platform service management for ZimaOS-Echo.
+// Package service provides cross-platform service management for ZimaOS-Blue.
 // It supports running as a Windows Service, systemd service, or launchd daemon.
 package service
 
@@ -51,7 +51,7 @@ func (s Status) String() string {
 
 // Config holds the service configuration.
 type Config struct {
-	Name        string // Service name (e.g., "ZimaOS-Echo")
+	Name        string // Service name (e.g., "ZimaOS-Blue")
 	DisplayName string // Display name shown in service manager
 	Description string // Service description
 	Executable  string // Path to the executable
@@ -95,9 +95,9 @@ func isInteractiveUnix() bool {
 // DefaultConfig returns a default service configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		Name:        "ZimaOS-Echo",
-		DisplayName: "ZimaOS Echo",
-		Description: "ZimaOS Echo - NAS-Native Agent Runtime",
+		Name:        "ZimaOS-Blue",
+		DisplayName: "ZimaOS Blue",
+		Description: "ZimaOS Blue - NAS-Native Agent Runtime",
 		StartType:   StartAutomatic,
 	}
 }

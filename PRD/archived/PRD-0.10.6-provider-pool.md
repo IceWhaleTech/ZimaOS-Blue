@@ -1,7 +1,7 @@
 # PRD: Provider Pool - Unified LLM Provider Management
 
 **Version**: 0.10.6
-**Author**: ZimaOS-Echo Team
+**Author**: ZimaOS-Blue Team
 **Status**: Draft
 **Created**: 2026-01-28
 
@@ -11,7 +11,7 @@
 
 ### 1.1 Background
 
-ZimaOS-Echo currently supports multiple LLM providers (OpenAI, Anthropic, Ollama, etc.), but each provider is configured independently. Users often have access to multiple AI services through different channels:
+ZimaOS-Blue currently supports multiple LLM providers (OpenAI, Anthropic, Ollama, etc.), but each provider is configured independently. Users often have access to multiple AI services through different channels:
 
 - Direct API subscriptions (OpenAI, Anthropic, Google)
 - Local IDE integrations (Antigravity, Cursor, Windsurf)

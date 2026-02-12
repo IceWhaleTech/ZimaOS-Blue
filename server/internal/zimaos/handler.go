@@ -7,7 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 )
 
 // Handler provides HTTP endpoints for ZimaOS integration.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 )
 
 // Service handles permission business logic

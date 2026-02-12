@@ -261,7 +261,7 @@ Reddit高赞抱怨:
 
 ---
 
-## 五、对ZimaOS Echo的Kano建议
+## 五、对ZimaOS Blue的Kano建议
 
 ### 5.1 基本需求 (P0 - 必须做好)
 

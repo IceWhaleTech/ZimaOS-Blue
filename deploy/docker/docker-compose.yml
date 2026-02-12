@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  zimaos-echo:
+  zimaos-blue:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: zimaos-echo:latest
-    container_name: zimaos-echo
+    image: zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
 
     ports:
@@ -17,8 +17,8 @@ services:
       - ./config:/app/config:ro
 
     environment:
-      - ECHO_ENV=production
-      - ECHO_LOG_LEVEL=info
+      - BLUE_ENV=production
+      - BLUE_LOG_LEVEL=info
       # LLM Provider API Keys (uncomment and set as needed)
       # - OPENAI_API_KEY=${OPENAI_API_KEY}
       # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -78,4 +78,4 @@ volumes:
 
 networks:
   default:
-    name: zimaos-echo-network
+    name: zimaos-blue-network

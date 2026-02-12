@@ -1,8 +1,8 @@
 {
-  "name": "zimaos-echo-docs",
+  "name": "zimaos-blue-docs",
   "version": "0.1.0",
   "type": "module",
-  "description": "ZimaOS-Echo Documentation",
+  "description": "ZimaOS-Blue Documentation",
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",

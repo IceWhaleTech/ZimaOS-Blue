@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
 func TestInit_DefaultLevel(t *testing.T) {

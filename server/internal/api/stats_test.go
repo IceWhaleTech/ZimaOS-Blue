@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stats"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stats"
 )
 
 func TestStatsHandler_GetStats_Disabled(t *testing.T) {

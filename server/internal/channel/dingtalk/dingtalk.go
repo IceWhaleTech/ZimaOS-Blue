@@ -11,8 +11,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
 )
 
 // Config contains DingTalk channel configuration.

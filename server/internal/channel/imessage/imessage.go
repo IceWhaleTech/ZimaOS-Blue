@@ -18,7 +18,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
 // Channel implements the channel.Channel interface for iMessage.

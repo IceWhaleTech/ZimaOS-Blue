@@ -12,9 +12,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 var activeHoursPattern = regexp.MustCompile(`^([01]\d|2[0-3]|24):([0-5]\d)$`)

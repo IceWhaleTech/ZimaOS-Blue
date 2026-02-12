@@ -14,7 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 )
 
 // MessageType represents the type of gateway message.

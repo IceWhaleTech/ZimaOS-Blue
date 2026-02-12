@@ -194,10 +194,10 @@ func TestDarwinExecutorMode_Selection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set environment variable
 			if tt.envValue != "" {
-				os.Setenv("ECHO_SANDBOX_MODE", tt.envValue)
-				defer os.Unsetenv("ECHO_SANDBOX_MODE")
+				os.Setenv("BLUE_SANDBOX_MODE", tt.envValue)
+				defer os.Unsetenv("BLUE_SANDBOX_MODE")
 			} else {
-				os.Unsetenv("ECHO_SANDBOX_MODE")
+				os.Unsetenv("BLUE_SANDBOX_MODE")
 			}
 
 			config := DefaultConfig()

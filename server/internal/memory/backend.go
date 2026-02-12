@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
 // ErrNotFound is returned when a memory is not found.

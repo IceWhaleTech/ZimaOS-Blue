@@ -9,7 +9,7 @@
 
 ## Overview
 
-This PRD defines the Tauri desktop application packaging strategy for ZimaOS-Echo, with a focus on Claude Code CLI integration. The goal is to provide a seamless desktop experience where users can optionally leverage Claude Code CLI for enhanced functionality while maintaining full usability without it.
+This PRD defines the Tauri desktop application packaging strategy for ZimaOS-Blue, with a focus on Claude Code CLI integration. The goal is to provide a seamless desktop experience where users can optionally leverage Claude Code CLI for enhanced functionality while maintaining full usability without it.
 
 ### Core Principles
 
@@ -115,7 +115,7 @@ This PRD defines the Tauri desktop application packaging strategy for ZimaOS-Ech
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ZimaOS-Echo Tauri Application                             │
+│                    ZimaOS-Blue Tauri Application                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -630,7 +630,7 @@ The settings page separates Claude Code CLI configuration from LLM provider conf
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                                                              │
-│                         Welcome to ZimaOS Echo                               │
+│                         Welcome to ZimaOS Blue                               │
 │                                                                              │
 │                              [Echo Logo]                                     │
 │                                                                              │
@@ -711,14 +711,14 @@ claude_code_cli:
 
   # Installation settings
   install:
-    path: ""  # Empty = auto-detect or ~/.local/share/zimaos-echo/claude-code
+    path: ""  # Empty = auto-detect or ~/.local/share/zimaos-blue/claude-code
     auto_update: false
     verify_checksum: true
 
   # Download settings
   download:
     base_url: "https://storage.googleapis.com/anthropic-public/claude-code"
-    cache_dir: ""  # Empty = ~/.local/share/zimaos-echo/claude-code
+    cache_dir: ""  # Empty = ~/.local/share/zimaos-blue/claude-code
 
   # Feature toggles (only effective when enabled=true)
   features:
@@ -782,7 +782,7 @@ cc_switch:
 statistics:
   enabled: true
   opt_in_required: true
-  storage_path: ""  # Empty = ~/.local/share/zimaos-echo/stats
+  storage_path: ""  # Empty = ~/.local/share/zimaos-blue/stats
   retention_days: 90
 
 # Tool calling adapters

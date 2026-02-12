@@ -78,11 +78,11 @@ worker:
 
 func TestLoad_FromEnv(t *testing.T) {
 	// Set environment variables
-	os.Setenv("ECHO_SERVER_PORT", "7070")
-	os.Setenv("ECHO_LOG_LEVEL", "warn")
+	os.Setenv("BLUE_SERVER_PORT", "7070")
+	os.Setenv("BLUE_LOG_LEVEL", "warn")
 	defer func() {
-		os.Unsetenv("ECHO_SERVER_PORT")
-		os.Unsetenv("ECHO_LOG_LEVEL")
+		os.Unsetenv("BLUE_SERVER_PORT")
+		os.Unsetenv("BLUE_LOG_LEVEL")
 	}()
 
 	cfg, err := Load("")

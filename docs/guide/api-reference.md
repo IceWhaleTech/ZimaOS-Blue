@@ -1,6 +1,6 @@
 # API Reference
 
-This document provides a comprehensive reference for the ZimaOS Echo REST API.
+This document provides a comprehensive reference for the ZimaOS Blue REST API.
 
 ## Base URL
 

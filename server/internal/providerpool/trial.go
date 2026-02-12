@@ -19,7 +19,7 @@ import (
 
 const (
 	// TrialProviderID is the ID of the trial provider
-	TrialProviderID = "zimaos-echo-trial"
+	TrialProviderID = "zimaos-blue-trial"
 
 	// TrialTokenLimit is the maximum number of tokens allowed for trial
 	TrialTokenLimit int64 = 10000
@@ -91,7 +91,7 @@ func (m *TrialQuotaManager) getMarkerPath() string {
 		return filepath.Join(m.markerDir, trialExhaustedMarkerFile)
 	}
 	// Default to system temp directory which is not backed up
-	return filepath.Join(os.TempDir(), "zimaos-echo", trialExhaustedMarkerFile)
+	return filepath.Join(os.TempDir(), "zimaos-blue", trialExhaustedMarkerFile)
 }
 
 // getMachineID returns a unique identifier for this machine
@@ -135,7 +135,7 @@ type trialQuotaData struct {
 func getEncryptionKey() []byte {
 	machineID := getMachineID()
 	// Add a salt to make the key more unique
-	salt := "zimaos-echo-trial-quota-v1"
+	salt := "zimaos-blue-trial-quota-v1"
 	h := sha256.New()
 	h.Write([]byte(machineID))
 	h.Write([]byte(salt))
@@ -195,7 +195,7 @@ func (m *TrialQuotaManager) getQuotaFilePath() string {
 	if m.markerDir != "" {
 		return filepath.Join(m.markerDir, trialQuotaFile)
 	}
-	return filepath.Join(os.TempDir(), "zimaos-echo", trialQuotaFile)
+	return filepath.Join(os.TempDir(), "zimaos-blue", trialQuotaFile)
 }
 
 // saveQuotaToFile saves the current quota to an encrypted file

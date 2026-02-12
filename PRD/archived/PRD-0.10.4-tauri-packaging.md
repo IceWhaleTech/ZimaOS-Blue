@@ -2,7 +2,7 @@
 
 ## Overview
 
-This PRD defines the packaging strategy for ZimaOS-Echo using Tauri framework, enabling out-of-the-box desktop application experience on Windows and macOS. The application will support network access, allowing users to access Echo from other devices on the same network via a shareable URL.
+This PRD defines the packaging strategy for ZimaOS-Blue using Tauri framework, enabling out-of-the-box desktop application experience on Windows and macOS. The application will support network access, allowing users to access Echo from other devices on the same network via a shareable URL.
 
 ## Goals
 
@@ -146,7 +146,7 @@ The application will automatically detect available network interfaces and provi
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ZimaOS Echo                                                     │
+│  ZimaOS Blue                                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────────┐│
@@ -228,14 +228,14 @@ The application will automatically detect available network interfaces and provi
 
 ### macOS CGO Library Integration
 
-#### Go Library Export (server/cmd/echolib/exports.go)
+#### Go Library Export (server/cmd/bluelib/exports.go)
 
 ```go
 package main
 
 import "C"
 import (
-    "github.com/IceWhaleTech/ZimaOS-Echo/server"
+    "github.com/IceWhaleTech/ZimaOS-Blue/server"
 )
 
 //export EchoStart
@@ -270,13 +270,13 @@ func main() {}
 CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
   go build -buildmode=c-archive \
   -o libecho_arm64.a \
-  ./server/cmd/echolib
+  ./server/cmd/bluelib
 
 # Build static library for macOS x64
 CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
   go build -buildmode=c-archive \
   -o libecho_x64.a \
-  ./server/cmd/echolib
+  ./server/cmd/bluelib
 
 # Create universal binary (fat library)
 lipo -create -output libecho.a libecho_arm64.a libecho_x64.a
@@ -353,7 +353,7 @@ fn main() {
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ZimaOS Echo",
+  "productName": "ZimaOS Blue",
   "version": "0.10.4",
   "identifier": "com.zimaos.echo",
   "build": {
@@ -388,7 +388,7 @@ fn main() {
   "app": {
     "windows": [
       {
-        "title": "ZimaOS Echo",
+        "title": "ZimaOS Blue",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -451,16 +451,16 @@ Or use `create-dmg` with explicit compression:
 ```bash
 # Create compressed DMG (post-build)
 create-dmg \
-  --volname "ZimaOS Echo" \
+  --volname "ZimaOS Blue" \
   --window-pos 200 120 \
   --window-size 600 400 \
   --icon-size 100 \
-  --icon "ZimaOS Echo.app" 175 120 \
-  --hide-extension "ZimaOS Echo.app" \
+  --icon "ZimaOS Blue.app" 175 120 \
+  --hide-extension "ZimaOS Blue.app" \
   --app-drop-link 425 120 \
   --format ULMO \
-  "ZimaOS-Echo_${VERSION}_${ARCH}.dmg" \
-  "target/release/bundle/macos/ZimaOS Echo.app"
+  "ZimaOS-Blue_${VERSION}_${ARCH}.dmg" \
+  "target/release/bundle/macos/ZimaOS Blue.app"
 ```
 
 **DMG Format Options**:
@@ -476,11 +476,11 @@ create-dmg \
 
 | Platform | Artifact | Location |
 |----------|----------|----------|
-| Windows | `ZimaOS-Echo_0.10.4_x64-setup.exe` | `target/release/bundle/nsis/` |
-| Windows | `ZimaOS-Echo_0.10.4_x64.msi` | `target/release/bundle/msi/` |
-| macOS | `ZimaOS-Echo.app` | `target/release/bundle/macos/` |
-| macOS | `ZimaOS-Echo_0.10.4_aarch64.dmg` | `target/release/bundle/dmg/` |
-| macOS | `ZimaOS-Echo_0.10.4_x64.dmg` | `target/release/bundle/dmg/` |
+| Windows | `ZimaOS-Blue_0.10.4_x64-setup.exe` | `target/release/bundle/nsis/` |
+| Windows | `ZimaOS-Blue_0.10.4_x64.msi` | `target/release/bundle/msi/` |
+| macOS | `ZimaOS-Blue.app` | `target/release/bundle/macos/` |
+| macOS | `ZimaOS-Blue_0.10.4_aarch64.dmg` | `target/release/bundle/dmg/` |
+| macOS | `ZimaOS-Blue_0.10.4_x64.dmg` | `target/release/bundle/dmg/` |
 
 ### CI/CD Pipeline
 
@@ -527,7 +527,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         with:
           tagName: v__VERSION__
-          releaseName: 'ZimaOS Echo v__VERSION__'
+          releaseName: 'ZimaOS Blue v__VERSION__'
           releaseBody: 'See the assets to download this version.'
           releaseDraft: true
           prerelease: false
@@ -541,7 +541,7 @@ jobs:
 - [ ] Create application icons for all platforms
 
 ### Phase 2: macOS CGO Library Integration
-- [ ] Create Go library exports (`server/cmd/echolib/exports.go`)
+- [ ] Create Go library exports (`server/cmd/bluelib/exports.go`)
 - [ ] Implement `EchoStart`, `EchoStop`, `EchoGetStatus` C-exported functions
 - [ ] Set up build scripts for ARM64 and x64 static libraries
 - [ ] Create universal binary (fat library) with `lipo`

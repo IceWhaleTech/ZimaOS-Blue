@@ -1,4 +1,4 @@
-# ZimaOS Echo 价值叙事脚本
+# ZimaOS Blue 价值叙事脚本
 
 
 # V1.0 - 简洁版
@@ -7,7 +7,7 @@
 
 Clawdbot挺好的，但是也很难搭建。Mac Mini挺好的，但我想在任何自己的本地x86设备上能够建立和探索Clawdbot的能力。
 
-所以我们开发了ZimaOS Echo——
+所以我们开发了ZimaOS Blue——
 
 一款能够**完全支持本地推理、云端接入、IM对接**、隔离的本地设备环境的Agent载体。
 
@@ -34,7 +34,7 @@ ZimaOS在过去几年，基于社区建立了一个**24/7稳定、可信、安�
 - 要会写配置
 - 要处理各种兼容性问题
 
-**ZimaOS Echo要做的，是把这道墙拆掉。**
+**ZimaOS Blue要做的，是把这道墙拆掉。**
 
 Echo定位在——
 
@@ -91,7 +91,7 @@ Clawdbot证明了这件事有多火。
 
 Home Assistant证明了社区驱动的产品能走多远。
 
-**ZimaOS Echo要把这两件事结合——**
+**ZimaOS Blue要把这两件事结合——**
 
 让AI Agent不再是极客的玩具，而是每个家庭的基础设施。
 

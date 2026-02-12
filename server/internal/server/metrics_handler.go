@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/metrics"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 )
 
 // MetricsHandler handles metrics-related API endpoints

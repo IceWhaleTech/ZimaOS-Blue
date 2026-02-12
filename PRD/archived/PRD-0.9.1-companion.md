@@ -9,7 +9,7 @@
 
 ## Overview
 
-Echo Companion is a real-time monitoring tool that provides developers and administrators with a visual interface to observe AI Agent operations across multiple platforms. Inspired by [Crabwalk](https://github.com/luccast/crabwalk)'s design philosophy, combined with ZimaOS Echo's deep security insights, it delivers a secure, observable, and auditable Agent monitoring solution.
+Echo Companion is a real-time monitoring tool that provides developers and administrators with a visual interface to observe AI Agent operations across multiple platforms. Inspired by [Crabwalk](https://github.com/luccast/crabwalk)'s design philosophy, combined with ZimaOS Blue's deep security insights, it delivers a secure, observable, and auditable Agent monitoring solution.
 
 ### Core Values
 

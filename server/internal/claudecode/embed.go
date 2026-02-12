@@ -97,9 +97,9 @@ type BinaryManager struct {
 // NewBinaryManager creates a new binary manager.
 func NewBinaryManager(extractDir string) *BinaryManager {
 	if extractDir == "" {
-		// Default to ~/.local/share/zimaos-echo/claude-code
+		// Default to ~/.local/share/zimaos-blue/claude-code
 		home, _ := os.UserHomeDir()
-		extractDir = filepath.Join(home, ".local", "share", "zimaos-echo", "claude-code")
+		extractDir = filepath.Join(home, ".local", "share", "zimaos-blue", "claude-code")
 	}
 	return &BinaryManager{
 		extractDir:      extractDir,

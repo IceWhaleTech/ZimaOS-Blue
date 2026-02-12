@@ -22,7 +22,7 @@ type ServiceHandler struct {
 func NewServiceHandler() *ServiceHandler {
 	execPath, _ := os.Executable()
 	return &ServiceHandler{
-		serviceName: "ZimaOS-Echo",
+		serviceName: "ZimaOS-Blue",
 		execPath:    execPath,
 	}
 }
@@ -174,13 +174,13 @@ func (h *ServiceHandler) checkLinuxInstallMethod() InstallCheckResult {
 	// Method 4: systemd-sysext
 	if _, err := os.Stat("/var/lib/extensions"); err == nil {
 		// Check if we can write to extensions directory
-		testDir := filepath.Join("/var/lib/extensions", "test-zimaos-echo")
+		testDir := filepath.Join("/var/lib/extensions", "test-zimaos-blue")
 		if err := os.MkdirAll(testDir, 0755); err == nil {
 			os.RemoveAll(testDir)
 			return InstallCheckResult{
 				CanInstall:   true,
 				Method:       "sysext",
-				Path:         "/var/lib/extensions/zimaos-echo",
+				Path:         "/var/lib/extensions/zimaos-blue",
 				RequiresRoot: true,
 				Message:      "System extension (sysext) installation for immutable filesystem",
 				MessageKey:   "service.installMethodSysext",
@@ -480,11 +480,11 @@ func (h *ServiceHandler) runCommand(name string, args ...string) (string, error)
 }
 
 func (h *ServiceHandler) getLaunchdLabel() string {
-	return "com.icewhale.zimaos-echo"
+	return "com.icewhale.zimaos-blue"
 }
 
 func (h *ServiceHandler) getSystemdUnit() string {
-	return "zimaos-echo.service"
+	return "zimaos-blue.service"
 }
 
 // Windows-specific functions
@@ -743,7 +743,7 @@ func (h *ServiceHandler) getSystemdServiceInfo(info *ServiceInfo) {
 	}
 
 	info.InstallPath = filepath.Dir(h.execPath)
-	info.LogPath = "/var/log/zimaos-echo"
+	info.LogPath = "/var/log/zimaos-blue"
 }
 
 func (h *ServiceHandler) getSystemdStatus() (status string, running, installed, enabled bool) {
@@ -784,8 +784,8 @@ func (h *ServiceHandler) installSystemdService() (string, error) {
 
 	// Create systemd service content
 	serviceContent := fmt.Sprintf(`[Unit]
-Description=ZimaOS Echo - NAS-Native Agent Runtime
-Documentation=https://github.com/IceWhaleTech/ZimaOS-Echo
+Description=ZimaOS Blue - NAS-Native Agent Runtime
+Documentation=https://github.com/IceWhaleTech/ZimaOS-Blue
 After=network-online.target
 Wants=network-online.target
 
@@ -812,7 +812,7 @@ CPUQuota=100%%
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=zimaos-echo
+SyslogIdentifier=zimaos-blue
 
 [Install]
 WantedBy=multi-user.target
@@ -875,7 +875,7 @@ func (h *ServiceHandler) finalizeSystemdInstall(unit, servicePath string) (strin
 
 // installViaSystemExtension creates a systemd-sysext extension for immutable systems
 func (h *ServiceHandler) installViaSystemExtension(unit, serviceContent string) (string, error) {
-	extName := "zimaos-echo"
+	extName := "zimaos-blue"
 	extDir := filepath.Join("/var/lib/extensions", extName)
 
 	// Check if extensions directory exists
@@ -967,7 +967,7 @@ func (h *ServiceHandler) uninstallSystemdService() (string, error) {
 	}
 
 	// Also try to remove system extension
-	extDir := filepath.Join("/var/lib/extensions", "zimaos-echo")
+	extDir := filepath.Join("/var/lib/extensions", "zimaos-blue")
 	if _, err := os.Stat(extDir); err == nil {
 		os.RemoveAll(extDir)
 		h.runCommand("systemd-sysext", "refresh")

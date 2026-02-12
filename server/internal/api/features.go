@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/features"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/features"
 )
 
 // FeaturesHandler handles feature gating API requests.

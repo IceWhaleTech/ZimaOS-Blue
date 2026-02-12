@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-# ZimaOS-Echo macOS Installation Script
+# ZimaOS-Blue macOS Installation Script
 # Usage: curl -fsSL https://echo.zimaos.com/install-macos.sh | bash
 # Or: curl -fsSL https://echo.zimaos.com/install-macos.sh | bash -s -- --version v0.1.0
 
 VERSION="${VERSION:-latest}"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/zimaos-echo}"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/zimaos-blue}"
 GITHUB_REPO="zimaos/echo"
 BASE_URL="https://github.com/${GITHUB_REPO}/releases"
 
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --version, -v    Version to install (default: latest)"
-            echo "  --dir, -d        Installation directory (default: /usr/local/zimaos-echo)"
+            echo "  --dir, -d        Installation directory (default: /usr/local/zimaos-blue)"
             echo "  --help, -h       Show this help message"
             exit 0
             ;;
@@ -56,7 +56,7 @@ NC='\033[0m'
 print_banner() {
     echo -e "${BLUE}"
     echo "╔═══════════════════════════════════════════╗"
-    echo "║     ZimaOS-Echo macOS Installer           ║"
+    echo "║     ZimaOS-Blue macOS Installer           ║"
     echo "║     NAS-Native Agent Runtime              ║"
     echo "╚═══════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -196,7 +196,7 @@ EOF
 
 create_symlink() {
     log_info "Creating symlink in /usr/local/bin..."
-    sudo ln -sf "$INSTALL_DIR/bin/echo" /usr/local/bin/zimaos-echo
+    sudo ln -sf "$INSTALL_DIR/bin/echo" /usr/local/bin/zimaos-blue
 }
 
 print_success() {
@@ -214,20 +214,20 @@ print_success() {
     echo "    launchctl start com.zimaos.echo      - Start service"
     echo "    tail -f $INSTALL_DIR/logs/stdout.log - View logs"
     echo ""
-    echo "  CLI: zimaos-echo --help"
+    echo "  CLI: zimaos-blue --help"
     echo "  Config: $INSTALL_DIR/config/config.yaml"
     echo ""
 }
 
 uninstall() {
-    log_info "Uninstalling ZimaOS-Echo..."
+    log_info "Uninstalling ZimaOS-Blue..."
 
     # Stop and unload service
     launchctl unload "$HOME/Library/LaunchAgents/com.zimaos.echo.plist" 2>/dev/null || true
     rm -f "$HOME/Library/LaunchAgents/com.zimaos.echo.plist"
 
     # Remove symlink
-    sudo rm -f /usr/local/bin/zimaos-echo
+    sudo rm -f /usr/local/bin/zimaos-blue
 
     # Remove installation directory
     if [ -d "$INSTALL_DIR" ]; then
@@ -245,7 +245,7 @@ uninstall() {
 }
 
 upgrade() {
-    log_info "Upgrading ZimaOS-Echo..."
+    log_info "Upgrading ZimaOS-Blue..."
 
     # Stop service
     launchctl stop com.zimaos.echo 2>/dev/null || true

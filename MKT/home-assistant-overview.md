@@ -121,13 +121,13 @@
 
 ---
 
-## 四、对ZimaOS Echo的启示
+## 四、对ZimaOS Blue的启示
 
 ### 4.1 差异化机会
 
 **Home Assistant的局限 = Echo的机会：**
 
-| Home Assistant限制 | ZimaOS Echo优势 |
+| Home Assistant限制 | ZimaOS Blue优势 |
 |-------------------|----------------|
 | 需要单独硬件安装 | NAS集成，开箱即用 |
 | YAML配置复杂 | 可视化界面+低代码 |

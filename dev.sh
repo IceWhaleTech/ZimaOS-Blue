@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ZimaOS-Echo Development Script
+# ZimaOS-Blue Development Script
 # Usage: ./dev.sh [command]
 # Commands: start (default), server, web, build, clean, prd
 
@@ -105,11 +105,11 @@ start_server() {
         warn "Air not installed, running without hot reload"
         warn "Run 'go install github.com/air-verse/air@latest' to enable hot reload"
         # Build first
-        go build -o echo ./cmd/echo
+        go build -o blue ./cmd/blue
         success "Server built successfully"
 
         info "Starting server on http://localhost:23456"
-        ./echo
+        ./blue
     fi
 }
 
@@ -135,7 +135,7 @@ start_all() {
 
     echo ""
     echo -e "${CYAN}========================================${NC}"
-    echo -e "${CYAN}  ZimaOS-Echo Development Environment${NC}"
+    echo -e "${CYAN}  ZimaOS-Blue Development Environment${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo ""
     echo -e "  Backend:  ${YELLOW}http://localhost:23456${NC}"
@@ -165,8 +165,8 @@ start_all() {
     if command_exists air; then
         air
     else
-        go build -tags dev -o echo ./cmd/echo
-        ./echo
+        go build -tags dev -o blue ./cmd/blue
+        ./blue
     fi
 }
 
@@ -249,7 +249,7 @@ build_all() {
     # Build server
     info "Building Go server..."
     cd "$PROJECT_ROOT/server"
-    go build -ldflags="-s -w" -o echo ./cmd/echo
+    go build -ldflags="-s -w" -o blue ./cmd/blue
     success "Server built: server/echo"
 
     # Build web
@@ -288,7 +288,7 @@ prd_run() {
     # Start server (production mode, no -tags dev, serves embedded frontend)
     info "Starting Go server (production mode, http://localhost:23456)..."
     cd "$PROJECT_ROOT/server"
-    go run ./cmd/echo
+    go run ./cmd/blue
 }
 
 # Clean build artifacts

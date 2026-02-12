@@ -1,7 +1,7 @@
 # PRD: Preview Mode & Onboarding Experience
 
 **Version**: 0.10.7
-**Author**: ZimaOS-Echo Team
+**Author**: ZimaOS-Blue Team
 **Status**: Draft
 **Created**: 2026-01-31
 **UED Reference**: [02-preview-mode-onboarding-design.md](../UED/02-preview-mode-onboarding-design.md)
@@ -12,7 +12,7 @@
 
 ### 1.1 Background
 
-ZimaOS-Echo 当前要求用户在首次使用时完成设置向导，包括创建管理员账户和配置 Provider。这种流程虽然完整，但增加了用户的首次使用门槛，可能导致潜在用户流失。
+ZimaOS-Blue 当前要求用户在首次使用时完成设置向导，包括创建管理员账户和配置 Provider。这种流程虽然完整，但增加了用户的首次使用门槛，可能导致潜在用户流失。
 
 通过引入预览模式（Preview Mode），用户可以零配置立即体验产品核心功能，降低使用门槛，提高产品转化率。
 
@@ -487,7 +487,7 @@ INSERT INTO system_config (key, value) VALUES
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  [Logo] ZimaOS Echo                                    [创建账户 ▼]         │
+│  [Logo] ZimaOS Blue                                    [创建账户 ▼]         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  点击 [创建账户] 下拉菜单:                                                  │
@@ -507,9 +507,9 @@ INSERT INTO system_config (key, value) VALUES
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                                                              │
-│                         [ZimaOS Echo Logo]                                   │
+│                         [ZimaOS Blue Logo]                                   │
 │                                                                              │
-│                    欢迎体验 ZimaOS Echo                                      │
+│                    欢迎体验 ZimaOS Blue                                      │
 │                    点击下方问题快速开始                                       │
 │                                                                              │
 │   ┌─────────────────────┐  ┌─────────────────────┐                          │
@@ -574,7 +574,7 @@ INSERT INTO system_config (key, value) VALUES
 ┌─────────────────────────────────────────────────────────────┐
 │  🔧 检测到可用更新                                          │
 │  ─────────────────────────────────────────────────────────  │
-│  ZimaOS Echo v0.10.7 已发布                                 │
+│  ZimaOS Blue v0.10.7 已发布                                 │
 │                                                             │
 │  [立即更新]  [稍后提醒]  [查看详情]                         │
 └─────────────────────────────────────────────────────────────┘

@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/session"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 )
 
 // SessionHandler handles session-related endpoints.

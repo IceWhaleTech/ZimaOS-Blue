@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/embedding"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 )
 
 // HybridSearcher combines vector and keyword search.

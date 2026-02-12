@@ -1,10 +1,10 @@
 # Configuration
 
-ZimaOS Echo uses YAML configuration files with environment variable overrides.
+ZimaOS Blue uses YAML configuration files with environment variable overrides.
 
 ## Configuration File
 
-Default location: `/opt/zimaos-echo/config/config.yaml`
+Default location: `/opt/zimaos-blue/config/config.yaml`
 
 ```yaml
 server:
@@ -26,21 +26,21 @@ worker:
 
 ## Environment Variables
 
-All configuration options can be overridden with environment variables using the `ECHO_` prefix:
+All configuration options can be overridden with environment variables using the `BLUE_` prefix:
 
 | Config Key | Environment Variable | Default |
 |------------|---------------------|---------|
-| `server.host` | `ECHO_SERVER_HOST` | `0.0.0.0` |
-| `server.port` | `ECHO_SERVER_PORT` | `23456` |
-| `log.level` | `ECHO_LOG_LEVEL` | `info` |
-| `log.format` | `ECHO_LOG_FORMAT` | `json` |
-| `worker.pool_size` | `ECHO_WORKER_POOL_SIZE` | `10` |
+| `server.host` | `BLUE_SERVER_HOST` | `0.0.0.0` |
+| `server.port` | `BLUE_SERVER_PORT` | `23456` |
+| `log.level` | `BLUE_LOG_LEVEL` | `info` |
+| `log.format` | `BLUE_LOG_FORMAT` | `json` |
+| `worker.pool_size` | `BLUE_WORKER_POOL_SIZE` | `10` |
 
 Example:
 
 ```bash
-export ECHO_SERVER_PORT=9090
-export ECHO_LOG_LEVEL=debug
+export BLUE_SERVER_PORT=9090
+export BLUE_LOG_LEVEL=debug
 ./echo --config config.yaml
 ```
 
@@ -151,7 +151,7 @@ server:
 log:
   level: "info"
   format: "json"
-  output: "/var/log/zimaos-echo/echo.log"
+  output: "/var/log/zimaos-blue/echo.log"
 
 worker:
   pool_size: 20

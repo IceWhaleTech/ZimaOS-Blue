@@ -1,7 +1,7 @@
 # PRD: Smart Form Filler - Floating Widget for Intelligent Form Completion
 
 **Version**: 0.9.2
-**Author**: ZimaOS-Echo Team
+**Author**: ZimaOS-Blue Team
 **Status**: Draft
 **Created**: 2026-01-28
 

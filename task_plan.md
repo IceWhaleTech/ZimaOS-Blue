@@ -94,7 +94,7 @@
 - Others are stopped automatically
 
 ### Blacklist Mechanism
-- File-based storage: `~/.zimaos-echo/tunnel_blacklist.json`
+- File-based storage: `~/.zimaos-blue/tunnel_blacklist.json`
 - Structure: `{"provider": "bore", "blacklisted_at": "2026-02-02T10:00:00Z"}`
 - Check on startup and before each Auto mode attempt
 - Auto-expire after 24 hours

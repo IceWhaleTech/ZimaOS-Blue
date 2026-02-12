@@ -252,7 +252,7 @@ Day 3: 更名为Moltbot
 
 ---
 
-## 六、对ZimaOS Echo的启示
+## 六、对ZimaOS Blue的启示
 
 ### 6.1 传播策略借鉴
 
@@ -266,7 +266,7 @@ Day 3: 更名为Moltbot
 
 ### 6.2 差异化机会
 
-**ZimaOS Echo可以：**
+**ZimaOS Blue可以：**
 
 1. **强调NAS集成** - 比Mac mini更适合家庭场景
 2. **多租户支持** - 家庭成员各自独立

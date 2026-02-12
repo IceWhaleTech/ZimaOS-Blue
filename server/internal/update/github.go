@@ -28,9 +28,9 @@ func NewGitHubClient() *GitHubClient {
 			Timeout: 30 * time.Second,
 		},
 		owner:       "IceWhaleTech",
-		repo:        "ZimaOS-Echo",
-		primaryURL:  "https://api.github.com/repos/IceWhaleTech/ZimaOS-Echo/contents/release-note",
-		fallbackURL: "https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Echo@main/release-note/",
+		repo:        "ZimaOS-Blue",
+		primaryURL:  "https://api.github.com/repos/IceWhaleTech/ZimaOS-Blue/contents/release-note",
+		fallbackURL: "https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Blue@main/release-note/",
 	}
 }
 
@@ -125,7 +125,7 @@ func (c *GitHubClient) GetDownloadURL(version string) string {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 	return fmt.Sprintf(
-		"https://github.com/%s/%s/releases/download/v%s/zimaos-echo-%s-%s",
+		"https://github.com/%s/%s/releases/download/v%s/zimaos-blue-%s-%s",
 		c.owner, c.repo, version, os, arch,
 	)
 }

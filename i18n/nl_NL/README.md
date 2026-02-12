@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** is een lichte, hoogpresterende AI-agent runtime voor NAS- en edge-apparaten. Gebouwd in Go, biedt het een productieklare omgeving met zero-config deployment, sessiemonitoring en gebruikersanalytics.
+**ZimaOS Blue** is een lichte, hoogpresterende AI-agent runtime voor NAS- en edge-apparaten. Gebouwd in Go, biedt het een productieklare omgeving met zero-config deployment, sessiemonitoring en gebruikersanalytics.
 
 [Snel starten](#snel-starten) · [Functies](#kernfuncties)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # Uit broncode
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 Dashboard bereikbaar op `http://localhost:3000`.
 
 ## LLM-providerconfiguratie
 
-ZimaOS Echo ondersteunt meerdere LLM-providers, inclusief lokale LLM-diensten:
+ZimaOS Blue ondersteunt meerdere LLM-providers, inclusief lokale LLM-diensten:
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # Buildartefacten opschonen
 ### Projectstructuur
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # Go-backend
-│   ├── cmd/echo/       # Entrypoint
+│   ├── cmd/blue/       # Entrypoint
 │   └── internal/       # Kernmodules
 ├── web/                # Vue 3-frontend
 │   └── src/

@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -16,12 +16,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** NAS, എഡ്ജ് ഉപകരണങ്ങൾക്കായുള്ള ഒരു ശക്തമായ AI ഏജന്റ് റൺടൈം ആണ്. നിങ്ങളുടെ ഡാറ്റ നിങ്ങളുടെ ഹാർഡ്‌വെയറിൽ തന്നെ നിലനിൽക്കുന്നു, എല്ലാ പ്രവർത്തനങ്ങളും ഓഡിറ്റ് ചെയ്യാവുന്നതാണ്, AI പ്രവർത്തനങ്ങൾ ഐസൊലേറ്റഡ് സാൻഡ്‌ബോക്സുകളിൽ പ്രവർത്തിക്കുന്നു.
+**ZimaOS Blue** NAS, എഡ്ജ് ഉപകരണങ്ങൾക്കായുള്ള ഒരു ശക്തമായ AI ഏജന്റ് റൺടൈം ആണ്. നിങ്ങളുടെ ഡാറ്റ നിങ്ങളുടെ ഹാർഡ്‌വെയറിൽ തന്നെ നിലനിൽക്കുന്നു, എല്ലാ പ്രവർത്തനങ്ങളും ഓഡിറ്റ് ചെയ്യാവുന്നതാണ്, AI പ്രവർത്തനങ്ങൾ ഐസൊലേറ്റഡ് സാൻഡ്‌ബോക്സുകളിൽ പ്രവർത്തിക്കുന്നു.
 
 [ക്വിക്ക് സ്റ്റാർട്ട്](#ക്വിക്ക്-സ്റ്റാർട്ട്) · [സുരക്ഷ](#സുരക്ഷാ-ശക്തിപ്പെടുത്തൽ)
 
@@ -54,17 +54,17 @@
 
 ```bash
 # സോഴ്സിൽ നിന്ന്
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
-./zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o zimaos-blue ./cmd/server
+./zimaos-blue server
 ```
 
 ## ആർക്കിടെക്ചർ
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  ഓഡിറ്റ് ലോഗ് │ മെട്രിക്സ് │ RBAC │ Rate Limiter │
 ├─────────────────────────────────────────────────────┤

@@ -1,13 +1,13 @@
 #!/bin/bash
 set -e
 
-# ZimaOS-Echo One-Click Installation Script
+# ZimaOS-Blue One-Click Installation Script
 # Usage: curl -fsSL https://echo.zimaos.com/install.sh | bash
 # Or: curl -fsSL https://echo.zimaos.com/install.sh | bash -s -- --version v0.1.0
 
 VERSION="${VERSION:-latest}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/zimaos-echo}"
-SERVICE_USER="${SERVICE_USER:-zimaos-echo}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/zimaos-blue}"
+SERVICE_USER="${SERVICE_USER:-zimaos-blue}"
 GITHUB_REPO="zimaos/echo"
 BASE_URL="https://github.com/${GITHUB_REPO}/releases"
 
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --version, -v    Version to install (default: latest)"
-            echo "  --dir, -d        Installation directory (default: /opt/zimaos-echo)"
+            echo "  --dir, -d        Installation directory (default: /opt/zimaos-blue)"
             echo "  --help, -h       Show this help message"
             exit 0
             ;;
@@ -64,7 +64,7 @@ NC='\033[0m'
 print_banner() {
     echo -e "${BLUE}"
     echo "╔═══════════════════════════════════════════╗"
-    echo "║         ZimaOS-Echo Installer             ║"
+    echo "║         ZimaOS-Blue Installer             ║"
     echo "║     NAS-Native Agent Runtime              ║"
     echo "╚═══════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -154,10 +154,10 @@ setup_systemd() {
 
     log_info "Setting up systemd service..."
 
-    cat > /etc/systemd/system/zimaos-echo.service << EOF
+    cat > /etc/systemd/system/zimaos-blue.service << EOF
 [Unit]
-Description=ZimaOS Echo - NAS-Native Agent Runtime
-Documentation=https://docs.zimaos-echo.dev
+Description=ZimaOS Blue - NAS-Native Agent Runtime
+Documentation=https://docs.zimaos-blue.dev
 After=network-online.target
 Wants=network-online.target
 
@@ -188,14 +188,14 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable zimaos-echo
-    systemctl start zimaos-echo
+    systemctl enable zimaos-blue
+    systemctl start zimaos-blue
 
     sleep 2
-    if systemctl is-active --quiet zimaos-echo; then
+    if systemctl is-active --quiet zimaos-blue; then
         log_info "Service started successfully!"
     else
-        log_warn "Service may not have started. Check: journalctl -u zimaos-echo"
+        log_warn "Service may not have started. Check: journalctl -u zimaos-blue"
     fi
 }
 
@@ -211,9 +211,9 @@ print_success() {
     echo "  Health:    http://${IP}:23456/health"
     echo ""
     echo "  Commands:"
-    echo "    systemctl status zimaos-echo   - Check status"
-    echo "    systemctl restart zimaos-echo  - Restart"
-    echo "    journalctl -u zimaos-echo -f   - View logs"
+    echo "    systemctl status zimaos-blue   - Check status"
+    echo "    systemctl restart zimaos-blue  - Restart"
+    echo "    journalctl -u zimaos-blue -f   - View logs"
     echo ""
     echo "  Config: $INSTALL_DIR/config/config.yaml"
     echo ""

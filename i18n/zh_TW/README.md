@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** 是專為 NAS 與邊緣裝置設計的輕量、高效能 AI 智能體執行環境。以 Go 建構，提供零設定部署、會話監控與完整使用分析的生產就緒平台。
+**ZimaOS Blue** 是專為 NAS 與邊緣裝置設計的輕量、高效能 AI 智能體執行環境。以 Go 建構，提供零設定部署、會話監控與完整使用分析的生產就緒平台。
 
 [快速開始](#快速開始) · [功能](#核心功能)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # 從原始碼
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 於 `http://localhost:3000` 存取儀表板。
 
 ## LLM 提供商設定
 
-ZimaOS Echo 支援多種 LLM 提供商，包含本地 LLM 服務：
+ZimaOS Blue 支援多種 LLM 提供商，包含本地 LLM 服務：
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # 清理建置產物
 ### 專案結構
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # Go 後端
-│   ├── cmd/echo/       # 進入點
+│   ├── cmd/blue/       # 進入點
 │   └── internal/       # 核心模組
 ├── web/                # Vue 3 前端
 │   └── src/

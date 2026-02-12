@@ -1,4 +1,4 @@
-# Default configuration for ZimaOS-Echo
+# Default configuration for ZimaOS-Blue
 # Copy this file to config.yaml and modify as needed
 
 server:
@@ -30,7 +30,7 @@ resources:
 cgroup:
   enabled: false
   cgroup_root: "/sys/fs/cgroup"
-  cgroup_name: "zimaos-echo"
+  cgroup_name: "zimaos-blue"
 
   # IO bandwidth limits
   io:

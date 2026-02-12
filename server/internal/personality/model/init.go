@@ -31,7 +31,7 @@ func InitializeDefaultPersonality(dataDir string) error {
 	defaultPersonality := &Personality{
 		ID:           "default",
 		Name:         "Echo",
-		Description:  "Default ZimaOS Echo AI Assistant",
+		Description:  "Default ZimaOS Blue AI Assistant",
 		SystemPrompt: string(soulContent),
 		CreatedAt:    now,
 		UpdatedAt:    now,

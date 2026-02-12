@@ -1,6 +1,6 @@
 # 性能剖析指南
 
-ZimaOS Echo 内置基于 Go pprof 的性能剖析能力。本指南说明如何用这些工具进行调试与优化。
+ZimaOS Blue 内置基于 Go pprof 的性能剖析能力。本指南说明如何用这些工具进行调试与优化。
 
 ## 启用 pprof
 
@@ -246,7 +246,7 @@ go tool pprof -base=baseline.prof current.prof
 
 ### Prometheus 指标
 
-ZimaOS Echo 导出与 pprof 相关的指标：
+ZimaOS Blue 导出与 pprof 相关的指标：
 
 ```
 # HELP go_goroutines Goroutine 数量

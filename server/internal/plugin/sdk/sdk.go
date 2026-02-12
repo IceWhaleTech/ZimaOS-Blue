@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 )
 
 // BasePlugin provides a base implementation for plugins

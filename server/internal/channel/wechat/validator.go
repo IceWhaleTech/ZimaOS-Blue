@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
 )
 
 // WeChatWorkAPIBaseURL is the base URL for WeChat Work API.

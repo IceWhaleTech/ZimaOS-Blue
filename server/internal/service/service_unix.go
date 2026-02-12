@@ -79,19 +79,19 @@ func Uninstall(config *Config) error {
 
 // Start is a no-op on Unix (use systemctl/launchctl directly).
 func Start(config *Config) error {
-	// On Unix, use: systemctl start zimaos-echo
+	// On Unix, use: systemctl start zimaos-blue
 	return nil
 }
 
 // StopService is a no-op on Unix (use systemctl/launchctl directly).
 func StopService(config *Config) error {
-	// On Unix, use: systemctl stop zimaos-echo
+	// On Unix, use: systemctl stop zimaos-blue
 	return nil
 }
 
 // QueryStatus is a no-op on Unix (use systemctl/launchctl directly).
 func QueryStatus(config *Config) (Status, error) {
-	// On Unix, use: systemctl status zimaos-echo
+	// On Unix, use: systemctl status zimaos-blue
 	return StatusUnknown, nil
 }
 

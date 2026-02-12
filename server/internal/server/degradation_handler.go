@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/resilience"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/resilience"
 )
 
 // DegradationHandler handles degradation-related API endpoints

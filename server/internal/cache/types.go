@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors

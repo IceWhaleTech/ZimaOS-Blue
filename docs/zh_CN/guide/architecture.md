@@ -1,10 +1,10 @@
-# ZimaOS-Echo 架构文档
+# ZimaOS-Blue 架构文档
 
 [English Version](../../../DEV/architecture.md)
 
 ## 概述
 
-ZimaOS-Echo 是一个轻量级、自托管的 AI 助手，专为 NAS 环境设计。它提供了一个对话界面，可以与各种 LLM 提供商交互，同时保持对数据的隐私和控制。
+ZimaOS-Blue 是一个轻量级、自托管的 AI 助手，专为 NAS 环境设计。它提供了一个对话界面，可以与各种 LLM 提供商交互，同时保持对数据的隐私和控制。
 
 ## 系统架构
 
@@ -222,9 +222,9 @@ type Skill interface {
 ## 目录结构
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/                 # Go 后端
-│   ├── cmd/echo/          # 主入口
+│   ├── cmd/blue/          # 主入口
 │   └── internal/          # 内部包
 │       ├── auth/          # 认证
 │       ├── rbac/          # 授权

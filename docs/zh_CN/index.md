@@ -2,19 +2,19 @@
 layout: home
 
 hero:
-  name: ZimaOS Echo
+  name: ZimaOS Blue
   text: NAS 原生 Agent 运行时
   tagline: 轻量、高性能的 AI Agent 运行时，专为低功耗 NAS 设备优化
   image:
     src: /logo.svg
-    alt: ZimaOS Echo
+    alt: ZimaOS Blue
   actions:
     - theme: brand
       text: 快速开始
       link: /zh_CN/guide/getting-started
     - theme: alt
       text: GitHub
-      link: https://github.com/IceWhaleTech/ZimaOS-Echo/server
+      link: https://github.com/IceWhaleTech/ZimaOS-Blue/server
 
 features:
   - icon: 🚀
@@ -40,16 +40,16 @@ features:
 ## 从源码安装
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 更多方式见 [安装指南](/zh_CN/guide/installation.md)。
 
-## 什么是 ZimaOS Echo？
+## 什么是 ZimaOS Blue？
 
-ZimaOS Echo 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感来源于 [clawdbot](https://github.com/clawdbot/clawdbot)。它专为低功耗 NAS 和边缘设备设计，提供：
+ZimaOS Blue 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感来源于 [clawdbot](https://github.com/clawdbot/clawdbot)。它专为低功耗 NAS 和边缘设备设计，提供：
 
 - **极低资源占用**：在 CPU 和内存有限的设备上高效运行
 - **长期稳定性**：专为 24/7 不间断运行设计
@@ -60,7 +60,7 @@ ZimaOS Echo 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  ZimaOS-Echo                     │
+│                  ZimaOS-Blue                     │
 ├─────────────────────────────────────────────────┤
 │  Vue 3 前端  │  REST API  │  WebSocket          │
 ├─────────────────────────────────────────────────┤

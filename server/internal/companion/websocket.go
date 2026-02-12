@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 )
 
 // WebSocketHandler handles WebSocket connections for real-time event streaming.

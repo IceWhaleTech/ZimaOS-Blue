@@ -1,11 +1,11 @@
-//go:build cgo
-
 package tts
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/espeak-ng/src/include
+#cgo windows CFLAGS: -DLIBESPEAK_NG_EXPORT
 #cgo darwin LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lstdc++ -lm
 #cgo linux LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lstdc++ -lm -lpthread
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a ${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools/libucd.a ${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer/libspeechPlayer.a -lstdc++ -lm
 
 #include <stdlib.h>
 #include <string.h>

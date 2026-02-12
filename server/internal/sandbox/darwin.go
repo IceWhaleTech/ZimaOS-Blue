@@ -29,12 +29,12 @@ type DarwinExecutor struct {
 }
 
 // newPlatformExecutor creates a new Darwin executor.
-// It checks the ECHO_SANDBOX_MODE environment variable to determine which executor to use:
+// It checks the BLUE_SANDBOX_MODE environment variable to determine which executor to use:
 // - "hypervisor": Use HypervisorExecutor for VM-based isolation
 // - "sandbox-exec": Use traditional DarwinExecutor with sandbox-exec
 // - "auto" or unset: Automatically select the best available option
 func newPlatformExecutor(config *Config) (Executor, error) {
-	mode := DarwinExecutorMode(os.Getenv("ECHO_SANDBOX_MODE"))
+	mode := DarwinExecutorMode(os.Getenv("BLUE_SANDBOX_MODE"))
 
 	switch mode {
 	case DarwinExecutorModeHypervisor:

@@ -9,7 +9,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ICONS_DIR="$PROJECT_ROOT/tauri-app/src-tauri/icons"
 SOURCE_LOGO="$PROJECT_ROOT/docs/public/logo.png"
 
-echo "Generating icons for ZimaOS Echo..."
+echo "Generating icons for ZimaOS Blue..."
 
 # Check if ImageMagick is available
 if ! command -v magick &> /dev/null; then

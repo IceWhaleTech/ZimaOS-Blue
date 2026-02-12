@@ -171,7 +171,7 @@ func (w *WebSearchTool) searchDuckDuckGo(ctx context.Context, query string, maxR
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ZimaOS-Echo/1.0)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0)")
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
@@ -289,7 +289,7 @@ func (w *WebSearchTool) searchSearXNG(ctx context.Context, query string, maxResu
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "ZimaOS-Echo/1.0")
+	req.Header.Set("User-Agent", "ZimaOS-Blue/1.0")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := w.httpClient.Do(req)

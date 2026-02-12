@@ -1,6 +1,6 @@
 # 性能优化指南
 
-本文档描述了 ZimaOS-Echo v0.8.0 中实现的性能优化功能。
+本文档描述了 ZimaOS-Blue v0.8.0 中实现的性能优化功能。
 
 ## 目录
 
@@ -18,10 +18,10 @@
 
 ### Zorm ORM
 
-ZimaOS-Echo 使用 [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) 进行轻量级、高性能的数据库操作。
+ZimaOS-Blue 使用 [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) 进行轻量级、高性能的数据库操作。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // 使用 zorm 标签定义实体
 type User struct {
@@ -84,7 +84,7 @@ exists, err := repo.Exists(ctx, database.Where(database.Eq("email", "alice@examp
 流畅的查询构建接口。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 repo := database.NewRepository[User](db, "users")
 ctx := context.Background()
@@ -114,7 +114,7 @@ t.Select(&results,
 ### 批量操作
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 repo := database.NewRepository[User](db, "users")
 ctx := context.Background()
@@ -133,7 +133,7 @@ affected, err := repo.InsertBatch(ctx, &users)
 查询优化器分析 SQL 查询并提供优化建议。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // 创建优化器
 config := database.DefaultOptimizerConfig()
@@ -157,7 +157,7 @@ for _, s := range suggestions {
 批量操作可以提高批量插入、更新和删除的性能。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // 创建批量执行器
 config := database.DefaultBatchConfig()
@@ -176,7 +176,7 @@ results, err := executor.ExecuteBatch(ctx, items)
 WAL（预写日志）模式可以提高并发读写性能。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // 创建 WAL 管理器
 config := database.DefaultWALConfig()
@@ -194,7 +194,7 @@ defer manager.Close()
 连接池管理器提供健康检查和连接生命周期管理。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // 创建连接池管理器
 config := database.DefaultPoolConfig()
@@ -215,7 +215,7 @@ fmt.Printf("活跃: %d, 空闲: %d\n", stats.ActiveConnections, stats.IdleConnec
 重用字节缓冲区以减少内存分配。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
 
 // 创建缓冲池
 bufPool := pool.NewBufferPool()
@@ -232,7 +232,7 @@ bufPool.Put(buf) // 归还到池中
 重用特定大小的字节切片。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
 
 // 创建 4KB 切片池
 slicePool := pool.NewByteSlicePool(4096)
@@ -248,7 +248,7 @@ slicePool.Put(slice) // 归还到池中
 适用于任何类型的通用对象池。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
 
 // 为自定义类型创建池
 type MyStruct struct {
@@ -272,10 +272,10 @@ objPool.Put(obj) // 归还到池中
 
 ### ECache（高性能 LRU 缓存）
 
-ZimaOS-Echo 使用 [orca-zhang/ecache](https://github.com/orca-zhang/ecache) 进行高性能内存缓存，支持 LRU 淘汰策略。
+ZimaOS-Blue 使用 [orca-zhang/ecache](https://github.com/orca-zhang/ecache) 进行高性能内存缓存，支持 LRU 淘汰策略。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // 创建 ECache（LRU 模式）
 config := cache.Config{
@@ -310,7 +310,7 @@ fmt.Printf("命中: %d, 未命中: %d, 命中率: %.2f%%\n",
 LRU-2 模式可以更好地保护频繁访问的数据免受批量操作的影响。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // 创建 ECache2（LRU-2 模式）
 config := cache.Config{
@@ -330,7 +330,7 @@ value, err := ecache2.Get(ctx, "key")
 支持 TTL 的最近最少使用缓存。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // 创建 LRU 缓存
 config := cache.Config{
@@ -352,7 +352,7 @@ value, err := lruCache.Get(ctx, "key")
 基于频率淘汰的最不经常使用缓存。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // 创建 LFU 缓存
 config := cache.Config{
@@ -369,11 +369,11 @@ defer lfuCache.Close()
 存储在磁盘上的持久化缓存，支持可选压缩。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // 创建磁盘缓存
 config := cache.DefaultL2Config()
-config.Path = "/var/cache/zimaos-echo"
+config.Path = "/var/cache/zimaos-blue"
 config.Compression = true
 config.MaxDiskSize = 100 * 1024 * 1024 // 100MB
 
@@ -389,12 +389,12 @@ defer diskCache.Close()
 结合 L1（内存）和 L2（磁盘）缓存以获得最佳性能。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // 创建多级缓存
 config := cache.DefaultMultiLevelConfig()
 config.L1.MaxSize = 1000
-config.L2.Path = "/var/cache/zimaos-echo"
+config.L2.Path = "/var/cache/zimaos-blue"
 config.PromoteOnHit = true  // L2 命中时提升到 L1
 config.WriteThrough = true  // 同时写入 L1 和 L2
 
@@ -419,7 +419,7 @@ value, err := mlCache.Get(ctx, "key")
 支持任务队列的自动扩缩容工作池。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 
 // 创建优化的工作池
 config := worker.DefaultOptimizedPoolConfig()
@@ -452,7 +452,7 @@ fmt.Printf("活跃: %d, 已完成: %d\n", stats.ActiveWorkers, stats.TasksComple
 减少锁竞争的并发 Map。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sync"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sync"
 
 // 创建分片 Map
 m := sync.NewShardedMap[string, int](32, sync.StringHashFn)
@@ -474,7 +474,7 @@ m.Range(func(key string, value int) bool {
 无锁计数器和标志。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sync"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sync"
 
 // 原子计数器
 counter := sync.NewAtomicCounter(0)
@@ -500,7 +500,7 @@ flag.Clear()
 配置 HTTP/2 以提高性能。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // 创建 HTTP/2 服务器
 config := network.DefaultHTTP2Config()
@@ -516,7 +516,7 @@ server.ListenAndServeTLS(":443", "cert.pem", "key.pem")
 自动响应压缩。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // 创建压缩中间件
 config := network.DefaultCompressionConfig()
@@ -532,7 +532,7 @@ handler = middleware(handler)
 将多个请求批量合并为单个操作。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // 创建批处理器
 config := network.DefaultBatchConfig()
@@ -556,7 +556,7 @@ user, err := batcher.Load(ctx, "user-123")
 去重并发的相同请求。
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // 创建合并器
 loader := func(ctx context.Context, key string) (User, error) {
@@ -576,7 +576,7 @@ user, err := coalescer.Load(ctx, "user-123")
 ### 运行基准测试
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/benchmark"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/benchmark"
 
 // 创建基准测试套件
 suite := benchmark.NewSuite("我的基准测试")
@@ -611,7 +611,7 @@ suite.SaveJSON("benchmark-results.json")
 ### 比较结果
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/benchmark"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/benchmark"
 
 // 比较两个结果
 comparison := benchmark.Compare(baseline, current)

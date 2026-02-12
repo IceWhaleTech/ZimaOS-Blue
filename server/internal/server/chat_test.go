@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
 

@@ -66,7 +66,7 @@ type DownloadManager struct {
 func NewDownloadManager(cacheDir string) *DownloadManager {
 	if cacheDir == "" {
 		home, _ := os.UserHomeDir()
-		cacheDir = filepath.Join(home, ".local", "share", "zimaos-echo", "claude-code")
+		cacheDir = filepath.Join(home, ".local", "share", "zimaos-blue", "claude-code")
 	}
 
 	return &DownloadManager{

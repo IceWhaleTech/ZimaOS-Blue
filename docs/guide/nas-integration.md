@@ -1,6 +1,6 @@
 # NAS Integration Guide
 
-This guide covers how to install and configure ZimaOS Echo on various NAS platforms.
+This guide covers how to install and configure ZimaOS Blue on various NAS platforms.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ This guide covers how to install and configure ZimaOS Echo on various NAS platfo
 
 ## ZimaOS
 
-ZimaOS Echo is designed specifically for ZimaOS and provides the best integration experience.
+ZimaOS Blue is designed specifically for ZimaOS and provides the best integration experience.
 
 ### Installation via App Store
 
@@ -31,17 +31,17 @@ ZimaOS Echo is designed specifically for ZimaOS and provides the best integratio
 ssh root@zimaos.local
 
 # Pull the Docker image
-docker pull icewhale/zimaos-echo:latest
+docker pull icewhale/zimaos-blue:latest
 
 # Run the container
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   --restart unless-stopped \
   -p 8765:23456 \
-  -v /DATA/AppData/zimaos-echo/data:/app/data \
-  -v /DATA/AppData/zimaos-echo/config:/app/config \
+  -v /DATA/AppData/zimaos-blue/data:/app/data \
+  -v /DATA/AppData/zimaos-blue/config:/app/config \
   -e TZ=$(cat /etc/timezone) \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 ### ZimaOS-Specific Features
@@ -53,7 +53,7 @@ docker run -d \
 
 ### Configuration
 
-Edit `/DATA/AppData/zimaos-echo/config/config.yaml`:
+Edit `/DATA/AppData/zimaos-blue/config/config.yaml`:
 
 ```yaml
 server:
@@ -62,7 +62,7 @@ server:
 zimaos:
   enabled: true
   api_endpoint: http://localhost:80
-  data_path: /DATA/AppData/zimaos-echo
+  data_path: /DATA/AppData/zimaos-blue
 
 llm:
   default_provider: ollama
@@ -85,25 +85,25 @@ llm:
 ### Installation via Container Manager
 
 1. Open **Container Manager** (formerly Docker)
-2. Go to **Registry** → Search "icewhale/zimaos-echo"
+2. Go to **Registry** → Search "icewhale/zimaos-blue"
 3. Download the `latest` tag
 4. Go to **Image** → Select the image → **Run**
 5. Configure:
-   - **Container Name**: zimaos-echo
+   - **Container Name**: zimaos-blue
    - **Port Settings**: Local 8765 → Container 23456
-   - **Volume**: `/docker/zimaos-echo` → `/app/data`
+   - **Volume**: `/docker/zimaos-blue` → `/app/data`
    - **Environment**: `TZ=Your/Timezone`
 
 ### Using Docker Compose
 
-Create `/volume1/docker/zimaos-echo/docker-compose.yml`:
+Create `/volume1/docker/zimaos-blue/docker-compose.yml`:
 
 ```yaml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
     ports:
       - "8765:23456"
@@ -112,12 +112,12 @@ services:
       - ./config:/app/config
     environment:
       - TZ=America/New_York
-      - ECHO_LOG_LEVEL=info
+      - BLUE_LOG_LEVEL=info
 ```
 
 Run:
 ```bash
-cd /volume1/docker/zimaos-echo
+cd /volume1/docker/zimaos-blue
 docker-compose up -d
 ```
 
@@ -156,15 +156,15 @@ docker-compose up -d
 ```yaml
 version: '3'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: always
     ports:
       - "8765:23456"
     volumes:
-      - /share/Container/zimaos-echo/data:/app/data
-      - /share/Container/zimaos-echo/config:/app/config
+      - /share/Container/zimaos-blue/data:/app/data
+      - /share/Container/zimaos-blue/config:/app/config
     environment:
       - TZ=America/New_York
 ```
@@ -178,17 +178,17 @@ services:
 ssh admin@qnap.local
 
 # Create directories
-mkdir -p /share/Container/zimaos-echo/{data,config}
+mkdir -p /share/Container/zimaos-blue/{data,config}
 
 # Run container
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   --restart always \
   -p 8765:23456 \
-  -v /share/Container/zimaos-echo/data:/app/data \
-  -v /share/Container/zimaos-echo/config:/app/config \
+  -v /share/Container/zimaos-blue/data:/app/data \
+  -v /share/Container/zimaos-blue/config:/app/config \
   -e TZ=America/New_York \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 ### Reverse Proxy with QNAP
@@ -212,22 +212,22 @@ TrueNAS SCALE uses Kubernetes, making app deployment straightforward.
    - Name: `truecharts`
    - Repository: `https://github.com/truecharts/catalog`
 
-2. Install ZimaOS Echo:
+2. Install ZimaOS Blue:
    - **Apps** → **Available Applications**
-   - Search "zimaos-echo" (if available) or use Custom App
+   - Search "zimaos-blue" (if available) or use Custom App
 
 #### Custom App Installation
 
 1. Go to **Apps** → **Available Applications** → **Custom App**
 2. Configure:
-   - **Application Name**: zimaos-echo
-   - **Image Repository**: icewhale/zimaos-echo
+   - **Application Name**: zimaos-blue
+   - **Image Repository**: icewhale/zimaos-blue
    - **Image Tag**: latest
    - **Container Port**: 23456
    - **Node Port**: 8765
 
 3. Add Storage:
-   - **Host Path**: `/mnt/pool/apps/zimaos-echo/data`
+   - **Host Path**: `/mnt/pool/apps/zimaos-blue/data`
    - **Mount Path**: `/app/data`
 
 ### TrueNAS CORE (FreeBSD Jail)
@@ -245,7 +245,7 @@ TrueNAS CORE uses FreeBSD jails. Use a Linux jail or VM:
 ### Installation via Community Apps
 
 1. Go to **Apps** tab
-2. Search "zimaos-echo" (if available in CA)
+2. Search "zimaos-blue" (if available in CA)
 3. Click **Install**
 
 ### Manual Docker Installation
@@ -253,28 +253,28 @@ TrueNAS CORE uses FreeBSD jails. Use a Linux jail or VM:
 1. Go to **Docker** tab
 2. Click **Add Container**
 3. Configure:
-   - **Name**: zimaos-echo
-   - **Repository**: icewhale/zimaos-echo:latest
+   - **Name**: zimaos-blue
+   - **Repository**: icewhale/zimaos-blue:latest
    - **Port Mapping**: 8765 → 23456
-   - **Path Mapping**: `/mnt/user/appdata/zimaos-echo` → `/app/data`
+   - **Path Mapping**: `/mnt/user/appdata/zimaos-blue` → `/app/data`
 
 ### Docker Compose (via Compose Manager)
 
 1. Install **Compose Manager** plugin
-2. Create stack `zimaos-echo`:
+2. Create stack `zimaos-blue`:
 
 ```yaml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
     ports:
       - "8765:23456"
     volumes:
-      - /mnt/user/appdata/zimaos-echo/data:/app/data
-      - /mnt/user/appdata/zimaos-echo/config:/app/config
+      - /mnt/user/appdata/zimaos-blue/data:/app/data
+      - /mnt/user/appdata/zimaos-blue/config:/app/config
     environment:
       - TZ=America/New_York
       - PUID=99
@@ -299,30 +299,30 @@ curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
 # Create directories
-sudo mkdir -p /opt/zimaos-echo/{data,config}
-sudo chown -R $USER:$USER /opt/zimaos-echo
+sudo mkdir -p /opt/zimaos-blue/{data,config}
+sudo chown -R $USER:$USER /opt/zimaos-blue
 
 # Run container
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   --restart unless-stopped \
   -p 8765:23456 \
-  -v /opt/zimaos-echo/data:/app/data \
-  -v /opt/zimaos-echo/config:/app/config \
+  -v /opt/zimaos-blue/data:/app/data \
+  -v /opt/zimaos-blue/config:/app/config \
   -e TZ=$(cat /etc/timezone) \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 ### Using Docker Compose
 
-Create `/opt/zimaos-echo/docker-compose.yml`:
+Create `/opt/zimaos-blue/docker-compose.yml`:
 
 ```yaml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
     ports:
       - "8765:23456"
@@ -340,7 +340,7 @@ services:
 
 Run:
 ```bash
-cd /opt/zimaos-echo
+cd /opt/zimaos-blue
 docker-compose up -d
 ```
 
@@ -348,23 +348,23 @@ docker-compose up -d
 
 1. Download the binary:
 ```bash
-wget https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/zimaos-echo-linux-amd64
-sudo mv zimaos-echo-linux-amd64 /usr/local/bin/zimaos-echo
-sudo chmod +x /usr/local/bin/zimaos-echo
+wget https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/zimaos-blue-linux-amd64
+sudo mv zimaos-blue-linux-amd64 /usr/local/bin/zimaos-blue
+sudo chmod +x /usr/local/bin/zimaos-blue
 ```
 
-2. Create systemd service `/etc/systemd/system/zimaos-echo.service`:
+2. Create systemd service `/etc/systemd/system/zimaos-blue.service`:
 ```ini
 [Unit]
-Description=ZimaOS Echo AI Assistant
+Description=ZimaOS Blue AI Assistant
 After=network.target
 
 [Service]
 Type=simple
-User=zimaos-echo
-Group=zimaos-echo
-WorkingDirectory=/opt/zimaos-echo
-ExecStart=/usr/local/bin/zimaos-echo --config /etc/zimaos-echo/config.yaml
+User=zimaos-blue
+Group=zimaos-blue
+WorkingDirectory=/opt/zimaos-blue
+ExecStart=/usr/local/bin/zimaos-blue --config /etc/zimaos-blue/config.yaml
 Restart=always
 RestartSec=5
 
@@ -375,8 +375,8 @@ WantedBy=multi-user.target
 3. Enable and start:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable zimaos-echo
-sudo systemctl start zimaos-echo
+sudo systemctl enable zimaos-blue
+sudo systemctl start zimaos-blue
 ```
 
 ---
@@ -402,12 +402,12 @@ Run Ollama alongside Echo:
 # docker-compose.yml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
     # ... other config ...
     environment:
-      - ECHO_LLM_DEFAULT_PROVIDER=ollama
-      - ECHO_LLM_OLLAMA_BASE_URL=http://ollama:11434
+      - BLUE_LLM_DEFAULT_PROVIDER=ollama
+      - BLUE_LLM_OLLAMA_BASE_URL=http://ollama:11434
 
   ollama:
     image: ollama/ollama:latest
@@ -451,7 +451,7 @@ server {
 
 ```bash
 # Check logs
-docker logs zimaos-echo
+docker logs zimaos-blue
 
 # Check if port is in use
 netstat -tlnp | grep 8765
@@ -478,8 +478,8 @@ ls -la /path/to/data
 
 ```bash
 # Backup and recreate database
-docker exec zimaos-echo cp /app/data/echo.db /app/data/echo.db.bak
-docker restart zimaos-echo
+docker exec zimaos-blue cp /app/data/echo.db /app/data/echo.db.bak
+docker restart zimaos-blue
 ```
 
 ---
@@ -487,5 +487,5 @@ docker restart zimaos-echo
 ## Support
 
 - Documentation: https://docs.zimaspace.com/echo
-- GitHub Issues: https://github.com/IceWhaleTech/ZimaOS-Echo/issues
+- GitHub Issues: https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord: https://discord.gg/zimaos

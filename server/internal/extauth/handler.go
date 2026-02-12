@@ -3,7 +3,7 @@ package extauth
 import (
 	"net/http"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/labstack/echo/v4"
 )
 

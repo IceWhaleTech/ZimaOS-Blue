@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/troubleshooting.md)
 
-本指南帮助你诊断和解决 ZimaOS-Echo 的常见问题。
+本指南帮助你诊断和解决 ZimaOS-Blue 的常见问题。
 
 ## 快速诊断
 
@@ -14,7 +14,7 @@ sudo systemctl status echo
 
 # Docker 容器
 docker ps | grep echo
-docker logs zimaos-echo --tail 100
+docker logs zimaos-blue --tail 100
 
 # 直接进程
 ps aux | grep echo
@@ -30,7 +30,7 @@ sudo journalctl -u echo -f
 tail -f /var/log/echo/echo.log
 
 # Docker 日志
-docker logs -f zimaos-echo
+docker logs -f zimaos-blue
 ```
 
 ### 健康检查
@@ -554,7 +554,7 @@ journalctl -u echo -f | grep -E "(error|panic|fatal)"
 
 如果你无法解决问题：
 
-1. **查看现有问题：** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Echo/issues)
+1. **查看现有问题：** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
 
 2. **收集诊断信息：**
    ```bash

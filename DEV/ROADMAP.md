@@ -1,8 +1,8 @@
-# ZimaOS-Echo Roadmap
+# ZimaOS-Blue Roadmap
 
 [中文版本](../i18n/zh_CN/DEV/ROADMAP.md)
 
-This document describes the development direction and milestone planning for the ZimaOS-Echo project.
+This document describes the development direction and milestone planning for the ZimaOS-Blue project.
 
 ## Vision
 
@@ -12,7 +12,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 
 ## Project Positioning
 
-| Feature | clawdbot (Original) | ZimaOS-Echo (Target) |
+| Feature | clawdbot (Original) | ZimaOS-Blue (Target) |
 |---------|---------------------|----------------------|
 | Language | TypeScript/Node.js | Golang |
 | Architecture | Multi-process/Microservices | Monolithic |
@@ -361,7 +361,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                              ZimaOS-Echo                                          │
+│                              ZimaOS-Blue                                          │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐              │
 │  │    Vue 3     │  │   REST API   │  │       WebSocket            │              │

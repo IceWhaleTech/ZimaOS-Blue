@@ -48,7 +48,7 @@ func DefaultConfig() Config {
 		MaxDepth:       2,
 		MaxConcurrency: 5,
 		RequestTimeout: 30 * time.Second,
-		UserAgent:      "ZimaOS-Echo-Crawler/1.0",
+		UserAgent:      "ZimaOS-Blue-Crawler/1.0",
 		RateLimit:      time.Second,
 		AllowedDomains: nil,
 	}

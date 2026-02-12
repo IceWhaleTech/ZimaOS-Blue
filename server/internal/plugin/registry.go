@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 )
 
 // Registry manages all loaded plugins

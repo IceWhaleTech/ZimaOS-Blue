@@ -15,10 +15,10 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"golang.org/x/net/netutil"
 )
 
@@ -84,9 +84,9 @@ func (s *Server) Echo() *echo.Echo {
 	return s.echo
 }
 
-// checkExistingEchoServer checks if there's an existing ZimaOS-Echo server on the port
+// checkExistingServer checks if there's an existing ZimaOS-Blue server on the port
 // Returns true if it's our server, false otherwise
-func checkExistingEchoServer(host string, port int) bool {
+func checkExistingServer(host string, port int) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://%s:%d/health", host, port)
 
@@ -111,20 +111,20 @@ func checkExistingEchoServer(host string, port int) bool {
 		return false
 	}
 
-	// Our health endpoint returns {"status": "ok", "service": "zimaos-echo", ...}
+	// Our health endpoint returns {"status": "ok", "service": "zimaos-blue", ...}
 	service, ok := health["service"].(string)
-	return ok && service == "zimaos-echo"
+	return ok && service == "zimaos-blue"
 }
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	logger.Info().Str("addr", addr).Msg("Starting HTTP server")
 
-	// Check if port is in use by another ZimaOS-Echo instance
-	if checkExistingEchoServer(s.config.Host, s.config.Port) {
+	// Check if port is in use by another ZimaOS-Blue instance
+	if checkExistingServer(s.config.Host, s.config.Port) {
 		logger.Info().
 			Int("port", s.config.Port).
-			Msg("Found existing ZimaOS-Echo server on port, will reuse")
+			Msg("Found existing ZimaOS-Blue server on port, will reuse")
 	}
 
 	// Create listener with SO_REUSEADDR

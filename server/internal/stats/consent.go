@@ -28,7 +28,7 @@ type ConsentManager struct {
 func NewConsentManager(storagePath string, collector *StatisticsCollector) *ConsentManager {
 	if storagePath == "" {
 		home, _ := os.UserHomeDir()
-		storagePath = filepath.Join(home, ".local", "share", "zimaos-echo", "stats")
+		storagePath = filepath.Join(home, ".local", "share", "zimaos-blue", "stats")
 	}
 
 	manager := &ConsentManager{

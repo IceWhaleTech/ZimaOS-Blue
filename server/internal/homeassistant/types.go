@@ -1,6 +1,6 @@
 // Package homeassistant provides Home Assistant integration.
 // This package implements a client for the Home Assistant REST and WebSocket APIs
-// to enable smart home control from ZimaOS-Echo.
+// to enable smart home control from ZimaOS-Blue.
 package homeassistant
 
 import (

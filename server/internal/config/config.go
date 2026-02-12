@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 )
 
 type Config struct {
@@ -433,13 +433,13 @@ func Load(configPath string) (*Config, error) {
 	} else {
 		v.SetConfigName("config")
 		v.SetConfigType("yaml")
-		// Search order: current dir -> ./config -> /etc/zimaos-echo -> $HOME/.zimaos-echo
+		// Search order: current dir -> ./config -> /etc/zimaos-blue -> $HOME/.zimaos-blue
 		v.AddConfigPath(".")
 		v.AddConfigPath("./config")
-		v.AddConfigPath("/etc/zimaos-echo")
+		v.AddConfigPath("/etc/zimaos-blue")
 		// Add home directory as fallback
 		if home, err := os.UserHomeDir(); err == nil {
-			v.AddConfigPath(filepath.Join(home, ".zimaos-echo"))
+			v.AddConfigPath(filepath.Join(home, ".zimaos-blue"))
 		}
 	}
 
@@ -491,7 +491,7 @@ func setDefaults(v *viper.Viper) {
 	// Cgroup defaults (disabled by default)
 	v.SetDefault("cgroup.enabled", false)
 	v.SetDefault("cgroup.cgroup_root", "/sys/fs/cgroup")
-	v.SetDefault("cgroup.cgroup_name", "zimaos-echo")
+	v.SetDefault("cgroup.cgroup_name", "zimaos-blue")
 	v.SetDefault("cgroup.io.enabled", false)
 	v.SetDefault("cgroup.io.read_bps", 0)
 	v.SetDefault("cgroup.io.write_bps", 0)
@@ -566,7 +566,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.jwt.secret", "change-me-in-production-use-a-strong-secret-key")
 	v.SetDefault("security.jwt.expiration", "24h")
 	v.SetDefault("security.jwt.refresh_expiration", "720h")
-	v.SetDefault("security.jwt.issuer", "zimaos-echo")
+	v.SetDefault("security.jwt.issuer", "zimaos-blue")
 
 	// OIDC
 	v.SetDefault("security.oidc.enabled", true)
@@ -596,7 +596,7 @@ func setDefaults(v *viper.Viper) {
 	// MFA
 	v.SetDefault("security.mfa.enabled", true)
 	v.SetDefault("security.mfa.required", false)
-	v.SetDefault("security.mfa.issuer", "ZimaOS-Echo")
+	v.SetDefault("security.mfa.issuer", "ZimaOS-Blue")
 	v.SetDefault("security.mfa.recovery_codes_count", 8)
 
 	// Audit

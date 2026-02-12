@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 // ProxyClient is a client for making requests through the local proxy

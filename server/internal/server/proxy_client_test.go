@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 func TestProxyClient_Chat(t *testing.T) {

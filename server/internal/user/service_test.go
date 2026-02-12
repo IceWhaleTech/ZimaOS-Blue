@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )

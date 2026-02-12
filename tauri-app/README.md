@@ -1,14 +1,14 @@
-# ZimaOS Echo - Tauri Desktop App
+# ZimaOS Blue - Tauri Desktop App
 
-Tauri v2 桌面应用，将 ZimaOS Echo 打包为原生桌面应用。
+Tauri v2 桌面应用，将 ZimaOS Blue 打包为原生桌面应用。
 
 ## 架构
 
 ```
 ┌─────────────────────────────────────────┐
-│           ZimaOS Echo.app               │
+│           ZimaOS Blue.app               │
 │  ┌───────────────────────────────────┐  │
-│  │     zimaos-echo (Tauri/Rust)      │  │
+│  │     zimaos-blue (Tauri/Rust)      │  │
 │  │  - 窗口管理 (WebView)              │  │
 │  │  - 系统托盘                        │  │
 │  │  - 进程生命周期管理                 │  │
@@ -28,7 +28,7 @@ Tauri v2 桌面应用，将 ZimaOS Echo 打包为原生桌面应用。
 
 | 组件 | 技术栈 | 作用 |
 |------|--------|------|
-| **zimaos-echo** | Rust/Tauri | 桌面壳，负责窗口、托盘、sidecar 管理 |
+| **zimaos-blue** | Rust/Tauri | 桌面壳，负责窗口、托盘、sidecar 管理 |
 | **echo-server** | Go | 后端服务，处理所有 API 请求和业务逻辑 |
 
 ## 开发

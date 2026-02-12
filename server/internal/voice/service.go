@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 )
 
 // emojiRegex matches emoji characters

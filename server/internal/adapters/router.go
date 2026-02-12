@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providers"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providers"
 )
 
 // Adapter is an interface for tool calling adapters.

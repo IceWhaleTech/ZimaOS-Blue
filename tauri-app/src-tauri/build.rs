@@ -2,9 +2,9 @@ fn main() {
     // Platform-specific build configuration
     #[cfg(target_os = "macos")]
     {
-        // Link the Go static library (libecho.a)
+        // Link the Go static library (libblue.a)
         println!("cargo:rustc-link-search=native=lib");
-        println!("cargo:rustc-link-lib=static=echo");
+        println!("cargo:rustc-link-lib=static=blue");
 
         // Link required system frameworks for Go runtime
         println!("cargo:rustc-link-lib=framework=CoreFoundation");
@@ -86,7 +86,7 @@ fn main() {
         println!("cargo:rustc-link-lib=c++");
 
         // Rerun if the library changes
-        println!("cargo:rerun-if-changed=lib/libecho.a");
+        println!("cargo:rerun-if-changed=lib/libblue.a");
     }
 
     tauri_build::build()

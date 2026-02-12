@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  title: 'ZimaOS Echo',
+  title: 'ZimaOS Blue',
   description: 'NAS-Native Agent Runtime',
 
   head: [
@@ -103,7 +103,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/IceWhaleTech/ZimaOS-Echo/server' },
+      { icon: 'github', link: 'https://github.com/IceWhaleTech/ZimaOS-Blue/server' },
     ],
 
     footer: {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy/testutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy/testutil"
 )
 
 // =============================================================================

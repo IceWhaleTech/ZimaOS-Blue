@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
 func TestMultiAgentMemoryManager(t *testing.T) {

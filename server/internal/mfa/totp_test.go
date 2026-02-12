@@ -12,8 +12,8 @@ import (
 func TestDefaultTOTPConfig(t *testing.T) {
 	config := DefaultTOTPConfig()
 
-	if config.Issuer != "ZimaOS-Echo" {
-		t.Errorf("Issuer = %v, want ZimaOS-Echo", config.Issuer)
+	if config.Issuer != "ZimaOS-Blue" {
+		t.Errorf("Issuer = %v, want ZimaOS-Blue", config.Issuer)
 	}
 	if config.Algorithm != otp.AlgorithmSHA1 {
 		t.Errorf("Algorithm = %v, want SHA1", config.Algorithm)
@@ -91,8 +91,8 @@ func TestTOTP_GenerateKey(t *testing.T) {
 		t.Error("GenerateKey() returned key with empty secret")
 	}
 
-	if key.Issuer() != "ZimaOS-Echo" {
-		t.Errorf("Issuer = %v, want ZimaOS-Echo", key.Issuer())
+	if key.Issuer() != "ZimaOS-Blue" {
+		t.Errorf("Issuer = %v, want ZimaOS-Blue", key.Issuer())
 	}
 
 	if key.AccountName() != "testuser@example.com" {
@@ -181,7 +181,7 @@ func TestTOTP_GetProvisioningURI(t *testing.T) {
 		t.Errorf("GetProvisioningURI() should start with otpauth://totp/, got %s", uri)
 	}
 
-	if !strings.Contains(uri, "ZimaOS-Echo") {
+	if !strings.Contains(uri, "ZimaOS-Blue") {
 		t.Error("GetProvisioningURI() should contain issuer")
 	}
 

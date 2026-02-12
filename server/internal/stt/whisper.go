@@ -3,14 +3,20 @@ package stt
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/whisper.cpp/include -I${SRCDIR}/../../../third_party/whisper.cpp/ggml/include
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/opus-src/include
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-base.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-cpu.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/opus-src/build/libopus.a
+#cgo darwin,linux LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a
+#cgo darwin,linux LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml.a
+#cgo darwin,linux LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-base.a
+#cgo darwin,linux LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-cpu.a
+#cgo darwin,linux LDFLAGS: ${SRCDIR}/../../../third_party/opus-src/build/libopus.a
 #cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.a
 #cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.a
 #cgo darwin LDFLAGS: -framework Accelerate -framework Metal -framework Foundation -framework CoreGraphics
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml.a
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-base.a
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-cpu.a
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/opus-src/build/libopus.a
+#cgo windows LDFLAGS: -lstdc++ -lm -lws2_32 -lwinmm -lgomp
 #include <whisper.h>
 #include <opus.h>
 #include <stdlib.h>

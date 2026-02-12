@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 // ProxyHandler handles incoming proxy requests.

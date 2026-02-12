@@ -9,8 +9,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool/ide"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/ide"
 )
 
 // Pool is the main entry point for the provider pool functionality
@@ -176,9 +176,9 @@ func (p *Pool) initBuiltinProviders() {
 		existingMap[provider.ID] = provider
 	}
 
-	// Migration: Remove old zimaos-trial provider if it exists (replaced by zimaos-echo-trial)
+	// Migration: Remove old zimaos-trial provider if it exists (replaced by zimaos-blue-trial)
 	if _, exists := existingMap["zimaos-trial"]; exists {
-		fmt.Printf("[Pool] initBuiltinProviders: removing old zimaos-trial provider (migrated to zimaos-echo-trial)\n")
+		fmt.Printf("[Pool] initBuiltinProviders: removing old zimaos-trial provider (migrated to zimaos-blue-trial)\n")
 		p.Registry.Unregister("zimaos-trial")
 		delete(existingMap, "zimaos-trial")
 	}

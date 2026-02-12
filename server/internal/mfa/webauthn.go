@@ -39,7 +39,7 @@ type WebAuthnConfig struct {
 // DefaultWebAuthnConfig returns the default WebAuthn configuration.
 func DefaultWebAuthnConfig() *WebAuthnConfig {
 	return &WebAuthnConfig{
-		RPDisplayName: "ZimaOS-Echo",
+		RPDisplayName: "ZimaOS-Blue",
 		RPID:          "localhost",
 		RPOrigins:     []string{"http://localhost:3000", "https://localhost:3000"},
 		Timeout:       60000, // 60 seconds

@@ -3,7 +3,7 @@ package claudecode
 import (
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 func TestEstimateTokens(t *testing.T) {

@@ -564,7 +564,7 @@ func addApplicationRule(rules *ole.IDispatch, ruleName, exePath string) error {
 
 	// Set rule properties
 	oleutil.PutProperty(rule, "Name", ruleName)
-	oleutil.PutProperty(rule, "Description", "Allow ZimaOS-Echo application")
+	oleutil.PutProperty(rule, "Description", "Allow ZimaOS-Blue application")
 	oleutil.PutProperty(rule, "ApplicationName", exePath)
 	oleutil.PutProperty(rule, "Protocol", 6) // TCP
 	oleutil.PutProperty(rule, "Direction", 1) // Inbound
@@ -602,7 +602,7 @@ func addPortRule(rules *ole.IDispatch, ruleName string, port int) error {
 
 	// Set rule properties
 	oleutil.PutProperty(rule, "Name", ruleName)
-	oleutil.PutProperty(rule, "Description", fmt.Sprintf("Allow ZimaOS-Echo on TCP port %d", port))
+	oleutil.PutProperty(rule, "Description", fmt.Sprintf("Allow ZimaOS-Blue on TCP port %d", port))
 	oleutil.PutProperty(rule, "Protocol", 6) // TCP
 	oleutil.PutProperty(rule, "LocalPorts", fmt.Sprintf("%d", port))
 	oleutil.PutProperty(rule, "Direction", 1) // Inbound

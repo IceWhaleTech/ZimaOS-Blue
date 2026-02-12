@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // Calculator is a built-in calculator skill

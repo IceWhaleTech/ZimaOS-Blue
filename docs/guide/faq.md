@@ -2,9 +2,9 @@
 
 ## General Questions
 
-### What is ZimaOS Echo?
+### What is ZimaOS Blue?
 
-ZimaOS Echo is an AI assistant designed for home servers and NAS devices. It provides:
+ZimaOS Blue is an AI assistant designed for home servers and NAS devices. It provides:
 - Natural language chat interface
 - Smart home control via Home Assistant
 - Multi-channel messaging (Telegram, Discord, etc.)
@@ -14,7 +14,7 @@ ZimaOS Echo is an AI assistant designed for home servers and NAS devices. It pro
 
 ### What LLM providers are supported?
 
-ZimaOS Echo supports multiple LLM providers:
+ZimaOS Blue supports multiple LLM providers:
 - **OpenAI**: GPT-4o, GPT-4o-mini, GPT-4-turbo, GPT-3.5-turbo
 - **Anthropic**: Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku
 - **Ollama**: Local models (Llama 3.2, Mistral, CodeLlama, etc.)
@@ -34,9 +34,9 @@ ZimaOS Echo supports multiple LLM providers:
 - Storage: 10GB
 - SSD for database
 
-### Is ZimaOS Echo free?
+### Is ZimaOS Blue free?
 
-Yes, ZimaOS Echo is open source under the Apache 2.0 license. However, you may incur costs for:
+Yes, ZimaOS Blue is open source under the Apache 2.0 license. However, you may incur costs for:
 - Cloud LLM API usage (OpenAI, Anthropic)
 - Cloud hosting (if not self-hosted)
 
@@ -46,41 +46,41 @@ Using local models with Ollama is completely free.
 
 ## Installation
 
-### How do I install ZimaOS Echo?
+### How do I install ZimaOS Blue?
 
 **Docker (Recommended):**
 ```bash
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   -p 23456:23456 \
   -v echo-data:/app/data \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 **Binary:**
 ```bash
 # Download from releases
-wget https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/zimaos-echo-linux-amd64
-chmod +x zimaos-echo-linux-amd64
-./zimaos-echo-linux-amd64
+wget https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/zimaos-blue-linux-amd64
+chmod +x zimaos-blue-linux-amd64
+./zimaos-blue-linux-amd64
 ```
 
-### How do I update ZimaOS Echo?
+### How do I update ZimaOS Blue?
 
 **Docker:**
 ```bash
-docker pull icewhale/zimaos-echo:latest
-docker stop zimaos-echo
-docker rm zimaos-echo
+docker pull icewhale/zimaos-blue:latest
+docker stop zimaos-blue
+docker rm zimaos-blue
 # Re-run with same volume mounts
 ```
 
 **Binary:**
 Download the new version and replace the binary. Your data is preserved in the data directory.
 
-### Can I run ZimaOS Echo on a Raspberry Pi?
+### Can I run ZimaOS Blue on a Raspberry Pi?
 
-Yes! ZimaOS Echo supports ARM64 architecture. For best performance:
+Yes! ZimaOS Blue supports ARM64 architecture. For best performance:
 - Use Raspberry Pi 4 with 4GB+ RAM
 - Use Ollama with smaller models (Phi-3, TinyLlama)
 - Enable swap if needed
@@ -92,11 +92,11 @@ Yes! ZimaOS Echo supports ARM64 architecture. For best performance:
 ### Where is the configuration file?
 
 Default locations:
-- `/etc/zimaos-echo/config.yaml`
+- `/etc/zimaos-blue/config.yaml`
 - `./config.yaml` (current directory)
-- `~/.config/zimaos-echo/config.yaml`
+- `~/.config/zimaos-blue/config.yaml`
 
-Or specify with: `zimaos-echo --config /path/to/config.yaml`
+Or specify with: `zimaos-blue --config /path/to/config.yaml`
 
 ### How do I configure multiple LLM providers?
 
@@ -153,7 +153,7 @@ server:
 
 Or via environment variable:
 ```bash
-export ECHO_SERVER_PORT=8081
+export BLUE_SERVER_PORT=8081
 ```
 
 ---
@@ -330,7 +330,7 @@ security:
 ### How do I reset the admin password?
 
 ```bash
-zimaos-echo reset-password --username admin
+zimaos-blue reset-password --username admin
 ```
 
 ---
@@ -363,7 +363,7 @@ curl -X POST http://localhost:23456/api/backup/restore/<backup-id> \
 
 ### Where are backups stored?
 
-Default: `/var/lib/zimaos-echo/backups/`
+Default: `/var/lib/zimaos-blue/backups/`
 
 Configure:
 ```yaml
@@ -391,7 +391,7 @@ curl http://localhost:23456/health
 ### Where can I get help?
 
 - Documentation: https://docs.zimaspace.com/echo
-- GitHub Issues: https://github.com/IceWhaleTech/ZimaOS-Echo/issues
+- GitHub Issues: https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord: https://discord.gg/zimaos
 
 ---
@@ -401,9 +401,9 @@ curl http://localhost:23456/health
 ### How do I build from source?
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o zimaos-blue ./cmd/server
 ```
 
 ### How do I run tests?

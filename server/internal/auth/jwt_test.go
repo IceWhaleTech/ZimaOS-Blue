@@ -10,7 +10,7 @@ func TestJWTService_GenerateToken(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	svc := NewJWTService(cfg)
 
@@ -52,7 +52,7 @@ func TestJWTService_ValidateToken(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	svc := NewJWTService(cfg)
 
@@ -108,7 +108,7 @@ func TestJWTService_ValidateToken(t *testing.T) {
 			Secret:            "different-secret-key-at-least-32",
 			Expiration:        time.Hour,
 			RefreshExpiration: 24 * time.Hour,
-			Issuer:            "zimaos-echo",
+			Issuer:            "zimaos-blue",
 		}
 		wrongSvc := NewJWTService(wrongCfg)
 
@@ -123,7 +123,7 @@ func TestJWTService_ValidateToken(t *testing.T) {
 			Secret:            "test-secret-key-at-least-32-chars",
 			Expiration:        -time.Hour, // Already expired
 			RefreshExpiration: 24 * time.Hour,
-			Issuer:            "zimaos-echo",
+			Issuer:            "zimaos-blue",
 		}
 		expiredSvc := NewJWTService(expiredCfg)
 
@@ -150,7 +150,7 @@ func TestJWTService_RefreshToken(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	svc := NewJWTService(cfg)
 
@@ -213,7 +213,7 @@ func TestJWTService_TokenBlacklist(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	svc := NewJWTService(cfg)
 

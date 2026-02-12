@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // Translate is a built-in translation skill

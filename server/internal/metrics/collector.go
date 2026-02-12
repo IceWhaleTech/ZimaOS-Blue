@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SystemMetrics represents a snapshot of system metrics at a point in time

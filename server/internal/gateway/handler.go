@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 )
 
 // Handler provides HTTP handlers for gateway management.

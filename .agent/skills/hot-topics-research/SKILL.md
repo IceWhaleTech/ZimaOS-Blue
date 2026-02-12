@@ -352,7 +352,7 @@ For each research session, document:
 
 ## Integrating with Project Work
 
-When applying this skill to ZimaOS-Echo:
+When applying this skill to ZimaOS-Blue:
 
 1. **Target Subreddits**: r/homeassistant, r/smarthome, r/selfhosted, r/LocalLLaMA
 2. **Key Competitors**: Clawdbot/Moltbot, Home Assistant, n8n, Zapier

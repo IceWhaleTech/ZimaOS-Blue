@@ -43,7 +43,7 @@ type TOTPConfig struct {
 // DefaultTOTPConfig returns the default TOTP configuration.
 func DefaultTOTPConfig() *TOTPConfig {
 	return &TOTPConfig{
-		Issuer:     "ZimaOS-Echo",
+		Issuer:     "ZimaOS-Blue",
 		Algorithm:  otp.AlgorithmSHA1, // Standard for most authenticator apps
 		Digits:     otp.DigitsSix,
 		Period:     30,

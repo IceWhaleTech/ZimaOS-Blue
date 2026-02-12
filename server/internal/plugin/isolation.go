@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 )
 
 // IsolationConfig configures plugin isolation behavior

@@ -3,7 +3,7 @@ package memory
 import (
 	"context"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // ToolsAdapter adapts UnifiedMemoryService to tools.MemoryServiceInterface.

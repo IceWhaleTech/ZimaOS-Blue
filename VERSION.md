@@ -1,6 +1,6 @@
 # Version Plan
 
-This document describes the version planning and release strategy for the ZimaOS-Echo project.
+This document describes the version planning and release strategy for the ZimaOS-Blue project.
 
 ## Versioning Standard
 

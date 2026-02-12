@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
 	"github.com/google/uuid"
 )
 

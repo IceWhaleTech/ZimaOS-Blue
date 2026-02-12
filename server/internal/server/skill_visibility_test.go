@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/labstack/echo/v4"
 )
 

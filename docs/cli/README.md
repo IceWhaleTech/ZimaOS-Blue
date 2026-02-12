@@ -1,6 +1,6 @@
-# ZimaOS-Echo CLI Tutorial
+# ZimaOS-Blue CLI Tutorial
 
-ZimaOS-Echo provides a comprehensive command-line interface (CLI) for managing and interacting with the NAS-Native Agent Runtime.
+ZimaOS-Blue provides a comprehensive command-line interface (CLI) for managing and interacting with the NAS-Native Agent Runtime.
 
 ## Table of Contents
 
@@ -29,16 +29,16 @@ Download the latest release for your platform:
 
 ```bash
 # Windows
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-windows-amd64.exe
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-windows-amd64.exe
 mv echo-windows-amd64.exe echo.exe
 
 # Linux
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-linux-amd64
 chmod +x echo-linux-amd64
 sudo mv echo-linux-amd64 /usr/local/bin/echo
 
 # macOS
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-darwin-amd64
 chmod +x echo-darwin-amd64
 sudo mv echo-darwin-amd64 /usr/local/bin/echo
 ```
@@ -46,9 +46,9 @@ sudo mv echo-darwin-amd64 /usr/local/bin/echo
 ### From Source
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o echo ./cmd/echo/
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o echo ./cmd/blue/
 ```
 
 ---
@@ -136,7 +136,7 @@ echo --no-color logs | grep error
 
 #### `gateway` - Service Control
 
-Manage the ZimaOS-Echo service.
+Manage the ZimaOS-Blue service.
 
 ```bash
 # Run service in foreground
@@ -227,7 +227,7 @@ echo doctor --fix
 
 #### `config` - Configuration Management
 
-Manage ZimaOS-Echo configuration.
+Manage ZimaOS-Blue configuration.
 
 ```bash
 # List all configuration
@@ -373,7 +373,7 @@ echo cron runs <job-id>
 
 #### `plugins` - Plugin Management
 
-Manage ZimaOS-Echo plugins.
+Manage ZimaOS-Blue plugins.
 
 ```bash
 # List all plugins
@@ -494,9 +494,9 @@ echo --profile testing config set server.port 9090
 echo --profile testing gateway run
 
 # Each profile has isolated:
-# - Configuration: ~/.zimaos-echo-testing/config.yaml
-# - Data: ~/.zimaos-echo-testing/data/
-# - Logs: ~/.zimaos-echo-testing/logs/
+# - Configuration: ~/.zimaos-blue-testing/config.yaml
+# - Data: ~/.zimaos-blue-testing/data/
+# - Logs: ~/.zimaos-blue-testing/logs/
 ```
 
 ### Automated Health Monitoring
@@ -582,7 +582,7 @@ done
 ### Log File Not Found
 
 The CLI looks for logs in these locations:
-1. `~/.zimaos-echo/logs/echo.log`
+1. `~/.zimaos-blue/logs/echo.log`
 2. `./logs/echo.log`
 3. `./echo.log`
 
@@ -603,5 +603,5 @@ echo models --help
 ```
 
 For more information, visit:
-- GitHub: https://github.com/IceWhaleTech/ZimaOS-Echo
+- GitHub: https://github.com/IceWhaleTech/ZimaOS-Blue
 - Documentation: https://docs.zimaos.com/echo

@@ -1,14 +1,14 @@
 # Architecture
 
-This document describes the architecture of ZimaOS Echo.
+This document describes the architecture of ZimaOS Blue.
 
 ## Overview
 
-ZimaOS Echo is a NAS-native Agent Runtime built with Go, designed for low-power devices. It provides a lightweight, high-performance platform for running AI agents.
+ZimaOS Blue is a NAS-native Agent Runtime built with Go, designed for low-power devices. It provides a lightweight, high-performance platform for running AI agents.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           ZimaOS-Echo                                    │
+│                           ZimaOS-Blue                                    │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │                    Frontend Layer                                │    │

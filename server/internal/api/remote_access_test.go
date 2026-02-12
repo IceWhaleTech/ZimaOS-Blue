@@ -12,7 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 )
 
 func setupRemoteAccessHandler(t *testing.T) (*RemoteAccessHandler, *echo.Echo) {

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/resilience"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/resilience"
 )
 
 // FailoverHandler handles request failover

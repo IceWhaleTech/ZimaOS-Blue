@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 )
 
 // InitConfig holds configuration for lazy initialization of TTS/STT services.

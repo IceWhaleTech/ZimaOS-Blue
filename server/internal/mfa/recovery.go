@@ -186,7 +186,7 @@ func hashRecoveryCode(code string) string {
 	// Use Argon2id with fixed parameters for recovery codes
 	// We use a fixed salt derived from the code itself for deterministic hashing
 	// This is acceptable for recovery codes as they are high-entropy random strings
-	salt := []byte("zimaos-echo-recovery-salt")
+	salt := []byte("zimaos-blue-recovery-salt")
 	hash := argon2.IDKey([]byte(normalizeCode(code)), salt, 1, 64*1024, 4, 32)
 	return hex.EncodeToString(hash)
 }

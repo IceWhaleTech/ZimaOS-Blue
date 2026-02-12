@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/watcher"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/watcher"
 )
 
 // WatcherHandler handles watcher-related API endpoints.

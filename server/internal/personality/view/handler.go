@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/controller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/controller"
 )
 
 // Handler handles personality API requests

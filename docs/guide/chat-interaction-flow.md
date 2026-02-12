@@ -1,6 +1,6 @@
 # Chat Interaction Flow
 
-This document describes the complete chat interaction flow in ZimaOS-Echo, particularly focusing on the Claude Code CLI integration.
+This document describes the complete chat interaction flow in ZimaOS-Blue, particularly focusing on the Claude Code CLI integration.
 
 ## Overview
 

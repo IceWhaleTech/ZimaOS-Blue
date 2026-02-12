@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // OutputParser parses CLI output based on the configured format.

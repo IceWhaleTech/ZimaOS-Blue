@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/labstack/echo/v4"
 )
 

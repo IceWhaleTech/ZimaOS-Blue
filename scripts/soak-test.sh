@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# ZimaOS-Echo Soak Test Script
+# ZimaOS-Blue Soak Test Script
 # Long-running stability test
 #
 
 set -e
 
 # Configuration
-SERVICE_NAME="${SERVICE_NAME:-zimaos-echo}"
+SERVICE_NAME="${SERVICE_NAME:-zimaos-blue}"
 HEALTH_URL="${HEALTH_URL:-http://localhost:23456/health}"
 METRICS_URL="${METRICS_URL:-http://localhost:23456/metrics}"
 DURATION_HOURS="${DURATION_HOURS:-168}"  # 7 days default
@@ -100,7 +100,7 @@ generate_report() {
     local report="$OUTPUT_DIR/report_$(date '+%Y%m%d_%H%M%S').txt"
 
     cat > "$report" << EOF
-ZimaOS-Echo Soak Test Report
+ZimaOS-Blue Soak Test Report
 ============================
 Generated: $(date '+%Y-%m-%d %H:%M:%S')
 

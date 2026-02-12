@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 // ProxyServer is the main proxy server

@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/installation.md)
 
-本指南涵盖 ZimaOS-Echo 的所有安装方法。
+本指南涵盖 ZimaOS-Blue 的所有安装方法。
 
 ## 前置要求
 
@@ -29,22 +29,22 @@
 
 ```bash
 # Linux (amd64)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-linux-amd64
 chmod +x echo-linux-amd64
 sudo mv echo-linux-amd64 /usr/local/bin/echo
 
 # Linux (arm64)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-arm64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-linux-arm64
 chmod +x echo-linux-arm64
 sudo mv echo-linux-arm64 /usr/local/bin/echo
 
 # macOS (amd64)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-darwin-amd64
 chmod +x echo-darwin-amd64
 sudo mv echo-darwin-amd64 /usr/local/bin/echo
 
 # macOS (arm64 / Apple Silicon)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-arm64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-darwin-arm64
 chmod +x echo-darwin-arm64
 sudo mv echo-darwin-arm64 /usr/local/bin/echo
 ```
@@ -65,8 +65,8 @@ version: '3.8'
 
 services:
   echo:
-    image: icewhaletech/zimaos-echo:latest
-    container_name: zimaos-echo
+    image: icewhaletech/zimaos-blue:latest
+    container_name: zimaos-blue
     ports:
       - "23456:23456"
     volumes:
@@ -96,12 +96,12 @@ docker-compose logs -f
 
 ```bash
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   -p 23456:23456 \
   -v $(pwd)/config:/app/config \
   -v $(pwd)/data:/app/data \
   -e JWT_SECRET=your-secret-key \
-  icewhaletech/zimaos-echo:latest
+  icewhaletech/zimaos-blue:latest
 ```
 
 ### 方法 3：从源码构建
@@ -110,12 +110,12 @@ docker run -d \
 
 ```bash
 # 克隆仓库
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
 
 # 构建后端
 cd server
-go build -o echo ./cmd/echo
+go build -o echo ./cmd/blue
 
 # 构建前端（可选）
 cd ../web
@@ -134,7 +134,7 @@ npm run build
 适用于 Linux 系统：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Echo/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Blue/main/scripts/install.sh | bash
 ```
 
 脚本将：
@@ -219,7 +219,7 @@ sudo systemctl enable echo
 
 ```ini
 [Unit]
-Description=ZimaOS Echo AI 助手
+Description=ZimaOS Blue AI 助手
 After=network.target
 
 [Service]
@@ -362,7 +362,7 @@ curl -X POST http://localhost:23456/api/v1/chat \
 sudo systemctl stop echo
 
 # 下载新版本
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-linux-amd64
 sudo mv echo-linux-amd64 /usr/local/bin/echo
 sudo chmod +x /usr/local/bin/echo
 
@@ -410,7 +410,7 @@ docker-compose down
 docker-compose down -v
 
 # 删除镜像
-docker rmi icewhaletech/zimaos-echo
+docker rmi icewhaletech/zimaos-blue
 ```
 
 ## 故障排除

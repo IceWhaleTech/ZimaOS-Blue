@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/crawler"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/crawler"
 )
 
 func TestCrawler_BasicFetch(t *testing.T) {

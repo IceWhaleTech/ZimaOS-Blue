@@ -1,10 +1,10 @@
 # 安全
 
-本文档描述了 ZimaOS Echo 的安全架构和功能。
+本文档描述了 ZimaOS Blue 的安全架构和功能。
 
 ## 概述
 
-ZimaOS Echo 实现了全面的安全层，包括：
+ZimaOS Blue 实现了全面的安全层，包括：
 
 - **OIDC 提供者**：内置 OpenID Connect 提供者用于身份验证
 - **用户管理**：本地用户账户，安全密码存储
@@ -48,7 +48,7 @@ ZimaOS Echo 实现了全面的安全层，包括：
 
 ### 密码认证
 
-ZimaOS Echo 使用 **Argon2id** 进行密码哈希，这是密码哈希竞赛的获胜者，也是 OWASP 推荐的算法。
+ZimaOS Blue 使用 **Argon2id** 进行密码哈希，这是密码哈希竞赛的获胜者，也是 OWASP 推荐的算法。
 
 #### 配置
 
@@ -94,7 +94,7 @@ security:
   mfa:
     enabled: true
     required: false
-    issuer: "ZimaOS-Echo"
+    issuer: "ZimaOS-Blue"
     recovery_codes_count: 8
 ```
 
@@ -124,7 +124,7 @@ security:
 
 ## OIDC 提供者
 
-ZimaOS Echo 包含内置的 OpenID Connect 提供者，用于 SSO 集成。
+ZimaOS Blue 包含内置的 OpenID Connect 提供者，用于 SSO 集成。
 
 ### 端点
 
@@ -340,7 +340,7 @@ security:
 
 ### 提示词注入防御
 
-ZimaOS Echo 包含全面的提示词注入攻击防护，保护 LLM 交互安全。
+ZimaOS Blue 包含全面的提示词注入攻击防护，保护 LLM 交互安全。
 
 #### 概述
 
@@ -696,7 +696,7 @@ server:
 
 ## 合规性
 
-ZimaOS Echo 安全功能支持以下合规要求：
+ZimaOS Blue 安全功能支持以下合规要求：
 
 - **OWASP Top 10**：防护常见漏洞
 - **GDPR**：审计日志和数据保护

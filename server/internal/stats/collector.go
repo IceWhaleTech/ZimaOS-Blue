@@ -93,7 +93,7 @@ type ModelPricing struct {
 func NewStatisticsCollector(storagePath string, enabled bool) *StatisticsCollector {
 	if storagePath == "" {
 		home, _ := os.UserHomeDir()
-		storagePath = filepath.Join(home, ".local", "share", "zimaos-echo", "stats")
+		storagePath = filepath.Join(home, ".local", "share", "zimaos-blue", "stats")
 	}
 
 	collector := &StatisticsCollector{

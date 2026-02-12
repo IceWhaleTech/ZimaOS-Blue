@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide helps you diagnose and resolve common issues with ZimaOS-Echo.
+This guide helps you diagnose and resolve common issues with ZimaOS-Blue.
 
 ## Quick Diagnostics
 
@@ -12,7 +12,7 @@ sudo systemctl status echo
 
 # Docker container
 docker ps | grep echo
-docker logs zimaos-echo --tail 100
+docker logs zimaos-blue --tail 100
 
 # Direct process
 ps aux | grep echo
@@ -28,7 +28,7 @@ sudo journalctl -u echo -f
 tail -f /var/log/echo/echo.log
 
 # Docker logs
-docker logs -f zimaos-echo
+docker logs -f zimaos-blue
 ```
 
 ### Health Check
@@ -552,7 +552,7 @@ journalctl -u echo -f | grep -E "(error|panic|fatal)"
 
 If you can't resolve your issue:
 
-1. **Check existing issues:** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Echo/issues)
+1. **Check existing issues:** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
 
 2. **Collect diagnostic info:**
    ```bash

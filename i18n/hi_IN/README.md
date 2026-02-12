@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** NAS और एज डिवाइस के लिए बनाया गया हल्का, उच्च-प्रदर्शन AI एजेंट रनटाइम है। Go में बना, यह शून्य-कॉन्फ़िग डिप्लॉयमेंट, सत्र निगरानी और उपयोग विश्लेषण के साथ प्रोडक्शन-तैयार प्लेटफ़ॉर्म देता है।
+**ZimaOS Blue** NAS और एज डिवाइस के लिए बनाया गया हल्का, उच्च-प्रदर्शन AI एजेंट रनटाइम है। Go में बना, यह शून्य-कॉन्फ़िग डिप्लॉयमेंट, सत्र निगरानी और उपयोग विश्लेषण के साथ प्रोडक्शन-तैयार प्लेटफ़ॉर्म देता है।
 
 [त्वरित शुरुआत](#त्वरित-शुरुआत) · [सुविधाएँ](#मुख्य-सुविधाएँ)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # सोर्स से
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 डैशबोर्ड पर `http://localhost:3000` से पहुँचें।
 
 ## LLM प्रोवाइडर कॉन्फ़िगरेशन
 
-ZimaOS Echo कई LLM प्रोवाइडरों को सपोर्ट करता है, जिसमें लोकल LLM सेवाएँ शामिल हैं:
+ZimaOS Blue कई LLM प्रोवाइडरों को सपोर्ट करता है, जिसमें लोकल LLM सेवाएँ शामिल हैं:
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # बिल्ड आर्टिफैक्ट सा�
 ### प्रोजेक्ट संरचना
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # Go बैकएंड
-│   ├── cmd/echo/       # एंट्री पॉइंट
+│   ├── cmd/blue/       # एंट्री पॉइंट
 │   └── internal/       # कोर मॉड्यूल
 ├── web/                # Vue 3 फ्रंटएंड
 │   └── src/

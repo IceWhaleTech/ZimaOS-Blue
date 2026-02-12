@@ -1,6 +1,6 @@
-# ZimaOS-Echo CLI 使用教程
+# ZimaOS-Blue CLI 使用教程
 
-ZimaOS-Echo 提供了一个全面的命令行界面 (CLI)，用于管理和交互 NAS 原生 Agent 运行时。
+ZimaOS-Blue 提供了一个全面的命令行界面 (CLI)，用于管理和交互 NAS 原生 Agent 运行时。
 
 ## 目录
 
@@ -29,16 +29,16 @@ ZimaOS-Echo 提供了一个全面的命令行界面 (CLI)，用于管理和交�
 
 ```bash
 # Windows
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-windows-amd64.exe
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-windows-amd64.exe
 mv echo-windows-amd64.exe echo.exe
 
 # Linux
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-linux-amd64
 chmod +x echo-linux-amd64
 sudo mv echo-linux-amd64 /usr/local/bin/echo
 
 # macOS
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-amd64
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/echo-darwin-amd64
 chmod +x echo-darwin-amd64
 sudo mv echo-darwin-amd64 /usr/local/bin/echo
 ```
@@ -46,9 +46,9 @@ sudo mv echo-darwin-amd64 /usr/local/bin/echo
 ### 从源码编译
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o echo ./cmd/echo/
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o echo ./cmd/blue/
 ```
 
 ---
@@ -136,7 +136,7 @@ echo --no-color logs | grep error
 
 #### `gateway` - 服务控制
 
-管理 ZimaOS-Echo 服务。
+管理 ZimaOS-Blue 服务。
 
 ```bash
 # 前台运行服务
@@ -227,7 +227,7 @@ echo doctor --fix
 
 #### `config` - 配置管理
 
-管理 ZimaOS-Echo 配置。
+管理 ZimaOS-Blue 配置。
 
 ```bash
 # 列出所有配置
@@ -373,7 +373,7 @@ echo cron runs <任务ID>
 
 #### `plugins` - 插件管理
 
-管理 ZimaOS-Echo 插件。
+管理 ZimaOS-Blue 插件。
 
 ```bash
 # 列出所有插件
@@ -494,9 +494,9 @@ echo --profile testing config set server.port 9090
 echo --profile testing gateway run
 
 # 每个配置文件都有隔离的：
-# - 配置：~/.zimaos-echo-testing/config.yaml
-# - 数据：~/.zimaos-echo-testing/data/
-# - 日志：~/.zimaos-echo-testing/logs/
+# - 配置：~/.zimaos-blue-testing/config.yaml
+# - 数据：~/.zimaos-blue-testing/data/
+# - 日志：~/.zimaos-blue-testing/logs/
 ```
 
 ### 自动健康监控
@@ -582,7 +582,7 @@ done
 ### 找不到日志文件
 
 CLI 会在以下位置查找日志：
-1. `~/.zimaos-echo/logs/echo.log`
+1. `~/.zimaos-blue/logs/echo.log`
 2. `./logs/echo.log`
 3. `./echo.log`
 
@@ -603,5 +603,5 @@ echo models --help
 ```
 
 更多信息请访问：
-- GitHub: https://github.com/IceWhaleTech/ZimaOS-Echo
+- GitHub: https://github.com/IceWhaleTech/ZimaOS-Blue
 - 文档: https://docs.zimaos.com/echo

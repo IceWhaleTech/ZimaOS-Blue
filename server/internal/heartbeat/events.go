@@ -3,7 +3,7 @@ package heartbeat
 import (
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 )
 
 // IndicatorType represents the heartbeat status indicator for UI.

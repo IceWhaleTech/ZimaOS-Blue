@@ -1,6 +1,6 @@
 # Product Requirements Documents (PRD)
 
-This directory contains product requirement documents for ZimaOS Echo features.
+This directory contains product requirement documents for ZimaOS Blue features.
 
 ## Document Structure
 

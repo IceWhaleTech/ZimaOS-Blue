@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/embedding"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 )
 
 // MultiAgentMemoryManager manages isolated memory services for multiple agents.
@@ -43,7 +43,7 @@ func NewMultiAgentMemoryManager(cfg config.MemoryConfig, multiCfg MultiAgentConf
 		if err != nil {
 			return nil, fmt.Errorf("failed to get home directory: %w", err)
 		}
-		multiCfg.BaseDir = filepath.Join(homeDir, ".zimaos-echo", "memory")
+		multiCfg.BaseDir = filepath.Join(homeDir, ".zimaos-blue", "memory")
 	}
 
 	if multiCfg.DefaultRetentionDays == 0 {

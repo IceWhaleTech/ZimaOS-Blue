@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 )
 
 // PermissionService interface for permission operations

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This PRD defines how Claude Code CLI is bundled and managed within ZimaOS-Echo. The goal is to provide a seamless experience where Claude Code CLI is available out-of-the-box while maintaining flexibility for different deployment scenarios.
+This PRD defines how Claude Code CLI is bundled and managed within ZimaOS-Blue. The goal is to provide a seamless experience where Claude Code CLI is available out-of-the-box while maintaining flexibility for different deployment scenarios.
 
 ## Goals
 
@@ -104,7 +104,7 @@ claudecode:
     # Download settings (when mode is "download" or "auto")
     download:
       base_url: "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases"
-      cache_dir: ""            # Empty = ~/.local/share/zimaos-echo/claude-code
+      cache_dir: ""            # Empty = ~/.local/share/zimaos-blue/claude-code
       verify_checksum: true    # Verify SHA256 checksum after download
       timeout: "5m"            # Download timeout
 
@@ -116,12 +116,12 @@ claudecode:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ECHO_CC_MODE` | Bundling mode override | `auto` |
-| `ECHO_CC_VERSION` | Pin to specific version | (latest) |
-| `ECHO_CC_AUTO_UPDATE` | Enable auto-update | `false` |
-| `ECHO_CC_CACHE_DIR` | Custom cache directory | `~/.local/share/zimaos-echo/claude-code` |
-| `ECHO_CC_ALLOW_SYSTEM` | Allow system CLI | `true` |
-| `ECHO_CC_REQUIRE_LATEST` | Require latest version for system CLI | `false` |
+| `BLUE_CC_MODE` | Bundling mode override | `auto` |
+| `BLUE_CC_VERSION` | Pin to specific version | (latest) |
+| `BLUE_CC_AUTO_UPDATE` | Enable auto-update | `false` |
+| `BLUE_CC_CACHE_DIR` | Custom cache directory | `~/.local/share/zimaos-blue/claude-code` |
+| `BLUE_CC_ALLOW_SYSTEM` | Allow system CLI | `true` |
+| `BLUE_CC_REQUIRE_LATEST` | Require latest version for system CLI | `false` |
 
 ## Version Management
 
@@ -195,7 +195,7 @@ The system tracks:
   "active_version": "2.1.22",
   "mode": "auto",
   "source": "embedded",
-  "binary_path": "/home/user/.local/share/zimaos-echo/claude-code/claude",
+  "binary_path": "/home/user/.local/share/zimaos-blue/claude-code/claude",
   "platform": "linux-arm64",
   "update_available": true,
   "validated": true,
@@ -313,7 +313,7 @@ Location: Settings > AI Providers > Claude Code CLI
 │  ─────────────────────────────────────────────────────────────  │
 │                                                                  │
 │  ▶ Advanced Settings                                            │
-│    Cache: ~/.local/share/zimaos-echo/claude-code (180MB)       │
+│    Cache: ~/.local/share/zimaos-blue/claude-code (180MB)       │
 │    [Clear Cache]  [Force Re-download]                           │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘

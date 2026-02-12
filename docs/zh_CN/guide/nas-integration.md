@@ -1,6 +1,6 @@
 # NAS 集成指南
 
-本指南介绍在各种 NAS 平台上安装和配置 ZimaOS Echo 的方法。
+本指南介绍在各种 NAS 平台上安装和配置 ZimaOS Blue 的方法。
 
 ## 目录
 
@@ -15,7 +15,7 @@
 
 ## ZimaOS
 
-ZimaOS Echo 专为 ZimaOS 设计，提供最佳集成体验。
+ZimaOS Blue 专为 ZimaOS 设计，提供最佳集成体验。
 
 ### 通过应用商店安装
 
@@ -31,17 +31,17 @@ ZimaOS Echo 专为 ZimaOS 设计，提供最佳集成体验。
 ssh root@zimaos.local
 
 # 拉取 Docker 镜像
-docker pull icewhale/zimaos-echo:latest
+docker pull icewhale/zimaos-blue:latest
 
 # 运行容器
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   --restart unless-stopped \
   -p 8765:23456 \
-  -v /DATA/AppData/zimaos-echo/data:/app/data \
-  -v /DATA/AppData/zimaos-echo/config:/app/config \
+  -v /DATA/AppData/zimaos-blue/data:/app/data \
+  -v /DATA/AppData/zimaos-blue/config:/app/config \
   -e TZ=$(cat /etc/timezone) \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 ### ZimaOS 特有功能
@@ -53,7 +53,7 @@ docker run -d \
 
 ### 配置
 
-编辑 `/DATA/AppData/zimaos-echo/config/config.yaml`：
+编辑 `/DATA/AppData/zimaos-blue/config/config.yaml`：
 
 ```yaml
 server:
@@ -62,7 +62,7 @@ server:
 zimaos:
   enabled: true
   api_endpoint: http://localhost:80
-  data_path: /DATA/AppData/zimaos-echo
+  data_path: /DATA/AppData/zimaos-blue
 
 llm:
   default_provider: ollama
@@ -85,25 +85,25 @@ llm:
 ### 通过容器管理器安装
 
 1. 打开 **容器管理器**（原 Docker）
-2. 进入 **注册表** → 搜索「icewhale/zimaos-echo」
+2. 进入 **注册表** → 搜索「icewhale/zimaos-blue」
 3. 下载 `latest` 标签
 4. 进入 **映像** → 选择映像 → **运行**
 5. 配置：
-   - **容器名称**：zimaos-echo
+   - **容器名称**：zimaos-blue
    - **端口设置**：本地 8765 → 容器 23456
-   - **卷**：`/docker/zimaos-echo` → `/app/data`
+   - **卷**：`/docker/zimaos-blue` → `/app/data`
    - **环境**：`TZ=您的时区`
 
 ### 使用 Docker Compose
 
-创建 `/volume1/docker/zimaos-echo/docker-compose.yml`：
+创建 `/volume1/docker/zimaos-blue/docker-compose.yml`：
 
 ```yaml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
     ports:
       - "8765:23456"
@@ -112,12 +112,12 @@ services:
       - ./config:/app/config
     environment:
       - TZ=America/New_York
-      - ECHO_LOG_LEVEL=info
+      - BLUE_LOG_LEVEL=info
 ```
 
 运行：
 ```bash
-cd /volume1/docker/zimaos-echo
+cd /volume1/docker/zimaos-blue
 docker-compose up -d
 ```
 
@@ -156,15 +156,15 @@ docker-compose up -d
 ```yaml
 version: '3'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: always
     ports:
       - "8765:23456"
     volumes:
-      - /share/Container/zimaos-echo/data:/app/data
-      - /share/Container/zimaos-echo/config:/app/config
+      - /share/Container/zimaos-blue/data:/app/data
+      - /share/Container/zimaos-blue/config:/app/config
     environment:
       - TZ=America/New_York
 ```
@@ -178,17 +178,17 @@ services:
 ssh admin@qnap.local
 
 # 创建目录
-mkdir -p /share/Container/zimaos-echo/{data,config}
+mkdir -p /share/Container/zimaos-blue/{data,config}
 
 # 运行容器
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   --restart always \
   -p 8765:23456 \
-  -v /share/Container/zimaos-echo/data:/app/data \
-  -v /share/Container/zimaos-echo/config:/app/config \
+  -v /share/Container/zimaos-blue/data:/app/data \
+  -v /share/Container/zimaos-blue/config:/app/config \
   -e TZ=America/New_York \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 ### 威联通反向代理
@@ -212,22 +212,22 @@ TrueNAS SCALE 基于 Kubernetes，部署应用较简单。
    - 名称：`truecharts`
    - 仓库：`https://github.com/truecharts/catalog`
 
-2. 安装 ZimaOS Echo：
+2. 安装 ZimaOS Blue：
    - **应用** → **可用应用**
-   - 搜索「zimaos-echo」（若可用）或使用自定义应用
+   - 搜索「zimaos-blue」（若可用）或使用自定义应用
 
 #### 自定义应用安装
 
 1. 进入 **应用** → **可用应用** → **自定义应用**
 2. 配置：
-   - **应用名称**：zimaos-echo
-   - **镜像仓库**：icewhale/zimaos-echo
+   - **应用名称**：zimaos-blue
+   - **镜像仓库**：icewhale/zimaos-blue
    - **镜像标签**：latest
    - **容器端口**：23456
    - **节点端口**：8765
 
 3. 添加存储：
-   - **主机路径**：`/mnt/pool/apps/zimaos-echo/data`
+   - **主机路径**：`/mnt/pool/apps/zimaos-blue/data`
    - **挂载路径**：`/app/data`
 
 ### TrueNAS CORE（FreeBSD Jail）
@@ -245,7 +245,7 @@ TrueNAS CORE 使用 FreeBSD Jail，需在 Linux Jail 或 VM 中运行：
 ### 通过 Community Apps 安装
 
 1. 打开 **Apps** 标签
-2. 搜索「zimaos-echo」（若 CA 中有）
+2. 搜索「zimaos-blue」（若 CA 中有）
 3. 点击 **安装**
 
 ### 手动 Docker 安装
@@ -253,28 +253,28 @@ TrueNAS CORE 使用 FreeBSD Jail，需在 Linux Jail 或 VM 中运行：
 1. 打开 **Docker** 标签
 2. 点击 **添加容器**
 3. 配置：
-   - **名称**：zimaos-echo
-   - **仓库**：icewhale/zimaos-echo:latest
+   - **名称**：zimaos-blue
+   - **仓库**：icewhale/zimaos-blue:latest
    - **端口映射**：8765 → 23456
-   - **路径映射**：`/mnt/user/appdata/zimaos-echo` → `/app/data`
+   - **路径映射**：`/mnt/user/appdata/zimaos-blue` → `/app/data`
 
 ### Docker Compose（通过 Compose Manager）
 
 1. 安装 **Compose Manager** 插件
-2. 创建栈 `zimaos-echo`：
+2. 创建栈 `zimaos-blue`：
 
 ```yaml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
     ports:
       - "8765:23456"
     volumes:
-      - /mnt/user/appdata/zimaos-echo/data:/app/data
-      - /mnt/user/appdata/zimaos-echo/config:/app/config
+      - /mnt/user/appdata/zimaos-blue/data:/app/data
+      - /mnt/user/appdata/zimaos-blue/config:/app/config
     environment:
       - TZ=America/New_York
       - PUID=99
@@ -299,30 +299,30 @@ curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
 # 创建目录
-sudo mkdir -p /opt/zimaos-echo/{data,config}
-sudo chown -R $USER:$USER /opt/zimaos-echo
+sudo mkdir -p /opt/zimaos-blue/{data,config}
+sudo chown -R $USER:$USER /opt/zimaos-blue
 
 # 运行容器
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   --restart unless-stopped \
   -p 8765:23456 \
-  -v /opt/zimaos-echo/data:/app/data \
-  -v /opt/zimaos-echo/config:/app/config \
+  -v /opt/zimaos-blue/data:/app/data \
+  -v /opt/zimaos-blue/config:/app/config \
   -e TZ=$(cat /etc/timezone) \
-  icewhale/zimaos-echo:latest
+  icewhale/zimaos-blue:latest
 ```
 
 ### 使用 Docker Compose
 
-创建 `/opt/zimaos-echo/docker-compose.yml`：
+创建 `/opt/zimaos-blue/docker-compose.yml`：
 
 ```yaml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
-    container_name: zimaos-echo
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
+    container_name: zimaos-blue
     restart: unless-stopped
     ports:
       - "8765:23456"
@@ -340,7 +340,7 @@ services:
 
 运行：
 ```bash
-cd /opt/zimaos-echo
+cd /opt/zimaos-blue
 docker-compose up -d
 ```
 
@@ -348,23 +348,23 @@ docker-compose up -d
 
 1. 下载二进制：
 ```bash
-wget https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/zimaos-echo-linux-amd64
-sudo mv zimaos-echo-linux-amd64 /usr/local/bin/zimaos-echo
-sudo chmod +x /usr/local/bin/zimaos-echo
+wget https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/zimaos-blue-linux-amd64
+sudo mv zimaos-blue-linux-amd64 /usr/local/bin/zimaos-blue
+sudo chmod +x /usr/local/bin/zimaos-blue
 ```
 
-2. 创建 systemd 服务 `/etc/systemd/system/zimaos-echo.service`：
+2. 创建 systemd 服务 `/etc/systemd/system/zimaos-blue.service`：
 ```ini
 [Unit]
-Description=ZimaOS Echo AI Assistant
+Description=ZimaOS Blue AI Assistant
 After=network.target
 
 [Service]
 Type=simple
-User=zimaos-echo
-Group=zimaos-echo
-WorkingDirectory=/opt/zimaos-echo
-ExecStart=/usr/local/bin/zimaos-echo --config /etc/zimaos-echo/config.yaml
+User=zimaos-blue
+Group=zimaos-blue
+WorkingDirectory=/opt/zimaos-blue
+ExecStart=/usr/local/bin/zimaos-blue --config /etc/zimaos-blue/config.yaml
 Restart=always
 RestartSec=5
 
@@ -375,8 +375,8 @@ WantedBy=multi-user.target
 3. 启用并启动：
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable zimaos-echo
-sudo systemctl start zimaos-echo
+sudo systemctl enable zimaos-blue
+sudo systemctl start zimaos-blue
 ```
 
 ---
@@ -402,12 +402,12 @@ homeassistant:
 # docker-compose.yml
 version: '3.8'
 services:
-  zimaos-echo:
-    image: icewhale/zimaos-echo:latest
+  zimaos-blue:
+    image: icewhale/zimaos-blue:latest
     # ... 其他配置 ...
     environment:
-      - ECHO_LLM_DEFAULT_PROVIDER=ollama
-      - ECHO_LLM_OLLAMA_BASE_URL=http://ollama:11434
+      - BLUE_LLM_DEFAULT_PROVIDER=ollama
+      - BLUE_LLM_OLLAMA_BASE_URL=http://ollama:11434
 
   ollama:
     image: ollama/ollama:latest
@@ -451,7 +451,7 @@ server {
 
 ```bash
 # 查看日志
-docker logs zimaos-echo
+docker logs zimaos-blue
 
 # 检查端口占用
 netstat -tlnp | grep 8765
@@ -478,8 +478,8 @@ ls -la /path/to/data
 
 ```bash
 # 备份并重建数据库
-docker exec zimaos-echo cp /app/data/echo.db /app/data/echo.db.bak
-docker restart zimaos-echo
+docker exec zimaos-blue cp /app/data/echo.db /app/data/echo.db.bak
+docker restart zimaos-blue
 ```
 
 ---
@@ -487,5 +487,5 @@ docker restart zimaos-echo
 ## 支持
 
 - 文档：https://docs.zimaspace.com/echo
-- GitHub Issues：https://github.com/IceWhaleTech/ZimaOS-Echo/issues
+- GitHub Issues：https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord：https://discord.gg/zimaos

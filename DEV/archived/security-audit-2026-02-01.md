@@ -2,7 +2,7 @@
 
 ## 审查范围
 
-基于 ClawdBot/OpenClaw 2026年1月安全事件，对 ZimaOS-Echo 项目进行安全审查，重点关注：
+基于 ClawdBot/OpenClaw 2026年1月安全事件，对 ZimaOS-Blue 项目进行安全审查，重点关注：
 1. WebSocket 网关安全 (RCE 漏洞)
 2. CORS 配置 (CSRF 漏洞)
 3. 本地网络访问保护
@@ -247,7 +247,7 @@ v.SetDefault("security.oidc.issuer", "http://localhost:23456")
 
 ## 与 ClawdBot 漏洞对比
 
-| ClawdBot 漏洞 | ZimaOS-Echo 状态 | 详情 |
+| ClawdBot 漏洞 | ZimaOS-Blue 状态 | 详情 |
 |---------------|------------------|------|
 | 未认证远程访问 | ✅ **已修复** | WebSocket 端点现在支持 JWT 认证 |
 | CSRF + WebSocket 劫持 | ✅ **已修复** | CORS 和 WebSocket Origin 已限制为白名单 |
