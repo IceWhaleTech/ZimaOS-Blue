@@ -19,6 +19,7 @@ import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import PersonalityManager from '@/components/PersonalityManager.vue'
+import { useTauri } from '@/composables/useTauri'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -26,6 +27,7 @@ const router = useRouter()
 const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
+const { isTauri, setCloseBehavior } = useTauri()
 
 const saveStatus = ref<string | null>(null)
 
@@ -76,6 +78,12 @@ function handleTimezoneChange(timezone: string) {
   selectedTimezone.value = timezone
   localStorage.setItem('zimaos-echo-timezone', timezone)
   showSaveStatus(t('settings.timezoneSaved'))
+}
+
+function handleCloseBehaviorChange(behavior: 'quit' | 'minimize') {
+  settingsStore.setCloseBehavior(behavior)
+  setCloseBehavior(behavior)
+  showSaveStatus(t('settings.closeBehaviorSaved'))
 }
 
 function switchTab(tab: TabType) {
@@ -326,6 +334,26 @@ onMounted(async () => {
             @click="themeStore.setTheme(theme)"
           >
             {{ t(`common.${theme}`) }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Close Behavior (Tauri only) -->
+      <div v-if="isTauri" class="glass-card p-4">
+        <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.closeBehavior') }}</label>
+        <div class="flex gap-2">
+          <button
+            v-for="behavior in ['quit', 'minimize'] as const"
+            :key="behavior"
+            :class="[
+              'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              settingsStore.closeBehavior === behavior
+                ? 'bg-gray-700 dark:bg-gray-700 text-white'
+                : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+            ]"
+            @click="handleCloseBehaviorChange(behavior)"
+          >
+            {{ t(`settings.closeBehavior${behavior === 'quit' ? 'Quit' : 'Minimize'}`) }}
           </button>
         </div>
       </div>

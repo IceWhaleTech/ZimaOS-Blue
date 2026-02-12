@@ -24,6 +24,7 @@ export interface ProviderModelOption {
 
 // Theme style types
 export type ThemeStyle = 'default' | 'bubble' | 'minimal' | 'gradient' | 'ocean'
+export type CloseBehavior = 'quit' | 'minimize'
 
 export const THEME_STYLES: { id: ThemeStyle; labelKey: string }[] = [
   { id: 'default', labelKey: 'theme.styles.default' },
@@ -38,6 +39,7 @@ interface StoredSettings {
   temperature: number
   maxTokens: number
   themeStyle: ThemeStyle
+  closeBehavior: CloseBehavior
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -66,6 +68,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const temperature = ref(stored.temperature ?? 0.7)
   const maxTokens = ref(stored.maxTokens ?? 2048)
   const themeStyle = ref<ThemeStyle>(stored.themeStyle || 'default')
+  const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'quit')
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)
@@ -106,13 +109,14 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProviderModel, temperature, maxTokens, themeStyle],
+    [selectedProviderModel, temperature, maxTokens, themeStyle, closeBehavior],
     () => {
       saveSettings({
         selectedProviderModel: selectedProviderModel.value,
         temperature: temperature.value,
         maxTokens: maxTokens.value,
         themeStyle: themeStyle.value,
+        closeBehavior: closeBehavior.value,
       })
     },
     { deep: true }
@@ -278,6 +282,10 @@ export const useSettingsStore = defineStore('settings', () => {
     themeStyle.value = style
   }
 
+  function setCloseBehavior(behavior: CloseBehavior) {
+    closeBehavior.value = behavior
+  }
+
   function clearError() {
     error.value = null
   }
@@ -286,6 +294,7 @@ export const useSettingsStore = defineStore('settings', () => {
     temperature.value = 0.7
     maxTokens.value = 2048
     themeStyle.value = 'default'
+    closeBehavior.value = 'quit'
     // Clear stored settings
     localStorage.removeItem(STORAGE_KEY)
   }
@@ -298,6 +307,7 @@ export const useSettingsStore = defineStore('settings', () => {
     temperature,
     maxTokens,
     themeStyle,
+    closeBehavior,
     loading,
     refreshing,
     error,
@@ -319,6 +329,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setTemperature,
     setMaxTokens,
     setThemeStyle,
+    setCloseBehavior,
     clearError,
     resetToDefaults,
   }

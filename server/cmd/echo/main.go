@@ -29,6 +29,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
@@ -314,7 +315,9 @@ func main() {
 
 	// Initialize plugin registry and store
 	pluginRegistry := plugin.NewRegistry()
-	pluginStore := plugin.NewStore(plugin.DefaultStoreConfig(), pluginRegistry)
+	pluginStoreConfig := plugin.DefaultStoreConfig()
+	pluginStoreConfig.CacheDir = filepath.Join(getDataDir(), "plugin-cache")
+	pluginStore := plugin.NewStore(pluginStoreConfig, pluginRegistry)
 	logger.Info().Msg("Plugin store initialized")
 
 	// Initialize chat handler
@@ -956,6 +959,20 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	channelConfigHandler.SetManager(channelManager)
 	channelConfigHandler.SetFactory(channelFactory)
 	channelConfigHandler.RegisterRoutes(e.Group("/api"))
+
+	// Initialize heartbeat runner (after channel manager is ready)
+	hbCfg := convertHeartbeatConfig(&cfg.Heartbeat)
+	hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
+		Config:      hbCfg,
+		LLMRegistry: llmRegistry,
+		Channels:    channelManager,
+		Streamer:    nil,
+		Logger:      zapLogger,
+	})
+	hbHandler := heartbeat.NewHandler(hbRunner)
+	hbHandler.RegisterRoutes(e.Group("/api"))
+	lm.Go(hbRunner.Run)
+	logger.Info("Heartbeat runner initialized", zap.Bool("enabled", cfg.Heartbeat.Enabled))
 }
 
 // convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
@@ -988,4 +1005,32 @@ func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL strin
 			Serialize:         cfg.Backend.Serialize,
 		},
 	}
+}
+
+// convertHeartbeatConfig converts config.HeartbeatConfig to heartbeat.Config.
+func convertHeartbeatConfig(cfg *config.HeartbeatConfig) *heartbeat.Config {
+	hbCfg := &heartbeat.Config{
+		Enabled:         cfg.Enabled,
+		Interval:        cfg.Interval,
+		Prompt:          cfg.Prompt,
+		AckMaxChars:     cfg.AckMaxChars,
+		WorkspaceDir:    cfg.WorkspaceDir,
+		LLMProvider:     cfg.LLMProvider,
+		LLMModel:        cfg.LLMModel,
+		DeliveryChannel: cfg.DeliveryChannel,
+		DeliveryChatID:  cfg.DeliveryChatID,
+		Visibility: heartbeat.VisibilityConfig{
+			ShowOk:       cfg.Visibility.ShowOk,
+			ShowAlerts:   cfg.Visibility.ShowAlerts,
+			UseIndicator: cfg.Visibility.UseIndicator,
+		},
+	}
+	if cfg.ActiveHours != nil {
+		hbCfg.ActiveHours = &heartbeat.ActiveHours{
+			Start:    cfg.ActiveHours.Start,
+			End:      cfg.ActiveHours.End,
+			Timezone: cfg.ActiveHours.Timezone,
+		}
+	}
+	return hbCfg
 }

@@ -129,10 +129,11 @@ function getPersonalityIcon(personality: Personality): string {
             <div v-if="personality.traits && personality.traits.length > 0" class="flex flex-wrap gap-1 mt-2">
               <span
                 v-for="trait in personality.traits.slice(0, 3)"
-                :key="trait"
+                :key="trait.key"
                 class="px-2 py-0.5 bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-300 text-xs rounded"
+                :title="`${trait.key}: ${trait.value} (${trait.weight})`"
               >
-                {{ trait }}
+                {{ trait.key }}: {{ trait.value }}
               </span>
               <span
                 v-if="personality.traits.length > 3"

@@ -20,6 +20,9 @@ use tauri::{
 /// Flag to track if we're actually quitting (vs just hiding to tray)
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
+/// Close behavior: false = quit, true = minimize to tray
+static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
 /// Application state shared across the app
 pub struct AppState {
     pub server_port: std::sync::Mutex<u16>,
@@ -58,6 +61,14 @@ fn get_server_port(state: tauri::State<AppState>) -> u16 {
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
+}
+
+/// Set close behavior: "quit" or "minimize"
+#[tauri::command]
+fn set_close_behavior(behavior: String) {
+    let minimize = behavior == "minimize";
+    MINIMIZE_TO_TRAY.store(minimize, Ordering::SeqCst);
+    info!("Close behavior set to: {}", behavior);
 }
 
 /// Start server with command-line arguments (macOS specific)
@@ -219,6 +230,7 @@ pub fn run() {
             is_server_running,
             get_server_port,
             open_url,
+            set_close_behavior,
             start_server_with_args,
             server::start_server,
             server::stop_server,
@@ -259,6 +271,15 @@ pub fn run() {
                         app.exit(0);
                     }
                     "show" => {
+                        // On macOS, restore Dock icon when showing window
+                        #[cfg(target_os = "macos")]
+                        {
+                            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+                            unsafe {
+                                let ns_app = NSApplication::sharedApplication();
+                                ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+                            }
+                        }
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -278,6 +299,15 @@ pub fn run() {
                         ..
                     } = event
                     {
+                        // On macOS, restore Dock icon when showing window
+                        #[cfg(target_os = "macos")]
+                        {
+                            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+                            unsafe {
+                                let ns_app = NSApplication::sharedApplication();
+                                ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+                            }
+                        }
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -299,12 +329,6 @@ pub fn run() {
             // Start the Echo server using platform-specific approach
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
-
-            // Show window immediately with loading state
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
 
             tauri::async_runtime::spawn(async move {
                 info!("Attempting to start server...");
@@ -331,6 +355,13 @@ pub fn run() {
                         error!("Failed to navigate to server: {}", e);
                     }
 
+                    // Wait briefly for the page to start loading before showing window
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+                    // Now show the window after navigation has started
+                    let _ = window.show();
+                    let _ = window.set_focus();
+
                     // On macOS, we need to activate the app to bring it to front
                     #[cfg(target_os = "macos")]
                     {
@@ -352,12 +383,29 @@ pub fn run() {
         .run(|app_handle, event| {
             match event {
                 RunEvent::ExitRequested { api, .. } => {
-                    // Only prevent exit if we're not actually quitting
-                    if !QUITTING.load(Ordering::SeqCst) {
+                    // Only prevent exit if we're not actually quitting AND minimize-to-tray is enabled
+                    if !QUITTING.load(Ordering::SeqCst) && MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
                         api.prevent_exit();
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.hide();
                         }
+                        // On macOS, hide the Dock icon when minimizing to tray
+                        #[cfg(target_os = "macos")]
+                        {
+                            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+                            unsafe {
+                                let app = NSApplication::sharedApplication();
+                                app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+                            }
+                        }
+                    } else if !QUITTING.load(Ordering::SeqCst) {
+                        // "quit" behavior: stop server and exit
+                        QUITTING.store(true, Ordering::SeqCst);
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = echo_ffi::stop_server();
+                        }
+                        app_handle.exit(0);
                     }
                 }
                 RunEvent::Exit => {

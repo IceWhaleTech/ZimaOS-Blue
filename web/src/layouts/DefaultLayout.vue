@@ -8,10 +8,15 @@ import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingMod
 import FullscreenModal from '@/components/typeless/FullscreenModal.vue'
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 import { usePreviewStore } from '@/stores/preview'
+import { useTauri } from '@/composables/useTauri'
+import { useSettingsStore } from '@/stores/settings'
 import { storeToRefs } from 'pinia'
 
 const previewStore = usePreviewStore()
 const { isPreviewMode } = storeToRefs(previewStore)
+
+const { isTauri, setCloseBehavior } = useTauri()
+const settingsStore = useSettingsStore()
 
 const route = useRoute()
 const noPadding = computed(() => route.meta.noPadding === true)
@@ -29,6 +34,10 @@ const { setup, cleanup } = useFormFillerWidget()
 
 onMounted(() => {
   setup()
+  // Sync close behavior setting to Tauri backend on startup
+  if (isTauri.value) {
+    setCloseBehavior(settingsStore.closeBehavior)
+  }
 })
 
 onUnmounted(() => {

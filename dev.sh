@@ -188,11 +188,63 @@ cleanup() {
     success "Services stopped"
 }
 
+# Build third_party native libraries (espeak-ng, whisper.cpp, opus)
+build_third_party() {
+    info "Building third_party native libraries..."
+
+    # Build espeak-ng
+    if [ ! -f "$PROJECT_ROOT/third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a" ]; then
+        info "Building espeak-ng..."
+        cd "$PROJECT_ROOT/third_party/espeak-ng"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+        success "espeak-ng built"
+    else
+        info "espeak-ng already built, skipping..."
+    fi
+
+    # Build libsonic.a from espeak-ng's compiled object if missing
+    if [ ! -f "$PROJECT_ROOT/third_party/espeak-ng/build/libsonic.a" ] && \
+       [ -f "$PROJECT_ROOT/third_party/espeak-ng/build/CMakeFiles/sonic.dir/_deps/sonic-git-src/sonic.c.o" ]; then
+        info "Creating libsonic.a..."
+        ar rcs "$PROJECT_ROOT/third_party/espeak-ng/build/libsonic.a" \
+            "$PROJECT_ROOT/third_party/espeak-ng/build/CMakeFiles/sonic.dir/_deps/sonic-git-src/sonic.c.o"
+        success "libsonic.a created"
+    fi
+
+    # Build whisper.cpp
+    if [ ! -f "$PROJECT_ROOT/third_party/whisper.cpp/build/src/libwhisper.a" ]; then
+        info "Building whisper.cpp..."
+        cd "$PROJECT_ROOT/third_party/whisper.cpp"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+        success "whisper.cpp built"
+    else
+        info "whisper.cpp already built, skipping..."
+    fi
+
+    # Build opus
+    if [ ! -f "$PROJECT_ROOT/third_party/opus-src/build/libopus.a" ]; then
+        info "Building opus..."
+        cd "$PROJECT_ROOT/third_party/opus-src"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+        success "opus built"
+    else
+        info "opus already built, skipping..."
+    fi
+
+    success "Third_party libraries ready"
+}
+
 # Build for production
 build_all() {
     check_prereqs
 
     info "Building for production..."
+
+    # Build third_party native libraries
+    build_third_party
 
     # Build server
     info "Building Go server..."

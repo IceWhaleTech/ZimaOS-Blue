@@ -34,6 +34,7 @@ type Config struct {
 	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
 	Proxy         *proxy.ProxyConfig  `mapstructure:"proxy"`           // v0.10.5.1: API Proxy
 	Update        UpdateConfig        `mapstructure:"update"`          // OTA Update
+	Heartbeat     HeartbeatConfig     `mapstructure:"heartbeat"`       // Heartbeat agent polling
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
 	ClaudeCode ClaudeCodeConfig `mapstructure:"claudecode"`
@@ -284,6 +285,35 @@ type UpdateConfig struct {
 	ReleaseChannel string        `mapstructure:"release_channel"`
 	BackupCount    int           `mapstructure:"backup_count"`
 	StoragePath    string        `mapstructure:"storage_path"`
+}
+
+// HeartbeatConfig holds heartbeat agent polling configuration.
+type HeartbeatConfig struct {
+	Enabled         bool                    `mapstructure:"enabled"`
+	Interval        time.Duration           `mapstructure:"interval"`
+	Prompt          string                  `mapstructure:"prompt"`
+	AckMaxChars     int                     `mapstructure:"ack_max_chars"`
+	WorkspaceDir    string                  `mapstructure:"workspace_dir"`
+	LLMProvider     string                  `mapstructure:"llm_provider"`
+	LLMModel        string                  `mapstructure:"llm_model"`
+	ActiveHours     *HeartbeatActiveHours   `mapstructure:"active_hours"`
+	Visibility      HeartbeatVisibility     `mapstructure:"visibility"`
+	DeliveryChannel string                  `mapstructure:"delivery_channel"`
+	DeliveryChatID  string                  `mapstructure:"delivery_chat_id"`
+}
+
+// HeartbeatActiveHours defines the time window when heartbeat is allowed to run.
+type HeartbeatActiveHours struct {
+	Start    string `mapstructure:"start"`
+	End      string `mapstructure:"end"`
+	Timezone string `mapstructure:"timezone"`
+}
+
+// HeartbeatVisibility controls what heartbeat results are delivered.
+type HeartbeatVisibility struct {
+	ShowOk       bool `mapstructure:"show_ok"`
+	ShowAlerts   bool `mapstructure:"show_alerts"`
+	UseIndicator bool `mapstructure:"use_indicator"`
 }
 
 type ServerConfig struct {
@@ -803,6 +833,18 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("proxy.quota_monitor.critical_threshold", 5.0)
 	v.SetDefault("proxy.quota_monitor.track_tokens", true)
 	v.SetDefault("proxy.quota_monitor.track_requests", true)
+
+	// Heartbeat defaults
+	v.SetDefault("heartbeat.enabled", false)
+	v.SetDefault("heartbeat.interval", "30m")
+	v.SetDefault("heartbeat.prompt", "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.")
+	v.SetDefault("heartbeat.ack_max_chars", 300)
+	v.SetDefault("heartbeat.workspace_dir", "./data")
+	v.SetDefault("heartbeat.llm_provider", "claude")
+	v.SetDefault("heartbeat.llm_model", "claude-sonnet-4-5-20250929")
+	v.SetDefault("heartbeat.visibility.show_ok", false)
+	v.SetDefault("heartbeat.visibility.show_alerts", true)
+	v.SetDefault("heartbeat.visibility.use_indicator", true)
 
 	// OTA Update defaults
 	v.SetDefault("update.enabled", true)

@@ -1043,7 +1043,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
             </div>
 
             <button
-              class="w-full px-4 py-3 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              class="w-full px-4 py-3 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               :disabled="selectedProviderInfo?.requires_key && !currentProviderToken"
               :class="{ 'opacity-50 cursor-not-allowed': selectedProviderInfo?.requires_key && !currentProviderToken }"
               @click="handleRemoteAccessStart"

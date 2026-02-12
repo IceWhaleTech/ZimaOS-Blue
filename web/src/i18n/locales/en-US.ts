@@ -610,6 +610,10 @@ export default {
     timezone: 'Timezone',
     languageSaved: 'Language saved',
     timezoneSaved: 'Timezone saved',
+    closeBehavior: 'Close Behavior',
+    closeBehaviorQuit: 'Quit',
+    closeBehaviorMinimize: 'Minimize to Tray',
+    closeBehaviorSaved: 'Close behavior saved',
     // LLM Provider
     // Provider names
     providers: {
@@ -4134,6 +4138,9 @@ export default {
     error: 'Error',
     errorOccurred: 'An error occurred',
     unknownError: 'Unknown error',
+    manage: 'Manage Personalities',
+    viewAll: 'View All',
+    total: 'Total',
     // Personality card
     card: {
       active: 'Active',

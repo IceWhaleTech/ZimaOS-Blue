@@ -5788,6 +5788,7 @@ version = "0.10.22"
 dependencies = [
  "env_logger",
  "log",
+ "objc2-app-kit",
  "once_cell",
  "open",
  "reqwest",

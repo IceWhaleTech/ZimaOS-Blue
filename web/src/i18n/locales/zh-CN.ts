@@ -1,4 +1,5 @@
 // Simplified Chinese (简体中文)
+import enUS from './en-US'
 
 export default {
   common: {
@@ -519,6 +520,10 @@ export default {
     timezone: '时区',
     languageSaved: '语言已保存',
     timezoneSaved: '时区已保存',
+    closeBehavior: '关闭行为',
+    closeBehaviorQuit: '退出应用',
+    closeBehaviorMinimize: '最小化到托盘',
+    closeBehaviorSaved: '关闭行为已保存',
     // LLM Provider
     // Provider names
     providers: {
@@ -4120,5 +4125,8 @@ export default {
     error: '错误',
     errorOccurred: '发生错误',
     unknownError: '未知错误',
+    manage: '管理人格',
+    viewAll: '查看全部',
+    total: '总计',
   },
 }

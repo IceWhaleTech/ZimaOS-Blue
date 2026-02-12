@@ -25,6 +25,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
@@ -94,6 +95,7 @@ type RoutesDeps struct {
 	ChannelConfigStore *server.ChannelConfigStore
 	SharedCache        *proxy.CCCache
 	HotReloader        *config.HotReloader
+	HeartbeatHandler   *heartbeat.Handler
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance
@@ -579,6 +581,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	if deps.ChannelConfigStore != nil {
 		channelConfigHandler := server.NewChannelConfigHandler(deps.ChannelConfigStore)
 		channelConfigHandler.RegisterRoutes(api)
+	}
+
+	// Heartbeat routes
+	if deps.HeartbeatHandler != nil {
+		deps.HeartbeatHandler.RegisterRoutes(api)
 	}
 
 	// Set shared cache on chat handler
