@@ -170,7 +170,7 @@ export default {
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',
-    tagline: 'Echo アシスタント',
+    tagline: 'Blue アシスタント',
   },
   errors: {
     ...enUS.errors,
@@ -402,7 +402,7 @@ export default {
   },
   home: {
     ...enUS.home,
-    welcome: 'ZimaOS Echo へようこそ',
+    welcome: 'ZimaOS Blue へようこそ',
     description: 'スマートホーム制御と自動化のためのインテリジェント AI アシスタント',
     loadingStatus: 'システムステータスを読み込み中...',
     status: 'ステータス',
@@ -448,7 +448,7 @@ export default {
       ollama: 'Ollama（ローカル）',
       custom: 'カスタム OpenAI 互換',
       trial: {
-        name: 'ZimaOS Echoトライアル',
+        name: 'ZimaOS Blueトライアル',
         description: '制限付きの無料トライアル',
         quotaExhausted: 'トライアル枠を使い切りました',
         quotaExhaustedTokens: 'トライアルのトークン枠を使い切りました。続けるには自分のプロバイダーを設定してください。',
@@ -457,7 +457,7 @@ export default {
         conversationsUsed: '{used} / {total} 会話使用済み',
         configureProvider: 'プロバイダーを設定',
         trialEnded: 'トライアル終了',
-        trialEndedDesc: '無料トライアルが終了しました。Echo を引き続き使用するには、自分の API キーを追加してください。',
+        trialEndedDesc: '無料トライアルが終了しました。Blue を引き続き使用するには、自分の API キーを追加してください。',
       },
     },
     providerConfiguration: 'プロバイダー設定',
@@ -638,7 +638,7 @@ export default {
   },
   footer: {
     ...enUS.footer,
-    version: 'ZimaOS Echo v{version}',
+    version: 'ZimaOS Blue v{version}',
   },
   system: {
     ...enUS.system,
@@ -2403,10 +2403,10 @@ export default {
     },
   },
   onboarding: {
-    welcome: 'Echo へようこそ！',
+    welcome: 'Blue へようこそ！',
     subtitle: 'パーソナル AI アシスタントの準備ができました',
     previewMode: 'プレビューモード',
-    previewModeDesc: '今すぐ Echo をお使いいただけます。すべての機能が利用可能で、データは保存されます。',
+    previewModeDesc: '今すぐ Blue をお使いいただけます。すべての機能が利用可能で、データは保存されます。',
     createAccountHint: 'いつでもアカウント作成',
     createAccountHintDesc: '準備ができたら、管理者アカウントを作成してユーザー管理を有効にし、データを保護してください。',
     topRightHint: '右上のボタンをご確認ください',
@@ -2414,8 +2414,8 @@ export default {
   },
   remoteAccess: {
     title: 'リモートアクセス',
-    description: 'セキュアトンネルでどこからでも Echo にアクセス',
-    channelDescription: 'どこからでも Echo にアクセス（ボット設定不要）',
+    description: 'セキュアトンネルでどこからでも Blue にアクセス',
+    channelDescription: 'どこからでも Blue にアクセス（ボット設定不要）',
     recommended: 'おすすめ',
     enable: 'リモートアクセスを有効にする',
     disable: '無効にする',
@@ -2439,7 +2439,7 @@ export default {
     feature1: 'QR コードでどこからでもアクセス',
     feature2: '家族とアクセスリンクを共有',
     feature3: 'セッション期限前に自動更新',
-    securityWarning: '警告：リンクを知っている人は誰でも Echo にアクセスできます',
+    securityWarning: '警告：リンクを知っている人は誰でも Blue にアクセスできます',
     statusError: 'ngrok の状態を確認できません',
     downloadStartError: 'ダウンロードを開始できません',
     loadError: 'リモートアクセス状態を読み込めません',
@@ -2616,7 +2616,7 @@ export default {
     editPersonality: 'パーソナリティを編集',
     newPersonality: '新しいパーソナリティ',
     name: '名前',
-    namePlaceholder: '例：Echo、アシスタント',
+    namePlaceholder: '例：Blue、アシスタント',
     nameRequired: '名前は必須です',
     label: '説明',
     descriptionPlaceholder: 'このパーソナリティの用途は？',

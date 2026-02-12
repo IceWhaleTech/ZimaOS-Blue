@@ -4,7 +4,7 @@ import type { ToolDefinition } from '@/api/chat'
 import { toolApi } from '@/api/chat'
 import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
 
-const STORAGE_KEY = 'zimaos-echo-settings'
+const STORAGE_KEY = 'zimaos-blue-settings'
 
 // Provider info for Chat page (simplified view of Provider Pool data)
 export interface ChatProviderInfo {

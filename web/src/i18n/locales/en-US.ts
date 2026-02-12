@@ -225,7 +225,7 @@ export default {
   },
   brand: {
     name: 'ZimaOS',
-    tagline: 'Echo Assistant',
+    tagline: 'Blue Assistant',
   },
   a2ui: {
     title: 'AI UI Generator',
@@ -508,9 +508,9 @@ export default {
     },
   },
   home: {
-    welcome: 'Welcome to ZimaOS Echo',
+    welcome: 'Welcome to ZimaOS Blue',
     description: 'Your intelligent AI assistant for smart home control and automation',
-    startChatCta: 'Click {link} to start chatting with Echo',
+    startChatCta: 'Click {link} to start chatting with Blue',
   },
   settings: {
     title: 'Settings',
@@ -872,7 +872,7 @@ export default {
     userManagementDesc: 'Manage users, roles, and permissions',
   },
   footer: {
-    version: 'ZimaOS Echo v{version}',
+    version: 'ZimaOS Blue v{version}',
   },
   backup: {
     title: 'Backups',
@@ -3192,7 +3192,7 @@ export default {
     anonymousUser: 'Anonymous',
     // Process metrics
     processMetrics: 'Process Metrics',
-    echoServer: 'Echo Server',
+    echoServer: 'Blue Server',
     claudeCodeCli: 'Claude Code CLI',
     pid: 'PID',
     cpu: 'CPU',
@@ -3344,7 +3344,7 @@ export default {
     dragToReorder: 'Drag to reorder priority',
     // Trial provider
     trial: {
-      name: 'ZimaOS EchoTrial',
+      name: 'ZimaOS BlueTrial',
       description: 'Free trial with limited quota',
       quotaExhausted: 'Trial quota exhausted',
       quotaExhaustedTokens: 'Your trial token quota has been exhausted. Please configure your own provider to continue.',
@@ -3352,7 +3352,7 @@ export default {
       tokensUsed: '{remaining} / {total} tokens remaining',
       configureProvider: 'Configure Provider',
       trialEnded: 'Trial Ended',
-      trialEndedDesc: 'Your free trial has ended. Add your own API key to continue using Echo.',
+      trialEndedDesc: 'Your free trial has ended. Add your own API key to continue using Blue.',
     },
     // Provider descriptions
     providers: {
@@ -3367,7 +3367,7 @@ export default {
       ollama: 'Run open-source LLMs locally on your machine',
       lmstudio: 'Local LLM inference with a user-friendly interface',
       glm: 'Zhipu AI GLM-4 series models with Chinese language support',
-      'zimaos-echo-trial': 'Free trial with limited quota - experience Echo before configuring your own provider',
+      'zimaos-blue-trial': 'Free trial with limited quota - experience Blue before configuring your own provider',
     },
     tabs: {
       all: 'All',
@@ -3452,16 +3452,16 @@ export default {
     },
   },
   onboarding: {
-    welcome: 'Welcome to Echo!',
+    welcome: 'Welcome to Blue!',
     previewMode: 'Preview Mode',
-    previewModeDesc: 'You can start using Echo right away. All features are available and your data will be saved.',
+    previewModeDesc: 'You can start using Blue right away. All features are available and your data will be saved.',
     createAccountHintDesc: 'When you\'re ready, create an admin account to unlock user management and secure your data.',
     gotIt: 'Got it, let\'s start!',
   },
   remoteAccess: {
     title: 'Remote Access',
-    description: 'Access your Echo from anywhere via secure tunnel',
-    channelDescription: 'Access Echo from anywhere - no bot setup required',
+    description: 'Access your Blue from anywhere via secure tunnel',
+    channelDescription: 'Access Blue from anywhere - no bot setup required',
     recommended: 'Recommended',
     enable: 'Enable Remote Access',
     disable: 'Disable',
@@ -3488,7 +3488,7 @@ export default {
     feature1: 'Access from anywhere via QR code',
     feature2: 'Share access link with family',
     feature3: 'Auto-renewal before session expires',
-    securityWarning: 'Warning: Anyone with the link can access your Echo',
+    securityWarning: 'Warning: Anyone with the link can access your Blue',
     antivirusHint: 'Antivirus software may show a warning when using remote access; you can add an exception or ignore it.',
     statusError: 'Failed to check ngrok status',
     downloadStartError: 'Failed to start download',
@@ -3500,7 +3500,7 @@ export default {
     antivirusWarningTitle: 'Antivirus software may show a warning',
     antivirusWarningDesc: 'Remote access uses legitimate network tunneling tools. Some antivirus software may flag them as potential threats.',
     antivirusHint1: 'Windows Defender: Click "Allow" or "More info" → "Run anyway"',
-    antivirusHint2: 'Other antivirus: Add Echo to whitelist/exclusions',
+    antivirusHint2: 'Other antivirus: Add Blue to whitelist/exclusions',
     antivirusHint3: 'If issues persist: Temporarily disable antivirus to test connection',
     // Diagnostics and Logs
     diagnostics: 'Diagnostics',
@@ -4098,7 +4098,7 @@ export default {
     editPersonality: 'Edit Personality',
     newPersonality: 'New Personality',
     name: 'Name',
-    namePlaceholder: 'e.g., Echo, Assistant',
+    namePlaceholder: 'e.g., Blue, Assistant',
     nameRequired: 'Name is required',
     label: 'Description',
     descriptionPlaceholder: 'What is this personality for?',

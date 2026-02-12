@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-const THEME_KEY = 'zimaos-echo-theme'
+const THEME_KEY = 'zimaos-blue-theme'
 
 export type Theme = 'light' | 'dark' | 'system'
 

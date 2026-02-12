@@ -1,5 +1,5 @@
-// Echo Server FFI bindings for macOS
-// Links to the Go static library (libecho.a) via CGO
+// Blue Server FFI bindings for macOS
+// Links to the Go static library (libblue.a) via CGO
 //
 // This module is only compiled on macOS where we use the CGO library approach
 // instead of the sidecar process approach used on Windows.
@@ -13,41 +13,41 @@ use std::os::raw::{c_char, c_int};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // FFI declarations for the Go library exports
-#[link(name = "echo", kind = "static")]
+#[link(name = "blue", kind = "static")]
 extern "C" {
-    /// Start the Echo server with command-line arguments
+    /// Start the Blue server with command-line arguments
     /// port: The port to listen on (0 for auto-select)
     /// data_dir: Path to the data directory (can be null for default)
     /// args: Command-line arguments as a single string (can be null)
     /// Returns: 0 on success, non-zero on error
-    fn EchoServerStartWithArgs(port: c_int, data_dir: *const c_char, args: *const c_char) -> c_int;
+    fn BlueServerStartWithArgs(port: c_int, data_dir: *const c_char, args: *const c_char) -> c_int;
 
-    /// Start the Echo server (legacy, without args)
+    /// Start the Blue server (legacy, without args)
     /// port: The port to listen on (0 for auto-select)
     /// data_dir: Path to the data directory (can be null for default)
     /// Returns: 0 on success, non-zero on error
-    fn EchoServerStart(port: c_int, data_dir: *const c_char) -> c_int;
+    fn BlueServerStart(port: c_int, data_dir: *const c_char) -> c_int;
 
-    /// Stop the Echo server
+    /// Stop the Blue server
     /// Returns: 0 on success, non-zero on error
-    fn EchoServerStop() -> c_int;
+    fn BlueServerStop() -> c_int;
 
     /// Check if the server is running
     /// Returns: 1 if running, 0 if not
-    fn EchoServerIsRunning() -> c_int;
+    fn BlueServerIsRunning() -> c_int;
 
     /// Get the server version string
-    /// Returns: A C string that must be freed with EchoServerFreeString
-    fn EchoServerGetVersion() -> *mut c_char;
+    /// Returns: A C string that must be freed with BlueServerFreeString
+    fn BlueServerGetVersion() -> *mut c_char;
 
     /// Free a string returned by the Go library
-    fn EchoServerFreeString(s: *mut c_char);
+    fn BlueServerFreeString(s: *mut c_char);
 }
 
 /// Track if we've started the server (to prevent double-start)
 static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 
-/// Start the Echo server via FFI with command-line arguments
+/// Start the Blue server via FFI with command-line arguments
 ///
 /// # Arguments
 /// * `port` - The port to listen on (use 0 for auto-select)
@@ -59,11 +59,11 @@ static SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 /// * `Err(String)` with error message on failure
 pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&str>) -> Result<(), String> {
     if SERVER_STARTED.load(Ordering::SeqCst) {
-        info!("Echo server already started via FFI");
+        info!("Blue server already started via FFI");
         return Ok(());
     }
 
-    info!("Starting Echo server via FFI on port {} with args: {:?}", port, args);
+    info!("Starting Blue server via FFI on port {} with args: {:?}", port, args);
 
     let c_data_dir = match data_dir {
         Some(dir) => {
@@ -80,7 +80,7 @@ pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&s
     };
 
     let result = unsafe {
-        EchoServerStartWithArgs(
+        BlueServerStartWithArgs(
             port as c_int,
             if data_dir.is_some() {
                 c_data_dir.as_ptr()
@@ -97,22 +97,22 @@ pub fn start_server_with_args(port: u16, data_dir: Option<&str>, args: Option<&s
 
     if result == 0 {
         SERVER_STARTED.store(true, Ordering::SeqCst);
-        info!("Echo server started successfully via FFI with args");
+        info!("Blue server started successfully via FFI with args");
         Ok(())
     } else {
-        error!("Failed to start Echo server via FFI, error code: {}", result);
-        Err(format!("Failed to start Echo server, error code: {}", result))
+        error!("Failed to start Blue server via FFI, error code: {}", result);
+        Err(format!("Failed to start Blue server, error code: {}", result))
     }
 }
 
-/// Start the Echo server via FFI (legacy, without args)
+/// Start the Blue server via FFI (legacy, without args)
 pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
     if SERVER_STARTED.load(Ordering::SeqCst) {
-        info!("Echo server already started via FFI");
+        info!("Blue server already started via FFI");
         return Ok(());
     }
 
-    info!("Starting Echo server via FFI on port {}", port);
+    info!("Starting Blue server via FFI on port {}", port);
 
     let c_data_dir = match data_dir {
         Some(dir) => {
@@ -122,7 +122,7 @@ pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
     };
 
     let result = unsafe {
-        EchoServerStart(
+        BlueServerStart(
             port as c_int,
             if data_dir.is_some() {
                 c_data_dir.as_ptr()
@@ -134,44 +134,44 @@ pub fn start_server(port: u16, data_dir: Option<&str>) -> Result<(), String> {
 
     if result == 0 {
         SERVER_STARTED.store(true, Ordering::SeqCst);
-        info!("Echo server started successfully via FFI");
+        info!("Blue server started successfully via FFI");
         Ok(())
     } else {
-        error!("Failed to start Echo server via FFI, error code: {}", result);
-        Err(format!("Failed to start Echo server, error code: {}", result))
+        error!("Failed to start Blue server via FFI, error code: {}", result);
+        Err(format!("Failed to start Blue server, error code: {}", result))
     }
 }
 
-/// Stop the Echo server via FFI
+/// Stop the Blue server via FFI
 pub fn stop_server() -> Result<(), String> {
     if !SERVER_STARTED.load(Ordering::SeqCst) {
-        info!("Echo server not running, nothing to stop");
+        info!("Blue server not running, nothing to stop");
         return Ok(());
     }
 
-    info!("Stopping Echo server via FFI");
+    info!("Stopping Blue server via FFI");
 
-    let result = unsafe { EchoServerStop() };
+    let result = unsafe { BlueServerStop() };
 
     if result == 0 {
         SERVER_STARTED.store(false, Ordering::SeqCst);
-        info!("Echo server stopped successfully");
+        info!("Blue server stopped successfully");
         Ok(())
     } else {
-        error!("Failed to stop Echo server, error code: {}", result);
-        Err(format!("Failed to stop Echo server, error code: {}", result))
+        error!("Failed to stop Blue server, error code: {}", result);
+        Err(format!("Failed to stop Blue server, error code: {}", result))
     }
 }
 
 /// Check if the server is running
 pub fn is_running() -> bool {
-    unsafe { EchoServerIsRunning() == 1 }
+    unsafe { BlueServerIsRunning() == 1 }
 }
 
 /// Get the server version
 pub fn get_version() -> String {
     unsafe {
-        let version_ptr = EchoServerGetVersion();
+        let version_ptr = BlueServerGetVersion();
         if version_ptr.is_null() {
             return "unknown".to_string();
         }
@@ -180,7 +180,7 @@ pub fn get_version() -> String {
             .to_string_lossy()
             .into_owned();
 
-        EchoServerFreeString(version_ptr);
+        BlueServerFreeString(version_ptr);
         version
     }
 }

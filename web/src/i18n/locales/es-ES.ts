@@ -110,7 +110,7 @@ export default {
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',
-    tagline: 'Asistente Echo',
+    tagline: 'Asistente Blue',
   },
   errors: {
     ...enUS.errors,
@@ -341,7 +341,7 @@ export default {
   },
   home: {
     ...enUS.home,
-    welcome: 'Bienvenido a ZimaOS Echo',
+    welcome: 'Bienvenido a ZimaOS Blue',
     description:
       'Tu asistente de IA para control y automatización del hogar inteligente',
     loadingStatus: 'Cargando estado del sistema...',
@@ -375,7 +375,7 @@ export default {
       ollama: 'Ollama (Local)',
       custom: 'Personalizado compatible con OpenAI',
       trial: {
-        name: 'ZimaOS EchoPrueba',
+        name: 'ZimaOS BluePrueba',
         description: 'Prueba gratuita con cuota limitada',
         quotaExhausted: 'Cuota de prueba agotada',
         quotaExhaustedTokens: 'Su cuota de tokens de prueba se ha agotado. Configure su propio proveedor para continuar.',
@@ -384,7 +384,7 @@ export default {
         conversationsUsed: '{used} / {total} conversaciones usadas',
         configureProvider: 'Configurar proveedor',
         trialEnded: 'Prueba finalizada',
-        trialEndedDesc: 'Su prueba gratuita ha finalizado. Agregue su propia clave API para seguir usando Echo.',
+        trialEndedDesc: 'Su prueba gratuita ha finalizado. Agregue su propia clave API para seguir usandoBlue.',
       },
     },
     providerConfiguration: 'Configuración del proveedor',
@@ -581,7 +581,7 @@ export default {
   },
   footer: {
     ...enUS.footer,
-    version: 'ZimaOS Echo v{version}',
+    version: 'ZimaOS Blue v{version}',
   },
   system: {
     ...enUS.system,
@@ -1947,10 +1947,10 @@ export default {
     },
   },
   onboarding: {
-    welcome: '¡Bienvenido a Echo!',
+    welcome: '¡Bienvenido a Blue!',
     subtitle: 'Tu asistente de IA personal está listo',
     previewMode: 'Modo Vista previa',
-    previewModeDesc: 'Puedes usar Echo de inmediato. Todas las funciones están disponibles y tus datos se guardarán.',
+    previewModeDesc: 'Puedes usar Blue de inmediato. Todas las funciones están disponibles y tus datos se guardarán.',
     createAccountHint: 'Crear cuenta en cualquier momento',
     createAccountHintDesc: 'Cuando estés listo, crea una cuenta de administrador para desbloquear la gestión de usuarios y proteger tus datos.',
     topRightHint: 'Busca el botón en la esquina superior derecha',
@@ -2024,8 +2024,8 @@ export default {
   },
   remoteAccess: {
     title: 'Acceso remoto',
-    description: 'Accede a tu Echo desde cualquier lugar mediante un túnel seguro',
-    channelDescription: 'Accede a Echo desde cualquier lugar, sin configurar bot',
+    description: 'Accede a tu Blue desde cualquier lugar mediante un túnel seguro',
+    channelDescription: 'Accede a Blue desde cualquier lugar, sin configurar bot',
     recommended: 'Recomendado',
     enable: 'Activar acceso remoto',
     disable: 'Desactivar',
@@ -2049,7 +2049,7 @@ export default {
     feature1: 'Accede desde cualquier lugar con código QR',
     feature2: 'Comparte el enlace de acceso con la familia',
     feature3: 'Renovación automática antes de que expire la sesión',
-    securityWarning: 'Aviso: Cualquiera con el enlace puede acceder a tu Echo',
+    securityWarning: 'Aviso: Cualquiera con el enlace puede acceder a tu Blue',
     statusError: 'No se pudo comprobar el estado de ngrok',
     downloadStartError: 'No se pudo iniciar la descarga',
     loadError: 'No se pudo cargar el estado del acceso remoto',
@@ -2234,7 +2234,7 @@ export default {
     editPersonality: 'Editar personalidad',
     newPersonality: 'Nueva personalidad',
     name: 'Nombre',
-    namePlaceholder: 'ej: Echo, Asistente',
+    namePlaceholder: 'ej: Blue, Asistente',
     nameRequired: 'El nombre es obligatorio',
     label: 'Descripción',
     descriptionPlaceholder: '¿Para qué es esta personalidad?',

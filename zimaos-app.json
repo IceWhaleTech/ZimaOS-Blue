@@ -1,6 +1,6 @@
 {
-  "name": "ZimaOS Echo",
-  "title": "ZimaOS Echo - AI Assistant",
+  "name": "ZimaOS Blue",
+  "title": "ZimaOS Blue - AI Assistant",
   "description": "A powerful AI assistant for ZimaOS with smart home integration, multi-channel support, and voice capabilities",
   "version": "0.10.17",
   "icon": "/app/icon.png",
@@ -11,9 +11,9 @@
     "url": "https://www.zimaspace.com"
   },
   "license": "Apache-2.0",
-  "repository": "https://github.com/IceWhaleTech/ZimaOS-Echo",
-  "homepage": "https://www.zimaspace.com/echo",
-  "documentation": "https://docs.zimaspace.com/echo",
+  "repository": "https://github.com/IceWhaleTech/ZimaOS-Blue",
+  "homepage": "https://www.zimaspace.com/blue",
+  "documentation": "https://docs.zimaspace.com/blue",
   "requirements": {
     "zimaos_version": ">=1.0.0",
     "memory": "512MB",
@@ -31,23 +31,23 @@
   "volumes": [
     {
       "container": "/app/data",
-      "host": "/DATA/AppData/zimaos-echo/data",
+      "host": "/DATA/AppData/zimaos-blue/data",
       "description": "Application data and database"
     },
     {
       "container": "/app/config",
-      "host": "/DATA/AppData/zimaos-echo/config",
+      "host": "/DATA/AppData/zimaos-blue/config",
       "description": "Configuration files"
     }
   ],
   "environment": [
     {
-      "name": "ECHO_SERVER_PORT",
+      "name": "BLUE_SERVER_PORT",
       "value": "23456",
       "description": "Server port"
     },
     {
-      "name": "ECHO_LOG_LEVEL",
+      "name": "BLUE_LOG_LEVEL",
       "value": "info",
       "description": "Log level (debug, info, warn, error)"
     },
