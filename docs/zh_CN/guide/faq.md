@@ -53,7 +53,7 @@ ZimaOS Blue 支持多种 LLM 提供商：
 docker run -d \
   --name zimaos-blue \
   -p 23456:23456 \
-  -v echo-data:/app/data \
+  -v blue-data:/app/data \
   icewhale/zimaos-blue:latest
 ```
 
@@ -121,10 +121,10 @@ llm:
 ```nginx
 server {
     listen 443 ssl;
-    server_name echo.example.com;
+    server_name blue.example.com;
 
-    ssl_certificate /etc/letsencrypt/live/echo.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/echo.example.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/blue.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/blue.example.com/privkey.pem;
 
     location / {
         proxy_pass http://localhost:23456;
@@ -174,7 +174,7 @@ export BLUE_SERVER_PORT=8081
 
 1. 安装 Ollama：https://ollama.ai
 2. 拉取模型：`ollama pull llama3.2`
-3. 配置 Echo：
+3. 配置 Blue：
 ```yaml
 llm:
   default_provider: ollama
@@ -227,7 +227,7 @@ llm:
 1. 在 Home Assistant 创建长期访问令牌：
    - 个人资料 → 长期访问令牌 → 创建令牌
 
-2. 在 Echo 中配置：
+2. 在 Blue 中配置：
 ```yaml
 homeassistant:
   enabled: true
@@ -390,7 +390,7 @@ curl http://localhost:23456/health
 
 ### 哪里可以获得帮助？
 
-- 文档：https://docs.zimaspace.com/echo
+- 文档：https://docs.zimaspace.com/blue
 - GitHub Issues：https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord：https://discord.gg/zimaos
 

@@ -27,7 +27,7 @@ import (
 //
 // Routing modes (determined by API Key scope):
 // - route:auto - Auto select best provider (default)
-// - route:cloud - Force cloud provider (zimaos-trial)
+// - route:cloud - Force cloud provider (zimaos-blue-trial)
 // - route:local - Force local provider
 type ProxyHandler struct {
 	router          *Router            // Legacy router (fallback only)

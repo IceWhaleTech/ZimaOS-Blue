@@ -1,13 +1,13 @@
-; ZimaOS Echo Setup Script
-!define PRODUCT_NAME                    "ZimaOS Echo"
-!define PRODUCT_PATHNAME                "ZimaOS_Echo"
-!define INSTALL_APPEND_PATH             "ZimaOS Echo"
+; ZimaOS Blue Setup Script
+!define PRODUCT_NAME                    "ZimaOS Blue"
+!define PRODUCT_PATHNAME                "ZimaOS_Blue"
+!define INSTALL_APPEND_PATH             "ZimaOS Blue"
 !define INSTALL_DEFALT_SETUPPATH        ""
-!define EXE_NAME                        "zimaos-echo.exe"
+!define EXE_NAME                        "zimaos-blue.exe"
 !define PRODUCT_VERSION                 "0.10.22.0"
 !define PRODUCT_PUBLISHER               "ZimaOS Team"
 !define PRODUCT_LEGAL                   "ZimaOS Team Copyright 2024"
-!define INSTALL_OUTPUT_NAME             "ZimaOS-Echo_0.10.22_x64-setup.exe"
+!define INSTALL_OUTPUT_NAME             "ZimaOS-Blue_0.10.22_x64-setup.exe"
 
 !define INSTALL_7Z_PATH                 "..\app.7z"
 !define INSTALL_7Z_NAME                 "app.7z"

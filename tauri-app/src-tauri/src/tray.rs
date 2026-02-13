@@ -19,9 +19,9 @@ pub mod menu_ids {
 /// Get the tooltip text for the tray icon
 pub fn get_tooltip(running: bool, port: u16) -> String {
     if running {
-        format!("ZimaOS Echo - Running on port {}", port)
+        format!("ZimaOS Blue - Running on port {}", port)
     } else {
-        "ZimaOS Echo - Server stopped".to_string()
+        "ZimaOS Blue - Server stopped".to_string()
     }
 }
 

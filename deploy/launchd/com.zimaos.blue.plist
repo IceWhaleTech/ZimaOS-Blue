@@ -4,24 +4,24 @@
 <dict>
     <!-- Service identifier -->
     <key>Label</key>
-    <string>com.zimaos.echo</string>
+    <string>com.zimaos.blue</string>
 
     <!-- Program and arguments -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/zimaos-echo</string>
+        <string>/usr/local/bin/zimaos-blue</string>
         <string>--config</string>
-        <string>/usr/local/etc/zimaos-echo/config.yaml</string>
+        <string>/usr/local/etc/zimaos-blue/config.yaml</string>
     </array>
 
     <!-- Working directory -->
     <key>WorkingDirectory</key>
-    <string>/usr/local/var/zimaos-echo</string>
+    <string>/usr/local/var/zimaos-blue</string>
 
     <!-- Environment variables -->
     <key>EnvironmentVariables</key>
     <dict>
-        <key>ECHO_ENV</key>
+        <key>BLUE_ENV</key>
         <string>production</string>
     </dict>
 
@@ -44,9 +44,9 @@
 
     <!-- Logging -->
     <key>StandardOutPath</key>
-    <string>/usr/local/var/log/zimaos-echo/stdout.log</string>
+    <string>/usr/local/var/log/zimaos-blue/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/usr/local/var/log/zimaos-echo/stderr.log</string>
+    <string>/usr/local/var/log/zimaos-blue/stderr.log</string>
 
     <!-- Resource limits -->
     <key>SoftResourceLimits</key>

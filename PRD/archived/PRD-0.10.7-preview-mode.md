@@ -737,10 +737,10 @@ const previewBlockedRoutes = [
 
 ### 10.1 Metrics to Track
 
-- `echo_preview_sessions_total`: Total preview sessions
-- `echo_preview_upgrades_total`: Successful upgrades to admin
-- `echo_preview_data_migrations_total`: Successful data migrations
-- `echo_preset_question_clicks_total`: Preset question click count
+- `blue_preview_sessions_total`: Total preview sessions
+- `blue_preview_upgrades_total`: Successful upgrades to admin
+- `blue_preview_data_migrations_total`: Successful data migrations
+- `blue_preset_question_clicks_total`: Preset question click count
 
 ### 10.2 Conversion Funnel
 

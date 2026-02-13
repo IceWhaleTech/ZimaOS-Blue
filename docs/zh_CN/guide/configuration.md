@@ -127,7 +127,7 @@ logging:
   output: "stdout"
   file:
     enabled: false
-    path: "./logs/echo.log"
+    path: "./logs/blue.log"
     max_size_mb: 100
     max_backups: 3
     max_age_days: 7
@@ -135,7 +135,7 @@ logging:
 # 数据库
 database:
   type: "sqlite"
-  path: "./data/echo.db"
+  path: "./data/blue.db"
   max_connections: 10
 ```
 

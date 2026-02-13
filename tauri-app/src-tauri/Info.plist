@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>ZimaOS Echo needs microphone access for voice input and speech recognition.</string>
+    <string>ZimaOS Blue needs microphone access for voice input and speech recognition.</string>
 </dict>
 </plist>

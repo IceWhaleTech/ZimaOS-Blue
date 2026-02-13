@@ -21,7 +21,7 @@ ZimaOS Blue is designed specifically for ZimaOS and provides the best integratio
 
 1. Open ZimaOS Dashboard
 2. Navigate to **App Store**
-3. Search for "Echo"
+3. Search for "Blue"
 4. Click **Install**
 
 ### Manual Installation
@@ -133,7 +133,7 @@ docker-compose up -d
 ### Synology-Specific Tips
 
 - Use Synology's built-in Let's Encrypt for SSL
-- Create a dedicated shared folder for Echo data
+- Create a dedicated shared folder for Blue data
 - Use Synology's scheduled tasks for backups
 - Monitor resources via Resource Monitor
 
@@ -194,7 +194,7 @@ docker run -d \
 ### Reverse Proxy with QNAP
 
 1. Install **Nginx** from App Center (or use built-in reverse proxy)
-2. Configure virtual host for Echo
+2. Configure virtual host for Blue
 3. Enable WebSocket support
 
 ---
@@ -396,7 +396,7 @@ homeassistant:
 
 ### Ollama Integration (Local LLM)
 
-Run Ollama alongside Echo:
+Run Ollama alongside Blue:
 
 ```yaml
 # docker-compose.yml
@@ -425,10 +425,10 @@ volumes:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name echo.yourdomain.com;
+    server_name blue.yourdomain.com;
 
-    ssl_certificate /etc/letsencrypt/live/echo.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/echo.yourdomain.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/blue.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/blue.yourdomain.com/privkey.pem;
 
     location / {
         proxy_pass http://localhost:8765;
@@ -478,7 +478,7 @@ ls -la /path/to/data
 
 ```bash
 # Backup and recreate database
-docker exec zimaos-blue cp /app/data/echo.db /app/data/echo.db.bak
+docker exec zimaos-blue cp /app/data/blue.db /app/data/blue.db.bak
 docker restart zimaos-blue
 ```
 
@@ -486,6 +486,6 @@ docker restart zimaos-blue
 
 ## Support
 
-- Documentation: https://docs.zimaspace.com/echo
+- Documentation: https://docs.zimaspace.com/blue
 - GitHub Issues: https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord: https://discord.gg/zimaos

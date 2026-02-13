@@ -6,7 +6,7 @@ This PRD defines how Claude Code CLI is bundled and managed within ZimaOS-Blue. 
 
 ## Goals
 
-1. **Minimal binary size** - Do not embed CLI by default, keep Echo binary small (~50MB)
+1. **Minimal binary size** - Do not embed CLI by default, keep Blue binary small (~50MB)
 2. **Zero-configuration deployment** - CLI is automatically downloaded on first use
 3. **Flexible deployment** - Support both embedded and downloaded CLI modes
 4. **Version management** - Users can view and update CLI version from settings
@@ -52,7 +52,7 @@ make build
 
 ### Mode 2: Embedded (Optional)
 
-The Claude Code CLI binary is embedded into the Echo binary at build time.
+The Claude Code CLI binary is embedded into the Blue binary at build time.
 
 **Characteristics:**
 - Single binary deployment

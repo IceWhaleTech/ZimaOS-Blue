@@ -11,7 +11,7 @@ Write-Host ""
 
 # Step 1: Build frontend
 Write-Host "[STEP 1] Building frontend..."
-Set-Location "g:\GitHub\ZimaOS-Echo\web"
+Set-Location "g:\GitHub\ZimaOS-Blue\web"
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 npm install
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
@@ -21,18 +21,18 @@ Write-Host "[OK] Frontend built"
 
 # Step 2: Copy to server embed dir
 Write-Host "[STEP 2] Copying frontend to server/internal/web/dist..."
-$embedDir = "g:\GitHub\ZimaOS-Echo\server\internal\web\dist"
+$embedDir = "g:\GitHub\ZimaOS-Blue\server\internal\web\dist"
 if (Test-Path $embedDir) { Remove-Item -Recurse -Force $embedDir }
 New-Item -ItemType Directory -Path $embedDir -Force | Out-Null
-Copy-Item -Recurse -Force "g:\GitHub\ZimaOS-Echo\web\dist\*" $embedDir
+Copy-Item -Recurse -Force "g:\GitHub\ZimaOS-Blue\web\dist\*" $embedDir
 Get-ChildItem -Recurse -Filter "*.map" $embedDir | Remove-Item -Force
 Write-Host "[OK] Frontend copied"
 
 # Step 3: Build Go sidecar (needs MinGW in PATH for CGO)
 Write-Host "[STEP 3] Building Go sidecar (CGO enabled)..."
-Set-Location "g:\GitHub\ZimaOS-Echo\server"
-$tauriDir = "g:\GitHub\ZimaOS-Echo\tauri-app\src-tauri"
-$sidecarName = "echo-server-x86_64-pc-windows-msvc.exe"
+Set-Location "g:\GitHub\ZimaOS-Blue\server"
+$tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
+$sidecarName = "blue-server-x86_64-pc-windows-msvc.exe"
 if (!(Test-Path "$tauriDir\binaries")) { New-Item -ItemType Directory "$tauriDir\binaries" -Force | Out-Null }
 if (!(Test-Path "$tauriDir\bin")) { New-Item -ItemType Directory "$tauriDir\bin" -Force | Out-Null }
 # Temporarily add MinGW to PATH for CGO
@@ -57,7 +57,7 @@ New-Item -ItemType Directory "$tauriDir\data" -Force | Out-Null
 
 # Step 5: Build Tauri (MSVC toolchain, no MinGW)
 Write-Host "[STEP 5] Building Tauri application..."
-Set-Location "g:\GitHub\ZimaOS-Echo\tauri-app"
+Set-Location "g:\GitHub\ZimaOS-Blue\tauri-app"
 npm install
 if ($LASTEXITCODE -ne 0) { throw "tauri npm install failed" }
 npm run build
@@ -73,7 +73,7 @@ foreach ($rd in $releaseDirs) {
     if (Test-Path "$rd\zimaos-blue.exe") {
         Copy-Item -Force "$rd\zimaos-blue.exe" $filesDir
         Copy-Item -Force "$rd\WebView2Loader.dll" $filesDir
-        Copy-Item -Force "$tauriDir\bin\$sidecarName" "$filesDir\echo-server.exe"
+        Copy-Item -Force "$tauriDir\bin\$sidecarName" "$filesDir\blue-server.exe"
         Write-Host "[OK] Files copied from $rd"
         break
     }

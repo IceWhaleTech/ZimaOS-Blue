@@ -8,19 +8,19 @@ Download the appropriate binary for your platform from [GitHub Releases](https:/
 
 | Platform | Architecture | Download |
 |----------|--------------|----------|
-| Linux | amd64 | `echo-linux-amd64.tar.gz` |
-| Linux | arm64 | `echo-linux-arm64.tar.gz` |
-| macOS | amd64 | `echo-darwin-amd64.tar.gz` |
-| macOS | arm64 | `echo-darwin-arm64.tar.gz` |
-| Windows | amd64 | `echo-windows-amd64.zip` |
+| Linux | amd64 | `blue-linux-amd64.tar.gz` |
+| Linux | arm64 | `blue-linux-arm64.tar.gz` |
+| macOS | amd64 | `blue-darwin-amd64.tar.gz` |
+| macOS | arm64 | `blue-darwin-arm64.tar.gz` |
+| Windows | amd64 | `blue-windows-amd64.zip` |
 
 ### Extract and Install
 
 ```bash
 # Linux/macOS
-tar -xzf echo-linux-amd64.tar.gz
-sudo mv echo /usr/local/bin/
-sudo chmod +x /usr/local/bin/echo
+tar -xzf blue-linux-amd64.tar.gz
+sudo mv blue /usr/local/bin/
+sudo chmod +x /usr/local/bin/blue
 
 # Create config directory
 sudo mkdir -p /etc/zimaos-blue
@@ -53,7 +53,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/echo --config /etc/zimaos-blue/config.yaml
+ExecStart=/usr/local/bin/blue --config /etc/zimaos-blue/config.yaml
 Restart=always
 RestartSec=5
 
@@ -73,7 +73,7 @@ docker run -d \
   --name zimaos-blue \
   -p 23456:23456 \
   -v /path/to/config:/etc/zimaos-blue \
-  zimaos/echo:latest
+  zimaos/blue:latest
 ```
 
 ### Docker Compose
@@ -81,8 +81,8 @@ docker run -d \
 ```yaml
 version: '3.8'
 services:
-  echo:
-    image: zimaos/echo:latest
+  blue:
+    image: zimaos/blue:latest
     ports:
       - "23456:23456"
     volumes:

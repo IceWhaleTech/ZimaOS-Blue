@@ -1,4 +1,4 @@
-// ZimaOS Echo - Tauri Library
+// ZimaOS Blue - Tauri Library
 // Core application logic
 
 mod server;
@@ -6,7 +6,7 @@ mod tray;
 
 // macOS: Use CGO library approach (FFI to Go static library)
 #[cfg(target_os = "macos")]
-mod echo_ffi;
+mod blue_ffi;
 
 use log::{error, info};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -83,7 +83,7 @@ async fn start_server_with_args(app: tauri::AppHandle, args: Option<String>) -> 
 async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<String>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        info!("Starting Echo server via CGO library (macOS) with args: {:?}", args);
+        info!("Starting Blue server via CGO library (macOS) with args: {:?}", args);
 
         // Get data directory
         let data_dir = app.path().app_data_dir()
@@ -91,7 +91,7 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
             .ok();
 
         // Start server via FFI with args
-        echo_ffi::start_server_with_args(23456, data_dir.as_deref(), args.as_deref())?;
+        blue_ffi::start_server_with_args(23456, data_dir.as_deref(), args.as_deref())?;
 
         // Update app state
         if let Some(state) = app.try_state::<AppState>() {
@@ -121,7 +121,7 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
     #[cfg(not(target_os = "macos"))]
     {
         // Windows/Linux: Use sidecar process approach
-        info!("Starting Echo server via sidecar process with args: {:?}", args);
+        info!("Starting Blue server via sidecar process with args: {:?}", args);
         server::start_sidecar_server(app).await
     }
 }
@@ -131,7 +131,7 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
 async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        info!("Starting Echo server via CGO library (macOS)");
+        info!("Starting Blue server via CGO library (macOS)");
 
         // Get data directory
         let data_dir = app.path().app_data_dir()
@@ -139,7 +139,7 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
             .ok();
 
         // Start server via FFI
-        echo_ffi::start_server(23456, data_dir.as_deref())?;
+        blue_ffi::start_server(23456, data_dir.as_deref())?;
 
         // Update app state
         if let Some(state) = app.try_state::<AppState>() {
@@ -170,7 +170,7 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
         // Windows/Linux: Use sidecar process approach
-        info!("Starting Echo server via sidecar process");
+        info!("Starting Blue server via sidecar process");
         server::start_sidecar_server(app).await
     }
 }
@@ -180,8 +180,8 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
 async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        info!("Stopping Echo server via CGO library (macOS)");
-        echo_ffi::stop_server()?;
+        info!("Stopping Blue server via CGO library (macOS)");
+        blue_ffi::stop_server()?;
 
         if let Some(state) = app.try_state::<AppState>() {
             *state.server_running.lock().unwrap() = false;
@@ -211,7 +211,7 @@ pub fn run() {
         .format_level(false)
         .init();
 
-    info!("Starting ZimaOS Echo desktop application");
+    info!("Starting ZimaOS Blue desktop application");
 
     #[cfg(target_os = "macos")]
     info!("Platform: macOS (using CGO library approach)");
@@ -265,7 +265,7 @@ pub fn run() {
                         // Stop server before exit on macOS
                         #[cfg(target_os = "macos")]
                         {
-                            let _ = echo_ffi::stop_server();
+                            let _ = blue_ffi::stop_server();
                         }
 
                         app.exit(0);
@@ -328,7 +328,7 @@ pub fn run() {
                 window.open_devtools();
             }
 
-            // Start the Echo server using platform-specific approach
+            // Start the Blue server using platform-specific approach
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
 
@@ -369,7 +369,7 @@ pub fn run() {
                     {
                         use std::process::Command;
                         let _ = Command::new("osascript")
-                            .args(["-e", "tell application \"ZimaOS Echo\" to activate"])
+                            .args(["-e", "tell application \"ZimaOS Blue\" to activate"])
                             .output();
                     }
                 } else {
@@ -406,7 +406,7 @@ pub fn run() {
                         QUITTING.store(true, Ordering::SeqCst);
                         #[cfg(target_os = "macos")]
                         {
-                            let _ = echo_ffi::stop_server();
+                            let _ = blue_ffi::stop_server();
                         }
                         app_handle.exit(0);
                     }

@@ -41,7 +41,7 @@ Example:
 ```bash
 export BLUE_SERVER_PORT=9090
 export BLUE_LOG_LEVEL=debug
-./echo --config config.yaml
+./blue --config config.yaml
 ```
 
 ## Server Configuration
@@ -113,7 +113,7 @@ Maximum number of tasks waiting in queue. Default: `100`
 ## Command Line Options
 
 ```bash
-./echo [OPTIONS]
+./blue [OPTIONS]
 
 Options:
   --config, -c    Path to configuration file
@@ -151,7 +151,7 @@ server:
 log:
   level: "info"
   format: "json"
-  output: "/var/log/zimaos-blue/echo.log"
+  output: "/var/log/zimaos-blue/blue.log"
 
 worker:
   pool_size: 20

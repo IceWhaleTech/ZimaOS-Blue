@@ -1,23 +1,23 @@
 [Unit]
-Description=ZimaOS-Echo - NAS-native Agent Runtime
-Documentation=https://github.com/IceWhaleTech/ZimaOS-Echo
+Description=ZimaOS-Blue - NAS-native Agent Runtime
+Documentation=https://github.com/IceWhaleTech/ZimaOS-Blue
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=zimaos-echo
-Group=zimaos-echo
+User=zimaos-blue
+Group=zimaos-blue
 
 # Working directory
-WorkingDirectory=/opt/zimaos-echo
+WorkingDirectory=/opt/zimaos-blue
 
 # Environment
-Environment=ECHO_ENV=production
-EnvironmentFile=-/etc/zimaos-echo/env
+Environment=BLUE_ENV=production
+EnvironmentFile=-/etc/zimaos-blue/env
 
 # Main process
-ExecStart=/opt/zimaos-echo/bin/zimaos-echo --config /etc/zimaos-echo/config.yaml
+ExecStart=/opt/zimaos-blue/bin/zimaos-blue --config /etc/zimaos-blue/config.yaml
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Restart policy
@@ -49,12 +49,12 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 
 # Allow write to data directory
-ReadWritePaths=/var/lib/zimaos-echo /var/log/zimaos-echo
+ReadWritePaths=/var/lib/zimaos-blue /var/log/zimaos-blue
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=zimaos-echo
+SyslogIdentifier=zimaos-blue
 
 # Graceful shutdown
 TimeoutStopSec=30

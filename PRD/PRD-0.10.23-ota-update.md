@@ -508,11 +508,11 @@ When an update is available, show a notification in the web UI:
 
 ### 8.1 Metrics to Track
 
-- `echo_update_check_total`: Total update checks
-- `echo_update_download_total`: Total downloads
-- `echo_update_apply_total`: Total updates applied
-- `echo_update_rollback_total`: Total rollbacks
-- `echo_update_duration_seconds`: Update duration histogram
+- `blue_update_check_total`: Total update checks
+- `blue_update_download_total`: Total downloads
+- `blue_update_apply_total`: Total updates applied
+- `blue_update_rollback_total`: Total rollbacks
+- `blue_update_duration_seconds`: Update duration histogram
 
 ### 8.2 Alerts
 

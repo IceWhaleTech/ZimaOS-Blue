@@ -13,7 +13,7 @@ services:
       - "23456:23456"
 
     volumes:
-      - echo-data:/app/data
+      - blue-data:/app/data
       - ./config:/app/config:ro
 
     environment:
@@ -71,7 +71,7 @@ services:
   #         memory: 8G
 
 volumes:
-  echo-data:
+  blue-data:
     driver: local
   # ollama-data:
   #   driver: local

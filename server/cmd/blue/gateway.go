@@ -59,11 +59,11 @@ var gatewayStartCmd = &cobra.Command{
 			})
 		} else {
 			fmt.Println("To start in background, use:")
-			fmt.Println("  - Windows: echo install && net start ZimaOS-Blue")
+			fmt.Println("  - Windows: blue install && net start ZimaOS-Blue")
 			fmt.Println("  - Linux: systemctl start zimaos-blue")
-			fmt.Println("  - macOS: launchctl load ~/Library/LaunchAgents/com.zimaos.echo.plist")
+			fmt.Println("  - macOS: launchctl load ~/Library/LaunchAgents/com.zimaos.blue.plist")
 			fmt.Println()
-			fmt.Println("Or run in foreground with: echo gateway run")
+			fmt.Println("Or run in foreground with: blue gateway run")
 		}
 	},
 }
@@ -81,7 +81,7 @@ var gatewayStopCmd = &cobra.Command{
 			fmt.Println("To stop the service, use:")
 			fmt.Println("  - Windows: net stop ZimaOS-Blue")
 			fmt.Println("  - Linux: systemctl stop zimaos-blue")
-			fmt.Println("  - macOS: launchctl unload ~/Library/LaunchAgents/com.zimaos.echo.plist")
+			fmt.Println("  - macOS: launchctl unload ~/Library/LaunchAgents/com.zimaos.blue.plist")
 		}
 	},
 }
@@ -99,7 +99,7 @@ var gatewayRestartCmd = &cobra.Command{
 			fmt.Println("To restart the service, use:")
 			fmt.Println("  - Windows: net stop ZimaOS-Blue && net start ZimaOS-Blue")
 			fmt.Println("  - Linux: systemctl restart zimaos-blue")
-			fmt.Println("  - macOS: launchctl unload && launchctl load ~/Library/LaunchAgents/com.zimaos.echo.plist")
+			fmt.Println("  - macOS: launchctl unload && launchctl load ~/Library/LaunchAgents/com.zimaos.blue.plist")
 		}
 	},
 }

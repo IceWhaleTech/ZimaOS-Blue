@@ -8,7 +8,7 @@
     "build": "vitepress build",
     "preview": "vitepress preview"
   },
-  "keywords": ["zimaos", "echo", "nas", "agent"],
+  "keywords": ["zimaos", "blue", "nas", "agent"],
   "author": "ZimaOS Team",
   "license": "MIT",
   "devDependencies": {

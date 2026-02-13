@@ -357,7 +357,7 @@ When applying this skill to ZimaOS-Blue:
 1. **Target Subreddits**: r/homeassistant, r/smarthome, r/selfhosted, r/LocalLLaMA
 2. **Key Competitors**: Clawdbot/Moltbot, Home Assistant, n8n, Zapier
 3. **Content Themes**: Local AI, privacy, automation, smart home, NAS-based solutions
-4. **Value Proposition**: Emphasize what Echo does better/differently
+4. **Value Proposition**: Emphasize what Blue does better/differently
 
 ---
 
@@ -389,7 +389,7 @@ When applying this skill to ZimaOS-Blue:
 5. Synthesis
    → Create MKT/clawdbot-hot-topics.md
    → Create MKT/clawdbot-use-cases.md
-   → Identify opportunities for Echo
+   → Identify opportunities for Blue
 ```
 
 ---

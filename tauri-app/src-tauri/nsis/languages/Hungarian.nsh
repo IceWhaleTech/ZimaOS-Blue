@@ -1,4 +1,4 @@
-; Hungarian translations for ZimaOS Echo installer
+; Hungarian translations for ZimaOS Blue installer
 LangString addOrReinstall ${LANG_HUNGARIAN} "Összetevők hozzáadása/újratelepítése"
 LangString alreadyInstalled ${LANG_HUNGARIAN} "Már telepítve"
 LangString alreadyInstalledLong ${LANG_HUNGARIAN} "A ${PRODUCTNAME} ${VERSION} már telepítve van. Válasszon műveletet és kattintson a Tovább gombra."

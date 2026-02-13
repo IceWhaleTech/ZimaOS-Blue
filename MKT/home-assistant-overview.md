@@ -125,7 +125,7 @@
 
 ### 4.1 差异化机会
 
-**Home Assistant的局限 = Echo的机会：**
+**Home Assistant的局限 = Blue的机会：**
 
 | Home Assistant限制 | ZimaOS Blue优势 |
 |-------------------|----------------|

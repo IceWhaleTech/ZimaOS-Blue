@@ -38,7 +38,7 @@ const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 // Timezone
 const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-const selectedTimezone = ref(localStorage.getItem('zimaos-echo-timezone') || detectedTimezone)
+const selectedTimezone = ref(localStorage.getItem('zimaos-blue-timezone') || detectedTimezone)
 
 const timezones = computed(() => {
   try {
@@ -77,7 +77,7 @@ async function handleLocaleChange(locale: string) {
 
 function handleTimezoneChange(timezone: string) {
   selectedTimezone.value = timezone
-  localStorage.setItem('zimaos-echo-timezone', timezone)
+  localStorage.setItem('zimaos-blue-timezone', timezone)
   showSaveStatus(t('settings.timezoneSaved'))
 }
 

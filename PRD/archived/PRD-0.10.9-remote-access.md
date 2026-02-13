@@ -19,7 +19,7 @@ Version 0.10.9 introduces remote access functionality, allowing users to access 
 **Key Improvements in v0.10.10**:
 - ✅ **Native SDK Integration**: Uses ngrok-go SDK instead of external binary
 - ✅ **State Persistence**: Tunnel state survives page refreshes
-- ✅ **Windows Firewall**: Automatic firewall exception for Echo itself
+- ✅ **Windows Firewall**: Automatic firewall exception for Blue itself
 - ✅ **Error Diagnostics**: Comprehensive diagnostic API for troubleshooting
 - ✅ **Adaptive Polling**: Smart polling frequency (5s connecting, 15s connected)
 
@@ -30,7 +30,7 @@ Version 0.10.9 introduces remote access functionality, allowing users to access 
 ### Current Issues
 
 1. **No Remote Access**
-   - Users cannot access Echo from outside their home network
+   - Users cannot access Blue from outside their home network
    - Port forwarding and DDNS are too complex for average users
    - No simple way to share access with family members
 
@@ -56,9 +56,9 @@ Version 0.10.9 introduces remote access functionality, allowing users to access 
 │                                                             │
 │  User enables remote access                                 │
 │           ↓                                                 │
-│  Echo adds Windows Firewall exception (if needed)           │
+│  Blue adds Windows Firewall exception (if needed)           │
 │           ↓                                                 │
-│  ngrok-go SDK starts tunnel (embedded in Echo)              │
+│  ngrok-go SDK starts tunnel (embedded in Blue)              │
 │           ↓                                                 │
 │  Get public URL immediately                                 │
 │           ↓                                                 │
@@ -79,7 +79,7 @@ Version 0.10.9 introduces remote access functionality, allowing users to access 
 
 #### F1: ngrok-go SDK Integration (v0.10.10)
 
-**Description**: Embed ngrok functionality directly into Echo using the official Go SDK.
+**Description**: Embed ngrok functionality directly into Blue using the official Go SDK.
 
 **Requirements**:
 - Use `golang.ngrok.com/ngrok` SDK
@@ -141,11 +141,11 @@ CREATE TABLE remote_access_sessions (
 
 #### F3: Windows Firewall Auto-Configuration (v0.10.10)
 
-**Description**: Automatically add Windows Firewall exception for Echo itself using COM API.
+**Description**: Automatically add Windows Firewall exception for Blue itself using COM API.
 
 **Requirements**:
 - Use Windows COM API (`INetFwPolicy2`) instead of `netsh` commands
-- Add firewall rule for Echo executable (not ngrok binary)
+- Add firewall rule for Blue executable (not ngrok binary)
 - Rule name: "ZimaOS-Blue-Remote-Access"
 - Requires administrator privileges
 - Graceful fallback if permission denied
@@ -155,12 +155,12 @@ CREATE TABLE remote_access_sessions (
 // Use COM API for firewall management
 oleutil.CreateObject("HNetCfg.FwPolicy2")
 oleutil.CreateObject("HNetCfg.FWRule")
-// Set rule properties for Echo executable
+// Set rule properties for Blue executable
 ```
 
 **Benefits**:
 - ✅ Native Windows API (more reliable than netsh)
-- ✅ Protects Echo itself (not external binary)
+- ✅ Protects Blue itself (not external binary)
 - ✅ Better error messages
 - ✅ Automatic on first run (if admin)
 
@@ -343,7 +343,7 @@ type RemoteAccessConfig struct {
 
 2. **User enables remote access**
    - Clicks "Enable Remote Access" button
-   - (Windows) Echo automatically adds firewall exception if admin
+   - (Windows) Blue automatically adds firewall exception if admin
    - Tunnel starts immediately (no download needed)
    - Status shows "Connecting..." for ~2-3 seconds
 
@@ -356,7 +356,7 @@ type RemoteAccessConfig struct {
 4. **Mobile access**
    - User scans QR code with phone
    - Browser opens to tunnel URL
-   - Full Echo interface accessible remotely
+   - Full Blue interface accessible remotely
 
 5. **Auto-renewal** (background)
    - After 7 hours, system automatically renews
@@ -373,7 +373,7 @@ type RemoteAccessConfig struct {
 
 #### Scenario 1: Firewall Blocked (Windows)
 - **Detection**: Diagnostic API shows `firewall_exception: false`
-- **User Message**: "Windows Firewall may be blocking connections. Run Echo as administrator or manually add firewall rule."
+- **User Message**: "Windows Firewall may be blocking connections. Run Blue as administrator or manually add firewall rule."
 - **Action**: Link to troubleshooting guide
 
 #### Scenario 2: Port Already in Use
@@ -394,9 +394,9 @@ type RemoteAccessConfig struct {
 ## Security Considerations
 
 ### Firewall Configuration
-- Add firewall exception for **Echo executable** (not ngrok binary)
+- Add firewall exception for **Blue executable** (not ngrok binary)
 - Rule name: "ZimaOS-Blue-Remote-Access"
-- Only allow inbound connections to Echo's port
+- Only allow inbound connections to Blue's port
 - User can manually remove rule if desired
 
 ### Authtoken Storage
@@ -483,7 +483,7 @@ type RemoteAccessConfig struct {
 
 ### Migration Steps
 1. Remove old ngrok binary from `~/.local/share/zimaos-blue/ngrok/`
-2. Update firewall rules to point to Echo executable
+2. Update firewall rules to point to Blue executable
 3. Existing sessions will be migrated automatically
 4. No user action required
 

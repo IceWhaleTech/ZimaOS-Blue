@@ -276,7 +276,7 @@ Recommended: [cobra](https://github.com/spf13/cobra):
 ```
 server/
 ├── cmd/
-│   └── echo/
+│   └── blue/
 │       ├── main.go           # Entry point
 │       ├── root.go           # Root command
 │       ├── status.go         # status command

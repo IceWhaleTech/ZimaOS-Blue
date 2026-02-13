@@ -160,7 +160,7 @@ logging:
 ```nginx
 server {
     listen 80;
-    server_name echo.example.com;
+    server_name blue.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:23456;
@@ -178,7 +178,7 @@ server {
 ### Caddy
 
 ```caddyfile
-echo.example.com {
+blue.example.com {
     reverse_proxy localhost:23456
 }
 ```
@@ -188,7 +188,7 @@ echo.example.com {
 ### Let's Encrypt with Certbot
 
 ```bash
-sudo certbot --nginx -d echo.example.com
+sudo certbot --nginx -d blue.example.com
 ```
 
 ### Self-Signed Certificate

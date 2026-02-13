@@ -1,4 +1,4 @@
-; Polish translations for ZimaOS Echo installer
+; Polish translations for ZimaOS Blue installer
 LangString addOrReinstall ${LANG_POLISH} "Dodaj/Zainstaluj ponownie komponenty"
 LangString alreadyInstalled ${LANG_POLISH} "Już zainstalowano"
 LangString alreadyInstalledLong ${LANG_POLISH} "${PRODUCTNAME} ${VERSION} jest już zainstalowany. Wybierz operację i kliknij Dalej."

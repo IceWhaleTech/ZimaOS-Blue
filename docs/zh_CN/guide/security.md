@@ -504,7 +504,7 @@ if err == promptguard.ErrPromptInjectionDetected {
 #### 中间件集成
 
 ```go
-// 将提示词防护中间件添加到 Echo
+// 将提示词防护中间件添加到 Blue
 e.Use(promptguard.Middleware(&promptguard.MiddlewareConfig{
     BlockOnThreat: true,
     LogThreats:    true,

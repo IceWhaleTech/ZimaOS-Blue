@@ -2,12 +2,12 @@
 set -e
 
 # ZimaOS-Blue macOS Installation Script
-# Usage: curl -fsSL https://echo.zimaos.com/install-macos.sh | bash
-# Or: curl -fsSL https://echo.zimaos.com/install-macos.sh | bash -s -- --version v0.1.0
+# Usage: curl -fsSL https://blue.zimaos.com/install-macos.sh | bash
+# Or: curl -fsSL https://blue.zimaos.com/install-macos.sh | bash -s -- --version v0.1.0
 
 VERSION="${VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/zimaos-blue}"
-GITHUB_REPO="zimaos/echo"
+GITHUB_REPO="zimaos/blue"
 BASE_URL="https://github.com/${GITHUB_REPO}/releases"
 
 # Parse arguments
@@ -102,7 +102,7 @@ get_latest_version() {
 }
 
 download_and_install() {
-    local BINARY_NAME="echo-${OS}-${ARCH}"
+    local BINARY_NAME="blue-${OS}-${ARCH}"
     local DOWNLOAD_URL="${BASE_URL}/download/${VERSION}/${BINARY_NAME}.tar.gz"
 
     log_info "Downloading from: $DOWNLOAD_URL"
@@ -112,7 +112,7 @@ download_and_install() {
 
     # Download and extract
     curl -fsSL "$DOWNLOAD_URL" | sudo tar -xz -C "$INSTALL_DIR/bin"
-    sudo chmod +x "$INSTALL_DIR/bin/echo"
+    sudo chmod +x "$INSTALL_DIR/bin/blue"
 
     # Create default config if not exists
     if [ ! -f "$INSTALL_DIR/config/config.yaml" ]; then
@@ -144,7 +144,7 @@ EOF
 setup_launchd() {
     log_info "Setting up launchd service..."
 
-    local PLIST_PATH="$HOME/Library/LaunchAgents/com.zimaos.echo.plist"
+    local PLIST_PATH="$HOME/Library/LaunchAgents/com.zimaos.blue.plist"
     mkdir -p "$HOME/Library/LaunchAgents"
 
     cat > "$PLIST_PATH" << EOF
@@ -153,10 +153,10 @@ setup_launchd() {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.zimaos.echo</string>
+    <string>com.zimaos.blue</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$INSTALL_DIR/bin/echo</string>
+        <string>$INSTALL_DIR/bin/blue</string>
         <string>--config</string>
         <string>$INSTALL_DIR/config/config.yaml</string>
     </array>
@@ -187,7 +187,7 @@ EOF
     launchctl load "$PLIST_PATH"
 
     sleep 2
-    if launchctl list | grep -q "com.zimaos.echo"; then
+    if launchctl list | grep -q "com.zimaos.blue"; then
         log_info "Service started successfully!"
     else
         log_warn "Service may not have started. Check logs in $INSTALL_DIR/logs/"
@@ -196,7 +196,7 @@ EOF
 
 create_symlink() {
     log_info "Creating symlink in /usr/local/bin..."
-    sudo ln -sf "$INSTALL_DIR/bin/echo" /usr/local/bin/zimaos-blue
+    sudo ln -sf "$INSTALL_DIR/bin/blue" /usr/local/bin/zimaos-blue
 }
 
 print_success() {
@@ -209,9 +209,9 @@ print_success() {
     echo "  Health:    http://localhost:23456/health"
     echo ""
     echo "  Commands:"
-    echo "    launchctl list | grep echo           - Check status"
-    echo "    launchctl stop com.zimaos.echo       - Stop service"
-    echo "    launchctl start com.zimaos.echo      - Start service"
+    echo "    launchctl list | grep blue           - Check status"
+    echo "    launchctl stop com.zimaos.blue       - Stop service"
+    echo "    launchctl start com.zimaos.blue      - Start service"
     echo "    tail -f $INSTALL_DIR/logs/stdout.log - View logs"
     echo ""
     echo "  CLI: zimaos-blue --help"
@@ -223,8 +223,8 @@ uninstall() {
     log_info "Uninstalling ZimaOS-Blue..."
 
     # Stop and unload service
-    launchctl unload "$HOME/Library/LaunchAgents/com.zimaos.echo.plist" 2>/dev/null || true
-    rm -f "$HOME/Library/LaunchAgents/com.zimaos.echo.plist"
+    launchctl unload "$HOME/Library/LaunchAgents/com.zimaos.blue.plist" 2>/dev/null || true
+    rm -f "$HOME/Library/LaunchAgents/com.zimaos.blue.plist"
 
     # Remove symlink
     sudo rm -f /usr/local/bin/zimaos-blue
@@ -248,13 +248,13 @@ upgrade() {
     log_info "Upgrading ZimaOS-Blue..."
 
     # Stop service
-    launchctl stop com.zimaos.echo 2>/dev/null || true
+    launchctl stop com.zimaos.blue 2>/dev/null || true
 
     # Download new version
     download_and_install
 
     # Restart service
-    launchctl start com.zimaos.echo
+    launchctl start com.zimaos.blue
 
     log_info "Upgrade complete"
 }

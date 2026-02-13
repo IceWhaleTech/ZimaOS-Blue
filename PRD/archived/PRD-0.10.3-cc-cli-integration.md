@@ -632,7 +632,7 @@ The settings page separates Claude Code CLI configuration from LLM provider conf
 │                                                                              │
 │                         Welcome to ZimaOS Blue                               │
 │                                                                              │
-│                              [Echo Logo]                                     │
+│                              [Blue Logo]                                     │
 │                                                                              │
 │         Your AI-powered assistant for development and automation            │
 │                                                                              │

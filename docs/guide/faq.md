@@ -53,7 +53,7 @@ Using local models with Ollama is completely free.
 docker run -d \
   --name zimaos-blue \
   -p 23456:23456 \
-  -v echo-data:/app/data \
+  -v blue-data:/app/data \
   icewhale/zimaos-blue:latest
 ```
 
@@ -121,10 +121,10 @@ Option 1: Use a reverse proxy (recommended)
 ```nginx
 server {
     listen 443 ssl;
-    server_name echo.example.com;
+    server_name blue.example.com;
 
-    ssl_certificate /etc/letsencrypt/live/echo.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/echo.example.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/blue.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/blue.example.com/privkey.pem;
 
     location / {
         proxy_pass http://localhost:23456;
@@ -174,7 +174,7 @@ export BLUE_SERVER_PORT=8081
 
 1. Install Ollama: https://ollama.ai
 2. Pull a model: `ollama pull llama3.2`
-3. Configure Echo:
+3. Configure Blue:
 ```yaml
 llm:
   default_provider: ollama
@@ -227,7 +227,7 @@ llm:
 1. Get a long-lived access token from Home Assistant:
    - Profile → Long-Lived Access Tokens → Create Token
 
-2. Configure Echo:
+2. Configure Blue:
 ```yaml
 homeassistant:
   enabled: true
@@ -390,7 +390,7 @@ curl http://localhost:23456/health
 
 ### Where can I get help?
 
-- Documentation: https://docs.zimaspace.com/echo
+- Documentation: https://docs.zimaspace.com/blue
 - GitHub Issues: https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord: https://discord.gg/zimaos
 

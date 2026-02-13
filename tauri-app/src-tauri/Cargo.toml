@@ -1,13 +1,13 @@
 [package]
-name = "zimaos-echo"
+name = "zimaos-blue"
 version = "0.10.22"
-description = "ZimaOS Echo - AI Gateway Desktop Application"
+description = "ZimaOS Blue - AI Gateway Desktop Application"
 authors = ["ZimaOS Team"]
 edition = "2021"
 rust-version = "1.70"
 
 [lib]
-name = "zimaos_echo_lib"
+name = "zimaos_blue_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

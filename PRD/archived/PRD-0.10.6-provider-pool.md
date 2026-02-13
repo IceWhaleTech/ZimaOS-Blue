@@ -41,9 +41,9 @@ A Provider Pool system will unify these diverse sources, enabling intelligent ro
 
 ### 2.1 As a User
 
-- I want to connect my existing Antigravity/Cursor subscription to Echo
+- I want to connect my existing Antigravity/Cursor subscription to Blue
 - I want to see all available models from all my providers in one place
-- I want Echo to automatically choose the best available model for my task
+- I want Blue to automatically choose the best available model for my task
 - I want to track my usage across different providers
 
 ### 2.2 As an Administrator
@@ -1228,16 +1228,16 @@ data/providers/
 
 ### 9.1 Metrics to Track
 
-- `echo_provider_requests_total`: Requests per provider
-- `echo_provider_errors_total`: Errors per provider
-- `echo_provider_latency_seconds`: Request latency histogram
-- `echo_provider_tokens_total`: Token usage per provider
-- `echo_provider_health_status`: Provider health (0/1)
-- **`echo_failover_total`**: Total failover events
-- **`echo_failover_success_total`**: Successful failovers
-- **`echo_error_by_type_total`**: Errors by classification type
-- **`echo_streaming_anomaly_total`**: Streaming anomaly detections
-- **`echo_context_exceeded_total`**: Context size exceeded errors
+- `blue_provider_requests_total`: Requests per provider
+- `blue_provider_errors_total`: Errors per provider
+- `blue_provider_latency_seconds`: Request latency histogram
+- `blue_provider_tokens_total`: Token usage per provider
+- `blue_provider_health_status`: Provider health (0/1)
+- **`blue_failover_total`**: Total failover events
+- **`blue_failover_success_total`**: Successful failovers
+- **`blue_error_by_type_total`**: Errors by classification type
+- **`blue_streaming_anomaly_total`**: Streaming anomaly detections
+- **`blue_context_exceeded_total`**: Context size exceeded errors
 
 ### 9.2 Alerts
 

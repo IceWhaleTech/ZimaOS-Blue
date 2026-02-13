@@ -10,17 +10,17 @@ import (
 
 var (
 	// Global flags
-	cfgFile   string
-	devMode   bool
-	profile   string
-	noColor   bool
+	cfgFile    string
+	devMode    bool
+	profile    string
+	noColor    bool
 	jsonOutput bool
-	verbose   bool
+	verbose    bool
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "echo",
+	Use:   "blue",
 	Short: "ZimaOS-Blue - NAS-Native Agent Runtime",
 	Long: `ZimaOS-Blue is a NAS-native agent runtime that provides
 AI assistant capabilities with local-first architecture.

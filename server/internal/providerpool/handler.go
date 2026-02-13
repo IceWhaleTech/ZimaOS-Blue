@@ -176,13 +176,6 @@ func (p *Pool) initBuiltinProviders() {
 		existingMap[provider.ID] = provider
 	}
 
-	// Migration: Remove old zimaos-trial provider if it exists (replaced by zimaos-blue-trial)
-	if _, exists := existingMap["zimaos-trial"]; exists {
-		fmt.Printf("[Pool] initBuiltinProviders: removing old zimaos-trial provider (migrated to zimaos-blue-trial)\n")
-		p.Registry.Unregister("zimaos-trial")
-		delete(existingMap, "zimaos-trial")
-	}
-
 	builtins := BuiltinProviders()
 	fmt.Printf("[Pool] initBuiltinProviders: %d existing, %d builtins\n", len(existing), len(builtins))
 

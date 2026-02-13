@@ -1,13 +1,13 @@
 $ErrorActionPreference = "Stop"
 $env:Path = "C:\mingw64\bin;C:\cmake-3.31.4-windows-x86_64\bin;C:\Users\Administrator\AppData\Local\nvm\v20.20.0;C:\Users\Administrator\.cargo\bin;C:\Program Files\Go\bin;" + $env:Path
 
-$tauriDir = "g:\GitHub\ZimaOS-Echo\tauri-app\src-tauri"
+$tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
 $skinDir = "$tauriDir\nsis\skin-installer"
 
 # Step 3: Build Go sidecar (CGO enabled with MinGW)
 Write-Host "[STEP 3] Building Go sidecar (CGO enabled)..."
-Set-Location "g:\GitHub\ZimaOS-Echo\server"
-$sidecarName = "echo-server-x86_64-pc-windows-msvc.exe"
+Set-Location "g:\GitHub\ZimaOS-Blue\server"
+$sidecarName = "blue-server-x86_64-pc-windows-msvc.exe"
 if (!(Test-Path "$tauriDir\binaries")) { New-Item -ItemType Directory "$tauriDir\binaries" -Force | Out-Null }
 if (!(Test-Path "$tauriDir\bin")) { New-Item -ItemType Directory "$tauriDir\bin" -Force | Out-Null }
 $env:CGO_ENABLED = "1"
@@ -24,7 +24,7 @@ New-Item -ItemType Directory "$tauriDir\data" -Force | Out-Null
 
 # Step 5: Build Tauri (Rust GNU toolchain uses MinGW)
 Write-Host "[STEP 5] Building Tauri application..."
-Set-Location "g:\GitHub\ZimaOS-Echo\tauri-app"
+Set-Location "g:\GitHub\ZimaOS-Blue\tauri-app"
 npm install
 if ($LASTEXITCODE -ne 0) { throw "tauri npm install failed" }
 npm run build
@@ -39,7 +39,7 @@ foreach ($rd in $releaseDirs) {
     if (Test-Path "$rd\zimaos-blue.exe") {
         Copy-Item -Force "$rd\zimaos-blue.exe" $filesDir
         if (Test-Path "$rd\WebView2Loader.dll") { Copy-Item -Force "$rd\WebView2Loader.dll" $filesDir }
-        Copy-Item -Force "$tauriDir\bin\$sidecarName" "$filesDir\echo-server.exe"
+        Copy-Item -Force "$tauriDir\bin\$sidecarName" "$filesDir\blue-server.exe"
         Write-Host "[OK] Files copied from $rd"
         break
     }

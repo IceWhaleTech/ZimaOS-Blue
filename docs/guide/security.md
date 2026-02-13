@@ -505,7 +505,7 @@ if err == promptguard.ErrPromptInjectionDetected {
 #### Middleware Integration
 
 ```go
-// Add prompt guard middleware to Echo
+// Add prompt guard middleware to Blue
 e.Use(promptguard.Middleware(&promptguard.MiddlewareConfig{
     BlockOnThreat: true,
     LogThreats:    true,

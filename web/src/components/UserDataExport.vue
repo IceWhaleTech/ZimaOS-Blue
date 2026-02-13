@@ -163,7 +163,7 @@ function collectSettings(): UserSettings {
     theme_style: settingsStore.themeStyle,
     theme: themeStore.theme,
     locale: localeStore.currentLocale,
-    timezone: localStorage.getItem('zimaos-echo-timezone') || undefined,
+    timezone: localStorage.getItem('zimaos-blue-timezone') || undefined,
   }
 }
 
@@ -190,7 +190,7 @@ async function handleExport() {
     a.href = url
     const timestamp = new Date().toISOString().split('T')[0]
     const ext = exportFormat.value === 'encrypted' ? 'enc.json' : 'json'
-    a.download = `zimaos-echo-backup-${timestamp}.${ext}`
+    a.download = `zimaos-blue-backup-${timestamp}.${ext}`
     a.click()
     URL.revokeObjectURL(url)
 
@@ -305,7 +305,7 @@ function applySettings(settings: UserSettings) {
     localeStore.changeLocale(settings.locale as 'en-US' | 'zh-CN' | 'ja-JP')
   }
   if (settings.timezone) {
-    localStorage.setItem('zimaos-echo-timezone', settings.timezone)
+    localStorage.setItem('zimaos-blue-timezone', settings.timezone)
   }
 }
 
@@ -401,10 +401,10 @@ async function executeCleanup() {
 
     if (cleanupTargets.value.cache) {
       // Clear local storage cache (except essential items)
-      const keysToKeep = ['zimaos-echo-locale', 'zimaos-echo-theme']
+      const keysToKeep = ['zimaos-blue-locale', 'zimaos-blue-theme']
       const allKeys = Object.keys(localStorage)
       allKeys.forEach(key => {
-        if (key.startsWith('zimaos-echo-') && !keysToKeep.includes(key)) {
+        if (key.startsWith('zimaos-blue-') && !keysToKeep.includes(key)) {
           localStorage.removeItem(key)
         }
       })

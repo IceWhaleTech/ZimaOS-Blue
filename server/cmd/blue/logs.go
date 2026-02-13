@@ -41,23 +41,23 @@ func init() {
 
 // LogEntry represents a parsed log entry
 type LogEntry struct {
-	Timestamp string `json:"timestamp"`
-	Level     string `json:"level"`
-	Message   string `json:"message"`
+	Timestamp string                 `json:"timestamp"`
+	Level     string                 `json:"level"`
+	Message   string                 `json:"message"`
 	Fields    map[string]interface{} `json:"fields,omitempty"`
 }
 
 func runLogs(cmd *cobra.Command, args []string) {
 	logsDir := getLogsDir()
-	logFile := filepath.Join(logsDir, "echo.log")
+	logFile := filepath.Join(logsDir, "blue.log")
 
 	// Check if log file exists
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		// Try alternative locations
 		alternatives := []string{
-			"./logs/echo.log",
-			"./echo.log",
-			filepath.Join(getConfigDir(), "logs", "echo.log"),
+			"./logs/blue.log",
+			"./blue.log",
+			filepath.Join(getConfigDir(), "logs", "blue.log"),
 		}
 
 		found := false

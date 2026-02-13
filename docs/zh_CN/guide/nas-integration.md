@@ -21,7 +21,7 @@ ZimaOS Blue 专为 ZimaOS 设计，提供最佳集成体验。
 
 1. 打开 ZimaOS 控制台
 2. 进入 **应用商店**
-3. 搜索「Echo」
+3. 搜索「Blue」
 4. 点击 **安装**
 
 ### 手动安装
@@ -133,7 +133,7 @@ docker-compose up -d
 ### 群晖相关建议
 
 - 使用群晖内置 Let's Encrypt 申请 SSL
-- 为 Echo 数据创建专用共享文件夹
+- 为 Blue 数据创建专用共享文件夹
 - 用群晖计划任务做备份
 - 通过资源监控查看资源使用
 
@@ -194,7 +194,7 @@ docker run -d \
 ### 威联通反向代理
 
 1. 从 App Center 安装 **Nginx**（或使用内置反向代理）
-2. 为 Echo 配置虚拟主机
+2. 为 Blue 配置虚拟主机
 3. 启用 WebSocket 支持
 
 ---
@@ -396,7 +396,7 @@ homeassistant:
 
 ### Ollama 集成（本地 LLM）
 
-与 Echo 一起运行 Ollama：
+与 Blue 一起运行 Ollama：
 
 ```yaml
 # docker-compose.yml
@@ -425,10 +425,10 @@ volumes:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name echo.yourdomain.com;
+    server_name blue.yourdomain.com;
 
-    ssl_certificate /etc/letsencrypt/live/echo.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/echo.yourdomain.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/blue.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/blue.yourdomain.com/privkey.pem;
 
     location / {
         proxy_pass http://localhost:8765;
@@ -478,7 +478,7 @@ ls -la /path/to/data
 
 ```bash
 # 备份并重建数据库
-docker exec zimaos-blue cp /app/data/echo.db /app/data/echo.db.bak
+docker exec zimaos-blue cp /app/data/blue.db /app/data/blue.db.bak
 docker restart zimaos-blue
 ```
 
@@ -486,6 +486,6 @@ docker restart zimaos-blue
 
 ## 支持
 
-- 文档：https://docs.zimaspace.com/echo
+- 文档：https://docs.zimaspace.com/blue
 - GitHub Issues：https://github.com/IceWhaleTech/ZimaOS-Blue/issues
 - Discord：https://discord.gg/zimaos

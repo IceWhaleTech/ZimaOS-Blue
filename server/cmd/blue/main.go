@@ -82,7 +82,7 @@ func main() {
 
 	if *showHelp {
 		fmt.Printf("ZimaOS-Blue %s - NAS-Native Agent Runtime\n\n", version)
-		fmt.Println("Usage: echo [options] [command]")
+		fmt.Println("Usage: blue [options] [command]")
 		fmt.Println("")
 		fmt.Println("Options:")
 		fmt.Println("  --config <path>  Path to config file")
@@ -145,7 +145,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to create data directory")
 	}
 
-	dbPath := filepath.Join(dataDir, "echo.db")
+	dbPath := filepath.Join(dataDir, "blue.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to open database")
@@ -153,8 +153,8 @@ func main() {
 	defer db.Close()
 
 	// Configure database connection pool (optimized for startup performance)
-	db.SetMaxOpenConns(15)      // 优化: 增加到 15 以支持并发初始化
-	db.SetMaxIdleConns(8)       // 优化: 增加到 8 以减少连接创建开销
+	db.SetMaxOpenConns(15) // 优化: 增加到 15 以支持并发初始化
+	db.SetMaxIdleConns(8)  // 优化: 增加到 8 以减少连接创建开销
 	db.SetConnMaxLifetime(time.Hour)
 
 	// Enable WAL mode for better concurrency
@@ -592,7 +592,7 @@ func main() {
 	}()
 
 	initPool.Go(func() {
-		// Companion service (Echo Companion - real-time AI Agent monitoring)
+		// Companion service (Blue Companion - real-time AI Agent monitoring)
 		companionConfig := companion.DefaultConfig()
 		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
 		var err error

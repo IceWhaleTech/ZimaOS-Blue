@@ -156,7 +156,7 @@ func PrintServiceHelp() {
 	fmt.Println("  status     Query the Windows service status")
 	fmt.Println("")
 	fmt.Println("Examples:")
-	fmt.Println("  echo.exe install")
-	fmt.Println("  echo.exe start")
-	fmt.Println("  echo.exe status")
+	fmt.Println("  blue.exe install")
+	fmt.Println("  blue.exe start")
+	fmt.Println("  blue.exe status")
 }

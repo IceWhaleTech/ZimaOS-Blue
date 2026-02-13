@@ -18,7 +18,7 @@
       "Bash(./node_modules/.bin/tailwindcss:*)",
       "Bash(npm run test:run:*)",
       "Bash(npm run build:*)",
-      "Bash(./bin/echo.exe:*)",
+      "Bash(./bin/blue.exe:*)",
       "Bash(find:*)",
       "Bash(powershell -Command:*)",
       "Bash(npm run test:*)",
@@ -113,7 +113,7 @@
       "Bash(/Users/orca/Documents/GitHub/ZimaOS-Blue/tauri-app/src-tauri/scripts/set-dmg-icon.sh:*)",
       "Bash(cargo build:*)",
       "Bash(./zimaos-blue:*)",
-      "Bash(\"/Applications/ZimaOS Blue.app/Contents/MacOS/echo-server\" --version)",
+      "Bash(\"/Applications/ZimaOS Blue.app/Contents/MacOS/blue-server\" --version)",
       "Bash(git add:*)",
       "WebFetch(domain:cdn.jsdelivr.net)"
     ]

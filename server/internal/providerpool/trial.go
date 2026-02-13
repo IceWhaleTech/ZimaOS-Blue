@@ -444,5 +444,5 @@ func (m *TrialQuotaManager) Reset() {
 // IsTrialProvider checks if a provider ID is the trial provider
 func IsTrialProvider(providerID string) bool {
 	// Support both old and new trial provider IDs for backwards compatibility
-	return providerID == TrialProviderID || providerID == "zimaos-trial"
+	return providerID == TrialProviderID || providerID == "zimaos-blue-trial"
 }

@@ -1,4 +1,4 @@
-# PRD: Echo Companion - Real-time Agent Monitoring
+# PRD: Blue Companion - Real-time Agent Monitoring
 
 **Status:** Draft
 **Author:** ZimaOS Team
@@ -9,19 +9,19 @@
 
 ## Overview
 
-Echo Companion is a real-time monitoring tool that provides developers and administrators with a visual interface to observe AI Agent operations across multiple platforms. Inspired by [Crabwalk](https://github.com/luccast/crabwalk)'s design philosophy, combined with ZimaOS Blue's deep security insights, it delivers a secure, observable, and auditable Agent monitoring solution.
+Blue Companion is a real-time monitoring tool that provides developers and administrators with a visual interface to observe AI Agent operations across multiple platforms. Inspired by [Crabwalk](https://github.com/luccast/crabwalk)'s design philosophy, combined with ZimaOS Blue's deep security insights, it delivers a secure, observable, and auditable Agent monitoring solution.
 
 ### Core Values
 
 1. **Real-time Observability**: Track Agent sessions, tool calls, and decision chains in real-time
-2. **Security Auditing**: Integrate with Echo's security layer for threat detection and anomaly alerts
+2. **Security Auditing**: Integrate with Blue's security layer for threat detection and anomaly alerts
 3. **Cross-platform Monitoring**: Unified monitoring for WhatsApp, Telegram, Discord, Slack, Matrix, Feishu, and more
 4. **Debug-friendly**: Help developers quickly identify issues and optimize Agent behavior
 
 ## Goals
 
 - [x] Provide real-time Agent activity visualization interface
-- [x] Integrate with Echo's existing security layer (Prompt Guard, Audit Log, Sandbox)
+- [x] Integrate with Blue's existing security layer (Prompt Guard, Audit Log, Sandbox)
 - [x] Support multi-platform Agent session monitoring
 - [x] Provide threat detection and anomaly behavior alerts
 - [x] Support session replay and debug analysis
@@ -82,7 +82,7 @@ Echo Companion is a real-time monitoring tool that provides developers and admin
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | WebSocket real-time data stream | P0 | Establish persistent connection with Echo Gateway |
+| FR-001 | WebSocket real-time data stream | P0 | Establish persistent connection with Blue Gateway |
 | FR-002 | Session list and filtering | P0 | Filter by platform, user, time, status |
 | FR-003 | Operation chain flowchart visualization | P0 | Use ReactFlow or similar library |
 | FR-004 | Threat detection integration | P0 | Integrate Prompt Guard results |
@@ -112,7 +112,7 @@ Echo Companion is a real-time monitoring tool that provides developers and admin
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Echo Companion Architecture                          │
+│                         Blue Companion Architecture                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
@@ -128,7 +128,7 @@ Echo Companion is a real-time monitoring tool that provides developers and admin
 │                                    │ WebSocket / REST API                    │
 │                                    ▼                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                     Echo Backend (Go)                                │    │
+│  │                     Blue Backend (Go)                                │    │
 │  │  ┌──────────────────────────────────────────────────────────────┐   │    │
 │  │  │                  Companion Service                            │   │    │
 │  │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌───────────┐  │   │    │
@@ -439,7 +439,7 @@ companion:
 
 ### Authentication & Authorization
 
-- Use Echo's existing OIDC authentication
+- Use Blue's existing OIDC authentication
 - Role-based access control (RBAC)
   - `companion:read` - View sessions and events
   - `companion:admin` - Manage alerts and configuration
@@ -497,5 +497,5 @@ Companion can provide additional security insights:
 
 - [Crabwalk](https://github.com/luccast/crabwalk) - Design reference
 - [ReactFlow](https://reactflow.dev/) - Flowchart visualization library
-- [Echo Security Documentation](../docs/guide/security.md) - Security architecture
+- [Blue Security Documentation](../docs/guide/security.md) - Security architecture
 - [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/) - LLM security guide
