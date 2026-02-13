@@ -1138,6 +1138,7 @@ export default {
     triggering: '运行中...',
     triggered: '心跳已触发',
   },
+  service: {
     title: '服务管理',
     // Port configuration
     port: '服务端口',
