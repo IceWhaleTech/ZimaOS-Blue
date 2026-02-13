@@ -225,7 +225,7 @@ watch(() => props.modelVisible, (visible) => {
                 <!-- Download button -->
                 <button
                   v-if="!model.downloaded && downloadingModelId !== model.id"
-                  class="px-3 py-1.5 text-sm text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50"
+                  class="px-3 py-1.5 text-sm text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors disabled:opacity-50"
                   :disabled="!!downloadingModelId"
                   @click="handleDownload(model.id)"
                 >
@@ -254,7 +254,7 @@ watch(() => props.modelVisible, (visible) => {
               <div v-if="downloadingModelId === model.id" class="mt-3">
                 <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mb-1">
                   <div
-                    class="bg-gray-700 dark:bg-gray-700 h-2 rounded-full transition-all duration-300"
+                    class="bg-gray-700 dark:bg-gray-500 h-2 rounded-full transition-all duration-300"
                     :style="{ width: `${progress?.percentage || 0}%` }"
                   ></div>
                 </div>

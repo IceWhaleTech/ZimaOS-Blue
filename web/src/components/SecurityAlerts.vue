@@ -115,7 +115,7 @@ onUnmounted(() => {
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Security Alerts</h2>
       <button
         :disabled="loading"
-        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
         @click="fetchData"
       >
         {{ loading ? 'Refreshing...' : 'Refresh' }}
@@ -145,10 +145,10 @@ onUnmounted(() => {
         <div class="text-sm text-yellow-600/70 dark:text-yellow-400/70">Medium</div>
       </div>
       <div class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">
           {{ lowAlerts.length }}
         </div>
-        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-gray-900 dark:text-white/70">Low</div>
+        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-white/70">Low</div>
       </div>
       <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
         <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">

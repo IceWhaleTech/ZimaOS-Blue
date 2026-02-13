@@ -29,7 +29,7 @@ const colorClasses = computed(() => {
     case 'medium':
       return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800'
     case 'low':
-      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+      return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
     default:
       return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800'
   }

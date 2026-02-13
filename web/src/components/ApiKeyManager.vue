@@ -96,7 +96,7 @@ function confirmRevoke(key: ApiKey) {
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">API Keys</h2>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
         @click="showCreateModal = true"
       >
         {{ t('profile.createApiKey') }}
@@ -183,7 +183,7 @@ function confirmRevoke(key: ApiKey) {
                   class="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg font-mono text-sm"
                 />
                 <button
-                  class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
+                  class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
                   @click="handleCopyKey"
                 >
                   {{ t('profile.copy') }}
@@ -241,7 +241,7 @@ function confirmRevoke(key: ApiKey) {
             </button>
             <button
               v-if="!createdKey"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="!newKeyName.trim() || newKeyScopes.length === 0"
               @click="handleCreate"
             >

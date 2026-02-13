@@ -196,7 +196,7 @@ function handleSubmit() {
             </div>
             <button
               type="button"
-              class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white flex items-center gap-1"
+              class="text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white flex items-center gap-1"
               @click="addArrayItem(key)"
             >
               <svg
@@ -237,7 +237,7 @@ function handleSubmit() {
         <button
           type="submit"
           :disabled="loading"
-          class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
         >
           {{ loading ? 'Saving...' : 'Save Configuration' }}
         </button>

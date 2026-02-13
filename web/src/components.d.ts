@@ -87,6 +87,7 @@ declare module 'vue' {
     GoroutinesCard: typeof import('./components/dashboard/cards/GoroutinesCard.vue')['default']
     GoroutinesChartCard: typeof import('./components/dashboard/cards/GoroutinesChartCard.vue')['default']
     HeapChartCard: typeof import('./components/dashboard/cards/HeapChartCard.vue')['default']
+    HeartbeatSettings: typeof import('./components/settings/HeartbeatSettings.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
     IDEDiscovery: typeof import('./components/IDEDiscovery.vue')['default']
     ImagePreview: typeof import('./components/chat/ImagePreview.vue')['default']

@@ -19,7 +19,7 @@ const statusColor = computed(() => {
     case 'running':
       return 'bg-green-500'
     case 'loaded':
-      return 'bg-gray-700 dark:bg-gray-700'
+      return 'bg-gray-700 dark:bg-gray-500'
     case 'stopped':
       return 'bg-gray-500'
     case 'error':
@@ -128,7 +128,7 @@ const typeLabel = computed(() => {
       <span
         v-for="cap in plugin.capabilities?.slice(0, 3)"
         :key="cap"
-        class="text-xs bg-gray-700 dark:bg-gray-700/30 px-2 py-1 rounded text-gray-900 dark:text-white"
+        class="text-xs bg-gray-200 dark:bg-gray-600/30 px-2 py-1 rounded text-gray-900 dark:text-white"
       >
         {{ cap }}
       </span>
@@ -152,7 +152,7 @@ const typeLabel = computed(() => {
           @change="emit('toggle')"
         />
         <div
-          class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600 peer-disabled:opacity-50"
+          class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
         ></div>
         <span class="ml-2 text-sm text-gray-400">
           {{ plugin.enabled ? 'Enabled' : 'Disabled' }}

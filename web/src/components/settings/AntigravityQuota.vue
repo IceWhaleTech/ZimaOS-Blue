@@ -265,7 +265,7 @@ onUnmounted(() => {
           @keyup.enter="loadQuota"
         />
         <button
-          class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 disabled:opacity-50"
+          class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 disabled:opacity-50"
           :disabled="loading || !accessToken"
           @click="loadQuota"
         >
@@ -289,7 +289,7 @@ onUnmounted(() => {
         <span class="text-sm text-gray-600 dark:text-gray-400">
           {{ t('settings.antigravity.tier') }}:
         </span>
-        <span class="px-2 py-1 text-xs font-medium bg-gray-700 dark:bg-gray-700/10 text-gray-900 dark:text-gray-300 rounded">
+        <span class="px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-600/10 text-gray-900 dark:text-gray-300 rounded">
           {{ quotaData.subscription_tier }}
         </span>
       </div>
@@ -319,7 +319,7 @@ onUnmounted(() => {
                 {{ model.percentage.toFixed(0) }}%
               </span>
             </div>
-            <div class="relative w-full bg-gray-700 dark:bg-gray-700 rounded-full h-4">
+            <div class="relative w-full bg-gray-700 dark:bg-gray-500 rounded-full h-4">
               <div
                 class="h-4 rounded-full transition-all duration-300"
                 :class="getProgressColor(model.percentage)"
@@ -361,7 +361,7 @@ onUnmounted(() => {
                 {{ model.percentage.toFixed(0) }}%
               </span>
             </div>
-            <div class="relative w-full bg-gray-700 dark:bg-gray-700 rounded-full h-4">
+            <div class="relative w-full bg-gray-700 dark:bg-gray-500 rounded-full h-4">
               <div
                 class="h-4 rounded-full transition-all duration-300"
                 :class="getProgressColor(model.percentage)"

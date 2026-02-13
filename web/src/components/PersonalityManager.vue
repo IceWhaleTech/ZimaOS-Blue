@@ -62,7 +62,7 @@ function getPersonalityIcon(personality: Personality): string {
         </p>
       </div>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-800 dark:hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
         @click="goToPersonalityPage"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

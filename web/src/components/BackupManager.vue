@@ -92,7 +92,7 @@ function getTypeColor(type: BackupType): string {
     case 'full':
       return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
     case 'config':
-      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
+      return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
     case 'data':
       return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
   }
@@ -150,7 +150,7 @@ function confirmDelete(backup: BackupDisplay) {
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
         @click="showCreateModal = true"
       >
         {{ t('backup.create') }}
@@ -179,19 +179,19 @@ function confirmDelete(backup: BackupDisplay) {
     </div>
 
     <!-- Creating backup progress banner -->
-    <div v-if="creating && progress" class="px-6 py-3 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-b border-gray-900 dark:border-white dark:border-gray-900 dark:border-white">
+    <div v-if="creating && progress" class="px-6 py-3 bg-gray-700 dark:bg-gray-500/20 border-b border-gray-900 dark:border-white dark:border-gray-900 dark:border-white">
       <div class="flex items-center gap-3 mb-2">
         <div class="animate-spin h-5 w-5 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full"></div>
-        <span class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ t('backup.creatingBackup') }}</span>
+        <span class="text-gray-900 dark:text-white dark:text-white">{{ t('backup.creatingBackup') }}</span>
       </div>
-      <div class="flex items-center justify-between text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white mb-1">
+      <div class="flex items-center justify-between text-sm text-gray-900 dark:text-white dark:text-white mb-1">
         <span>{{ progress.current_file || t('backup.processing') }}</span>
         <span>{{ progress.progress }}%</span>
       </div>
-      <div class="h-2 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div class="h-full bg-gray-700 dark:bg-gray-700 transition-all duration-300" :style="{ width: `${progress.progress}%` }"></div>
+      <div class="h-2 bg-gray-700 dark:bg-gray-500 dark:bg-gray-500 rounded-full overflow-hidden">
+        <div class="h-full bg-gray-700 dark:bg-gray-500 transition-all duration-300" :style="{ width: `${progress.progress}%` }"></div>
       </div>
-      <div class="flex items-center justify-between text-xs text-gray-900 dark:text-white dark:text-gray-900 dark:text-white mt-1">
+      <div class="flex items-center justify-between text-xs text-gray-900 dark:text-white dark:text-white mt-1">
         <span>{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span>
         <span>{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span>
       </div>
@@ -257,7 +257,7 @@ function confirmDelete(backup: BackupDisplay) {
               </svg>
             </button>
             <button
-              class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
+              class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-white dark:hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
               title="Restore"
               :disabled="backup.status !== 'completed' || restoring"
               @click="confirmRestore(backup)"
@@ -319,7 +319,7 @@ function confirmDelete(backup: BackupDisplay) {
               {{ t('common.cancel') }}
             </button>
             <button
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
               @click="handleCreate"
             >
               {{ t('backup.create') }}

@@ -480,7 +480,7 @@ onUnmounted(() => {
             'w-10 h-10 rounded-full flex items-center justify-center',
             securityStatus === 'passed' ? 'bg-green-400' :
             securityStatus === 'warning' ? 'bg-yellow-500' :
-            securityStatus === 'failed' ? 'bg-red-500' : 'bg-gray-700 dark:bg-gray-700'
+            securityStatus === 'failed' ? 'bg-red-500' : 'bg-gray-700 dark:bg-gray-500'
           ]">
             <svg v-if="securityStatus === 'passed'" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -502,7 +502,7 @@ onUnmounted(() => {
               securityStatus === 'passed' ? 'text-green-800 dark:text-green-600' :
               securityStatus === 'warning' ? 'text-yellow-800 dark:text-yellow-200' :
               securityStatus === 'failed' ? 'text-red-800 dark:text-red-200' :
-              'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+              'text-gray-900 dark:text-white dark:text-white'
             ]">
               {{ securityStatus === 'passed' ? t('security.statusSecure') :
                  securityStatus === 'warning' ? t('security.statusWarning') :
@@ -515,7 +515,7 @@ onUnmounted(() => {
               securityStatus === 'passed' ? 'text-green-400 dark:text-green-400' :
               securityStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
               securityStatus === 'failed' ? 'text-red-600 dark:text-red-400' :
-              'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+              'text-gray-900 dark:text-white dark:text-white'
             ]">
               {{ scanCompleted
                 ? t('security.scanSummary', { passed: scanSummary.passed, warnings: scanSummary.warnings, failed: scanSummary.failed })
@@ -553,7 +553,7 @@ onUnmounted(() => {
               'px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2',
               isScanning
                 ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700/90'
+                : 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400'
             ]"
             @click="startSecurityScan"
           >
@@ -786,8 +786,8 @@ onUnmounted(() => {
           </div>
           <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="flex items-center justify-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-gray-700 dark:bg-gray-700"></span>
-              <span class="text-lg font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ connectionStats.active_http ?? 0 }}</span>
+              <span class="w-2 h-2 rounded-full bg-gray-700 dark:bg-gray-500"></span>
+              <span class="text-lg font-bold text-gray-900 dark:text-white dark:text-white">{{ connectionStats.active_http ?? 0 }}</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">HTTP</div>
           </div>
@@ -841,7 +841,7 @@ onUnmounted(() => {
                   <span
 :class="[
                     'px-2 py-0.5 rounded text-xs font-medium uppercase',
-                    conn.type === 'http' ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white' :
+                    conn.type === 'http' ? 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white' :
                     conn.type === 'websocket' ? 'bg-green-50 dark:bg-green-900/30 text-green-200 dark:text-green-200' :
                     'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
                   ]">
@@ -890,7 +890,7 @@ onUnmounted(() => {
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.activeSessions') }}</div>
           </div>
           <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div class="text-lg font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ companionStats.total_sessions }}</div>
+            <div class="text-lg font-bold text-gray-900 dark:text-white dark:text-white">{{ companionStats.total_sessions }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.totalSessions') }}</div>
           </div>
           <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">

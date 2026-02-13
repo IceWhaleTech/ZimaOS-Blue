@@ -75,7 +75,7 @@ defineExpose({ refresh: fetchStats })
             :disabled="toggling"
             :class="[
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              stats?.enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600',
+              stats?.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
               toggling ? 'opacity-50 cursor-not-allowed' : ''
             ]"
             @click="toggleCache"

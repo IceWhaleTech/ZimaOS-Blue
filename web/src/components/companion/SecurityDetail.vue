@@ -89,7 +89,7 @@ function getThreatTypeIcon(type: string): string {
           <span class="text-gray-500 dark:text-gray-400">{{ t('companion.security.score') }}</span>
           <span class="font-medium text-gray-900 dark:text-white">{{ security.threatScore }}/100</span>
         </div>
-        <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div class="h-2 bg-gray-700 dark:bg-gray-500 rounded-full overflow-hidden">
           <div
             class="h-full rounded-full transition-all duration-300"
             :class="{

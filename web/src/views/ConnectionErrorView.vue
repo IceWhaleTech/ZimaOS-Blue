@@ -97,7 +97,7 @@ onMounted(() => {
 
         <!-- Retry button -->
         <button
-          class="px-6 py-3 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700/90 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+          class="px-6 py-3 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
           :disabled="retrying"
           @click="retry(false)"
         >

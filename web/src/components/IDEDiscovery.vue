@@ -67,7 +67,7 @@ const ideIcons: Record<string, string> = {
 const providerColors: Record<string, string> = {
   anthropic: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   openai: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  google: 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700 dark:text-gray-900 dark:text-white',
+  google: 'bg-gray-700 dark:bg-gray-500 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-500 dark:text-white',
   custom: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
   github: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
 }
@@ -197,7 +197,7 @@ function getSourceLabel(source: string): string {
       </p>
       <button
         :disabled="scanning"
-        class="px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        class="px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-700 dark:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         @click="startScan"
       >
         <svg v-if="scanning" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -363,7 +363,7 @@ function getSourceLabel(source: string): string {
 
           <button
             :disabled="importing === config.ide_type || !config.api_key"
-            class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-700 dark:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             @click="importConfig(config.ide_type)"
           >
             <svg v-if="importing === config.ide_type" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

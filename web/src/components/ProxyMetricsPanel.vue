@@ -126,7 +126,7 @@ onUnmounted(() => {
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Proxy Metrics</h2>
       <button
         :disabled="loading"
-        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+        class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
         @click="fetchData"
       >
         {{ loading ? 'Refreshing...' : 'Refresh' }}
@@ -156,7 +156,7 @@ onUnmounted(() => {
         <div class="text-sm text-gray-500 dark:text-gray-400">Success Rate</div>
       </div>
       <div class="p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">
           {{ avgLatency }}ms
         </div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Avg Latency</div>
@@ -196,7 +196,7 @@ onUnmounted(() => {
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P50:</span>
-          <span class="ml-2 font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
+          <span class="ml-2 font-medium text-gray-900 dark:text-white dark:text-white">{{ latencyStats.p50_ms?.toFixed(0) ?? '-' }}ms</span>
         </div>
         <div>
           <span class="text-gray-500 dark:text-gray-400">P90:</span>

@@ -243,7 +243,7 @@ function updateScope(index: number, value: string) {
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-2xl font-bold text-white">{{ t('authProviders.title') }}</h1>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="openCreateModal"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -282,7 +282,7 @@ function updateScope(index: number, value: string) {
       <h3 class="text-lg font-medium text-white mb-2">{{ t('authProviders.noProviders') }}</h3>
       <p class="text-gray-400 mb-4">{{ t('authProviders.noProvidersDesc') }}</p>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
         @click="openCreateModal"
       >
         {{ t('authProviders.addYourFirstProvider') }}
@@ -335,7 +335,7 @@ function updateScope(index: number, value: string) {
               {{ provider.enabled ? t('authProviders.disable') : t('common.enable') }}
             </button>
             <button
-              class="px-3 py-1.5 text-sm text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
+              class="px-3 py-1.5 text-sm text-gray-900 dark:text-white hover:bg-gray-200 dark:bg-gray-600/20 rounded-lg transition-colors"
               @click="openEditModal(provider)"
             >
               {{ t('common.edit') }}
@@ -567,7 +567,7 @@ function updateScope(index: number, value: string) {
               <button
                 type="submit"
                 :disabled="loading"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ loading ? t('common.saving') : (isCreating ? t('authProviders.createProvider') : t('authProviders.saveChanges')) }}
               </button>

@@ -88,7 +88,7 @@ function getStatusColor(status: string): string {
 }
 
 function getActionColor(action: string): string {
-  if (action.includes('login')) return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+  if (action.includes('login')) return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white'
   if (action.includes('create')) return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
   if (action.includes('delete')) return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
   if (action.includes('update')) return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
@@ -127,7 +127,7 @@ function getActionColor(action: string): string {
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.failedActions') }}</div>
       </div>
       <div class="glass-card p-4">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ stats.by_action.login || 0 }}</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">{{ stats.by_action.login || 0 }}</div>
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.logins') }}</div>
       </div>
       <div class="glass-card p-4">
@@ -162,7 +162,7 @@ function getActionColor(action: string): string {
         </select>
         <div class="flex gap-2">
           <button
-            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
+            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
             @click="applyFilters"
           >
             {{ t('audit.filter') }}

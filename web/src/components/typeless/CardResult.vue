@@ -32,7 +32,7 @@ const statusConfig = {
     iconColor: 'text-amber-500',
   },
   info: {
-    bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20',
+    bg: 'bg-gray-700 dark:bg-gray-500/20',
     border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
     icon: 'ℹ',
     iconColor: 'text-gray-900 dark:text-white',
@@ -40,7 +40,7 @@ const statusConfig = {
 }
 
 const buttonClasses = {
-  primary: 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-light text-white',
+  primary: 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white',
   secondary: 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }

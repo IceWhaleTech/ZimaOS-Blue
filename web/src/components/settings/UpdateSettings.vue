@@ -49,7 +49,7 @@
             @click="autoCheck = !autoCheck; saveSettings()"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2',
-              autoCheck ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600'
+              autoCheck ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
             ]"
           >
             <span
@@ -69,7 +69,7 @@
             @click="autoDownload = !autoDownload; saveSettings()"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2',
-              autoDownload ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-600'
+              autoDownload ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
             ]"
           >
             <span
@@ -109,7 +109,7 @@
               <pre class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap font-sans">{{ updateInfo?.release_notes || $t('settings.update.noReleaseNotes') }}</pre>
             </div>
             <div v-if="downloading" class="mt-4">
-              <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-2 bg-gray-700 dark:bg-gray-500 rounded-full overflow-hidden">
                 <div class="h-full bg-gray-200 dark:bg-gray-400 transition-all duration-300" :style="{ width: progress + '%' }"/>
               </div>
               <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 text-center">{{ progress.toFixed(1) }}%</p>

@@ -1847,9 +1847,12 @@ func (h *Handler) ParseCertificate(c echo.Context) error {
 
 // ACMERequest represents an ACME certificate request.
 type ACMERequest struct {
-	Email    string   `json:"email"`
-	Domains  []string `json:"domains"`
-	Provider string   `json:"provider"` // letsencrypt, zerossl
+	Email          string            `json:"email"`
+	Domains        []string          `json:"domains"`
+	Provider       string            `json:"provider"`        // letsencrypt, zerossl
+	ChallengeType  string            `json:"challenge_type"`  // "http-01" or "dns-01"
+	DNSProvider    string            `json:"dns_provider"`    // e.g. "cloudflare", "route53"
+	DNSCredentials map[string]string `json:"dns_credentials"` // provider-specific credentials
 }
 
 // GetACMEStatus handles GET /api/v1/security/tls/acme
@@ -1878,9 +1881,12 @@ func (h *Handler) RequestACMECert(c echo.Context) error {
 
 	tlsManager := GetGlobalTLSManager()
 	err := tlsManager.RequestACMECertificate(&ACMEConfig{
-		Email:    req.Email,
-		Domains:  req.Domains,
-		Provider: req.Provider,
+		Email:          req.Email,
+		Domains:        req.Domains,
+		Provider:       req.Provider,
+		ChallengeType:  req.ChallengeType,
+		DNSProvider:    req.DNSProvider,
+		DNSCredentials: req.DNSCredentials,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

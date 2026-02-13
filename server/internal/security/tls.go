@@ -3,6 +3,7 @@ package security
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -11,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -20,18 +22,32 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-acme/lego/v4/certcrypto"
+	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/challenge/http01"
+	"github.com/go-acme/lego/v4/lego"
+	legolog "github.com/go-acme/lego/v4/log"
+	"github.com/go-acme/lego/v4/providers/dns/alidns"
+	"github.com/go-acme/lego/v4/providers/dns/cloudflare"
+	"github.com/go-acme/lego/v4/providers/dns/godaddy"
+	"github.com/go-acme/lego/v4/providers/dns/namecheap"
+	"github.com/go-acme/lego/v4/providers/dns/route53"
+	"github.com/go-acme/lego/v4/providers/dns/tencentcloud"
+	"github.com/go-acme/lego/v4/registration"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme/autocert"
 )
 
 // TLSManager manages TLS certificates.
 type TLSManager struct {
-	mu            sync.RWMutex
-	config        *TLSManagerConfig
-	certificate   *tls.Certificate
-	certInfo      *CertificateInfo
-	autocertMgr   *autocert.Manager
-	renewalCancel context.CancelFunc
+	mu             sync.RWMutex
+	config         *TLSManagerConfig
+	certificate    *tls.Certificate
+	certInfo       *CertificateInfo
+	autocertMgr    *autocert.Manager
+	renewalCancel  context.CancelFunc
+	challengeType  string // "http-01" or "dns-01"
+	dnsProvider    string // DNS provider name for dns-01
 }
 
 // TLSManagerConfig holds TLS manager configuration.
@@ -397,10 +413,13 @@ func ACMEProviderURL(provider string) string {
 
 // ACMEConfig holds ACME certificate configuration.
 type ACMEConfig struct {
-	Email    string   `json:"email"`
-	Domains  []string `json:"domains"`
-	Provider string   `json:"provider"` // letsencrypt, zerossl, or custom URL
-	CacheDir string   `json:"cache_dir"`
+	Email          string            `json:"email"`
+	Domains        []string          `json:"domains"`
+	Provider       string            `json:"provider"`        // letsencrypt, zerossl, or custom URL
+	CacheDir       string            `json:"cache_dir"`
+	ChallengeType  string            `json:"challenge_type"`  // "http-01" (default) or "dns-01"
+	DNSProvider    string            `json:"dns_provider"`    // e.g. "cloudflare", "route53"
+	DNSCredentials map[string]string `json:"dns_credentials"` // provider-specific credentials
 }
 
 // ACMEStatus represents the status of ACME certificate.
@@ -409,6 +428,8 @@ type ACMEStatus struct {
 	Email         string           `json:"email"`
 	Domains       []string         `json:"domains"`
 	Provider      string           `json:"provider"`
+	ChallengeType string           `json:"challenge_type,omitempty"`
+	DNSProvider   string           `json:"dns_provider,omitempty"`
 	CertInfo      *CertificateInfo `json:"cert_info,omitempty"`
 	Error         string           `json:"error,omitempty"`
 	AutoRenewal   bool             `json:"auto_renewal"`
@@ -416,14 +437,34 @@ type ACMEStatus struct {
 	DaysUntilExp  int              `json:"days_until_expiry,omitempty"`
 }
 
+// legoUser implements registration.User for lego ACME client.
+type legoUser struct {
+	email      string
+	key        *ecdsa.PrivateKey
+	registration *registration.Resource
+}
+
+func (u *legoUser) GetEmail() string                        { return u.email }
+func (u *legoUser) GetRegistration() *registration.Resource { return u.registration }
+func (u *legoUser) GetPrivateKey() crypto.PrivateKey        { return u.key }
+
 // RequestACMECertificate requests a certificate from an ACME provider.
-// This performs the HTTP-01 challenge, so port 80 must be accessible.
+// Supports both HTTP-01 and DNS-01 challenges via the lego library.
 func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 	if config.Email == "" {
 		return fmt.Errorf("email is required for ACME registration")
 	}
 	if len(config.Domains) == 0 {
 		return fmt.Errorf("at least one domain is required")
+	}
+
+	challengeType := config.ChallengeType
+	if challengeType == "" {
+		challengeType = "http-01"
+	}
+
+	if challengeType == "dns-01" && config.DNSProvider == "" {
+		return fmt.Errorf("DNS provider is required for DNS-01 challenge")
 	}
 
 	m.mu.Lock()
@@ -433,6 +474,8 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 	m.config.ACMEEmail = config.Email
 	m.config.ACMEDomains = config.Domains
 	m.config.ACMEProvider = config.Provider
+	m.challengeType = challengeType
+	m.dnsProvider = config.DNSProvider
 	if config.CacheDir != "" {
 		m.config.ACMEDir = config.CacheDir
 	}
@@ -446,18 +489,149 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 		return fmt.Errorf("failed to create ACME cache directory: %w", err)
 	}
 
-	// Initialize autocert manager
-	m.autocertMgr = &autocert.Manager{
-		Prompt:     autocert.AcceptTOS,
-		Email:      config.Email,
-		HostPolicy: autocert.HostWhitelist(config.Domains...),
-		Cache:      autocert.DirCache(cacheDir),
+	// Suppress lego's verbose logging
+	legolog.Logger = log.New(os.Stderr, "acme: ", log.LstdFlags)
+
+	// Generate private key for ACME account
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("failed to generate ACME account key: %w", err)
+	}
+
+	user := &legoUser{email: config.Email, key: privateKey}
+
+	// Configure lego client
+	legoConfig := lego.NewConfig(user)
+	legoConfig.Certificate.KeyType = certcrypto.EC256
+
+	// Set ACME directory URL
+	acmeURL := ACMEProviderURL(config.Provider)
+	if acmeURL != "" {
+		legoConfig.CADirURL = acmeURL
+	}
+
+	client, err := lego.NewClient(legoConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create ACME client: %w", err)
+	}
+
+	// Configure challenge solver
+	if challengeType == "dns-01" {
+		if err := m.configureDNSChallenge(client, config); err != nil {
+			return fmt.Errorf("failed to configure DNS-01 challenge: %w", err)
+		}
+	} else {
+		// HTTP-01: listen on port 80
+		err := client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "80"))
+		if err != nil {
+			return fmt.Errorf("failed to configure HTTP-01 challenge: %w", err)
+		}
+	}
+
+	// Register ACME account
+	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+	if err != nil {
+		return fmt.Errorf("failed to register ACME account: %w", err)
+	}
+	user.registration = reg
+
+	// Request certificate
+	request := certificate.ObtainRequest{
+		Domains: config.Domains,
+		Bundle:  true,
+	}
+	certificates, err := client.Certificate.Obtain(request)
+	if err != nil {
+		return fmt.Errorf("failed to obtain certificate: %w", err)
+	}
+
+	// Save certificate to disk
+	certFile := m.config.CertFile
+	keyFile := m.config.KeyFile
+	if certFile == "" {
+		certFile = filepath.Join(cacheDir, "server.crt")
+		m.config.CertFile = certFile
+	}
+	if keyFile == "" {
+		keyFile = filepath.Join(cacheDir, "server.key")
+		m.config.KeyFile = keyFile
+	}
+
+	if err := os.MkdirAll(filepath.Dir(certFile), 0750); err != nil {
+		return fmt.Errorf("failed to create cert directory: %w", err)
+	}
+	if err := os.WriteFile(certFile, certificates.Certificate, 0644); err != nil {
+		return fmt.Errorf("failed to write certificate: %w", err)
+	}
+	if err := os.WriteFile(keyFile, certificates.PrivateKey, 0600); err != nil {
+		return fmt.Errorf("failed to write private key: %w", err)
+	}
+
+	// Load into memory
+	cert, err := tls.X509KeyPair(certificates.Certificate, certificates.PrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to parse certificate: %w", err)
+	}
+	m.certificate = &cert
+
+	// Parse certificate info
+	if len(cert.Certificate) > 0 {
+		if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
+			m.certInfo = parseCertInfo(x509Cert)
+		}
+	}
+
+	// Also set up autocert for HTTP-01 auto-renewal fallback
+	if challengeType == "http-01" {
+		m.autocertMgr = &autocert.Manager{
+			Prompt:     autocert.AcceptTOS,
+			Email:      config.Email,
+			HostPolicy: autocert.HostWhitelist(config.Domains...),
+			Cache:      autocert.DirCache(cacheDir),
+		}
 	}
 
 	// Start renewal checker
 	m.startRenewalChecker()
 
 	return nil
+}
+
+// configureDNSChallenge sets up DNS-01 challenge with provider credentials.
+func (m *TLSManager) configureDNSChallenge(client *lego.Client, config *ACMEConfig) error {
+	// Set credentials as environment variables (lego providers read from env)
+	for key, value := range config.DNSCredentials {
+		os.Setenv(key, value)
+	}
+
+	var provider interface {
+		Present(domain, token, keyAuth string) error
+		CleanUp(domain, token, keyAuth string) error
+	}
+	var err error
+
+	switch strings.ToLower(config.DNSProvider) {
+	case "cloudflare":
+		provider, err = cloudflare.NewDNSProvider()
+	case "route53":
+		provider, err = route53.NewDNSProvider()
+	case "godaddy":
+		provider, err = godaddy.NewDNSProvider()
+	case "namecheap":
+		provider, err = namecheap.NewDNSProvider()
+	case "alidns", "aliyun":
+		provider, err = alidns.NewDNSProvider()
+	case "tencentcloud", "dnspod":
+		provider, err = tencentcloud.NewDNSProvider()
+	default:
+		return fmt.Errorf("unsupported DNS provider: %s", config.DNSProvider)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to create DNS provider %q: %w", config.DNSProvider, err)
+	}
+
+	return client.Challenge.SetDNS01Provider(provider)
 }
 
 // startRenewalChecker starts a background goroutine to check certificate expiry
@@ -582,11 +756,13 @@ func (m *TLSManager) GetACMEStatus() *ACMEStatus {
 	defer m.mu.RUnlock()
 
 	status := &ACMEStatus{
-		Configured:  m.config.ACMEEmail != "" && len(m.config.ACMEDomains) > 0,
-		Email:       m.config.ACMEEmail,
-		Domains:     m.config.ACMEDomains,
-		Provider:    m.config.ACMEProvider,
-		AutoRenewal: m.autocertMgr != nil,
+		Configured:    m.config.ACMEEmail != "" && len(m.config.ACMEDomains) > 0,
+		Email:         m.config.ACMEEmail,
+		Domains:       m.config.ACMEDomains,
+		Provider:      m.config.ACMEProvider,
+		ChallengeType: m.challengeType,
+		DNSProvider:   m.dnsProvider,
+		AutoRenewal:   m.autocertMgr != nil || m.renewalCancel != nil,
 	}
 
 	if m.certInfo != nil {

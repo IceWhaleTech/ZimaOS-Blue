@@ -317,13 +317,13 @@ onMounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <button
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
             @click="showAddModal = true"
           >
             {{ t('memory.add') }}
           </button>
           <button
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
             :title="t('userdata.memory.title')"
             @click="showExportImportModal = true"
           >
@@ -347,10 +347,10 @@ onMounted(() => {
     </div>
 
     <!-- Backend indicator -->
-    <div v-if="stats?.backend" class="px-6 py-2 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-b border-gray-200 dark:border-gray-700">
+    <div v-if="stats?.backend" class="px-6 py-2 bg-gray-700 dark:bg-gray-500/20 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-2 text-sm">
         <span class="text-gray-600 dark:text-gray-400">{{ t('memory.backend') }}:</span>
-        <span class="font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
+        <span class="font-medium text-gray-900 dark:text-white dark:text-white">
           {{ stats.backend === 'supermemory' ? 'Supermemory' : t('memory.localBackend') }}
         </span>
       </div>
@@ -395,7 +395,7 @@ onMounted(() => {
           <option value="keyword">{{ t('memory.searchTypes.keyword') }}</option>
         </select>
         <button
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
           :disabled="searching || !searchQuery.trim()"
           @click="searchMemories"
         >
@@ -432,7 +432,7 @@ onMounted(() => {
               <span
                 v-for="matchType in memory.match_types"
                 :key="matchType"
-                class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white"
+                class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white"
               >
                 {{ matchType }}
               </span>
@@ -529,7 +529,7 @@ onMounted(() => {
               {{ t('common.cancel') }}
             </button>
             <button
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               :disabled="loading || !newMemoryContent.trim()"
               @click="addMemory"
             >
@@ -596,14 +596,14 @@ onMounted(() => {
               <div class="flex gap-2">
                 <button
                   class="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  :class="activeBackend === 'local' ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                  :class="activeBackend === 'local' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
                   @click="switchBackend('local')"
                 >
                   {{ t('memory.localBackend') }}
                 </button>
                 <button
                   class="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  :class="activeBackend === 'supermemory' ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                  :class="activeBackend === 'supermemory' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
                   :disabled="!supermemoryEnabled"
                   @click="switchBackend('supermemory')"
                 >
@@ -665,7 +665,7 @@ onMounted(() => {
               {{ t('common.cancel') }}
             </button>
             <button
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               :disabled="loading"
               @click="saveSupermemoryConfig"
             >
@@ -707,7 +707,7 @@ onMounted(() => {
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('userdata.memory.exportDesc') }}</p>
               <button
                 :disabled="memoryExporting"
-                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 @click="handleMemoryExport"
               >
                 <svg v-if="memoryExporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -756,7 +756,7 @@ onMounted(() => {
                     :class="[
                       'flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                       memoryImportMode === 'append'
-                        ? 'bg-gray-700 dark:bg-gray-700 text-white'
+                        ? 'bg-gray-700 dark:bg-gray-500 text-white'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                     ]"
                     @click="memoryImportMode = 'append'"
@@ -783,7 +783,7 @@ onMounted(() => {
               <!-- Import Button -->
               <button
                 :disabled="!memoryImportFile || memoryImporting"
-                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 @click="handleMemoryImport"
               >
                 <svg v-if="memoryImporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

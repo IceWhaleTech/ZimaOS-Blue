@@ -82,7 +82,7 @@ onMounted(() => {
     <div v-else-if="error" class="text-center py-12">
       <p class="text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
         @click="loadData"
       >
         {{ t('common.retry') }}

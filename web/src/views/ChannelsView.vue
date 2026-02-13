@@ -932,7 +932,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 class="sr-only peer"
                 @change="($event.target as HTMLInputElement).checked ? handleRemoteAccessStart() : handleRemoteAccessStop()"
               />
-              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700 peer-disabled:opacity-50"></div>
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"></div>
             </label>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -983,7 +983,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
                     :alt="provider.name"
                     class="w-6 h-6 shrink-0 rounded object-contain"
                   />
-                  <div v-else class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-gray-700 rounded flex items-center justify-center">
+                  <div v-else class="w-6 h-6 shrink-0 bg-gray-700 dark:bg-gray-500 rounded flex items-center justify-center">
                     <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                     </svg>
@@ -1013,7 +1013,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
                 v-if="selectedProviderInfo.doc_url"
                 :href="selectedProviderInfo.doc_url"
                 target="_blank"
-                class="inline-flex items-center gap-1 text-xs text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:underline"
+                class="inline-flex items-center gap-1 text-xs text-gray-900 dark:text-white dark:text-white hover:underline"
               >
                 <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -1036,7 +1036,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
               />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('remoteAccess.ngrokDomainHint') }}
-                <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:underline">
+                <a href="https://dashboard.ngrok.com/domains" target="_blank" class="text-gray-900 dark:text-white dark:text-white hover:underline">
                   {{ t('remoteAccess.ngrokClaimDomain') }}
                 </a>
               </p>

@@ -274,9 +274,10 @@ pub fn run() {
                         // On macOS, restore Dock icon when showing window
                         #[cfg(target_os = "macos")]
                         {
+                            use objc2::MainThreadMarker;
                             use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                            unsafe {
-                                let ns_app = NSApplication::sharedApplication();
+                            if let Some(mtm) = MainThreadMarker::new() {
+                                let ns_app = NSApplication::sharedApplication(mtm);
                                 ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
                             }
                         }
@@ -302,9 +303,10 @@ pub fn run() {
                         // On macOS, restore Dock icon when showing window
                         #[cfg(target_os = "macos")]
                         {
+                            use objc2::MainThreadMarker;
                             use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                            unsafe {
-                                let ns_app = NSApplication::sharedApplication();
+                            if let Some(mtm) = MainThreadMarker::new() {
+                                let ns_app = NSApplication::sharedApplication(mtm);
                                 ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
                             }
                         }
@@ -392,10 +394,11 @@ pub fn run() {
                         // On macOS, hide the Dock icon when minimizing to tray
                         #[cfg(target_os = "macos")]
                         {
+                            use objc2::MainThreadMarker;
                             use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                            unsafe {
-                                let app = NSApplication::sharedApplication();
-                                app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+                            if let Some(mtm) = MainThreadMarker::new() {
+                                let ns_app = NSApplication::sharedApplication(mtm);
+                                ns_app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
                             }
                         }
                     } else if !QUITTING.load(Ordering::SeqCst) {

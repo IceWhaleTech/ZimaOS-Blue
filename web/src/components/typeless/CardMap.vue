@@ -58,7 +58,7 @@ function openInMaps() {
         </div>
       </div>
       <button
-        class="flex-shrink-0 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
+        class="flex-shrink-0 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
         @click="openInMaps"
       >
         Open in Maps

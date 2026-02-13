@@ -171,7 +171,7 @@ function getEventTypeColor(eventType: string) {
     case 'stopped':
       return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700'
     default:
-      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20'
+      return 'text-gray-900 dark:text-white dark:text-white bg-gray-700 dark:bg-gray-500/20'
   }
 }
 
@@ -337,7 +337,7 @@ watch(
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="showDiagnostics
-          ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+          ? 'bg-gray-700 dark:bg-gray-500/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-white'
           : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
         @click="toggleDiagnostics"
       >
@@ -349,7 +349,7 @@ watch(
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="showLogs
-          ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+          ? 'bg-gray-700 dark:bg-gray-500/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-white'
           : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
         @click="toggleLogs"
       >

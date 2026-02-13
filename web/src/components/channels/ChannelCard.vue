@@ -191,7 +191,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
             :disabled="toggling"
             @change="emit('toggleEnabled', ($event.target as HTMLInputElement).checked)"
           />
-          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600 peer-disabled:opacity-50"></div>
+          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"></div>
         </label>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -265,7 +265,7 @@ class="text-sm font-medium" :class="{
             :href="channel.docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -278,7 +278,7 @@ class="text-sm font-medium" :class="{
             :href="`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -291,7 +291,7 @@ class="text-sm font-medium" :class="{
             :href="`https://t.me/${telegramBotUsername}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -304,7 +304,7 @@ class="text-sm font-medium" :class="{
             :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -317,7 +317,7 @@ class="text-sm font-medium" :class="{
             :href="`https://wa.me/${whatsappPhoneNumber}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -398,7 +398,7 @@ class="text-sm font-medium" :class="{
         </button>
         <button
           :disabled="saving"
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50 text-sm"
           @click="emit('save')"
         >
           {{ saving ? t('channels.saving') : t('common.save') }}
@@ -408,7 +408,7 @@ class="text-sm font-medium" :class="{
           :href="channel.docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -421,7 +421,7 @@ class="text-sm font-medium" :class="{
           :href="`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -434,7 +434,7 @@ class="text-sm font-medium" :class="{
           :href="`https://t.me/${telegramBotUsername}`"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -447,7 +447,7 @@ class="text-sm font-medium" :class="{
           :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -460,7 +460,7 @@ class="text-sm font-medium" :class="{
           :href="`https://wa.me/${whatsappPhoneNumber}`"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />

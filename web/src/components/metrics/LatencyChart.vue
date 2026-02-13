@@ -120,7 +120,7 @@ const percentileBars = computed(() => {
         </div>
         <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p50') }}</div>
-          <div class="text-lg font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ formatLatency(latencyData.p50 ?? 0) }}</div>
+          <div class="text-lg font-bold text-gray-900 dark:text-white dark:text-white">{{ formatLatency(latencyData.p50 ?? 0) }}</div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p95') }}</div>

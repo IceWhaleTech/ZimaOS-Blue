@@ -146,7 +146,7 @@ function handleLogout() {
             class="flex items-center space-x-2 px-2 py-1.5 rounded-lg transition-colors"
             :class="
               showUserMenu || route.path === '/profile'
-                ? 'bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-gray-300'
+                ? 'bg-gray-200 dark:bg-gray-600/20 text-gray-900 dark:text-gray-300'
                 : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
             "
             @click="showUserMenu = !showUserMenu"

@@ -186,6 +186,8 @@ export interface ACMEStatus {
   email: string
   domains: string[]
   provider: string
+  challenge_type?: string
+  dns_provider?: string
   cert_info?: CertificateInfo
   error?: string
 }
@@ -266,8 +268,8 @@ export const securityApi = {
   getACMEStatus: () =>
     api.get<ACMEStatus>('/security/tls/acme'),
 
-  requestACMECert: (email: string, domains: string[], provider: string) =>
-    api.post<ACMEStatus>('/security/tls/acme', { email, domains, provider }),
+  requestACMECert: (email: string, domains: string[], provider: string, challengeType?: string, dnsProvider?: string, dnsCredentials?: Record<string, string>) =>
+    api.post<ACMEStatus>('/security/tls/acme', { email, domains, provider, challenge_type: challengeType, dns_provider: dnsProvider, dns_credentials: dnsCredentials }),
 
   updateTLSSettings: (httpsOnly: boolean, httpsPort: number) =>
     api.put<TLSConfig>('/security/tls/settings', { https_only: httpsOnly, https_port: httpsPort }),

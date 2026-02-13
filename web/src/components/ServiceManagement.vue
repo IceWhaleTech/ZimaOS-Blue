@@ -385,19 +385,19 @@ onUnmounted(() => {
     <!-- Port Change Confirmation Dialog -->
     <div
       v-if="portChangeConfirm"
-      class="mb-4 p-4 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg"
+      class="mb-4 p-4 bg-gray-700 dark:bg-gray-500/30 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg"
     >
       <div class="flex items-center justify-between">
         <div>
-          <div class="font-medium text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
+          <div class="font-medium text-gray-900 dark:text-white dark:text-white">
             {{ t('service.portChangeConfirmTitle') }}
           </div>
-          <div class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white mt-1">
+          <div class="text-sm text-gray-900 dark:text-white dark:text-white mt-1">
             {{ t('service.portChangeConfirmDesc', { seconds: portChangeCountdown }) }}
           </div>
         </div>
         <div class="flex items-center gap-3">
-          <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white w-10 text-center">
+          <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white w-10 text-center">
             {{ portChangeCountdown }}
           </div>
           <button
@@ -464,7 +464,7 @@ onUnmounted(() => {
                 @keyup.escape="cancelEditPort"
               />
               <button
-                class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors flex items-center gap-1"
+                class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors flex items-center gap-1"
                 :disabled="!validatePort(portInput) || actionLoading === 'savePort'"
                 @click="savePort"
               >
@@ -633,7 +633,7 @@ onUnmounted(() => {
         <button
           v-if="serviceInfo.installed"
           class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-2"
-          :class="serviceInfo.enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-gray-600'"
+          :class="serviceInfo.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
           :disabled="actionLoading !== null"
           @click="serviceInfo.enabled ? disableService() : enableService()"
         >
@@ -668,7 +668,7 @@ onUnmounted(() => {
         <!-- Install/Uninstall -->
         <template v-if="!serviceInfo.installed">
           <button
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
             :disabled="actionLoading !== null"
             @click="installService"
           >
@@ -755,7 +755,7 @@ onUnmounted(() => {
           </button>
           <button
             v-if="serviceInfo.running"
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
             :disabled="actionLoading !== null"
             @click="restartService"
           >

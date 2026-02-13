@@ -25,13 +25,13 @@ const iconPath = computed(() => {
 
 const bgColor = computed(() => {
   return isInbound.value
-    ? 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+    ? 'bg-gray-700 dark:bg-gray-500/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
     : 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700'
 })
 
 const iconColor = computed(() => {
   return isInbound.value
-    ? 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+    ? 'text-gray-900 dark:text-white dark:text-white'
     : 'text-green-500 dark:text-green-400'
 })
 </script>

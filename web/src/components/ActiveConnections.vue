@@ -66,7 +66,7 @@ function getTypeColor(type: Connection['type']): string {
     case 'websocket':
       return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
     case 'sse':
-      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
+      return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
     case 'http':
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
   }

@@ -97,8 +97,8 @@ function getInterfaceTypeLabel(type: NetworkInterface['type']): string {
 
       <!-- Loading state -->
       <div v-else-if="loading && !addresses" class="space-y-3">
-        <div class="h-10 bg-gray-700 dark:bg-gray-700 rounded animate-pulse" />
-        <div class="h-10 bg-gray-700 dark:bg-gray-700 rounded animate-pulse" />
+        <div class="h-10 bg-gray-700 dark:bg-gray-500 rounded animate-pulse" />
+        <div class="h-10 bg-gray-700 dark:bg-gray-500 rounded animate-pulse" />
       </div>
 
       <!-- Addresses -->

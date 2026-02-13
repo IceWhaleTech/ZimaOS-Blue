@@ -134,7 +134,7 @@ function getRoleClass(role: string) {
     case 'admin':
       return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
     case 'user':
-      return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
+      return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
     case 'guest':
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-400'
     default:
@@ -160,7 +160,7 @@ onMounted(() => {
         </p>
       </div>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors flex items-center gap-2"
         @click="showCreateModal = true"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -245,7 +245,7 @@ onMounted(() => {
           <tr v-for="user in users" :key="user.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
             <td class="px-6 py-4 whitespace-nowrap">
               <div class="flex items-center">
-                <div class="h-10 w-10 rounded-full bg-gray-700 dark:bg-gray-700/20 flex items-center justify-center">
+                <div class="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-600/20 flex items-center justify-center">
                   <span class="text-gray-900 dark:text-gray-300 font-medium">{{ user.username.charAt(0).toUpperCase() }}</span>
                 </div>
                 <div class="ml-4">

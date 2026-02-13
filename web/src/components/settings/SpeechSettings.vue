@@ -437,7 +437,7 @@ v-for="model in asrModels" :key="model.id"
             <!-- Download button for not downloaded models -->
             <button
 v-if="!model.downloaded && !isModelDownloading(model.id)"
-              class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-black dark:hover:bg-gray-600 text-xs font-medium"
+              class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-black dark:hover:bg-gray-600 text-xs font-medium"
               @click="downloadASRModel(model.id)">
               {{ t('common.download') }}
             </button>
@@ -484,7 +484,7 @@ v-else-if="isModelDownloading(model.id)"
               type="checkbox"
               class="sr-only peer"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
           </label>
         </div>
       </div>
@@ -534,7 +534,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               <button
                 v-if="!allPacksDownloaded"
                 :disabled="espeak_downloading"
-                class="px-2 py-1 bg-gray-700 dark:bg-gray-700 text-white rounded text-xs hover:bg-gray-700 dark:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                class="px-2 py-1 bg-gray-700 dark:bg-gray-500 text-white rounded text-xs hover:bg-gray-700 dark:bg-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                 @click.prevent="downloadAndEnableEspeak"
               >
                 {{ espeak_downloading ? t('speech.downloading') : t('common.download') }}
@@ -621,7 +621,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
               class="sr-only peer"
               @change="saveAutoPlayTTS"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:peer-checked:bg-gray-700600"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
           </label>
         </div>
       </div>
