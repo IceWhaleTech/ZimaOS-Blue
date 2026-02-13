@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Inviter medlem',
       emailAddress: 'E-postadresse',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Rolle',
       sendInvitation: 'Send invitasjon',
       sending: 'Sender...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Fyll ut obligatoriske felt først',
     viewDocs: 'Se dokumentasjon',
     telegramDesc: 'Koble til Telegram Bot API',
-    telegramHint: 'Opprett en bot via @BotFather og få bot-token',
+    telegramHint: "Opprett en bot via {'@'}BotFather og få bot-token",
     telegramOpenChat: 'Åpne botchat',
     botUsername: 'Brukernavn for bot',
     discordDesc: 'Koble til Discord Bot',
@@ -833,7 +833,7 @@ export default {
       uppercase: 'Én stor bokstav',
       lowercase: 'Én liten bokstav',
       number: 'Ét tall',
-      special: 'Ét spesialtegn (!@#$%...)',
+      special: "Ét spesialtegn (!{'@'}#$%...)",
     },
   },
   onboarding: {

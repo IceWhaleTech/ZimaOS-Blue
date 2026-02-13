@@ -232,6 +232,11 @@ func (h *EnvKeysHandler) findAntigravityTokens() []APIKeyInfo {
 				paths:    []string{"Library/Application Support/Cursor/User/settings.json"},
 				jsonPath: "antigravity.accessToken",
 			},
+			ideConfig{
+				name:     "Antigravity (macOS)",
+				paths:    []string{"Library/Application Support/Antigravity/User/settings.json"},
+				jsonPath: "antigravity.accessToken",
+			},
 		)
 	}
 

@@ -373,7 +373,7 @@ export default {
     invite: {
       title: 'Pozvat člena',
       emailAddress: 'E-mailová adresa',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Role',
       sendInvitation: 'Odeslat pozvánku',
       sending: 'Odesílání...',
@@ -398,7 +398,7 @@ export default {
     fillRequiredFields: 'Nejprve vyplňte povinná pole',
     viewDocs: 'Zobrazit dokumentaci',
     telegramDesc: 'Připojení k Telegram Bot API',
-    telegramHint: 'Vytvořte bota přes @BotFather a získejte token bota',
+    telegramHint: "Vytvořte bota přes {'@'}BotFather a získejte token bota",
     telegramOpenChat: 'Otevřít chat bota',
     botUsername: 'Uživatelské jméno bota',
     discordDesc: 'Připojení k Discord Bot',
@@ -988,7 +988,7 @@ export default {
       uppercase: 'Jedno velké písmeno',
       lowercase: 'Jedno malé písmeno',
       number: 'Jedna číslice',
-      special: 'Jeden speciální znak (!@#$%...)',
+      special: "Jeden speciální znak (!{'@'}#$%...)",
     },
   },
   onboarding: {

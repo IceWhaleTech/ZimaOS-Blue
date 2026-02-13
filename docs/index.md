@@ -71,6 +71,6 @@ ZimaOS Blue is a **A Local-first Agent Runtime for Builders with Bolder Mind** b
 │  LLM Provider │ Tools │ Memory │ Context        │
 ├─────────────────────────────────────────────────┤
 │              Data Layer                          │
-│  SQLite │ BoltDB │ Files                        │
+│  SQLite │ JSON Files │ Files                     │
 └─────────────────────────────────────────────────┘
 ```

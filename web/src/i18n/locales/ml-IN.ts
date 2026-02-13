@@ -242,7 +242,7 @@ export default {
     invite: {
       title: 'മെമ്പർ ക്ഷണിക്കുക',
       emailAddress: 'ഇമെയിൽ വിലാസം',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'റോൾ',
       sendInvitation: 'ക്ഷണം അയയ്ക്കുക',
       sending: 'അയയ്ക്കുന്നു...',
@@ -406,7 +406,7 @@ export default {
     fillRequiredFields: 'ആവശ്യമായ ഫീൽഡുകൾ പൂരിപ്പിക്കുക',
     viewDocs: 'ഡോക്യുമെന്റേഷൻ കാണുക',
     telegramDesc: 'Telegram Bot API-യുമായി ബന്ധിപ്പിക്കുക',
-    telegramHint: '@BotFather വഴി ഒരു ബോട്ട് സൃഷ്ടിച്ച് ബോട്ട് ടോക്കൺ നേടുക',
+    telegramHint: "{'@'}BotFather വഴി ഒരു ബോട്ട് സൃഷ്ടിച്ച് ബോട്ട് ടോക്കൺ നേടുക",
     telegramOpenChat: 'ബോട്ട് ചാറ്റ് തുറക്കുക',
     botUsername: 'ബോട്ട് ഉപയോക്തൃനാമം',
     discordDesc: 'Discord Bot-യുമായി ബന്ധിപ്പിക്കുക',
@@ -839,7 +839,7 @@ export default {
       uppercase: 'ഒരു വലിയ അക്ഷരം',
       lowercase: 'ഒരു ചെറിയ അക്ഷരം',
       number: 'ഒരു അക്കം',
-      special: 'ഒരു പ്രത്യേക പ്രതീകം (!@#$%...)',
+      special: "ഒരു പ്രത്യേക പ്രതീകം (!{'@'}#$%...)",
     },
   },
   onboarding: {

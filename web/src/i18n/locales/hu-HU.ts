@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Tag meghívása',
       emailAddress: 'E-mail cím',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Szerepkör',
       sendInvitation: 'Meghívó küldése',
       sending: 'Küldés...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Töltse ki a kötelező mezőket',
     viewDocs: 'Dokumentáció megtekintése',
     telegramDesc: 'Csatlakozás a Telegram Bot API-hoz',
-    telegramHint: 'Hozzon létre botot a @BotFather segítségével, és szerezze be a bot tokent',
+    telegramHint: "Hozzon létre botot a {'@'}BotFather segítségével, és szerezze be a bot tokent",
     telegramOpenChat: 'Bot csevegés megnyitása',
     botUsername: 'Bot felhasználónév',
     discordDesc: 'Csatlakozás a Discord Bot-hoz',
@@ -833,7 +833,7 @@ export default {
       uppercase: 'Egy nagybetű',
       lowercase: 'Egy kisbetű',
       number: 'Egy szám',
-      special: 'Egy speciális karakter (!@#$%...)',
+      special: "Egy speciális karakter (!{'@'}#$%...)",
     },
   },
   onboarding: {

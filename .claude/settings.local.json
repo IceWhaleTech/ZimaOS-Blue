@@ -115,7 +115,14 @@
       "Bash(./zimaos-blue:*)",
       "Bash(\"/Applications/ZimaOS Blue.app/Contents/MacOS/blue-server\" --version)",
       "Bash(git add:*)",
-      "WebFetch(domain:cdn.jsdelivr.net)"
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "Bash(for port in 9876 9877 9878)",
+      "Bash(do echo \"Port $port:\" curl -s --connect-timeout 2 http://127.0.0.1:$port/v1/models)",
+      "WebFetch(domain:kiro.dev)",
+      "WebFetch(domain:www.cursor.com)",
+      "WebFetch(domain:cline.ghost.io)",
+      "WebFetch(domain:betterstack.com)",
+      "WebFetch(domain:docs.qoder.com)"
     ]
   }
 }

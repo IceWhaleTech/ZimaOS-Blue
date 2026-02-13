@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Pozovi člana',
       emailAddress: 'Adresa e-pošte',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Uloga',
       sendInvitation: 'Pošalji pozivnicu',
       sending: 'Slanje...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Ispunite obavezna polja',
     viewDocs: 'Pogledaj dokumentaciju',
     telegramDesc: 'Poveži s Telegram Bot API',
-    telegramHint: 'Stvorite bota putem @BotFather i dohvatite token bota',
+    telegramHint: "Stvorite bota putem {'@'}BotFather i dohvatite token bota",
     telegramOpenChat: 'Otvori chat bota',
     botUsername: 'Korisničko ime bota',
     discordDesc: 'Poveži s Discord Bot',
@@ -833,7 +833,7 @@ export default {
       uppercase: 'Jedno veliko slovo',
       lowercase: 'Jedno malo slovo',
       number: 'Jedna znamenka',
-      special: 'Jedan poseban znak (!@#$%...)',
+      special: "Jedan poseban znak (!{'@'}#$%...)",
     },
   },
   onboarding: {

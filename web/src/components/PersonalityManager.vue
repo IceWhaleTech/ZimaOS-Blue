@@ -112,7 +112,7 @@ function getPersonalityIcon(personality: Personality): string {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
               <h4 class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {{ personality.name }}
+                {{ personality.id === 'default' ? t('personality.defaultName') : personality.name }}
               </h4>
               <span
                 v-if="store.activePersonality?.id === personality.id"
@@ -122,7 +122,7 @@ function getPersonalityIcon(personality: Personality): string {
               </span>
             </div>
             <p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-              {{ personality.description || personality.system_prompt }}
+              {{ personality.id === 'default' ? t('personality.defaultDescription') : (personality.description || personality.system_prompt) }}
             </p>
 
             <!-- Traits -->
@@ -154,6 +154,7 @@ function getPersonalityIcon(personality: Personality): string {
               {{ t('personality.activate') }}
             </button>
             <button
+              v-if="personality.id !== 'default'"
               class="px-3 py-1 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded text-xs font-medium transition-colors"
               @click="handleDelete(personality.id)"
             >

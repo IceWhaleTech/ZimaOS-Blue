@@ -1160,7 +1160,7 @@ export default {
     invite: {
       title: '멤버 초대',
       emailAddress: '이메일 주소',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: '역할',
       sendInvitation: '초대 보내기',
       sending: '전송 중...',
@@ -2206,7 +2206,7 @@ export default {
     fillRequiredFields: '필수 항목을 먼저 입력해 주세요',
     viewDocs: '문서 보기',
     telegramDesc: 'Telegram Bot API 연결',
-    telegramHint: '@BotFather로 봇을 생성하고 봇 토큰을 받으세요',
+    telegramHint: "{'@'}BotFather로 봇을 생성하고 봇 토큰을 받으세요",
     telegramOpenChat: '봇 채팅 열기',
     botUsername: '봇 사용자 이름',
     discordDesc: 'Discord Bot 연결',
@@ -2369,7 +2369,7 @@ export default {
       uppercase: '대문자 1개',
       lowercase: '소문자 1개',
       number: '숫자 1개',
-      special: '특수문자 1개 (!@#$%...)',
+      special: "특수문자 1개 (!{'@'}#$%...)",
     },
   },
   onboarding: {

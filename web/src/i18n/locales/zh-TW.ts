@@ -1174,7 +1174,7 @@ export default {
     invite: {
       title: '邀請成員',
       emailAddress: '電子郵件地址',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: '角色',
       sendInvitation: '傳送邀請',
       sending: '傳送中...',
@@ -1889,7 +1889,7 @@ export default {
     viewDocs: '查看文件',
     // Channel descriptions
     telegramDesc: '連接 Telegram Bot API',
-    telegramHint: '透過 @BotFather 建立機器人並取得 Bot Token',
+    telegramHint: "透過 {'@'}BotFather 建立機器人並取得 Bot Token",
     telegramOpenChat: '開啟機器人對話',
     botUsername: '機器人使用者名稱',
     discordDesc: '連接 Discord Bot',
@@ -2327,7 +2327,7 @@ export default {
       uppercase: '一個大寫字母',
       lowercase: '一個小寫字母',
       number: '一個數字',
-      special: '一個特殊字元 (!@#$%...)',
+      special: "一個特殊字元 (!{'@'}#$%...)",
     },
   },
   onboarding: {

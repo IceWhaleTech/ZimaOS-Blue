@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Invită membru',
       emailAddress: 'Adresă e-mail',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Rol',
       sendInvitation: 'Trimite invitație',
       sending: 'Se trimite...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Completați câmpurile obligatorii',
     viewDocs: 'Vedeți documentația',
     telegramDesc: 'Conectare la Telegram Bot API',
-    telegramHint: 'Creați un bot via @BotFather și obțineți tokenul bot',
+    telegramHint: "Creați un bot via {'@'}BotFather și obțineți tokenul bot",
     telegramOpenChat: 'Deschideți chatul bot',
     botUsername: 'Numele de utilizator al botului',
     discordDesc: 'Conectare la Discord Bot',
@@ -833,7 +833,7 @@ export default {
       uppercase: 'O literă mare',
       lowercase: 'O literă mică',
       number: 'O cifră',
-      special: 'Un caracter special (!@#$%...)',
+      special: "Un caracter special (!{'@'}#$%...)",
     },
   },
   onboarding: {

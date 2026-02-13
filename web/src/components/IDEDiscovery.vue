@@ -403,7 +403,7 @@ function getSourceLabel(source: string): string {
             </div>
             <div class="flex-1">
               <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ config.ide_name }}</h5>
-              <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('ideDiscovery.noApiKeyFound') }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">{{ config.ide_type === 'antigravity' ? t('ideDiscovery.oauthManaged') : t('ideDiscovery.noApiKeyFound') }}</p>
             </div>
           </div>
         </div>

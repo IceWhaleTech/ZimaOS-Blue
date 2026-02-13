@@ -843,6 +843,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			JWTService:    jwtService,
 			SkillRegistry: skillRegistry,
 			ToolRegistry:  toolRegistry,
+			WorkerPool:    pool,
 		},
 		Logger:             zapLogger,
 		Ctx:                lm.Context(),

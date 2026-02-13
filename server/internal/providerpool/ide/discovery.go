@@ -473,16 +473,19 @@ func getAntigravityPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/Antigravity/User/settings.json",
 			"~/Library/Application Support/Antigravity/config.json",
 			"~/.config/antigravity/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/Antigravity/User/settings.json",
 			"~/.config/antigravity/config.json",
 			"~/.antigravity/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/Antigravity/User/settings.json",
 			"%APPDATA%/Antigravity/config.json",
 			"%LOCALAPPDATA%/Antigravity/config.json",
 		}
@@ -517,16 +520,19 @@ func getWindsurfPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/Windsurf/User/settings.json",
 			"~/Library/Application Support/Windsurf/config.json",
 			"~/.windsurf/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/Windsurf/User/settings.json",
 			"~/.config/windsurf/config.json",
 			"~/.windsurf/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/Windsurf/User/settings.json",
 			"%APPDATA%/Windsurf/config.json",
 			"%LOCALAPPDATA%/Windsurf/config.json",
 		}
@@ -564,17 +570,20 @@ func getQoderPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/Qoder/User/settings.json",
 			"~/Library/Application Support/Qoder/config.json",
 			"~/.qoder/config.json",
 			"~/.config/qoder/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/Qoder/User/settings.json",
 			"~/.config/qoder/config.json",
 			"~/.qoder/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/Qoder/User/settings.json",
 			"%APPDATA%/Qoder/config.json",
 			"%LOCALAPPDATA%/Qoder/config.json",
 		}
@@ -587,17 +596,20 @@ func getTRAEPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/TRAE/User/settings.json",
 			"~/Library/Application Support/TRAE/config.json",
 			"~/.trae/config.json",
 			"~/.config/trae/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/TRAE/User/settings.json",
 			"~/.config/trae/config.json",
 			"~/.trae/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/TRAE/User/settings.json",
 			"%APPDATA%/TRAE/config.json",
 			"%LOCALAPPDATA%/TRAE/config.json",
 		}
@@ -611,16 +623,19 @@ func getKiroPaths() []string {
 	case "darwin":
 		return []string{
 			"~/.kiro/config.json",
+			"~/Library/Application Support/Kiro/User/settings.json",
 			"~/Library/Application Support/Kiro/config.json",
 		}
 	case "linux":
 		return []string{
 			"~/.kiro/config.json",
+			"~/.config/Kiro/User/settings.json",
 			"~/.config/kiro/config.json",
 		}
 	case "windows":
 		return []string{
 			"%USERPROFILE%/.kiro/config.json",
+			"%APPDATA%/Kiro/User/settings.json",
 			"%APPDATA%/Kiro/config.json",
 		}
 	}
@@ -781,6 +796,13 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 			CanImport:  canImport,
 		}
 
+		// For Antigravity, the proxy URL itself is sufficient for import
+		// (OAuth tokens are managed by the app, not stored in config files)
+		if ide.Type == IDETypeAntigravity && ide.ProxyURL != "" && ide.Connected {
+			config.CanImport = true
+			config.Source = "config"
+		}
+
 		if canImport {
 			config.APIKey = masked // Only return masked version
 		}
@@ -789,7 +811,7 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 	}
 
 	// Also check environment variables
-	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeQoder, IDETypeTRAE} {
+	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE} {
 		if key, envVar := GetAPIKeyFromEnv(ideType); key != "" {
 			// Check if we already have this IDE from config
 			found := false

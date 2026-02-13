@@ -236,7 +236,7 @@ export default {
     invite: {
       title: 'Cuir comhalta',
       emailAddress: 'Seoladh ríomhphoist',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Ról',
       sendInvitation: 'Seol cuireadh',
       sending: 'Á sheoladh...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Líon na réimsí riachtanacha ar dtús',
     viewDocs: 'Féach an doiciméadú',
     telegramDesc: 'Ceangail le Telegram Bot API',
-    telegramHint: 'Cruthaigh bot trí @BotFather agus faigh comhartha do bhot',
+    telegramHint: "Cruthaigh bot trí {'@'}BotFather agus faigh comhartha do bhot",
     telegramOpenChat: 'Oscail comhrá an bhot',
     botUsername: 'Ainm úsáideora an bhot',
     discordDesc: 'Ceangail le Discord Bot',
@@ -833,7 +833,7 @@ export default {
       uppercase: 'Litir cháipitil amháin',
       lowercase: 'Litir bheag amháin',
       number: 'Uimhir amháin',
-      special: 'Carachtar speisialta amháin (!@#$%...)',
+      special: "Carachtar speisialta amháin (!{'@'}#$%...)",
     },
   },
   onboarding: {

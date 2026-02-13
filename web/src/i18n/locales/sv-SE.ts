@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Bjud in medlem',
       emailAddress: 'E-postadress',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Roll',
       sendInvitation: 'Skicka inbjudan',
       sending: 'Skickar...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Fyll i obligatoriska fält först',
     viewDocs: 'Visa dokumentation',
     telegramDesc: 'Anslut till Telegram Bot API',
-    telegramHint: 'Skapa en bot via @BotFather och hämta din bot-token',
+    telegramHint: "Skapa en bot via {'@'}BotFather och hämta din bot-token",
     telegramOpenChat: 'Öppna botchatt',
     botUsername: 'Botanvändarnamn',
     discordDesc: 'Anslut till Discord Bot',
@@ -1069,7 +1069,7 @@ export default {
       uppercase: 'En versal',
       lowercase: 'En gemen',
       number: 'En siffra',
-      special: 'Ett specialtecken (!@#$%...)',
+      special: "Ett specialtecken (!{'@'}#$%...)",
     },
   },
   onboarding: {

@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Πρόσκληση μέλους',
       emailAddress: 'Διεύθυνση ηλεκτρονικού ταχυδρομείου',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Ρόλος',
       sendInvitation: 'Αποστολή πρόσκλησης',
       sending: 'Αποστολή...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Συμπληρώστε πρώτα τα υποχρεωτικά πεδία',
     viewDocs: 'Δείτε την τεκμηρίωση',
     telegramDesc: 'Σύνδεση με Telegram Bot API',
-    telegramHint: 'Δημιουργήστε bot μέσω @BotFather και λάβετε το token του bot',
+    telegramHint: "Δημιουργήστε bot μέσω {'@'}BotFather και λάβετε το token του bot",
     telegramOpenChat: 'Άνοιγμα συνομιλίας bot',
     botUsername: 'Όνομα χρήστη bot',
     discordDesc: 'Σύνδεση με Discord Bot',
@@ -833,7 +833,7 @@ export default {
       uppercase: 'Ένα κεφαλαίο γράμμα',
       lowercase: 'Ένα πεζό γράμμα',
       number: 'Ένας αριθμός',
-      special: 'Ένας ειδικός χαρακτήρας (!@#$%...)',
+      special: "Ένας ειδικός χαρακτήρας (!{'@'}#$%...)",
     },
   },
   onboarding: {

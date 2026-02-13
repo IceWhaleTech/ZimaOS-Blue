@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Convidar membre',
       emailAddress: 'Adreça de correu electrònic',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Rol',
       sendInvitation: 'Enviar invitació',
       sending: 'Enviant...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Si us plau, omple primer els camps obligatoris',
     viewDocs: 'Veure documentació',
     telegramDesc: 'Connectar amb Telegram Bot API',
-    telegramHint: 'Crea un bot via @BotFather i obtén el token del bot',
+    telegramHint: "Crea un bot via {'@'}BotFather i obtén el token del bot",
     telegramOpenChat: 'Obrir xat del bot',
     botUsername: 'Nom d\'usuari del bot',
     discordDesc: 'Connectar amb Discord Bot',
@@ -1067,7 +1067,7 @@ export default {
       uppercase: 'Una lletra majúscula',
       lowercase: 'Una lletra minúscula',
       number: 'Un número',
-      special: 'Un caràcter especial (!@#$%...)',
+      special: "Un caràcter especial (!{'@'}#$%...)",
     },
   },
   onboarding: {

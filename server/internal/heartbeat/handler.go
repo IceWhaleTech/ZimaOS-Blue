@@ -21,6 +21,7 @@ func NewHandler(runner *Runner) *Handler {
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/heartbeat/status", h.Status)
 	g.POST("/heartbeat/trigger", h.Trigger)
+	g.PATCH("/heartbeat/config", h.UpdateConfig)
 }
 
 // Status returns the current heartbeat state.
@@ -61,5 +62,33 @@ func (h *Handler) Trigger(c echo.Context) error {
 	h.runner.RequestNow("manual")
 	return c.JSON(http.StatusOK, map[string]string{
 		"status": "triggered",
+	})
+}
+
+// UpdateConfig toggles heartbeat enabled/disabled at runtime.
+func (h *Handler) UpdateConfig(c echo.Context) error {
+	if h.runner == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "heartbeat runner not initialized",
+		})
+	}
+
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request body",
+		})
+	}
+
+	if req.Enabled != nil {
+		h.runner.mu.Lock()
+		h.runner.cfg.Enabled = *req.Enabled
+		h.runner.mu.Unlock()
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status": "updated",
 	})
 }

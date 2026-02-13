@@ -60,7 +60,7 @@ const editBeforeSend = computed({
 })
 
 // TTS Provider selection
-const selectedProvider = ref(localStorage.getItem('tts-provider') || 'edge')
+const selectedProvider = ref(localStorage.getItem('tts-provider') || 'edge-tts')
 const selectedTTSModel = ref(localStorage.getItem('tts-model') || 'piper-en')
 const selectedASRModel = ref(localStorage.getItem('asr-model') || '')
 

@@ -16,4 +16,5 @@ export interface HeartbeatStatus {
 export const heartbeatApi = {
   getStatus: () => api.get<HeartbeatStatus>('/heartbeat/status', { baseURL: '/api' }),
   trigger: () => api.post<{ status: string }>('/heartbeat/trigger', null, { baseURL: '/api' }),
+  updateConfig: (data: { enabled: boolean }) => api.patch<{ status: string }>('/heartbeat/config', data, { baseURL: '/api' }),
 }

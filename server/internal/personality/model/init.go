@@ -14,7 +14,14 @@ func InitializeDefaultPersonality(dataDir string) error {
 	}
 
 	// Check if default personality already exists
-	if _, err := storage.GetByID("default"); err == nil {
+	if existing, err := storage.GetByID("default"); err == nil {
+		// Migrate: rename Echo -> Blue if needed
+		if existing.Name == "Echo" {
+			existing.Name = "Blue"
+			existing.Description = "Default ZimaOS Blue AI Assistant"
+			existing.UpdatedAt = time.Now()
+			_ = storage.Update(existing)
+		}
 		return nil // Already exists
 	}
 

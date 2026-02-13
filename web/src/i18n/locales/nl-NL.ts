@@ -236,7 +236,7 @@ export default {
     invite: {
       title: 'Lid uitnodigen',
       emailAddress: 'E-mailadres',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Rol',
       sendInvitation: 'Uitnodiging verzenden',
       sending: 'Verzenden...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Vul eerst de verplichte velden in',
     viewDocs: 'Documentatie bekijken',
     telegramDesc: 'Verbinden met Telegram Bot API',
-    telegramHint: 'Maak een bot via @BotFather en krijg je bot-token',
+    telegramHint: "Maak een bot via {'@'}BotFather en krijg je bot-token",
     telegramOpenChat: 'Botchat openen',
     botUsername: 'Botgebruikersnaam',
     discordDesc: 'Verbinden met Discord Bot',
@@ -1069,7 +1069,7 @@ export default {
       uppercase: 'Één hoofdletter',
       lowercase: 'Één kleine letter',
       number: 'Één cijfer',
-      special: 'Één speciaal teken (!@#$%...)',
+      special: "Één speciaal teken (!{'@'}#$%...)",
     },
   },
   onboarding: {

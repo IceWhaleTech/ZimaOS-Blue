@@ -1184,7 +1184,7 @@ export default {
     invite: {
       title: 'メンバーを招待',
       emailAddress: 'メールアドレス',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: '役割',
       sendInvitation: '招待を送信',
       sending: '送信中...',
@@ -2231,7 +2231,7 @@ export default {
     viewDocs: 'ドキュメントを見る',
     // Channel descriptions
     telegramDesc: 'Telegram Bot API に接続',
-    telegramHint: '@BotFather でボットを作成し、ボットトークンを取得してください',
+    telegramHint: "{'@'}BotFather でボットを作成し、ボットトークンを取得してください",
     telegramOpenChat: 'ボットチャットを開く',
     botUsername: 'ボットユーザー名',
     discordDesc: 'Discord Bot に接続',
@@ -2399,7 +2399,7 @@ export default {
       uppercase: '大文字 1 つ',
       lowercase: '小文字 1 つ',
       number: '数字 1 つ',
-      special: '特殊文字 1 つ (!@#$%...)',
+      special: "特殊文字 1 つ (!{'@'}#$%...)",
     },
   },
   onboarding: {

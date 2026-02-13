@@ -375,7 +375,7 @@ export default {
     invite: {
       title: 'Zaproś członka',
       emailAddress: 'Adres e-mail',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Rola',
       sendInvitation: 'Wyślij zaproszenie',
       sending: 'Wysyłanie...',
@@ -400,7 +400,7 @@ export default {
     fillRequiredFields: 'Najpierw uzupełnij wymagane pola',
     viewDocs: 'Zobacz dokumentację',
     telegramDesc: 'Połącz z Telegram Bot API',
-    telegramHint: 'Utwórz bota przez @BotFather i uzyskaj token bota',
+    telegramHint: "Utwórz bota przez {'@'}BotFather i uzyskaj token bota",
     telegramOpenChat: 'Otwórz czat bota',
     botUsername: 'Nazwa użytkownika bota',
     discordDesc: 'Połącz z Discord Bot',
@@ -1069,7 +1069,7 @@ export default {
       uppercase: 'Jedna wielka litera',
       lowercase: 'Jedna mała litera',
       number: 'Jedna cyfra',
-      special: 'Jeden znak specjalny (!@#$%...)',
+      special: "Jeden znak specjalny (!{'@'}#$%...)",
     },
   },
   onboarding: {

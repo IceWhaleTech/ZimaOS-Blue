@@ -6,6 +6,7 @@ import { companionApi, type CompanionSession, type Stats as CompanionStats } fro
 import { getActiveConnections, getConnectionStats, type Connection, type ConnectionStats } from '@/api/connections'
 import SessionList from '@/components/companion/SessionList.vue'
 import SessionDetail from '@/components/companion/SessionDetail.vue'
+import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 
 const { t, te } = useI18n()
 
@@ -97,6 +98,8 @@ const scanResults = ref<ScanItem[]>([])
 const scanCompleted = ref(false)
 const scanResultsExpanded = ref(true)
 const fixingItem = ref<string | null>(null) // ID of item being fixed
+const fixPreviewVisible = ref(false)
+const fixPreviewItem = ref<ScanItem | null>(null)
 const expandedItemId = ref<string | null>(null) // ID of expanded item for details
 
 // Check if scan should run (once per day)
@@ -215,7 +218,43 @@ async function startSecurityScan() {
   }
 }
 
-// Fix a scan issue
+// Fix a scan issue - show preview first
+function showFixPreview(item: ScanItem) {
+  if (!item.auto_fixable || !item.fix_action || fixingItem.value) return
+  fixPreviewItem.value = item
+  fixPreviewVisible.value = true
+}
+
+// Confirm fix from preview dialog
+async function confirmFix(fixAction: string) {
+  fixPreviewVisible.value = false
+  const item = fixPreviewItem.value
+  if (!item) return
+
+  fixingItem.value = item.id
+
+  try {
+    const response = await securityApi.fixScanIssue(fixAction)
+    if (response.data.success) {
+      item.status = 'passed'
+      item.details = response.data.message
+      item.auto_fixable = false
+      item.fix_action = undefined
+      saveScanTimestamp()
+    } else {
+      item.details = response.data.message
+    }
+  } catch (error: unknown) {
+    console.error('Failed to fix issue:', error)
+    const errorMessage = error instanceof Error ? error.message : t('security.scan.fixError')
+    item.details = errorMessage
+  } finally {
+    fixingItem.value = null
+    fixPreviewItem.value = null
+  }
+}
+
+// Legacy direct fix (used by fixAll)
 async function fixScanIssue(item: ScanItem) {
   if (!item.auto_fixable || !item.fix_action || fixingItem.value) return
 
@@ -296,7 +335,7 @@ function getScanItemDescription(item: ScanItem): string {
 // Get scan item status icon and color
 function getScanStatusClass(status: string): string {
   switch (status) {
-    case 'passed': return 'text-green-600'
+    case 'passed': return 'text-green-700 dark:text-green-500'
     case 'warning': return 'text-yellow-500'
     case 'failed': return 'text-red-500'
     case 'scanning': return 'text-gray-900 dark:text-white animate-pulse'
@@ -478,7 +517,7 @@ onUnmounted(() => {
           <div
 :class="[
             'w-10 h-10 rounded-full flex items-center justify-center',
-            securityStatus === 'passed' ? 'bg-green-400' :
+            securityStatus === 'passed' ? 'bg-green-600' :
             securityStatus === 'warning' ? 'bg-yellow-500' :
             securityStatus === 'failed' ? 'bg-red-500' : 'bg-gray-700 dark:bg-gray-500'
           ]">
@@ -499,7 +538,7 @@ onUnmounted(() => {
             <h2
 :class="[
               'text-lg font-semibold',
-              securityStatus === 'passed' ? 'text-green-800 dark:text-green-600' :
+              securityStatus === 'passed' ? 'text-green-900 dark:text-green-400' :
               securityStatus === 'warning' ? 'text-yellow-800 dark:text-yellow-200' :
               securityStatus === 'failed' ? 'text-red-800 dark:text-red-200' :
               'text-gray-900 dark:text-white dark:text-white'
@@ -512,7 +551,7 @@ onUnmounted(() => {
             <p
 :class="[
               'text-sm',
-              securityStatus === 'passed' ? 'text-green-400 dark:text-green-400' :
+              securityStatus === 'passed' ? 'text-green-700 dark:text-green-300' :
               securityStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
               securityStatus === 'failed' ? 'text-red-600 dark:text-red-400' :
               'text-gray-900 dark:text-white dark:text-white'
@@ -588,8 +627,8 @@ onUnmounted(() => {
       <!-- Scan Summary -->
       <div v-if="scanCompleted" class="grid grid-cols-3 gap-4 mb-4">
         <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
-          <div class="text-2xl font-bold text-green-400 dark:text-green-400">{{ scanSummary.passed }}</div>
-          <div class="text-xs text-green-200 dark:text-green-200">{{ t('security.scan.passed') }}</div>
+          <div class="text-2xl font-bold text-green-700 dark:text-green-400">{{ scanSummary.passed }}</div>
+          <div class="text-xs text-green-600 dark:text-green-300">{{ t('security.scan.passed') }}</div>
         </div>
         <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 text-center">
           <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{ scanSummary.warnings }}</div>
@@ -670,7 +709,7 @@ onUnmounted(() => {
                 <span
                   :class="[
                     'px-2 py-0.5 text-xs rounded-full font-medium',
-                    item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' :
+                    item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
                     item.status === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
                     item.status === 'failed' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' :
                     'bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400'
@@ -686,7 +725,7 @@ onUnmounted(() => {
                   v-if="item.auto_fixable && (item.status === 'warning' || item.status === 'failed')"
                   :disabled="fixingItem === item.id"
                   class="px-2 py-0.5 text-xs rounded-full font-medium bg-gray-100 dark:bg-gray-700/30 text-gray-900 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/40 transition-colors disabled:opacity-50"
-                  @click.stop="fixScanIssue(item)"
+                  @click.stop="showFixPreview(item)"
                 >
                   <span v-if="fixingItem === item.id" class="flex items-center gap-1">
                     <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
@@ -730,7 +769,7 @@ onUnmounted(() => {
                 <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ item.impact }}
               </div>
               <div v-if="item.remediation" class="text-xs text-gray-600 dark:text-slate-300">
-                <span class="font-medium text-green-400 dark:text-green-400">{{ t('security.scan.remediation') }}:</span> {{ item.remediation }}
+                <span class="font-medium text-green-700 dark:text-green-300">{{ t('security.scan.remediation') }}:</span> {{ item.remediation }}
               </div>
             </div>
           </div>
@@ -941,5 +980,13 @@ onUnmounted(() => {
         </div>
       </div>
     </Teleport>
+
+    <!-- Fix Preview Dialog -->
+    <FixPreviewDialog
+      :visible="fixPreviewVisible"
+      :item="fixPreviewItem as any"
+      @close="fixPreviewVisible = false"
+      @confirm="confirmFix"
+    />
   </div>
 </template>

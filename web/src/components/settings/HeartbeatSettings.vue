@@ -10,6 +10,7 @@ const emit = defineEmits<{ 'status-change': [msg: string] }>()
 const status = ref<HeartbeatStatus | null>(null)
 const loading = ref(false)
 const triggering = ref(false)
+const toggling = ref(false)
 
 const indicatorClass = computed(() => {
   const type = status.value?.last_event?.indicator_type
@@ -54,6 +55,22 @@ async function triggerNow() {
   }
 }
 
+async function toggleEnabled() {
+  if (!status.value || toggling.value) return
+  toggling.value = true
+  try {
+    const newEnabled = !status.value.enabled
+    await heartbeatApi.updateConfig({ enabled: newEnabled })
+    status.value.enabled = newEnabled
+    emit('status-change', newEnabled ? t('heartbeat.enabled') : t('heartbeat.disabled'))
+    if (newEnabled) setTimeout(fetchStatus, 1000)
+  } catch (e) {
+    console.error('Failed to toggle heartbeat:', e)
+  } finally {
+    toggling.value = false
+  }
+}
+
 function formatTime(ts?: string) {
   if (!ts) return '-'
   return new Date(ts).toLocaleString()
@@ -77,6 +94,24 @@ onMounted(fetchStatus)
     </div>
 
     <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('heartbeat.description') }}</p>
+
+    <!-- Enable/Disable Toggle -->
+    <div v-if="status" class="flex items-center justify-between py-2">
+      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('heartbeat.enableToggle') }}</span>
+      <button
+        role="switch"
+        :aria-checked="status.enabled"
+        :disabled="toggling"
+        class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        :class="status.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+        @click="toggleEnabled"
+      >
+        <span
+          class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+          :class="status.enabled ? 'translate-x-6' : 'translate-x-1'"
+        />
+      </button>
+    </div>
 
     <!-- Status Card -->
     <div v-if="status" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">

@@ -1032,7 +1032,7 @@ export default {
     invite: {
       title: 'Пригласить участника',
       emailAddress: 'Адрес электронной почты',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Роль',
       sendInvitation: 'Отправить приглашение',
       sending: 'Отправка...',
@@ -1057,7 +1057,7 @@ export default {
     fillRequiredFields: 'Сначала заполните обязательные поля',
     viewDocs: 'Открыть документацию',
     telegramDesc: 'Подключение через Telegram Bot API',
-    telegramHint: 'Создайте бота через @BotFather и получите токен бота',
+    telegramHint: "Создайте бота через {'@'}BotFather и получите токен бота",
     telegramOpenChat: 'Открыть чат бота',
     botUsername: 'Имя пользователя бота',
     discordDesc: 'Подключение Discord Bot',
@@ -1695,7 +1695,7 @@ export default {
       uppercase: 'Одна заглавная буква',
       lowercase: 'Одна строчная буква',
       number: 'Одна цифра',
-      special: 'Один специальный символ (!@#$%...)',
+      special: "Один специальный символ (!{'@'}#$%...)",
     },
   },
   onboarding: {

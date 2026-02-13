@@ -1096,7 +1096,7 @@ export default {
     invite: {
       title: 'Invita membro',
       emailAddress: 'Indirizzo email',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: 'Ruolo',
       sendInvitation: 'Invia invito',
       sending: 'Invio...',
@@ -1121,7 +1121,7 @@ export default {
     fillRequiredFields: 'Compila prima i campi obbligatori',
     viewDocs: 'Vedi documentazione',
     telegramDesc: 'Connetti tramite Telegram Bot API',
-    telegramHint: 'Crea un bot via @BotFather e ottieni il token del bot',
+    telegramHint: "Crea un bot via {'@'}BotFather e ottieni il token del bot",
     telegramOpenChat: 'Apri chat del bot',
     botUsername: 'Nome utente del bot',
     discordDesc: 'Connetti un bot Discord',
@@ -1762,7 +1762,7 @@ export default {
       uppercase: 'Una lettera maiuscola',
       lowercase: 'Una lettera minuscola',
       number: 'Un numero',
-      special: 'Un carattere speciale (!@#$%...)',
+      special: "Un carattere speciale (!{'@'}#$%...)",
     },
   },
   onboarding: {

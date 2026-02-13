@@ -1496,6 +1496,7 @@ onMounted(() => {
     </div>
 
     <!-- IDE Discovery Modal -->
+    <Teleport to="body">
     <div
       v-if="showIDEDiscoveryModal"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -1520,5 +1521,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
