@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: ZimaOS Blue
-  text: NAS 原生 Agent 运行时
-  tagline: 轻量、高性能的 AI Agent 运行时，专为低功耗 NAS 设备优化
+  text: 面向具有更大胆思维的建造者的本地优先代理运行时
+  tagline: 轻量、高性能的 AI Agent 运行时
   image:
     src: /logo.svg
     alt: ZimaOS Blue
@@ -19,7 +19,7 @@ hero:
 features:
   - icon: 🚀
     title: 轻量级
-    details: 单一二进制文件 < 15MB，内存占用 < 80MB，专为 NAS 设备优化
+    details: 单一二进制文件 < 15MB，内存占用 < 80MB，专为低功耗设备优化
   - icon: ⚡
     title: 高性能
     details: 使用 Go 构建，利用 goroutine 实现高吞吐低延迟
@@ -49,7 +49,7 @@ make build && ./dist/zimaos-blue server
 
 ## 什么是 ZimaOS Blue？
 
-ZimaOS Blue 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感来源于 [clawdbot](https://github.com/clawdbot/clawdbot)。它专为低功耗 NAS 和边缘设备设计，提供：
+ZimaOS Blue 是一个使用 Go 构建的 **面向具有更大胆思维的建造者的本地优先代理运行时**，灵感来源于 [clawdbot](https://github.com/clawdbot/clawdbot)。它专为低功耗设备设计，提供：
 
 - **极低资源占用**：在 CPU 和内存有限的设备上高效运行
 - **长期稳定性**：专为 24/7 不间断运行设计

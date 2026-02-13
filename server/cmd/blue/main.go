@@ -81,7 +81,7 @@ func main() {
 	flag.Parse()
 
 	if *showHelp {
-		fmt.Printf("ZimaOS-Blue %s - NAS-Native Agent Runtime\n\n", version)
+		fmt.Printf("ZimaOS-Blue %s - A Local-first Agent Runtime for Builders with Bolder Mind\n\n", version)
 		fmt.Println("Usage: blue [options] [command]")
 		fmt.Println("")
 		fmt.Println("Options:")
@@ -557,7 +557,7 @@ func main() {
 	}
 
 	// Async initialization for Cron service
-	go func() {
+	initPool.Go(func() {
 		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
 		cronService.RegisterBuiltinHandlers()
 		cronHandler = cron.NewHandler(cronService, zapLogger)
@@ -565,21 +565,19 @@ func main() {
 			logger.Warn().Err(err).Msg("Failed to start cron service")
 		}
 		logger.Info().Msg("Cron service initialized")
-	}()
+	})
 
-	// Async initialization for Home Assistant service
-	go func() {
+	initPool.Go(func() {
 		haService = homeassistant.NewHAService()
 		haHandler = homeassistant.NewHandler(haService)
 		logger.Info().Msg("Home Assistant handler initialized")
-	}()
+	})
 
 	// TTS/STT services are initialized lazily when chat page is opened
 	// This avoids heavy initialization at startup
 	logger.Info().Msg("TTS/STT services will be initialized on demand (when chat page is opened)")
 
-	// Async initialization for non-critical services
-	go func() {
+	initPool.Go(func() {
 		// Form filler store
 		var err error
 		formfillerStore, err = formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
@@ -589,7 +587,7 @@ func main() {
 		}
 		formfillerHandler = formfiller.NewHandler(formfillerStore)
 		logger.Info().Msg("Form filler handler initialized")
-	}()
+	})
 
 	initPool.Go(func() {
 		// Companion service (Blue Companion - real-time AI Agent monitoring)

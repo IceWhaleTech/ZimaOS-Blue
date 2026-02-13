@@ -49,6 +49,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 )
 
@@ -186,21 +187,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 
 	// Worker stats endpoint (public, for bootstrap/health checks)
 	v1.GET("/workers/stats", func(c echo.Context) error {
-		// Return real worker pool statistics
 		if s.WorkerPool == nil {
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"active":    0,
-				"queued":    0,
-				"completed": 0,
-			})
+			return c.JSON(http.StatusOK, worker.Stats{})
 		}
-		stats := s.WorkerPool.Stats()
-		// Map worker.Pool stats to expected format
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"active":    stats.Running,
-			"queued":    0, // worker.Pool doesn't track queued tasks
-			"completed": stats.Total - int64(stats.Running),
-		})
+		return c.JSON(http.StatusOK, s.WorkerPool.Stats())
 	})
 
 	// Public auth routes

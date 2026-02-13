@@ -4,7 +4,7 @@
 
 ### 什么是 ZimaOS Blue？
 
-ZimaOS Blue 是面向家庭服务器和 NAS 设备的 AI 助手，提供：
+ZimaOS Blue 是面向具有更大胆思维的建造者的本地优先代理运行时，提供：
 - 自然语言聊天界面
 - 通过 Home Assistant 的智能家居控制
 - 多通道消息（Telegram、Discord 等）

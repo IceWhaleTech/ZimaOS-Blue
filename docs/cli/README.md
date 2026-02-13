@@ -1,6 +1,6 @@
 # ZimaOS-Blue CLI Tutorial
 
-ZimaOS-Blue provides a comprehensive command-line interface (CLI) for managing and interacting with the NAS-Native Agent Runtime.
+ZimaOS-Blue provides a comprehensive command-line interface (CLI) for managing and interacting with the A Local-first Agent Runtime for Builders with Bolder Mind.
 
 ## Table of Contents
 

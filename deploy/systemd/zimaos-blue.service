@@ -1,5 +1,5 @@
 [Unit]
-Description=ZimaOS-Blue - NAS-native Agent Runtime
+Description=ZimaOS-Blue - A Local-first Agent Runtime for Builders with Bolder Mind
 Documentation=https://github.com/IceWhaleTech/ZimaOS-Blue
 After=network-online.target
 Wants=network-online.target

@@ -6,7 +6,7 @@ This document describes the development direction and milestone planning for the
 
 ## Vision
 
-Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbot), build a **NAS-native Agent Runtime** using Golang - lightweight, high-performance, optimized for low-power trusted NAS devices, with one-click deployment and monolithic service architecture.
+Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbot), build a **A Local-first Agent Runtime for Builders with Bolder Mind** using Golang - lightweight, high-performance, optimized for low-power trusted NAS devices, with one-click deployment and monolithic service architecture.
 
 > **This is NOT "clawdbot in Go", but "NAS Agent Runtime with clawdbot as the requirements sample".**
 

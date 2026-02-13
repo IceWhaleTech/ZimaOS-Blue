@@ -65,7 +65,7 @@ print_banner() {
     echo -e "${BLUE}"
     echo "╔═══════════════════════════════════════════╗"
     echo "║         ZimaOS-Blue Installer             ║"
-    echo "║     NAS-Native Agent Runtime              ║"
+    echo "║     A Local-first Agent Runtime for Builders with Bolder Mind              ║"
     echo "╚═══════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -156,7 +156,7 @@ setup_systemd() {
 
     cat > /etc/systemd/system/zimaos-blue.service << EOF
 [Unit]
-Description=ZimaOS Blue - NAS-Native Agent Runtime
+Description=ZimaOS Blue - A Local-first Agent Runtime for Builders with Bolder Mind
 Documentation=https://docs.zimaos-blue.dev
 After=network-online.target
 Wants=network-online.target

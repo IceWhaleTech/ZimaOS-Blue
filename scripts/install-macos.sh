@@ -57,7 +57,7 @@ print_banner() {
     echo -e "${BLUE}"
     echo "╔═══════════════════════════════════════════╗"
     echo "║     ZimaOS-Blue macOS Installer           ║"
-    echo "║     NAS-Native Agent Runtime              ║"
+    echo "║     A Local-first Agent Runtime           ║"
     echo "╚═══════════════════════════════════════════╝"
     echo -e "${NC}"
 }

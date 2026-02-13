@@ -784,7 +784,7 @@ func (h *ServiceHandler) installSystemdService() (string, error) {
 
 	// Create systemd service content
 	serviceContent := fmt.Sprintf(`[Unit]
-Description=ZimaOS Blue - NAS-Native Agent Runtime
+Description=ZimaOS Blue - A Local-first Agent Runtime for Builders with Bolder Mind
 Documentation=https://github.com/IceWhaleTech/ZimaOS-Blue
 After=network-online.target
 Wants=network-online.target

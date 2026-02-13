@@ -97,7 +97,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Name:        "ZimaOS-Blue",
 		DisplayName: "ZimaOS Blue",
-		Description: "ZimaOS Blue - NAS-Native Agent Runtime",
+		Description: "ZimaOS Blue - A Local-first Agent Runtime for Builders with Bolder Mind",
 		StartType:   StartAutomatic,
 	}
 }

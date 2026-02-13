@@ -109,7 +109,7 @@ func (s *service) Initialize() error {
 
 	// Initialize TTS provider based on configuration
 	if s.config.TTS.Provider == "" {
-		s.config.TTS.Provider = "espeak-ng" // Default to eSpeak-NG
+		s.config.TTS.Provider = "edge-tts" // Default to Edge TTS
 	}
 
 	// TTS provider initialization is handled by ttsService

@@ -4,7 +4,7 @@ This document describes the architecture of ZimaOS Blue.
 
 ## Overview
 
-ZimaOS Blue is a NAS-native Agent Runtime built with Go, designed for low-power devices. It provides a lightweight, high-performance platform for running AI agents.
+ZimaOS Blue is a A Local-first Agent Runtime for Builders with Bolder Mind built with Go, designed for low-power devices. It provides a lightweight, high-performance platform for running AI agents.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐

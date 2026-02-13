@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'ZimaOS Blue',
-  description: 'NAS-Native Agent Runtime',
+  description: 'A Local-first Agent Runtime for Builders with Bolder Mind',
 
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],

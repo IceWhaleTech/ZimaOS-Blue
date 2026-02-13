@@ -21,8 +21,8 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "blue",
-	Short: "ZimaOS-Blue - NAS-Native Agent Runtime",
-	Long: `ZimaOS-Blue is a NAS-native agent runtime that provides
+	Short: "ZimaOS-Blue - A Local-first Agent Runtime for Builders with Bolder Mind",
+	Long: `ZimaOS-Blue is a A Local-first Agent Runtime for Builders with Bolder Mind that provides
 AI assistant capabilities with local-first architecture.
 
 It supports multiple LLM providers, plugins, skills, and

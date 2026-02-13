@@ -40,7 +40,7 @@ function Write-Banner {
     Write-Host ""
     Write-Host "╔═══════════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "║         ZimaOS-Blue Installer             ║" -ForegroundColor Cyan
-    Write-Host "║     NAS-Native Agent Runtime              ║" -ForegroundColor Cyan
+    Write-Host "║     A Local-first Agent Runtime           ║" -ForegroundColor Cyan
     Write-Host "╚═══════════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -230,7 +230,7 @@ function Install-WindowsService {
 
         $binPathEscaped = "`"$binaryPath`" --config `"$configPath`""
         sc.exe create $ServiceName binPath= $binPathEscaped start= auto DisplayName= "ZimaOS Blue" | Out-Null
-        sc.exe description $ServiceName "ZimaOS Blue - NAS-Native Agent Runtime" | Out-Null
+        sc.exe description $ServiceName "ZimaOS Blue - A Local-first Agent Runtime for Builders with Bolder Mind" | Out-Null
 
         # Configure recovery options: restart after 5s, 10s, 30s
         # Reset failure count after 24 hours (86400 seconds)

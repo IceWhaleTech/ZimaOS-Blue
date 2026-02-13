@@ -361,7 +361,7 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 
 	// Initialize speech handler with ASR provider
 	speechService := speech.NewService(&speech.Config{
-		TTS: speech.TTSConfig{Provider: "edge"},
+		TTS: speech.TTSConfig{Provider: "edge-tts"},
 		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper"},
 	}, nil, nil)
 	if whisperASRProvider != nil {

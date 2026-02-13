@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: ZimaOS Blue
-  text: NAS-Native Agent Runtime
+  text: A Local-first Agent Runtime for Builders with Bolder Mind
   tagline: Lightweight, high-performance AI agent runtime for low-power NAS devices
   image:
     src: /logo.svg
@@ -49,7 +49,7 @@ See [Installation](guide/installation.md) for more options.
 
 ## What is ZimaOS Blue?
 
-ZimaOS Blue is a **NAS-native Agent Runtime** built with Go, inspired by [clawdbot](https://github.com/clawdbot/clawdbot). It's designed specifically for low-power NAS and edge devices, providing:
+ZimaOS Blue is a **A Local-first Agent Runtime for Builders with Bolder Mind** built with Go, inspired by [clawdbot](https://github.com/clawdbot/clawdbot). It's designed specifically for low-power NAS and edge devices, providing:
 
 - **Minimal Resource Usage**: Runs efficiently on devices with limited CPU and memory
 - **Long-term Stability**: Built for 24/7 operation without restarts
