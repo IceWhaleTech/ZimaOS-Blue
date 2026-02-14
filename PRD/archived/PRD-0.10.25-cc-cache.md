@@ -274,32 +274,4 @@ cache:
 
 ## 6. Implementation Checklist
 
-> 基于现有代码分析：L1 memory cache (sync.Map + LRU eviction) 已存在于 `proxy/cache.go`，
-> 需要增强 canonicalization、添加 L2 disk、singleflight、warmup 和分层指标。
-
-- [x] Phase 1: Canonicalizer & Singleflight (P0)
-  - [x] 1.1 新建 `proxy/canonicalizer.go` — Sanitizer + Canonicalizer + SHA256 key 生成
-  - [x] 1.2 新建 `proxy/singleflight.go` — Singleflight wrapper 防穿透
-  - [x] 1.3 修改 `proxy/cache.go` — GenerateKey 改用 CanonicalKey，添加 L1/L2 分层 hit 统计
-  - [x] 1.4 修改 `proxy/handler.go` — ServeHTTP 集成 canonicalizer + singleflight + latency tracking
-
-- [x] Phase 2: L2 Disk Cache (P0)
-  - [x] 2.1 新建 `proxy/cache_disk.go` — SQLite 磁盘缓存实现（复用已有依赖，无需新增 BadgerDB）
-  - [x] 2.2 修改 `proxy/cache.go` — CCCache 增加 L2 disk 字段，Get/Set 实现两级查找
-  - [x] 2.3 修改 `proxy/config.go` — DefaultCacheConfig 改为 multilevel 模式
-  - [x] 2.4 无需新增依赖（复用 mattn/go-sqlite3）
-
-- [x] Phase 3: Warmup & Metrics (P1)
-  - [x] 3.1 Warmup 集成到 `proxy/cache.go` Warmup() 方法（从 L2 加载 Top-N 到 L1）
-  - [x] 3.2 修改 `proxy/cache.go` — 增强 Stats() 返回 l1_hit_ratio / disk_hit_ratio / latency_saved_ms
-  - [x] 3.3 修改 `proxy/cache_handler.go` — 添加 POST /warmup endpoint + TriggerWarmup handler
-  - [x] 3.4 warmup route 已通过 RegisterRoutes 自动注册
-  - [x] 3.5 修改 `cmd/blue/main.go` — 启动时自动 warmup + disk cache 路径使用 dataDir
-  - [x] 3.6 Singleflight 完整集成到 handler（cache miss 时合并并发请求）
-  - [x] 3.7 Cache HIT 时记录 latency_saved_ms
-
-- [ ] Phase 4: Advanced (P2) — 后续版本
-  - [ ] 4.1 定时 Warmup (cron)
-  - [ ] 4.2 永久缓存（embedding/reference 类请求）
-  - [ ] 4.3 Prometheus / expvar 指标导出
-  - [ ] 4.4 前端缓存管理 UI
+> 详见 [CHECKLIST-0.10.25-cc-cache.md](CHECKLIST-0.10.25-cc-cache.md)
