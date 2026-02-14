@@ -27,6 +27,7 @@ func (h *CacheAPIHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/config", h.GetConfig)
 	g.PUT("/config", h.UpdateConfig)
 	g.POST("/clear", h.ClearCache)
+	g.POST("/warmup", h.TriggerWarmup)
 	g.DELETE("/entry/:key", h.DeleteEntry)
 }
 
@@ -132,11 +133,37 @@ func (h *CacheAPIHandler) DeleteEntry(c echo.Context) error {
 		})
 	}
 
-	// Delete from cache
+	// Delete from L1
 	h.cache.entries.Delete(key)
+
+	// Delete from L2 disk
+	if disk := h.cache.GetDisk(); disk != nil {
+		disk.Delete(key)
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"key":     key,
+	})
+}
+
+// TriggerWarmup manually triggers cache warmup (load top-N from L2 disk to L1 memory)
+// POST /api/v1/proxy/cache/warmup
+func (h *CacheAPIHandler) TriggerWarmup(c echo.Context) error {
+	if h.cache == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "cache not initialized",
+		})
+	}
+
+	topN := 1000
+	if h.config != nil && h.config.Warming.MaxRequests > 0 {
+		topN = h.config.Warming.MaxRequests
+	}
+
+	loaded := h.cache.Warmup(topN)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":        true,
+		"entries_loaded": loaded,
 	})
 }

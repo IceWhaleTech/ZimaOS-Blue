@@ -3719,6 +3719,8 @@ export default {
     sourceConfig: '配置文件',
     sourceEnv: '环境变量',
     sourceCCSwitch: 'CC Switch',
+    sourceExtension: 'Claude Code 扩展',
+    importExtSuccess: '已从 {ide} 的 Claude Code 扩展配置导入 {count} 个提供商',
     apiKey: 'API 密钥',
     baseUrl: '基础 URL',
     envVar: '环境变量',

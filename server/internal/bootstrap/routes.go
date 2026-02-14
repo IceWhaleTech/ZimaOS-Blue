@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -52,6 +53,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 )
+
+// routesStartTime records when the server started, used for uptime calculation
+var routesStartTime = time.Now()
 
 // RoutesDeps holds all dependencies needed for route registration
 type RoutesDeps struct {
@@ -176,12 +180,23 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	v1 := e.Group("/api/v1")
 	api := e.Group("/api")
 
-	// Health endpoint
+	// Health endpoint (with full runtime stats)
 	v1.GET("/health", func(c echo.Context) error {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+
+		uptime := time.Since(routesStartTime)
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status":  "ok",
-			"service": "zimaos-blue",
-			"version": cfg.Version,
+			"status":          "ok",
+			"service":         "zimaos-blue",
+			"timestamp":       time.Now(),
+			"uptime":          uptime.String(),
+			"uptime_seconds":  uptime.Seconds(),
+			"version":         cfg.Version,
+			"go_version":      runtime.Version(),
+			"num_cpu":         runtime.NumCPU(),
+			"goroutines":      runtime.NumGoroutine(),
+			"mem_alloc_bytes": m.Alloc,
 		})
 	})
 

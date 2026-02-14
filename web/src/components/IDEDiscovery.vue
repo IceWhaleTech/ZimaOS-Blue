@@ -159,9 +159,17 @@ async function importConfig(ideType: string) {
     error.value = null
     success.value = null
 
-    const response = await providerPoolApi.importIDEConfig(ideType)
-    success.value = t('ideDiscovery.importSuccess', { ide: ideType, provider: response.data.provider_id })
-    emit('import-success', response.data.provider_id)
+    // Check if this is an extension config import
+    const config = importableConfigs.value.find(c => c.ide_type === ideType)
+    if (config?.source === 'extension' && config.extension_config) {
+      const response = await providerPoolApi.importExtensionConfig(ideType)
+      success.value = t('ideDiscovery.importExtSuccess', { ide: ideType, count: response.data.providers.length })
+      emit('import-success', response.data.providers[0] || '')
+    } else {
+      const response = await providerPoolApi.importIDEConfig(ideType)
+      success.value = t('ideDiscovery.importSuccess', { ide: ideType, provider: response.data.provider_id })
+      emit('import-success', response.data.provider_id)
+    }
 
     // Remove from importable list
     importableConfigs.value = importableConfigs.value.filter(c => c.ide_type !== ideType)
@@ -182,6 +190,8 @@ function getSourceLabel(source: string): string {
       return t('ideDiscovery.sourceEnv')
     case 'cc-switch':
       return t('ideDiscovery.sourceCCSwitch')
+    case 'extension':
+      return t('ideDiscovery.sourceExtension')
     default:
       return source
   }
@@ -359,10 +369,17 @@ function getSourceLabel(source: string): string {
               <span class="font-medium">{{ t('ideDiscovery.baseUrl') }}:</span>
               <span class="ml-1">{{ config.base_url }}</span>
             </p>
+            <!-- Extension config env vars -->
+            <template v-if="config.extension_config?.env_vars?.length">
+              <p v-for="ev in config.extension_config.env_vars" :key="ev.name">
+                <span class="font-medium">{{ ev.name }}:</span>
+                <code class="ml-1 px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{{ ev.value }}</code>
+              </p>
+            </template>
           </div>
 
           <button
-            :disabled="importing === config.ide_type || !config.api_key"
+            :disabled="importing === config.ide_type || (!config.api_key && !config.extension_config)"
             class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-700 dark:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             @click="importConfig(config.ide_type)"
           >

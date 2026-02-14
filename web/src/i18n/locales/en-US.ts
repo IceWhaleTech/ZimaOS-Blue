@@ -3730,6 +3730,8 @@ export default {
     sourceConfig: 'Config File',
     sourceEnv: 'Environment',
     sourceCCSwitch: 'CC Switch',
+    sourceExtension: 'Claude Code Extension',
+    importExtSuccess: 'Imported {count} provider(s) from {ide} Claude Code extension config',
     apiKey: 'API Key',
     baseUrl: 'Base URL',
     envVar: 'Env Var',

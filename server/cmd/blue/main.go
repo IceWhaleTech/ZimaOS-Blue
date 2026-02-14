@@ -791,7 +791,25 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	if cfg.Proxy != nil && cfg.Proxy.Cache != nil {
 		cacheConfig = cfg.Proxy.Cache
 	}
+	// Set disk cache path relative to dataDir if using default
+	if cacheConfig.StoragePath == "" || cacheConfig.StoragePath == "./data/cache.db" {
+		cacheConfig.StoragePath = filepath.Join(dataDir, "cache.db")
+	}
+	// Ensure disk cache directory exists
+	if cacheConfig.StoragePath != "" {
+		if dir := filepath.Dir(cacheConfig.StoragePath); dir != "" {
+			os.MkdirAll(dir, 0755)
+		}
+	}
 	sharedCache = proxy.NewCCCache(cacheConfig)
+	// Startup warmup: load hot entries from L2 disk into L1 memory
+	if cacheConfig.Warming.Enabled {
+		topN := cacheConfig.Warming.MaxRequests
+		if topN <= 0 {
+			topN = 1000
+		}
+		go sharedCache.Warmup(topN)
+	}
 	chatHandler.SetCache(sharedCache)
 
 	// Initialize channel config store

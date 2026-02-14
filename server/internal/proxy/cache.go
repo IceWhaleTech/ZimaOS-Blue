@@ -15,17 +15,26 @@ import (
 	"time"
 )
 
-// CCCache is the main cache implementation for cc-cache
+// CCCache is the main cache implementation for cc-cache.
+// Supports L1 (memory) + L2 (disk) two-level caching with canonicalization and singleflight.
 type CCCache struct {
-	config  *CacheConfig
-	entries sync.Map // map[string]*CCCacheEntry
-	size    int64    // Current number of entries
+	config        *CacheConfig
+	entries       sync.Map // map[string]*CCCacheEntry — L1 memory
+	size          int64    // Current number of L1 entries
+	canonicalizer *Canonicalizer
+	singleflight  *CacheSingleflight
+	disk          *DiskCache // L2 disk cache (nil if disabled)
 
 	// Stats
 	hits      int64
 	misses    int64
 	evictions int64
 	bypasses  int64 // Requests that bypassed cache (streaming, etc.)
+
+	// L1/L2 split stats
+	l1Hits       int64
+	diskHits     int64
+	latencySaved int64 // Total latency saved in milliseconds
 
 	// Persistence
 	statsStore StatsStore
@@ -64,15 +73,31 @@ type CCCacheEntry struct {
 	ContentHash string            `json:"content_hash"` // For deduplication
 }
 
-// NewCCCache creates a new cc-cache instance
+// NewCCCache creates a new cc-cache instance with L1 memory + optional L2 disk.
 func NewCCCache(config *CacheConfig) *CCCache {
 	if config == nil {
 		config = DefaultCacheConfig()
 	}
 
 	cache := &CCCache{
-		config:      config,
-		stopCleanup: make(chan struct{}),
+		config:        config,
+		canonicalizer: NewCanonicalizer(),
+		singleflight:  NewCacheSingleflight(),
+		stopCleanup:   make(chan struct{}),
+	}
+
+	// Initialize L2 disk cache if configured
+	if config.StorageType == "disk" || config.StorageType == "multilevel" {
+		path := config.StoragePath
+		if path == "" {
+			path = "./data/cache.db"
+		}
+		if dc, err := NewDiskCache(path); err == nil {
+			cache.disk = dc
+			fmt.Printf("[CCCache] L2 disk cache initialized at %s\n", path)
+		} else {
+			fmt.Printf("[CCCache] L2 disk cache init failed: %v (L1-only mode)\n", err)
+		}
 	}
 
 	// Start cleanup goroutine
@@ -130,7 +155,7 @@ func (c *CCCache) cleanupLoop() {
 	}
 }
 
-// cleanup removes expired entries
+// cleanup removes expired entries from L1 and L2
 func (c *CCCache) cleanup() {
 	now := time.Now()
 	c.entries.Range(func(key, value interface{}) bool {
@@ -142,12 +167,19 @@ func (c *CCCache) cleanup() {
 		}
 		return true
 	})
+	// Cleanup L2 disk
+	if c.disk != nil {
+		c.disk.Cleanup()
+	}
 }
 
-// Stop stops the cache cleanup goroutine
+// Stop stops the cache cleanup goroutine and closes L2 disk.
 func (c *CCCache) Stop() {
 	if c.cleanupTicker != nil {
 		close(c.stopCleanup)
+	}
+	if c.disk != nil {
+		c.disk.Close()
 	}
 }
 
@@ -281,35 +313,45 @@ func (c *CCCache) IsStreamingRequest(body []byte) bool {
 	return false
 }
 
-// Get retrieves a cached response
+// Get retrieves a cached response. Checks L1 memory first, then L2 disk.
 func (c *CCCache) Get(key string) (*CCCacheEntry, bool) {
 	if !c.config.Enabled {
 		return nil, false
 	}
 
+	// L1 memory lookup
 	value, ok := c.entries.Load(key)
-	if !ok {
-		atomic.AddInt64(&c.misses, 1)
-		return nil, false
+	if ok {
+		entry := value.(*CCCacheEntry)
+		if time.Now().After(entry.ExpiresAt) {
+			c.entries.Delete(key)
+			atomic.AddInt64(&c.size, -1)
+			atomic.AddInt64(&c.evictions, 1)
+		} else {
+			atomic.AddInt64(&c.hits, 1)
+			atomic.AddInt64(&c.l1Hits, 1)
+			atomic.AddInt64(&entry.HitCount, 1)
+			return entry, true
+		}
 	}
 
-	entry := value.(*CCCacheEntry)
-
-	// Check expiration
-	if time.Now().After(entry.ExpiresAt) {
-		c.entries.Delete(key)
-		atomic.AddInt64(&c.size, -1)
-		atomic.AddInt64(&c.misses, 1)
-		atomic.AddInt64(&c.evictions, 1)
-		return nil, false
+	// L2 disk lookup
+	if c.disk != nil {
+		if entry, found := c.disk.Get(key); found {
+			atomic.AddInt64(&c.hits, 1)
+			atomic.AddInt64(&c.diskHits, 1)
+			// Promote to L1
+			c.entries.Store(key, entry)
+			atomic.AddInt64(&c.size, 1)
+			return entry, true
+		}
 	}
 
-	atomic.AddInt64(&c.hits, 1)
-	atomic.AddInt64(&entry.HitCount, 1)
-	return entry, true
+	atomic.AddInt64(&c.misses, 1)
+	return nil, false
 }
 
-// Set stores a response in the cache
+// Set stores a response in L1 memory cache and L2 disk cache (write-through).
 func (c *CCCache) Set(key string, body []byte, statusCode int, headers http.Header, provider, model string) {
 	if !c.config.Enabled {
 		return
@@ -364,6 +406,11 @@ func (c *CCCache) Set(key string, body []byte, statusCode int, headers http.Head
 
 	c.entries.Store(key, entry)
 	atomic.AddInt64(&c.size, 1)
+
+	// Write-through to L2 disk
+	if c.disk != nil {
+		go c.disk.Set(entry)
+	}
 }
 
 // evictOldest removes the oldest entry
@@ -387,42 +434,107 @@ func (c *CCCache) evictOldest() {
 	}
 }
 
-// Clear clears all cache entries
+// Clear clears all cache entries (L1 + L2)
 func (c *CCCache) Clear() {
 	c.entries.Range(func(key, _ interface{}) bool {
 		c.entries.Delete(key)
 		return true
 	})
 	atomic.StoreInt64(&c.size, 0)
+	if c.disk != nil {
+		c.disk.Clear()
+	}
 }
 
-// Stats returns cache statistics
+// Stats returns cache statistics with L1/L2 breakdown.
 func (c *CCCache) Stats() map[string]interface{} {
 	hits := atomic.LoadInt64(&c.hits)
 	misses := atomic.LoadInt64(&c.misses)
+	l1Hits := atomic.LoadInt64(&c.l1Hits)
+	diskHits := atomic.LoadInt64(&c.diskHits)
 	total := hits + misses
 
 	hitRate := float64(0)
+	l1HitRate := float64(0)
+	diskHitRate := float64(0)
 	if total > 0 {
 		hitRate = float64(hits) / float64(total) * 100
+		l1HitRate = float64(l1Hits) / float64(total) * 100
+		diskHitRate = float64(diskHits) / float64(total) * 100
 	}
 
-	return map[string]interface{}{
-		"enabled":     c.config.Enabled,
-		"entries":     atomic.LoadInt64(&c.size),
-		"max_entries": c.config.MaxSize,
-		"hits":        hits,
-		"misses":      misses,
-		"evictions":   atomic.LoadInt64(&c.evictions),
-		"bypasses":    atomic.LoadInt64(&c.bypasses),
-		"hit_rate":    hitRate,
-		"ttl_seconds": c.config.TTL.Seconds(),
+	stats := map[string]interface{}{
+		"enabled":        c.config.Enabled,
+		"storage_type":   c.config.StorageType,
+		"l1_entries":     atomic.LoadInt64(&c.size),
+		"max_entries":    c.config.MaxSize,
+		"hits":           hits,
+		"misses":         misses,
+		"evictions":      atomic.LoadInt64(&c.evictions),
+		"bypasses":       atomic.LoadInt64(&c.bypasses),
+		"hit_rate":       hitRate,
+		"l1_hits":        l1Hits,
+		"l1_hit_rate":    l1HitRate,
+		"disk_hits":      diskHits,
+		"disk_hit_rate":  diskHitRate,
+		"latency_saved_ms": atomic.LoadInt64(&c.latencySaved),
+		"ttl_seconds":    c.config.TTL.Seconds(),
 	}
+
+	if c.disk != nil {
+		stats["disk_entries"] = c.disk.Count()
+	}
+
+	return stats
 }
 
 // RecordBypass records a cache bypass (streaming, etc.)
 func (c *CCCache) RecordBypass() {
 	atomic.AddInt64(&c.bypasses, 1)
+}
+
+// RecordLatencySaved adds saved latency in milliseconds.
+func (c *CCCache) RecordLatencySaved(ms int64) {
+	atomic.AddInt64(&c.latencySaved, ms)
+}
+
+// GenerateCanonicalKey generates a semantic cache key using the Canonicalizer.
+// This produces stable keys for semantically identical requests.
+func (c *CCCache) GenerateCanonicalKey(body []byte) string {
+	if c.canonicalizer != nil {
+		return c.canonicalizer.CanonicalKey(body)
+	}
+	// Fallback to raw body hash
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+// GetSingleflight returns the singleflight instance.
+func (c *CCCache) GetSingleflight() *CacheSingleflight {
+	return c.singleflight
+}
+
+// GetDisk returns the L2 disk cache (nil if not configured).
+func (c *CCCache) GetDisk() *DiskCache {
+	return c.disk
+}
+
+// Warmup loads top-N entries from L2 disk into L1 memory.
+func (c *CCCache) Warmup(topN int) int {
+	if c.disk == nil {
+		return 0
+	}
+	entries := c.disk.TopN(topN)
+	loaded := 0
+	for _, entry := range entries {
+		if _, exists := c.entries.Load(entry.Key); !exists {
+			c.entries.Store(entry.Key, entry)
+			atomic.AddInt64(&c.size, 1)
+			loaded++
+		}
+	}
+	fmt.Printf("[CCCache] Warmup: loaded %d entries from L2 disk\n", loaded)
+	return loaded
 }
 
 // CacheMiddleware creates HTTP middleware for caching

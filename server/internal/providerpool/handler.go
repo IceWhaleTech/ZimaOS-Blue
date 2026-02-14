@@ -332,6 +332,7 @@ func (h *Handler) RegisterIDERoutes(g *echo.Group) {
 	g.POST("/:type/connect", h.ConnectIDE)
 	g.GET("/importable", h.GetImportableConfigs)
 	g.POST("/import/:type", h.ImportIDEConfig)
+	g.POST("/import-ext/:type", h.ImportExtensionConfig)
 	g.POST("/import-cc-switch", h.ImportFromCCSwitch)
 	g.GET("/env-hints", h.GetEnvHints)
 }
@@ -1090,6 +1091,91 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 		"message":     "configuration imported successfully",
 		"provider_id": providerID,
 		"ide_type":    ideType,
+	})
+}
+
+// ImportExtensionConfig imports Claude Code extension config from an IDE's settings.json
+func (h *Handler) ImportExtensionConfig(c echo.Context) error {
+	ideType := ide.IDEType(c.Param("type"))
+
+	// Get the real (unmasked) extension env vars
+	envVars, err := h.pool.IDEDiscovery.GetRealExtensionConfig(ideType)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if len(envVars) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no Claude Code extension config found"})
+	}
+
+	// Group env vars by provider
+	type providerConfig struct {
+		apiKey  string
+		baseURL string
+	}
+	providers := make(map[string]*providerConfig)
+
+	for _, ev := range envVars {
+		info, ok := ide.GetClaudeCodeEnvVarProvider(ev.Name)
+		if !ok {
+			continue
+		}
+		if providers[info.ProviderID] == nil {
+			providers[info.ProviderID] = &providerConfig{}
+		}
+		switch info.FieldType {
+		case "api_key", "auth_token":
+			providers[info.ProviderID].apiKey = ev.Value
+		case "base_url":
+			providers[info.ProviderID].baseURL = ev.Value
+		}
+	}
+
+	imported := []string{}
+	for providerID, cfg := range providers {
+		if cfg.apiKey == "" {
+			continue
+		}
+
+		key := &APIKey{
+			Key:     cfg.apiKey,
+			Label:   fmt.Sprintf("Imported from %s (Claude Code ext)", ideType),
+			KeyHash: HashAPIKey(cfg.apiKey),
+			Enabled: true,
+		}
+
+		if err := h.pool.Registry.AddAPIKey(providerID, key); err != nil {
+			if err == ErrProviderNotFound {
+				if enableErr := h.pool.Registry.Enable(providerID); enableErr != nil {
+					continue
+				}
+				if err = h.pool.Registry.AddAPIKey(providerID, key); err != nil {
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		// Update base URL if provided
+		if cfg.baseURL != "" {
+			if provider, err := h.pool.Registry.Get(providerID); err == nil {
+				provider.BaseURL = cfg.baseURL
+				h.pool.Registry.Update(provider)
+			}
+		}
+
+		h.pool.Registry.Enable(providerID)
+		imported = append(imported, providerID)
+	}
+
+	if len(imported) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no valid provider configs found to import"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":   fmt.Sprintf("imported %d provider(s) from Claude Code extension config", len(imported)),
+		"providers": imported,
+		"ide_type":  ideType,
 	})
 }
 

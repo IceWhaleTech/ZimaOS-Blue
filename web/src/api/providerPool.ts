@@ -150,8 +150,19 @@ export interface ImportConfig {
   provider?: string
   config_path?: string
   env_var?: string
-  source: 'config' | 'env' | 'cc-switch'
+  source: 'config' | 'env' | 'cc-switch' | 'extension'
   can_import: boolean
+  extension_config?: ClaudeCodeExtConfig
+}
+
+export interface ClaudeCodeExtConfig {
+  env_vars: ClaudeCodeEnvVar[]
+  selected_model?: string
+}
+
+export interface ClaudeCodeEnvVar {
+  name: string
+  value: string // Masked for display
 }
 
 export interface EnvHint {
@@ -320,6 +331,9 @@ export const providerPoolApi = {
 
   importIDEConfig: (ideType: string) =>
     api.post<{ message: string; provider_id: string; ide_type: string }>(`/ide/import/${ideType}`),
+
+  importExtensionConfig: (ideType: string) =>
+    api.post<{ message: string; providers: string[]; ide_type: string }>(`/ide/import-ext/${ideType}`),
 
   importFromCCSwitch: (output: string) =>
     api.post<{ config: ImportConfig; message: string }>('/ide/import-cc-switch', { output }),

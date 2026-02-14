@@ -89,8 +89,8 @@ A Provider Pool system will unify these diverse sources, enabling intelligent ro
 |----|-------------|----------|
 | FR-011 | Secure API key storage with encryption | P0 |
 | FR-012 | Multiple API keys per provider (key pool) | P1 |
-| FR-013 | OAuth integration for supported providers | P2 |
-| FR-014 | Credential sharing from local IDE tools | P1 |
+| FR-013 | OAuth integration for supported providers (see 3.9) | P1 |
+| FR-014 | Credential sharing from local IDE tools (see 3.10) | P1 |
 
 ### 3.4 Intelligent Routing
 
@@ -153,6 +153,99 @@ A Provider Pool system will unify these diverse sources, enabling intelligent ro
 | `/api/v1/pricing/models/:modelId` | PUT | Set custom pricing for a model | Admin |
 | `/api/v1/pricing/models/:modelId` | DELETE | Remove custom pricing (revert to default) | Admin |
 | `/api/v1/pricing/recalculate` | POST | Recalculate costs with current pricing | Admin |
+| `/api/v1/providers/:id/oauth/authorize` | POST | Initiate OAuth flow for a provider | Admin |
+| `/api/v1/providers/:id/oauth/callback` | GET | OAuth callback handler | System |
+| `/api/v1/providers/:id/oauth/refresh` | POST | Force refresh OAuth token | Admin |
+| `/api/v1/providers/:id/oauth/quota` | GET | Get OAuth provider quota (e.g. Antigravity pools) | Required |
+| `/api/v1/ide/configs` | GET | Get all detected IDE Claude Code extension configs | Required |
+| `/api/v1/ide/configs/:ide/import` | POST | Import Claude Code extension config from IDE | Admin |
+
+### 3.9 OAuth-Based Provider Authentication
+
+除了传统的 API Key 认证方式，Provider Pool 还需支持 OAuth 方式接入 LLM 服务。部分 IDE 和平台使用 OAuth 作为主要认证方式，其 token 可以被复用来请求 LLM API。
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-036 | Support Google OAuth2 provider (Antigravity) — 使用 Google OAuth access token 请求 `cloudaicompanion.googleapis.com`，支持 Gemini 和 Claude 模型池 | P1 |
+| FR-037 | Support GitHub OAuth provider (Copilot) — 使用 GitHub device flow 获取 Copilot token，请求 Copilot API | P2 |
+| FR-038 | OAuth token lifecycle management — 自动刷新 access token（使用 refresh token），处理 token 过期和续期 | P1 |
+| FR-039 | OAuth quota pool tracking — 对接 OAuth provider 的用量配额 API（如 Antigravity 的 Gemini/Claude 分池配额），在 UI 展示剩余用量 | P1 |
+| FR-040 | OAuth provider 作为 proxy endpoint — OAuth 认证的 provider 可以像 API Key provider 一样参与路由、failover 和负载均衡 | P1 |
+
+**已知支持 OAuth 的 IDE/平台：**
+
+| IDE/Platform | OAuth Provider | Token 存储位置 | API 格式 | 可复用性 |
+|-------------|---------------|---------------|---------|---------|
+| Antigravity (Google) | Google OAuth2 PKCE | System Keychain (SecretStorage) | Custom Google API (`cloudaicompanion.googleapis.com`) | 高 — 有独立配额池，支持 Gemini + Claude |
+| GitHub Copilot | GitHub Device Flow | VS Code SecretStorage + `~/.config/gh/hosts.yml` | Custom Copilot API | 中 — 需要二次 token 交换 |
+| Cline | OpenAI OAuth (新增) | VS Code SecretStorage | OpenAI API | 中 — 仅 OpenAI 模型 |
+| Kiro (AWS) | GitHub/Google/AWS OAuth | 未公开 | 私有 API (无 BYOK) | 低 — 无法复用 |
+| Cursor | 自有账户体系 + SAML SSO | 本地加密存储 | 服务端代理 | 低 — 所有请求经 Cursor 服务器 |
+| Windsurf | 自有账户体系 + SAML SSO | 未公开 | 私有 Codeium API | 低 — 无法复用 |
+
+**OAuth Provider 请求流程：**
+
+```
+1. 用户在 IDE 中完成 OAuth 登录（如 Google 账号登录 Antigravity）
+2. IDE Discovery 扫描到 IDE 安装 + OAuth token（从 keychain 或 config 读取）
+3. Provider Pool 注册 OAuth provider，存储 refresh token
+4. 请求路由到 OAuth provider 时：
+   a. 检查 access token 是否过期
+   b. 如过期，使用 refresh token 自动续期
+   c. 使用 access token 作为 Bearer token 请求 LLM API
+   d. 记录用量，更新配额显示
+5. 如 OAuth token 完全失效，标记 provider 为 error 状态，触发 failover
+```
+
+### 3.10 IDE Config Extraction (Claude Code Extension Settings)
+
+基于 VS Code 的 IDE（Cursor、Windsurf、Antigravity、Kiro、TRAE、Qoder）在 `settings.json` 中可能包含 Claude Code 扩展的配置，这些配置可以被提取并导入到 Provider Pool。
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-041 | 从 VS Code fork IDE 的 `User/settings.json` 中读取 `claudeCode.environmentVariables` 配置 | P1 |
+| FR-042 | 提取 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN` 等环境变量，自动创建对应 provider | P1 |
+| FR-043 | 提取 `OPENAI_API_KEY`、`GOOGLE_API_KEY` 等其他 provider 的 key 配置 | P1 |
+| FR-044 | IDE Discovery 扫描结果中展示检测到的 Claude Code 扩展配置，支持一键导入 | P1 |
+
+**支持提取的 Claude Code 扩展配置字段：**
+
+```json
+{
+  "claudeCode.environmentVariables": [
+    { "name": "ANTHROPIC_BASE_URL", "value": "https://..." },
+    { "name": "ANTHROPIC_AUTH_TOKEN", "value": "sk-..." },
+    { "name": "OPENAI_API_KEY", "value": "sk-..." },
+    { "name": "ANTHROPIC_API_KEY", "value": "sk-ant-..." },
+    { "name": "GOOGLE_API_KEY", "value": "AI..." }
+  ]
+}
+```
+
+**配置文件路径（macOS）：**
+
+| IDE | settings.json 路径 |
+|-----|-------------------|
+| VS Code | `~/Library/Application Support/Code/User/settings.json` |
+| Cursor | `~/Library/Application Support/Cursor/User/settings.json` |
+| Windsurf | `~/Library/Application Support/Windsurf/User/settings.json` |
+| Antigravity | `~/Library/Application Support/Antigravity/User/settings.json` |
+| Kiro | `~/Library/Application Support/Kiro/User/settings.json` |
+| TRAE | `~/Library/Application Support/Trae/User/settings.json` |
+| Qoder | `~/Library/Application Support/Qoder/User/settings.json` |
+
+**提取流程：**
+
+```
+1. IDE Discovery 扫描到 IDE 安装后，读取其 User/settings.json
+2. 解析 claudeCode.environmentVariables 数组
+3. 匹配已知的环境变量名（ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, etc.）
+4. 在 IDE Discovery 结果中展示检测到的配置
+5. 用户点击"导入"后，自动创建/更新对应的 provider 配置
+   - ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN → 创建 Anthropic (Custom) provider
+   - OPENAI_API_KEY → 添加到 OpenAI provider
+   - GOOGLE_API_KEY → 添加到 Google provider
+```
 
 ---
 
@@ -392,6 +485,134 @@ func (d *IDEProviderDiscovery) ConnectToIDE(ideName string) (*IDEConnection, err
     conn.Models = models
 
     return conn, nil
+}
+```
+
+### 4.3.1 OAuth Provider Integration
+
+```go
+// OAuthProvider extends Provider with OAuth-specific token management
+type OAuthProvider struct {
+    Provider
+    TokenManager *OAuthTokenManager
+}
+
+// OAuthTokenManager handles OAuth token lifecycle
+type OAuthTokenManager struct {
+    mu           sync.RWMutex
+    accessToken  string
+    refreshToken string
+    tokenExpiry  time.Time
+    tokenURL     string        // Token endpoint for refresh
+    clientID     string
+    scopes       []string
+}
+
+// GetAccessToken returns a valid access token, refreshing if needed
+func (tm *OAuthTokenManager) GetAccessToken(ctx context.Context) (string, error) {
+    tm.mu.RLock()
+    if time.Now().Before(tm.tokenExpiry.Add(-5 * time.Minute)) {
+        token := tm.accessToken
+        tm.mu.RUnlock()
+        return token, nil
+    }
+    tm.mu.RUnlock()
+
+    // Token expired or about to expire, refresh it
+    return tm.refreshAccessToken(ctx)
+}
+
+// OAuthProviderType defines known OAuth provider types
+type OAuthProviderType string
+
+const (
+    OAuthProviderGoogle OAuthProviderType = "google"  // Antigravity
+    OAuthProviderGitHub OAuthProviderType = "github"  // Copilot
+    OAuthProviderOpenAI OAuthProviderType = "openai"  // Cline OpenAI OAuth
+)
+
+// OAuthQuotaPool represents a quota pool for OAuth providers (e.g. Antigravity Gemini/Claude pools)
+type OAuthQuotaPool struct {
+    Name           string  `json:"name"`            // e.g. "gemini", "claude"
+    ModelsIncluded []string `json:"models_included"` // Models in this pool
+    RemainingPct   float64 `json:"remaining_pct"`   // 0.0 - 1.0
+    ResetTime      string  `json:"reset_time"`      // ISO 8601
+}
+```
+
+### 4.3.2 IDE Config Extraction (Claude Code Extension)
+
+```go
+// IDEClaudeCodeConfig represents Claude Code extension settings found in IDE
+type IDEClaudeCodeConfig struct {
+    IDEName              string                 `json:"ide_name"`
+    IDEType              IDEType                `json:"ide_type"`
+    SettingsPath         string                 `json:"settings_path"`
+    EnvironmentVariables []ClaudeCodeEnvVar     `json:"environment_variables"`
+    SelectedModel        string                 `json:"selected_model,omitempty"`
+}
+
+// ClaudeCodeEnvVar represents a single env var from claudeCode.environmentVariables
+type ClaudeCodeEnvVar struct {
+    Name  string `json:"name"`
+    Value string `json:"value"`
+}
+
+// Known env var names that map to provider configurations
+var claudeCodeEnvVarMapping = map[string]struct {
+    ProviderID string
+    FieldType  string // "api_key", "base_url", "auth_token"
+}{
+    "ANTHROPIC_API_KEY":    {ProviderID: "anthropic", FieldType: "api_key"},
+    "ANTHROPIC_AUTH_TOKEN": {ProviderID: "anthropic", FieldType: "auth_token"},
+    "ANTHROPIC_BASE_URL":  {ProviderID: "anthropic", FieldType: "base_url"},
+    "OPENAI_API_KEY":      {ProviderID: "openai", FieldType: "api_key"},
+    "OPENAI_BASE_URL":     {ProviderID: "openai", FieldType: "base_url"},
+    "GOOGLE_API_KEY":      {ProviderID: "google", FieldType: "api_key"},
+    "AZURE_OPENAI_API_KEY":     {ProviderID: "azure-openai", FieldType: "api_key"},
+    "AZURE_OPENAI_BASE_URL":    {ProviderID: "azure-openai", FieldType: "base_url"},
+}
+
+// ExtractClaudeCodeConfig reads Claude Code extension config from IDE settings.json
+func ExtractClaudeCodeConfig(settingsPath string) (*IDEClaudeCodeConfig, error) {
+    data, err := os.ReadFile(settingsPath)
+    if err != nil {
+        return nil, err
+    }
+
+    var settings map[string]interface{}
+    if err := json.Unmarshal(data, &settings); err != nil {
+        return nil, err
+    }
+
+    // Extract claudeCode.environmentVariables
+    envVars, ok := settings["claudeCode.environmentVariables"]
+    if !ok {
+        return nil, nil // No Claude Code config found
+    }
+
+    // Parse env vars array
+    config := &IDEClaudeCodeConfig{
+        SettingsPath: settingsPath,
+    }
+
+    if envList, ok := envVars.([]interface{}); ok {
+        for _, item := range envList {
+            if envMap, ok := item.(map[string]interface{}); ok {
+                config.EnvironmentVariables = append(config.EnvironmentVariables, ClaudeCodeEnvVar{
+                    Name:  envMap["name"].(string),
+                    Value: envMap["value"].(string),
+                })
+            }
+        }
+    }
+
+    // Extract selected model
+    if model, ok := settings["claudeCode.selectedModel"].(string); ok {
+        config.SelectedModel = model
+    }
+
+    return config, nil
 }
 ```
 
@@ -1161,6 +1382,8 @@ data/providers/
 - Validate IDE process before connecting
 - No credential modification in IDE config files
 - User consent required before IDE discovery
+- OAuth refresh tokens encrypted at rest, same as API keys
+- Claude Code extension env vars (from IDE settings.json) treated as sensitive — masked in UI, encrypted in storage
 
 ### 6.3 Network Security
 
@@ -1261,6 +1484,10 @@ data/providers/
 6. **Should we support session recovery after streaming anomaly (continue from last valid output)?**
 7. **How to handle partial streaming responses when failover occurs mid-stream?**
 8. **Should we implement automatic context truncation strategies for context-exceeded errors?**
+9. **How to handle OAuth token refresh failures — should we prompt user to re-authenticate in IDE?**
+10. **Should we support importing Claude Code extension configs from multiple IDEs simultaneously (merge vs override)?**
+11. **For Antigravity OAuth, should we call Google's quota API periodically or only on-demand?**
+12. **Should GitHub Copilot OAuth be supported given its token exchange complexity?**
 
 ---
 
