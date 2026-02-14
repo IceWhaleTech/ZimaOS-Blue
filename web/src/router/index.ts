@@ -12,20 +12,25 @@ let isPreviewMode = false
 let connectionFailed = false
 let previewTokenFetched = false
 
+async function fetchSystemMode(): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
+  const url = isTauri ? 'http://localhost:23456/api/v1/system/mode' : '/api/v1/system/mode'
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
+    return response
+  } catch (err) {
+    clearTimeout(timeoutId)
+    throw err
+  }
+}
+
 async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
   if (previewModeChecked) return { preview: isPreviewMode, connectionError: connectionFailed }
 
   try {
-    // Add timeout to prevent indefinite hanging
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
-
-    // Use absolute URL in Tauri, relative URL in browser
-    const url = isTauri ? 'http://localhost:23456/api/v1/system/mode' : '/api/v1/system/mode'
-    const response = await fetch(url, {
-      signal: controller.signal,
-    })
-    clearTimeout(timeoutId)
+    const response = await fetchSystemMode()
 
     // Treat 500+ errors as connection/server errors
     if (response.status >= 500) {
@@ -51,7 +56,7 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
     }
 
     return { preview: isPreviewMode, connectionError: false }
-  } catch (_error) {
+  } catch {
     previewModeChecked = true
     isPreviewMode = false
     connectionFailed = true
@@ -271,16 +276,6 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
-    path: '/personalities',
-    name: 'Personalities',
-    component: () => import('@/views/PersonalityView.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/personality',
-    redirect: '/personalities',
-  },
-  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),
@@ -295,73 +290,80 @@ const router = createRouter({
 // Navigation guard for authentication, preview mode, and permissions
 let isNavigating = false
 router.beforeEach(async (to, from, next) => {
-  // Prevent infinite redirect loops
+  // Prevent re-entrant navigation during async checks
   if (isNavigating) {
     next()
     return
   }
 
-  const token = localStorage.getItem('token')
-  const isAuthenticated = !!token
-  const requiresAuth = to.meta.requiresAuth
-  const requiresAdmin = to.meta.requiresAdmin
-  const requiredPermission = to.meta.permission as string | undefined
-  const isPublic = to.meta.public
+  isNavigating = true
+  try {
+    const token = localStorage.getItem('token')
+    const isAuthenticated = !!token
+    const requiresAuth = to.meta.requiresAuth
+    const requiresAdmin = to.meta.requiresAdmin
+    const requiredPermission = to.meta.permission as string | undefined
+    const isPublic = to.meta.public
 
-  // Allow connection error page without checks
-  if (to.name === 'ConnectionError') {
-    next()
-    return
-  }
-
-  // Check preview mode (no users exist)
-  const { preview: inPreviewMode, connectionError } = await checkPreviewMode()
-
-  // If connection error (500 or network failure), redirect to error page
-  if (connectionError) {
-    next({ name: 'ConnectionError', query: { from: to.fullPath } })
-    return
-  }
-
-  // In preview mode, allow access to most routes without authentication
-  if (inPreviewMode) {
-    if (to.name === 'Login') {
-      next({ name: 'Home' })
+    // Allow connection error page without checks
+    if (to.name === 'ConnectionError') {
+      next()
       return
     }
-    next()
-    return
-  }
 
-  // Normal mode: standard authentication flow
-  const previewToken = localStorage.getItem('preview_token')
-  if (previewToken && !inPreviewMode) {
-    localStorage.removeItem('preview_token')
-    localStorage.removeItem('token')
-    if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
+    // Check preview mode (no users exist)
+    const { preview: inPreviewMode, connectionError } = await checkPreviewMode()
+
+    // If connection error (500 or network failure), redirect to error page
+    if (connectionError) {
+      // Avoid redirect loop: don't pass /login as from, use the original intended destination
+      const fromPath = to.fullPath === '/login' ? '/' : to.fullPath
+      next({ name: 'ConnectionError', query: { from: fromPath } })
+      return
+    }
+
+    // In preview mode, allow access to most routes without authentication
+    if (inPreviewMode) {
+      if (to.name === 'Login') {
+        next({ name: 'Home' })
+        return
+      }
+      next()
+      return
+    }
+
+    // Normal mode: standard authentication flow
+    const previewToken = localStorage.getItem('preview_token')
+    if (previewToken && !inPreviewMode) {
+      localStorage.removeItem('preview_token')
+      localStorage.removeItem('token')
+      if ((requiresAuth || requiredPermission) && to.name !== 'Login') {
+        next({ name: 'Login', query: { redirect: to.fullPath } })
+        return
+      }
+    }
+
+    // Redirect to login if auth required but not authenticated
+    if ((requiresAuth || requiredPermission) && !isAuthenticated) {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
     }
-  }
 
-  // Redirect to login if auth required but not authenticated
-  if ((requiresAuth || requiredPermission) && !isAuthenticated) {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-    return
-  }
-
-  // Redirect authenticated users away from login
-  if (to.name === 'Login' && isAuthenticated) {
-    const redirect = to.query.redirect as string
-    if (redirect && redirect !== '/login' && from.name !== 'Login') {
-      next(redirect)
-    } else {
-      next({ name: 'Chat' })
+    // Redirect authenticated users away from login
+    if (to.name === 'Login' && isAuthenticated) {
+      const redirect = to.query.redirect as string
+      if (redirect && redirect !== '/login' && from.name !== 'Login') {
+        next(redirect)
+      } else {
+        next({ name: 'Chat' })
+      }
+      return
     }
-    return
-  }
 
-  next()
+    next()
+  } finally {
+    isNavigating = false
+  }
 })
 
 // Handle auth:unauthorized event for Tauri

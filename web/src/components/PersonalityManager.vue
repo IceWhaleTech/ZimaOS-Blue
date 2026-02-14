@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { usePersonalityStore } from '@/stores/personality'
+import PersonalityDialog from '@/components/PersonalityDialog.vue'
 import type { Personality } from '@/api/personality'
 
 const { t } = useI18n()
-const router = useRouter()
 const store = usePersonalityStore()
+const showDialog = ref(false)
 
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
@@ -17,8 +17,8 @@ onMounted(async () => {
   await store.fetchPersonalities()
 })
 
-function goToPersonalityPage() {
-  router.push('/personality')
+function openDialog() {
+  showDialog.value = true
 }
 
 async function handleActivate(id: string) {
@@ -41,12 +41,20 @@ async function handleDelete(id: string) {
 }
 
 function getPersonalityIcon(personality: Personality): string {
-  // Return icon based on personality type or default
   if (personality.name.toLowerCase().includes('assistant')) return '🤖'
   if (personality.name.toLowerCase().includes('creative')) return '🎨'
   if (personality.name.toLowerCase().includes('professional')) return '💼'
   if (personality.name.toLowerCase().includes('friendly')) return '😊'
   return '✨'
+}
+
+function getTraitValue(p: Personality, trait: { key: string; value: string }): string {
+  if (p.id === 'default') {
+    const key = `personality.defaultTraits.${trait.key}`
+    const translated = t(key)
+    if (translated !== key) return translated
+  }
+  return trait.value
 }
 </script>
 
@@ -63,7 +71,7 @@ function getPersonalityIcon(personality: Personality): string {
       </div>
       <button
         class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-        @click="goToPersonalityPage"
+        @click="openDialog"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -89,7 +97,7 @@ function getPersonalityIcon(personality: Personality): string {
       </p>
       <button
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-        @click="goToPersonalityPage"
+        @click="openDialog"
       >
         {{ t('personality.createFirst') }}
       </button>
@@ -133,7 +141,7 @@ function getPersonalityIcon(personality: Personality): string {
                 class="px-2 py-0.5 bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-300 text-xs rounded"
                 :title="`${trait.key}: ${trait.value} (${trait.weight})`"
               >
-                {{ trait.key }}: {{ trait.value }}
+                {{ trait.key }}: {{ getTraitValue(personality, trait) }}
               </span>
               <span
                 v-if="personality.traits.length > 3"
@@ -173,12 +181,15 @@ function getPersonalityIcon(personality: Personality): string {
         </span>
         <button
           class="text-blue-600 dark:text-blue-400 hover:underline text-sm"
-          @click="goToPersonalityPage"
+          @click="openDialog"
         >
           {{ t('personality.viewAll') }} →
         </button>
       </div>
     </div>
+
+    <!-- Personality Management Dialog -->
+    <PersonalityDialog v-if="showDialog" @close="showDialog = false" />
   </div>
 </template>
 

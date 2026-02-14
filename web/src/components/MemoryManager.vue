@@ -303,7 +303,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-700 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center justify-between">
@@ -490,7 +490,7 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showAddModal = false"
       >
-        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('memory.addTitle') }}</h3>
           </div>
@@ -547,7 +547,7 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showClearConfirm = false"
       >
-        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-red-600 dark:text-red-400">{{ t('memory.clearAllTitle') }}</h3>
           </div>
@@ -582,7 +582,7 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="showSettingsModal = false"
       >
-        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('memory.settingsTitle') }}</h3>
           </div>
@@ -683,8 +683,8 @@ onMounted(() => {
         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
         @click.self="closeExportImportModal"
       >
-        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
-          <div class="sticky top-0 bg-white dark:bg-gray-700 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div class="sticky top-0 bg-white dark:bg-gray-800 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />

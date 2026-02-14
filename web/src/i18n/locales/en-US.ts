@@ -4136,6 +4136,11 @@ export default {
     description: 'Manage AI assistant personalities',
     defaultName: 'Blue',
     defaultDescription: 'Default ZimaOS Blue AI Assistant',
+    defaultTraits: {
+      tone: 'friendly but professional',
+      style: 'clear and concise',
+      focus: 'helpful and practical',
+    },
     new: 'New Personality',
     create: 'Create Personality',
     createNew: 'Create new personality',

@@ -73,7 +73,7 @@ watch(searchQuery, (query) => {
 </script>
 
 <template>
-  <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-700">
+  <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-800">
     <!-- Header -->
     <div class="p-4 border-b border-gray-200 dark:border-gray-700">
       <button
@@ -205,7 +205,7 @@ watch(searchQuery, (query) => {
           <!-- Delete confirmation -->
           <div
             v-if="showDeleteConfirm === conversation.id"
-            class="absolute inset-0 bg-white/95 dark:bg-gray-700/95 flex items-center justify-center gap-2 p-2"
+            class="absolute inset-0 bg-white/95 dark:bg-gray-800/95 flex items-center justify-center gap-2 p-2"
           >
             <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('chat.confirmDelete') }}</span>
             <button

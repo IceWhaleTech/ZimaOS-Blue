@@ -40,7 +40,11 @@ async function retry(isAutoRetry = false) {
     const response = await fetch('/api/v1/system/mode')
     if (response.ok || response.status < 500) {
       // Connection restored, go to previous route
-      const previousRoute = getPreviousRoute()
+      let previousRoute = getPreviousRoute()
+      // Avoid bouncing through /login — go straight to root
+      if (previousRoute === '/login') {
+        previousRoute = '/'
+      }
       // Clear the stored route
       sessionStorage.removeItem(PREVIOUS_ROUTE_KEY)
       router.push(previousRoute)
@@ -54,9 +58,18 @@ async function retry(isAutoRetry = false) {
   autoRetrying.value = false
 }
 
-// Auto retry on mount (page load/refresh)
+// Only auto-retry on page refresh (F5), not on first router redirect.
+// How to tell: if we arrived via router redirect, the query has `from` param.
+// If user refreshes the page, the query is gone but sessionStorage still has the route.
 onMounted(() => {
-  retry(true)
+  const hasQueryFrom = !!route.query.from
+  if (hasQueryFrom) {
+    // First visit via router redirect — just save the route and show error page
+    sessionStorage.setItem(PREVIOUS_ROUTE_KEY, route.query.from as string)
+  } else if (sessionStorage.getItem(PREVIOUS_ROUTE_KEY)) {
+    // Page refresh — sessionStorage has route but no query param → auto-retry
+    retry(true)
+  }
 })
 </script>
 

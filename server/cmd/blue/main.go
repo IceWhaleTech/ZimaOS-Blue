@@ -417,7 +417,6 @@ func main() {
 		cronHandler        *cron.Handler
 		haService          *homeassistant.HAService
 		haHandler          *homeassistant.Handler
-		browserService     *browser.RodService
 		browserHandler     *browser.Handler
 		sttService         stt.Service
 		ttsService         tts.Service
@@ -478,40 +477,13 @@ func main() {
 		logger.Info().Msg("Backup manager initialized")
 	}()
 
-	go func() {
-		// Browser automation service
-		var err error
-		browserService, err = browser.NewService(nil)
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize browser service, browser automation will be disabled")
-			return
-		}
-		browserHandler = browser.NewHandler(browserService)
-		logger.Info().Msg("Browser automation handler initialized")
-	}()
+	// Browser automation service — lazy init, only when first API call arrives
+	// Chromium is very heavy on memory, skip at startup
+	logger.Info().Msg("Browser automation will be initialized on first use")
 
-	// Initialize TTS service asynchronously (non-blocking)
-	go func() {
-		var err error
-		ttsService, err = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderEdge,
-			Providers: []tts.ProviderConfig{
-				{
-					Type:    tts.ProviderEdge,
-					Enabled: true,
-				},
-				{
-					Type:    tts.ProviderEspeakNG,
-					Enabled: true,
-				},
-			},
-		})
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize TTS service")
-		} else {
-			logger.Info().Msg("TTS service initialized with Edge TTS (default) and eSpeak-NG (fallback)")
-		}
-	}()
+	// TTS service — lazy init, only when speech/voice features are used
+	// eSpeak-NG CGO is moderately heavy, skip at startup
+	logger.Info().Msg("TTS service will be initialized on first use")
 
 	// Critical services in parallel pool
 	initPool.Go(func() {
@@ -589,30 +561,34 @@ func main() {
 		logger.Info().Msg("Form filler handler initialized")
 	})
 
-	initPool.Go(func() {
-		// Companion service (Blue Companion - real-time AI Agent monitoring)
-		companionConfig := companion.DefaultConfig()
-		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
-		var err error
-		companionStorage, err = companion.NewJSONLStorage(companionConfig.Storage.BasePath)
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
-			return
-		}
-		companionStreamer := companion.NewEventStreamer(companionConfig)
-		if err := companionStreamer.Start(lm.Context()); err != nil {
-			logger.Warn().Err(err).Msg("Failed to start companion streamer")
-		}
-		companionManager = companion.NewManager(companionStorage, companionStreamer, companionConfig)
-		companionHandler = companion.NewHandler(companionManager, companionStorage)
-		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
-		logger.Info().Msg("Companion handler initialized")
+	if cfg.Companion.Enabled {
+		initPool.Go(func() {
+			// Companion service (Blue Companion - real-time AI Agent monitoring)
+			companionConfig := companion.DefaultConfig()
+			companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+			var err error
+			companionStorage, err = companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
+				return
+			}
+			companionStreamer := companion.NewEventStreamer(companionConfig)
+			if err := companionStreamer.Start(lm.Context()); err != nil {
+				logger.Warn().Err(err).Msg("Failed to start companion streamer")
+			}
+			companionManager = companion.NewManager(companionStorage, companionStreamer, companionConfig)
+			companionHandler = companion.NewHandler(companionManager, companionStorage)
+			companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
+			logger.Info().Msg("Companion handler initialized")
 
-		// Register shutdown hook for companion streamer
-		lm.RegisterShutdownHook(func(ctx context.Context) error {
-			return companionStreamer.Stop()
+			// Register shutdown hook for companion streamer
+			lm.RegisterShutdownHook(func(ctx context.Context) error {
+				return companionStreamer.Stop()
+			})
 		})
-	})
+	} else {
+		logger.Info().Msg("Companion service disabled by config")
+	}
 
 	// Wait for all parallel initializations to complete
 	initPool.Wait()
@@ -752,24 +728,25 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
-	// Initialize memory handler
+	// Initialize memory handler (only if vector store is enabled)
 	var memoryHandler *server.MemoryHandler
-	vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
-	vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
-		DBPath:       vectorDbPath,
-		EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
-		MaxChunks:    10000,
-		EnableFTS:    true,
-		EnableVec:    true,
-	})
-	if err != nil {
-		logger.Warn("Failed to initialize vector store", zap.Error(err))
-	} else {
-		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
-		memoryService := memory.NewMemoryService(hybridSearcher)
-		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
-		memoryHandler = server.NewMemoryHandler(memoryService)
-		memoryHandler.SetUnifiedService(unifiedService)
+	if cfg.Memory.VectorStore.Enabled {
+		vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
+		vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
+			DBPath:       vectorDbPath,
+			EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
+			MaxChunks:    10000,
+			EnableFTS:    true,
+			EnableVec:    true,
+		})
+		if err != nil {
+			logger.Warn("Failed to initialize vector store", zap.Error(err))
+		} else {
+			hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
+			memoryService := memory.NewMemoryService(hybridSearcher)
+			unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
+			memoryHandler = server.NewMemoryHandler(memoryService)
+			memoryHandler.SetUnifiedService(unifiedService)
 
 		memoryDir := filepath.Join(dataDir, "memory")
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
@@ -783,6 +760,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		}
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
+		}
+	} else {
+		logger.Info("Vector memory store disabled by config")
 	}
 
 	// Initialize shared cache
@@ -818,7 +798,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Initialize provider pool
 	var providerPool *providerpool.Pool
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerPool, err = providerpool.NewPool(providerPoolPath)
+	providerPool, err := providerpool.NewPool(providerPoolPath)
 	if err != nil {
 		logger.Warn("Failed to initialize provider pool", zap.Error(err))
 		providerPool = nil

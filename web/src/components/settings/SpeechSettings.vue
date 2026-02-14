@@ -364,7 +364,7 @@ onMounted(() => {
 <template>
   <div class="space-y-6">
     <!-- Tab Navigation -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg shadow-sm">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
       <div class="flex border-b border-gray-200 dark:border-gray-700">
         <button
           :class="[
@@ -399,7 +399,7 @@ onMounted(() => {
     <!-- ASR Tab Content -->
     <div v-show="activeTab === 'asr'" class="space-y-6">
       <!-- ASR Models -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.asrModels') }}
         </h4>
@@ -472,7 +472,7 @@ v-else-if="isModelDownloading(model.id)"
       </div>
 
       <!-- Edit Before Send Toggle -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
             <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.editBeforeSend') }}</label>
@@ -493,7 +493,7 @@ v-else-if="isModelDownloading(model.id)"
     <!-- TTS Tab Content -->
     <div v-show="activeTab === 'tts'" class="space-y-6">
       <!-- TTS Provider Selection -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.ttsProvider') }}
         </h4>
@@ -549,7 +549,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
       </div>
 
       <!-- Voice Customization -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
           {{ t('speech.voiceSettings') }}
         </h4>
@@ -608,7 +608,7 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
       </div>
 
       <!-- Auto-play TTS -->
-      <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow-sm">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div>
             <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.autoPlayTTS') }}</label>

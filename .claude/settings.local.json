@@ -122,7 +122,9 @@
       "WebFetch(domain:www.cursor.com)",
       "WebFetch(domain:cline.ghost.io)",
       "WebFetch(domain:betterstack.com)",
-      "WebFetch(domain:docs.qoder.com)"
+      "WebFetch(domain:docs.qoder.com)",
+      "Bash(git rm:*)",
+      "Bash(wc:*)"
     ]
   }
 }

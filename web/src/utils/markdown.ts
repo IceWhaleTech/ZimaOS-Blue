@@ -1,89 +1,83 @@
 // Simple markdown renderer with code syntax highlighting support
-// Uses highlight.js for syntax highlighting (common languages only)
+// Uses highlight.js for syntax highlighting (lazy-loaded on first use)
 
 import hljs from 'highlight.js/lib/core'
-import javascript from 'highlight.js/lib/languages/javascript'
-import typescript from 'highlight.js/lib/languages/typescript'
-import python from 'highlight.js/lib/languages/python'
-import go from 'highlight.js/lib/languages/go'
-import bash from 'highlight.js/lib/languages/bash'
-import json from 'highlight.js/lib/languages/json'
-import yaml from 'highlight.js/lib/languages/yaml'
-import xml from 'highlight.js/lib/languages/xml'
-import css from 'highlight.js/lib/languages/css'
-import sql from 'highlight.js/lib/languages/sql'
-import rust from 'highlight.js/lib/languages/rust'
-import java from 'highlight.js/lib/languages/java'
-import cpp from 'highlight.js/lib/languages/cpp'
-import markdown from 'highlight.js/lib/languages/markdown'
-import php from 'highlight.js/lib/languages/php'
-import ruby from 'highlight.js/lib/languages/ruby'
-import swift from 'highlight.js/lib/languages/swift'
-import kotlin from 'highlight.js/lib/languages/kotlin'
-import csharp from 'highlight.js/lib/languages/csharp'
-import scala from 'highlight.js/lib/languages/scala'
-import dockerfile from 'highlight.js/lib/languages/dockerfile'
-import nginx from 'highlight.js/lib/languages/nginx'
-import ini from 'highlight.js/lib/languages/ini'
-import diff from 'highlight.js/lib/languages/diff'
-import plaintext from 'highlight.js/lib/languages/plaintext'
 
-// Register languages
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('js', javascript)
-hljs.registerLanguage('jsx', javascript)
-hljs.registerLanguage('typescript', typescript)
-hljs.registerLanguage('ts', typescript)
-hljs.registerLanguage('tsx', typescript)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('py', python)
-hljs.registerLanguage('go', go)
-hljs.registerLanguage('golang', go)
-hljs.registerLanguage('bash', bash)
-hljs.registerLanguage('sh', bash)
-hljs.registerLanguage('shell', bash)
-hljs.registerLanguage('zsh', bash)
-hljs.registerLanguage('json', json)
-hljs.registerLanguage('yaml', yaml)
-hljs.registerLanguage('yml', yaml)
-hljs.registerLanguage('xml', xml)
-hljs.registerLanguage('html', xml)
-hljs.registerLanguage('vue', xml)
-hljs.registerLanguage('svg', xml)
-hljs.registerLanguage('css', css)
-hljs.registerLanguage('scss', css)
-hljs.registerLanguage('less', css)
-hljs.registerLanguage('sql', sql)
-hljs.registerLanguage('rust', rust)
-hljs.registerLanguage('rs', rust)
-hljs.registerLanguage('java', java)
-hljs.registerLanguage('cpp', cpp)
-hljs.registerLanguage('c', cpp)
-hljs.registerLanguage('cc', cpp)
-hljs.registerLanguage('h', cpp)
-hljs.registerLanguage('markdown', markdown)
-hljs.registerLanguage('md', markdown)
-hljs.registerLanguage('php', php)
-hljs.registerLanguage('ruby', ruby)
-hljs.registerLanguage('rb', ruby)
-hljs.registerLanguage('swift', swift)
-hljs.registerLanguage('kotlin', kotlin)
-hljs.registerLanguage('kt', kotlin)
-hljs.registerLanguage('csharp', csharp)
-hljs.registerLanguage('cs', csharp)
-hljs.registerLanguage('scala', scala)
-hljs.registerLanguage('dockerfile', dockerfile)
-hljs.registerLanguage('docker', dockerfile)
-hljs.registerLanguage('nginx', nginx)
-hljs.registerLanguage('ini', ini)
-hljs.registerLanguage('toml', ini)
-hljs.registerLanguage('conf', ini)
-hljs.registerLanguage('env', ini)
-hljs.registerLanguage('diff', diff)
-hljs.registerLanguage('patch', diff)
-hljs.registerLanguage('plaintext', plaintext)
-hljs.registerLanguage('text', plaintext)
-hljs.registerLanguage('txt', plaintext)
+let hljsReady = false
+let hljsLoading: Promise<void> | null = null
+
+/** Preload highlight.js languages. Call this when a component that needs highlighting mounts. */
+export function preloadHljs(): Promise<void> {
+  if (hljsReady) return Promise.resolve()
+  if (hljsLoading) return hljsLoading
+  hljsLoading = (async () => {
+    const [
+      javascript, typescript, python, go, bash, json, yaml, xml, css, sql,
+      rust, java, cpp, markdown, php, ruby, swift, kotlin, csharp, scala,
+      dockerfile, nginx, ini, diff, plaintext,
+    ] = await Promise.all([
+      import('highlight.js/lib/languages/javascript'),
+      import('highlight.js/lib/languages/typescript'),
+      import('highlight.js/lib/languages/python'),
+      import('highlight.js/lib/languages/go'),
+      import('highlight.js/lib/languages/bash'),
+      import('highlight.js/lib/languages/json'),
+      import('highlight.js/lib/languages/yaml'),
+      import('highlight.js/lib/languages/xml'),
+      import('highlight.js/lib/languages/css'),
+      import('highlight.js/lib/languages/sql'),
+      import('highlight.js/lib/languages/rust'),
+      import('highlight.js/lib/languages/java'),
+      import('highlight.js/lib/languages/cpp'),
+      import('highlight.js/lib/languages/markdown'),
+      import('highlight.js/lib/languages/php'),
+      import('highlight.js/lib/languages/ruby'),
+      import('highlight.js/lib/languages/swift'),
+      import('highlight.js/lib/languages/kotlin'),
+      import('highlight.js/lib/languages/csharp'),
+      import('highlight.js/lib/languages/scala'),
+      import('highlight.js/lib/languages/dockerfile'),
+      import('highlight.js/lib/languages/nginx'),
+      import('highlight.js/lib/languages/ini'),
+      import('highlight.js/lib/languages/diff'),
+      import('highlight.js/lib/languages/plaintext'),
+    ])
+
+    const register = (names: string[], mod: any) => {
+      const lang = mod.default || mod
+      for (const name of names) hljs.registerLanguage(name, lang)
+    }
+
+    register(['javascript', 'js', 'jsx'], javascript)
+    register(['typescript', 'ts', 'tsx'], typescript)
+    register(['python', 'py'], python)
+    register(['go', 'golang'], go)
+    register(['bash', 'sh', 'shell', 'zsh'], bash)
+    register(['json'], json)
+    register(['yaml', 'yml'], yaml)
+    register(['xml', 'html', 'vue', 'svg'], xml)
+    register(['css', 'scss', 'less'], css)
+    register(['sql'], sql)
+    register(['rust', 'rs'], rust)
+    register(['java'], java)
+    register(['cpp', 'c', 'cc', 'h'], cpp)
+    register(['markdown', 'md'], markdown)
+    register(['php'], php)
+    register(['ruby', 'rb'], ruby)
+    register(['swift'], swift)
+    register(['kotlin', 'kt'], kotlin)
+    register(['csharp', 'cs'], csharp)
+    register(['scala'], scala)
+    register(['dockerfile', 'docker'], dockerfile)
+    register(['nginx'], nginx)
+    register(['ini', 'toml', 'conf', 'env'], ini)
+    register(['diff', 'patch'], diff)
+    register(['plaintext', 'text', 'txt'], plaintext)
+
+    hljsReady = true
+  })()
+  return hljsLoading
+}
 
 export interface RenderOptions {
   sanitize?: boolean
@@ -145,6 +139,12 @@ function detectLanguage(lang: string): string {
 
 // Simple syntax highlighting using highlight.js
 export function highlightCode(code: string, language: string): string {
+  // Trigger lazy loading if not started yet
+  if (!hljsReady) {
+    preloadHljs()
+    // Languages not loaded yet — return escaped code (will highlight after reload)
+    return escapeHtml(code)
+  }
   if (language && hljs.getLanguage(language)) {
     try {
       return hljs.highlight(code, { language }).value

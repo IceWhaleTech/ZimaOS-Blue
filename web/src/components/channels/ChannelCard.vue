@@ -157,7 +157,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
     <!-- Channel Header -->
     <div
       class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"

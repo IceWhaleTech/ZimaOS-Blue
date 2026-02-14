@@ -73,7 +73,7 @@
             :key="trait.key"
             class="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full"
           >
-            <span class="font-medium">{{ trait.key }}:</span> {{ trait.value }}
+            <span class="font-medium">{{ trait.key }}:</span> {{ getTraitValue(p, trait) }}
           </span>
         </div>
 
@@ -131,6 +131,15 @@ defineEmits<{
 
 function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
+}
+
+function getTraitValue(p: Personality, trait: { key: string; value: string }): string {
+  if (p.id === 'default') {
+    const key = `personality.defaultTraits.${trait.key}`
+    const translated = t(key)
+    if (translated !== key) return translated
+  }
+  return trait.value
 }
 
 function extractSummary(systemPrompt: string): string {

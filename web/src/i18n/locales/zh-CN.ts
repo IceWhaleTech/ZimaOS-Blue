@@ -4123,6 +4123,11 @@ export default {
     description: '管理 AI 助手人格',
     defaultName: 'Blue',
     defaultDescription: '默认 ZimaOS Blue AI 助手',
+    defaultTraits: {
+      tone: '友好且专业',
+      style: '清晰简洁',
+      focus: '实用且有帮助',
+    },
     new: '新建人格',
     create: '创建人格',
     createNew: '创建新人格',

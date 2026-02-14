@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
-import FormFillerWidget from '@/components/formfiller/FormFillerWidget.vue'
+const FormFillerWidget = defineAsyncComponent(() => import('@/components/formfiller/FormFillerWidget.vue'))
 import PreviewOnboardingModal from '@/components/onboarding/PreviewOnboardingModal.vue'
 import FullscreenModal from '@/components/typeless/FullscreenModal.vue'
 import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
@@ -59,8 +59,8 @@ onUnmounted(() => {
         <RouterView />
       </main>
     </div>
-    <!-- Form filler widget available on all pages -->
-    <FormFillerWidget />
+    <!-- Form filler widget - lazy loaded, hidden on chat page -->
+    <FormFillerWidget v-if="route.path !== '/chat'" />
     <!-- Preview mode onboarding tooltip -->
     <PreviewOnboardingModal v-if="isPreviewMode" />
     <!-- Fullscreen modal for code/diff/terminal cards -->

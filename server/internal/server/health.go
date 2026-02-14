@@ -75,7 +75,7 @@ func healthHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, status)
 }
 
-// formatUptime formats duration as "Xd Xh Xm Xs" with 2 decimal places for seconds
+// formatUptime formats duration as "Xd Xh Xm Xs" with 2 decimal places
 func formatUptime(d time.Duration) string {
 	days := int(d.Hours() / 24)
 	hours := int(d.Hours()) % 24
@@ -83,13 +83,13 @@ func formatUptime(d time.Duration) string {
 	seconds := d.Seconds() - float64(int(d.Seconds())/60*60)
 
 	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm %.2fs", days, hours, minutes, seconds)
+		return fmt.Sprintf("%dd %.2fh %.2fm %.2fs", days, float64(hours), float64(minutes), seconds)
 	}
 	if hours > 0 {
-		return fmt.Sprintf("%dh %dm %.2fs", hours, minutes, seconds)
+		return fmt.Sprintf("%.2fh %.2fm %.2fs", float64(hours), float64(minutes), seconds)
 	}
 	if minutes > 0 {
-		return fmt.Sprintf("%dm %.2fs", minutes, seconds)
+		return fmt.Sprintf("%.2fm %.2fs", float64(minutes), seconds)
 	}
 	return fmt.Sprintf("%.2fs", seconds)
 }

@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
 import { cardActionApi } from '@/api/chat'
-import { renderMarkdown, copyCodeToClipboard } from '@/utils/markdown'
+import { renderMarkdown, copyCodeToClipboard, preloadHljs } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
@@ -16,6 +16,9 @@ import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 
 const { t } = useI18n()
 const providerPoolStore = useProviderPoolStore()
+
+// Start loading highlight.js languages when chat is first rendered
+preloadHljs()
 
 const props = defineProps<{
   message: Message
