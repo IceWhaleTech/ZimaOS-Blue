@@ -219,6 +219,11 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, bodyBytes []byte, reqBo
 	}
 	defer resp.Body.Close()
 
+	// Guard: if upstream unexpectedly returns SSE, don't buffer/cache it
+	if isStreamingResponse(resp) {
+		return nil, fmt.Errorf("upstream returned streaming response for non-streaming request")
+	}
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
