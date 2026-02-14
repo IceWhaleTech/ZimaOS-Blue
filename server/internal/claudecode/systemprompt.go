@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // SystemPromptBuilder builds system prompts for Claude Code CLI.
@@ -33,7 +33,7 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 	var parts []string
 
 	// Add identity
-	parts = append(parts, "You are a personal assistant running inside ZimaOS Echo.")
+	parts = append(parts, "You are a personal assistant running inside ZimaOS Blue.")
 
 	// Add safety guardrails
 	parts = append(parts, b.buildSafetyGuidance())
@@ -85,7 +85,7 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 	var lines []string
 	lines = append(lines, "# Available Tools")
 	lines = append(lines, "")
-	lines = append(lines, "The following tools are available through the ZimaOS-Echo API:")
+	lines = append(lines, "The following tools are available through the ZimaOS-Blue API:")
 	lines = append(lines, "")
 
 	for _, def := range defs {
@@ -204,7 +204,7 @@ func (b *SystemPromptBuilder) buildHeartbeatGuidance() string {
 	lines = append(lines, "If you receive a heartbeat poll (a system health check), and there is nothing that needs attention, reply exactly:")
 	lines = append(lines, "HEARTBEAT_OK")
 	lines = append(lines, "")
-	lines = append(lines, "ZimaOS Echo treats a leading/trailing \"HEARTBEAT_OK\" as a heartbeat ack (and may discard it).")
+	lines = append(lines, "ZimaOS Blue treats a leading/trailing \"HEARTBEAT_OK\" as a heartbeat ack (and may discard it).")
 	lines = append(lines, "If something needs attention, do NOT include \"HEARTBEAT_OK\"; reply with the alert text instead.")
 
 	return strings.Join(lines, "\n")
@@ -215,7 +215,7 @@ func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt 
 	var parts []string
 
 	// Add identity
-	parts = append(parts, "You are a personal assistant running inside ZimaOS Echo.")
+	parts = append(parts, "You are a personal assistant running inside ZimaOS Blue.")
 
 	// Add safety guardrails
 	parts = append(parts, b.buildSafetyGuidance())

@@ -1,0 +1,536 @@
+package main
+
+/*
+#include <stdlib.h>
+*/
+import "C"
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+	"unsafe"
+
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
+	_ "modernc.org/sqlite"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
+)
+
+var (
+	version   = "0.10.22"
+	buildTime = "unknown"
+	gitCommit = "unknown"
+)
+
+// getMacOSDataDir returns the macOS data directory path
+func getMacOSDataDir() string {
+	return filepath.Join(os.ExpandEnv("$HOME"), "Library", "Application Support", "com.zimaos.blue")
+}
+
+// Global state for the server
+var (
+	serverMu     sync.Mutex
+	serverCancel context.CancelFunc
+	serverDone   chan struct{}
+	isRunning    bool
+	echoServer   *echo.Echo
+	httpServer   *http.Server
+)
+
+//export BlueServerStartWithArgs
+func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+
+	if isRunning {
+		return 1 // Already running
+	}
+
+	goPort := int(port)
+	goDataDir := getMacOSDataDir()
+	goArgs := C.GoString(args)
+
+	// Set environment variables for config
+	if goPort > 0 {
+		os.Setenv("BLUE_SERVER_PORT", fmt.Sprintf("%d", goPort))
+	}
+
+	// Parse and apply command-line arguments
+	if goArgs != "" {
+		os.Setenv("BLUE_ARGS", goArgs)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serverCancel = cancel
+	serverDone = make(chan struct{})
+
+	go func() {
+		defer close(serverDone)
+		if err := runServer(ctx, goPort, goDataDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+		}
+	}()
+
+	isRunning = true
+	return 0
+}
+
+//export BlueServerStart
+func BlueServerStart(port C.int, dataDir *C.char) C.int {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+
+	if isRunning {
+		return 1 // Already running
+	}
+
+	goPort := int(port)
+	goDataDir := getMacOSDataDir()
+
+	// Set environment variables for config
+	if goPort > 0 {
+		os.Setenv("BLUE_SERVER_PORT", fmt.Sprintf("%d", goPort))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serverCancel = cancel
+	serverDone = make(chan struct{})
+
+	go func() {
+		defer close(serverDone)
+		if err := runServer(ctx, goPort, goDataDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+		}
+	}()
+
+	isRunning = true
+	return 0
+}
+
+//export BlueServerStop
+func BlueServerStop() C.int {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+
+	if !isRunning {
+		return 1 // Not running
+	}
+
+	if serverCancel != nil {
+		serverCancel()
+	}
+
+	// Wait for server to stop with timeout
+	select {
+	case <-serverDone:
+	case <-time.After(10 * time.Second):
+		return 2 // Timeout
+	}
+
+	isRunning = false
+	return 0
+}
+
+//export BlueServerIsRunning
+func BlueServerIsRunning() C.int {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if isRunning {
+		return 1
+	}
+	return 0
+}
+
+//export BlueServerGetVersion
+func BlueServerGetVersion() *C.char {
+	return C.CString(version)
+}
+
+//export BlueServerFreeString
+func BlueServerFreeString(s *C.char) {
+	C.free(unsafe.Pointer(s))
+}
+
+func runServer(ctx context.Context, port int, dataDir string) error {
+	// Load configuration
+	cfg, err := config.Load("")
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Initialize HotReloader for config changes
+	var hotReloader *config.HotReloader
+	hotReloader, _ = config.NewHotReloader("", cfg, &config.HotReloadConfig{
+		Enabled:             true,
+		WatchInterval:       5 * time.Second,
+		ValidateBeforeApply: true,
+	})
+
+	// Override port if specified
+	if port > 0 {
+		cfg.Server.Port = port
+	}
+
+	// Ensure data directory exists
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	// Initialize logger with ring buffer for log viewing
+	if err := logger.Init(&cfg.Log); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	// Initialize zap logger
+	zapLogger, err := zap.NewProduction()
+	if err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	defer zapLogger.Sync()
+
+	zapLogger.Info("Starting ZimaOS-Blue (embedded)",
+		zap.String("version", version),
+		zap.String("build_time", buildTime),
+		zap.String("git_commit", gitCommit),
+		zap.Int("port", cfg.Server.Port),
+		zap.String("data_dir", dataDir),
+	)
+
+	// Create server config
+	serverCfg := &bootstrap.ServerConfig{
+		Port:      cfg.Server.Port,
+		DataDir:   dataDir,
+		Version:   version,
+		BuildTime: buildTime,
+		GitCommit: gitCommit,
+		Mode:      "embedded",
+	}
+
+	// Initialize services using bootstrap package
+	services, err := bootstrap.InitServices(serverCfg, cfg, zapLogger)
+	if err != nil {
+		return fmt.Errorf("failed to initialize services: %w", err)
+	}
+	defer services.Close()
+
+	// Initialize metrics
+	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir)
+	defer metricsCollector.Stop()
+	defer metricsWriter.Stop()
+
+	// Initialize chat handler
+	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
+	chatHandler.SetMetricsRecorder(metricsWriter)
+
+	// Initialize external auth service
+	extauthService, _ := extauth.NewService(&extauth.ServiceConfig{
+		Providers:    []*extauth.ProviderConfig{},
+		StateStore:   extauth.NewMemoryStateStore(),
+		AccountStore: extauth.NewMemoryAccountStore(),
+		UserStore:    nil,
+	})
+	extauthHandler := extauth.NewHandler(extauthService)
+
+	// Initialize plugin registry and store
+	pluginRegistry := plugin.NewRegistry()
+	pluginStore := plugin.NewStore(plugin.DefaultStoreConfig(), pluginRegistry)
+
+	// Initialize auto-reply service
+	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
+	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
+
+	// Initialize auth middleware and handlers
+	authMiddleware := auth.NewAuthMiddleware(services.JWTService, services.APIKeyService)
+	apiKeyHandler := auth.NewAPIKeyHandler(services.APIKeyService)
+	userHandler := user.NewHandler(services.UserService)
+	userHandler.SetJWTService(services.JWTService)
+
+	// Initialize permission service and set on user handler
+	permRepo, _ := permission.NewRepository(services.DB)
+	if permRepo != nil {
+		permService := permission.NewService(permRepo, services.UserRepo)
+		userHandler.SetPermissionService(permService)
+	}
+
+	// Initialize backup handler
+	backupManager, _ := backup.NewManager(backup.Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          filepath.Join(dataDir, "backups"),
+	}, dataDir, dataDir)
+	var backupHandler *backup.Handler
+	if backupManager != nil {
+		backupHandler = backup.NewHandler(backupManager)
+	}
+
+	// Initialize security handler
+	threatDetector := security.NewThreatDetector()
+	securityHandler := security.NewHandler(threatDetector)
+
+	// Initialize sandbox handler
+	sandboxManager, _ := sandbox.NewManager(nil)
+	var sandboxHandler *sandbox.Handler
+	if sandboxManager != nil {
+		sandboxHandler = sandbox.NewHandler(sandboxManager)
+	}
+
+	// Initialize cron handler
+	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
+	cronService.RegisterBuiltinHandlers()
+	cronHandler := cron.NewHandler(cronService, zapLogger)
+	cronService.Start()
+
+	// Initialize Home Assistant handler
+	haService := homeassistant.NewHAService()
+	haHandler := homeassistant.NewHandler(haService)
+
+	// Initialize browser handler
+	browserService, _ := browser.NewService(nil)
+	var browserHandler *browser.Handler
+	if browserService != nil {
+		browserHandler = browser.NewHandler(browserService)
+	}
+
+	// Initialize formfiller handler
+	formfillerStore, _ := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
+	var formfillerHandler *formfiller.Handler
+	if formfillerStore != nil {
+		formfillerHandler = formfiller.NewHandler(formfillerStore)
+	}
+
+	// Initialize workflow handler
+	workflowRepo, _ := workflow.NewRepository(services.DB)
+	var workflowHandler *workflow.Handler
+	if workflowRepo != nil {
+		workflowService, _ := workflow.NewService(nil, workflowRepo)
+		if workflowService != nil {
+			workflowHandler = workflow.NewHandler(workflowService)
+		}
+	}
+
+	// Initialize Whisper ASR provider
+	whisperASRProvider := stt.NewWhisperProvider(&stt.WhisperConfig{
+		ModelPath: filepath.Join(dataDir, "whisper-models"),
+	})
+
+	// Create STT service from whisper provider
+	var sttService stt.Service
+	if whisperASRProvider != nil {
+		sttService = stt.NewServiceWithProvider(whisperASRProvider)
+		zapLogger.Info("STT service initialized with Whisper provider")
+	}
+
+	// Initialize voice handler with STT service
+	voiceService := voice.NewService(&voice.ServiceConfig{
+		STTService: sttService,
+	})
+	voiceHandler := voice.NewHandler(voiceService)
+
+	// Initialize speech handler with ASR provider
+	speechService := speech.NewService(&speech.Config{
+		TTS: speech.TTSConfig{Provider: "edge-tts"},
+		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper"},
+	}, nil, nil)
+	if whisperASRProvider != nil {
+		speechService.SetASRProvider(whisperASRProvider)
+	}
+	speechHandler := speech.NewHandler(speechService)
+
+	// Initialize companion handler
+	companionConfig := companion.DefaultConfig()
+	companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+	companionStorage, _ := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+	var companionHandler *companion.Handler
+	var companionWSHandler *companion.WebSocketHandler
+	if companionStorage != nil {
+		companionStreamer := companion.NewEventStreamer(companionConfig)
+		companionStreamer.Start(ctx)
+		companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
+		companionHandler = companion.NewHandler(companionManager, companionStorage)
+		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
+		chatHandler.SetCompanionManager(companionManager)
+	}
+
+	// Initialize provider pool
+	providerPoolPath := filepath.Join(dataDir, "providerpool")
+	providerPool, _ := providerpool.NewPool(providerPoolPath)
+	if providerPool != nil {
+		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
+		chatHandler.SetProviderPool(providerPool)
+	}
+
+	// Initialize ngrok
+	ngrokConfigStore := ngrok.NewConfigStore(dataDir)
+	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
+
+	// Initialize claudecode handler
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+
+	// Set up system prompt builder
+	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
+		WorkspaceDir: dataDir,
+	})
+	systemPromptBuilder.SetToolRegistry(services.ToolRegistry)
+	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
+
+	// Initialize channel config store
+	channelConfigStore := server.NewChannelConfigStore(dataDir)
+
+	// Initialize shared cache
+	sharedCache := proxy.NewCCCache(proxy.DefaultCacheConfig())
+
+	// Initialize memory handler
+	var memoryHandler *server.MemoryHandler
+	vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
+	vectorStore, _ := memory.NewVectorStore(memory.VectorStoreConfig{
+		DBPath:       vectorDbPath,
+		EmbeddingDim: 1536,
+		MaxChunks:    10000,
+		EnableFTS:    true,
+		EnableVec:    true,
+	})
+	if vectorStore != nil {
+		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
+		memoryService := memory.NewMemoryService(hybridSearcher)
+		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
+		memoryHandler = server.NewMemoryHandler(memoryService)
+		memoryHandler.SetUnifiedService(unifiedService)
+
+		// Initialize LayeredMemoryService for dual-layer memory architecture
+		memoryDir := filepath.Join(dataDir, "memory")
+		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
+			BaseDir:            memoryDir,
+			DailyRetentionDays: 30,
+		})
+		if err != nil {
+			zapLogger.Warn("Failed to initialize layered memory service", zap.Error(err))
+		} else {
+			memoryHandler.SetLayeredService(layeredService)
+			zapLogger.Info("Layered memory service initialized", zap.String("dir", memoryDir))
+		}
+
+		// Register memory tools for AI agent access
+		toolsAdapter := memory.NewToolsAdapter(unifiedService)
+		tools.RegisterMemoryTools(services.ToolRegistry, toolsAdapter)
+	}
+
+	// Create Echo server
+	e := echo.New()
+	e.HideBanner = true
+	e.HidePort = true
+	echoServer = e
+
+	// Register all routes using bootstrap package
+	bootstrap.RegisterAllRoutes(e, &bootstrap.RoutesDeps{
+		DB:                 services.DB,
+		Config:             cfg,
+		ServerConfig:       serverCfg,
+		Services:           services,
+		Logger:             zapLogger,
+		Ctx:                ctx,
+		MetricsWriter:      metricsWriter,
+		MetricsCollector:   metricsCollector,
+		ChatHandler:        chatHandler,
+		PluginRegistry:     pluginRegistry,
+		PluginStore:        pluginStore,
+		ExtauthService:     extauthService,
+		ExtauthHandler:     extauthHandler,
+		AutoreplyService:   autoreplyService,
+		AutoreplyHandler:   autoreplyHandler,
+		AuthMiddleware:     authMiddleware,
+		APIKeyHandler:      apiKeyHandler,
+		UserHandler:        userHandler,
+		BackupHandler:      backupHandler,
+		SecurityHandler:    securityHandler,
+		SandboxHandler:     sandboxHandler,
+		CronHandler:        cronHandler,
+		HAHandler:          haHandler,
+		BrowserHandler:     browserHandler,
+		VoiceHandler:       voiceHandler,
+		FormfillerHandler:  formfillerHandler,
+		WorkflowHandler:    workflowHandler,
+		CompanionHandler:   companionHandler,
+		CompanionWSHandler: companionWSHandler,
+		ProviderPool:       providerPool,
+		APIKeyService:      services.APIKeyService,
+		SpeechHandler:      speechHandler,
+		NgrokTunnelMgr:     ngrokTunnelMgr,
+		NgrokConfigStore:   ngrokConfigStore,
+		ClaudeCodeHandler:  claudeCodeHandler,
+		ChannelConfigStore: channelConfigStore,
+		SharedCache:        sharedCache,
+		MemoryHandler:      memoryHandler,
+		HotReloader:        hotReloader,
+	})
+
+	// Start HTTP server
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	httpServer = &http.Server{
+		Addr:         addr,
+		Handler:      e,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
+	}
+
+	zapLogger.Info("Starting HTTP server", zap.String("addr", addr))
+
+	// Start server in goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// Wait for context cancellation or error
+	select {
+	case <-ctx.Done():
+		zapLogger.Info("Shutting down server...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		metricsCollector.Stop()
+		metricsWriter.Stop()
+
+		return httpServer.Shutdown(shutdownCtx)
+	case err := <-errCh:
+		return err
+	}
+}
+
+// Required for c-archive build mode
+func main() {}

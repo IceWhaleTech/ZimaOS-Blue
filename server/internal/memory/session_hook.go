@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/session"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 )
 
 // SessionMemoryHook saves session summaries to daily memory when sessions end.

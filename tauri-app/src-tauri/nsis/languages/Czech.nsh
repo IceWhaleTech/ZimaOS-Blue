@@ -1,4 +1,4 @@
-; Czech translations for ZimaOS Echo installer
+; Czech translations for ZimaOS Blue installer
 LangString addOrReinstall ${LANG_CZECH} "Přidat/Přeinstalovat komponenty"
 LangString alreadyInstalled ${LANG_CZECH} "Již nainstalováno"
 LangString alreadyInstalledLong ${LANG_CZECH} "${PRODUCTNAME} ${VERSION} je již nainstalován. Vyberte operaci a klikněte na Další."

@@ -195,7 +195,7 @@ watch(() => state.clipboardData, (newVal) => {
     >
       <!-- Draggable Header -->
       <div
-        class="widget-header flex items-center gap-1.5 px-2.5 py-2 bg-gray-700 dark:bg-gray-700 text-white cursor-move select-none"
+        class="widget-header flex items-center gap-1.5 px-2.5 py-2 bg-gray-700 dark:bg-gray-500 text-white cursor-move select-none"
         @mousedown="startDrag"
       >
         <span class="text-sm">📝</span>
@@ -326,8 +326,8 @@ class="flex justify-between items-center px-2 py-1
           </button>
           <button
             class="flex-1 px-2.5 py-2 rounded text-xs font-medium cursor-pointer transition-colors
-                   bg-gray-700 dark:bg-gray-700 text-white border-none
-                   hover:bg-gray-700 dark:bg-gray-700"
+                   bg-gray-700 dark:bg-gray-500 text-white border-none
+                   hover:bg-gray-700 dark:bg-gray-500"
             @click="handleFillAll"
           >
             {{ t('formFiller.widget.fillAll') }}

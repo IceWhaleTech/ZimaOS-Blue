@@ -1,6 +1,6 @@
-# ZimaOS-Echo CLI Tutorial
+# ZimaOS-Blue CLI Tutorial
 
-ZimaOS-Echo provides a comprehensive command-line interface (CLI) for managing and interacting with the NAS-Native Agent Runtime.
+ZimaOS-Blue provides a comprehensive command-line interface (CLI) for managing and interacting with the A Local-first Agent Runtime for Builders with Bolder Mind.
 
 ## Table of Contents
 
@@ -29,26 +29,26 @@ Download the latest release for your platform:
 
 ```bash
 # Windows
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-windows-amd64.exe
-mv echo-windows-amd64.exe echo.exe
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-windows-amd64.exe
+mv blue-windows-amd64.exe blue.exe
 
 # Linux
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
-chmod +x echo-linux-amd64
-sudo mv echo-linux-amd64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-linux-amd64
+chmod +x blue-linux-amd64
+sudo mv blue-linux-amd64 /usr/local/bin/blue
 
 # macOS
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-amd64
-chmod +x echo-darwin-amd64
-sudo mv echo-darwin-amd64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-darwin-amd64
+chmod +x blue-darwin-amd64
+sudo mv blue-darwin-amd64 /usr/local/bin/blue
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o echo ./cmd/echo/
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o blue ./cmd/blue/
 ```
 
 ---
@@ -59,41 +59,41 @@ go build -o echo ./cmd/echo/
 
 ```bash
 # Run diagnostic checks
-echo doctor
+blue doctor
 
 # Auto-fix common issues
-echo doctor --fix
+blue doctor --fix
 ```
 
 ### 2. Start the Service
 
 ```bash
 # Run in foreground (for testing)
-echo gateway run
+blue gateway run
 
 # Or install as system service
-echo gateway install
-echo gateway start
+blue gateway install
+blue gateway start
 ```
 
 ### 3. Check Status
 
 ```bash
 # Quick status check
-echo status
+blue status
 
 # Detailed status with all info
-echo status --all
+blue status --all
 ```
 
 ### 4. View Logs
 
 ```bash
 # Show recent logs
-echo logs
+blue logs
 
 # Follow logs in real-time
-echo logs -f
+blue logs -f
 ```
 
 ---
@@ -116,16 +116,16 @@ These flags can be used with any command:
 
 ```bash
 # Use development mode
-echo --dev status
+blue --dev status
 
 # Use a custom profile
-echo --profile testing config list
+blue --profile testing config list
 
 # Get JSON output for scripting
-echo --json models list
+blue --json models list
 
 # Disable colors for piping
-echo --no-color logs | grep error
+blue --no-color logs | grep error
 ```
 
 ---
@@ -136,29 +136,29 @@ echo --no-color logs | grep error
 
 #### `gateway` - Service Control
 
-Manage the ZimaOS-Echo service.
+Manage the ZimaOS-Blue service.
 
 ```bash
 # Run service in foreground
-echo gateway run [--port 23456] [--bind 0.0.0.0]
+blue gateway run [--port 23456] [--bind 0.0.0.0]
 
 # Check service status
-echo gateway status
+blue gateway status
 
 # Start service (background)
-echo gateway start
+blue gateway start
 
 # Stop service
-echo gateway stop
+blue gateway stop
 
 # Restart service
-echo gateway restart
+blue gateway restart
 
 # Install as system service
-echo gateway install
+blue gateway install
 
 # Uninstall system service
-echo gateway uninstall
+blue gateway uninstall
 ```
 
 **Options:**
@@ -172,16 +172,16 @@ Display service health and recent activity.
 
 ```bash
 # Basic status
-echo status
+blue status
 
 # Full status with all details
-echo status --all
+blue status --all
 
 # Deep health check
-echo status --deep
+blue status --deep
 
 # JSON output
-echo status --json
+blue status --json
 ```
 
 #### `health` - Health Check
@@ -190,13 +190,13 @@ Quick health check of the running service.
 
 ```bash
 # Basic health check
-echo health
+blue health
 
 # With custom timeout
-echo health --timeout 5s
+blue health --timeout 5s
 
 # JSON output
-echo health --json
+blue health --json
 ```
 
 #### `doctor` - System Diagnostics
@@ -205,10 +205,10 @@ Run diagnostic checks and auto-fix issues.
 
 ```bash
 # Run all checks
-echo doctor
+blue doctor
 
 # Auto-fix issues
-echo doctor --fix
+blue doctor --fix
 ```
 
 **Checks performed:**
@@ -227,20 +227,20 @@ echo doctor --fix
 
 #### `config` - Configuration Management
 
-Manage ZimaOS-Echo configuration.
+Manage ZimaOS-Blue configuration.
 
 ```bash
 # List all configuration
-echo config list
+blue config list
 
 # Get a specific value
-echo config get server.port
+blue config get server.port
 
 # Set a value
-echo config set server.port 23456
+blue config set server.port 23456
 
 # Remove a value
-echo config unset server.debug
+blue config unset server.debug
 ```
 
 **Common configuration keys:**
@@ -260,22 +260,22 @@ Manage AI models and providers.
 
 ```bash
 # List available models
-echo models list
+blue models list
 
 # List models from specific provider
-echo models list --provider openai
+blue models list --provider openai
 
 # Check model availability
-echo models list --check
+blue models list --check
 
 # Show model status
-echo models status
+blue models status
 
 # Set default model
-echo models set gpt-4
+blue models set gpt-4
 
 # Scan for available models
-echo models scan
+blue models scan
 ```
 
 **Options:**
@@ -293,19 +293,19 @@ Manage conversation sessions.
 
 ```bash
 # List all sessions
-echo sessions list
+blue sessions list
 
 # List only active sessions
-echo sessions list --active
+blue sessions list --active
 
 # Show session details
-echo sessions show <session-id>
+blue sessions show <session-id>
 
 # Delete a session
-echo sessions delete <session-id>
+blue sessions delete <session-id>
 
 # Clear all sessions
-echo sessions clear
+blue sessions clear
 ```
 
 **Options:**
@@ -322,26 +322,26 @@ Manage scheduled cron jobs.
 
 ```bash
 # List all cron jobs
-echo cron list
+blue cron list
 
 # Show cron service status
-echo cron status
+blue cron status
 
 # Add a new cron job
-echo cron add --name "Daily Backup" --cron "0 2 * * *" --handler http --payload '{"url":"http://localhost/backup"}'
+blue cron add --name "Daily Backup" --cron "0 2 * * *" --handler http --payload '{"url":"http://localhost/backup"}'
 
 # Remove a cron job
-echo cron rm <job-id>
+blue cron rm <job-id>
 
 # Enable/disable a job
-echo cron enable <job-id>
-echo cron disable <job-id>
+blue cron enable <job-id>
+blue cron disable <job-id>
 
 # Run a job immediately
-echo cron run <job-id>
+blue cron run <job-id>
 
 # View job execution history
-echo cron runs <job-id>
+blue cron runs <job-id>
 ```
 
 **Add Options:**
@@ -373,21 +373,21 @@ echo cron runs <job-id>
 
 #### `plugins` - Plugin Management
 
-Manage ZimaOS-Echo plugins.
+Manage ZimaOS-Blue plugins.
 
 ```bash
 # List all plugins
-echo plugins list
+blue plugins list
 
 # Show plugin details
-echo plugins info <plugin-id>
+blue plugins info <plugin-id>
 
 # Enable/disable a plugin
-echo plugins enable <plugin-id>
-echo plugins disable <plugin-id>
+blue plugins enable <plugin-id>
+blue plugins disable <plugin-id>
 
 # Run plugin diagnostics
-echo plugins doctor
+blue plugins doctor
 ```
 
 **Options:**
@@ -403,16 +403,16 @@ Manage agent skills.
 
 ```bash
 # List all skills
-echo skills list
+blue skills list
 
 # List only eligible skills
-echo skills list --eligible
+blue skills list --eligible
 
 # Show skill details
-echo skills info <skill-id>
+blue skills info <skill-id>
 
 # Check skill availability
-echo skills check
+blue skills check
 ```
 
 **Options:**
@@ -429,19 +429,19 @@ View and follow service logs.
 
 ```bash
 # Show recent logs (last 50 lines)
-echo logs
+blue logs
 
 # Show last N lines
-echo logs -n 100
+blue logs -n 100
 
 # Follow logs in real-time
-echo logs -f
+blue logs -f
 
 # Filter by log level
-echo logs --level error
+blue logs --level error
 
 # Combine options
-echo logs -f --level warn -n 200
+blue logs -f --level warn -n 200
 ```
 
 **Options:**
@@ -458,45 +458,45 @@ echo logs -f --level warn -n 200
 
 ```bash
 # Get model list as JSON and process with jq
-echo --json models list | jq '.models[].name'
+blue --json models list | jq '.models[].name'
 
 # Check if service is healthy
-if echo --json health | jq -e '.healthy' > /dev/null; then
+if blue --json health | jq -e '.healthy' > /dev/null; then
     echo "Service is healthy"
 else
     echo "Service is unhealthy"
 fi
 
 # Get session count
-echo --json sessions list | jq '.conversations | length'
+blue --json sessions list | jq '.conversations | length'
 ```
 
 ### Development Workflow
 
 ```bash
 # Start in dev mode
-echo --dev gateway run
+blue --dev gateway run
 
 # In another terminal, check status
-echo --dev status
+blue --dev status
 
 # View dev logs
-echo --dev logs -f
+blue --dev logs -f
 ```
 
 ### Profile Isolation
 
 ```bash
 # Create a testing profile
-echo --profile testing config set server.port 9090
+blue --profile testing config set server.port 9090
 
 # Run with testing profile
-echo --profile testing gateway run
+blue --profile testing gateway run
 
 # Each profile has isolated:
-# - Configuration: ~/.zimaos-echo-testing/config.yaml
-# - Data: ~/.zimaos-echo-testing/data/
-# - Logs: ~/.zimaos-echo-testing/logs/
+# - Configuration: ~/.zimaos-blue-testing/config.yaml
+# - Data: ~/.zimaos-blue-testing/data/
+# - Logs: ~/.zimaos-blue-testing/logs/
 ```
 
 ### Automated Health Monitoring
@@ -506,9 +506,9 @@ echo --profile testing gateway run
 # health-check.sh
 
 while true; do
-    if ! echo health --timeout 5s > /dev/null 2>&1; then
+    if ! blue health --timeout 5s > /dev/null 2>&1; then
         echo "$(date): Service unhealthy, restarting..."
-        echo gateway restart
+        blue gateway restart
     fi
     sleep 60
 done
@@ -522,47 +522,47 @@ done
 
 1. **Check if port is in use:**
    ```bash
-   echo doctor
+   blue doctor
    # Look for "Port available" check
    ```
 
 2. **Check logs for errors:**
    ```bash
-   echo logs --level error
+   blue logs --level error
    ```
 
 3. **Try running in foreground:**
    ```bash
-   echo gateway run --verbose
+   blue gateway run --verbose
    ```
 
 ### Configuration Issues
 
 1. **Verify config file:**
    ```bash
-   echo config list
+   blue config list
    ```
 
 2. **Reset to defaults:**
    ```bash
-   echo config unset <problematic-key>
+   blue config unset <problematic-key>
    ```
 
 3. **Run doctor with fix:**
    ```bash
-   echo doctor --fix
+   blue doctor --fix
    ```
 
 ### Connection Refused
 
 1. **Check if service is running:**
    ```bash
-   echo gateway status
+   blue gateway status
    ```
 
 2. **Verify port configuration:**
    ```bash
-   echo config get server.port
+   blue config get server.port
    ```
 
 3. **Check firewall settings** (platform-specific)
@@ -571,20 +571,20 @@ done
 
 1. **Run doctor to check permissions:**
    ```bash
-   echo doctor
+   blue doctor
    ```
 
 2. **Fix permissions automatically:**
    ```bash
-   echo doctor --fix
+   blue doctor --fix
    ```
 
 ### Log File Not Found
 
 The CLI looks for logs in these locations:
-1. `~/.zimaos-echo/logs/echo.log`
-2. `./logs/echo.log`
-3. `./echo.log`
+1. `~/.zimaos-blue/logs/blue.log`
+2. `./logs/blue.log`
+3. `./blue.log`
 
 Ensure the service has been started at least once to create log files.
 
@@ -594,14 +594,14 @@ Ensure the service has been started at least once to create log files.
 
 ```bash
 # General help
-echo --help
+blue --help
 
 # Command-specific help
-echo gateway --help
-echo config --help
-echo models --help
+blue gateway --help
+blue config --help
+blue models --help
 ```
 
 For more information, visit:
-- GitHub: https://github.com/IceWhaleTech/ZimaOS-Echo
-- Documentation: https://docs.zimaos.com/echo
+- GitHub: https://github.com/IceWhaleTech/ZimaOS-Blue
+- Documentation: https://docs.zimaos.com/blue

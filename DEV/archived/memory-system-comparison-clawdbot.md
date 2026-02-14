@@ -1,11 +1,11 @@
-# Memory System Comparison: ZimaOS-Echo vs Clawdbot
+# Memory System Comparison: ZimaOS-Blue vs Clawdbot
 
 > 对比日期: 2026-02-03
 > 参考文章: Clawdbot 记忆管理系统分析
 
 ## 架构对比
 
-| 特性 | Clawdbot | ZimaOS-Echo | 差距 |
+| 特性 | Clawdbot | ZimaOS-Blue | 差距 |
 |------|----------|-------------|------|
 | **存储格式** | Markdown 文件 (透明可编辑) | SQLite + 向量嵌入 (不透明) | ⚠️ 需改进 |
 | **记忆分层** | 双层: 每日日志 + 长期记忆 | 单层: 统一 memory_chunks | ⚠️ 需改进 |
@@ -79,7 +79,7 @@ finalScore = (0.7 * vectorScore) + (0.3 * textScore)
 
 ---
 
-## ZimaOS-Echo 当前实现
+## ZimaOS-Blue 当前实现
 
 ### 已有功能
 

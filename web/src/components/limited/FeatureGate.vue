@@ -54,7 +54,7 @@ onMounted(() => {
     <!-- Loading -->
     <div v-if="loading" class="animate-pulse">
       <slot name="loading">
-        <div class="h-8 bg-gray-700 dark:bg-gray-700 rounded" />
+        <div class="h-8 bg-gray-700 dark:bg-gray-500 rounded" />
       </slot>
     </div>
 

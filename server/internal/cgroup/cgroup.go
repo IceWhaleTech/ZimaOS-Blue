@@ -16,7 +16,7 @@ const (
 	DefaultCgroupRoot = "/sys/fs/cgroup"
 
 	// DefaultCgroupName is the default cgroup name for this application.
-	DefaultCgroupName = "zimaos-echo"
+	DefaultCgroupName = "zimaos-blue"
 )
 
 var (

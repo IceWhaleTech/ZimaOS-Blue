@@ -10,7 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
 // ChannelHandler handles channel-related API endpoints.
@@ -124,7 +124,7 @@ func (h *ChannelHandler) TestChannel(c echo.Context) error {
 	}
 
 	if req.Message == "" {
-		req.Message = "Test message from ZimaOS-Echo"
+		req.Message = "Test message from ZimaOS-Blue"
 	}
 
 	msg := channel.OutgoingMessage{

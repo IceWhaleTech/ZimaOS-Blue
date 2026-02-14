@@ -1,11 +1,11 @@
-# Makefile for ZimaOS-Echo
+# Makefile for ZimaOS-Blue
 # Supports building single binary with embedded frontend
 
 .PHONY: all build build-frontend build-backend dev clean help
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: download-claude-code prepare-claude-code-dir
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar
-.PHONY: build-echo-lib-macos build-echo-lib-arm64 build-echo-lib-x64 build-echo-lib-universal
+.PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
 
 # Version info
 VERSION ?= 0.10.20
@@ -39,12 +39,12 @@ all: build
 # Build everything (frontend + backend)
 # Claude Code CLI is downloaded on first use by default
 build: build-frontend copy-frontend prepare-claude-code-dir build-backend
-	@echo "Build complete! Binary at $(DIST_DIR)/zimaos-echo"
+	@echo "Build complete! Binary at $(DIST_DIR)/zimaos-blue"
 
 # Build with embedded Claude Code CLI
 build-embedded: EMBED_CLAUDE_CODE=true
 build-embedded: build-frontend copy-frontend download-claude-code build-backend
-	@echo "Build complete with embedded Claude Code CLI! Binary at $(DIST_DIR)/zimaos-echo"
+	@echo "Build complete with embedded Claude Code CLI! Binary at $(DIST_DIR)/zimaos-blue"
 
 # Build frontend only
 build-frontend:
@@ -89,50 +89,50 @@ endif
 build-backend:
 	@echo "Building backend..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo ./cmd/echo
-	@echo "Binary size: $$(du -h $(DIST_DIR)/zimaos-echo | cut -f1)"
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue ./cmd/blue
+	@echo "Binary size: $$(du -h $(DIST_DIR)/zimaos-blue | cut -f1)"
 
 # Development mode (run frontend and backend separately)
 dev:
 	@echo "Starting development servers..."
 	@echo "Run 'cd web && npm run dev' in one terminal"
-	@echo "Run 'cd server && go run -tags dev ./cmd/echo' in another terminal"
+	@echo "Run 'cd server && go run -tags dev ./cmd/blue' in another terminal"
 
 # Cross-compilation targets
 build-linux: build-frontend copy-frontend prepare-claude-code-dir
 	@echo "Building for Linux (amd64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-linux-amd64 ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
 
 build-linux-arm64: build-frontend copy-frontend prepare-claude-code-dir
 	@echo "Building for Linux (arm64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-linux-arm64 ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
 
 build-darwin: build-frontend copy-frontend prepare-claude-code-dir
 	@echo "Building for macOS (amd64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-darwin-amd64 ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
 
 build-darwin-arm64: build-frontend copy-frontend prepare-claude-code-dir
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-darwin-arm64 ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
 
 build-windows: build-frontend copy-frontend prepare-claude-code-dir
 	@echo "Building for Windows (amd64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-windows-amd64.exe ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 
 # Build for all platforms
 build-all: build-frontend copy-frontend prepare-claude-code-dir
 	@echo "Building for all platforms..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-linux-amd64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-linux-arm64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-darwin-amd64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-darwin-arm64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-windows-amd64.exe ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 	@echo "All builds complete!"
 	@ls -lh $(DIST_DIR)/
 
@@ -142,11 +142,11 @@ build-all-embedded: EMBED_ALL_PLATFORMS=true
 build-all-embedded: build-frontend copy-frontend download-claude-code
 	@echo "Building for all platforms with embedded Claude Code CLI..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-linux-amd64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-linux-arm64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-darwin-amd64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-darwin-arm64 ./cmd/echo
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-echo-windows-amd64.exe ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 	@echo "All builds complete with embedded Claude Code CLI!"
 	@ls -lh $(DIST_DIR)/
 
@@ -189,14 +189,14 @@ tauri-sidecar: build-frontend copy-frontend
 	@mkdir -p $(TAURI_BIN_DIR)
 ifeq ($(shell uname -s),Darwin)
 ifeq ($(shell uname -m),arm64)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-aarch64-apple-darwin ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-aarch64-apple-darwin ./cmd/blue
 else
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-x86_64-apple-darwin ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-apple-darwin ./cmd/blue
 endif
 else ifeq ($(shell uname -s),Linux)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-x86_64-unknown-linux-gnu ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-unknown-linux-gnu ./cmd/blue
 else
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/echo-server-x86_64-pc-windows-msvc.exe ./cmd/echo
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-pc-windows-msvc.exe ./cmd/blue
 endif
 	@echo "Sidecar built successfully"
 
@@ -231,7 +231,7 @@ tauri-build-debug: tauri-sidecar
 tauri-clean:
 	@echo "Cleaning Tauri build artifacts..."
 	@rm -rf $(TAURI_DIR)/src-tauri/target
-	@rm -rf $(TAURI_BIN_DIR)/echo-server-*
+	@rm -rf $(TAURI_BIN_DIR)/blue-server-*
 	@rm -rf $(TAURI_DIR)/src-tauri/data
 	@echo "Tauri clean complete!"
 
@@ -243,7 +243,7 @@ tauri-package: build-frontend copy-frontend
 
 # Show help
 help:
-	@echo "ZimaOS-Echo Build System"
+	@echo "ZimaOS-Blue Build System"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
@@ -272,10 +272,10 @@ help:
 	@echo "  tauri-clean        Clean Tauri build artifacts"
 	@echo ""
 	@echo "macOS CGO Library Targets:"
-	@echo "  build-echo-lib-arm64    Build Go static library for macOS ARM64"
-	@echo "  build-echo-lib-x64      Build Go static library for macOS x64"
-	@echo "  build-echo-lib-universal Create universal binary (fat library)"
-	@echo "  build-echo-lib-macos    Build all macOS libraries (recommended)"
+	@echo "  build-blue-lib-arm64    Build Go static library for macOS ARM64"
+	@echo "  build-blue-lib-x64      Build Go static library for macOS x64"
+	@echo "  build-blue-lib-universal Create universal binary (fat library)"
+	@echo "  build-blue-lib-macos    Build all macOS libraries (recommended)"
 	@echo ""
 	@echo "Release Targets:"
 	@echo "  release-check      Check GoReleaser configuration"
@@ -295,7 +295,7 @@ help:
 	@echo "  make tauri-dev                       # Run Tauri desktop app in dev mode"
 	@echo "  make tauri-build                     # Build Tauri desktop app"
 	@echo "  make tauri-package                   # Build Tauri package with full script"
-	@echo "  make build-echo-lib-macos            # Build Go library for macOS CGO integration"
+	@echo "  make build-blue-lib-macos            # Build Go library for macOS CGO integration"
 
 # =============================================================================
 # macOS CGO Library Build Targets
@@ -305,44 +305,44 @@ help:
 # =============================================================================
 
 # Build Go static library for macOS ARM64 (Apple Silicon)
-build-echo-lib-arm64:
+build-blue-lib-arm64:
 	@echo "Building Go static library for macOS ARM64..."
 	@mkdir -p $(TAURI_LIB_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
 		go build -buildmode=c-archive \
 		-ldflags "$(LDFLAGS)" \
-		-o $(TAURI_LIB_DIR)/libecho_arm64.a \
-		./cmd/echolib
-	@echo "Built: $(TAURI_LIB_DIR)/libecho_arm64.a"
-	@ls -lh $(TAURI_LIB_DIR)/libecho_arm64.a
+		-o $(TAURI_LIB_DIR)/libblue_arm64.a \
+		./cmd/bluelib
+	@echo "Built: $(TAURI_LIB_DIR)/libblue_arm64.a"
+	@ls -lh $(TAURI_LIB_DIR)/libblue_arm64.a
 
 # Build Go static library for macOS x64 (Intel)
-build-echo-lib-x64:
+build-blue-lib-x64:
 	@echo "Building Go static library for macOS x64..."
 	@mkdir -p $(TAURI_LIB_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
 		go build -buildmode=c-archive \
 		-ldflags "$(LDFLAGS)" \
-		-o $(TAURI_LIB_DIR)/libecho_x64.a \
-		./cmd/echolib
-	@echo "Built: $(TAURI_LIB_DIR)/libecho_x64.a"
-	@ls -lh $(TAURI_LIB_DIR)/libecho_x64.a
+		-o $(TAURI_LIB_DIR)/libblue_x64.a \
+		./cmd/bluelib
+	@echo "Built: $(TAURI_LIB_DIR)/libblue_x64.a"
+	@ls -lh $(TAURI_LIB_DIR)/libblue_x64.a
 
 # Create universal binary (fat library) from ARM64 and x64
-build-echo-lib-universal: build-echo-lib-arm64 build-echo-lib-x64
+build-blue-lib-universal: build-blue-lib-arm64 build-blue-lib-x64
 	@echo "Creating universal binary (fat library)..."
 	@lipo -create \
-		$(TAURI_LIB_DIR)/libecho_arm64.a \
-		$(TAURI_LIB_DIR)/libecho_x64.a \
-		-output $(TAURI_LIB_DIR)/libecho.a
-	@echo "Built: $(TAURI_LIB_DIR)/libecho.a"
-	@ls -lh $(TAURI_LIB_DIR)/libecho.a
+		$(TAURI_LIB_DIR)/libblue_arm64.a \
+		$(TAURI_LIB_DIR)/libblue_x64.a \
+		-output $(TAURI_LIB_DIR)/libblue.a
+	@echo "Built: $(TAURI_LIB_DIR)/libblue.a"
+	@ls -lh $(TAURI_LIB_DIR)/libblue.a
 	@echo "Verifying architectures:"
-	@lipo -info $(TAURI_LIB_DIR)/libecho.a
+	@lipo -info $(TAURI_LIB_DIR)/libblue.a
 
 # Build all macOS libraries (recommended target)
 # Builds for current architecture only for faster builds
-build-echo-lib-macos:
+build-blue-lib-macos:
 	@echo "Building Go static library for macOS..."
 	@mkdir -p $(TAURI_LIB_DIR)
 ifeq ($(shell uname -m),arm64)
@@ -350,27 +350,27 @@ ifeq ($(shell uname -m),arm64)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
 		go build -buildmode=c-archive \
 		-ldflags "$(LDFLAGS)" \
-		-o $(TAURI_LIB_DIR)/libecho.a \
-		./cmd/echolib
+		-o $(TAURI_LIB_DIR)/libblue.a \
+		./cmd/bluelib
 else
 	@echo "Detected Intel, building x64 library..."
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
 		go build -buildmode=c-archive \
 		-ldflags "$(LDFLAGS)" \
-		-o $(TAURI_LIB_DIR)/libecho.a \
-		./cmd/echolib
+		-o $(TAURI_LIB_DIR)/libblue.a \
+		./cmd/bluelib
 endif
-	@echo "Built: $(TAURI_LIB_DIR)/libecho.a"
-	@ls -lh $(TAURI_LIB_DIR)/libecho.a
+	@echo "Built: $(TAURI_LIB_DIR)/libblue.a"
+	@ls -lh $(TAURI_LIB_DIR)/libblue.a
 
 # Build Tauri app for macOS with CGO library (no sidecar)
-tauri-build-macos-cgo: build-frontend copy-frontend build-echo-lib-macos
+tauri-build-macos-cgo: build-frontend copy-frontend build-blue-lib-macos
 	@echo "Building Tauri app for macOS with CGO library..."
 	@cd $(TAURI_DIR) && npm install && npm run build
 	@echo "macOS app built with embedded Go library"
 
 # Clean CGO library artifacts
-clean-echo-lib:
+clean-blue-lib:
 	@echo "Cleaning CGO library artifacts..."
 	@rm -rf $(TAURI_LIB_DIR)
 	@echo "Clean complete!"

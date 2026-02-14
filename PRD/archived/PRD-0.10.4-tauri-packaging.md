@@ -2,11 +2,11 @@
 
 ## Overview
 
-This PRD defines the packaging strategy for ZimaOS-Echo using Tauri framework, enabling out-of-the-box desktop application experience on Windows and macOS. The application will support network access, allowing users to access Echo from other devices on the same network via a shareable URL.
+This PRD defines the packaging strategy for ZimaOS-Blue using Tauri framework, enabling out-of-the-box desktop application experience on Windows and macOS. The application will support network access, allowing users to access Blue from other devices on the same network via a shareable URL.
 
 ## Goals
 
-1. **Cross-platform desktop app** - Package Echo as native desktop application for Windows and macOS using Tauri
+1. **Cross-platform desktop app** - Package Blue as native desktop application for Windows and macOS using Tauri
 2. **Out-of-the-box experience** - Users can download and run immediately without complex setup
 3. **Network accessibility** - Enable access from other devices on the local network
 4. **One-click URL sharing** - Provide easy-to-copy network address in the UI
@@ -25,9 +25,9 @@ This PRD defines the packaging strategy for ZimaOS-Echo using Tauri framework, e
 ### Technology Stack
 
 - **Framework**: Tauri v2.x
-- **Frontend**: Existing Echo web UI
+- **Frontend**: Existing Blue web UI
 - **Backend**:
-  - **Windows**: Embedded Go binary as sidecar (Echo server)
+  - **Windows**: Embedded Go binary as sidecar (Blue server)
   - **macOS**: Go library via CGO, statically linked into Rust binary
 - **Packaging**: Platform-specific installers (.msi/.exe for Windows, .dmg/.app for macOS)
 
@@ -85,14 +85,14 @@ User Install:    DMG extracts to uncompressed .app → Fast startup
 │  │                    Tauri Shell                            │   │
 │  │  ┌─────────────────┐    ┌─────────────────────────────┐  │   │
 │  │  │   WebView       │    │    System Tray              │  │   │
-│  │  │   (Echo UI)     │    │    - Status indicator       │  │   │
+│  │  │   (Blue UI)     │    │    - Status indicator       │  │   │
 │  │  │                 │    │    - Quick actions          │  │   │
 │  │  └─────────────────┘    └─────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                              │                                   │
 │                              ▼                                   │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                  Echo Server (Sidecar Process)           │   │
+│  │                  Blue Server (Sidecar Process)           │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │   │
 │  │  │ HTTP Server │  │ WebSocket   │  │ Claude Code CLI │   │   │
 │  │  │ :23456       │  │ Server      │  │ (Bundled)       │   │   │
@@ -112,7 +112,7 @@ User Install:    DMG extracts to uncompressed .app → Fast startup
 │  │                    Tauri Shell (Rust)                     │   │
 │  │  ┌─────────────────┐    ┌─────────────────────────────┐  │   │
 │  │  │   WebView       │    │    System Tray              │  │   │
-│  │  │   (Echo UI)     │    │    - Status indicator       │  │   │
+│  │  │   (Blue UI)     │    │    - Status indicator       │  │   │
 │  │  │                 │    │    - Quick actions          │  │   │
 │  │  └─────────────────┘    └─────────────────────────────┘  │   │
 │  └──────────────────────────────────────────────────────────┘   │
@@ -120,7 +120,7 @@ User Install:    DMG extracts to uncompressed .app → Fast startup
 │                              │ FFI calls (in-process)            │
 │                              ▼                                   │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │              Echo Server (Linked Go Library)              │   │
+│  │              Blue Server (Linked Go Library)              │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │   │
 │  │  │ HTTP Server │  │ WebSocket   │  │ Claude Code CLI │   │   │
 │  │  │ :23456       │  │ Server      │  │ (Bundled)       │   │   │
@@ -146,7 +146,7 @@ The application will automatically detect available network interfaces and provi
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ZimaOS Echo                                                     │
+│  ZimaOS Blue                                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────────┐│
@@ -162,7 +162,7 @@ The application will automatically detect available network interfaces and provi
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Welcome to Echo                          │
+│                         Welcome to Blue                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────────┐│
@@ -228,18 +228,18 @@ The application will automatically detect available network interfaces and provi
 
 ### macOS CGO Library Integration
 
-#### Go Library Export (server/cmd/echolib/exports.go)
+#### Go Library Export (server/cmd/bluelib/exports.go)
 
 ```go
 package main
 
 import "C"
 import (
-    "github.com/IceWhaleTech/ZimaOS-Echo/server"
+    "github.com/IceWhaleTech/ZimaOS-Blue/server"
 )
 
-//export EchoStart
-func EchoStart(port C.int, dataDir *C.char) C.int {
+//export BlueStart
+func BlueStart(port C.int, dataDir *C.char) C.int {
     err := server.Start(int(C.GoString(dataDir)), int(port))
     if err != nil {
         return -1
@@ -247,13 +247,13 @@ func EchoStart(port C.int, dataDir *C.char) C.int {
     return 0
 }
 
-//export EchoStop
-func EchoStop() {
+//export BlueStop
+func BlueStop() {
     server.Stop()
 }
 
-//export EchoGetStatus
-func EchoGetStatus() C.int {
+//export BlueGetStatus
+func BlueGetStatus() C.int {
     if server.IsRunning() {
         return 1
     }
@@ -269,48 +269,48 @@ func main() {}
 # Build static library for macOS ARM64
 CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
   go build -buildmode=c-archive \
-  -o libecho_arm64.a \
-  ./server/cmd/echolib
+  -o libblue_arm64.a \
+  ./server/cmd/bluelib
 
 # Build static library for macOS x64
 CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
   go build -buildmode=c-archive \
-  -o libecho_x64.a \
-  ./server/cmd/echolib
+  -o libblue_x64.a \
+  ./server/cmd/bluelib
 
 # Create universal binary (fat library)
-lipo -create -output libecho.a libecho_arm64.a libecho_x64.a
+lipo -create -output libblue.a libblue_arm64.a libblue_x64.a
 ```
 
-#### Rust FFI Bindings (src-tauri/src/echo_ffi.rs)
+#### Rust FFI Bindings (src-tauri/src/blue_ffi.rs)
 
 ```rust
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 
-#[link(name = "echo")]
+#[link(name = "blue")]
 extern "C" {
-    fn EchoStart(port: c_int, data_dir: *const c_char) -> c_int;
-    fn EchoStop();
-    fn EchoGetStatus() -> c_int;
+    fn BlueStart(port: c_int, data_dir: *const c_char) -> c_int;
+    fn BlueStop();
+    fn BlueGetStatus() -> c_int;
 }
 
 pub fn start_server(port: i32, data_dir: &str) -> Result<(), String> {
     let c_data_dir = CString::new(data_dir).map_err(|e| e.to_string())?;
-    let result = unsafe { EchoStart(port as c_int, c_data_dir.as_ptr()) };
+    let result = unsafe { BlueStart(port as c_int, c_data_dir.as_ptr()) };
     if result == 0 {
         Ok(())
     } else {
-        Err("Failed to start Echo server".to_string())
+        Err("Failed to start Blue server".to_string())
     }
 }
 
 pub fn stop_server() {
-    unsafe { EchoStop() };
+    unsafe { BlueStop() };
 }
 
 pub fn is_running() -> bool {
-    unsafe { EchoGetStatus() == 1 }
+    unsafe { BlueGetStatus() == 1 }
 }
 ```
 
@@ -336,7 +336,7 @@ fn main() {
     {
         // Link the Go static library
         println!("cargo:rustc-link-search=native=./lib");
-        println!("cargo:rustc-link-lib=static=echo");
+        println!("cargo:rustc-link-lib=static=blue");
 
         // Link required system frameworks
         println!("cargo:rustc-link-lib=framework=CoreFoundation");
@@ -353,9 +353,9 @@ fn main() {
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ZimaOS Echo",
+  "productName": "ZimaOS Blue",
   "version": "0.10.4",
-  "identifier": "com.zimaos.echo",
+  "identifier": "com.zimaos.blue",
   "build": {
     "beforeBuildCommand": "make build-frontend",
     "beforeDevCommand": "make dev-frontend",
@@ -388,7 +388,7 @@ fn main() {
   "app": {
     "windows": [
       {
-        "title": "ZimaOS Echo",
+        "title": "ZimaOS Blue",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -424,7 +424,7 @@ make tauri-build-windows    # Uses sidecar approach
 make tauri-build-macos      # Uses CGO library approach
 
 # Build Go library for macOS (prerequisite)
-make build-echo-lib-macos
+make build-blue-lib-macos
 
 # Build for all platforms (CI/CD)
 make tauri-build-all
@@ -451,16 +451,16 @@ Or use `create-dmg` with explicit compression:
 ```bash
 # Create compressed DMG (post-build)
 create-dmg \
-  --volname "ZimaOS Echo" \
+  --volname "ZimaOS Blue" \
   --window-pos 200 120 \
   --window-size 600 400 \
   --icon-size 100 \
-  --icon "ZimaOS Echo.app" 175 120 \
-  --hide-extension "ZimaOS Echo.app" \
+  --icon "ZimaOS Blue.app" 175 120 \
+  --hide-extension "ZimaOS Blue.app" \
   --app-drop-link 425 120 \
   --format ULMO \
-  "ZimaOS-Echo_${VERSION}_${ARCH}.dmg" \
-  "target/release/bundle/macos/ZimaOS Echo.app"
+  "ZimaOS-Blue_${VERSION}_${ARCH}.dmg" \
+  "target/release/bundle/macos/ZimaOS Blue.app"
 ```
 
 **DMG Format Options**:
@@ -476,11 +476,11 @@ create-dmg \
 
 | Platform | Artifact | Location |
 |----------|----------|----------|
-| Windows | `ZimaOS-Echo_0.10.4_x64-setup.exe` | `target/release/bundle/nsis/` |
-| Windows | `ZimaOS-Echo_0.10.4_x64.msi` | `target/release/bundle/msi/` |
-| macOS | `ZimaOS-Echo.app` | `target/release/bundle/macos/` |
-| macOS | `ZimaOS-Echo_0.10.4_aarch64.dmg` | `target/release/bundle/dmg/` |
-| macOS | `ZimaOS-Echo_0.10.4_x64.dmg` | `target/release/bundle/dmg/` |
+| Windows | `ZimaOS-Blue_0.10.4_x64-setup.exe` | `target/release/bundle/nsis/` |
+| Windows | `ZimaOS-Blue_0.10.4_x64.msi` | `target/release/bundle/msi/` |
+| macOS | `ZimaOS-Blue.app` | `target/release/bundle/macos/` |
+| macOS | `ZimaOS-Blue_0.10.4_aarch64.dmg` | `target/release/bundle/dmg/` |
+| macOS | `ZimaOS-Blue_0.10.4_x64.dmg` | `target/release/bundle/dmg/` |
 
 ### CI/CD Pipeline
 
@@ -527,7 +527,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         with:
           tagName: v__VERSION__
-          releaseName: 'ZimaOS Echo v__VERSION__'
+          releaseName: 'ZimaOS Blue v__VERSION__'
           releaseBody: 'See the assets to download this version.'
           releaseDraft: true
           prerelease: false
@@ -541,16 +541,16 @@ jobs:
 - [ ] Create application icons for all platforms
 
 ### Phase 2: macOS CGO Library Integration
-- [ ] Create Go library exports (`server/cmd/echolib/exports.go`)
-- [ ] Implement `EchoStart`, `EchoStop`, `EchoGetStatus` C-exported functions
+- [ ] Create Go library exports (`server/cmd/bluelib/exports.go`)
+- [ ] Implement `BlueStart`, `BlueStop`, `BlueGetStatus` C-exported functions
 - [ ] Set up build scripts for ARM64 and x64 static libraries
 - [ ] Create universal binary (fat library) with `lipo`
-- [ ] Write Rust FFI bindings (`src-tauri/src/echo_ffi.rs`)
+- [ ] Write Rust FFI bindings (`src-tauri/src/blue_ffi.rs`)
 - [ ] Configure `build.rs` for static linking
 - [ ] Test in-process server lifecycle
 
 ### Phase 3: Windows Sidecar Integration
-- [ ] Embed Echo Go binary as Tauri sidecar
+- [ ] Embed Blue Go binary as Tauri sidecar
 - [ ] Implement server lifecycle management (start/stop)
 - [ ] Handle server port conflicts
 - [ ] Add health check for embedded server
@@ -609,7 +609,7 @@ jobs:
 1. **Linux Support**: Add Linux packaging (AppImage, .deb, .rpm)
 2. **Auto-update**: Integrate Tauri's built-in updater
 3. **QR Code**: Generate QR code for easy mobile access
-4. **mDNS Discovery**: Automatic discovery of Echo instances on network
+4. **mDNS Discovery**: Automatic discovery of Blue instances on network
 5. **Remote Access**: Optional secure tunnel for access outside local network
 
 ## References

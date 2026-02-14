@@ -1,6 +1,6 @@
 # Developer Guide
 
-This guide covers everything you need to know to contribute to ZimaOS Echo development.
+This guide covers everything you need to know to contribute to ZimaOS Blue development.
 
 ## Development Environment Setup
 
@@ -16,8 +16,8 @@ This guide covers everything you need to know to contribute to ZimaOS Echo devel
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
 ```
 
 ### Backend Setup
@@ -32,7 +32,7 @@ go mod download
 go test ./... -v
 
 # Build
-go build -o zimaos-echo ./cmd/server
+go build -o zimaos-blue ./cmd/server
 
 # Run with hot reload (using air)
 go install github.com/cosmtrek/air@latest
@@ -93,7 +93,7 @@ Settings (`.vscode/settings.json`):
 ## Project Structure
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/                 # Go backend
 │   ├── cmd/
 │   │   └── server/        # Main entry point

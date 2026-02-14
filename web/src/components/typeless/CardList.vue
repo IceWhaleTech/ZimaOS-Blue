@@ -97,7 +97,7 @@ function renderContent(content: string): string {
     <div v-else-if="card.variant === 'timeline'" class="p-4">
       <div class="relative">
         <!-- Timeline line -->
-        <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-700 dark:bg-gray-700" />
+        <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-700 dark:bg-gray-500" />
 
         <!-- Timeline items -->
         <div class="space-y-4">
@@ -111,7 +111,7 @@ function renderContent(content: string): string {
               class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700"
               :class="
                 index === 0
-                  ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700'
+                  ? 'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500'
                   : 'border-gray-300 dark:border-gray-600'
               "
             />

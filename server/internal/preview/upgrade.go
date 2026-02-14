@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 )
 
 var (

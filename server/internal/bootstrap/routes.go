@@ -7,49 +7,55 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
-	networkapi "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/api"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/autoreply"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/backup"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/browser"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/claudecode"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/connection"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cron"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/extauth"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/formfiller"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/homeassistant"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/metrics"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/mfa"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/permission"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/controller"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/model"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/view"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/preview"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/promptguard"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skillstore"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/speech"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/update"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/voice"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/web"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/workflow"
+	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/connection"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/controller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/model"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/view"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/preview"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 )
+
+// routesStartTime records when the server started, used for uptime calculation
+var routesStartTime = time.Now()
 
 // RoutesDeps holds all dependencies needed for route registration
 type RoutesDeps struct {
@@ -94,6 +100,7 @@ type RoutesDeps struct {
 	ChannelConfigStore *server.ChannelConfigStore
 	SharedCache        *proxy.CCCache
 	HotReloader        *config.HotReloader
+	HeartbeatHandler   *heartbeat.Handler
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance
@@ -173,32 +180,32 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	v1 := e.Group("/api/v1")
 	api := e.Group("/api")
 
-	// Health endpoint
+	// Health endpoint (with full runtime stats)
 	v1.GET("/health", func(c echo.Context) error {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+
+		uptime := time.Since(routesStartTime)
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status":  "ok",
-			"service": "zimaos-echo",
-			"version": cfg.Version,
+			"status":          "ok",
+			"service":         "zimaos-blue",
+			"timestamp":       time.Now(),
+			"uptime":          uptime.String(),
+			"uptime_seconds":  uptime.Seconds(),
+			"version":         cfg.Version,
+			"go_version":      runtime.Version(),
+			"num_cpu":         runtime.NumCPU(),
+			"goroutines":      runtime.NumGoroutine(),
+			"mem_alloc_bytes": m.Alloc,
 		})
 	})
 
 	// Worker stats endpoint (public, for bootstrap/health checks)
 	v1.GET("/workers/stats", func(c echo.Context) error {
-		// Return real worker pool statistics
 		if s.WorkerPool == nil {
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"active":    0,
-				"queued":    0,
-				"completed": 0,
-			})
+			return c.JSON(http.StatusOK, worker.Stats{})
 		}
-		stats := s.WorkerPool.Stats()
-		// Map worker.Pool stats to expected format
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"active":    stats.Running,
-			"queued":    0, // worker.Pool doesn't track queued tasks
-			"completed": stats.Total - int64(stats.Running),
-		})
+		return c.JSON(http.StatusOK, s.WorkerPool.Stats())
 	})
 
 	// Public auth routes
@@ -579,6 +586,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	if deps.ChannelConfigStore != nil {
 		channelConfigHandler := server.NewChannelConfigHandler(deps.ChannelConfigStore)
 		channelConfigHandler.RegisterRoutes(api)
+	}
+
+	// Heartbeat routes
+	if deps.HeartbeatHandler != nil {
+		deps.HeartbeatHandler.RegisterRoutes(api)
 	}
 
 	// Set shared cache on chat handler

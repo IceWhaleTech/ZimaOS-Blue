@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/i18n"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 // Manager manages all messaging channels.

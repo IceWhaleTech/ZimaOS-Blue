@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // Weather is a built-in weather skill

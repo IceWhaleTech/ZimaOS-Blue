@@ -1,4 +1,4 @@
-﻿; ZimaOS Echo Installer - Language Strings
+﻿; ZimaOS Blue Installer - Language Strings
 ; Supports 27 languages
 
 Var LangInstallTitle

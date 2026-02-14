@@ -25,14 +25,14 @@ defineProps<{
               v-for="(item, index) in card.items"
               :key="index"
               class="p-4 text-center min-w-[150px]"
-              :class="{ 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20': item.highlighted }"
+              :class="{ 'bg-gray-700 dark:bg-gray-500/20': item.highlighted }"
             >
               <div class="flex flex-col items-center gap-2">
                 <!-- Badge -->
                 <span
                   v-if="item.badge"
                   class="px-2 py-0.5 text-xs font-medium rounded-full"
-                  :class="item.highlighted ? 'bg-gray-700 dark:bg-gray-700 text-white' : 'bg-gray-700 dark:bg-gray-700 text-gray-600 dark:text-gray-300'"
+                  :class="item.highlighted ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-700 dark:bg-gray-500 text-gray-600 dark:text-gray-300'"
                 >
                   {{ item.badge }}
                 </span>
@@ -57,7 +57,7 @@ defineProps<{
               v-for="(value, vIndex) in feature.values"
               :key="vIndex"
               class="p-4 text-center"
-              :class="{ 'bg-gray-700 dark:bg-gray-700/50 dark:bg-gray-700 dark:bg-gray-700/10': card.items[vIndex]?.highlighted }"
+              :class="{ 'bg-gray-100 dark:bg-gray-700/10': card.items[vIndex]?.highlighted }"
             >
               <!-- Boolean value -->
               <template v-if="typeof value === 'boolean'">

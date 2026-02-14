@@ -5,8 +5,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 )
 
 // NetworkHandler handles network-related API requests.

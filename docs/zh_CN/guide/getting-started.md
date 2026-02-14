@@ -1,6 +1,6 @@
 # 快速开始
 
-本指南将帮助您快速启动和运行 ZimaOS Echo。
+本指南将帮助您快速启动和运行 ZimaOS Blue。
 
 ## 前置要求
 
@@ -13,9 +13,9 @@
 从源码构建并运行：
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 更多方式见 [安装](installation.md)。
@@ -26,10 +26,10 @@ make build && ./dist/zimaos-echo server
 
 ```bash
 # Linux
-systemctl status zimaos-echo
+systemctl status zimaos-blue
 
 # Windows
-Get-Service ZimaOS-Echo
+Get-Service ZimaOS-Blue
 ```
 
 访问仪表板：`http://localhost:23456`

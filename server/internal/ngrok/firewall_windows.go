@@ -63,7 +63,7 @@ func AddFirewallException(ngrokPath string) error {
 	defer rules.Release()
 
 	// Rule name - changed to reflect Echo itself
-	ruleName := "ZimaOS-Echo-Remote-Access"
+	ruleName := "ZimaOS-Blue-Remote-Access"
 
 	// Check if rule already exists
 	if CheckFirewallException() {
@@ -89,7 +89,7 @@ func AddFirewallException(ngrokPath string) error {
 		return fmt.Errorf("failed to set rule name: %w", err)
 	}
 
-	_, err = oleutil.PutProperty(rule, "Description", "Allow ZimaOS-Echo remote access via ngrok")
+	_, err = oleutil.PutProperty(rule, "Description", "Allow ZimaOS-Blue remote access via ngrok")
 	if err != nil {
 		return fmt.Errorf("failed to set rule description: %w", err)
 	}
@@ -164,7 +164,7 @@ func RemoveFirewallException() error {
 	defer rules.Release()
 
 	// Rule name
-	ruleName := "ZimaOS-Echo-Remote-Access"
+	ruleName := "ZimaOS-Blue-Remote-Access"
 
 	// Remove rule
 	_, err = oleutil.CallMethod(rules, "Remove", ruleName)
@@ -206,7 +206,7 @@ func CheckFirewallException() bool {
 	defer rules.Release()
 
 	// Rule name
-	ruleName := "ZimaOS-Echo-Remote-Access"
+	ruleName := "ZimaOS-Blue-Remote-Access"
 
 	// Try to get the rule by name
 	ruleRaw, err := oleutil.CallMethod(rules, "Item", ruleName)

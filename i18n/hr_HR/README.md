@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -18,12 +18,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** je ojačano AI agent runtime okruženje za NAS i rubne uređaje. Vaši podaci ostaju na vašem hardveru, svaka radnja je revizijska, a AI operacije se izvode u izoliranim sandbox okruženjima.
+**ZimaOS Blue** je ojačano AI agent runtime okruženje za NAS i rubne uređaje. Vaši podaci ostaju na vašem hardveru, svaka radnja je revizijska, a AI operacije se izvode u izoliranim sandbox okruženjima.
 
 [Brzi početak](#brzi-početak) · [Sigurnost](#sigurnosno-ojačanje)
 
@@ -56,10 +56,10 @@
 
 ```bash
 # Iz izvora
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o zimaos-echo ./cmd/server
-./zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o zimaos-blue ./cmd/server
+./zimaos-blue server
 ```
 
 ## Sigurnosno ojačanje
@@ -84,7 +84,7 @@ go build -o zimaos-echo ./cmd/server
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Revizijski zapis │ Metrike │ RBAC │ Rate Limiter  │
 ├─────────────────────────────────────────────────────┤

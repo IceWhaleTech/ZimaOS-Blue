@@ -81,7 +81,7 @@ function emitSelection() {
         :key="option.id"
         class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3"
         :class="{
-          'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20': isSelected(option.id),
+          'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': isSelected(option.id),
           'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !isSelected(option.id) && !option.disabled,
           'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': option.disabled,
         }"
@@ -93,7 +93,7 @@ function emitSelection() {
           class="flex-shrink-0 w-5 h-5 mt-0.5 rounded flex items-center justify-center border-2 transition-colors"
           :class="{
             'rounded-full': !card.multiple,
-            'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700': isSelected(option.id),
+            'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500': isSelected(option.id),
             'border-gray-300 dark:border-gray-600': !isSelected(option.id),
           }"
         >
@@ -126,7 +126,7 @@ function emitSelection() {
         <button
           class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3"
           :class="{
-            'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20': otherSelected,
+            'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': otherSelected,
             'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !otherSelected,
           }"
           @click="toggleOther"
@@ -136,7 +136,7 @@ function emitSelection() {
             class="flex-shrink-0 w-5 h-5 mt-0.5 rounded flex items-center justify-center border-2 transition-colors"
             :class="{
               'rounded-full': !card.multiple,
-              'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-700': otherSelected,
+              'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500': otherSelected,
               'border-gray-300 dark:border-gray-600': !otherSelected,
             }"
           >

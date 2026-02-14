@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 // ProviderConfig holds the configuration for a single provider.

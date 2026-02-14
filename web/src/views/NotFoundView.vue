@@ -11,7 +11,7 @@ const { t } = useI18n()
     <p class="text-xl text-gray-500 dark:text-gray-400 mb-8">{{ t('errors.notFound') }}</p>
     <RouterLink
       to="/"
-      class="px-6 py-3 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700 transition-colors"
+      class="px-6 py-3 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-500 transition-colors"
     >
       {{ t('errors.goHome') }}
     </RouterLink>

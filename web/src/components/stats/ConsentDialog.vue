@@ -160,7 +160,7 @@ onMounted(() => {
         </button>
         <button
           :disabled="saving"
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
           @click="handleConsent(true)"
         >
           {{ saving ? t('common.saving') : t('stats.consent.accept') }}

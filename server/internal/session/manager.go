@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	ctxpkg "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	ctxpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 )
 
 // SessionManager manages sessions with isolation and persistence.

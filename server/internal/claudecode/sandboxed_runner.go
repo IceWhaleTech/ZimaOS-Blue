@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sandbox"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 )
 
 // SandboxedRunner wraps a Runner with sandbox execution support.

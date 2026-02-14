@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // TestProviderToolRegistryIntegration tests that tools are properly loaded into the CC CLI provider.

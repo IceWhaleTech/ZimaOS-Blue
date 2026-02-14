@@ -110,8 +110,8 @@ function getProviderIconSvg(type: ProviderType): string {
     <div class="max-w-md w-full">
       <!-- Logo and Title -->
       <div class="text-center mb-8">
-        <img src="/logo.png" alt="ZimaOS Echo" class="w-16 h-16 object-contain mx-auto mb-4 drop-shadow-lg dark:brightness-150" />
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">ZimaOS Echo</h1>
+        <img src="/logo.png" alt="ZimaOS Blue" class="w-16 h-16 object-contain mx-auto mb-4 drop-shadow-lg dark:brightness-150" />
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">ZimaOS Blue</h1>
         <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.signInToAccount') }}</p>
       </div>
 
@@ -252,7 +252,7 @@ function getProviderIconSvg(type: ProviderType): string {
           <button
             type="submit"
             :disabled="authStore.loading || !username || !password"
-            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <svg
               v-if="authStore.loading"

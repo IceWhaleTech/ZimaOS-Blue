@@ -100,6 +100,18 @@ export function useTauri() {
     }
   }
 
+  async function setCloseBehavior(behavior: string): Promise<void> {
+    if (!isTauriApp.value) return
+    try {
+      const internals = window.__TAURI_INTERNALS__
+      if (internals?.invoke) {
+        await internals.invoke('set_close_behavior', { behavior })
+      }
+    } catch (e) {
+      console.error('Failed to set close behavior:', e)
+    }
+  }
+
   return {
     /** Whether the app is running inside Tauri */
     isTauri: readonly(isTauriApp),
@@ -109,6 +121,8 @@ export function useTauri() {
     browserName,
     /** Open a URL in the system's default browser */
     openInBrowser,
+    /** Set close behavior (quit or minimize to tray) */
+    setCloseBehavior,
   }
 }
 

@@ -49,7 +49,7 @@ function getStatusColor(status: string): string {
     case 'completed':
       return 'text-green-500 bg-green-500/10'
     case 'running':
-      return 'text-gray-900 dark:text-white bg-gray-700 dark:bg-gray-700/10'
+      return 'text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-600/10'
     case 'pending':
       return 'text-yellow-500 bg-yellow-500/10'
     case 'failed':
@@ -309,7 +309,7 @@ onMounted(async () => {
             <!-- Actions -->
             <div class="flex items-center space-x-3 pt-2">
               <button
-                class="px-6 py-2 rounded-lg bg-gray-700 dark:bg-gray-700 text-white hover:bg-gray-700 dark:bg-gray-700-light transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="px-6 py-2 rounded-lg bg-gray-700 dark:bg-gray-500 text-white hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="executing || !command.trim()"
                 @click="executeCommand"
               >

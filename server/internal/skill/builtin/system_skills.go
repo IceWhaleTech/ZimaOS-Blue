@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // Files is a built-in file operations skill
@@ -518,7 +518,7 @@ func (p *Processes) Execute(ctx context.Context, input map[string]any) (*skill.R
 			"processes": []map[string]any{
 				{
 					"pid":  os.Getpid(),
-					"name": "zimaos-echo",
+					"name": "zimaos-blue",
 				},
 			},
 			"message": "Process listing (limited implementation)",

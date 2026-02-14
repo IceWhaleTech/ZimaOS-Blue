@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DiskCache implements a disk-based cache.

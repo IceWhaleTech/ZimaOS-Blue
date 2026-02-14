@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/model"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/model"
 )
 
 // Service handles personality business logic

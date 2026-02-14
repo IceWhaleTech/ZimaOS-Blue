@@ -239,7 +239,7 @@ func (f *ReadmeFetcher) fetchURL(ctx context.Context, url string) (string, error
 		return "", err
 	}
 
-	req.Header.Set("User-Agent", "ZimaOS-Echo/1.0")
+	req.Header.Set("User-Agent", "ZimaOS-Blue/1.0")
 	req.Header.Set("Accept", "text/plain, text/markdown, text/html, */*")
 
 	resp, err := f.httpClient.Do(req)

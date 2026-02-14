@@ -7,8 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 // ProxyHandler handles incoming proxy requests.
@@ -27,7 +28,7 @@ import (
 //
 // Routing modes (determined by API Key scope):
 // - route:auto - Auto select best provider (default)
-// - route:cloud - Force cloud provider (zimaos-trial)
+// - route:cloud - Force cloud provider (zimaos-blue-trial)
 // - route:local - Force local provider
 type ProxyHandler struct {
 	router          *Router            // Legacy router (fallback only)
@@ -99,6 +100,7 @@ func (ph *ProxyHandler) extractRoutingMode(r *http.Request) string {
 // ServeHTTP implements http.Handler.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[Proxy] ServeHTTP: method=%s, path=%s\n", r.Method, r.URL.Path)
+	requestStart := time.Now()
 
 	// Handle /v1/models specially
 	if r.URL.Path == "/v1/models" || strings.HasSuffix(r.URL.Path, "/models") {
@@ -125,20 +127,47 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Printf("[Proxy] request: model=%s, streaming=%v\n", model, isStreaming)
 
-	// Try cache lookup (non-streaming only)
+	// Try cache lookup (non-streaming only) — uses canonical key for semantic dedup
 	if ph.cache != nil && !isStreaming {
-		cacheKey := ph.cache.GenerateKey(r, bodyBytes)
+		cacheKey := ph.cache.GenerateCanonicalKey(bodyBytes)
 		if entry, ok := ph.cache.Get(cacheKey); ok && entry != nil {
-			fmt.Printf("[Proxy] cache HIT\n")
+			latencyMs := time.Since(requestStart).Milliseconds()
+			ph.cache.RecordLatencySaved(latencyMs)
+			fmt.Printf("[Proxy] cache HIT (key=%s, saved=%dms)\n", cacheKey[:16], latencyMs)
 			w.Header().Set("X-Cache", "HIT")
+			w.Header().Set("X-Cache-Key", cacheKey[:16])
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(entry.StatusCode)
 			w.Write(entry.Body)
 			return
 		}
+
+		// Singleflight: deduplicate concurrent identical requests
+		if sf := ph.cache.GetSingleflight(); sf != nil {
+			sfEntry, sfErr := sf.Do(r.Context(), cacheKey, 30*time.Second, func() (*CCCacheEntry, error) {
+				return ph.forwardAndCache(r, bodyBytes, reqBody, model, cacheKey)
+			})
+			if sfErr != nil {
+				http.Error(w, sfErr.Error(), http.StatusBadGateway)
+				return
+			}
+			if sfEntry != nil {
+				w.Header().Set("X-Cache", "MISS")
+				w.Header().Set("X-Cache-Key", cacheKey[:16])
+				w.Header().Set("Content-Type", "application/json")
+				for k, v := range sfEntry.Headers {
+					if k != "Content-Type" {
+						w.Header().Set(k, v)
+					}
+				}
+				w.WriteHeader(sfEntry.StatusCode)
+				w.Write(sfEntry.Body)
+				return
+			}
+		}
 	}
 
-	// Route request
+	// Fallback: direct forward (streaming or no cache)
 	route, err := ph.routeRequestWithMode(model, ph.extractRoutingMode(r))
 	if err != nil {
 		fmt.Printf("[Proxy] routing error: %v\n", err)
@@ -166,6 +195,58 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	ph.copyResponseWithCache(w, resp, r, bodyBytes, isStreaming)
+}
+
+// forwardAndCache routes, forwards, and caches a request. Used by singleflight.
+func (ph *ProxyHandler) forwardAndCache(r *http.Request, bodyBytes []byte, reqBody map[string]interface{}, model, cacheKey string) (*CCCacheEntry, error) {
+	route, err := ph.routeRequestWithMode(model, ph.extractRoutingMode(r))
+	if err != nil {
+		return nil, err
+	}
+
+	forwardBody := bodyBytes
+	if route.Model != nil && model != route.Model.ID {
+		reqBody["model"] = route.Model.ID
+		if newBody, err := json.Marshal(reqBody); err == nil {
+			forwardBody = newBody
+		}
+	}
+
+	r.Body = io.NopCloser(strings.NewReader(string(forwardBody)))
+	resp, err := ph.forwardToProvider(r, route)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Guard: if upstream unexpectedly returns SSE, don't buffer/cache it
+	if isStreamingResponse(resp) {
+		return nil, fmt.Errorf("upstream returned streaming response for non-streaming request")
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the response
+	if ph.cache != nil && resp.StatusCode == http.StatusOK {
+		ph.cache.Set(cacheKey, respBody, resp.StatusCode, resp.Header, route.Provider.ID, model)
+	}
+
+	// Build entry to return
+	headerMap := make(map[string]string)
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			headerMap[k] = v[0]
+		}
+	}
+
+	return &CCCacheEntry{
+		Body:       respBody,
+		StatusCode: resp.StatusCode,
+		Headers:    headerMap,
+	}, nil
 }
 
 // routeRequest uses Provider Pool Router to select provider.
@@ -308,7 +389,7 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 	}
 
 	if ph.cache != nil && resp.StatusCode == http.StatusOK {
-		cacheKey := ph.cache.GenerateKey(r, reqBody)
+		cacheKey := ph.cache.GenerateCanonicalKey(reqBody)
 		var model string
 		var reqMap map[string]interface{}
 		if json.Unmarshal(reqBody, &reqMap) == nil {
@@ -318,6 +399,7 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 		}
 		ph.cache.Set(cacheKey, respBody, resp.StatusCode, resp.Header, "", model)
 		w.Header().Set("X-Cache", "MISS")
+		w.Header().Set("X-Cache-Key", cacheKey[:16])
 	} else {
 		w.Header().Set("X-Cache", "BYPASS")
 		if ph.cache != nil {

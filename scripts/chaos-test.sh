@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# ZimaOS-Echo Chaos Testing Script
+# ZimaOS-Blue Chaos Testing Script
 # Tests system resilience under various failure conditions
 #
 
 set -e
 
 # Configuration
-SERVICE_NAME="${SERVICE_NAME:-zimaos-echo}"
+SERVICE_NAME="${SERVICE_NAME:-zimaos-blue}"
 HEALTH_URL="${HEALTH_URL:-http://localhost:23456/health}"
 TEST_DURATION="${TEST_DURATION:-60}"  # seconds per test
 RECOVERY_TIMEOUT="${RECOVERY_TIMEOUT:-30}"  # seconds to wait for recovery
@@ -350,7 +350,7 @@ print_summary() {
 main() {
     echo ""
     echo "=============================================="
-    echo "  ZimaOS-Echo Chaos Testing"
+    echo "  ZimaOS-Blue Chaos Testing"
     echo "=============================================="
     echo ""
     echo "Service: $SERVICE_NAME"

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )

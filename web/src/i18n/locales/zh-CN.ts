@@ -1,4 +1,5 @@
 // Simplified Chinese (简体中文)
+import enUS from './en-US'
 
 export default {
   common: {
@@ -226,7 +227,7 @@ export default {
   },
   brand: {
     name: 'ZimaOS',
-    tagline: 'Echo 智能助手',
+    tagline: 'Blue 智能助手',
   },
   a2ui: {
     title: 'AI UI 生成器',
@@ -509,9 +510,9 @@ export default {
     },
   },
   home: {
-    welcome: '欢迎使用 ZimaOS Echo',
+    welcome: '欢迎使用 ZimaOS Blue',
     description: '您的智能 AI 助手，用于智能家居控制和自动化',
-    startChatCta: '点击{link}开始和 Echo 对话吧',
+    startChatCta: '点击{link}开始和 Blue 对话吧',
   },
   settings: {
     title: '设置',
@@ -519,6 +520,10 @@ export default {
     timezone: '时区',
     languageSaved: '语言已保存',
     timezoneSaved: '时区已保存',
+    closeBehavior: '关闭行为',
+    closeBehaviorQuit: '退出应用',
+    closeBehaviorMinimize: '最小化到托盘',
+    closeBehaviorSaved: '关闭行为已保存',
     // LLM Provider
     // Provider names
     providers: {
@@ -620,9 +625,19 @@ export default {
           domainsHint: '域名必须指向此服务器 (DNS A/AAAA 记录)',
           note: '注意',
           noteText: '端口 80 必须可从互联网访问以进行域名验证。证书将自动续期。',
+          noteTextDNS: '将使用您的 API 凭据自动创建 DNS 记录，无需开放 80 端口。',
           emailDomainRequired: '邮箱和至少一个域名是必需的',
           configured: 'ACME 证书已配置',
           requestFailed: '证书申请失败',
+          challengeType: '验证方式',
+          httpChallenge: 'HTTP-01',
+          dnsChallenge: 'DNS-01',
+          dnsProvider: 'DNS 提供商',
+          dnsCredentials: 'API 凭据',
+          dnsCredentialHint: '输入 DNS 提供商所需的环境变量名和值',
+          addCredential: '添加字段',
+          envKey: '变量名',
+          envValue: '值',
         },
         httpsOnly: '仅 HTTPS',
         httpsOnlyDescription: '将所有 HTTP 请求重定向到 HTTPS。需要有效的证书。',
@@ -868,7 +883,7 @@ export default {
     userManagementDesc: '管理用户、角色和权限',
   },
   footer: {
-    version: 'ZimaOS Echo v{version}',
+    version: 'ZimaOS Blue v{version}',
   },
   backup: {
     title: '备份',
@@ -1110,6 +1125,22 @@ export default {
     downloading: '下载中...',
     upToDate: '已是最新版本',
   },
+  heartbeat: {
+    title: '心跳检测',
+    description: '定期让 Agent 检查 HEARTBEAT.md，有需要关注的事项时通过渠道推送告警。',
+    neverRun: '从未运行',
+    interval: '间隔',
+    lastRun: '上次运行',
+    nextDue: '下次运行',
+    reason: '原因',
+    duration: '耗时',
+    triggerNow: '立即运行',
+    triggering: '运行中...',
+    triggered: '心跳已触发',
+    enableToggle: '启用心跳检测',
+    enabled: '心跳检测已启用',
+    disabled: '心跳检测已禁用',
+  },
   service: {
     title: '服务管理',
     // Port configuration
@@ -1174,7 +1205,21 @@ export default {
     installMethodNone: '无法安装：文件系统只读且不支持 sysext',
     sysextNote: '使用 systemd-sysext 在不可变系统上叠加服务文件',
     // Success messages
+    installSuccess: '服务安装成功',
+    uninstallSuccess: '服务卸载成功',
+    startSuccess: '服务启动成功',
+    stopSuccess: '服务停止成功',
+    restartSuccess: '服务重启成功',
+    enableSuccess: '开机自启已启用',
+    disableSuccess: '开机自启已禁用',
     // Error messages
+    installFailed: '服务安装失败',
+    uninstallFailed: '服务卸载失败',
+    startFailed: '服务启动失败',
+    stopFailed: '服务停止失败',
+    restartFailed: '服务重启失败',
+    enableFailed: '启用开机自启失败',
+    disableFailed: '禁用开机自启失败',
     fetchFailed: '获取服务信息失败',
   },
   autoReply: {
@@ -1628,7 +1673,7 @@ export default {
     invite: {
       title: '邀请成员',
       emailAddress: '电子邮件地址',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: '角色',
       sendInvitation: '发送邀请',
       sending: '发送中...',
@@ -2255,7 +2300,7 @@ export default {
     placeholderAgentId: '1000001',
     placeholderSecret: '密钥',
     placeholderMatrixHomeserver: 'https://matrix.org',
-    placeholderMatrixUserId: '@bot:matrix.org',
+    placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: '访问令牌',
     placeholderBlueBubblesServerUrl: 'http://localhost:1234',
     placeholderServerPassword: '服务器密码',
@@ -2320,7 +2365,7 @@ export default {
     instagramDMDesc: '通过 Instagram 私信连接',
     twitchDesc: '通过 Twitch 机器人连接',
     // 提示
-    telegramHint: '在 Telegram 上使用 @BotFather 创建机器人',
+    telegramHint: "在 Telegram 上使用 {'@'}BotFather 创建机器人",
     discordHint: '在 Discord 开发者门户中创建机器人',
     slackHint: '在 Slack API 中创建机器人',
     whatsappHint: '配置 WhatsApp Business API',
@@ -3196,7 +3241,7 @@ export default {
     anonymousUser: '匿名用户',
     // 进程指标
     processMetrics: '进程指标',
-    echoServer: 'Echo 服务器',
+    echoServer: 'Blue 服务器',
     claudeCodeCli: 'Claude Code CLI',
     pid: '进程 ID',
     cpu: 'CPU',
@@ -3252,7 +3297,7 @@ export default {
     dragToReorder: '拖拽调整优先级',
     // 试用提供商
     trial: {
-      name: 'ZimaOS Echo试用',
+      name: 'ZimaOS Blue试用',
       description: '免费试用，额度有限',
       quotaExhausted: '试用额度已用完',
       quotaExhaustedTokens: '您的试用 Token 额度已用完，请配置自己的提供商以继续使用。',
@@ -3260,7 +3305,7 @@ export default {
       tokensUsed: '剩余 {remaining} / {total} Token',
       configureProvider: '配置提供商',
       trialEnded: '试用已结束',
-      trialEndedDesc: '您的免费试用已结束。请添加自己的 API 密钥以继续使用 Echo。',
+      trialEndedDesc: '您的免费试用已结束。请添加自己的 API 密钥以继续使用 Blue。',
     },
     // 提供商描述
     providers: {
@@ -3275,7 +3320,7 @@ export default {
       ollama: '在本地运行开源大语言模型',
       lmstudio: '本地大语言模型推理，界面友好',
       glm: '智谱 AI GLM-4 系列模型，中文支持优秀',
-      'zimaos-echo-trial': '免费试用，额度有限 - 在配置自己的提供商之前体验 Echo',
+      'zimaos-blue-trial': '免费试用，额度有限 - 在配置自己的提供商之前体验 Blue',
     },
     tabs: {
       all: '全部',
@@ -3419,20 +3464,20 @@ export default {
       uppercase: '一个大写字母',
       lowercase: '一个小写字母',
       number: '一个数字',
-      special: '一个特殊字符 (!@#$%...)',
+      special: "一个特殊字符 (!{'@'}#$%...)",
     },
   },
   onboarding: {
-    welcome: '欢迎使用 Echo！',
+    welcome: '欢迎使用 Blue！',
     previewMode: '预览模式',
-    previewModeDesc: '您可以立即开始使用 Echo，所有功能可用，数据将被保存。',
+    previewModeDesc: '您可以立即开始使用 Blue，所有功能可用，数据将被保存。',
     createAccountHintDesc: '准备好后，创建管理员账户以解锁用户管理并保护您的数据。',
     gotIt: '知道了，开始吧！',
   },
   remoteAccess: {
     title: '远程访问',
-    description: '通过安全隧道随时随地访问您的 Echo',
-    channelDescription: '随时随地访问 Echo，无需配置机器人',
+    description: '通过安全隧道随时随地访问您的 Blue',
+    channelDescription: '随时随地访问 Blue，无需配置机器人',
     recommended: '推荐',
     enable: '启用远程访问',
     disable: '禁用',
@@ -3459,7 +3504,7 @@ export default {
     feature1: '通过二维码随时随地访问',
     feature2: '与家人分享访问链接',
     feature3: '会话过期前自动续期',
-    securityWarning: '警告：任何获得链接的人均可访问您的 Echo',
+    securityWarning: '警告：任何获得链接的人均可访问您的 Blue',
     antivirusHint: '使用远程访问时，杀毒软件可能会提示警告，可添加信任或忽略。',
     statusError: '无法检查 ngrok 状态',
     downloadStartError: '无法开始下载',
@@ -3470,7 +3515,7 @@ export default {
     antivirusWarningTitle: '杀毒软件可能会提示警告',
     antivirusWarningDesc: '远程访问使用合法的网络隧道工具，部分杀毒软件可能将其标记为潜在威胁。',
     antivirusHint1: 'Windows Defender：点击"允许"或"更多信息"→"仍要运行"',
-    antivirusHint2: '其他杀毒软件：将 Echo 加入白名单/排除项',
+    antivirusHint2: '其他杀毒软件：将 Blue 加入白名单/排除项',
     antivirusHint3: '如果问题持续：临时禁用杀毒软件以测试连接',
     // 诊断和日志
     diagnostics: '诊断',
@@ -3562,7 +3607,7 @@ export default {
       uppercase: '至少 1 个大写字母',
       lowercase: '至少 1 个小写字母',
       number: '至少 1 个数字',
-      special: '至少 1 个特殊字符 (!@#$%...)',
+      special: "至少 1 个特殊字符 (!{'@'}#$%...)",
     },
     selectRole: '选择角色',
     permissions: '权限',
@@ -3658,6 +3703,7 @@ export default {
     availableConfigs: '可用配置',
     installedOnly: '已安装（无 API 密钥）',
     noApiKeyFound: '配置中未找到 API 密钥',
+    oauthManaged: '使用 OAuth 认证（由应用管理）',
     scanResults: '扫描结果',
     scanResultsSummary: '在 {total} 个支持的 IDE 中找到 {found} 个',
     viewResults: '查看结果',
@@ -3673,6 +3719,8 @@ export default {
     sourceConfig: '配置文件',
     sourceEnv: '环境变量',
     sourceCCSwitch: 'CC Switch',
+    sourceExtension: 'Claude Code 扩展',
+    importExtSuccess: '已从 {ide} 的 Claude Code 扩展配置导入 {count} 个提供商',
     apiKey: 'API 密钥',
     baseUrl: '基础 URL',
     envVar: '环境变量',
@@ -4073,6 +4121,8 @@ export default {
     title: '人格管理',
     subtitle: '管理 AI 助手人格',
     description: '管理 AI 助手人格',
+    defaultName: 'Blue',
+    defaultDescription: '默认 ZimaOS Blue AI 助手',
     new: '新建人格',
     create: '创建人格',
     createNew: '创建新人格',
@@ -4080,7 +4130,7 @@ export default {
     editPersonality: '编辑人格',
     newPersonality: '新建人格',
     name: '名称',
-    namePlaceholder: '例如：Echo、助手',
+    namePlaceholder: '例如：Blue、助手',
     nameRequired: '名称是必填项',
     label: '描述',
     descriptionPlaceholder: '这个人格用于什么？',
@@ -4124,5 +4174,8 @@ export default {
     error: '错误',
     errorOccurred: '发生错误',
     unknownError: '未知错误',
+    manage: '管理人格',
+    viewAll: '查看全部',
+    total: '总计',
   },
 }

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
-	internalSync "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sync"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
+	internalSync "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sync"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 )
 
 func TestBenchmarkSuite_Basic(t *testing.T) {

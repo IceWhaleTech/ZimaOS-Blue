@@ -137,15 +137,15 @@ type CacheWarmingConfig struct {
 func DefaultCacheConfig() *CacheConfig {
 	return &CacheConfig{
 		Enabled:     true, // Enabled by default
-		StorageType: "memory",
-		StoragePath: "",
+		StorageType: "multilevel",       // L1 memory + L2 disk
+		StoragePath: "./data/cache.db",  // SQLite disk cache path
 		MaxSize:     10000,
 		MaxEntrySize: 1 << 20, // 1MB
 		MaxMemoryMB:  256,
 		TTL:          30 * time.Minute,
 		CacheableStatusCodes: []int{200},
 		CacheableMethods:     []string{"POST"}, // LLM APIs use POST
-		SkipStreaming:        true,             // Don't cache streaming responses by default
+		SkipStreaming:        true,              // Don't cache streaming responses by default
 		KeyIncludeHeaders:    []string{},
 		KeyIgnoreParams:      []string{},
 		SemanticCache: SemanticCacheConfig{
@@ -155,9 +155,9 @@ func DefaultCacheConfig() *CacheConfig {
 			EmbeddingModel:      "",
 		},
 		Warming: CacheWarmingConfig{
-			Enabled:     false,
+			Enabled:     true,  // Warmup enabled by default
 			Interval:    5 * time.Minute,
-			MaxRequests: 100,
+			MaxRequests: 1000,  // Top-1000 entries
 		},
 	}
 }

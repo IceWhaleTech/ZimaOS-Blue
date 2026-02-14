@@ -1,4 +1,4 @@
-// Package security provides security utilities for ZimaOS Echo.
+// Package security provides security utilities for ZimaOS Blue.
 package security
 
 import (

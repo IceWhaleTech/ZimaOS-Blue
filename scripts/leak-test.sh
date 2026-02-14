@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# ZimaOS-Echo Leak Detection Script
+# ZimaOS-Blue Leak Detection Script
 # Detects memory and goroutine leaks using pprof
 #
 
@@ -189,7 +189,7 @@ generate_report() {
     local report="$OUTPUT_DIR/leak_report.txt"
 
     cat > "$report" << EOF
-ZimaOS-Echo Leak Detection Report
+ZimaOS-Blue Leak Detection Report
 ==================================
 Generated: $(date '+%Y-%m-%d %H:%M:%S')
 
@@ -226,7 +226,7 @@ EOF
 main() {
     echo ""
     echo "=============================================="
-    echo "  ZimaOS-Echo Leak Detection"
+    echo "  ZimaOS-Blue Leak Detection"
     echo "=============================================="
     echo ""
 

@@ -574,7 +574,7 @@ defineExpose({ focus, setInput })
         <button
           :disabled="disabled || streaming"
           class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          :class="{ 'bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-gray-300': showMobileMenu }"
+          :class="{ 'bg-gray-200 dark:bg-gray-600/20 text-gray-900 dark:text-gray-300': showMobileMenu }"
           :title="t('chat.moreActions')"
           @click.stop="toggleMobileMenu"
         >

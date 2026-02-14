@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 )
 
 // AutoRecoveryResult contains information about an auto-recovery operation.

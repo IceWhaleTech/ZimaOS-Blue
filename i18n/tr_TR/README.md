@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo**, NAS ve kenar cihazlar için tasarlanmış hafif, yüksek performanslı bir AI ajan çalışma zamanıdır. Go ile yazılmış olup, sıfır yapılandırma dağıtımı, oturum izleme ve kullanım analitiği sunan üretime hazır bir platform sağlar.
+**ZimaOS Blue**, NAS ve kenar cihazlar için tasarlanmış hafif, yüksek performanslı bir AI ajan çalışma zamanıdır. Go ile yazılmış olup, sıfır yapılandırma dağıtımı, oturum izleme ve kullanım analitiği sunan üretime hazır bir platform sağlar.
 
 [Hızlı Başlangıç](#hızlı-başlangıç) · [Özellikler](#temel-özellikler) · [Dağıtım Modları](#dağıtım-modları)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # Kaynak Koddan
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 Kontrol paneline `http://localhost:3000` adresinden erişin.
 
 ## LLM Sağlayıcı Yapılandırması
 
-ZimaOS Echo, yerel LLM hizmetleri dahil birden fazla LLM sağlayıcısını destekler:
+ZimaOS Blue, yerel LLM hizmetleri dahil birden fazla LLM sağlayıcısını destekler:
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # Derleme çıktılarını temizle
 ### Proje Yapısı
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # Go arka ucu
-│   ├── cmd/echo/       # Giriş noktası
+│   ├── cmd/blue/       # Giriş noktası
 │   └── internal/       # Çekirdek modüller
 ├── web/                # Vue 3 ön ucu
 │   └── src/

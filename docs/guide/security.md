@@ -1,10 +1,10 @@
 # Security
 
-This document describes the security architecture and features of ZimaOS Echo.
+This document describes the security architecture and features of ZimaOS Blue.
 
 ## Overview
 
-ZimaOS Echo implements a comprehensive security layer that includes:
+ZimaOS Blue implements a comprehensive security layer that includes:
 
 - **OIDC Provider**: Built-in OpenID Connect provider for authentication
 - **User Management**: Local user accounts with secure password storage
@@ -49,7 +49,7 @@ ZimaOS Echo implements a comprehensive security layer that includes:
 
 ### Password Authentication
 
-ZimaOS Echo uses **Argon2id** for password hashing, the winner of the Password Hashing Competition and recommended by OWASP.
+ZimaOS Blue uses **Argon2id** for password hashing, the winner of the Password Hashing Competition and recommended by OWASP.
 
 #### Configuration
 
@@ -95,7 +95,7 @@ security:
   mfa:
     enabled: true
     required: false
-    issuer: "ZimaOS-Echo"
+    issuer: "ZimaOS-Blue"
     recovery_codes_count: 8
 ```
 
@@ -125,7 +125,7 @@ Features:
 
 ## OIDC Provider
 
-ZimaOS Echo includes a built-in OpenID Connect provider for SSO integration.
+ZimaOS Blue includes a built-in OpenID Connect provider for SSO integration.
 
 ### Endpoints
 
@@ -341,7 +341,7 @@ The default seccomp profile allows only essential syscalls:
 
 ### Prompt Injection Defense
 
-ZimaOS Echo includes comprehensive protection against prompt injection attacks targeting LLM interactions.
+ZimaOS Blue includes comprehensive protection against prompt injection attacks targeting LLM interactions.
 
 #### Overview
 
@@ -505,7 +505,7 @@ if err == promptguard.ErrPromptInjectionDetected {
 #### Middleware Integration
 
 ```go
-// Add prompt guard middleware to Echo
+// Add prompt guard middleware to Blue
 e.Use(promptguard.Middleware(&promptguard.MiddlewareConfig{
     BlockOnThreat: true,
     LogThreats:    true,
@@ -697,7 +697,7 @@ If you discover a security vulnerability, please report it responsibly:
 
 ## Compliance
 
-ZimaOS Echo security features support compliance with:
+ZimaOS Blue security features support compliance with:
 
 - **OWASP Top 10**: Protection against common vulnerabilities
 - **GDPR**: Audit logging and data protection

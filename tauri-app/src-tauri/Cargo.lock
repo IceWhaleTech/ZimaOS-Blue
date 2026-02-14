@@ -5783,11 +5783,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "zimaos-echo"
+name = "zimaos-blue"
 version = "0.10.22"
 dependencies = [
  "env_logger",
  "log",
+ "objc2",
+ "objc2-app-kit",
  "once_cell",
  "open",
  "reqwest",

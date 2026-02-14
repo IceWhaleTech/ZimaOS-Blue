@@ -140,7 +140,7 @@ func (pa *PortAllocator) isPortAvailable(port int) bool {
 // writePortFile writes the allocated port to file and exports env var
 func (pa *PortAllocator) writePortFile() error {
 	// Export environment variable
-	os.Setenv("ECHO_PROXY_PORT", fmt.Sprintf("%d", pa.port))
+	os.Setenv("BLUE_PROXY_PORT", fmt.Sprintf("%d", pa.port))
 
 	portFile := pa.getPortFilePath()
 	if portFile == "" {
@@ -170,7 +170,7 @@ func (pa *PortAllocator) getPortFilePath() string {
 		return ""
 	}
 
-	return filepath.Join(homeDir, ".local", "share", "zimaos-echo", "proxy.port")
+	return filepath.Join(homeDir, ".local", "share", "zimaos-blue", "proxy.port")
 }
 
 // ReadPortFromFile reads the proxy port from file
@@ -180,7 +180,7 @@ func ReadPortFromFile(portFile string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		portFile = filepath.Join(homeDir, ".local", "share", "zimaos-echo", "proxy.port")
+		portFile = filepath.Join(homeDir, ".local", "share", "zimaos-blue", "proxy.port")
 	}
 
 	data, err := os.ReadFile(portFile)

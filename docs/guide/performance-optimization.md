@@ -1,6 +1,6 @@
 # Performance Optimization Guide
 
-This document describes the performance optimization features implemented in ZimaOS-Echo v0.8.0.
+This document describes the performance optimization features implemented in ZimaOS-Blue v0.8.0.
 
 ## Table of Contents
 
@@ -18,10 +18,10 @@ This document describes the performance optimization features implemented in Zim
 
 ### Zorm ORM
 
-ZimaOS-Echo uses [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) for lightweight, high-performance database operations.
+ZimaOS-Blue uses [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) for lightweight, high-performance database operations.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // Define entity with zorm tags
 type User struct {
@@ -84,7 +84,7 @@ exists, err := repo.Exists(ctx, database.Where(database.Eq("email", "alice@examp
 Fluent query building interface.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 repo := database.NewRepository[User](db, "users")
 ctx := context.Background()
@@ -114,7 +114,7 @@ t.Select(&results,
 ### Batch Operations
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 repo := database.NewRepository[User](db, "users")
 ctx := context.Background()
@@ -133,7 +133,7 @@ affected, err := repo.InsertBatch(ctx, &users)
 The query optimizer analyzes SQL queries and provides optimization suggestions.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // Create optimizer
 config := database.DefaultOptimizerConfig()
@@ -157,7 +157,7 @@ for _, s := range suggestions {
 Batch operations improve performance for bulk inserts, updates, and deletes.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // Create batch executor
 config := database.DefaultBatchConfig()
@@ -176,7 +176,7 @@ results, err := executor.ExecuteBatch(ctx, items)
 WAL (Write-Ahead Logging) mode improves concurrent read/write performance.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // Create WAL manager
 config := database.DefaultWALConfig()
@@ -194,7 +194,7 @@ defer manager.Close()
 The connection pool manager provides health checks and connection lifecycle management.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 
 // Create pool manager
 config := database.DefaultPoolConfig()
@@ -215,7 +215,7 @@ fmt.Printf("Active: %d, Idle: %d\n", stats.ActiveConnections, stats.IdleConnecti
 Reuse byte buffers to reduce allocations.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
 
 // Create buffer pool
 bufPool := pool.NewBufferPool()
@@ -232,7 +232,7 @@ bufPool.Put(buf) // Return to pool
 Reuse byte slices of a specific size.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
 
 // Create pool for 4KB slices
 slicePool := pool.NewByteSlicePool(4096)
@@ -248,7 +248,7 @@ slicePool.Put(slice) // Return to pool
 Generic object pool for any type.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/pool"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pool"
 
 // Create pool for custom type
 type MyStruct struct {
@@ -272,10 +272,10 @@ objPool.Put(obj) // Return to pool
 
 ### ECache (High-Performance LRU Cache)
 
-ZimaOS-Echo uses [orca-zhang/ecache](https://github.com/orca-zhang/ecache) for high-performance in-memory caching with LRU eviction.
+ZimaOS-Blue uses [orca-zhang/ecache](https://github.com/orca-zhang/ecache) for high-performance in-memory caching with LRU eviction.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // Create ECache (LRU mode)
 config := cache.Config{
@@ -309,7 +309,7 @@ fmt.Printf("Hits: %d, Misses: %d, Hit Rate: %.2f%%\n",
 LRU-2 mode provides better protection for frequently accessed data against bulk operations.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // Create ECache2 (LRU-2 mode)
 config := cache.Config{
@@ -329,7 +329,7 @@ value, err := ecache2.Get(ctx, "key")
 Least Recently Used cache with TTL support.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // Create LRU cache
 config := cache.Config{
@@ -351,7 +351,7 @@ value, err := lruCache.Get(ctx, "key")
 Least Frequently Used cache for frequency-based eviction.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // Create LFU cache
 config := cache.Config{
@@ -368,11 +368,11 @@ defer lfuCache.Close()
 Persistent cache stored on disk with optional compression.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // Create disk cache
 config := cache.DefaultL2Config()
-config.Path = "/var/cache/zimaos-echo"
+config.Path = "/var/cache/zimaos-blue"
 config.Compression = true
 config.MaxDiskSize = 100 * 1024 * 1024 // 100MB
 
@@ -388,12 +388,12 @@ defer diskCache.Close()
 Combines L1 (memory) and L2 (disk) caches for optimal performance.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 
 // Create multi-level cache
 config := cache.DefaultMultiLevelConfig()
 config.L1.MaxSize = 1000
-config.L2.Path = "/var/cache/zimaos-echo"
+config.L2.Path = "/var/cache/zimaos-blue"
 config.PromoteOnHit = true  // Promote L2 hits to L1
 config.WriteThrough = true  // Write to both L1 and L2
 
@@ -418,7 +418,7 @@ value, err := mlCache.Get(ctx, "key")
 Auto-scaling worker pool with task queuing.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 
 // Create optimized pool
 config := worker.DefaultOptimizedPoolConfig()
@@ -451,7 +451,7 @@ fmt.Printf("Active: %d, Completed: %d\n", stats.ActiveWorkers, stats.TasksComple
 Concurrent map with reduced lock contention.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sync"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sync"
 
 // Create sharded map
 m := sync.NewShardedMap[string, int](32, sync.StringHashFn)
@@ -473,7 +473,7 @@ m.Range(func(key string, value int) bool {
 Lock-free counters and flags.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sync"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sync"
 
 // Atomic counter
 counter := sync.NewAtomicCounter(0)
@@ -499,7 +499,7 @@ flag.Clear()
 Configure HTTP/2 for improved performance.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // Create HTTP/2 server
 config := network.DefaultHTTP2Config()
@@ -515,7 +515,7 @@ server.ListenAndServeTLS(":443", "cert.pem", "key.pem")
 Automatic response compression.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // Create compression middleware
 config := network.DefaultCompressionConfig()
@@ -531,7 +531,7 @@ handler = middleware(handler)
 Batch multiple requests into single operations.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // Create batcher
 config := network.DefaultBatchConfig()
@@ -555,7 +555,7 @@ user, err := batcher.Load(ctx, "user-123")
 Deduplicate concurrent identical requests.
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/network"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 
 // Create coalescer
 loader := func(ctx context.Context, key string) (User, error) {
@@ -575,7 +575,7 @@ user, err := coalescer.Load(ctx, "user-123")
 ### Running Benchmarks
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/benchmark"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/benchmark"
 
 // Create benchmark suite
 suite := benchmark.NewSuite("My Benchmarks")
@@ -610,7 +610,7 @@ suite.SaveJSON("benchmark-results.json")
 ### Comparing Results
 
 ```go
-import "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/benchmark"
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/benchmark"
 
 // Compare two results
 comparison := benchmark.Compare(baseline, current)

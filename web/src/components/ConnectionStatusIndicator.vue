@@ -115,7 +115,7 @@ function handleOffline() {
 const qualityColor = computed(() => {
   switch (connectionQuality.value) {
     case 'excellent': return 'bg-green-500'
-    case 'good': return 'bg-gray-700 dark:bg-gray-700'
+    case 'good': return 'bg-gray-700 dark:bg-gray-500'
     case 'poor': return 'bg-yellow-500'
     case 'offline': return 'bg-red-500'
     default: return 'bg-gray-500'

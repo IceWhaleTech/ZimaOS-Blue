@@ -220,10 +220,10 @@ onUnmounted(() => {
           @click="handleSeek"
         >
           <div
-            class="h-full bg-gray-700 dark:bg-gray-700 rounded-full relative transition-all"
+            class="h-full bg-gray-700 dark:bg-gray-500 rounded-full relative transition-all"
             :style="{ width: `${progress}%` }"
           >
-            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-gray-700 dark:bg-gray-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         </div>
 

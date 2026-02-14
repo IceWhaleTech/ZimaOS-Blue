@@ -521,7 +521,7 @@ onUnmounted(() => {
                 :class="{
                   'bg-red-500 animate-pulse': providerStatus.status === 'error',
                   'bg-green-500': providerStatus.status === 'active' && routingModeInfo.color === 'green',
-                  'bg-gray-700 dark:bg-gray-700': providerStatus.status === 'active' && (routingModeInfo.color === 'gray' || routingModeInfo.color === 'accent'),
+                  'bg-gray-700 dark:bg-gray-500': providerStatus.status === 'active' && (routingModeInfo.color === 'gray' || routingModeInfo.color === 'accent'),
                   'bg-yellow-500 animate-pulse': providerStatus.status === 'pending',
                 }"
               />
@@ -972,7 +972,7 @@ onUnmounted(() => {
         </div>
         <router-link
           to="/settings?tab=llm"
-          class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white flex-shrink-0 px-3 py-1 rounded hover:bg-gray-700 dark:bg-gray-700/10 transition-colors"
+          class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white flex-shrink-0 px-3 py-1 rounded hover:bg-gray-100 dark:bg-gray-600/10 transition-colors"
         >
           {{ t('chat.configureProvider') }}
         </router-link>

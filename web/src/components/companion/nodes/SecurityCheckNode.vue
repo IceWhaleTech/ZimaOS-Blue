@@ -26,7 +26,7 @@ const bgColor = computed(() => {
     case 'medium':
       return 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-600'
     case 'low':
-      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+      return 'bg-gray-700 dark:bg-gray-500/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
     default:
       return 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-600'
   }
@@ -41,7 +41,7 @@ const iconColor = computed(() => {
     case 'medium':
       return 'text-yellow-500 dark:text-yellow-400'
     case 'low':
-      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+      return 'text-gray-900 dark:text-white dark:text-white'
     default:
       return 'text-green-500 dark:text-green-400'
   }

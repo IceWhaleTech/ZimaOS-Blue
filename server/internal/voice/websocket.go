@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 )
 
 // Security fix: Use origin checker instead of allowing all origins

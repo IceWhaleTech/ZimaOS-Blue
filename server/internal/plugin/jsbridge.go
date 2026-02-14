@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 )
 
 // JSBridge handles loading and executing JavaScript/TypeScript plugins

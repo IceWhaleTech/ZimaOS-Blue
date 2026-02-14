@@ -1,4 +1,4 @@
-# ZimaOS-Echo Project
+# ZimaOS-Blue Project
 
 ## Skills Reference
 

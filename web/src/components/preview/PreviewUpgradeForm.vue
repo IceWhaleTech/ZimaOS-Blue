@@ -271,7 +271,7 @@ async function handleSubmit() {
             </button>
             <button
               type="submit"
-              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="!isValid || loading"
             >
               <span v-if="loading" class="flex items-center justify-center space-x-2">

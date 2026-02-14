@@ -8,7 +8,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/ngrok"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 )
 
 // RemoteAccessHandler handles remote access API requests.

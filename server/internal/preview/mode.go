@@ -1,4 +1,4 @@
-// Package preview provides preview mode functionality for ZimaOS-Echo.
+// Package preview provides preview mode functionality for ZimaOS-Blue.
 // Preview mode allows users to experience the product without creating an account.
 package preview
 
@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 )
 
 // SystemMode represents the current system mode.

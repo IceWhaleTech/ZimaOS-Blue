@@ -67,7 +67,7 @@ const ideIcons: Record<string, string> = {
 const providerColors: Record<string, string> = {
   anthropic: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   openai: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  google: 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700 dark:text-gray-900 dark:text-white',
+  google: 'bg-gray-700 dark:bg-gray-500 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-500 dark:text-white',
   custom: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
   github: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
 }
@@ -159,9 +159,17 @@ async function importConfig(ideType: string) {
     error.value = null
     success.value = null
 
-    const response = await providerPoolApi.importIDEConfig(ideType)
-    success.value = t('ideDiscovery.importSuccess', { ide: ideType, provider: response.data.provider_id })
-    emit('import-success', response.data.provider_id)
+    // Check if this is an extension config import
+    const config = importableConfigs.value.find(c => c.ide_type === ideType)
+    if (config?.source === 'extension' && config.extension_config) {
+      const response = await providerPoolApi.importExtensionConfig(ideType)
+      success.value = t('ideDiscovery.importExtSuccess', { ide: ideType, count: response.data.providers.length })
+      emit('import-success', response.data.providers[0] || '')
+    } else {
+      const response = await providerPoolApi.importIDEConfig(ideType)
+      success.value = t('ideDiscovery.importSuccess', { ide: ideType, provider: response.data.provider_id })
+      emit('import-success', response.data.provider_id)
+    }
 
     // Remove from importable list
     importableConfigs.value = importableConfigs.value.filter(c => c.ide_type !== ideType)
@@ -182,6 +190,8 @@ function getSourceLabel(source: string): string {
       return t('ideDiscovery.sourceEnv')
     case 'cc-switch':
       return t('ideDiscovery.sourceCCSwitch')
+    case 'extension':
+      return t('ideDiscovery.sourceExtension')
     default:
       return source
   }
@@ -197,7 +207,7 @@ function getSourceLabel(source: string): string {
       </p>
       <button
         :disabled="scanning"
-        class="px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        class="px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-700 dark:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         @click="startScan"
       >
         <svg v-if="scanning" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -359,11 +369,18 @@ function getSourceLabel(source: string): string {
               <span class="font-medium">{{ t('ideDiscovery.baseUrl') }}:</span>
               <span class="ml-1">{{ config.base_url }}</span>
             </p>
+            <!-- Extension config env vars -->
+            <template v-if="config.extension_config?.env_vars?.length">
+              <p v-for="ev in config.extension_config.env_vars" :key="ev.name">
+                <span class="font-medium">{{ ev.name }}:</span>
+                <code class="ml-1 px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">{{ ev.value }}</code>
+              </p>
+            </template>
           </div>
 
           <button
-            :disabled="importing === config.ide_type || !config.api_key"
-            class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-700 rounded-lg hover:bg-gray-700 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            :disabled="importing === config.ide_type || (!config.api_key && !config.extension_config)"
+            class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-700 dark:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             @click="importConfig(config.ide_type)"
           >
             <svg v-if="importing === config.ide_type" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -403,7 +420,7 @@ function getSourceLabel(source: string): string {
             </div>
             <div class="flex-1">
               <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ config.ide_name }}</h5>
-              <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('ideDiscovery.noApiKeyFound') }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">{{ config.ide_type === 'antigravity' ? t('ideDiscovery.oauthManaged') : t('ideDiscovery.noApiKeyFound') }}</p>
             </div>
           </div>
         </div>

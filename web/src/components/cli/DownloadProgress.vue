@@ -49,9 +49,9 @@ function handleCancel() {
         </span>
         <span class="text-gray-500 dark:text-gray-400">{{ progressPercent }}%</span>
       </div>
-      <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div class="h-2 bg-gray-700 dark:bg-gray-500 rounded-full overflow-hidden">
         <div
-          class="h-full bg-gray-700 dark:bg-gray-700 transition-all duration-300"
+          class="h-full bg-gray-700 dark:bg-gray-500 transition-all duration-300"
           :style="{ width: `${progressPercent}%` }"
         />
       </div>

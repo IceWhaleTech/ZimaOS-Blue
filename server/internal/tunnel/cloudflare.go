@@ -163,6 +163,11 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 }
 
 // Stop stops the tunnel.
+// IMPORTANT: trycloudflared panics (instead of returning an error) in its own
+// internal goroutine when the context is canceled. Since recover() cannot cross
+// goroutine boundaries, canceling the context would crash the entire process.
+// Instead, we just mark the tunnel as stopped and leave the goroutine to be
+// cleaned up when the process exits.
 func (m *CloudflareManager) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -171,9 +176,9 @@ func (m *CloudflareManager) Stop() error {
 		return nil
 	}
 
-	if m.cancel != nil {
-		m.cancel()
-	}
+	// Do NOT call m.cancel() — it triggers a panic inside trycloudflared's
+	// internal goroutine that we cannot recover from.
+	// The tunnel goroutine will be cleaned up on process exit.
 
 	m.running = false
 	m.url = ""

@@ -1,6 +1,6 @@
 # Performance Profiling Guide
 
-ZimaOS Echo includes built-in performance profiling capabilities using Go's pprof package. This guide explains how to use these tools for debugging and optimization.
+ZimaOS Blue includes built-in performance profiling capabilities using Go's pprof package. This guide explains how to use these tools for debugging and optimization.
 
 ## Enabling pprof
 
@@ -246,7 +246,7 @@ go tool pprof -base=baseline.prof current.prof
 
 ### Prometheus Metrics
 
-ZimaOS Echo exports pprof-related metrics:
+ZimaOS Blue exports pprof-related metrics:
 
 ```
 # HELP go_goroutines Number of goroutines

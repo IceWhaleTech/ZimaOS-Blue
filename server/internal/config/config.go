@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 )
 
 type Config struct {
@@ -34,6 +34,7 @@ type Config struct {
 	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
 	Proxy         *proxy.ProxyConfig  `mapstructure:"proxy"`           // v0.10.5.1: API Proxy
 	Update        UpdateConfig        `mapstructure:"update"`          // OTA Update
+	Heartbeat     HeartbeatConfig     `mapstructure:"heartbeat"`       // Heartbeat agent polling
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
 	ClaudeCode ClaudeCodeConfig `mapstructure:"claudecode"`
@@ -286,6 +287,35 @@ type UpdateConfig struct {
 	StoragePath    string        `mapstructure:"storage_path"`
 }
 
+// HeartbeatConfig holds heartbeat agent polling configuration.
+type HeartbeatConfig struct {
+	Enabled         bool                    `mapstructure:"enabled"`
+	Interval        time.Duration           `mapstructure:"interval"`
+	Prompt          string                  `mapstructure:"prompt"`
+	AckMaxChars     int                     `mapstructure:"ack_max_chars"`
+	WorkspaceDir    string                  `mapstructure:"workspace_dir"`
+	LLMProvider     string                  `mapstructure:"llm_provider"`
+	LLMModel        string                  `mapstructure:"llm_model"`
+	ActiveHours     *HeartbeatActiveHours   `mapstructure:"active_hours"`
+	Visibility      HeartbeatVisibility     `mapstructure:"visibility"`
+	DeliveryChannel string                  `mapstructure:"delivery_channel"`
+	DeliveryChatID  string                  `mapstructure:"delivery_chat_id"`
+}
+
+// HeartbeatActiveHours defines the time window when heartbeat is allowed to run.
+type HeartbeatActiveHours struct {
+	Start    string `mapstructure:"start"`
+	End      string `mapstructure:"end"`
+	Timezone string `mapstructure:"timezone"`
+}
+
+// HeartbeatVisibility controls what heartbeat results are delivered.
+type HeartbeatVisibility struct {
+	ShowOk       bool `mapstructure:"show_ok"`
+	ShowAlerts   bool `mapstructure:"show_alerts"`
+	UseIndicator bool `mapstructure:"use_indicator"`
+}
+
 type ServerConfig struct {
 	Host             string        `mapstructure:"host"`
 	Port             int           `mapstructure:"port"`
@@ -403,13 +433,13 @@ func Load(configPath string) (*Config, error) {
 	} else {
 		v.SetConfigName("config")
 		v.SetConfigType("yaml")
-		// Search order: current dir -> ./config -> /etc/zimaos-echo -> $HOME/.zimaos-echo
+		// Search order: current dir -> ./config -> /etc/zimaos-blue -> $HOME/.zimaos-blue
 		v.AddConfigPath(".")
 		v.AddConfigPath("./config")
-		v.AddConfigPath("/etc/zimaos-echo")
+		v.AddConfigPath("/etc/zimaos-blue")
 		// Add home directory as fallback
 		if home, err := os.UserHomeDir(); err == nil {
-			v.AddConfigPath(filepath.Join(home, ".zimaos-echo"))
+			v.AddConfigPath(filepath.Join(home, ".zimaos-blue"))
 		}
 	}
 
@@ -461,7 +491,7 @@ func setDefaults(v *viper.Viper) {
 	// Cgroup defaults (disabled by default)
 	v.SetDefault("cgroup.enabled", false)
 	v.SetDefault("cgroup.cgroup_root", "/sys/fs/cgroup")
-	v.SetDefault("cgroup.cgroup_name", "zimaos-echo")
+	v.SetDefault("cgroup.cgroup_name", "zimaos-blue")
 	v.SetDefault("cgroup.io.enabled", false)
 	v.SetDefault("cgroup.io.read_bps", 0)
 	v.SetDefault("cgroup.io.write_bps", 0)
@@ -536,7 +566,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.jwt.secret", "change-me-in-production-use-a-strong-secret-key")
 	v.SetDefault("security.jwt.expiration", "24h")
 	v.SetDefault("security.jwt.refresh_expiration", "720h")
-	v.SetDefault("security.jwt.issuer", "zimaos-echo")
+	v.SetDefault("security.jwt.issuer", "zimaos-blue")
 
 	// OIDC
 	v.SetDefault("security.oidc.enabled", true)
@@ -566,7 +596,7 @@ func setDefaults(v *viper.Viper) {
 	// MFA
 	v.SetDefault("security.mfa.enabled", true)
 	v.SetDefault("security.mfa.required", false)
-	v.SetDefault("security.mfa.issuer", "ZimaOS-Echo")
+	v.SetDefault("security.mfa.issuer", "ZimaOS-Blue")
 	v.SetDefault("security.mfa.recovery_codes_count", 8)
 
 	// Audit
@@ -803,6 +833,18 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("proxy.quota_monitor.critical_threshold", 5.0)
 	v.SetDefault("proxy.quota_monitor.track_tokens", true)
 	v.SetDefault("proxy.quota_monitor.track_requests", true)
+
+	// Heartbeat defaults
+	v.SetDefault("heartbeat.enabled", false)
+	v.SetDefault("heartbeat.interval", "30m")
+	v.SetDefault("heartbeat.prompt", "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.")
+	v.SetDefault("heartbeat.ack_max_chars", 300)
+	v.SetDefault("heartbeat.workspace_dir", "./data")
+	v.SetDefault("heartbeat.llm_provider", "claude")
+	v.SetDefault("heartbeat.llm_model", "claude-sonnet-4-5-20250929")
+	v.SetDefault("heartbeat.visibility.show_ok", false)
+	v.SetDefault("heartbeat.visibility.show_alerts", true)
+	v.SetDefault("heartbeat.visibility.use_indicator", true)
 
 	// OTA Update defaults
 	v.SetDefault("update.enabled", true)

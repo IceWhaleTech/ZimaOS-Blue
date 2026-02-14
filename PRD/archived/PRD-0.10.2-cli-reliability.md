@@ -338,12 +338,12 @@ claudecode:
 
 | 变量 | 描述 | 默认值 |
 |-----|------|--------|
-| `ECHO_CC_RETRY_ENABLED` | 启用重试 | `true` |
-| `ECHO_CC_RETRY_MAX` | 最大重试次数 | `3` |
-| `ECHO_CC_CACHE_ENABLED` | 启用缓存 | `true` |
-| `ECHO_CC_CACHE_TTL` | 缓存 TTL | `1h` |
-| `ECHO_CC_CB_ENABLED` | 启用熔断器 | `true` |
-| `ECHO_CC_CB_THRESHOLD` | 熔断阈值 | `5` |
+| `BLUE_CC_RETRY_ENABLED` | 启用重试 | `true` |
+| `BLUE_CC_RETRY_MAX` | 最大重试次数 | `3` |
+| `BLUE_CC_CACHE_ENABLED` | 启用缓存 | `true` |
+| `BLUE_CC_CACHE_TTL` | 缓存 TTL | `1h` |
+| `BLUE_CC_CB_ENABLED` | 启用熔断器 | `true` |
+| `BLUE_CC_CB_THRESHOLD` | 熔断阈值 | `5` |
 
 ## API 端点
 

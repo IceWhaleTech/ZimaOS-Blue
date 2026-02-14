@@ -109,7 +109,7 @@ async function handleClose() {
 
           <!-- Got it button -->
           <button
-            class="w-full py-2.5 px-4 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700/90 text-white font-medium rounded-lg transition-colors"
+            class="w-full py-2.5 px-4 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white font-medium rounded-lg transition-colors"
             @click="handleClose"
           >
             {{ t('onboarding.gotIt') }}

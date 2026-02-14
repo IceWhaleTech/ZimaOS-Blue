@@ -2,9 +2,9 @@ fn main() {
     // Platform-specific build configuration
     #[cfg(target_os = "macos")]
     {
-        // Link the Go static library (libecho.a)
+        // Link the Go static library (libblue.a)
         println!("cargo:rustc-link-search=native=lib");
-        println!("cargo:rustc-link-lib=static=echo");
+        println!("cargo:rustc-link-lib=static=blue");
 
         // Link required system frameworks for Go runtime
         println!("cargo:rustc-link-lib=framework=CoreFoundation");
@@ -14,6 +14,17 @@ fn main() {
 
         // Link Go runtime dependencies
         println!("cargo:rustc-link-lib=resolv");
+
+        // Build libsonic.a from espeak-ng's compiled object if it doesn't exist
+        let espeak_build = std::path::Path::new("../../third_party/espeak-ng/build");
+        let sonic_lib = espeak_build.join("libsonic.a");
+        let sonic_obj = espeak_build.join("CMakeFiles/sonic.dir/_deps/sonic-git-src/sonic.c.o");
+        if !sonic_lib.exists() && sonic_obj.exists() {
+            std::process::Command::new("ar")
+                .args(["rcs", sonic_lib.to_str().unwrap(), sonic_obj.to_str().unwrap()])
+                .status()
+                .expect("Failed to create libsonic.a");
+        }
 
         // Link espeak-ng and its dependencies (from third_party)
         println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/libespeak-ng");
@@ -37,6 +48,30 @@ fn main() {
         println!("cargo:rustc-link-lib=static=ggml-metal");
         println!("cargo:rustc-link-lib=static=ggml-blas");
 
+        // Build libopus.a from source if it doesn't exist
+        let opus_src = std::path::Path::new("../../third_party/opus-src");
+        let opus_build = opus_src.join("build");
+        let opus_lib = opus_build.join("libopus.a");
+        if !opus_lib.exists() && opus_src.join("CMakeLists.txt").exists() {
+            std::fs::create_dir_all(&opus_build).expect("Failed to create opus build dir");
+            let status = std::process::Command::new("cmake")
+                .args([
+                    "-B", opus_build.to_str().unwrap(),
+                    "-S", opus_src.to_str().unwrap(),
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DBUILD_SHARED_LIBS=OFF",
+                ])
+                .status()
+                .expect("Failed to configure opus");
+            assert!(status.success(), "CMake configure for opus failed");
+
+            let status = std::process::Command::new("cmake")
+                .args(["--build", opus_build.to_str().unwrap(), "--config", "Release"])
+                .status()
+                .expect("Failed to build opus");
+            assert!(status.success(), "CMake build for opus failed");
+        }
+
         // Link libopus (from third_party)
         println!("cargo:rustc-link-search=native=../../third_party/opus-src/build");
         println!("cargo:rustc-link-lib=static=opus");
@@ -51,7 +86,7 @@ fn main() {
         println!("cargo:rustc-link-lib=c++");
 
         // Rerun if the library changes
-        println!("cargo:rerun-if-changed=lib/libecho.a");
+        println!("cargo:rerun-if-changed=lib/libblue.a");
     }
 
     tauri_build::build()

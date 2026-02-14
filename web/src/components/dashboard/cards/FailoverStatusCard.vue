@@ -123,7 +123,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Divider -->
-        <div class="w-px h-10 bg-gray-700 dark:bg-gray-700"></div>
+        <div class="w-px h-10 bg-gray-700 dark:bg-gray-500"></div>
 
         <!-- Total -->
         <div>

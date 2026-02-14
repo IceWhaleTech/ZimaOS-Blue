@@ -32,6 +32,9 @@ const parsedCertInfo = ref<CertificateInfo | null>(null)
 const acmeEmail = ref('')
 const acmeDomains = ref('')
 const acmeProvider = ref('letsencrypt')
+const acmeChallengeType = ref('http-01')
+const acmeDNSProvider = ref('cloudflare')
+const acmeDNSCredentials = ref<Array<{ key: string; value: string }>>([{ key: '', value: '' }])
 const requestingACME = ref(false)
 
 // HTTPS-only state
@@ -158,7 +161,17 @@ async function requestACMECert() {
   }
   requestingACME.value = true
   try {
-    const response = await securityApi.requestACMECert(acmeEmail.value, domains, acmeProvider.value)
+    const dnsCredentials = acmeChallengeType.value === 'dns-01'
+      ? Object.fromEntries(acmeDNSCredentials.value.filter(c => c.key && c.value).map(c => [c.key, c.value]))
+      : undefined
+    const response = await securityApi.requestACMECert(
+      acmeEmail.value,
+      domains,
+      acmeProvider.value,
+      acmeChallengeType.value,
+      acmeChallengeType.value === 'dns-01' ? acmeDNSProvider.value : undefined,
+      dnsCredentials,
+    )
     acmeStatus.value = response.data
     showACMEDialog.value = false
     emit('status-change', t('settings.network.tls.acme.configured'))
@@ -169,6 +182,31 @@ async function requestACMECert() {
     emit('status-change', msg)
   } finally {
     requestingACME.value = false
+  }
+}
+
+function addDNSCredential() {
+  acmeDNSCredentials.value.push({ key: '', value: '' })
+}
+
+function removeDNSCredential(index: number) {
+  acmeDNSCredentials.value.splice(index, 1)
+}
+
+// DNS provider credential templates
+const dnsProviderCredentials: Record<string, string[]> = {
+  cloudflare: ['CF_DNS_API_TOKEN'],
+  route53: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION'],
+  godaddy: ['GODADDY_API_KEY', 'GODADDY_API_SECRET'],
+  namecheap: ['NAMECHEAP_API_USER', 'NAMECHEAP_API_KEY'],
+  alidns: ['ALICLOUD_ACCESS_KEY', 'ALICLOUD_SECRET_KEY'],
+  tencentcloud: ['TENCENTCLOUD_SECRET_ID', 'TENCENTCLOUD_SECRET_KEY'],
+}
+
+function onDNSProviderChange() {
+  const template = dnsProviderCredentials[acmeDNSProvider.value]
+  if (template) {
+    acmeDNSCredentials.value = template.map(key => ({ key, value: '' }))
   }
 }
 
@@ -225,7 +263,7 @@ onMounted(() => {
             {{ t('settings.network.tls.acme.request') }}
           </button>
           <button
-            class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90"
+            class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400"
             @click="showUploadDialog = true"
           >
             {{ t('settings.network.tls.uploadCert') }}
@@ -299,7 +337,7 @@ onMounted(() => {
               class="sr-only peer"
               @change="updateHTTPSOnly(($event.target as HTMLInputElement).checked)"
             />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-400/20 dark:peer-focus:ring-gray-400/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-gray-700 dark:bg-gray-700"></div>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-400/20 dark:peer-focus:ring-gray-400/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
           </label>
         </div>
       </div>
@@ -335,7 +373,7 @@ onMounted(() => {
       <template v-else-if="corsConfig">
         <div class="flex gap-2 mb-4">
           <input v-model="newOrigin" type="text" :placeholder="t('settings.network.originPlaceholder')" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-gray-600" @keyup.enter="addOrigin" />
-          <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 disabled:opacity-50" :disabled="addingOrigin || !newOrigin.trim()" @click="addOrigin">{{ t('common.add') }}</button>
+          <button class="px-4 py-2 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 disabled:opacity-50" :disabled="addingOrigin || !newOrigin.trim()" @click="addOrigin">{{ t('common.add') }}</button>
         </div>
 
         <div v-if="corsConfig.dynamic_origins.length > 0" class="mb-4">
@@ -372,7 +410,7 @@ onMounted(() => {
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('settings.network.tls.certPem') }}</label>
               <textarea v-model="certPem" rows="6" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 font-mono text-sm" :placeholder="t('settings.network.tls.certPlaceholder')" @blur="parseCert" />
             </div>
-            <div v-if="parsedCertInfo" class="p-3 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 rounded-lg text-sm">
+            <div v-if="parsedCertInfo" class="p-3 bg-gray-700 dark:bg-gray-500/20 rounded-lg text-sm">
               <div><strong>{{ t('settings.network.tls.domains') }}:</strong> {{ parsedCertInfo.domains.join(', ') }}</div>
               <div><strong>{{ t('settings.network.tls.validUntil') }}:</strong> {{ new Date(parsedCertInfo.not_after).toLocaleDateString() }}</div>
             </div>
@@ -383,7 +421,7 @@ onMounted(() => {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg" @click="showUploadDialog = false">{{ t('common.cancel') }}</button>
-            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg disabled:opacity-50" :disabled="uploading || !certPem || !keyPem" @click="uploadCertificate">
+            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-500 text-white rounded-lg disabled:opacity-50" :disabled="uploading || !certPem || !keyPem" @click="uploadCertificate">
               {{ uploading ? t('common.uploading') : t('common.upload') }}
             </button>
           </div>
@@ -409,7 +447,7 @@ onMounted(() => {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg" @click="showSelfSignedDialog = false">{{ t('common.cancel') }}</button>
-            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 text-white rounded-lg disabled:opacity-50" :disabled="generating" @click="generateSelfSigned">
+            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-500 text-white rounded-lg disabled:opacity-50" :disabled="generating" @click="generateSelfSigned">
               {{ generating ? t('common.generating') : t('common.generate') }}
             </button>
           </div>
@@ -420,7 +458,7 @@ onMounted(() => {
     <!-- ACME Dialog -->
     <Teleport to="body">
       <div v-if="showACMEDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showACMEDialog = false">
-        <div class="bg-white dark:bg-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.acme.title') }}</h3>
           <div class="space-y-4">
             <div>
@@ -440,12 +478,63 @@ onMounted(() => {
               <input v-model="acmeDomains" type="text" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2" placeholder="example.com, www.example.com" />
               <p class="text-xs text-gray-500 mt-1">{{ t('settings.network.tls.acme.domainsHint') }}</p>
             </div>
+
+            <!-- Challenge Type -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('settings.network.tls.acme.challengeType') }}</label>
+              <div class="flex gap-2">
+                <button
+                  v-for="ct in ['http-01', 'dns-01'] as const"
+                  :key="ct"
+                  :class="[
+                    'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                    acmeChallengeType === ct
+                      ? 'bg-gray-700 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  ]"
+                  @click="acmeChallengeType = ct"
+                >
+                  {{ ct === 'http-01' ? t('settings.network.tls.acme.httpChallenge') : t('settings.network.tls.acme.dnsChallenge') }}
+                </button>
+              </div>
+            </div>
+
+            <!-- DNS Provider (only for dns-01) -->
+            <template v-if="acmeChallengeType === 'dns-01'">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('settings.network.tls.acme.dnsProvider') }}</label>
+                <select v-model="acmeDNSProvider" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2" @change="onDNSProviderChange">
+                  <option value="cloudflare">Cloudflare</option>
+                  <option value="route53">AWS Route53</option>
+                  <option value="godaddy">GoDaddy</option>
+                  <option value="namecheap">Namecheap</option>
+                  <option value="alidns">Aliyun DNS</option>
+                  <option value="tencentcloud">Tencent Cloud / DNSPod</option>
+                </select>
+              </div>
+
+              <!-- DNS Credentials -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('settings.network.tls.acme.dnsCredentials') }}</label>
+                <p class="text-xs text-gray-500 mb-2">{{ t('settings.network.tls.acme.dnsCredentialHint') }}</p>
+                <div class="space-y-2">
+                  <div v-for="(cred, index) in acmeDNSCredentials" :key="index" class="flex gap-2">
+                    <input v-model="cred.key" type="text" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 text-sm font-mono" :placeholder="t('settings.network.tls.acme.envKey')" />
+                    <input v-model="cred.value" type="password" class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 text-sm" :placeholder="t('settings.network.tls.acme.envValue')" />
+                    <button v-if="acmeDNSCredentials.length > 1" class="px-2 text-gray-400 hover:text-red-500" @click="removeDNSCredential(index)">✕</button>
+                  </div>
+                </div>
+                <button class="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline" @click="addDNSCredential">+ {{ t('settings.network.tls.acme.addCredential') }}</button>
+              </div>
+            </template>
+
             <div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-sm text-yellow-700 dark:text-yellow-300">
-              <strong>{{ t('settings.network.tls.acme.note') }}:</strong> {{ t('settings.network.tls.acme.noteText') }}
+              <strong>{{ t('settings.network.tls.acme.note') }}:</strong>
+              {{ acmeChallengeType === 'dns-01' ? t('settings.network.tls.acme.noteTextDNS') : t('settings.network.tls.acme.noteText') }}
             </div>
           </div>
           <div class="flex justify-end gap-2 mt-6">
-            <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg" @click="showACMEDialog = false">{{ t('common.cancel') }}</button>
+            <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg" @click="showACMEDialog = false">{{ t('common.cancel') }}</button>
             <button class="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50" :disabled="requestingACME || !acmeEmail || !acmeDomains" @click="requestACMECert">
               {{ requestingACME ? t('common.requesting') : t('settings.network.tls.acme.request') }}
             </button>

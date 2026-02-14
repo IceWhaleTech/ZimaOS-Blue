@@ -167,7 +167,7 @@ function collectSettings(): UserSettings {
     theme_style: settingsStore.themeStyle,
     theme: themeStore.theme,
     locale: localeStore.currentLocale,
-    timezone: localStorage.getItem('zimaos-echo-timezone') || undefined,
+    timezone: localStorage.getItem('zimaos-blue-timezone') || undefined,
   }
 }
 
@@ -194,7 +194,7 @@ async function handleExport() {
     a.href = url
     const timestamp = new Date().toISOString().split('T')[0]
     const ext = exportFormat.value === 'encrypted' ? 'enc.json' : 'json'
-    a.download = `zimaos-echo-backup-${timestamp}.${ext}`
+    a.download = `zimaos-blue-backup-${timestamp}.${ext}`
     a.click()
     URL.revokeObjectURL(url)
 
@@ -309,7 +309,7 @@ function applySettings(settings: UserSettings) {
     localeStore.changeLocale(settings.locale as 'en-US' | 'zh-CN' | 'ja-JP')
   }
   if (settings.timezone) {
-    localStorage.setItem('zimaos-echo-timezone', settings.timezone)
+    localStorage.setItem('zimaos-blue-timezone', settings.timezone)
   }
 }
 
@@ -405,10 +405,10 @@ async function executeCleanup() {
 
     if (cleanupTargets.value.cache) {
       // Clear local storage cache (except essential items)
-      const keysToKeep = ['zimaos-echo-locale', 'zimaos-echo-theme']
+      const keysToKeep = ['zimaos-blue-locale', 'zimaos-blue-theme']
       const allKeys = Object.keys(localStorage)
       allKeys.forEach(key => {
-        if (key.startsWith('zimaos-echo-') && !keysToKeep.includes(key)) {
+        if (key.startsWith('zimaos-blue-') && !keysToKeep.includes(key)) {
           localStorage.removeItem(key)
         }
       })
@@ -602,7 +602,7 @@ async function activatePersonality(id: string) {
             :class="[
               'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
               exportFormat === 'json'
-                ? 'bg-gray-700 dark:bg-gray-700 text-white'
+                ? 'bg-gray-700 dark:bg-gray-500 text-white'
                 : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
             ]"
             @click="exportFormat = 'json'"
@@ -613,7 +613,7 @@ async function activatePersonality(id: string) {
             :class="[
               'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
               exportFormat === 'encrypted'
-                ? 'bg-gray-700 dark:bg-gray-700 text-white'
+                ? 'bg-gray-700 dark:bg-gray-500 text-white'
                 : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
             ]"
             @click="exportFormat = 'encrypted'"
@@ -660,7 +660,7 @@ async function activatePersonality(id: string) {
       <!-- Export Button -->
       <button
         :disabled="!canExport || exporting"
-        class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         @click="handleExport"
       >
         <svg v-if="exporting" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -761,7 +761,7 @@ async function activatePersonality(id: string) {
         </button>
         <button
           :disabled="!canImport || importing || !importPreview"
-          class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           @click="handleImport"
         >
           <svg v-if="importing" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1022,7 +1022,7 @@ async function activatePersonality(id: string) {
             <!-- Save Button -->
             <button
               :disabled="retentionLoading"
-              class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               @click="saveRetentionSettings"
             >
               {{ retentionLoading ? t('common.loading') : t('common.save') }}
@@ -1135,14 +1135,14 @@ async function activatePersonality(id: string) {
 
             <!-- Step 2: Preview (Authorization) -->
             <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
-              <div class="bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-3">
+              <div class="bg-gray-700 dark:bg-gray-500/20 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-3">
                 <div class="flex items-start gap-2">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-900 dark:text-white flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
-                  <div class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
+                  <div class="text-sm text-gray-900 dark:text-white dark:text-white">
                     <p class="font-medium">{{ t('userdata.cleanup.authorizationStep') }}</p>
-                    <p class="mt-1 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ t('userdata.cleanup.authorizationHint') }}</p>
+                    <p class="mt-1 text-gray-900 dark:text-white dark:text-white">{{ t('userdata.cleanup.authorizationHint') }}</p>
                   </div>
                 </div>
               </div>

@@ -1,0 +1,65 @@
+[Unit]
+Description=ZimaOS-Blue - A Local-first Agent Runtime for Builders with Bolder Mind
+Documentation=https://github.com/IceWhaleTech/ZimaOS-Blue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zimaos-blue
+Group=zimaos-blue
+
+# Working directory
+WorkingDirectory=/opt/zimaos-blue
+
+# Environment
+Environment=BLUE_ENV=production
+EnvironmentFile=-/etc/zimaos-blue/env
+
+# Main process
+ExecStart=/opt/zimaos-blue/bin/zimaos-blue --config /etc/zimaos-blue/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+TasksMax=100
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Allow write to data directory
+ReadWritePaths=/var/lib/zimaos-blue /var/log/zimaos-blue
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zimaos-blue
+
+# Graceful shutdown
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

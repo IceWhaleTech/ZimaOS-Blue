@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 )
 
 // ConversationCache caches conversation messages to reduce database queries.

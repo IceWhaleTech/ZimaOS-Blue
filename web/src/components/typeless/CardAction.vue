@@ -10,7 +10,7 @@ const emit = defineEmits<{
 }>()
 
 const buttonClasses = {
-  primary: 'bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-light text-white',
+  primary: 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white',
   secondary: 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300',
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }

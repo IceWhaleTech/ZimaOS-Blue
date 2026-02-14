@@ -16,9 +16,11 @@ import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
+import HeartbeatSettings from '@/components/settings/HeartbeatSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import PersonalityManager from '@/components/PersonalityManager.vue'
+import { useTauri } from '@/composables/useTauri'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -26,6 +28,7 @@ const router = useRouter()
 const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
+const { isTauri, setCloseBehavior } = useTauri()
 
 const saveStatus = ref<string | null>(null)
 
@@ -35,7 +38,7 @@ const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 // Timezone
 const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-const selectedTimezone = ref(localStorage.getItem('zimaos-echo-timezone') || detectedTimezone)
+const selectedTimezone = ref(localStorage.getItem('zimaos-blue-timezone') || detectedTimezone)
 
 const timezones = computed(() => {
   try {
@@ -74,8 +77,14 @@ async function handleLocaleChange(locale: string) {
 
 function handleTimezoneChange(timezone: string) {
   selectedTimezone.value = timezone
-  localStorage.setItem('zimaos-echo-timezone', timezone)
+  localStorage.setItem('zimaos-blue-timezone', timezone)
   showSaveStatus(t('settings.timezoneSaved'))
+}
+
+function handleCloseBehaviorChange(behavior: 'quit' | 'minimize') {
+  settingsStore.setCloseBehavior(behavior)
+  setCloseBehavior(behavior)
+  showSaveStatus(t('settings.closeBehaviorSaved'))
 }
 
 function switchTab(tab: TabType) {
@@ -130,7 +139,7 @@ function getMethodColor(method: string | undefined): string {
   if (!method) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
   switch (method.toUpperCase()) {
     case 'GET': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    case 'POST': return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
+    case 'POST': return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
     case 'PUT': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'PATCH': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
     case 'DELETE': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -141,7 +150,7 @@ function getMethodColor(method: string | undefined): string {
 function getStatusColor(status: number): string {
   if (status >= 500) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
   if (status >= 400) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  if (status >= 300) return 'bg-gray-700 dark:bg-gray-700 text-gray-900 dark:text-white dark:bg-gray-700 dark:bg-gray-700/30 dark:text-gray-900 dark:text-white'
+  if (status >= 300) return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
   if (status >= 200) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
   return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
@@ -273,7 +282,7 @@ onMounted(async () => {
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
           activeTab === tab
-            ? 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+            ? 'text-gray-900 dark:text-white dark:text-white border-b-2 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
         "
         @click="switchTab(tab)"
@@ -320,7 +329,7 @@ onMounted(async () => {
             :class="[
               'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
               themeStore.theme === theme
-                ? 'bg-gray-700 dark:bg-gray-700 text-white'
+                ? 'bg-gray-700 dark:bg-gray-500 text-white'
                 : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
             ]"
             @click="themeStore.setTheme(theme)"
@@ -330,9 +339,34 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- Close Behavior (Tauri only) -->
+      <div v-if="isTauri" class="glass-card p-4">
+        <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.closeBehavior') }}</label>
+        <div class="flex gap-2">
+          <button
+            v-for="behavior in ['quit', 'minimize'] as const"
+            :key="behavior"
+            :class="[
+              'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              settingsStore.closeBehavior === behavior
+                ? 'bg-gray-700 dark:bg-gray-500 text-white'
+                : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
+            ]"
+            @click="handleCloseBehaviorChange(behavior)"
+          >
+            {{ t(`settings.closeBehavior${behavior === 'quit' ? 'Quit' : 'Minimize'}`) }}
+          </button>
+        </div>
+      </div>
+
       <!-- Service Management -->
       <div class="glass-card p-4">
         <ServiceManagement />
+      </div>
+
+      <!-- Heartbeat -->
+      <div class="glass-card p-4">
+        <HeartbeatSettings @status-change="showSaveStatus" />
       </div>
     </div>
 
@@ -420,7 +454,7 @@ onMounted(async () => {
           <option :value="200">200</option>
         </select>
         <div class="flex gap-2">
-          <button class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg" :disabled="logsLoading" @click="fetchLogs">
+          <button class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg" :disabled="logsLoading" @click="fetchLogs">
             {{ logsLoading ? t('common.loading') : t('system.refresh') }}
           </button>
           <button class="px-3 py-2 bg-gray-100 dark:bg-gray-700/30 hover:bg-gray-200 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300 rounded-lg" :disabled="logs.length === 0" @click="exportLogs">

@@ -13,7 +13,7 @@ func TestNewIntegration(t *testing.T) {
 	cfg := Config{
 		Enabled:     true,
 		APIEndpoint: "http://localhost:23456",
-		AppID:       "zimaos-echo",
+		AppID:       "zimaos-blue",
 	}
 
 	i := NewIntegration(cfg)
@@ -34,7 +34,7 @@ func TestIntegration_DefaultConfig(t *testing.T) {
 		t.Errorf("Expected default API endpoint, got %s", i.config.APIEndpoint)
 	}
 
-	if i.config.DataPath != "/DATA/AppData/zimaos-echo" {
+	if i.config.DataPath != "/DATA/AppData/zimaos-blue" {
 		t.Errorf("Expected default data path, got %s", i.config.DataPath)
 	}
 }

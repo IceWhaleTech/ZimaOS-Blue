@@ -6,7 +6,7 @@ defineProps<{
 }>()
 
 const variantClasses = {
-  default: 'border-l-gray-900 dark:border-l-gray-400 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20',
+  default: 'border-l-gray-900 dark:border-l-gray-400 bg-gray-700 dark:bg-gray-500/20',
   highlight: 'border-l-amber-500 bg-amber-50 dark:bg-amber-900/20',
   warning: 'border-l-red-500 bg-red-50 dark:bg-red-900/20',
 }

@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/installation.md)
 
-本指南涵盖 ZimaOS-Echo 的所有安装方法。
+本指南涵盖 ZimaOS-Blue 的所有安装方法。
 
 ## 前置要求
 
@@ -29,30 +29,30 @@
 
 ```bash
 # Linux (amd64)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
-chmod +x echo-linux-amd64
-sudo mv echo-linux-amd64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-linux-amd64
+chmod +x blue-linux-amd64
+sudo mv blue-linux-amd64 /usr/local/bin/blue
 
 # Linux (arm64)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-arm64
-chmod +x echo-linux-arm64
-sudo mv echo-linux-arm64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-linux-arm64
+chmod +x blue-linux-arm64
+sudo mv blue-linux-arm64 /usr/local/bin/blue
 
 # macOS (amd64)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-amd64
-chmod +x echo-darwin-amd64
-sudo mv echo-darwin-amd64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-darwin-amd64
+chmod +x blue-darwin-amd64
+sudo mv blue-darwin-amd64 /usr/local/bin/blue
 
 # macOS (arm64 / Apple Silicon)
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-arm64
-chmod +x echo-darwin-arm64
-sudo mv echo-darwin-arm64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-darwin-arm64
+chmod +x blue-darwin-arm64
+sudo mv blue-darwin-arm64 /usr/local/bin/blue
 ```
 
 验证安装：
 
 ```bash
-echo --version
+blue --version
 ```
 
 ### 方法 2：Docker
@@ -64,9 +64,9 @@ echo --version
 version: '3.8'
 
 services:
-  echo:
-    image: icewhaletech/zimaos-echo:latest
-    container_name: zimaos-echo
+  blue:
+    image: icewhaletech/zimaos-blue:latest
+    container_name: zimaos-blue
     ports:
       - "23456:23456"
     volumes:
@@ -96,12 +96,12 @@ docker-compose logs -f
 
 ```bash
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   -p 23456:23456 \
   -v $(pwd)/config:/app/config \
   -v $(pwd)/data:/app/data \
   -e JWT_SECRET=your-secret-key \
-  icewhaletech/zimaos-echo:latest
+  icewhaletech/zimaos-blue:latest
 ```
 
 ### 方法 3：从源码构建
@@ -110,12 +110,12 @@ docker run -d \
 
 ```bash
 # 克隆仓库
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
 
 # 构建后端
 cd server
-go build -o echo ./cmd/echo
+go build -o blue ./cmd/blue
 
 # 构建前端（可选）
 cd ../web
@@ -126,7 +126,7 @@ npm run build
 运行服务器：
 
 ```bash
-./server/echo --config ./config.yaml
+./server/blue --config ./config.yaml
 ```
 
 ### 方法 4：一键安装脚本
@@ -134,7 +134,7 @@ npm run build
 适用于 Linux 系统：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Echo/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-Blue/main/scripts/install.sh | bash
 ```
 
 脚本将：
@@ -150,7 +150,7 @@ ZimaOS 用户：
 
 1. 打开 ZimaOS 控制面板
 2. 导航到应用商店
-3. 搜索 "Echo"
+3. 搜索 "Blue"
 4. 点击 "安装"
 5. 在应用面板中配置设置
 
@@ -159,8 +159,8 @@ ZimaOS 用户：
 ### 1. 创建配置文件
 
 ```bash
-mkdir -p /etc/echo
-cat > /etc/echo/config.yaml << 'EOF'
+mkdir -p /etc/blue
+cat > /etc/blue/config.yaml << 'EOF'
 server:
   host: "0.0.0.0"
   port: 23456
@@ -195,7 +195,7 @@ export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-持久化配置，添加到 `/etc/environment` 或创建 `/etc/echo/env`：
+持久化配置，添加到 `/etc/environment` 或创建 `/etc/blue/env`：
 
 ```bash
 JWT_SECRET=your-generated-secret
@@ -206,37 +206,37 @@ OPENAI_API_KEY=sk-...
 
 ```bash
 # 直接执行
-echo --config /etc/echo/config.yaml
+blue --config /etc/blue/config.yaml
 
 # 或使用 systemd
-sudo systemctl start echo
-sudo systemctl enable echo
+sudo systemctl start blue
+sudo systemctl enable blue
 ```
 
 ## Systemd 服务设置
 
-创建服务文件 `/etc/systemd/system/echo.service`：
+创建服务文件 `/etc/systemd/system/blue.service`：
 
 ```ini
 [Unit]
-Description=ZimaOS Echo AI 助手
+Description=ZimaOS Blue AI 助手
 After=network.target
 
 [Service]
 Type=simple
-User=echo
-Group=echo
-WorkingDirectory=/opt/echo
-ExecStart=/usr/local/bin/echo --config /etc/echo/config.yaml
+User=blue
+Group=blue
+WorkingDirectory=/opt/blue
+ExecStart=/usr/local/bin/blue --config /etc/blue/config.yaml
 Restart=always
 RestartSec=5
-EnvironmentFile=/etc/echo/env
+EnvironmentFile=/etc/blue/env
 
 # 安全加固
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/echo /var/log/echo
+ReadWritePaths=/var/lib/blue /var/log/blue
 
 [Install]
 WantedBy=multi-user.target
@@ -246,19 +246,19 @@ WantedBy=multi-user.target
 
 ```bash
 # 创建用户
-sudo useradd -r -s /bin/false echo
+sudo useradd -r -s /bin/false blue
 
 # 创建目录
-sudo mkdir -p /opt/echo /var/lib/echo /var/log/echo
-sudo chown echo:echo /var/lib/echo /var/log/echo
+sudo mkdir -p /opt/blue /var/lib/blue /var/log/blue
+sudo chown blue:blue /var/lib/blue /var/log/blue
 
 # 启用服务
 sudo systemctl daemon-reload
-sudo systemctl enable echo
-sudo systemctl start echo
+sudo systemctl enable blue
+sudo systemctl start blue
 
 # 检查状态
-sudo systemctl status echo
+sudo systemctl status blue
 ```
 
 ## LLM 提供商设置
@@ -279,7 +279,7 @@ ollama pull llama2
 ollama pull llama2:13b
 ```
 
-配置 Echo：
+配置 Blue：
 
 ```yaml
 llm:
@@ -350,7 +350,7 @@ TOKEN=$(curl -s -X POST http://localhost:23456/api/v1/auth/login \
 curl -X POST http://localhost:23456/api/v1/chat \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"message":"你好，Echo！"}'
+  -d '{"message":"你好，Blue！"}'
 ```
 
 ## 升级
@@ -359,15 +359,15 @@ curl -X POST http://localhost:23456/api/v1/chat \
 
 ```bash
 # 停止服务
-sudo systemctl stop echo
+sudo systemctl stop blue
 
 # 下载新版本
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
-sudo mv echo-linux-amd64 /usr/local/bin/echo
-sudo chmod +x /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-linux-amd64
+sudo mv blue-linux-amd64 /usr/local/bin/blue
+sudo chmod +x /usr/local/bin/blue
 
 # 启动服务
-sudo systemctl start echo
+sudo systemctl start blue
 ```
 
 ### Docker
@@ -386,18 +386,18 @@ docker-compose up -d
 
 ```bash
 # 停止并禁用服务
-sudo systemctl stop echo
-sudo systemctl disable echo
+sudo systemctl stop blue
+sudo systemctl disable blue
 
 # 删除文件
-sudo rm /usr/local/bin/echo
-sudo rm -rf /etc/echo
-sudo rm -rf /var/lib/echo
-sudo rm /etc/systemd/system/echo.service
+sudo rm /usr/local/bin/blue
+sudo rm -rf /etc/blue
+sudo rm -rf /var/lib/blue
+sudo rm /etc/systemd/system/blue.service
 sudo systemctl daemon-reload
 
 # 删除用户
-sudo userdel echo
+sudo userdel blue
 ```
 
 ### Docker
@@ -410,7 +410,7 @@ docker-compose down
 docker-compose down -v
 
 # 删除镜像
-docker rmi icewhaletech/zimaos-echo
+docker rmi icewhaletech/zimaos-blue
 ```
 
 ## 故障排除
@@ -420,7 +420,7 @@ docker rmi icewhaletech/zimaos-echo
 检查日志：
 
 ```bash
-sudo journalctl -u echo -f
+sudo journalctl -u blue -f
 ```
 
 常见问题：

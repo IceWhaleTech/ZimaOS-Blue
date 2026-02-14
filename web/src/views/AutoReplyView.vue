@@ -165,7 +165,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
           {{ t('autoReply.testRules') }}
         </button>
         <button
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
           @click="openCreateModal"
         >
           <svg
@@ -202,7 +202,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('autoReply.disabled') }}</div>
       </div>
       <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ stats.totalMatches }}</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">{{ stats.totalMatches }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('autoReply.totalMatches') }}</div>
       </div>
     </div>
@@ -309,7 +309,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
       </p>
       <button
         v-if="!searchQuery && filterType === 'all' && filterStatus === 'all'"
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
         @click="openCreateModal"
       >
         {{ t('autoReply.createRule') }}
@@ -457,7 +457,7 @@ async function handleTest(message: string, channel?: string): Promise<void> {
         </p>
         <div class="flex justify-end gap-3">
           <button
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
             @click="closeModals"
           >
             {{ t('common.cancel') }}

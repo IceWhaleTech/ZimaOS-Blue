@@ -148,7 +148,7 @@ function getStatusCodeColor(code: number): string {
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{{ t('webhook.title') }}</h1>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="showCreateModal = true"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -169,7 +169,7 @@ function getStatusCodeColor(code: number): string {
       </svg>
       <p class="text-gray-500 dark:text-slate-400">{{ t('webhook.noWebhooks') }}</p>
       <button
-        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
+        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
         @click="showCreateModal = true"
       >
         {{ t('webhook.createFirst') }}
@@ -196,7 +196,7 @@ function getStatusCodeColor(code: number): string {
               >
                 {{ webhook.enabled ? t('webhook.enabled') : t('webhook.disabled') }}
               </span>
-              <span class="px-2 py-0.5 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white rounded-full text-xs font-medium">
+              <span class="px-2 py-0.5 bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white rounded-full text-xs font-medium">
                 {{ webhook.type }}
               </span>
             </div>
@@ -318,7 +318,7 @@ function getStatusCodeColor(code: number): string {
               <button
                 type="submit"
                 :disabled="loading || !newWebhook.name"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ loading ? t('common.creating') : t('webhook.create') }}
               </button>
@@ -406,7 +406,7 @@ function getStatusCodeColor(code: number): string {
             >
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white rounded text-xs font-medium">
+                  <span class="px-2 py-0.5 bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white rounded text-xs font-medium">
                     {{ event.method }}
                   </span>
                   <span :class="['text-sm font-medium', getStatusCodeColor(event.status_code)]">

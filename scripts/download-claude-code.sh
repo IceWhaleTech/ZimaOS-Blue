@@ -1,5 +1,5 @@
 #!/bin/bash
-# Download Claude Code CLI binaries for bundling with ZimaOS-Echo
+# Download Claude Code CLI binaries for bundling with ZimaOS-Blue
 # This script downloads the native Claude Code CLI for supported platforms
 #
 # Usage:

@@ -4,32 +4,32 @@
 
 ### Download Binary
 
-Download the appropriate binary for your platform from [GitHub Releases](https://github.com/IceWhaleTech/ZimaOS-Echo/server/releases).
+Download the appropriate binary for your platform from [GitHub Releases](https://github.com/IceWhaleTech/ZimaOS-Blue/server/releases).
 
 | Platform | Architecture | Download |
 |----------|--------------|----------|
-| Linux | amd64 | `echo-linux-amd64.tar.gz` |
-| Linux | arm64 | `echo-linux-arm64.tar.gz` |
-| macOS | amd64 | `echo-darwin-amd64.tar.gz` |
-| macOS | arm64 | `echo-darwin-arm64.tar.gz` |
-| Windows | amd64 | `echo-windows-amd64.zip` |
+| Linux | amd64 | `blue-linux-amd64.tar.gz` |
+| Linux | arm64 | `blue-linux-arm64.tar.gz` |
+| macOS | amd64 | `blue-darwin-amd64.tar.gz` |
+| macOS | arm64 | `blue-darwin-arm64.tar.gz` |
+| Windows | amd64 | `blue-windows-amd64.zip` |
 
 ### Extract and Install
 
 ```bash
 # Linux/macOS
-tar -xzf echo-linux-amd64.tar.gz
-sudo mv echo /usr/local/bin/
-sudo chmod +x /usr/local/bin/echo
+tar -xzf blue-linux-amd64.tar.gz
+sudo mv blue /usr/local/bin/
+sudo chmod +x /usr/local/bin/blue
 
 # Create config directory
-sudo mkdir -p /etc/zimaos-echo
+sudo mkdir -p /etc/zimaos-blue
 ```
 
 ### Create Configuration
 
 ```bash
-sudo cat > /etc/zimaos-echo/config.yaml << 'EOF'
+sudo cat > /etc/zimaos-blue/config.yaml << 'EOF'
 server:
   host: "0.0.0.0"
   port: 23456
@@ -46,14 +46,14 @@ EOF
 ### Create Systemd Service
 
 ```bash
-sudo cat > /etc/systemd/system/zimaos-echo.service << 'EOF'
+sudo cat > /etc/systemd/system/zimaos-blue.service << 'EOF'
 [Unit]
-Description=ZimaOS Echo
+Description=ZimaOS Blue
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/echo --config /etc/zimaos-echo/config.yaml
+ExecStart=/usr/local/bin/blue --config /etc/zimaos-blue/config.yaml
 Restart=always
 RestartSec=5
 
@@ -62,18 +62,18 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable zimaos-echo
-sudo systemctl start zimaos-echo
+sudo systemctl enable zimaos-blue
+sudo systemctl start zimaos-blue
 ```
 
 ## Docker Installation
 
 ```bash
 docker run -d \
-  --name zimaos-echo \
+  --name zimaos-blue \
   -p 23456:23456 \
-  -v /path/to/config:/etc/zimaos-echo \
-  zimaos/echo:latest
+  -v /path/to/config:/etc/zimaos-blue \
+  zimaos/blue:latest
 ```
 
 ### Docker Compose
@@ -81,13 +81,13 @@ docker run -d \
 ```yaml
 version: '3.8'
 services:
-  echo:
-    image: zimaos/echo:latest
+  blue:
+    image: zimaos/blue:latest
     ports:
       - "23456:23456"
     volumes:
-      - ./config:/etc/zimaos-echo
-      - ./data:/var/lib/zimaos-echo
+      - ./config:/etc/zimaos-blue
+      - ./data:/var/lib/zimaos-blue
     restart: unless-stopped
 ```
 
@@ -96,17 +96,17 @@ services:
 ### Linux
 
 ```bash
-sudo systemctl stop zimaos-echo
-sudo systemctl disable zimaos-echo
-sudo rm /etc/systemd/system/zimaos-echo.service
-sudo rm -rf /opt/zimaos-echo
-sudo userdel zimaos-echo
+sudo systemctl stop zimaos-blue
+sudo systemctl disable zimaos-blue
+sudo rm /etc/systemd/system/zimaos-blue.service
+sudo rm -rf /opt/zimaos-blue
+sudo userdel zimaos-blue
 ```
 
 ### Windows
 
 ```powershell
-Stop-Service ZimaOS-Echo
-sc.exe delete ZimaOS-Echo
-Remove-Item -Recurse "$env:ProgramFiles\ZimaOS-Echo"
+Stop-Service ZimaOS-Blue
+sc.exe delete ZimaOS-Blue
+Remove-Item -Recurse "$env:ProgramFiles\ZimaOS-Blue"
 ```

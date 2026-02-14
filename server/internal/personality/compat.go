@@ -3,9 +3,9 @@ package personality
 import (
 	"database/sql"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/controller"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/model"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/personality/view"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/controller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/model"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/view"
 )
 
 // 向后兼容性导出

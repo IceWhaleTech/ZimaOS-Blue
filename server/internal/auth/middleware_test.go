@@ -16,7 +16,7 @@ func TestAuthMiddleware_JWT(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	jwtSvc := NewJWTService(jwtCfg)
 
@@ -79,7 +79,7 @@ func TestAuthMiddleware_JWT(t *testing.T) {
 			Secret:            "test-secret-key-at-least-32-chars",
 			Expiration:        -time.Hour,
 			RefreshExpiration: 24 * time.Hour,
-			Issuer:            "zimaos-echo",
+			Issuer:            "zimaos-blue",
 		}
 		expiredSvc := NewJWTService(expiredCfg)
 		claims := &UserClaims{
@@ -186,7 +186,7 @@ func TestAuthMiddleware_Combined(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	jwtSvc := NewJWTService(jwtCfg)
 
@@ -252,7 +252,7 @@ func TestAuthMiddleware_Optional(t *testing.T) {
 		Secret:            "test-secret-key-at-least-32-chars",
 		Expiration:        time.Hour,
 		RefreshExpiration: 24 * time.Hour,
-		Issuer:            "zimaos-echo",
+		Issuer:            "zimaos-blue",
 	}
 	jwtSvc := NewJWTService(jwtCfg)
 

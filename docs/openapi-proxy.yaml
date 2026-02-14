@@ -1,13 +1,13 @@
 openapi: 3.0.3
 info:
-  title: ZimaOS Echo - API Proxy Sidecar
+  title: ZimaOS Blue - API Proxy Sidecar
   description: |
     API Proxy Sidecar provides intelligent routing, failover, security monitoring,
     and usage statistics for LLM API calls.
   version: 0.10.5
   contact:
     name: IceWhale Tech
-    url: https://github.com/IceWhaleTech/ZimaOS-Echo
+    url: https://github.com/IceWhaleTech/ZimaOS-Blue
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0

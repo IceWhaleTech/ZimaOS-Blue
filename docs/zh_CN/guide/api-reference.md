@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/api-reference.md)
 
-本文档提供 ZimaOS-Echo REST API 的完整参考。
+本文档提供 ZimaOS-Blue REST API 的完整参考。
 
 ## 基础 URL
 
@@ -12,7 +12,7 @@ http://localhost:23456/api/v1
 
 ## 认证
 
-大多数端点需要认证。ZimaOS-Echo 支持两种认证方式：
+大多数端点需要认证。ZimaOS-Blue 支持两种认证方式：
 
 ### JWT 令牌
 
@@ -899,13 +899,13 @@ ws://localhost:23456/api/v1/ws/chat?token=<jwt-token>
 package main
 
 import (
-    "github.com/IceWhaleTech/ZimaOS-Echo/sdk/go/echo"
+    "github.com/IceWhaleTech/ZimaOS-Blue/sdk/go/blue"
 )
 
 func main() {
-    client := echo.NewClient("http://localhost:23456", "your-api-key")
+    client := blue.NewClient("http://localhost:23456", "your-api-key")
 
-    resp, err := client.Chat("你好，Echo！")
+    resp, err := client.Chat("你好，Blue！")
     if err != nil {
         panic(err)
     }
@@ -917,24 +917,24 @@ func main() {
 ### Python
 
 ```python
-from echo_sdk import EchoClient
+from blue_sdk import BlueClient
 
-client = EchoClient("http://localhost:23456", api_key="your-api-key")
+client = BlueClient("http://localhost:23456", api_key="your-api-key")
 
-response = client.chat("你好，Echo！")
+response = client.chat("你好，Blue！")
 print(response.message)
 ```
 
 ### JavaScript
 
 ```javascript
-import { EchoClient } from '@zimaos/echo-sdk';
+import { BlueClient } from '@zimaos/blue-sdk';
 
-const client = new EchoClient('http://localhost:23456', {
+const client = new BlueClient('http://localhost:23456', {
   apiKey: 'your-api-key'
 });
 
-const response = await client.chat('你好，Echo！');
+const response = await client.chat('你好，Blue！');
 console.log(response.message);
 ```
 

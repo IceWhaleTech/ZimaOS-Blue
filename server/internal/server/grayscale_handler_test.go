@@ -10,7 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
 func TestGrayscaleHandler_ListFlags(t *testing.T) {

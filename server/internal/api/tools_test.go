@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/adapters"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/adapters"
 )
 
 func TestToolsHandler_GetCompatibility(t *testing.T) {

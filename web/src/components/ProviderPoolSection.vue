@@ -646,7 +646,7 @@ onMounted(() => {
       </div>
       <div class="flex gap-2">
         <button
-          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
+          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
           @click="showAddModal = true"
         >
           <span>+</span>
@@ -663,7 +663,7 @@ onMounted(() => {
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
           activeTab === tab
-            ? 'bg-gray-700 dark:bg-gray-700 text-white'
+            ? 'bg-gray-700 dark:bg-gray-500 text-white'
             : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600'
         ]"
         @click="activeTab = tab"
@@ -750,7 +750,7 @@ onMounted(() => {
             {{ t('ideDiscovery.noConfigsHint') }}
           </p>
           <button
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
             @click="showIDEDiscoveryModal = true"
           >
             {{ t('ideDiscovery.scan') }}
@@ -831,7 +831,7 @@ onMounted(() => {
                   class="sr-only peer"
                   @change="toggleProvider(provider)"
                 />
-                <div class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-gray-700 dark:bg-gray-700"></div>
+                <div class="w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
               </label>
             </div>
           </div>
@@ -951,7 +951,7 @@ onMounted(() => {
                   {{ detectingCapabilities === currentTabSelectedProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
                 </button>
                 <button
-                  class="px-2 py-1 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded text-xs"
+                  class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
                   @click="openParamsModal"
                 >
                   {{ t('common.edit') }}
@@ -994,7 +994,7 @@ onMounted(() => {
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
               <button
                 v-if="currentTabSelectedProvider!.type !== 'trial'"
-                class="px-2 py-1 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded text-xs"
+                class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
                 @click="openKeyModal(currentTabSelectedProvider!.id)"
               >
                 + {{ t('providerPool.addKey') }}
@@ -1216,7 +1216,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
             >
               {{ t('common.add') }}
             </button>
@@ -1259,7 +1259,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
             >
               {{ t('common.add') }}
             </button>
@@ -1337,7 +1337,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
             >
               {{ t('common.save') }}
             </button>
@@ -1404,7 +1404,7 @@ onMounted(() => {
             </button>
             <button
               type="submit"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
             >
               {{ t('common.save') }}
             </button>
@@ -1486,7 +1486,7 @@ onMounted(() => {
           <button
             type="button"
             :disabled="savingAllowedModels"
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg disabled:opacity-50"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50"
             @click="saveAllowedModels"
           >
             {{ savingAllowedModels ? t('common.saving') : t('common.save') }}
@@ -1496,6 +1496,7 @@ onMounted(() => {
     </div>
 
     <!-- IDE Discovery Modal -->
+    <Teleport to="body">
     <div
       v-if="showIDEDiscoveryModal"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -1520,5 +1521,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>

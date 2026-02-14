@@ -2,24 +2,24 @@
 layout: home
 
 hero:
-  name: ZimaOS Echo
-  text: NAS 原生 Agent 运行时
-  tagline: 轻量、高性能的 AI Agent 运行时，专为低功耗 NAS 设备优化
+  name: ZimaOS Blue
+  text: 面向具有更大胆思维的建造者的本地优先代理运行时
+  tagline: 轻量、高性能的 AI Agent 运行时
   image:
     src: /logo.svg
-    alt: ZimaOS Echo
+    alt: ZimaOS Blue
   actions:
     - theme: brand
       text: 快速开始
       link: /zh_CN/guide/getting-started
     - theme: alt
       text: GitHub
-      link: https://github.com/IceWhaleTech/ZimaOS-Echo/server
+      link: https://github.com/IceWhaleTech/ZimaOS-Blue/server
 
 features:
   - icon: 🚀
     title: 轻量级
-    details: 单一二进制文件 < 15MB，内存占用 < 80MB，专为 NAS 设备优化
+    details: 单一二进制文件 < 15MB，内存占用 < 80MB，专为低功耗设备优化
   - icon: ⚡
     title: 高性能
     details: 使用 Go 构建，利用 goroutine 实现高吞吐低延迟
@@ -40,16 +40,16 @@ features:
 ## 从源码安装
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 更多方式见 [安装指南](/zh_CN/guide/installation.md)。
 
-## 什么是 ZimaOS Echo？
+## 什么是 ZimaOS Blue？
 
-ZimaOS Echo 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感来源于 [clawdbot](https://github.com/clawdbot/clawdbot)。它专为低功耗 NAS 和边缘设备设计，提供：
+ZimaOS Blue 是一个使用 Go 构建的 **面向具有更大胆思维的建造者的本地优先代理运行时**，灵感来源于 [clawdbot](https://github.com/clawdbot/clawdbot)。它专为低功耗设备设计，提供：
 
 - **极低资源占用**：在 CPU 和内存有限的设备上高效运行
 - **长期稳定性**：专为 24/7 不间断运行设计
@@ -60,7 +60,7 @@ ZimaOS Echo 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  ZimaOS-Echo                     │
+│                  ZimaOS-Blue                     │
 ├─────────────────────────────────────────────────┤
 │  Vue 3 前端  │  REST API  │  WebSocket          │
 ├─────────────────────────────────────────────────┤
@@ -71,6 +71,6 @@ ZimaOS Echo 是一个使用 Go 构建的 **NAS 原生 Agent 运行时**，灵感
 │  LLM 提供商 │ 工具 │ 记忆 │ 上下文                │
 ├─────────────────────────────────────────────────┤
 │              数据层                              │
-│  SQLite │ BoltDB │ 文件                         │
+│  SQLite │ JSON 文件 │ 文件                        │
 └─────────────────────────────────────────────────┘
 ```

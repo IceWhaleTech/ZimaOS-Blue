@@ -68,14 +68,14 @@ async fn check_existing_server(port: u16) -> bool {
     }
 }
 
-/// Kill any existing echo-server processes
+/// Kill any existing blue-server processes
 fn kill_existing_echo_servers() {
-    info!("Checking for existing echo-server processes");
+    info!("Checking for existing blue-server processes");
 
     #[cfg(unix)]
     {
         let _ = Command::new("pkill")
-            .args(["-f", "echo-server"])
+            .args(["-f", "blue-server"])
             .output();
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -83,7 +83,7 @@ fn kill_existing_echo_servers() {
     #[cfg(windows)]
     {
         let _ = Command::new("taskkill")
-            .args(["/F", "/IM", "echo-server.exe"])
+            .args(["/F", "/IM", "blue-server.exe"])
             .output();
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -98,9 +98,9 @@ fn get_sidecar_path() -> Result<std::path::PathBuf, String> {
         .ok_or_else(|| "Failed to get exe directory".to_string())?;
 
     let sidecar_name = if cfg!(target_os = "windows") {
-        "echo-server.exe"
+        "blue-server.exe"
     } else {
-        "echo-server"
+        "blue-server"
     };
 
     let sidecar_path = exe_dir.join(sidecar_name);

@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 )
 
 // MemoryHandler handles memory-related endpoints.
@@ -422,7 +422,7 @@ func (h *MemoryHandler) ExportMarkdown(c echo.Context) error {
 
 	// Build Markdown content
 	now := time.Now().Format("2006-01-02 15:04:05")
-	md := "# ZimaOS-Echo Memory Export\n\n"
+	md := "# ZimaOS-Blue Memory Export\n\n"
 	md += "> Exported at: " + now + "\n"
 	if startDate != nil || endDate != nil {
 		md += "> Date range: "
@@ -580,8 +580,8 @@ func parseMarkdownMemories(content string) []parsedMemory {
 			continue
 		}
 
-		// Skip header section (contains "# ZimaOS-Echo Memory Export")
-		if containsString(section, "# ZimaOS-Echo Memory Export") || containsString(section, "> Exported at:") {
+		// Skip header section (contains "# ZimaOS-Blue Memory Export")
+		if containsString(section, "# ZimaOS-Blue Memory Export") || containsString(section, "> Exported at:") {
 			continue
 		}
 

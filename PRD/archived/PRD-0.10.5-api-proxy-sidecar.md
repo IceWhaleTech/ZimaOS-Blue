@@ -2,7 +2,7 @@
 
 ## Overview
 
-This PRD defines a **major architectural enhancement** for ZimaOS-Echo: a local API Proxy Sidecar that intercepts and manages all Claude Code CLI requests. This component serves as a unified gateway for LLM API traffic, providing high availability, session monitoring, prompt injection interception, usage statistics, and future-proof extensibility.
+This PRD defines a **major architectural enhancement** for ZimaOS-Blue: a local API Proxy Sidecar that intercepts and manages all Claude Code CLI requests. This component serves as a unified gateway for LLM API traffic, providing high availability, session monitoring, prompt injection interception, usage statistics, and future-proof extensibility.
 
 ## Goals
 
@@ -26,7 +26,7 @@ This PRD defines a **major architectural enhancement** for ZimaOS-Echo: a local 
 
 ## Target Users
 
-- ZimaOS-Echo users who want centralized API management
+- ZimaOS-Blue users who want centralized API management
 - Developers who need detailed usage analytics
 - Security-conscious users who want prompt injection protection
 - Users with multiple LLM providers requiring unified access
@@ -37,7 +37,7 @@ This PRD defines a **major architectural enhancement** for ZimaOS-Echo: a local 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           ZimaOS-Echo Application                                │
+│                           ZimaOS-Blue Application                                │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
 │  ┌─────────────────────────────────────────────────────────────────────────┐    │
@@ -185,8 +185,8 @@ func GetProxyEndpoint() string {
 
 **Port Discovery Methods:**
 
-1. **Port File**: Write port to `~/.local/share/zimaos-echo/proxy.port`
-2. **Environment Variable**: Export as `ECHO_PROXY_PORT`
+1. **Port File**: Write port to `~/.local/share/zimaos-blue/proxy.port`
+2. **Environment Variable**: Export as `BLUE_PROXY_PORT`
 3. **API Endpoint**: Query `/api/v1/proxy/status` for current port
 4. **Unix Socket** (optional): Use Unix domain socket instead of TCP
 

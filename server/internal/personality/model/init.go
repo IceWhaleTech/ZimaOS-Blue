@@ -14,7 +14,14 @@ func InitializeDefaultPersonality(dataDir string) error {
 	}
 
 	// Check if default personality already exists
-	if _, err := storage.GetByID("default"); err == nil {
+	if existing, err := storage.GetByID("default"); err == nil {
+		// Migrate: rename Echo -> Blue if needed
+		if existing.Name == "Echo" {
+			existing.Name = "Blue"
+			existing.Description = "Default ZimaOS Blue AI Assistant"
+			existing.UpdatedAt = time.Now()
+			_ = storage.Update(existing)
+		}
 		return nil // Already exists
 	}
 
@@ -30,8 +37,8 @@ func InitializeDefaultPersonality(dataDir string) error {
 	now := time.Now()
 	defaultPersonality := &Personality{
 		ID:           "default",
-		Name:         "Echo",
-		Description:  "Default ZimaOS Echo AI Assistant",
+		Name:         "Blue",
+		Description:  "Default ZimaOS Blue AI Assistant",
 		SystemPrompt: string(soulContent),
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -45,10 +52,10 @@ func InitializeDefaultPersonality(dataDir string) error {
 	return storage.Create(defaultPersonality)
 }
 
-const defaultSoulContent = `# Echo - ZimaOS AI Assistant
+const defaultSoulContent = `# Blue - ZimaOS AI Assistant
 
 ## Identity
-You are Echo, the AI assistant for ZimaOS - a personal cloud operating system.
+You are Blue, the AI assistant for ZimaOS - a personal cloud operating system.
 
 ## Core Values
 - Clarity over complexity

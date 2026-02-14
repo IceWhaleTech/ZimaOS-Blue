@@ -30,7 +30,7 @@ const emit = defineEmits<{
 function getColorClasses(color: QuickAction['color'] = 'primary'): string {
   switch (color) {
     case 'primary':
-      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/30'
+      return 'bg-gray-700 dark:bg-gray-500/20 text-gray-900 dark:text-white dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-200 dark:bg-gray-600/30'
     case 'success':
       return 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
     case 'warning':

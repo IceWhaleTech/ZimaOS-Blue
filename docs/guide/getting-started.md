@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you get ZimaOS Echo up and running quickly.
+This guide will help you get ZimaOS Blue up and running quickly.
 
 ## Prerequisites
 
@@ -13,9 +13,9 @@ This guide will help you get ZimaOS Echo up and running quickly.
 Build and run from source:
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 See [Installation](installation.md) for binary download and other options.
@@ -26,10 +26,10 @@ After installation, verify the service is running:
 
 ```bash
 # Linux
-systemctl status zimaos-echo
+systemctl status zimaos-blue
 
 # Windows
-Get-Service ZimaOS-Echo
+Get-Service ZimaOS-Blue
 ```
 
 Access the dashboard at `http://localhost:23456`

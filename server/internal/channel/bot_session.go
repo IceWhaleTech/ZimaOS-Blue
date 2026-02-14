@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/google/uuid"
 )
 

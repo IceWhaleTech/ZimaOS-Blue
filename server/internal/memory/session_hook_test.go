@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/session"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 )
 
 func TestSessionMemoryHook(t *testing.T) {

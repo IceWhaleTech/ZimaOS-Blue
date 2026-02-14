@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/stt"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 )
 
 // InitConfig holds configuration for lazy initialization of TTS/STT services.
@@ -109,7 +109,7 @@ func (s *service) Initialize() error {
 
 	// Initialize TTS provider based on configuration
 	if s.config.TTS.Provider == "" {
-		s.config.TTS.Provider = "espeak-ng" // Default to eSpeak-NG
+		s.config.TTS.Provider = "edge-tts" // Default to Edge TTS
 	}
 
 	// TTS provider initialization is handled by ttsService

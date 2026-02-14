@@ -247,7 +247,7 @@ function getNextRunText(job: CronJob): string {
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{{ t('cron.title') }}</h1>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="openCreateModal"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -268,7 +268,7 @@ function getNextRunText(job: CronJob): string {
       </svg>
       <p class="text-gray-500 dark:text-slate-400">{{ t('cron.noJobs') }}</p>
       <button
-        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
+        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
         @click="openCreateModal"
       >
         {{ t('cron.createFirst') }}
@@ -327,7 +327,7 @@ function getNextRunText(job: CronJob): string {
             <button
               v-if="job.enabled"
               :title="t('cron.triggerNow')"
-              class="p-2 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
+              class="p-2 text-gray-900 dark:text-white dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
               @click="triggerJob(job)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -442,7 +442,7 @@ function getNextRunText(job: CronJob): string {
                   :class="[
                     'p-3 rounded-lg border-2 text-left transition-colors',
                     jobForm.handler === ht.value
-                      ? 'border-gray-900 dark:border-gray-700 bg-gray-700 dark:bg-gray-700/10 dark:bg-gray-700 dark:bg-gray-700/20'
+                      ? 'border-gray-900 dark:border-gray-700 bg-gray-100 dark:bg-gray-600/10 dark:bg-gray-200 dark:bg-gray-600/20'
                       : 'border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500'
                   ]"
                   @click="jobForm.handler = ht.value"
@@ -527,7 +527,7 @@ function getNextRunText(job: CronJob): string {
               <button
                 type="submit"
                 :disabled="loading || !jobForm.name || !jobForm.schedule || (showCreateModal && !jobForm.handler) || (jobForm.handler === 'command' && !jobForm.command) || (jobForm.handler === 'http' && !jobForm.url)"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ loading ? t('common.saving') : (showCreateModal ? t('cron.create') : t('common.save')) }}
               </button>

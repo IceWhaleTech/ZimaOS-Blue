@@ -77,7 +77,7 @@ watch(searchQuery, (query) => {
     <!-- Header -->
     <div class="p-4 border-b border-gray-200 dark:border-gray-700">
       <button
-        class="w-full py-2 px-4 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+        class="w-full py-2 px-4 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
         @click="handleCreate"
       >
         <svg

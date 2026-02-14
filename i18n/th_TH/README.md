@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** เป็นรันไทม์เอเจนต์ AI ที่เบาและประสิทธิภาพสูง ออกแบบมาสำหรับ NAS และอุปกรณ์เอจ สร้างด้วย Go ให้แพลตฟอร์มพร้อมใช้งานจริงพร้อมการติดตั้งแบบไม่ต้องตั้งค่า การตรวจสอบเซสชัน และการวิเคราะห์การใช้งาน
+**ZimaOS Blue** เป็นรันไทม์เอเจนต์ AI ที่เบาและประสิทธิภาพสูง ออกแบบมาสำหรับ NAS และอุปกรณ์เอจ สร้างด้วย Go ให้แพลตฟอร์มพร้อมใช้งานจริงพร้อมการติดตั้งแบบไม่ต้องตั้งค่า การตรวจสอบเซสชัน และการวิเคราะห์การใช้งาน
 
 [เริ่มต้นอย่างรวดเร็ว](#เริ่มต้นอย่างรวดเร็ว) · [ฟีเจอร์](#ฟีเจอร์หลัก)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # จากซอร์ส
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 เข้าแดชบอร์ดที่ `http://localhost:3000`
 
 ## การตั้งค่าผู้ให้บริการ LLM
 
-ZimaOS Echo รองรับผู้ให้บริการ LLM หลายราย รวมถึงบริการ LLM ในเครื่อง:
+ZimaOS Blue รองรับผู้ให้บริการ LLM หลายราย รวมถึงบริการ LLM ในเครื่อง:
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # ล้างอาร์ติแฟกต์บิล
 ### โครงสร้างโปรเจกต์
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # แบ็กเอนด์ Go
-│   ├── cmd/echo/       # จุดเข้า
+│   ├── cmd/blue/       # จุดเข้า
 │   └── internal/       # โมดูลหลัก
 ├── web/                # ฟรอนต์เอนด์ Vue 3
 │   └── src/

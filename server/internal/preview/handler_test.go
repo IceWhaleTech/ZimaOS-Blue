@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/labstack/echo/v4"
 	_ "github.com/mattn/go-sqlite3"
 )

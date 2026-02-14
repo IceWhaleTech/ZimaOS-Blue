@@ -19,6 +19,7 @@ export const channelIcons: Record<string, string> = {
   msteams: '/icons/channels/teams.svg',
   nextcloud: '/icons/channels/nextcloud.svg',
   'nextcloud-talk': '/icons/channels/nextcloud.svg',
+  nextcloudtalk: '/icons/channels/nextcloud.svg',
   // LLM providers
   openai: '/icons/channels/openai.svg',
   anthropic: '/icons/channels/anthropic.svg',

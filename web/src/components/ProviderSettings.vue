@@ -226,7 +226,7 @@ function clearApiKey() {
       <div v-else-if="error && providers.length === 0" class="text-center py-8">
         <p class="text-red-500 dark:text-red-400 mb-4">{{ error }}</p>
         <button
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg"
           @click="loadProviders"
         >
           {{ t('common.retry') }}
@@ -357,7 +357,7 @@ function clearApiKey() {
           <div class="flex items-center gap-3 pt-2">
             <button
               :disabled="!hasChanges || saving"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               @click="saveConfig"
             >
               <span v-if="saving" class="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />

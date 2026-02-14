@@ -165,7 +165,7 @@ function closeRecoveryCodes() {
           <button
             v-if="!mfaStatus.enabled"
             :disabled="loading"
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
             @click="startSetup"
           >
             {{ t('mfa.setup') }}
@@ -232,7 +232,7 @@ function closeRecoveryCodes() {
         <div class="flex gap-3">
           <button
             :disabled="loading || verificationCode.length !== 6"
-            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
             @click="verifySetup"
           >
             {{ loading ? t('common.verifying') : t('mfa.verify') }}
@@ -280,7 +280,7 @@ function closeRecoveryCodes() {
 
           <div class="flex gap-3">
             <button
-              class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+              class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
               @click="copyRecoveryCodes"
             >
               <svg v-if="!copiedCodes" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

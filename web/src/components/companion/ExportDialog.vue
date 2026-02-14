@@ -145,7 +145,7 @@ function toggleSelectAll() {
                 :class="[
                   'p-3 rounded-lg border-2 text-left transition-colors',
                   format === opt.value
-                    ? 'border-gray-900 dark:border-gray-700 bg-gray-700 dark:bg-gray-700/5'
+                    ? 'border-gray-900 dark:border-gray-700 bg-gray-100 dark:bg-gray-600/5'
                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
                 ]"
                 @click="format = opt.value as 'json' | 'csv'"
@@ -254,7 +254,7 @@ function toggleSelectAll() {
             {{ t('common.cancel') }}
           </button>
           <button
-            class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            class="px-4 py-2 text-sm bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             :disabled="exporting"
             @click="handleExport"
           >

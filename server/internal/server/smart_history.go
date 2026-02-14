@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 )
 
 // ConversationState tracks the state of a conversation for incremental fetching.

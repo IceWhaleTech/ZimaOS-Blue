@@ -89,7 +89,7 @@ onUnmounted(() => {
 
         <!-- Progress bar -->
         <div
-          class="h-1.5 bg-gray-700 dark:bg-gray-700 rounded-full cursor-pointer group"
+          class="h-1.5 bg-gray-700 dark:bg-gray-500 rounded-full cursor-pointer group"
           @click="handleSeek"
         >
           <div

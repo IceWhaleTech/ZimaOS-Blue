@@ -164,7 +164,7 @@ const nodeTypes = {
         </svg>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ error }}</p>
         <button
-          class="mt-4 px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:bg-gray-700/90"
+          class="mt-4 px-4 py-2 text-sm bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400"
           @click="loadFlow"
         >
           {{ t('companion.flow.retry') }}
@@ -250,7 +250,7 @@ const nodeTypes = {
       <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">{{ t('companion.flow.legend') }}</div>
       <div class="space-y-1.5">
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded bg-gray-700 dark:bg-gray-700" />
+          <div class="w-3 h-3 rounded bg-gray-700 dark:bg-gray-500" />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{ t('companion.flow.nodeTypes.message') }}</span>
         </div>
         <div class="flex items-center gap-2">

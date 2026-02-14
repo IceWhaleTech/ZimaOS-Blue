@@ -9,11 +9,11 @@
 
 ## Objective
 
-Following ClawdBot's documentation and code, implement equivalent CLI parameter functionality for ZimaOS-Echo to provide complete CLI management capabilities.
+Following ClawdBot's documentation and code, implement equivalent CLI parameter functionality for ZimaOS-Blue to provide complete CLI management capabilities.
 
 ## Current State
 
-ZimaOS-Echo current CLI functionality (`server/cmd/echo/main.go`):
+ZimaOS-Blue current CLI functionality (`server/cmd/blue/main.go`):
 - `--config <path>` - Configuration file path
 - `--version` - Display version information
 - `--help` - Display help information
@@ -29,8 +29,8 @@ Implement ClawdBot core CLI commands in phases by priority.
 
 ### 1.1 Global Flags
 
-- [x] `--dev` - Isolate state to `~/.zimaos-echo-dev`, use different port
-- [x] `--profile <name>` - Isolate state to `~/.zimaos-echo-<name>`
+- [x] `--dev` - Isolate state to `~/.zimaos-blue-dev`, use different port
+- [x] `--profile <name>` - Isolate state to `~/.zimaos-blue-<name>`
 - [x] `--no-color` - Disable ANSI color output
 - [x] `-V`, `--version`, `-v` - Print version and exit (existing, needs unification)
 
@@ -276,7 +276,7 @@ Recommended: [cobra](https://github.com/spf13/cobra):
 ```
 server/
 ├── cmd/
-│   └── echo/
+│   └── blue/
 │       ├── main.go           # Entry point
 │       ├── root.go           # Root command
 │       ├── status.go         # status command
@@ -300,10 +300,10 @@ server/
 
 ### Configuration Storage
 
-- Config file: `~/.zimaos-echo/config.yaml`
-- State data: `~/.zimaos-echo/data/`
-- Log files: `~/.zimaos-echo/logs/`
-- Profile isolation: `~/.zimaos-echo-<profile>/`
+- Config file: `~/.zimaos-blue/config.yaml`
+- State data: `~/.zimaos-blue/data/`
+- Log files: `~/.zimaos-blue/logs/`
+- Profile isolation: `~/.zimaos-blue-<profile>/`
 
 ---
 

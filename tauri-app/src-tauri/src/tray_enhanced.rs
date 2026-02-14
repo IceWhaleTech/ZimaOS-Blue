@@ -30,7 +30,7 @@ pub fn build_tray_menu(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>
         .icon(icon)
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip("ZimaOS Echo - AI Gateway")
+        .tooltip("ZimaOS Blue - AI Gateway")
         .on_menu_event(|app, event| {
             match event.id.as_ref() {
                 "show" => {

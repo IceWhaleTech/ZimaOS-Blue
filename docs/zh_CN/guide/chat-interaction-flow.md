@@ -1,6 +1,6 @@
 # 聊天交互流程
 
-本文描述 ZimaOS-Echo 中完整的聊天交互流程，重点说明与 Claude Code CLI 的集成。
+本文描述 ZimaOS-Blue 中完整的聊天交互流程，重点说明与 Claude Code CLI 的集成。
 
 ## 概述
 

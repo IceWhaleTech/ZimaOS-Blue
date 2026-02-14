@@ -19,7 +19,7 @@ func (a *Applier) exec() error {
 	}
 
 	cmd := exec.Command(a.binaryPath, os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("ECHO_START_TIME=%d", a.startTime.Unix()))
+	cmd.Env = append(os.Environ(), fmt.Sprintf("BLUE_START_TIME=%d", a.startTime.Unix()))
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func (a *Applier) exec() error {
 
 // GetStartTime returns the service start time
 func GetStartTime() time.Time {
-	if s := os.Getenv("ECHO_START_TIME"); s != "" {
+	if s := os.Getenv("BLUE_START_TIME"); s != "" {
 		if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
 			return time.Unix(ts, 0)
 		}

@@ -183,7 +183,7 @@ onUnmounted(() => {
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-semibold text-gray-700 dark:text-white">{{ t('system.detailedSystemInfo') }}</h3>
         <button
-          class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors"
+          class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors"
           @click="toggleDetailedInfo"
         >
           {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}

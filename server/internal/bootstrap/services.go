@@ -11,17 +11,17 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/password"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/providerpool"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill/builtin"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/tools"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/user"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/worker"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 )
 
 // Services holds all initialized services

@@ -36,7 +36,7 @@ export type LocaleKey =
   | 'zh-CN'
   | 'zh-TW'
 
-const LOCALE_KEY = 'zimaos-echo-locale'
+const LOCALE_KEY = 'zimaos-blue-locale'
 
 // Map browser language codes to our locale keys
 const browserLocaleMap: Record<string, LocaleKey> = {

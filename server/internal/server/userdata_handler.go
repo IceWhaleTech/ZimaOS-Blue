@@ -16,7 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/pbkdf2"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 )
 
 // UserDataExport represents the exported user data structure

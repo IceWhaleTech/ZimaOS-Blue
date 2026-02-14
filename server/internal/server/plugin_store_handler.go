@@ -7,8 +7,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/plugin"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 )
 
 // PluginStoreHandler handles plugin store HTTP requests

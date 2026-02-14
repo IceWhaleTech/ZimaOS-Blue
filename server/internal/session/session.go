@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 )
 
 // SessionID uniquely identifies a session.

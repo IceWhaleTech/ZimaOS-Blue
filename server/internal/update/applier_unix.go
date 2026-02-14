@@ -12,13 +12,13 @@ import (
 
 // exec performs hot update using syscall.Exec (Linux/macOS)
 func (a *Applier) exec() error {
-	env := append(os.Environ(), fmt.Sprintf("ECHO_START_TIME=%d", a.startTime.Unix()))
+	env := append(os.Environ(), fmt.Sprintf("BLUE_START_TIME=%d", a.startTime.Unix()))
 	return syscall.Exec(a.binaryPath, os.Args, env)
 }
 
 // GetStartTime returns the service start time (preserved across hot updates)
 func GetStartTime() time.Time {
-	if s := os.Getenv("ECHO_START_TIME"); s != "" {
+	if s := os.Getenv("BLUE_START_TIME"); s != "" {
 		if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
 			return time.Unix(ts, 0)
 		}

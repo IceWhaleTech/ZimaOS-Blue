@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/crawler"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/crawler"
 )
 
 func Example_basicUsage() {

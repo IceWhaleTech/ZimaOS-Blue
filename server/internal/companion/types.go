@@ -35,6 +35,7 @@ const (
 	EventSecurityThreat  SessionEventType = "security_threat"
 	EventSandboxExec     SessionEventType = "sandbox_exec"
 	EventError           SessionEventType = "error"
+	EventHeartbeat       SessionEventType = "heartbeat"
 )
 
 // SessionStatus represents the status of a session.

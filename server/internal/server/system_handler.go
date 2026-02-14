@@ -10,11 +10,11 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/cache"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/security"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/sysinfo"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
 )
 
 // SystemHandler handles system-related API endpoints

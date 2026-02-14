@@ -170,7 +170,7 @@ export default {
   brand: {
     ...enUS.brand,
     name: 'ZimaOS',
-    tagline: 'Echo 助理',
+    tagline: 'Blue 助理',
   },
   errors: {
     ...enUS.errors,
@@ -342,7 +342,7 @@ export default {
   },
   home: {
     ...enUS.home,
-    welcome: '歡迎使用 ZimaOS Echo',
+    welcome: '歡迎使用 ZimaOS Blue',
     description: '為智慧家庭控制與自動化打造的智慧 AI 助理',
     loadingStatus: '正在載入系統狀態...',
     status: '狀態',
@@ -375,7 +375,7 @@ export default {
       ollama: 'Ollama（本機）',
       custom: '自訂 OpenAI 相容',
       trial: {
-        name: 'ZimaOS Echo試用',
+        name: 'ZimaOS Blue試用',
         description: '免費試用，額度有限',
         quotaExhausted: '試用額度已用完',
         quotaExhaustedTokens: '您的試用 Token 額度已用完，請設定自己的提供商以繼續使用。',
@@ -384,7 +384,7 @@ export default {
         conversationsUsed: '已使用 {used} / {total} 次對話',
         configureProvider: '設定提供商',
         trialEnded: '試用已結束',
-        trialEndedDesc: '您的免費試用已結束。請新增自己的 API 金鑰以繼續使用 Echo。',
+        trialEndedDesc: '您的免費試用已結束。請新增自己的 API 金鑰以繼續使用 Blue。',
       },
     },
     providerConfiguration: '提供商設定',
@@ -575,7 +575,7 @@ export default {
   },
   footer: {
     ...enUS.footer,
-    version: 'ZimaOS Echo v{version}',
+    version: 'ZimaOS Blue v{version}',
   },
   system: {
     ...enUS.system,
@@ -1174,7 +1174,7 @@ export default {
     invite: {
       title: '邀請成員',
       emailAddress: '電子郵件地址',
-      emailPlaceholder: 'user@example.com',
+      emailPlaceholder: "user{'@'}example.com",
       role: '角色',
       sendInvitation: '傳送邀請',
       sending: '傳送中...',
@@ -1230,7 +1230,7 @@ export default {
     cost: '費用',
     // 進程指標
     processMetrics: '進程指標',
-    echoServer: 'Echo 伺服器',
+    echoServer: 'Blue 伺服器',
     claudeCodeCli: 'Claude Code CLI',
     pid: '進程 ID',
     cpu: 'CPU',
@@ -1889,7 +1889,7 @@ export default {
     viewDocs: '查看文件',
     // Channel descriptions
     telegramDesc: '連接 Telegram Bot API',
-    telegramHint: '透過 @BotFather 建立機器人並取得 Bot Token',
+    telegramHint: "透過 {'@'}BotFather 建立機器人並取得 Bot Token",
     telegramOpenChat: '開啟機器人對話',
     botUsername: '機器人使用者名稱',
     discordDesc: '連接 Discord Bot',
@@ -2327,14 +2327,14 @@ export default {
       uppercase: '一個大寫字母',
       lowercase: '一個小寫字母',
       number: '一個數字',
-      special: '一個特殊字元 (!@#$%...)',
+      special: "一個特殊字元 (!{'@'}#$%...)",
     },
   },
   onboarding: {
-    welcome: '歡迎使用 Echo！',
+    welcome: '歡迎使用 Blue！',
     subtitle: '您的個人 AI 助手已就緒',
     previewMode: '預覽模式',
-    previewModeDesc: '您可以立即開始使用 Echo，所有功能可用，資料將被儲存。',
+    previewModeDesc: '您可以立即開始使用 Blue，所有功能可用，資料將被儲存。',
     createAccountHint: '隨時建立帳戶',
     createAccountHintDesc: '準備好後，建立管理員帳戶以解鎖使用者管理並保護您的資料。',
     topRightHint: '請留意右上角按鈕',
@@ -2383,8 +2383,8 @@ export default {
   },
   remoteAccess: {
     title: '遠端存取',
-    description: '透過安全隧道隨時隨地存取您的 Echo',
-    channelDescription: '隨時隨地存取 Echo，無需設定機器人',
+    description: '透過安全隧道隨時隨地存取您的 Blue',
+    channelDescription: '隨時隨地存取 Blue，無需設定機器人',
     recommended: '推薦',
     enable: '啟用遠端存取',
     disable: '停用',
@@ -2408,7 +2408,7 @@ export default {
     feature1: '透過 QR 碼隨時隨地存取',
     feature2: '與家人分享存取連結',
     feature3: '工作階段過期前自動續期',
-    securityWarning: '警告：任何取得連結的人均可存取您的 Echo',
+    securityWarning: '警告：任何取得連結的人均可存取您的 Blue',
     statusError: '無法檢查 ngrok 狀態',
     downloadStartError: '無法開始下載',
     loadError: '無法載入遠端存取狀態',
@@ -2545,7 +2545,7 @@ export default {
     editPersonality: '編輯人格',
     newPersonality: '新建人格',
     name: '名稱',
-    namePlaceholder: '例如：Echo、助手',
+    namePlaceholder: '例如：Blue、助手',
     nameRequired: '名稱是必填項',
     label: '描述',
     descriptionPlaceholder: '這個人格用於什麼？',

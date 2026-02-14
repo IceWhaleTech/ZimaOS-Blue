@@ -1,6 +1,6 @@
-# ZimaOS-Echo CLI 使用教程
+# ZimaOS-Blue CLI 使用教程
 
-ZimaOS-Echo 提供了一个全面的命令行界面 (CLI)，用于管理和交互 NAS 原生 Agent 运行时。
+ZimaOS-Blue 提供了一个全面的命令行界面 (CLI)，用于管理和交互 NAS 原生 Agent 运行时。
 
 ## 目录
 
@@ -29,26 +29,26 @@ ZimaOS-Echo 提供了一个全面的命令行界面 (CLI)，用于管理和交�
 
 ```bash
 # Windows
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-windows-amd64.exe
-mv echo-windows-amd64.exe echo.exe
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-windows-amd64.exe
+mv blue-windows-amd64.exe blue.exe
 
 # Linux
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-linux-amd64
-chmod +x echo-linux-amd64
-sudo mv echo-linux-amd64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-linux-amd64
+chmod +x blue-linux-amd64
+sudo mv blue-linux-amd64 /usr/local/bin/blue
 
 # macOS
-curl -LO https://github.com/IceWhaleTech/ZimaOS-Echo/releases/latest/download/echo-darwin-amd64
-chmod +x echo-darwin-amd64
-sudo mv echo-darwin-amd64 /usr/local/bin/echo
+curl -LO https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest/download/blue-darwin-amd64
+chmod +x blue-darwin-amd64
+sudo mv blue-darwin-amd64 /usr/local/bin/blue
 ```
 
 ### 从源码编译
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo/server
-go build -o echo ./cmd/echo/
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue/server
+go build -o blue ./cmd/blue/
 ```
 
 ---
@@ -59,41 +59,41 @@ go build -o echo ./cmd/echo/
 
 ```bash
 # 运行诊断检查
-echo doctor
+blue doctor
 
 # 自动修复常见问题
-echo doctor --fix
+blue doctor --fix
 ```
 
 ### 2. 启动服务
 
 ```bash
 # 前台运行（用于测试）
-echo gateway run
+blue gateway run
 
 # 或安装为系统服务
-echo gateway install
-echo gateway start
+blue gateway install
+blue gateway start
 ```
 
 ### 3. 检查状态
 
 ```bash
 # 快速状态检查
-echo status
+blue status
 
 # 显示所有详细信息
-echo status --all
+blue status --all
 ```
 
 ### 4. 查看日志
 
 ```bash
 # 显示最近的日志
-echo logs
+blue logs
 
 # 实时跟踪日志
-echo logs -f
+blue logs -f
 ```
 
 ---
@@ -116,16 +116,16 @@ echo logs -f
 
 ```bash
 # 使用开发模式
-echo --dev status
+blue --dev status
 
 # 使用自定义配置文件
-echo --profile testing config list
+blue --profile testing config list
 
 # 获取 JSON 输出用于脚本
-echo --json models list
+blue --json models list
 
 # 禁用颜色以便管道处理
-echo --no-color logs | grep error
+blue --no-color logs | grep error
 ```
 
 ---
@@ -136,29 +136,29 @@ echo --no-color logs | grep error
 
 #### `gateway` - 服务控制
 
-管理 ZimaOS-Echo 服务。
+管理 ZimaOS-Blue 服务。
 
 ```bash
 # 前台运行服务
-echo gateway run [--port 23456] [--bind 0.0.0.0]
+blue gateway run [--port 23456] [--bind 0.0.0.0]
 
 # 检查服务状态
-echo gateway status
+blue gateway status
 
 # 启动服务（后台）
-echo gateway start
+blue gateway start
 
 # 停止服务
-echo gateway stop
+blue gateway stop
 
 # 重启服务
-echo gateway restart
+blue gateway restart
 
 # 安装为系统服务
-echo gateway install
+blue gateway install
 
 # 卸载系统服务
-echo gateway uninstall
+blue gateway uninstall
 ```
 
 **选项：**
@@ -172,16 +172,16 @@ echo gateway uninstall
 
 ```bash
 # 基本状态
-echo status
+blue status
 
 # 显示所有详情
-echo status --all
+blue status --all
 
 # 深度健康检查
-echo status --deep
+blue status --deep
 
 # JSON 输出
-echo status --json
+blue status --json
 ```
 
 #### `health` - 健康检查
@@ -190,13 +190,13 @@ echo status --json
 
 ```bash
 # 基本健康检查
-echo health
+blue health
 
 # 自定义超时时间
-echo health --timeout 5s
+blue health --timeout 5s
 
 # JSON 输出
-echo health --json
+blue health --json
 ```
 
 #### `doctor` - 系统诊断
@@ -205,10 +205,10 @@ echo health --json
 
 ```bash
 # 运行所有检查
-echo doctor
+blue doctor
 
 # 自动修复问题
-echo doctor --fix
+blue doctor --fix
 ```
 
 **执行的检查：**
@@ -227,20 +227,20 @@ echo doctor --fix
 
 #### `config` - 配置管理
 
-管理 ZimaOS-Echo 配置。
+管理 ZimaOS-Blue 配置。
 
 ```bash
 # 列出所有配置
-echo config list
+blue config list
 
 # 获取特定值
-echo config get server.port
+blue config get server.port
 
 # 设置值
-echo config set server.port 23456
+blue config set server.port 23456
 
 # 删除值
-echo config unset server.debug
+blue config unset server.debug
 ```
 
 **常用配置键：**
@@ -260,22 +260,22 @@ echo config unset server.debug
 
 ```bash
 # 列出可用模型
-echo models list
+blue models list
 
 # 列出特定提供商的模型
-echo models list --provider openai
+blue models list --provider openai
 
 # 检查模型可用性
-echo models list --check
+blue models list --check
 
 # 显示模型状态
-echo models status
+blue models status
 
 # 设置默认模型
-echo models set gpt-4
+blue models set gpt-4
 
 # 扫描可用模型
-echo models scan
+blue models scan
 ```
 
 **选项：**
@@ -293,19 +293,19 @@ echo models scan
 
 ```bash
 # 列出所有会话
-echo sessions list
+blue sessions list
 
 # 仅列出活跃会话
-echo sessions list --active
+blue sessions list --active
 
 # 显示会话详情
-echo sessions show <会话ID>
+blue sessions show <会话ID>
 
 # 删除会话
-echo sessions delete <会话ID>
+blue sessions delete <会话ID>
 
 # 清除所有会话
-echo sessions clear
+blue sessions clear
 ```
 
 **选项：**
@@ -322,26 +322,26 @@ echo sessions clear
 
 ```bash
 # 列出所有定时任务
-echo cron list
+blue cron list
 
 # 显示定时服务状态
-echo cron status
+blue cron status
 
 # 添加新的定时任务
-echo cron add --name "每日备份" --cron "0 2 * * *" --handler http --payload '{"url":"http://localhost/backup"}'
+blue cron add --name "每日备份" --cron "0 2 * * *" --handler http --payload '{"url":"http://localhost/backup"}'
 
 # 删除定时任务
-echo cron rm <任务ID>
+blue cron rm <任务ID>
 
 # 启用/禁用任务
-echo cron enable <任务ID>
-echo cron disable <任务ID>
+blue cron enable <任务ID>
+blue cron disable <任务ID>
 
 # 立即运行任务
-echo cron run <任务ID>
+blue cron run <任务ID>
 
 # 查看任务执行历史
-echo cron runs <任务ID>
+blue cron runs <任务ID>
 ```
 
 **添加选项：**
@@ -373,21 +373,21 @@ echo cron runs <任务ID>
 
 #### `plugins` - 插件管理
 
-管理 ZimaOS-Echo 插件。
+管理 ZimaOS-Blue 插件。
 
 ```bash
 # 列出所有插件
-echo plugins list
+blue plugins list
 
 # 显示插件详情
-echo plugins info <插件ID>
+blue plugins info <插件ID>
 
 # 启用/禁用插件
-echo plugins enable <插件ID>
-echo plugins disable <插件ID>
+blue plugins enable <插件ID>
+blue plugins disable <插件ID>
 
 # 运行插件诊断
-echo plugins doctor
+blue plugins doctor
 ```
 
 **选项：**
@@ -403,16 +403,16 @@ echo plugins doctor
 
 ```bash
 # 列出所有技能
-echo skills list
+blue skills list
 
 # 仅列出可用技能
-echo skills list --eligible
+blue skills list --eligible
 
 # 显示技能详情
-echo skills info <技能ID>
+blue skills info <技能ID>
 
 # 检查技能可用性
-echo skills check
+blue skills check
 ```
 
 **选项：**
@@ -429,19 +429,19 @@ echo skills check
 
 ```bash
 # 显示最近的日志（最后 50 行）
-echo logs
+blue logs
 
 # 显示最后 N 行
-echo logs -n 100
+blue logs -n 100
 
 # 实时跟踪日志
-echo logs -f
+blue logs -f
 
 # 按日志级别过滤
-echo logs --level error
+blue logs --level error
 
 # 组合选项
-echo logs -f --level warn -n 200
+blue logs -f --level warn -n 200
 ```
 
 **选项：**
@@ -458,45 +458,45 @@ echo logs -f --level warn -n 200
 
 ```bash
 # 获取模型列表并用 jq 处理
-echo --json models list | jq '.models[].name'
+blue --json models list | jq '.models[].name'
 
 # 检查服务是否健康
-if echo --json health | jq -e '.healthy' > /dev/null; then
+if blue --json health | jq -e '.healthy' > /dev/null; then
     echo "服务健康"
 else
     echo "服务不健康"
 fi
 
 # 获取会话数量
-echo --json sessions list | jq '.conversations | length'
+blue --json sessions list | jq '.conversations | length'
 ```
 
 ### 开发工作流
 
 ```bash
 # 以开发模式启动
-echo --dev gateway run
+blue --dev gateway run
 
 # 在另一个终端检查状态
-echo --dev status
+blue --dev status
 
 # 查看开发日志
-echo --dev logs -f
+blue --dev logs -f
 ```
 
 ### 配置文件隔离
 
 ```bash
 # 创建测试配置文件
-echo --profile testing config set server.port 9090
+blue --profile testing config set server.port 9090
 
 # 使用测试配置文件运行
-echo --profile testing gateway run
+blue --profile testing gateway run
 
 # 每个配置文件都有隔离的：
-# - 配置：~/.zimaos-echo-testing/config.yaml
-# - 数据：~/.zimaos-echo-testing/data/
-# - 日志：~/.zimaos-echo-testing/logs/
+# - 配置：~/.zimaos-blue-testing/config.yaml
+# - 数据：~/.zimaos-blue-testing/data/
+# - 日志：~/.zimaos-blue-testing/logs/
 ```
 
 ### 自动健康监控
@@ -506,9 +506,9 @@ echo --profile testing gateway run
 # health-check.sh
 
 while true; do
-    if ! echo health --timeout 5s > /dev/null 2>&1; then
+    if ! blue health --timeout 5s > /dev/null 2>&1; then
         echo "$(date): 服务不健康，正在重启..."
-        echo gateway restart
+        blue gateway restart
     fi
     sleep 60
 done
@@ -522,47 +522,47 @@ done
 
 1. **检查端口是否被占用：**
    ```bash
-   echo doctor
+   blue doctor
    # 查看 "Port available" 检查结果
    ```
 
 2. **检查日志中的错误：**
    ```bash
-   echo logs --level error
+   blue logs --level error
    ```
 
 3. **尝试前台运行：**
    ```bash
-   echo gateway run --verbose
+   blue gateway run --verbose
    ```
 
 ### 配置问题
 
 1. **验证配置文件：**
    ```bash
-   echo config list
+   blue config list
    ```
 
 2. **重置为默认值：**
    ```bash
-   echo config unset <有问题的键>
+   blue config unset <有问题的键>
    ```
 
 3. **运行 doctor 并修复：**
    ```bash
-   echo doctor --fix
+   blue doctor --fix
    ```
 
 ### 连接被拒绝
 
 1. **检查服务是否运行：**
    ```bash
-   echo gateway status
+   blue gateway status
    ```
 
 2. **验证端口配置：**
    ```bash
-   echo config get server.port
+   blue config get server.port
    ```
 
 3. **检查防火墙设置**（因平台而异）
@@ -571,20 +571,20 @@ done
 
 1. **运行 doctor 检查权限：**
    ```bash
-   echo doctor
+   blue doctor
    ```
 
 2. **自动修复权限：**
    ```bash
-   echo doctor --fix
+   blue doctor --fix
    ```
 
 ### 找不到日志文件
 
 CLI 会在以下位置查找日志：
-1. `~/.zimaos-echo/logs/echo.log`
-2. `./logs/echo.log`
-3. `./echo.log`
+1. `~/.zimaos-blue/logs/blue.log`
+2. `./logs/blue.log`
+3. `./blue.log`
 
 确保服务至少启动过一次以创建日志文件。
 
@@ -594,14 +594,14 @@ CLI 会在以下位置查找日志：
 
 ```bash
 # 通用帮助
-echo --help
+blue --help
 
 # 特定命令帮助
-echo gateway --help
-echo config --help
-echo models --help
+blue gateway --help
+blue config --help
+blue models --help
 ```
 
 更多信息请访问：
-- GitHub: https://github.com/IceWhaleTech/ZimaOS-Echo
-- 文档: https://docs.zimaos.com/echo
+- GitHub: https://github.com/IceWhaleTech/ZimaOS-Blue
+- 文档: https://docs.zimaos.com/blue

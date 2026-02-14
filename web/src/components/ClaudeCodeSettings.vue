@@ -410,7 +410,7 @@ function formatDate(dateStr?: string) {
         <button
           :disabled="togglingEnabled || loading"
           class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="isEnabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
+          :class="isEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
           role="switch"
           :aria-checked="isEnabled ? 'true' : 'false'"
           @click.stop="toggleEnabled"
@@ -435,7 +435,7 @@ function formatDate(dateStr?: string) {
       <div v-else-if="error && !versionInfo" class="text-center py-4">
         <p class="text-red-500 dark:text-red-400 mb-4">{{ error }}</p>
         <button
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
           @click="loadVersionInfo"
         >
           {{ t('common.retry') }}
@@ -490,7 +490,7 @@ function formatDate(dateStr?: string) {
           <p class="text-sm text-gray-400 dark:text-slate-500 mb-4">{{ t('claudecode.platform') }}: {{ versionInfo.platform }}</p>
           <button
             :disabled="downloading"
-            class="px-6 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
+            class="px-6 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
             @click="downloadCLI"
           >
             <svg v-if="downloading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -533,7 +533,7 @@ function formatDate(dateStr?: string) {
               <button
                 :disabled="togglingSandbox || !isInstalled"
                 class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                :class="configInfo?.sandbox_enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
+                :class="configInfo?.sandbox_enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
                 role="switch"
                 :aria-checked="configInfo?.sandbox_enabled ? 'true' : 'false'"
                 @click="toggleSandbox"
@@ -557,7 +557,7 @@ function formatDate(dateStr?: string) {
                   <button
                     :disabled="togglingNetwork || !isInstalled"
                     class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    :class="configInfo?.network_enabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
+                    :class="configInfo?.network_enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
                     role="switch"
                     :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
                     @click="toggleNetwork"
@@ -590,7 +590,7 @@ function formatDate(dateStr?: string) {
                     <button
                       :disabled="togglingWhitelist || !isInstalled"
                       class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      :class="isWhitelistEnabled ? 'bg-gray-700 dark:bg-gray-700' : 'bg-gray-200 dark:bg-slate-600'"
+                      :class="isWhitelistEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
                       role="switch"
                       :aria-checked="isWhitelistEnabled ? 'true' : 'false'"
                       @click.stop="toggleWhitelist"
@@ -706,7 +706,7 @@ function formatDate(dateStr?: string) {
                         />
                         <button
                           :disabled="savingWhitelist || !newDirPath.trim()"
-                          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                           @click="addDirectory"
                         >
                           <svg v-if="savingWhitelist" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -736,7 +736,7 @@ function formatDate(dateStr?: string) {
                 href="https://docs.anthropic.com/en/docs/claude-code"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white text-sm font-mono transition-colors"
+                class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-white dark:hover:text-gray-900 dark:text-white text-sm font-mono transition-colors"
                 :title="t('claudecode.viewDocs')"
               >
                 ({{ latestVersionDisplay }} {{ t('claudecode.available') }})
@@ -753,20 +753,20 @@ function formatDate(dateStr?: string) {
           <!-- Update Available Banner -->
           <div
             v-if="updateInfo?.update_available || versionInfo.update_available"
-            class="bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-4 mb-4"
+            class="bg-gray-700 dark:bg-gray-500/30 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-4 mb-4"
           >
             <div class="flex items-center justify-between flex-wrap gap-3">
               <div>
-                <p class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white font-medium">
+                <p class="text-gray-900 dark:text-white dark:text-white font-medium">
                   {{ t('claudecode.updateAvailableBanner') }}
                 </p>
-                <p class="text-gray-900 dark:text-white dark:text-gray-900 dark:text-white text-sm">
+                <p class="text-gray-900 dark:text-white dark:text-white text-sm">
                   {{ t('claudecode.latestVersion') }}: {{ updateInfo?.latest_version || t('common.unknown') }}
                 </p>
               </div>
               <button
                 :disabled="updating"
-                class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
                 @click="updateCLI"
               >
                 <svg v-if="updating" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -792,7 +792,7 @@ function formatDate(dateStr?: string) {
           <div class="flex flex-wrap gap-3">
             <button
               :disabled="checking"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
               @click="checkForUpdates"
             >
               <svg v-if="checking" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

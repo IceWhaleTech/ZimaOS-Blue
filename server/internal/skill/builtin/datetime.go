@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 // DateTime is a built-in date/time skill

@@ -213,7 +213,7 @@ function getExecutionStatusColor(status: string): string {
     case 'completed':
       return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
     case 'running':
-      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+      return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white'
     case 'pending':
       return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
     case 'failed':
@@ -339,7 +339,7 @@ function getNodeTypeColor(type: NodeType): string {
     case 'trigger':
       return 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700'
     case 'action':
-      return 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+      return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
     case 'condition':
       return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700'
     case 'loop':
@@ -370,7 +370,7 @@ function getNodeTypeColor(type: NodeType): string {
           {{ t('workflow.templates') }}
         </button>
         <button
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
           @click="showCreateModal = true"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -392,7 +392,7 @@ function getNodeTypeColor(type: NodeType): string {
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('workflow.activeWorkflows') }}</div>
       </div>
       <div class="glass-card p-4">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">{{ stats.total_executions }}</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">{{ stats.total_executions }}</div>
         <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('workflow.totalExecutions') }}</div>
       </div>
       <div class="glass-card p-4">
@@ -435,7 +435,7 @@ function getNodeTypeColor(type: NodeType): string {
       </svg>
       <p class="text-gray-500 dark:text-slate-400">{{ t('workflow.noWorkflows') }}</p>
       <button
-        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
+        class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
         @click="showCreateModal = true"
       >
         {{ t('workflow.createFirst') }}
@@ -469,7 +469,7 @@ function getNodeTypeColor(type: NodeType): string {
           <div class="flex items-center gap-2 ml-4">
             <button
               :title="t('workflow.editNodes')"
-              class="p-2 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-700 dark:bg-gray-700/20 rounded-lg transition-colors"
+              class="p-2 text-gray-900 dark:text-white dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
               @click="openNodeEditor(workflow)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -566,7 +566,7 @@ function getNodeTypeColor(type: NodeType): string {
               <button
                 type="submit"
                 :disabled="loading || !newWorkflow.name"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ loading ? t('common.creating') : t('workflow.create') }}
               </button>
@@ -703,7 +703,7 @@ function getNodeTypeColor(type: NodeType): string {
             {{ t('workflow.editNodes') }}: {{ editingWorkflow.name }}
           </h3>
           <button
-            class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-1"
+            class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-1"
             @click="openAddNodeModal"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -718,7 +718,7 @@ function getNodeTypeColor(type: NodeType): string {
           <div v-if="editingNodes.length === 0" class="text-center py-8 text-gray-500 dark:text-slate-400">
             {{ t('workflow.noNodes') }}
             <button
-              class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors block mx-auto"
+              class="mt-4 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors block mx-auto"
               @click="openAddNodeModal"
             >
               {{ t('workflow.addFirstNode') }}
@@ -811,7 +811,7 @@ function getNodeTypeColor(type: NodeType): string {
         <div class="p-4 sm:p-6 border-t border-gray-200 dark:border-slate-700 flex gap-3">
           <button
             :disabled="loading"
-            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
+            class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
             @click="saveNodes"
           >
             {{ loading ? t('common.saving') : t('common.save') }}
@@ -849,7 +849,7 @@ function getNodeTypeColor(type: NodeType): string {
                   :class="[
                     'p-2 rounded-lg border-2 text-left transition-all flex items-center gap-2',
                     newNode.type === nt.value
-                      ? 'border-gray-900 dark:border-gray-700 bg-gray-700 dark:bg-gray-700/10'
+                      ? 'border-gray-900 dark:border-gray-700 bg-gray-100 dark:bg-gray-600/10'
                       : 'border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500'
                   ]"
                   @click="newNode.type = nt.value"
@@ -877,7 +877,7 @@ function getNodeTypeColor(type: NodeType): string {
               <button
                 type="submit"
                 :disabled="!newNode.name"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ t('workflow.addNode') }}
               </button>

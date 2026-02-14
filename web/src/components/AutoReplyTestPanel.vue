@@ -87,7 +87,7 @@ defineExpose({
 
     <!-- Test Button -->
     <button
-      class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       :disabled="loading || !testMessage.trim()"
       @click="handleTest"
     >
@@ -161,7 +161,7 @@ defineExpose({
     <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
       <button
         type="button"
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
         @click="reset"
       >
         {{ t('autoReply.reset') }}

@@ -1,4 +1,4 @@
-; Slovak translations for ZimaOS Echo installer
+; Slovak translations for ZimaOS Blue installer
 LangString addOrReinstall ${LANG_SLOVAK} "Pridať/Preinštalovať komponenty"
 LangString alreadyInstalled ${LANG_SLOVAK} "Už nainštalované"
 LangString alreadyInstalledLong ${LANG_SLOVAK} "${PRODUCTNAME} ${VERSION} je už nainštalovaný. Vyberte operáciu a kliknite na Ďalej."

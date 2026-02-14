@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 )
 
 // StoreSource represents a plugin source
@@ -412,7 +412,7 @@ func (s *Store) doFetch(ctx context.Context, url string, client *http.Client) ([
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "ZimaOS-Echo/1.0")
+	req.Header.Set("User-Agent", "ZimaOS-Blue/1.0")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 
 	resp, err := client.Do(req)

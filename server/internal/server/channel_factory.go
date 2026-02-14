@@ -5,30 +5,32 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/bluebubbles"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/dingtalk"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/discord"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/feishu"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/googlechat"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/imessage"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/instagram"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/line"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/matrix"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/mattermost"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/messenger"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/qq"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/signal"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/slack"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/teams"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/telegram"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/twitch"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/twitter"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/validator"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/viber"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/wechat"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/whatsapp"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/channel/zalo"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/bluebubbles"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/dingtalk"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/discord"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/feishu"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/googlechat"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/imessage"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/instagram"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/line"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/matrix"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/mattermost"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/messenger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/nextcloudtalk"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/nostr"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/qq"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/signal"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/slack"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/teams"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/telegram"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/twitch"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/twitter"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/viber"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/wechat"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/whatsapp"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/zalo"
 )
 
 // ChannelFactory creates channel instances from stored configurations.
@@ -88,6 +90,10 @@ func (f *ChannelFactory) CreateChannel(cfg *ChannelConfig) (channel.Channel, err
 		return f.createTwitch(cfg)
 	case "qq":
 		return f.createQQ(cfg)
+	case "nextcloudtalk":
+		return f.createNextcloudTalk(cfg)
+	case "nostr":
+		return f.createNostr(cfg)
 	default:
 		return nil, nil // Unknown channel type
 	}
@@ -235,35 +241,101 @@ func (f *ChannelFactory) createIMessage(cfg *ChannelConfig) (channel.Channel, er
 }
 
 func (f *ChannelFactory) createGoogleChat(cfg *ChannelConfig) (channel.Channel, error) {
-	return googlechat.New(googlechat.Config{Enabled: cfg.Enabled, WebhookURL: cfg.Config["webhook_url"]}, f.logger), nil
+	return googlechat.New(googlechat.Config{
+		Enabled:    cfg.Enabled,
+		WebhookURL: cfg.Config["webhook_url"],
+		SpaceID:    cfg.Config["space_id"],
+		APIKey:     cfg.Config["api_key"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createLine(cfg *ChannelConfig) (channel.Channel, error) {
-	return line.New(line.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return line.New(line.Config{
+		Enabled:            cfg.Enabled,
+		ChannelID:          cfg.Config["channel_id"],
+		ChannelSecret:      cfg.Config["channel_secret"],
+		ChannelAccessToken: cfg.Config["channel_access_token"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createMessenger(cfg *ChannelConfig) (channel.Channel, error) {
-	return messenger.New(messenger.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return messenger.New(messenger.Config{
+		Enabled:         cfg.Enabled,
+		PageAccessToken: cfg.Config["page_access_token"],
+		AppSecret:       cfg.Config["app_secret"],
+		VerifyToken:     cfg.Config["verify_token"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createViber(cfg *ChannelConfig) (channel.Channel, error) {
-	return viber.New(viber.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return viber.New(viber.Config{
+		Enabled:    cfg.Enabled,
+		AuthToken:  cfg.Config["auth_token"],
+		BotName:    cfg.Config["bot_name"],
+		BotAvatar:  cfg.Config["bot_avatar"],
+		WebhookURL: cfg.Config["webhook_url"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createTwitter(cfg *ChannelConfig) (channel.Channel, error) {
-	return twitter.New(twitter.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return twitter.New(twitter.Config{
+		Enabled:           cfg.Enabled,
+		APIKey:            cfg.Config["api_key"],
+		APISecret:         cfg.Config["api_secret"],
+		AccessToken:       cfg.Config["access_token"],
+		AccessTokenSecret: cfg.Config["access_token_secret"],
+		BearerToken:       cfg.Config["bearer_token"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createInstagram(cfg *ChannelConfig) (channel.Channel, error) {
-	return instagram.New(instagram.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return instagram.New(instagram.Config{
+		Enabled:         cfg.Enabled,
+		PageAccessToken: cfg.Config["page_access_token"],
+		AppSecret:       cfg.Config["app_secret"],
+		VerifyToken:     cfg.Config["verify_token"],
+		IGAccountID:     cfg.Config["ig_account_id"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createTwitch(cfg *ChannelConfig) (channel.Channel, error) {
-	return twitch.New(twitch.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return twitch.New(twitch.Config{
+		Enabled:      cfg.Enabled,
+		ClientID:     cfg.Config["client_id"],
+		ClientSecret: cfg.Config["client_secret"],
+		OAuthToken:   cfg.Config["oauth_token"],
+		BotUsername:  cfg.Config["bot_username"],
+		Channels:     cfg.Config["channels"],
+	}, f.logger), nil
 }
 
 func (f *ChannelFactory) createQQ(cfg *ChannelConfig) (channel.Channel, error) {
-	return qq.New(qq.Config{Enabled: cfg.Enabled, Token: cfg.Config["token"]}, f.logger), nil
+	return qq.New(qq.Config{
+		Enabled:   cfg.Enabled,
+		AppID:     cfg.Config["app_id"],
+		AppSecret: cfg.Config["app_secret"],
+		Token:     cfg.Config["token"],
+		Sandbox:   cfg.Config["sandbox"] == "true",
+	}, f.logger), nil
+}
+
+func (f *ChannelFactory) createNextcloudTalk(cfg *ChannelConfig) (channel.Channel, error) {
+	return nextcloudtalk.New(nextcloudtalk.Config{
+		Enabled:   cfg.Enabled,
+		ServerURL: cfg.Config["server_url"],
+		Username:  cfg.Config["username"],
+		Password:  cfg.Config["password"],
+		RoomToken: cfg.Config["room_token"],
+	}, f.logger), nil
+}
+
+func (f *ChannelFactory) createNostr(cfg *ChannelConfig) (channel.Channel, error) {
+	return nostr.New(nostr.Config{
+		Enabled:    cfg.Enabled,
+		PrivateKey: cfg.Config["private_key"],
+		PublicKey:  cfg.Config["public_key"],
+		Relays:     cfg.Config["relays"],
+	}, f.logger), nil
 }
 
 // ValidationResult represents the result of a connection validation.
@@ -312,23 +384,24 @@ func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType str
 		v = imessage.NewValidator()
 	case "googlechat":
 		v = googlechat.NewValidator()
-	case "line", "messenger", "viber", "twitter", "instagram", "twitch", "qq":
-		// These channels have basic validators
-		if channelType == "line" {
-			v = line.NewValidator()
-		} else if channelType == "messenger" {
-			v = messenger.NewValidator()
-		} else if channelType == "viber" {
-			v = viber.NewValidator()
-		} else if channelType == "twitter" {
-			v = twitter.NewValidator()
-		} else if channelType == "instagram" {
-			v = instagram.NewValidator()
-		} else if channelType == "twitch" {
-			v = twitch.NewValidator()
-		} else {
-			v = qq.NewValidator()
-		}
+	case "nextcloudtalk":
+		v = nextcloudtalk.NewValidator()
+	case "nostr":
+		v = nostr.NewValidator()
+	case "line":
+		v = line.NewValidator()
+	case "messenger":
+		v = messenger.NewValidator()
+	case "viber":
+		v = viber.NewValidator()
+	case "twitter":
+		v = twitter.NewValidator()
+	case "instagram":
+		v = instagram.NewValidator()
+	case "twitch":
+		v = twitch.NewValidator()
+	case "qq":
+		v = qq.NewValidator()
 	default:
 		return ValidationResult{
 			Success: false,

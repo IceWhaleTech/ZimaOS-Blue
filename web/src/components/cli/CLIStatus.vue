@@ -130,7 +130,7 @@ defineExpose({
           <div v-if="status?.source && !props.compact" class="text-sm text-gray-500 dark:text-gray-400">
             {{ t('cli.status.source', { source: status.source }) }}
           </div>
-          <div v-if="status?.update_available" class="text-sm text-gray-900 dark:text-white dark:text-gray-900 dark:text-white">
+          <div v-if="status?.update_available" class="text-sm text-gray-900 dark:text-white dark:text-white">
             {{ t('cli.status.updateAvailable', { version: status.latest_version }) }}
           </div>
         </div>
@@ -140,14 +140,14 @@ defineExpose({
       <div class="flex items-center gap-2">
         <button
           v-if="!status?.installed"
-          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm rounded-lg transition-colors"
           @click="handleDownloadClick"
         >
           {{ t('cli.download') }}
         </button>
         <button
           v-else-if="status?.update_available"
-          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+          class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm rounded-lg transition-colors"
           @click="handleUpdateClick"
         >
           {{ t('cli.update') }}

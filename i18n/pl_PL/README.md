@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** to lekkie, wydajne środowisko uruchomieniowe agenta AI zaprojektowane dla NAS i urządzeń brzegowych. Zbudowane w Go, oferuje platformę gotową do produkcji z wdrożeniem bez konfiguracji, monitorowaniem sesji i analityką użycia.
+**ZimaOS Blue** to lekkie, wydajne środowisko uruchomieniowe agenta AI zaprojektowane dla NAS i urządzeń brzegowych. Zbudowane w Go, oferuje platformę gotową do produkcji z wdrożeniem bez konfiguracji, monitorowaniem sesji i analityką użycia.
 
 [Szybki start](#szybki-start) · [Funkcje](#funkcje-główne)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # Ze źródeł
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 Panel dostępny pod adresem `http://localhost:3000`.
 
 ## Konfiguracja dostawców LLM
 
-ZimaOS Echo obsługuje wielu dostawców LLM, w tym lokalne usługi LLM:
+ZimaOS Blue obsługuje wielu dostawców LLM, w tym lokalne usługi LLM:
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # Czyszczenie artefaktów budowania
 ### Struktura projektu
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # Backend Go
-│   ├── cmd/echo/       # Punkt wejścia
+│   ├── cmd/blue/       # Punkt wejścia
 │   └── internal/       # Moduły rdzenia
 ├── web/                # Frontend Vue 3
 │   └── src/

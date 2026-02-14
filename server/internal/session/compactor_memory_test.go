@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/config"
-	sessionctx "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 )
 
 // mockMemoryRefresher implements MemoryRefresher for testing.

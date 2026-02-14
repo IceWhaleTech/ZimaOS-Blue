@@ -89,7 +89,7 @@ function handleAction(actionId: string) {
             :key="action.id"
             class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
             :class="{
-              'bg-gray-700 dark:bg-gray-700 text-white hover:bg-gray-700 dark:bg-gray-700': action.variant === 'primary',
+              'bg-gray-700 dark:bg-gray-500 text-white hover:bg-gray-700 dark:bg-gray-500': action.variant === 'primary',
               'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700': action.variant !== 'primary' && action.variant !== 'danger',
               'bg-red-600 text-white hover:bg-red-700': action.variant === 'danger',
             }"

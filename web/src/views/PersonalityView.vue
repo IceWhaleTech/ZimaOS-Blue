@@ -43,7 +43,7 @@ async function handleSave() {
         {{ t('personality.title') || 'Personalities' }}
       </h1>
       <button
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+        class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white rounded-lg font-medium transition-colors"
         @click="openNewForm"
       >
         {{ t('personality.new') || 'New Personality' }}

@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/configuration.md)
 
-本指南涵盖 ZimaOS-Echo 的所有配置选项。
+本指南涵盖 ZimaOS-Blue 的所有配置选项。
 
 ## 配置文件
 
@@ -127,7 +127,7 @@ logging:
   output: "stdout"
   file:
     enabled: false
-    path: "./logs/echo.log"
+    path: "./logs/blue.log"
     max_size_mb: 100
     max_backups: 3
     max_age_days: 7
@@ -135,7 +135,7 @@ logging:
 # 数据库
 database:
   type: "sqlite"
-  path: "./data/echo.db"
+  path: "./data/blue.db"
   max_connections: 10
 ```
 
@@ -145,8 +145,8 @@ database:
 
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
-| `ECHO_HOST` | 服务器主机 | `0.0.0.0` |
-| `ECHO_PORT` | 服务器端口 | `23456` |
+| `BLUE_HOST` | 服务器主机 | `0.0.0.0` |
+| `BLUE_PORT` | 服务器端口 | `23456` |
 | `JWT_SECRET` | JWT 签名密钥 | (必需) |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | - |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | - |

@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const iconColorClass = computed(() => {
   const colors: Record<string, string> = {
-    blue: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/30 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
+    blue: 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white dark:text-white',
     green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
     purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
     orange: 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400',

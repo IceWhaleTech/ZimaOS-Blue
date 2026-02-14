@@ -17,7 +17,7 @@ describe('AppHeader', () => {
         plugins: [pinia, i18n],
       },
     })
-    expect(wrapper.text()).toContain('ZimaOS Echo')
+    expect(wrapper.text()).toContain('ZimaOS Blue')
   })
 
   it('should show status badge when health is available', async () => {

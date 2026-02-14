@@ -96,7 +96,7 @@
 - [x] 可选的 Markdown 文件存储模式 (LayeredMemoryService)
 - [x] 目录结构:
   ```
-  ~/.zimaos-echo/memory/
+  ~/.zimaos-blue/memory/
   ├── MEMORY.md           # 长期记忆
   └── daily/
       ├── 2026-02-03.md   # 每日日志

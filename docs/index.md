@@ -2,19 +2,19 @@
 layout: home
 
 hero:
-  name: ZimaOS Echo
-  text: NAS-Native Agent Runtime
+  name: ZimaOS Blue
+  text: A Local-first Agent Runtime for Builders with Bolder Mind
   tagline: Lightweight, high-performance AI agent runtime for low-power NAS devices
   image:
     src: /logo.svg
-    alt: ZimaOS Echo
+    alt: ZimaOS Blue
   actions:
     - theme: brand
       text: Get Started
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/IceWhaleTech/ZimaOS-Echo/server
+      link: https://github.com/IceWhaleTech/ZimaOS-Blue/server
 
 features:
   - icon: 🚀
@@ -40,16 +40,16 @@ features:
 ## Install from Source
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 See [Installation](guide/installation.md) for more options.
 
-## What is ZimaOS Echo?
+## What is ZimaOS Blue?
 
-ZimaOS Echo is a **NAS-native Agent Runtime** built with Go, inspired by [clawdbot](https://github.com/clawdbot/clawdbot). It's designed specifically for low-power NAS and edge devices, providing:
+ZimaOS Blue is a **A Local-first Agent Runtime for Builders with Bolder Mind** built with Go, inspired by [clawdbot](https://github.com/clawdbot/clawdbot). It's designed specifically for low-power NAS and edge devices, providing:
 
 - **Minimal Resource Usage**: Runs efficiently on devices with limited CPU and memory
 - **Long-term Stability**: Built for 24/7 operation without restarts
@@ -60,7 +60,7 @@ ZimaOS Echo is a **NAS-native Agent Runtime** built with Go, inspired by [clawdb
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  ZimaOS-Echo                     │
+│                  ZimaOS-Blue                     │
 ├─────────────────────────────────────────────────┤
 │  Vue 3 Frontend  │  REST API  │  WebSocket      │
 ├─────────────────────────────────────────────────┤
@@ -71,6 +71,6 @@ ZimaOS Echo is a **NAS-native Agent Runtime** built with Go, inspired by [clawdb
 │  LLM Provider │ Tools │ Memory │ Context        │
 ├─────────────────────────────────────────────────┤
 │              Data Layer                          │
-│  SQLite │ BoltDB │ Files                        │
+│  SQLite │ JSON Files │ Files                     │
 └─────────────────────────────────────────────────┘
 ```

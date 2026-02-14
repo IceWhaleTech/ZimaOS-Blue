@@ -1,7 +1,7 @@
 # PRD: Smart Form Filler - Floating Widget for Intelligent Form Completion
 
 **Version**: 0.9.2
-**Author**: ZimaOS-Echo Team
+**Author**: ZimaOS-Blue Team
 **Status**: Draft
 **Created**: 2026-01-28
 
@@ -56,7 +56,7 @@ A Smart Form Filler widget will provide an intelligent, floating assistant that 
 
 ### 2.3 As a Developer
 
-- I want to integrate the form filler with Echo's agent capabilities
+- I want to integrate the form filler with Blue's agent capabilities
 - I want to add custom field detection strategies
 - I want to access fill history for debugging
 
@@ -227,7 +227,7 @@ A Smart Form Filler widget will provide an intelligent, floating assistant that 
 │                                    │                                         │
 │                                    ▼                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                         Echo Backend                                 │    │
+│  │                         Blue Backend                                 │    │
 │  │  ┌────────────────┐ ┌────────────────┐ ┌────────────────────────┐   │    │
 │  │  │ Template Store │ │ Pattern Engine │ │   LLM Field Classifier │   │    │
 │  │  └────────────────┘ └────────────────┘ └────────────────────────┘   │    │

@@ -10,8 +10,8 @@ import (
 func TestDefaultWebAuthnConfig(t *testing.T) {
 	config := DefaultWebAuthnConfig()
 
-	if config.RPDisplayName != "ZimaOS-Echo" {
-		t.Errorf("RPDisplayName = %v, want ZimaOS-Echo", config.RPDisplayName)
+	if config.RPDisplayName != "ZimaOS-Blue" {
+		t.Errorf("RPDisplayName = %v, want ZimaOS-Blue", config.RPDisplayName)
 	}
 	if config.RPID != "localhost" {
 		t.Errorf("RPID = %v, want localhost", config.RPID)

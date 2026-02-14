@@ -19,7 +19,7 @@ const chartData = computed(() => {
 })
 
 const colors = [
-  'bg-gray-700 dark:bg-gray-700',
+  'bg-gray-700 dark:bg-gray-500',
   'bg-green-500',
   'bg-yellow-500',
   'bg-purple-500',
@@ -30,7 +30,7 @@ const colors = [
 ]
 
 function getColor(index: number): string {
-  return colors[index % colors.length] ?? 'bg-gray-700 dark:bg-gray-700'
+  return colors[index % colors.length] ?? 'bg-gray-700 dark:bg-gray-500'
 }
 </script>
 
@@ -56,7 +56,7 @@ function getColor(index: number): string {
             {{ item.value.toLocaleString() }} ({{ item.percentage.toFixed(1) }}%)
           </span>
         </div>
-        <div class="h-2 bg-gray-700 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div class="h-2 bg-gray-700 dark:bg-gray-500 rounded-full overflow-hidden">
           <div
             :class="['h-full rounded-full transition-all duration-300', getColor(index)]"
             :style="{ width: `${item.percentage}%` }"

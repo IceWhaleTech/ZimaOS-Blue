@@ -1,14 +1,14 @@
 {
-  "name": "zimaos-echo-docs",
+  "name": "zimaos-blue-docs",
   "version": "0.1.0",
   "type": "module",
-  "description": "ZimaOS-Echo Documentation",
+  "description": "ZimaOS-Blue Documentation",
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
     "preview": "vitepress preview"
   },
-  "keywords": ["zimaos", "echo", "nas", "agent"],
+  "keywords": ["zimaos", "blue", "nas", "agent"],
   "author": "ZimaOS Team",
   "license": "MIT",
   "devDependencies": {

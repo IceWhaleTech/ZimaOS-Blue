@@ -1,6 +1,6 @@
 # 开发者指南
 
-本指南涵盖参与 ZimaOS Echo 开发所需了解的全部内容。
+本指南涵盖参与 ZimaOS Blue 开发所需了解的全部内容。
 
 ## 开发环境准备
 
@@ -16,8 +16,8 @@
 ### 克隆仓库
 
 ```bash
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
 ```
 
 ### 后端准备
@@ -32,7 +32,7 @@ go mod download
 go test ./... -v
 
 # 构建
-go build -o zimaos-echo ./cmd/server
+go build -o zimaos-blue ./cmd/server
 
 # 热重载运行（使用 air）
 go install github.com/cosmtrek/air@latest
@@ -93,7 +93,7 @@ pnpm test
 ## 项目结构
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/                 # Go 后端
 │   ├── cmd/
 │   │   └── server/        # 主入口

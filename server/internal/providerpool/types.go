@@ -1,4 +1,4 @@
-// Package providerpool provides unified LLM provider management for ZimaOS-Echo.
+// Package providerpool provides unified LLM provider management for ZimaOS-Blue.
 // It supports multiple providers, intelligent routing, and usage tracking.
 package providerpool
 

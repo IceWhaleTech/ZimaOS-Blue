@@ -155,7 +155,7 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
             class="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg"
           >
             <div class="flex items-center gap-3 min-w-0">
-              <div class="w-10 h-10 rounded-lg bg-gray-700 dark:bg-gray-700/10 flex items-center justify-center flex-shrink-0">
+              <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-600/10 flex items-center justify-center flex-shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-900 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
@@ -194,7 +194,7 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
         <!-- Add button -->
         <button
           :disabled="loading"
-          class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+          class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
           @click="openRegisterModal"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -235,7 +235,7 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
               <button
                 type="submit"
                 :disabled="registering || !newCredentialName"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
               >
                 {{ registering ? t('webauthn.registering') : t('webauthn.register') }}
               </button>

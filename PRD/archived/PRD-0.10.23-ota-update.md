@@ -1,0 +1,542 @@
+# PRD: OTA Update System for ZimaOS-Blue
+
+**Version**: 0.10.23
+**Author**: ZimaOS-Blue Team
+**Status**: Draft
+**Created**: 2026-01-28
+
+---
+
+## 1. Overview
+
+### 1.1 Background
+
+ZimaOS-Blue is a single-binary Go service that runs on NAS devices. Currently, users must manually download and replace the binary to update the service, which is inconvenient and error-prone. An OTA (Over-The-Air) update system will significantly improve the user experience by enabling automatic updates with minimal service disruption.
+
+### 1.2 Goals
+
+1. Enable automatic version checking and update notifications
+2. Support hot updates with uptime continuity (no service restart required)
+3. Provide rollback capability for failed updates
+4. Maintain security through checksum verification and signed releases
+5. Support multiple release channels (stable, beta, alpha)
+
+### 1.3 Non-Goals
+
+1. Full system updates (only ZimaOS-Blue binary)
+2. Configuration migration between major versions
+3. Multi-node cluster updates (single instance only)
+
+---
+
+## 2. User Stories
+
+### 2.1 As a User
+
+- I want to be notified when a new version is available
+- I want to update with a single click without losing my settings
+- I want the service to remain available during updates
+- I want to rollback if an update causes problems
+
+### 2.2 As an Administrator
+
+- I want to control when updates are applied
+- I want to choose between stable and beta releases
+- I want to see update history and current version info
+- I want to disable automatic updates if needed
+
+---
+
+## 3. Functional Requirements
+
+### 3.1 Version Discovery
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-001 | System shall check for updates from GitHub release-note directory | P0 |
+| FR-002 | System shall parse semantic version numbers (MAJOR.MINOR.PATCH) | P0 |
+| FR-003 | System shall support pre-release versions (alpha, beta, rc) | P1 |
+| FR-004 | System shall cache version info to reduce API calls | P1 |
+
+**Version Source**: `https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/release-note`
+
+**CDN Fallback** (for better accessibility in China):
+- Primary: `https://api.github.com/repos/IceWhaleTech/ZimaOS-Blue/contents/release-note`
+- Fallback: `https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Blue@main/release-note/`
+
+The system will:
+1. List directories in the release-note folder
+2. Parse directory names as version numbers
+3. Sort versions using semantic versioning rules
+4. Identify the latest version for each release channel
+
+### 3.2 Update Download
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-005 | System shall download binary from version-specific GitHub release tag | P0 |
+| FR-006 | System shall verify SHA256 checksum before applying | P0 |
+| FR-007 | System shall support resumable downloads | P2 |
+| FR-008 | System shall show download progress | P1 |
+
+**Download URL Pattern**:
+- Primary: `https://github.com/IceWhaleTech/ZimaOS-Blue/releases/download/v{version}/zimaos-blue-{os}-{arch}`
+- Fallback: `https://cdn.jsdelivr.net/gh/IceWhaleTech/ZimaOS-Blue@v{version}/dist/zimaos-blue-{os}-{arch}`
+
+### 3.3 Hot Update (Cross-platform)
+
+| Platform | Method | Uptime Preserved | Connection Interruption |
+|----------|--------|------------------|-------------------------|
+| Linux | `syscall.Exec` in-place replacement | Yes | None |
+| macOS | `syscall.Exec` in-place replacement | Yes | None |
+| Windows | Rename exe + start new process | Yes | Brief (~1s) |
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-009 | System shall replace binary without service restart on Linux/macOS | P0 |
+| FR-010 | System shall support exe rename update on Windows | P0 |
+| FR-011 | System shall preserve uptime counter across updates | P0 |
+| FR-012 | System shall inherit listening sockets to avoid connection drops | P1 |
+| FR-013 | System shall gracefully drain existing connections | P1 |
+
+### 3.4 Session-Aware Update
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-014 | System shall detect active sessions before applying update | P0 |
+| FR-015 | System shall wait for active sessions to complete | P0 |
+| FR-016 | System shall auto-apply when idle if configured | P1 |
+
+**Active Session Detection**:
+- WebSocket connection count > 0
+- API request within last 30s
+- Ongoing LLM streaming response
+
+```
+┌─────────────────────────────────────────────────┐
+│              Session-Aware Update               │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  Download Complete ──▶ Check Sessions ──▶ Active? │
+│                                    │            │
+│                              Yes   │    No      │
+│                              ▼     │    ▼       │
+│                           Wait for │  Apply     │
+│                           Idle     │  Update    │
+│                              │     │            │
+│                              ▼     │            │
+│                           Apply ◀──────────────│
+│                                                 │
+└─────────────────────────────────────────────────┘
+```
+
+### 3.5 UI Notification (Red Dot Badge)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-017 | System shall show red dot badge on settings icon when update available | P0 |
+| FR-018 | System shall push WebSocket event when update available | P0 |
+| FR-019 | System shall clear badge after update applied or dismissed | P1 |
+
+**Implementation Strategy**:
+
+```go
+// Hot update flow
+func (u *Updater) Apply() error {
+    // 1. Backup current binary
+    if err := u.backupCurrent(); err != nil {
+        return err
+    }
+
+    // 2. Replace binary
+    if err := u.replaceBinary(); err != nil {
+        u.rollback()
+        return err
+    }
+
+    // 3. Set uptime preservation env
+    os.Setenv("BLUE_START_TIME", u.startTime.Format(time.RFC3339))
+
+    // 4. Exec new binary (replaces current process)
+    return syscall.Exec(u.binaryPath, os.Args, os.Environ())
+}
+```
+
+### 3.6 Rollback
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-020 | System shall keep N previous versions for rollback | P0 |
+| FR-021 | System shall auto-rollback if new version fails health check | P0 |
+| FR-022 | System shall support manual rollback via API | P1 |
+
+### 3.7 API Endpoints
+
+| Endpoint | Method | Description | Auth |
+|----------|--------|-------------|------|
+| `/api/v1/system/update/check` | GET | Check for available updates | Required |
+| `/api/v1/system/update/info` | GET | Get version and update status | Required |
+| `/api/v1/system/update/download` | POST | Download update package | Admin |
+| `/api/v1/system/update/apply` | POST | Apply downloaded update | Admin |
+| `/api/v1/system/update/rollback` | POST | Rollback to previous version | Admin |
+| `/api/v1/system/update/history` | GET | Get update history | Required |
+
+---
+
+## 4. Technical Design
+
+### 4.1 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      OTA Update System                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │   Version   │  │  Download   │  │   Update    │             │
+│  │   Checker   │  │   Manager   │  │   Applier   │             │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘             │
+│         │                │                │                     │
+│         ▼                ▼                ▼                     │
+│  ┌─────────────────────────────────────────────────┐           │
+│  │              Update Coordinator                  │           │
+│  └─────────────────────────────────────────────────┘           │
+│         │                │                │                     │
+│         ▼                ▼                ▼                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │   GitHub    │  │   Local     │  │   Process   │             │
+│  │   Client    │  │   Storage   │  │   Manager   │             │
+│  └─────────────┘  └─────────────┘  └─────────────┘             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Data Models
+
+```go
+// UpdateInfo represents available update information
+type UpdateInfo struct {
+    CurrentVersion  string    `json:"current_version"`
+    LatestVersion   string    `json:"latest_version"`
+    UpdateAvailable bool      `json:"update_available"`
+    ReleaseChannel  string    `json:"release_channel"`
+    ReleaseNotes    string    `json:"release_notes"`
+    DownloadURL     string    `json:"download_url"`
+    Checksum        string    `json:"checksum"`
+    Size            int64     `json:"size"`
+    PublishedAt     time.Time `json:"published_at"`
+}
+
+// UpdateStatus represents current update status
+type UpdateStatus struct {
+    State           string    `json:"state"` // idle, checking, downloading, applying, failed
+    Progress        float64   `json:"progress"`
+    Error           string    `json:"error,omitempty"`
+    LastChecked     time.Time `json:"last_checked"`
+    DownloadedPath  string    `json:"downloaded_path,omitempty"`
+}
+
+// UpdateHistory represents update history entry
+type UpdateHistory struct {
+    ID          string    `json:"id"`
+    FromVersion string    `json:"from_version"`
+    ToVersion   string    `json:"to_version"`
+    Status      string    `json:"status"` // success, failed, rolled_back
+    AppliedAt   time.Time `json:"applied_at"`
+    RolledBack  bool      `json:"rolled_back"`
+}
+```
+
+### 4.3 Configuration
+
+```yaml
+update:
+  # Enable/disable OTA updates
+  enabled: true
+
+  # How often to check for updates (0 = manual only)
+  check_interval: 24h
+
+  # Automatically download updates when available
+  auto_download: false
+
+  # Automatically apply updates (requires auto_download)
+  auto_apply: false
+
+  # Release channel: stable, beta, alpha
+  release_channel: stable
+
+  # GitHub release URL base
+  release_url: "https://github.com/IceWhaleTech/ZimaOS-Blue/releases"
+
+  # Number of old versions to keep for rollback
+  backup_count: 3
+
+  # Directory for storing downloaded updates and backups
+  storage_path: "./data/updates"
+
+  # Health check timeout after update (for auto-rollback)
+  health_check_timeout: 30s
+```
+
+### 4.4 Hot Update Implementation
+
+#### 4.4.1 Linux / macOS (with syscall.Exec)
+
+```go
+func (u *Updater) hotUpdateUnix() error {
+    // 1. Backup current binary
+    os.Rename(currentBinary, currentBinary+".backup")
+
+    // 2. Replace binary (atomic rename)
+    os.Rename(newBinary, currentBinary)
+
+    // 3. Prepare environment for uptime continuity
+    env := append(os.Environ(), fmt.Sprintf("BLUE_START_TIME=%d", u.startTime.Unix()))
+
+    // 4. Exec new binary (replaces current process in-place)
+    return syscall.Exec(currentBinary, os.Args, env)
+}
+```
+
+#### 4.4.2 Windows (Rename + New Process)
+
+Windows cannot replace a running exe, but allows renaming:
+
+```go
+func (u *Updater) hotUpdateWindows() error {
+    // 1. Rename current running exe (Windows allows this)
+    os.Rename(currentBinary, currentBinary+".old")
+
+    // 2. Move new version to original location
+    os.Rename(newBinary, currentBinary)
+
+    // 3. Start new process with uptime env
+    cmd := exec.Command(currentBinary, os.Args[1:]...)
+    cmd.Env = append(os.Environ(), fmt.Sprintf("BLUE_START_TIME=%d", u.startTime.Unix()))
+    cmd.Start()
+
+    // 4. Exit current process
+    os.Exit(0)
+    return nil
+}
+
+// New process cleans up old binary on startup
+func cleanupOldBinary() {
+    if _, err := os.Stat(currentBinary + ".old"); err == nil {
+        os.Remove(currentBinary + ".old")
+    }
+}
+```
+
+#### 4.4.3 Uptime Preservation
+
+```go
+func getStartTime() time.Time {
+    // Check if we're resuming from a hot update
+    if startTimeStr := os.Getenv("BLUE_START_TIME"); startTimeStr != "" {
+        if ts, err := strconv.ParseInt(startTimeStr, 10, 64); err == nil {
+            return time.Unix(ts, 0)
+        }
+    }
+    // Fresh start
+    return time.Now()
+}
+
+func getUptime() time.Duration {
+    return time.Since(startTime)
+}
+```
+
+#### 4.4.4 Graceful Restart (Fallback)
+
+```go
+func (u *Updater) gracefulRestart() error {
+    // 1. Stop accepting new connections
+    u.server.SetReady(false)
+
+    // 2. Wait for existing connections to drain
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    if err := u.server.DrainConnections(ctx); err != nil {
+        log.Warn().Err(err).Msg("Some connections did not drain in time")
+    }
+
+    // 3. Start new process
+    cmd := exec.Command(u.binaryPath, os.Args[1:]...)
+    cmd.Env = append(os.Environ(),
+        fmt.Sprintf("BLUE_START_TIME=%d", u.startTime.Unix()),
+    )
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+
+    if err := cmd.Start(); err != nil {
+        return err
+    }
+
+    // 4. Exit current process
+    os.Exit(0)
+    return nil
+}
+```
+
+### 4.5 Security
+
+1. **HTTPS Only**: All downloads use HTTPS
+2. **Checksum Verification**: SHA256 checksum verified before applying
+3. **Signature Verification** (P2): GPG signature verification for releases
+4. **Minimal Privileges**: Update process runs with minimal required permissions
+5. **Atomic Updates**: Binary replacement uses atomic rename operation
+
+---
+
+## 5. UI/UX Design
+
+### 5.1 Update Notification
+
+When an update is available, show a notification in the web UI:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🔔 Update Available                                    [x]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  A new version of ZimaOS-Blue is available!                │
+│                                                             │
+│  Current: v0.9                                           │
+│  Latest:  v0.9                                           │
+│                                                             │
+│  [View Release Notes]  [Download Now]  [Remind Later]      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 5.2 Update Progress
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ System Update                                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Downloading v0.9...                                     │
+│                                                             │
+│  ████████████████████░░░░░░░░░░  65%                       │
+│                                                             │
+│  Downloaded: 15.2 MB / 23.4 MB                             │
+│  Speed: 2.3 MB/s                                           │
+│                                                             │
+│  [Cancel]                                                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 5.3 Settings Page
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Update Settings                                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Current Version: v0.9                                   │
+│  Uptime: 15 days, 3 hours, 42 minutes                      │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ [✓] Enable automatic update checks                  │   │
+│  │     Check every: [24 hours ▼]                       │   │
+│  │                                                     │   │
+│  │ [ ] Automatically download updates                  │   │
+│  │ [ ] Automatically apply updates                     │   │
+│  │                                                     │   │
+│  │ Release Channel: [Stable ▼]                         │   │
+│  │                                                     │   │
+│  │ Keep previous versions: [3 ▼]                       │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  [Check Now]  [View History]                               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 6. Testing Strategy
+
+### 6.1 Unit Tests
+
+- Version parsing and comparison
+- Checksum verification
+- Configuration loading
+- API endpoint handlers
+
+### 6.2 Integration Tests
+
+- Full update flow (check → download → apply)
+- Rollback mechanism
+- Uptime preservation
+- WebSocket notifications
+
+### 6.3 E2E Tests
+
+- Update from v0.9 to v0.9
+- Rollback scenario
+- Network failure handling
+- Concurrent update requests
+
+---
+
+## 7. Rollout Plan
+
+### Phase 1: Alpha (v0.9-alpha)
+- Basic version checking
+- Manual download and apply
+- No hot update (requires restart)
+
+### Phase 2: Beta (v0.9-beta)
+- Hot update on Linux
+- Uptime preservation
+- Automatic rollback
+
+### Phase 3: Stable (v0.9)
+- Full feature set
+- Cross-platform support
+- Production ready
+
+---
+
+## 8. Metrics & Monitoring
+
+### 8.1 Metrics to Track
+
+- `blue_update_check_total`: Total update checks
+- `blue_update_download_total`: Total downloads
+- `blue_update_apply_total`: Total updates applied
+- `blue_update_rollback_total`: Total rollbacks
+- `blue_update_duration_seconds`: Update duration histogram
+
+### 8.2 Alerts
+
+- Update check failures (> 3 consecutive)
+- Download failures
+- Apply failures
+- Rollback triggered
+
+---
+
+## 9. Open Questions
+
+1. Should we support delta updates to reduce download size?
+2. Should we add a "maintenance window" feature for scheduled updates?
+3. How to handle database migrations during updates?
+
+---
+
+## 10. References
+
+- [Semantic Versioning 2.0.0](https://semver.org/)
+- [Go syscall.Exec](https://pkg.go.dev/syscall#Exec)
+- [SO_REUSEPORT](https://lwn.net/Articles/542629/)
+- [Graceful Restart in Go](https://blog.cloudflare.com/graceful-upgrades-in-go/)
+- [jsDelivr CDN](https://www.jsdelivr.com/) - GitHub CDN for better accessibility
+- [Windows Unlocker](https://github.com/ez8-co/unlocker) - Windows file unlock reference
+- [AutoUpdate](https://github.com/MFCer/AutoUpdate) - Windows self-update reference

@@ -3,14 +3,9 @@ package stt
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/whisper.cpp/include -I${SRCDIR}/../../../third_party/whisper.cpp/ggml/include
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/opus-src/include
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-base.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-cpu.a
-#cgo LDFLAGS: ${SRCDIR}/../../../third_party/opus-src/build/libopus.a
-#cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.a
-#cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.a
-#cgo darwin LDFLAGS: -framework Accelerate -framework Metal -framework Foundation -framework CoreGraphics
+#cgo darwin LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-cpu.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-base.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml.a ${SRCDIR}/../../../third_party/opus-src/build/libopus.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.a -framework Accelerate -framework Metal -framework Foundation -framework CoreGraphics -lm -lstdc++
+#cgo linux LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-cpu.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml-base.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/libggml.a ${SRCDIR}/../../../third_party/opus-src/build/libopus.a -lm -lstdc++
+#cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/whisper.cpp/build/src/libwhisper.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-cpu.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml-base.a ${SRCDIR}/../../../third_party/whisper.cpp/build/ggml/src/ggml.a ${SRCDIR}/../../../third_party/opus-src/build/libopus.a -lstdc++ -lm -lws2_32 -lwinmm -lgomp
 #include <whisper.h>
 #include <opus.h>
 #include <stdlib.h>

@@ -95,7 +95,7 @@ function handleRetry() {
       <!-- Retry button -->
       <button
         v-if="showRetry"
-        class="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700 text-white rounded-lg transition-colors"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
         @click="handleRetry"
       >
         <svg

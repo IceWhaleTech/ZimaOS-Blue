@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/database"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 )
 
 // PendingRestore represents a pending restore operation that will be applied on restart

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ZimaOS-Echo Development Script
+# ZimaOS-Blue Development Script
 # Usage: ./dev.sh [command]
 # Commands: start (default), server, web, build, clean, prd
 
@@ -105,11 +105,11 @@ start_server() {
         warn "Air not installed, running without hot reload"
         warn "Run 'go install github.com/air-verse/air@latest' to enable hot reload"
         # Build first
-        go build -o echo ./cmd/echo
+        go build -o blue ./cmd/blue
         success "Server built successfully"
 
         info "Starting server on http://localhost:23456"
-        ./echo
+        ./blue
     fi
 }
 
@@ -135,7 +135,7 @@ start_all() {
 
     echo ""
     echo -e "${CYAN}========================================${NC}"
-    echo -e "${CYAN}  ZimaOS-Echo Development Environment${NC}"
+    echo -e "${CYAN}  ZimaOS-Blue Development Environment${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo ""
     echo -e "  Backend:  ${YELLOW}http://localhost:23456${NC}"
@@ -165,8 +165,8 @@ start_all() {
     if command_exists air; then
         air
     else
-        go build -tags dev -o echo ./cmd/echo
-        ./echo
+        go build -tags dev -o blue ./cmd/blue
+        ./blue
     fi
 }
 
@@ -188,16 +188,68 @@ cleanup() {
     success "Services stopped"
 }
 
+# Build third_party native libraries (espeak-ng, whisper.cpp, opus)
+build_third_party() {
+    info "Building third_party native libraries..."
+
+    # Build espeak-ng
+    if [ ! -f "$PROJECT_ROOT/third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a" ]; then
+        info "Building espeak-ng..."
+        cd "$PROJECT_ROOT/third_party/espeak-ng"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+        success "espeak-ng built"
+    else
+        info "espeak-ng already built, skipping..."
+    fi
+
+    # Build libsonic.a from espeak-ng's compiled object if missing
+    if [ ! -f "$PROJECT_ROOT/third_party/espeak-ng/build/libsonic.a" ] && \
+       [ -f "$PROJECT_ROOT/third_party/espeak-ng/build/CMakeFiles/sonic.dir/_deps/sonic-git-src/sonic.c.o" ]; then
+        info "Creating libsonic.a..."
+        ar rcs "$PROJECT_ROOT/third_party/espeak-ng/build/libsonic.a" \
+            "$PROJECT_ROOT/third_party/espeak-ng/build/CMakeFiles/sonic.dir/_deps/sonic-git-src/sonic.c.o"
+        success "libsonic.a created"
+    fi
+
+    # Build whisper.cpp
+    if [ ! -f "$PROJECT_ROOT/third_party/whisper.cpp/build/src/libwhisper.a" ]; then
+        info "Building whisper.cpp..."
+        cd "$PROJECT_ROOT/third_party/whisper.cpp"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+        success "whisper.cpp built"
+    else
+        info "whisper.cpp already built, skipping..."
+    fi
+
+    # Build opus
+    if [ ! -f "$PROJECT_ROOT/third_party/opus-src/build/libopus.a" ]; then
+        info "Building opus..."
+        cd "$PROJECT_ROOT/third_party/opus-src"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+        success "opus built"
+    else
+        info "opus already built, skipping..."
+    fi
+
+    success "Third_party libraries ready"
+}
+
 # Build for production
 build_all() {
     check_prereqs
 
     info "Building for production..."
 
+    # Build third_party native libraries
+    build_third_party
+
     # Build server
     info "Building Go server..."
     cd "$PROJECT_ROOT/server"
-    go build -ldflags="-s -w" -o echo ./cmd/echo
+    go build -ldflags="-s -w" -o blue ./cmd/blue
     success "Server built: server/echo"
 
     # Build web
@@ -236,7 +288,7 @@ prd_run() {
     # Start server (production mode, no -tags dev, serves embedded frontend)
     info "Starting Go server (production mode, http://localhost:23456)..."
     cd "$PROJECT_ROOT/server"
-    go run ./cmd/echo
+    go run ./cmd/blue
 }
 
 # Clean build artifacts

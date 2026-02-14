@@ -1,5 +1,5 @@
 #!/bin/bash
-# ZimaOS Echo - Tauri Build Script
+# ZimaOS Blue - Tauri Build Script
 # This script builds the complete Tauri application package
 #
 # Build Strategies:
@@ -18,7 +18,7 @@ TAURI_DIR="$SCRIPT_DIR/src-tauri"
 LIB_DIR="$TAURI_DIR/lib"
 
 echo "=========================================="
-echo "ZimaOS Echo - Tauri Build Script"
+echo "ZimaOS Blue - Tauri Build Script"
 echo "=========================================="
 
 # Colors for output
@@ -147,11 +147,11 @@ if [ "$GOOS" = "darwin" ]; then
     # Build for current architecture
     CGO_ENABLED=1 go build -buildmode=c-archive \
         -ldflags="-s -w" \
-        -o "$LIB_DIR/libecho.a" \
-        ./cmd/echolib/
+        -o "$LIB_DIR/libblue.a" \
+        ./cmd/bluelib/
 
-    print_step "Go library built: $LIB_DIR/libecho.a"
-    ls -lh "$LIB_DIR/libecho.a"
+    print_step "Go library built: $LIB_DIR/libblue.a"
+    ls -lh "$LIB_DIR/libblue.a"
 
     # Note: No sidecar needed for macOS
     print_step "macOS uses CGO library - no sidecar binary needed"
@@ -176,13 +176,13 @@ else
             ;;
     esac
 
-    SIDECAR_NAME="echo-server-$TARGET"
+    SIDECAR_NAME="blue-server-$TARGET"
     if [ "$GOOS" = "windows" ]; then
         SIDECAR_NAME="$SIDECAR_NAME.exe"
     fi
 
     # Build with optimizations (NO UPX compression!)
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/echo/
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
 
     # Also copy to bin directory for resources bundling
     mkdir -p "$TAURI_DIR/bin"
@@ -211,7 +211,7 @@ if [ "$GOOS" = "darwin" ]; then
     DMG_DIR="$TAURI_DIR/target/release/bundle/dmg"
 
     # Get app name from tauri.conf.json
-    APP_NAME="ZimaOS Echo"
+    APP_NAME="ZimaOS Blue"
 
     # Find existing DMG
     EXISTING_DMG=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -1)

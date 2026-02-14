@@ -1,18 +1,18 @@
-# ZimaOS-Echo Roadmap
+# ZimaOS-Blue Roadmap
 
 [中文版本](../i18n/zh_CN/DEV/ROADMAP.md)
 
-This document describes the development direction and milestone planning for the ZimaOS-Echo project.
+This document describes the development direction and milestone planning for the ZimaOS-Blue project.
 
 ## Vision
 
-Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbot), build a **NAS-native Agent Runtime** using Golang - lightweight, high-performance, optimized for low-power trusted NAS devices, with one-click deployment and monolithic service architecture.
+Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbot), build a **A Local-first Agent Runtime for Builders with Bolder Mind** using Golang - lightweight, high-performance, optimized for low-power trusted NAS devices, with one-click deployment and monolithic service architecture.
 
 > **This is NOT "clawdbot in Go", but "NAS Agent Runtime with clawdbot as the requirements sample".**
 
 ## Project Positioning
 
-| Feature | clawdbot (Original) | ZimaOS-Echo (Target) |
+| Feature | clawdbot (Original) | ZimaOS-Blue (Target) |
 |---------|---------------------|----------------------|
 | Language | TypeScript/Node.js | Golang |
 | Architecture | Multi-process/Microservices | Monolithic |
@@ -361,7 +361,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                              ZimaOS-Echo                                          │
+│                              ZimaOS-Blue                                          │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐              │
 │  │    Vue 3     │  │   REST API   │  │       WebSocket            │              │

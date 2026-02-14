@@ -33,13 +33,13 @@ const sizeClasses = computed(() => {
 const colorClasses = computed(() => {
   switch (props.color) {
     case 'primary':
-      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+      return 'text-gray-900 dark:text-white dark:text-white'
     case 'secondary':
       return 'text-gray-600 dark:text-gray-400'
     case 'white':
       return 'text-white'
     default:
-      return 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+      return 'text-gray-900 dark:text-white dark:text-white'
   }
 })
 </script>

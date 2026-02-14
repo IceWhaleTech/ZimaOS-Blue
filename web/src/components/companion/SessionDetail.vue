@@ -50,7 +50,7 @@ function handleNodeHover(_event: SessionEvent | null) {
 function getThreatColor(level: ThreatLevel): string {
   const colors: Record<ThreatLevel, string> = {
     none: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
-    low: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
+    low: 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white',
     medium: 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300',
     high: 'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300',
     critical: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300',

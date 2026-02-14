@@ -319,7 +319,7 @@ function getScopeLabel(scope: string): string {
               :class="
                 authStore.user.role === 'admin'
                   ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
-                  : 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/50 text-gray-900 dark:text-white dark:text-gray-900 dark:text-white'
+                  : 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white'
               "
             >
               {{ authStore.user.role }}
@@ -377,14 +377,14 @@ function getScopeLabel(scope: string): string {
           <div class="flex gap-3 pt-4">
             <button
               v-if="!isEditingProfile"
-              class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors"
+              class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
               @click="startEditProfile"
             >
               {{ $t('profile.editProfile') }}
             </button>
             <template v-else>
               <button
-                class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+                class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
                 :disabled="authStore.loading || (editPassword && !passwordsMatch) || false"
                 @click="saveProfile"
               >
@@ -526,7 +526,7 @@ function getScopeLabel(scope: string): string {
             <button
               v-else
               :disabled="linkingProvider === provider.id"
-              class="px-3 sm:px-4 py-2 text-sm bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+              class="px-3 sm:px-4 py-2 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
               @click="linkProvider(provider)"
             >
               {{ linkingProvider === provider.id ? $t('profile.connecting') : $t('profile.connect') }}
@@ -557,7 +557,7 @@ function getScopeLabel(scope: string): string {
           <span class="truncate">{{ $t('profile.apiKeys') }}</span>
         </h2>
         <button
-          class="px-3 sm:px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm transition-colors flex items-center gap-2 flex-shrink-0"
+          class="px-3 sm:px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2 flex-shrink-0"
           @click="openCreateKeyModal"
         >
           <svg
@@ -655,7 +655,7 @@ function getScopeLabel(scope: string): string {
                   {{ createdKey }}
                 </code>
                 <button
-                  class="p-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  class="p-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
                   :class="{ 'bg-green-500 dark:bg-green-600': copiedKey }"
                   @click="copyKey"
                 >
@@ -755,7 +755,7 @@ function getScopeLabel(scope: string): string {
               <button
                 type="submit"
                 :disabled="authStore.loading || !newKeyName || newKeyScopes.length === 0"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {{ authStore.loading ? $t('profile.creating') : $t('profile.createApiKey') }}
               </button>

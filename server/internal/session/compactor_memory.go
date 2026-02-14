@@ -6,8 +6,8 @@ import (
 	"log"
 	"strings"
 
-	sessionctx "github.com/IceWhaleTech/ZimaOS-Echo/server/internal/context"
-	"github.com/IceWhaleTech/ZimaOS-Echo/server/internal/llm"
+	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 // MemoryRefresher interface for memory integration during compaction.

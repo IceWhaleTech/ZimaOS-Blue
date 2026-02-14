@@ -2,7 +2,7 @@
 
 [English Version](../../../DEV/troubleshooting.md)
 
-本指南帮助你诊断和解决 ZimaOS-Echo 的常见问题。
+本指南帮助你诊断和解决 ZimaOS-Blue 的常见问题。
 
 ## 快速诊断
 
@@ -10,27 +10,27 @@
 
 ```bash
 # Systemd 服务
-sudo systemctl status echo
+sudo systemctl status blue
 
 # Docker 容器
-docker ps | grep echo
-docker logs zimaos-echo --tail 100
+docker ps | grep blue
+docker logs zimaos-blue --tail 100
 
 # 直接进程
-ps aux | grep echo
+ps aux | grep blue
 ```
 
 ### 检查日志
 
 ```bash
 # Systemd 日志
-sudo journalctl -u echo -f
+sudo journalctl -u blue -f
 
 # 日志文件（如果已配置）
-tail -f /var/log/echo/echo.log
+tail -f /var/log/blue/blue.log
 
 # Docker 日志
-docker logs -f zimaos-echo
+docker logs -f zimaos-blue
 ```
 
 ### 健康检查
@@ -61,7 +61,7 @@ sudo lsof -i :23456
 # 或
 sudo netstat -tlnp | grep 23456
 
-# 终止该进程或更改 Echo 的端口
+# 终止该进程或更改 Blue 的端口
 # 在 config.yaml 中：
 server:
   port: 8081
@@ -74,7 +74,7 @@ server:
 **解决方案：**
 ```bash
 # 创建最小配置
-cat > /etc/echo/config.yaml << 'EOF'
+cat > /etc/blue/config.yaml << 'EOF'
 server:
   port: 23456
 llm:
@@ -110,11 +110,11 @@ auth:
 **解决方案：**
 ```bash
 # 修复文件权限
-sudo chown -R echo:echo /var/lib/echo
-sudo chmod 755 /var/lib/echo
+sudo chown -R blue:blue /var/lib/blue
+sudo chmod 755 /var/lib/blue
 
 # 修复二进制文件权限
-sudo chmod +x /usr/local/bin/echo
+sudo chmod +x /usr/local/bin/blue
 ```
 
 ---
@@ -223,7 +223,7 @@ curl https://api.openai.com/v1/models \
 **解决方案：**
 ```bash
 # 验证 API 密钥格式（应以 sk-ant- 开头）
-echo $ANTHROPIC_API_KEY
+blue $ANTHROPIC_API_KEY
 
 # 测试 API 密钥
 curl https://api.anthropic.com/v1/messages \
@@ -268,7 +268,7 @@ ls -la ./plugins/
 cat ./plugins/my-plugin/manifest.json
 
 # 检查日志中的加载错误
-grep "plugin" /var/log/echo/echo.log
+grep "plugin" /var/log/blue/blue.log
 ```
 
 **常见问题：**
@@ -287,7 +287,7 @@ logging:
   level: "debug"
 
 # 检查插件特定日志
-grep "my-plugin" /var/log/echo/echo.log
+grep "my-plugin" /var/log/blue/blue.log
 ```
 
 #### JavaScript 插件超时
@@ -311,7 +311,7 @@ plugins:
 **解决方案：**
 ```bash
 # 检查是否有多个进程
-fuser /var/lib/echo/echo.db
+fuser /var/lib/blue/blue.db
 
 # 在配置中增加忙等待超时
 database:
@@ -320,7 +320,7 @@ database:
 # 或切换到其他数据库
 database:
   type: "postgres"
-  dsn: "postgres://user:pass@localhost/echo"
+  dsn: "postgres://user:pass@localhost/blue"
 ```
 
 #### 数据库损坏
@@ -330,13 +330,13 @@ database:
 **解决方案：**
 ```bash
 # 备份当前数据库
-cp /var/lib/echo/echo.db /var/lib/echo/echo.db.bak
+cp /var/lib/blue/blue.db /var/lib/blue/blue.db.bak
 
 # 尝试恢复
-sqlite3 /var/lib/echo/echo.db ".recover" | sqlite3 /var/lib/echo/echo_new.db
+sqlite3 /var/lib/blue/blue.db ".recover" | sqlite3 /var/lib/blue/blue_new.db
 
 # 或从备份恢复
-cp /var/lib/echo/backups/latest/echo.db /var/lib/echo/echo.db
+cp /var/lib/blue/backups/latest/blue.db /var/lib/blue/blue.db
 ```
 
 ---
@@ -447,14 +447,14 @@ location /api/v1/ws/ {
 server:
   tls:
     enabled: true
-    cert_file: "/etc/echo/cert.pem"
-    key_file: "/etc/echo/key.pem"
+    cert_file: "/etc/blue/cert.pem"
+    key_file: "/etc/blue/key.pem"
 ```
 
 或使用反向代理（推荐）：
 ```bash
 # 使用 certbot 获取 Let's Encrypt 证书
-sudo certbot --nginx -d echo.yourdomain.com
+sudo certbot --nginx -d blue.yourdomain.com
 ```
 
 ---
@@ -468,12 +468,12 @@ sudo certbot --nginx -d echo.yourdomain.com
 **检查：**
 ```bash
 # 验证备份目录存在且可写
-ls -la /var/lib/echo/backups/
-mkdir -p /var/lib/echo/backups
-chown echo:echo /var/lib/echo/backups
+ls -la /var/lib/blue/backups/
+mkdir -p /var/lib/blue/backups
+chown blue:blue /var/lib/blue/backups
 
 # 检查磁盘空间
-df -h /var/lib/echo/
+df -h /var/lib/blue/
 ```
 
 #### 恢复失败
@@ -483,19 +483,19 @@ df -h /var/lib/echo/
 **解决方案：**
 ```bash
 # 首先停止服务
-sudo systemctl stop echo
+sudo systemctl stop blue
 
 # 恢复数据库
-cp /var/lib/echo/backups/2024-01-15/echo.db /var/lib/echo/echo.db
+cp /var/lib/blue/backups/2024-01-15/blue.db /var/lib/blue/blue.db
 
 # 恢复配置
-cp /var/lib/echo/backups/2024-01-15/config.yaml /etc/echo/config.yaml
+cp /var/lib/blue/backups/2024-01-15/config.yaml /etc/blue/config.yaml
 
 # 修复权限
-chown echo:echo /var/lib/echo/echo.db
+chown blue:blue /var/lib/blue/blue.db
 
 # 启动服务
-sudo systemctl start echo
+sudo systemctl start blue
 ```
 
 ---
@@ -505,8 +505,8 @@ sudo systemctl start echo
 ### 系统信息
 
 ```bash
-# Echo 版本
-echo --version
+# Blue 版本
+blue --version
 
 # Go 版本（如果从源码构建）
 go version
@@ -526,7 +526,7 @@ df -h
 
 ```bash
 # 检查监听端口
-sudo netstat -tlnp | grep echo
+sudo netstat -tlnp | grep blue
 
 # 测试连接
 curl -v http://localhost:23456/health
@@ -539,13 +539,13 @@ nslookup api.openai.com
 
 ```bash
 # 统计最近一小时的错误数
-journalctl -u echo --since "1 hour ago" | grep -c "error"
+journalctl -u blue --since "1 hour ago" | grep -c "error"
 
 # 查找最常见的错误
-journalctl -u echo --since "1 day ago" | grep "error" | sort | uniq -c | sort -rn | head
+journalctl -u blue --since "1 day ago" | grep "error" | sort | uniq -c | sort -rn | head
 
 # 监控特定问题
-journalctl -u echo -f | grep -E "(error|panic|fatal)"
+journalctl -u blue -f | grep -E "(error|panic|fatal)"
 ```
 
 ---
@@ -554,17 +554,17 @@ journalctl -u echo -f | grep -E "(error|panic|fatal)"
 
 如果你无法解决问题：
 
-1. **查看现有问题：** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Echo/issues)
+1. **查看现有问题：** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
 
 2. **收集诊断信息：**
    ```bash
-   echo --version
-   cat /etc/echo/config.yaml
-   journalctl -u echo --since "1 hour ago" > echo-logs.txt
+   blue --version
+   cat /etc/blue/config.yaml
+   journalctl -u blue --since "1 hour ago" > blue-logs.txt
    ```
 
 3. **提交新问题**，包含：
-   - Echo 版本
+   - Blue 版本
    - 操作系统和版本
    - 复现步骤
    - 错误消息

@@ -62,7 +62,7 @@ function getPersonalityIcon(personality: Personality): string {
         </p>
       </div>
       <button
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-800 dark:hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
         @click="goToPersonalityPage"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -112,7 +112,7 @@ function getPersonalityIcon(personality: Personality): string {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
               <h4 class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {{ personality.name }}
+                {{ personality.id === 'default' ? t('personality.defaultName') : personality.name }}
               </h4>
               <span
                 v-if="store.activePersonality?.id === personality.id"
@@ -122,17 +122,18 @@ function getPersonalityIcon(personality: Personality): string {
               </span>
             </div>
             <p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-              {{ personality.description || personality.system_prompt }}
+              {{ personality.id === 'default' ? t('personality.defaultDescription') : (personality.description || personality.system_prompt) }}
             </p>
 
             <!-- Traits -->
             <div v-if="personality.traits && personality.traits.length > 0" class="flex flex-wrap gap-1 mt-2">
               <span
                 v-for="trait in personality.traits.slice(0, 3)"
-                :key="trait"
+                :key="trait.key"
                 class="px-2 py-0.5 bg-gray-200 dark:bg-slate-600 text-gray-700 dark:text-gray-300 text-xs rounded"
+                :title="`${trait.key}: ${trait.value} (${trait.weight})`"
               >
-                {{ trait }}
+                {{ trait.key }}: {{ trait.value }}
               </span>
               <span
                 v-if="personality.traits.length > 3"
@@ -153,6 +154,7 @@ function getPersonalityIcon(personality: Personality): string {
               {{ t('personality.activate') }}
             </button>
             <button
+              v-if="personality.id !== 'default'"
               class="px-3 py-1 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded text-xs font-medium transition-colors"
               @click="handleDelete(personality.id)"
             >

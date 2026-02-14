@@ -23,7 +23,7 @@ func NewPureMarkdownBackend(baseDir string) (*PureMarkdownBackend, error) {
 		if err != nil {
 			return nil, err
 		}
-		baseDir = filepath.Join(homeDir, ".zimaos-echo", "memory")
+		baseDir = filepath.Join(homeDir, ".zimaos-blue", "memory")
 	}
 
 	// Ensure directories exist

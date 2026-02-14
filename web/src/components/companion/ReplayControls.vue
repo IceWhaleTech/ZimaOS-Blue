@@ -75,15 +75,15 @@ watch(showSpeedMenu, (isOpen) => {
   <div class="bg-white dark:bg-gray-700 rounded-lg shadow-md p-4">
     <!-- Progress bar -->
     <div
-      class="relative h-2 bg-gray-700 dark:bg-gray-700 rounded-full cursor-pointer mb-4 group"
+      class="relative h-2 bg-gray-700 dark:bg-gray-500 rounded-full cursor-pointer mb-4 group"
       @click="handleSeek"
     >
       <div
-        class="absolute h-full bg-gray-700 dark:bg-gray-700 rounded-full transition-all"
+        class="absolute h-full bg-gray-700 dark:bg-gray-500 rounded-full transition-all"
         :style="{ width: `${progress}%` }"
       />
       <div
-        class="absolute w-4 h-4 bg-gray-700 dark:bg-gray-700 rounded-full -top-1 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+        class="absolute w-4 h-4 bg-gray-700 dark:bg-gray-500 rounded-full -top-1 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
         :style="{ left: `${progress}%` }"
       />
     </div>
@@ -111,7 +111,7 @@ watch(showSpeedMenu, (isOpen) => {
 
         <!-- Play/Pause -->
         <button
-          class="p-3 bg-gray-700 dark:bg-gray-700 text-white rounded-full hover:bg-gray-700 dark:bg-gray-700/90 transition-colors"
+          class="p-3 bg-gray-700 dark:bg-gray-500 text-white rounded-full hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors"
           @click="isPlaying ? emit('pause') : emit('play')"
         >
           <svg v-if="!isPlaying" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">

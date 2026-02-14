@@ -47,7 +47,7 @@ func NewLayeredMemoryService(baseService *UnifiedMemoryService, config LayeredMe
 		if err != nil {
 			return nil, fmt.Errorf("failed to get home directory: %w", err)
 		}
-		config.BaseDir = filepath.Join(homeDir, ".zimaos-echo", "memory")
+		config.BaseDir = filepath.Join(homeDir, ".zimaos-blue", "memory")
 	}
 
 	if config.DailyRetentionDays == 0 {
@@ -153,7 +153,7 @@ func (s *LayeredMemoryService) PromoteToLongTerm(ctx context.Context, content st
 	// Check if file is empty
 	info, _ := f.Stat()
 	if info.Size() == 0 {
-		header := "# Long-Term Memory\n\n> Curated knowledge base for ZimaOS-Echo\n\n---\n\n"
+		header := "# Long-Term Memory\n\n> Curated knowledge base for ZimaOS-Blue\n\n---\n\n"
 		if _, err := f.WriteString(header); err != nil {
 			return fmt.Errorf("failed to write header: %w", err)
 		}

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide helps you diagnose and resolve common issues with ZimaOS-Echo.
+This guide helps you diagnose and resolve common issues with ZimaOS-Blue.
 
 ## Quick Diagnostics
 
@@ -8,27 +8,27 @@ This guide helps you diagnose and resolve common issues with ZimaOS-Echo.
 
 ```bash
 # Systemd service
-sudo systemctl status echo
+sudo systemctl status blue
 
 # Docker container
-docker ps | grep echo
-docker logs zimaos-echo --tail 100
+docker ps | grep blue
+docker logs zimaos-blue --tail 100
 
 # Direct process
-ps aux | grep echo
+ps aux | grep blue
 ```
 
 ### Check Logs
 
 ```bash
 # Systemd logs
-sudo journalctl -u echo -f
+sudo journalctl -u blue -f
 
 # Log file (if configured)
-tail -f /var/log/echo/echo.log
+tail -f /var/log/blue/blue.log
 
 # Docker logs
-docker logs -f zimaos-echo
+docker logs -f zimaos-blue
 ```
 
 ### Health Check
@@ -59,7 +59,7 @@ sudo lsof -i :23456
 # or
 sudo netstat -tlnp | grep 23456
 
-# Kill the process or change Echo's port
+# Kill the process or change Blue's port
 # In config.yaml:
 server:
   port: 8081
@@ -72,7 +72,7 @@ server:
 **Solution:**
 ```bash
 # Create minimal config
-cat > /etc/echo/config.yaml << 'EOF'
+cat > /etc/blue/config.yaml << 'EOF'
 server:
   port: 23456
 llm:
@@ -108,11 +108,11 @@ auth:
 **Solution:**
 ```bash
 # Fix file permissions
-sudo chown -R echo:echo /var/lib/echo
-sudo chmod 755 /var/lib/echo
+sudo chown -R blue:blue /var/lib/blue
+sudo chmod 755 /var/lib/blue
 
 # Fix binary permissions
-sudo chmod +x /usr/local/bin/echo
+sudo chmod +x /usr/local/bin/blue
 ```
 
 ---
@@ -221,7 +221,7 @@ curl https://api.openai.com/v1/models \
 **Solution:**
 ```bash
 # Verify API key format (should start with sk-ant-)
-echo $ANTHROPIC_API_KEY
+blue $ANTHROPIC_API_KEY
 
 # Test API key
 curl https://api.anthropic.com/v1/messages \
@@ -266,7 +266,7 @@ ls -la ./plugins/
 cat ./plugins/my-plugin/manifest.json
 
 # Check logs for loading errors
-grep "plugin" /var/log/echo/echo.log
+grep "plugin" /var/log/blue/blue.log
 ```
 
 **Common issues:**
@@ -285,7 +285,7 @@ logging:
   level: "debug"
 
 # Check plugin-specific logs
-grep "my-plugin" /var/log/echo/echo.log
+grep "my-plugin" /var/log/blue/blue.log
 ```
 
 #### JavaScript Plugin Timeout
@@ -309,7 +309,7 @@ plugins:
 **Solution:**
 ```bash
 # Check for multiple processes
-fuser /var/lib/echo/echo.db
+fuser /var/lib/blue/blue.db
 
 # Increase busy timeout in config
 database:
@@ -318,7 +318,7 @@ database:
 # Or switch to a different database
 database:
   type: "postgres"
-  dsn: "postgres://user:pass@localhost/echo"
+  dsn: "postgres://user:pass@localhost/blue"
 ```
 
 #### Database Corruption
@@ -328,13 +328,13 @@ database:
 **Solution:**
 ```bash
 # Backup current database
-cp /var/lib/echo/echo.db /var/lib/echo/echo.db.bak
+cp /var/lib/blue/blue.db /var/lib/blue/blue.db.bak
 
 # Try to recover
-sqlite3 /var/lib/echo/echo.db ".recover" | sqlite3 /var/lib/echo/echo_new.db
+sqlite3 /var/lib/blue/blue.db ".recover" | sqlite3 /var/lib/blue/blue_new.db
 
 # Or restore from backup
-cp /var/lib/echo/backups/latest/echo.db /var/lib/echo/echo.db
+cp /var/lib/blue/backups/latest/blue.db /var/lib/blue/blue.db
 ```
 
 ---
@@ -445,14 +445,14 @@ location /api/v1/ws/ {
 server:
   tls:
     enabled: true
-    cert_file: "/etc/echo/cert.pem"
-    key_file: "/etc/echo/key.pem"
+    cert_file: "/etc/blue/cert.pem"
+    key_file: "/etc/blue/key.pem"
 ```
 
 Or use a reverse proxy (recommended):
 ```bash
 # Let's Encrypt with certbot
-sudo certbot --nginx -d echo.yourdomain.com
+sudo certbot --nginx -d blue.yourdomain.com
 ```
 
 ---
@@ -466,12 +466,12 @@ sudo certbot --nginx -d echo.yourdomain.com
 **Check:**
 ```bash
 # Verify backup directory exists and is writable
-ls -la /var/lib/echo/backups/
-mkdir -p /var/lib/echo/backups
-chown echo:echo /var/lib/echo/backups
+ls -la /var/lib/blue/backups/
+mkdir -p /var/lib/blue/backups
+chown blue:blue /var/lib/blue/backups
 
 # Check disk space
-df -h /var/lib/echo/
+df -h /var/lib/blue/
 ```
 
 #### Restore Failed
@@ -481,19 +481,19 @@ df -h /var/lib/echo/
 **Solution:**
 ```bash
 # Stop service first
-sudo systemctl stop echo
+sudo systemctl stop blue
 
 # Restore database
-cp /var/lib/echo/backups/2024-01-15/echo.db /var/lib/echo/echo.db
+cp /var/lib/blue/backups/2024-01-15/blue.db /var/lib/blue/blue.db
 
 # Restore config
-cp /var/lib/echo/backups/2024-01-15/config.yaml /etc/echo/config.yaml
+cp /var/lib/blue/backups/2024-01-15/config.yaml /etc/blue/config.yaml
 
 # Fix permissions
-chown echo:echo /var/lib/echo/echo.db
+chown blue:blue /var/lib/blue/blue.db
 
 # Start service
-sudo systemctl start echo
+sudo systemctl start blue
 ```
 
 ---
@@ -503,8 +503,8 @@ sudo systemctl start echo
 ### System Information
 
 ```bash
-# Echo version
-echo --version
+# Blue version
+blue --version
 
 # Go version (if built from source)
 go version
@@ -524,7 +524,7 @@ df -h
 
 ```bash
 # Check listening ports
-sudo netstat -tlnp | grep echo
+sudo netstat -tlnp | grep blue
 
 # Test connectivity
 curl -v http://localhost:23456/health
@@ -537,13 +537,13 @@ nslookup api.openai.com
 
 ```bash
 # Count errors in last hour
-journalctl -u echo --since "1 hour ago" | grep -c "error"
+journalctl -u blue --since "1 hour ago" | grep -c "error"
 
 # Find most common errors
-journalctl -u echo --since "1 day ago" | grep "error" | sort | uniq -c | sort -rn | head
+journalctl -u blue --since "1 day ago" | grep "error" | sort | uniq -c | sort -rn | head
 
 # Watch for specific issues
-journalctl -u echo -f | grep -E "(error|panic|fatal)"
+journalctl -u blue -f | grep -E "(error|panic|fatal)"
 ```
 
 ---
@@ -552,17 +552,17 @@ journalctl -u echo -f | grep -E "(error|panic|fatal)"
 
 If you can't resolve your issue:
 
-1. **Check existing issues:** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Echo/issues)
+1. **Check existing issues:** [GitHub Issues](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
 
 2. **Collect diagnostic info:**
    ```bash
-   echo --version
-   cat /etc/echo/config.yaml
-   journalctl -u echo --since "1 hour ago" > echo-logs.txt
+   blue --version
+   cat /etc/blue/config.yaml
+   journalctl -u blue --since "1 hour ago" > blue-logs.txt
    ```
 
 3. **Open a new issue** with:
-   - Echo version
+   - Blue version
    - OS and version
    - Steps to reproduce
    - Error messages

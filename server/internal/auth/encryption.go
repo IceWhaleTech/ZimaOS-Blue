@@ -64,7 +64,7 @@ func NewEncryptor(cfg *EncryptionConfig) (*Encryptor, error) {
 		salt := cfg.Salt
 		if len(salt) == 0 {
 			// Default salt (should be overridden in production)
-			salt = []byte("zimaos-echo-default-salt")
+			salt = []byte("zimaos-blue-default-salt")
 		}
 		key = deriveKey(cfg.Passphrase, salt)
 	} else {

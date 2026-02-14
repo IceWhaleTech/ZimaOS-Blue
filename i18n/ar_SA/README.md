@@ -1,7 +1,7 @@
-# ZimaOS Echo
+# ZimaOS Blue
 
 <p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Echo" width="200">
+  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
 </p>
 
 <p align="center">
@@ -32,12 +32,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Echo/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Echo/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Echo?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Echo** هو بيئة تشغيل وكيل ذكاء اصطناعي خفيفة وعالية الأداء مصممة لأجهزة NAS والحافة. مبنية بلغة Go، توفر منصة جاهزة للإنتاج مع نشر بدون إعداد ومراقبة الجلسات وتحليلات الاستخدام.
+**ZimaOS Blue** هو بيئة تشغيل وكيل ذكاء اصطناعي خفيفة وعالية الأداء مصممة لأجهزة NAS والحافة. مبنية بلغة Go، توفر منصة جاهزة للإنتاج مع نشر بدون إعداد ومراقبة الجلسات وتحليلات الاستخدام.
 
 [البدء السريع](#البدء-السريع) · [الميزات](#الميزات-الأساسية)
 
@@ -92,16 +92,16 @@
 
 ```bash
 # من المصدر
-git clone https://github.com/IceWhaleTech/ZimaOS-Echo.git
-cd ZimaOS-Echo
-make build && ./dist/zimaos-echo server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+make build && ./dist/zimaos-blue server
 ```
 
 الوصول إلى لوحة التحكم على `http://localhost:3000`.
 
 ## إعداد مزودي LLM
 
-يدعم ZimaOS Echo عدة مزودي LLM بما في ذلك خدمات LLM المحلية:
+يدعم ZimaOS Blue عدة مزودي LLM بما في ذلك خدمات LLM المحلية:
 
 ```yaml
 llm:
@@ -118,7 +118,7 @@ llm:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Echo                       │
+│                    ZimaOS Blue                       │
 ├─────────────────────────────────────────────────────┤
 │  Session Monitor │ Usage Analytics │ Call Tracing  │
 ├─────────────────────────────────────────────────────┤
@@ -195,9 +195,9 @@ make clean              # تنظيف مخرجات البناء
 ### هيكل المشروع
 
 ```
-ZimaOS-Echo/
+ZimaOS-Blue/
 ├── server/             # خلفية Go
-│   ├── cmd/echo/       # نقطة الدخول
+│   ├── cmd/blue/       # نقطة الدخول
 │   └── internal/       # الوحدات الأساسية
 ├── web/                # واجهة Vue 3
 │   └── src/

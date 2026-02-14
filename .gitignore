@@ -66,14 +66,14 @@ src-tauri/data/
 data/
 
 # Compiled binaries
-server/zimaos-echo
-server/echo
-server/echolib
-bin/echo
-bin/echolib
+server/zimaos-blue
+server/blue
+server/bluelib
+bin/blue
+bin/bluelib
 dist/
-zimaos-echo
-zimaos-echolib
+zimaos-blue
+zimaos-bluelib
 
 # Tauri binaries and capabilities
 tauri-app/src-tauri/binaries/

@@ -473,16 +473,19 @@ func getAntigravityPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/Antigravity/User/settings.json",
 			"~/Library/Application Support/Antigravity/config.json",
 			"~/.config/antigravity/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/Antigravity/User/settings.json",
 			"~/.config/antigravity/config.json",
 			"~/.antigravity/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/Antigravity/User/settings.json",
 			"%APPDATA%/Antigravity/config.json",
 			"%LOCALAPPDATA%/Antigravity/config.json",
 		}
@@ -517,16 +520,19 @@ func getWindsurfPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/Windsurf/User/settings.json",
 			"~/Library/Application Support/Windsurf/config.json",
 			"~/.windsurf/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/Windsurf/User/settings.json",
 			"~/.config/windsurf/config.json",
 			"~/.windsurf/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/Windsurf/User/settings.json",
 			"%APPDATA%/Windsurf/config.json",
 			"%LOCALAPPDATA%/Windsurf/config.json",
 		}
@@ -564,17 +570,20 @@ func getQoderPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/Qoder/User/settings.json",
 			"~/Library/Application Support/Qoder/config.json",
 			"~/.qoder/config.json",
 			"~/.config/qoder/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/Qoder/User/settings.json",
 			"~/.config/qoder/config.json",
 			"~/.qoder/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/Qoder/User/settings.json",
 			"%APPDATA%/Qoder/config.json",
 			"%LOCALAPPDATA%/Qoder/config.json",
 		}
@@ -587,17 +596,20 @@ func getTRAEPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"~/Library/Application Support/TRAE/User/settings.json",
 			"~/Library/Application Support/TRAE/config.json",
 			"~/.trae/config.json",
 			"~/.config/trae/config.json",
 		}
 	case "linux":
 		return []string{
+			"~/.config/TRAE/User/settings.json",
 			"~/.config/trae/config.json",
 			"~/.trae/config.json",
 		}
 	case "windows":
 		return []string{
+			"%APPDATA%/TRAE/User/settings.json",
 			"%APPDATA%/TRAE/config.json",
 			"%LOCALAPPDATA%/TRAE/config.json",
 		}
@@ -611,16 +623,19 @@ func getKiroPaths() []string {
 	case "darwin":
 		return []string{
 			"~/.kiro/config.json",
+			"~/Library/Application Support/Kiro/User/settings.json",
 			"~/Library/Application Support/Kiro/config.json",
 		}
 	case "linux":
 		return []string{
 			"~/.kiro/config.json",
+			"~/.config/Kiro/User/settings.json",
 			"~/.config/kiro/config.json",
 		}
 	case "windows":
 		return []string{
 			"%USERPROFILE%/.kiro/config.json",
+			"%APPDATA%/Kiro/User/settings.json",
 			"%APPDATA%/Kiro/config.json",
 		}
 	}
@@ -751,8 +766,23 @@ type ImportConfig struct {
 	Provider   string   `json:"provider,omitempty"` // "anthropic", "openai", etc.
 	ConfigPath string   `json:"config_path,omitempty"`
 	EnvVar     string   `json:"env_var,omitempty"` // Which env var the key came from
-	Source     string   `json:"source"`            // "config", "env", "cc-switch"
+	Source     string   `json:"source"`            // "config", "env", "cc-switch", "extension"
 	CanImport  bool     `json:"can_import"`        // Whether this config can be imported
+
+	// Claude Code extension config (from IDE settings.json claudeCode.environmentVariables)
+	ExtensionConfig *ClaudeCodeExtConfig `json:"extension_config,omitempty"`
+}
+
+// ClaudeCodeExtConfig represents Claude Code extension settings found in an IDE's settings.json
+type ClaudeCodeExtConfig struct {
+	EnvVars       []ClaudeCodeEnvVar `json:"env_vars"`
+	SelectedModel string             `json:"selected_model,omitempty"`
+}
+
+// ClaudeCodeEnvVar represents a single env var from claudeCode.environmentVariables
+type ClaudeCodeEnvVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`  // Masked for display
 }
 
 // GetImportableConfigs returns all configurations that can be imported
@@ -781,15 +811,32 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 			CanImport:  canImport,
 		}
 
+		// For Antigravity, the proxy URL itself is sufficient for import
+		// (OAuth tokens are managed by the app, not stored in config files)
+		if ide.Type == IDETypeAntigravity && ide.ProxyURL != "" && ide.Connected {
+			config.CanImport = true
+			config.Source = "config"
+		}
+
 		if canImport {
 			config.APIKey = masked // Only return masked version
+		}
+
+		// For VS Code forks, try to extract Claude Code extension config
+		if isVSCodeFork(ide.Type) {
+			extConfig, err := ExtractClaudeCodeExtConfig(ide.ConfigPath)
+			if err == nil && extConfig != nil && len(extConfig.EnvVars) > 0 {
+				config.ExtensionConfig = extConfig
+				config.Source = "extension"
+				config.CanImport = true
+			}
 		}
 
 		configs = append(configs, config)
 	}
 
 	// Also check environment variables
-	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeQoder, IDETypeTRAE} {
+	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE} {
 		if key, envVar := GetAPIKeyFromEnv(ideType); key != "" {
 			// Check if we already have this IDE from config
 			found := false
@@ -920,4 +967,160 @@ func (d *Discovery) GetRealAPIKey(ideType IDEType) (string, error) {
 	}
 
 	return key, nil
+}
+
+// claudeCodeEnvVarProviders maps Claude Code extension env var names to provider info
+var claudeCodeEnvVarProviders = map[string]struct {
+	ProviderID string
+	FieldType  string // "api_key", "base_url", "auth_token"
+}{
+	"ANTHROPIC_API_KEY":         {ProviderID: "anthropic", FieldType: "api_key"},
+	"ANTHROPIC_AUTH_TOKEN":      {ProviderID: "anthropic", FieldType: "auth_token"},
+	"ANTHROPIC_BASE_URL":        {ProviderID: "anthropic", FieldType: "base_url"},
+	"OPENAI_API_KEY":            {ProviderID: "openai", FieldType: "api_key"},
+	"OPENAI_BASE_URL":           {ProviderID: "openai", FieldType: "base_url"},
+	"GOOGLE_API_KEY":            {ProviderID: "google", FieldType: "api_key"},
+	"AZURE_OPENAI_API_KEY":      {ProviderID: "azure-openai", FieldType: "api_key"},
+	"AZURE_OPENAI_BASE_URL":     {ProviderID: "azure-openai", FieldType: "base_url"},
+	"AZURE_OPENAI_ENDPOINT":     {ProviderID: "azure-openai", FieldType: "base_url"},
+	"DEEPSEEK_API_KEY":          {ProviderID: "deepseek", FieldType: "api_key"},
+	"MISTRAL_API_KEY":           {ProviderID: "mistral", FieldType: "api_key"},
+	"GROQ_API_KEY":              {ProviderID: "groq", FieldType: "api_key"},
+}
+
+// ExtractClaudeCodeExtConfig reads Claude Code extension config from an IDE's settings.json
+// It looks for claudeCode.environmentVariables and claudeCode.selectedModel
+func ExtractClaudeCodeExtConfig(settingsPath string) (*ClaudeCodeExtConfig, error) {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+
+	config := &ClaudeCodeExtConfig{}
+
+	// Extract claudeCode.environmentVariables
+	if envVars, ok := settings["claudeCode.environmentVariables"]; ok {
+		if envList, ok := envVars.([]interface{}); ok {
+			for _, item := range envList {
+				envMap, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				name, _ := envMap["name"].(string)
+				value, _ := envMap["value"].(string)
+				if name == "" || value == "" {
+					continue
+				}
+				// Only include known env vars
+				if _, known := claudeCodeEnvVarProviders[name]; known {
+					config.EnvVars = append(config.EnvVars, ClaudeCodeEnvVar{
+						Name:  name,
+						Value: maskEnvValue(name, value),
+					})
+				}
+			}
+		}
+	}
+
+	// Extract claudeCode.selectedModel
+	if model, ok := settings["claudeCode.selectedModel"].(string); ok {
+		config.SelectedModel = model
+	}
+
+	if len(config.EnvVars) == 0 && config.SelectedModel == "" {
+		return nil, nil // No Claude Code config found
+	}
+
+	return config, nil
+}
+
+// getRealClaudeCodeExtEnvVars reads the actual (unmasked) env vars from IDE settings.json
+func getRealClaudeCodeExtEnvVars(settingsPath string) ([]ClaudeCodeEnvVar, error) {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, err
+	}
+
+	var envVarsList []ClaudeCodeEnvVar
+
+	if envVars, ok := settings["claudeCode.environmentVariables"]; ok {
+		if envList, ok := envVars.([]interface{}); ok {
+			for _, item := range envList {
+				envMap, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				name, _ := envMap["name"].(string)
+				value, _ := envMap["value"].(string)
+				if name == "" || value == "" {
+					continue
+				}
+				if _, known := claudeCodeEnvVarProviders[name]; known {
+					envVarsList = append(envVarsList, ClaudeCodeEnvVar{
+						Name:  name,
+						Value: value, // Real value, not masked
+					})
+				}
+			}
+		}
+	}
+
+	return envVarsList, nil
+}
+
+// maskEnvValue masks a value based on the env var type
+func maskEnvValue(name, value string) string {
+	info, ok := claudeCodeEnvVarProviders[name]
+	if !ok {
+		return "****"
+	}
+	// Don't mask URLs
+	if info.FieldType == "base_url" {
+		return value
+	}
+	// Mask API keys and tokens
+	return maskAPIKey(value)
+}
+
+// isVSCodeFork returns true if the IDE is a VS Code fork that may have Claude Code extension
+func isVSCodeFork(ideType IDEType) bool {
+	switch ideType {
+	case IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE, IDETypeKiro:
+		return true
+	}
+	return false
+}
+
+// EnvVarProviderInfo contains provider mapping info for a Claude Code env var
+type EnvVarProviderInfo struct {
+	ProviderID string
+	FieldType  string // "api_key", "base_url", "auth_token"
+}
+
+// GetClaudeCodeEnvVarProvider returns the provider info for a Claude Code extension env var name
+func GetClaudeCodeEnvVarProvider(name string) (EnvVarProviderInfo, bool) {
+	info, ok := claudeCodeEnvVarProviders[name]
+	if !ok {
+		return EnvVarProviderInfo{}, false
+	}
+	return EnvVarProviderInfo{ProviderID: info.ProviderID, FieldType: info.FieldType}, true
+}
+
+// GetRealExtensionConfig returns the real (unmasked) extension config for import
+func (d *Discovery) GetRealExtensionConfig(ideType IDEType) ([]ClaudeCodeEnvVar, error) {
+	configPath := findConfigPath(ideType)
+	if configPath == "" {
+		return nil, fmt.Errorf("config path not found for %s", ideType)
+	}
+	return getRealClaudeCodeExtEnvVars(configPath)
 }
