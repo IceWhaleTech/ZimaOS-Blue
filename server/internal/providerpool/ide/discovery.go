@@ -868,6 +868,35 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 		}
 	}
 
+	// Deduplicate extension configs: if multiple IDEs have the same env vars,
+	// mark duplicates so the UI doesn't show redundant import options.
+	seen := make(map[string]bool) // key = "provider:maskedKey"
+	for _, c := range configs {
+		if c.ExtensionConfig != nil && c.CanImport && !c.AlreadyImported {
+			for _, ev := range c.ExtensionConfig.EnvVars {
+				info, ok := claudeCodeEnvVarProviders[ev.Name]
+				if !ok || info.FieldType == "base_url" {
+					continue
+				}
+				dedup := info.ProviderID + ":" + ev.Value
+				if seen[dedup] {
+					c.AlreadyImported = true
+					break
+				}
+				seen[dedup] = true
+			}
+		}
+		// Also deduplicate by masked API key + provider for non-extension configs
+		if c.APIKey != "" && c.CanImport && !c.AlreadyImported && c.Source != "extension" {
+			dedup := c.Provider + ":" + c.APIKey
+			if seen[dedup] {
+				c.AlreadyImported = true
+			} else {
+				seen[dedup] = true
+			}
+		}
+	}
+
 	return configs, nil
 }
 

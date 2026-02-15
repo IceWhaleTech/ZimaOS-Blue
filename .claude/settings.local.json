@@ -132,7 +132,11 @@
       "Bash(del \"g:\\\\GitHub\\\\ZimaOS-Blue\\\\server\\\\internal\\\\memory\\\\supermemory.go\")",
       "Bash(powershell -File -:*)",
       "Bash(powershell -NoProfile -Command:*)",
-      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File:*)"
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File:*)",
+      "Bash(awk:*)",
+      "Read(//Users/orca/Documents/GitHub/ZimaOS-Blue/**)",
+      "Bash(go list:*)",
+      "Bash(go mod:*)"
     ]
   }
 }

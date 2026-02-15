@@ -5,29 +5,29 @@
 
 ```
 ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-  🎨 Vue 3 Frontend  (web/)  ── Vibe it / DIY it / Swap it
-│                                                                                                         │
-  Vue 3 + Vite + TypeScript + Tailwind CSS + i18n (18 langs)
-│ Build output embedded into Go binary; can also deploy standalone or swap entirely                        │
-│                                                                                                         │
-  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│ │ChatView  │ │Providers │ │Channels  │ │Security  │ │Metrics   │ │Plugins   │ │Settings  │ │
-  │          │ │PoolMgmt  │ │Mgmt      │ │Dashboard │ │Dashboard │ │Store     │ │Panels    │
-│ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
-  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│ │Memory    │ │Companion │ │Heartbeat │ │Personality│ │Voice/TTS │ │Automation│ │
-  │Browser   │ │Monitor   │ │Settings  │ │Editor    │ │Controls  │ │Workflows │
-│ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
-│                                                                                                         │
-  API: api/*.ts  (45 modules: chat, proxy, metrics, auth, memory, companion, voice, tts, ...)
+│ 🎨 Vue 3 Frontend  (web/)  ── Vibe it / DIY it / Swap it                                      │
+│                                                                                               │
+│ Vue 3 + Vite + TypeScript + Tailwind CSS + i18n (18 langs)                                    │
+│ Build output embedded into Go binary; can also deploy standalone or swap entirely             │
+│                                                                                               │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│ │ChatView  │ │Providers │ │Channels  │ │Security   │ │Metrics   │ │Plugins   │ │Settings  │   │
+│ │          │ │PoolMgmt  │ │Mgmt      │ │Dashboard  │ │Dashboard │ │Store     │ │Panels    │   │
+│ └──────────┘ └──────────┘ └──────────┘ └───────────┘ └──────────┘ └──────────┘ └──────────┘   │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐                │
+│ │Memory    │ │Companion │ │Heartbeat │ │Personality│ │Voice/TTS │ │Automation│                │
+│ │Browser   │ │Monitor   │ │Settings  │ │Editor     │ │Controls  │ │Workflows │                │
+│ └──────────┘ └──────────┘ └──────────┘ └───────────┘ └──────────┘ └──────────┘                │
+│                                                                                               │
+│ API: api/*.ts  (45 modules: chat, proxy, metrics, auth, memory, companion, voice, tts, ...)   │
 └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
          │ HTTP / WebSocket / SSE
          │ (Frontend fully decoupled — swap with any SPA, mobile app, or curl)
          ▼
-╔════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║  Go Backend  (server/)                                                                                   ║
-╠════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
-║                                                                                                          ║
+╔═══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  Go Backend  (server/)                                                                                    ║
+╠═══════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                                           ║
 ║  ┌───────────────────────────────────────────────────────────────────────────────────────────────────┐    ║
 ║  │                        Gateway & Routing  (bootstrap/routes.go)                                   │    ║
 ║  │                                                                                                   │    ║
@@ -50,12 +50,12 @@
 ║  │  │  (SSE)        │ │  (events)     │ │  (audio)      │ │(CPU/mem/gortn)│                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
-║         ▼                                                                                                ║
+║         │                                                                                                 ║
+║         ▼                                                                                                 ║
 ║  ┌───────────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  ★ API Proxy Sidecar  (proxy/)  ── Core hot path, all LLM requests pass through  │    ║
+║  │                  ★ API Proxy Sidecar  (proxy/)  ── Core hot path, all LLM requests pass through   │    ║
 ║  │                                                                                                   │    ║
-║  │  Claude Code CLI / Any OpenAI Client / Anthropic SDK / Gemini SDK / OAuth Client                 │    ║
+║  │  Claude Code CLI / Any OpenAI Client / Anthropic SDK / Gemini SDK / OAuth Client                  │    ║
 ║  │       │                                                                                           │    ║
 ║  │       ▼                                                                                           │    ║
 ║  │  Inbound API Formats (4 upstream protocols)                                                       │    ║
@@ -65,68 +65,68 @@
 ║  │  └──────────────┘ └──────────────┘ └───────────────┘ └──────────────┘                             │    ║
 ║  │       │                                                                                           │    ║
 ║  │       ▼                                                                                           │    ║
-║  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐                        │    ║
-║  │  │  Auth    │──▶│  Prompt  │──▶│  Context │──▶│  Route   │──▶│ Upstream │                        │    ║
-║  │  │  Gate    │   │  Guard   │   │  Pruner  │   │  Select  │   │ Provider │                        │    ║
-║  │  │(api key) │   │(security)│   │(pruner/) │   │(pool/)   │   │          │                        │    ║
-║  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘                        │    ║
+║  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐                         │    ║
+║  │  │  Auth    │──▶│  Prompt  │──▶│  Context │──▶│  Route   │──▶│ Upstream │                         │    ║
+║  │  │  Gate    │   │  Guard   │   │  Pruner  │   │  Select  │   │ Provider │                         │    ║
+║  │  │(api key) │   │(security)│   │(pruner/) │   │(pool/)   │   │          │                         │    ║
+║  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘                         │    ║
 ║  │                                     │              │              │                               │    ║
 ║  │                                     ▼              ▼              ▼                               │    ║
-║  │                               ┌──────────┐  ┌────────────┐  ┌──────────┐                         │    ║
-║  │                               │  Score   │  │ route:auto │  │ Failover │                         │    ║
-║  │                               │  Cache   │  │ route:cloud│  │ Circuit  │                         │    ║
-║  │                               │(ecache2) │  │ route:local│  │ Breaker  │                         │    ║
-║  │                               └──────────┘  └────────────┘  └──────────┘                         │    ║
+║  │                               ┌──────────┐  ┌────────────┐  ┌──────────┐                          │    ║
+║  │                               │  Score   │  │ route:auto │  │ Failover │                          │    ║
+║  │                               │  Cache   │  │ route:cloud│  │ Circuit  │                          │    ║
+║  │                               │(ecache2) │  │ route:local│  │ Breaker  │                          │    ║
+║  │                               └──────────┘  └────────────┘  └──────────┘                          │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌─────────────────────────────────────────────────────────────────────────────────────┐          │    ║
 ║  │  │  Two-Level Cache (CC Cache)                                                         │          │    ║
-║  │  │  ┌───────────────────────┐          ┌───────────────────────────────┐                │          │    ║
+║  │  │  ┌──────────────────────┐          ┌───────────────────────────────┐                │          │    ║
 ║  │  │  │  L1: In-Memory LRU   │  miss──▶ │  L2: Disk SQLite Cache        │                │          │    ║
 ║  │  │  │  (ecache2 sharded)   │          │  (cache_disk.go)              │                │          │    ║
 ║  │  │  │  Fast path, ~μs      │          │  Persistent, survives restart │                │          │    ║
-║  │  │  └───────────────────────┘          └───────────────────────────────┘                │          │    ║
+║  │  │  └──────────────────────┘          └───────────────────────────────┘                │          │    ║
 ║  │  └─────────────────────────────────────────────────────────────────────────────────────┘          │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                                          │    ║
-║  │  │  Conn    │  │  Config  │  │  Model   │  │  Metrics │                                          │    ║
-║  │  │  Pool    │  │  Watch   │  │  Compat  │  │  Writer  │                                          │    ║
-║  │  │  HTTP/2  │  │  HotLoad │  │  Layer   │  │  (stats) │                                          │    ║
-║  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘                                          │    ║
+║  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                                           │    ║
+║  │  │  Conn    │  │  Config  │  │  Model   │  │  Metrics │                                           │    ║
+║  │  │  Pool    │  │  Watch   │  │  Compat  │  │  Writer  │                                           │    ║
+║  │  │  HTTP/2  │  │  HotLoad │  │  Layer   │  │  (stats) │                                           │    ║
+║  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘                                           │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
 ║  │                  Provider Pool  (providerpool/)  ── Unified LLM provider management               │    ║
 ║  │                                                                                                   │    ║
 ║  │  Provider Types:                                                                                  │    ║
-║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │    ║
-║  │  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │            │    ║
-║  │  │ (cloud) │ │ (cloud) │ │ Gemini  │ │ (cloud) │ │ (Kimi)  │ │ OpenAI  │ │ Router  │            │    ║
-║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘            │    ║
-║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │    ║
-║  │  │AiHubMix │ │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │            │    ║
-║  │  │ (cloud) │ │ (local) │ │ (cloud) │ │ (cloud) │ │  (xAI)  │ │(Alibaba)│ │   AI    │            │    ║
-║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘            │    ║
-║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐                                    │    ║
-║  │  │ Amazon  │ │  GLM    │ │ Custom  │ │  Trial  │ │  IDE    │                                    │    ║
-║  │  │ Bedrock │ │ (Zhipu) │ │(OpenAI) │ │ (quota) │ │(detect) │                                    │    ║
-║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘                                    │    ║
+║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐              │    ║
+║  │  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │              │    ║
+║  │  │ (cloud) │ │ (cloud) │ │ Gemini  │ │ (cloud) │ │ (Kimi)  │ │ OpenAI  │ │ Router  │              │    ║
+║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘              │    ║
+║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐              │    ║
+║  │  │AiHubMix │ │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │              │    ║
+║  │  │ (cloud) │ │ (local) │ │ (cloud) │ │ (cloud) │ │  (xAI)  │ │(Alibaba)│ │   AI    │              │    ║
+║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘              │    ║
+║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐                                      │    ║
+║  │  │ Amazon  │ │  GLM    │ │ Custom  │ │  Trial  │ │  IDE    │                                      │    ║
+║  │  │ Bedrock │ │ (Zhipu) │ │(OpenAI) │ │ (quota) │ │(detect) │                                      │    ║
+║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘                                      │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                │    ║
-║  │  │  Health  │ │ Priority │ │  Rate    │ │  API Key │ │  Model   │                                │    ║
-║  │  │  Check   │ │  Route   │ │  Limit   │ │ Rotation │ │ Discover │                                │    ║
-║  │  │(circuit) │ │  Engine  │ │(per-prov)│ │  & Usage │ │(auto)    │                                │    ║
-║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                                │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                 │    ║
+║  │  │  Health  │ │ Priority │ │  Rate    │ │  API Key │ │  Model   │                                 │    ║
+║  │  │  Check   │ │  Route   │ │  Limit   │ │ Rotation │ │ Discover │                                 │    ║
+║  │  │(circuit) │ │  Engine  │ │(per-prov)│ │  & Usage │ │(auto)    │                                 │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                                 │    ║
 ║  │                                                                                                   │    ║
 ║  │  API Formats: OpenAI Compat │ Anthropic │ Gemini │ OAuth                                          │    ║
 ║  │  Storage: {dataDir}/providerpool/*.json                                                           │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Context Pruner  (pruner/)  ── Smart context pruning, reduce token cost            │    ║
+║  │                  Context Pruner  (pruner/)  ── Smart context pruning, reduce token cost           │    ║
 ║  │                                                                                                   │    ║
 ║  │  Request ──▶ DetectType ──▶ Segmentize ──▶ Score (BM25) ──▶ SelectTopK ──▶ Pruned Output          │    ║
-║  │                  │              │              │                │                                  │    ║
-║  │                  ▼              ▼              ▼                ▼                                  │    ║
+║  │                  │              │              │                │                                 │    ║
+║  │                  ▼              ▼              ▼                ▼                                 │    ║
 ║  │            ┌──────────┐  ┌──────────┐   ┌──────────┐    ┌──────────┐                              │    ║
 ║  │            │  Code    │  │ Function │   │ IDF Pre- │    │  Token   │                              │    ║
 ║  │            │  Log     │  │ Paragraph│   │ Compute  │    │  Budget  │                              │    ║
@@ -134,210 +134,212 @@
 ║  │            │  Data    │  │ Import   │   │ LRU Cache│    │  Select  │                              │    ║
 ║  │            └──────────┘  └──────────┘   └──────────┘    └──────────┘                              │    ║
 ║  │                                                                                                   │    ║
-║  │  Backends: local (line) │ bm25 (segment) │ ir (paragraph) │ swe-pruner (Go native)               │    ║
+║  │  Backends: local (line) │ bm25 (segment) │ ir (paragraph) │ swe-pruner (Go native)                │    ║
 ║  │  Middleware: plugs into proxy, processes tool/user/system messages                                │    ║
-║  │  Config: enabled=false, threshold=0.5, min_lines=50, cache=256 slots                             │    ║
+║  │  Config: enabled=false, threshold=0.5, min_lines=50, cache=256 slots                              │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Agent Runtime  ── LLM interaction core                                            │    ║
+║  │                  Agent Runtime  ── LLM interaction core                                           │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │    ║
-║  │  │  LLM Client  │  │  Tool/Func   │  │  Context     │  │  Streaming   │  │  Personality │        │    ║
-║  │  │  (llm/)      │  │  Calling     │  │  Manager     │  │  Response    │  │  (SOUL.md)   │        │    ║
-║  │  │  OpenAI fmt  │  │  (tools/)    │  │  (context/)  │  │  (streaming/)│  │  (personal/) │        │    ║
-║  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘        │    ║
+║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │    ║
+║  │  │  LLM Client  │  │  Tool/Func   │  │  Context     │  │  Streaming   │  │  Personality │         │    ║
+║  │  │  (llm/)      │  │  Calling     │  │  Manager     │  │  Response    │  │  (SOUL.md)   │         │    ║
+║  │  │  OpenAI fmt  │  │  (tools/)    │  │  (context/)  │  │  (streaming/)│  │  (personal/) │         │    ║
+║  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘         │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Memory & Intelligence                                                             │    ║
+║  │                  Memory & Intelligence                                                            │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌─────────────────────────────┐  ┌─────────────────────────────┐  ┌────────────────────────┐     │    ║
-║  │  │  Conversation Memory        │  │  Vector Memory (optional)   │  │  Memory Service v2     │     │    ║
-║  │  │  (memory/)                  │  │  (memory/sqlite_vec_store)  │  │  (memory/)             │     │    ║
-║  │  │  ┌────────┐ ┌────────┐     │  │  ┌────────┐ ┌────────┐     │  │  ┌────────┐ ┌────────┐ │     │    ║
-║  │  │  │Sessions│ │Messages│     │  │  │FTS5    │ │sqlite- │     │  │  │Version │ │Namespace│ │     │    ║
-║  │  │  │        │ │History │     │  │  │Keyword │ │vec     │     │  │  │Entries │ │Isolate │ │     │    ║
-║  │  │  └────────┘ └────────┘     │  │  │Search  │ │Hybrid  │     │  │  └────────┘ └────────┘ │     │    ║
-║  │  │  ┌────────┐                │  │  └────────┘ └────────┘     │  │  Purge: every 6h       │     │    ║
-║  │  │  │Compact │ (auto-summary) │  │  Embedding: text-embed-3   │  │  API: MemoryV2 module  │     │    ║
-║  │  │  └────────┘                │  │  AES-256-GCM encryption    │  └────────────────────────┘     │    ║
-║  │  └─────────────────────────────┘  └─────────────────────────────┘                                │    ║
+║  │  ┌─────────────────────────────┐  ┌─────────────────────────────┐  ┌─────────────────────────┐    │    ║
+║  │  │  Conversation Memory        │  │  Vector Memory (optional)   │  │  Memory Service v2      │    │    ║
+║  │  │  (memory/)                  │  │  (memory/sqlite_vec_store)  │  │  (memory/)              │    │    ║
+║  │  │  ┌────────┐ ┌────────┐      │  │  ┌────────┐ ┌────────┐      │  │  ┌────────┐ ┌─────────┐ │    │    ║
+║  │  │  │Sessions│ │Messages│      │  │  │FTS5    │ │sqlite- │      │  │  │Version │ │Namespace│ │    │    ║
+║  │  │  │        │ │History │      │  │  │Keyword │ │vec     │      │  │  │Entries │ │Isolate  │ │    │    ║
+║  │  │  └────────┘ └────────┘      │  │  │Search  │ │Hybrid  │      │  │  └────────┘ └─────────┘ │    │    ║
+║  │  │  ┌────────┐                 │  │  └────────┘ └────────┘      │  │  Purge: every 6h        │    │    ║
+║  │  │  │Compact │ (auto-summary)  │  │  Embedding: text-embed-3    │  │  API: MemoryV2 module   │    │    ║
+║  │  │  └────────┘                 │  │  AES-256-GCM encryption     │  └─────────────────────────┘    │    ║
+║  │  └─────────────────────────────┘  └─────────────────────────────┘                                 │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Channel Adapters  (channel/)  ── Multi-channel messaging                          │    ║
+║  │                  Channel Adapters  (channel/)  ── Multi-channel messaging                         │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │    ║
-║  │  │  Web   │ │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│        │    ║
-║  │  │(built) │ │        │ │        │ │        │ │  Work  │ │ /Lark  │ │        │ │        │        │    ║
-║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │    ║
-║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │    ║
-║  │  │WhatsApp│ │ Signal │ │ Teams  │ │Matter- │ │  Blue  │ │  Zalo  │ │DingTalk│ │ Google │        │    ║
-║  │  │        │ │        │ │        │ │ most   │ │Bubbles │ │        │ │        │ │  Chat  │        │    ║
-║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │    ║
-║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │    ║
-║  │  │  LINE  │ │Messengr│ │  Next  │ │ Nostr  │ │   QQ   │ │ Twitch │ │Twitter │ │ Viber  │        │    ║
-║  │  │        │ │        │ │  cloud │ │        │ │        │ │        │ │        │ │        │        │    ║
-║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │    ║
-║  │  ┌────────┐                                                                                      │    ║
-║  │  │Instagrm│                                                                                      │    ║
-║  │  │        │                                                                                      │    ║
-║  │  └────────┘                                                                                      │    ║
+║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐          │    ║
+║  │  │  Web   │ │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│          │    ║
+║  │  │(built) │ │        │ │        │ │        │ │  Work  │ │ /Lark  │ │        │ │        │          │    ║
+║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘          │    ║
+║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐          │    ║
+║  │  │WhatsApp│ │ Signal │ │ Teams  │ │Matter- │ │  Blue  │ │  Zalo  │ │DingTalk│ │ Google │          │    ║
+║  │  │        │ │        │ │        │ │ most   │ │Bubbles │ │        │ │        │ │  Chat  │          │    ║
+║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘          │    ║
+║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐          │    ║
+║  │  │  LINE  │ │Messengr│ │  Next  │ │ Nostr  │ │   QQ   │ │ Twitch │ │Twitter │ │ Viber  │          │    ║
+║  │  │        │ │        │ │  cloud │ │        │ │        │ │        │ │        │ │        │          │    ║
+║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘          │    ║
+║  │  ┌────────┐                                                                                       │    ║
+║  │  │Instagrm│                                                                                       │    ║
+║  │  │        │                                                                                       │    ║
+║  │  └────────┘                                                                                       │    ║
 ║  │                                                                                                   │    ║
 ║  │  Manager: central registry, auto-reconnect, message queue                                         │    ║
 ║  │  Humanizer (humanizer/): Markdown → natural text (IM mode / Voice mode)                           │    ║
 ║  │  AutoReply (autoreply/): rule-based auto-response                                                 │    ║
 ║  │  Storage: {dataDir}/channels/*.json                                                               │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Security Layer  (security/ + auth/ + permission/)                                 │    ║
+║  │                  Security Layer  (security/ + auth/ + permission/)                                │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │    ║
-║  │  │  JWT     │ │ API Keys │ │ Password │ │  MFA     │ │ WebAuthn │ │  OIDC    │ │  RBAC    │     │    ║
-║  │  │  Auth    │ │ Scoped   │ │ Argon2id │ │  TOTP    │ │ Passkeys │ │ Provider │ │ Roles    │     │    ║
-║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘     │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │    ║
+║  │  │  JWT     │ │ API Keys │ │ Password │ │  MFA     │ │ WebAuthn │ │  OIDC    │ │  RBAC    │       │    ║
+║  │  │  Auth    │ │ Scoped   │ │ Argon2id │ │  TOTP    │ │ Passkeys │ │ Provider │ │ Roles    │       │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘       │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                             │    ║
-║  │  │  Threat  │ │  Sandbox │ │  Audit   │ │  TLS     │                                             │    ║
-║  │  │ Detector │ │ Executor │ │  Trail   │ │ Manager  │                                             │    ║
-║  │  │(SQLi/XSS│ │(isolated │ │(immutable│ │(ACME/LE) │                                             │    ║
-║  │  │PromptInj│ │ resource │ │ append)  │ │ auto-    │                                             │    ║
-║  │  │ CmdInj) │ │ limits)  │ │          │ │ renew    │                                             │    ║
-║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                             │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                              │    ║
+║  │  │  Threat  │ │  Sandbox │ │  Audit   │ │  TLS     │                                              │    ║
+║  │  │ Detector │ │ Executor │ │  Trail   │ │ Manager  │                                              │    ║
+║  │  │(SQLi/XSS │ │(isolated │ │(immutable│ │(ACME/LE) │                                              │    ║
+║  │  │PromptInj │ │ resource │ │ append)  │ │ auto-    │                                              │    ║
+║  │  │ CmdInj)  │ │ limits)  │ │          │ │ renew    │                                              │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                              │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Voice & Speech Pipeline  (voice/ + tts/ + stt/ + speech/)                         │    ║
+║  │                  Voice & Speech Pipeline  (voice/ + tts/ + stt/ + speech/)                        │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────────────────────────────────────────────────────────────────────────────┐         │    ║
-║  │  │  STT (Whisper)  ──▶  LLM Processing  ──▶  TTS (eSpeak-NG / Edge TTS)               │         │    ║
-║  │  │  ┌──────────┐       ┌──────────┐         ┌──────────┐ ┌──────────┐                  │         │    ║
-║  │  │  │  Whisper │       │  Agent   │         │ eSpeak-NG│ │ Edge TTS │                  │         │    ║
-║  │  │  │  (local) │       │  Runtime │         │  (local) │ │ (cloud)  │                  │         │    ║
-║  │  │  │  lazy    │       │          │         │  CGO,lazy│ │ MS Edge  │                  │         │    ║
-║  │  │  └──────────┘       └──────────┘         └──────────┘ └──────────┘                  │         │    ║
+║  │  │  STT (Whisper)  ──▶  LLM Processing  ──▶  TTS (eSpeak-NG / Edge TTS)                 │         │    ║
+║  │  │  ┌──────────┐       ┌──────────┐         ┌──────────┐ ┌──────────┐                   │         │    ║
+║  │  │  │  Whisper │       │  Agent   │         │ eSpeak-NG│ │ Edge TTS │                   │         │    ║
+║  │  │  │  (local) │       │  Runtime │         │  (local) │ │ (cloud)  │                   │         │    ║
+║  │  │  │  lazy    │       │          │         │  CGO,lazy│ │ MS Edge  │                   │         │    ║
+║  │  │  └──────────┘       └──────────┘         └──────────┘ └──────────┘                   │         │    ║
 ║  │  └──────────────────────────────────────────────────────────────────────────────────────┘         │    ║
 ║  │  Session: per-user │ States: Idle→Listening→Processing→Speaking │ WebSocket audio stream          │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Observability & Agents                                                             │    ║
+║  │                  Observability & Agents                                                           │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐        │    ║
-║  │  │  Metrics  (metrics/)     │  │  Heartbeat (heartbeat/)  │  │  Companion (companion/)  │        │    ║
-║  │  │  ┌────────┐ ┌────────┐  │  │  ┌────────┐ ┌────────┐  │  │  ┌────────┐ ┌────────┐  │        │    ║
-║  │  │  │CPU/Mem │ │API Call│  │  │  │Periodic│ │HEART-  │  │  │  │Realtime│ │Session │  │        │    ║
-║  │  │  │GC/Gortn│ │Token $ │  │  │  │Poll    │ │BEAT.md │  │  │  │Events  │ │Monitor │  │        │    ║
-║  │  │  └────────┘ └────────┘  │  │  └────────┘ └────────┘  │  │  └────────┘ └────────┘  │        │    ║
-║  │  │  SQLite: metrics.db     │  │  Dedup: 24h cache        │  │  WebSocket + JSONL      │        │    ║
-║  │  │  Interval: 10s, 30pts   │  │  Active hours window     │  │  Retention: 7d/30d/90d  │        │    ║
-║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘        │    ║
+║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐         │    ║
+║  │  │  Metrics  (metrics/)     │  │  Heartbeat (heartbeat/)  │  │  Companion (companion/)  │         │    ║
+║  │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │         │    ║
+║  │  │  │CPU/Mem │ │API Call│   │  │  │Periodic│ │HEART-  │   │  │  │Realtime│ │Session │   │         │    ║
+║  │  │  │GC/Gortn│ │Token $ │   │  │  │Poll    │ │BEAT.md │   │  │  │Events  │ │Monitor │   │         │    ║
+║  │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │         │    ║
+║  │  │  SQLite: metrics.db      │  │  Dedup: 24h cache        │  │  WebSocket + JSONL       │         │    ║
+║  │  │  Interval: 10s, 30pts    │  │  Active hours window     │  │  Retention: 7d/30d/90d   │         │    ║
+║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘         │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Plugin & Skill System  (plugin/ + skill/ + skillstore/)                            │    ║
+║  │                  Plugin & Skill System  (plugin/ + skill/ + skillstore/)                          │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐        │    ║
-║  │  │  Plugin Runtime          │  │  Skill Registry          │  │  Skill Store             │        │    ║
-║  │  │  ┌────────┐ ┌────────┐  │  │  ┌────────┐ ┌────────┐  │  │  ┌────────┐ ┌────────┐  │        │    ║
-║  │  │  │Go      │ │  JS    │  │  │  │Weather │ │Search  │  │  │  │Featured│ │Install │  │        │    ║
-║  │  │  │Module  │ │ (goja) │  │  │  │Calc    │ │SysInfo │  │  │  │Skills  │ │& Sync  │  │        │    ║
-║  │  │  └────────┘ └────────┘  │  │  │DateTime│ │Custom  │  │  │  └────────┘ └────────┘  │        │    ║
-║  │  │  Isolation + limits     │  │  └────────┘ └────────┘  │  │  SQLite: skills.db      │        │    ║
-║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘        │    ║
+║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐         │    ║
+║  │  │  Plugin Runtime          │  │  Skill Registry          │  │  Skill Store             │         │    ║
+║  │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │  │  ┌────────┐ ┌────────┐   │         │    ║
+║  │  │  │Go      │ │  JS    │   │  │  │Weather │ │Search  │   │  │  │Featured│ │Install │   │         │    ║
+║  │  │  │Module  │ │ (goja) │   │  │  │Calc    │ │SysInfo │   │  │  │Skills  │ │& Sync  │   │         │    ║
+║  │  │  └────────┘ └────────┘   │  │  │DateTime│ │Custom  │   │  │  └────────┘ └────────┘   │         │    ║
+║  │  │  Isolation + limits      │  │  └────────┘ └────────┘   │  │  SQLite: skills.db       │         │    ║
+║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘         │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Integrations & Automation                                                         │    ║
+║  │                  Integrations & Automation                                                        │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │    ║
-║  │  │ Browser  │ │  Home    │ │  Cron    │ │ Workflow │ │  Form   │ │  Tunnel  │ │  Backup  │     │    ║
-║  │  │ (Rod)    │ │Assistant │ │ Schedule │ │ (n8n)   │ │ Filler  │ │ Manager  │ │ Restore  │     │    ║
-║  │  │ lazy init│ │  REST    │ │          │ │ nodes   │ │ template│ │ (4 provs)│ │ 7d retain│     │    ║
-║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘     │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │    ║
+║  │  │ Browser  │ │  Home    │ │  Cron    │ │ Workflow │ │  Form    │ │  Tunnel  │ │  Backup  │       │    ║
+║  │  │ (Rod)    │ │Assistant │ │ Schedule │ │ (n8n)    │ │ Filler   │ │ Manager  │ │ Restore  │       │    ║
+║  │  │ lazy init│ │  REST    │ │          │ │ nodes    │ │ template │ │ (4 provs)│ │ 7d retain│       │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘       │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Scheduler  (scheduler/)  ── Priority task scheduling                              │    ║
+║  │                  Scheduler  (scheduler/)  ── Priority task scheduling                             │    ║
 ║  │                                                                                                   │    ║
-║  │  Priority: Low → Normal → High → Critical                                                        │    ║
+║  │  Priority: Low → Normal → High → Critical                                                         │    ║
 ║  │  States: Pending → Running → Completed/Failed/Cancelled                                           │    ║
 ║  │  Retry: exponential backoff │ Deps: DAG resolution │ Max concurrent: 10                           │    ║
 ║  │  Persistence: SQLite (scheduler/persistence/)                                                     │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Core Runtime  (v0.1)  ── Stable kernel                                            │    ║
+║  │                  Core Runtime  (v0.1)  ── Stable kernel                                           │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                  │    ║
-║  │  │Lifecycle │ │  Worker  │ │  Config  │ │  Logger  │ │  Update  │ │  SysInfo │                  │    ║
-║  │  │ Manager  │ │  Pool    │ │  (Viper) │ │  (Zap)   │ │  OTA     │ │  (mem/cpu│                  │    ║
-║  │  │ graceful │ │conc/pool │ │ hot-load │ │ struct   │ │ channels │ │  process)│                  │    ║
-║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                  │    ║
+║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                    │    ║
+║  │  │Lifecycle │ │  Worker  │ │  Config  │ │  Logger  │ │  Update  │ │  SysInfo │                    │    ║
+║  │  │ Manager  │ │  Pool    │ │  (Viper) │ │  (Zap)   │ │  OTA     │ │  (mem/cpu│                    │    ║
+║  │  │ graceful │ │conc/pool │ │ hot-load │ │ struct   │ │ channels │ │  process)│                    │    ║
+║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                    │    ║
 ║  │                                                                                                   │    ║
-║  │  GC: GOGC=30, GOMEMLIMIT=48MB │ DB pool: 5 open, 2 idle │ Argon2: 32MB                          │    ║
+║  │  GC: GOGC=30, GOMEMLIMIT=48MB │ DB pool: 8 open, 3 idle │ Argon2: 32MB                            │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║         │                                                                                                ║
+║         │                                                                                                 ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Data Layer                                                                        │    ║
+║  │                  Data Layer                                                                       │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐  │    ║
-║  │  │  SQLite (WAL)  │ │  memory.db     │ │  metrics.db    │ │  skills.db     │ │  Files/JSON    │  │    ║
-║  │  │  blue.db       │ │  vector_mem.db │ │  memory_svc.db │ │  cache (disk)  │ │  {dataDir}/*   │  │    ║
-║  │  │  users/roles   │ │  conversations │ │  API stats     │ │  skill meta    │ │  providers     │  │    ║
-║  │  │  audit/keys    │ │  embeddings    │ │  token usage   │ │  featured list │ │  channels      │  │    ║
-║  │  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘  │    ║
+║  │  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐   │    ║
+║  │  │  SQLite (WAL)  │ │  metrics.db    │ │  skills.db     │ │  cache.db      │ │  Files/JSON    │   │    ║
+║  │  │  blue.db       │ │  API stats     │ │  skill meta    │ │  L2 disk cache │ │  {dataDir}/*   │   │    ║
+║  │  │  users/roles   │ │  token usage   │ │  featured list │ │  (proxy)       │ │  providers     │   │    ║
+║  │  │  audit/keys    │ │  system perf   │ │                │ │                │ │  channels      │   │    ║
+║  │  │  conversations │ │                │ │                │ │                │ │                │   │    ║
+║  │  │  api_keys      │ │                │ │                │ │                │ │                │   │    ║
+║  │  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘   │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
-║                                                                                                          ║
-╚════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+║                                                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════════════════════════════════════╝
          │
          ▼
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  External Services                                                                                        │
-│                                                                                                            │
+│                                                                                                           │
 │  LLM Providers                                                                                            │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐       │
-│  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │ │AiHubMix │       │
-│  │         │ │         │ │ Gemini  │ │         │ │ (Kimi)  │ │ OpenAI  │ │ Router  │ │         │       │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘       │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐       │
-│  │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │ │ Amazon  │ │  GLM    │       │
-│  │ (local) │ │         │ │         │ │  (xAI)  │ │(Alibaba)│ │   AI    │ │ Bedrock │ │ (Zhipu) │       │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘       │
-│                                                                                                            │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐          │
+│  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │ │AiHubMix │          │
+│  │         │ │         │ │ Gemini  │ │         │ │ (Kimi)  │ │ OpenAI  │ │ Router  │ │         │          │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘          │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐          │
+│  │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │ │ Amazon  │ │  GLM    │          │
+│  │ (local) │ │         │ │         │ │  (xAI)  │ │(Alibaba)│ │   AI    │ │ Bedrock │ │ (Zhipu) │          │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘          │
+│                                                                                                           │
 │  Channels (IM / Social)                                                                                   │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                │
-│  │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│ │WhatsApp│                │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                │
-│  │ Signal │ │ Teams  │ │Matter- │ │  Zalo  │ │DingTalk│ │ Google │ │  LINE  │ │Messengr│                │
-│  │        │ │        │ │ most   │ │        │ │        │ │  Chat  │ │        │ │        │                │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                                      │
-│  │  Next  │ │ Nostr  │ │   QQ   │ │ Twitch │ │Twitter │ │ Viber  │                                      │
-│  │  cloud │ │        │ │        │ │        │ │        │ │        │                                      │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                                      │
-│                                                                                                            │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                  │
+│  │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│ │WhatsApp│                  │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                  │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                  │
+│  │ Signal │ │ Teams  │ │Matter- │ │  Zalo  │ │DingTalk│ │ Google │ │  LINE  │ │Messengr│                  │
+│  │        │ │        │ │ most   │ │        │ │        │ │  Chat  │ │        │ │        │                  │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                  │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                                        │
+│  │  Next  │ │ Nostr  │ │   QQ   │ │ Twitch │ │Twitter │ │ Viber  │                                        │
+│  │  cloud │ │        │ │        │ │        │ │        │ │        │                                        │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                                        │
+│                                                                                                           │
 │  Smart Home & IoT                                                                                         │
 │  ┌──────────┐                                                                                             │
 │  │  Home    │                                                                                             │
 │  │Assistant │                                                                                             │
 │  └──────────┘                                                                                             │
-│                                                                                                            │
+│                                                                                                           │
 │  Remote Access (tunnel/)                                                                                  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                                    │
-│  │  Ngrok   │ │Cloudflare│ │  Bore    │ │  Serveo  │                                                    │
-│  │          │ │  Tunnel  │ │          │ │  (SSH)   │                                                    │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                                    │
-│                                                                                                            │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                                      │
+│  │  Ngrok   │ │Cloudflare│ │  Bore    │ │  Serveo  │                                                      │
+│  │          │ │  Tunnel  │ │          │ │  (SSH)   │                                                      │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                                      │
+│                                                                                                           │
 │  Infrastructure                                                                                           │
-│  ┌──────────┐ ┌──────────┐                                                                               │
-│  │  Let's   │ │ Edge TTS │                                                                               │
-│  │ Encrypt  │ │ (MS TTS) │                                                                               │
-│  └──────────┘ └──────────┘                                                                               │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+│  ┌──────────┐ ┌──────────┐                                                                                │
+│  │  Let's   │ │ Edge TTS │                                                                                │
+│  │ Encrypt  │ │ (MS TTS) │                                                                                │
+│  └──────────┘ └──────────┘                                                                                │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Data Flow

@@ -528,23 +528,26 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		}
 
 		// Context pruner middleware (optional, disabled by default)
-		if deps.Config.Pruner != nil && deps.Config.Pruner.Enabled {
-			prunerCfg := *deps.Config.Pruner
+		var prunerMw *pruner.Middleware
+		prunerCfg := pruner.Config{Enabled: false}
+		if deps.Config.Pruner != nil {
+			prunerCfg = *deps.Config.Pruner
+		}
+		if prunerCfg.Enabled {
 			backend, err := pruner.NewBackend(prunerCfg)
 			if err != nil {
 				slog.Warn("Failed to create pruner backend", "error", err)
 			} else {
 				prunerStats := pruner.NewStats()
-				prunerMw := pruner.NewMiddleware(backend, prunerCfg, prunerStats)
+				prunerMw = pruner.NewMiddleware(backend, prunerCfg, prunerStats)
 				proxyHandler.SetPruner(prunerMw)
 				slog.Info("Context pruner enabled", "backend", prunerCfg.Backend, "threshold", prunerCfg.Threshold)
-
-				// Register pruner API routes
-				prunerHandler := pruner.NewAPIHandler(prunerMw, &prunerCfg)
-				prunerGroup := v1.Group("/proxy/pruner")
-				prunerHandler.RegisterRoutes(prunerGroup)
 			}
 		}
+		// Always register pruner API routes (handler returns disabled status when pruner is off)
+		prunerHandler := pruner.NewAPIHandler(prunerMw, &prunerCfg)
+		prunerGroup := v1.Group("/proxy/pruner")
+		prunerHandler.RegisterRoutes(prunerGroup)
 
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
@@ -590,9 +593,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 					logger.Error("Failed to initialize memory namespace store", zap.Error(err))
 				} else {
 					memAPIHandler := memory.NewAPIHandler(memRepo, memNS)
-					v2 := api.Group("/v2")
-					memAPIHandler.RegisterRoutes(v2)
-					logger.Info("Memory Service v2 routes registered")
+					memAPIHandler.RegisterRoutes(v1)
+					logger.Info("Memory Service routes registered")
 
 					// Initialize content encryption if configured
 					var memEncryptor *memory.ContentEncryptor
@@ -616,12 +618,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 
 					// Register encryption management routes
 					encHandler := memory.NewEncryptionHandler(memRepo, memEncryptor)
-					encHandler.RegisterRoutes(v2)
+					encHandler.RegisterRoutes(v1)
 
 					// Start background purge scheduler
 					purgeScheduler := memory.NewPurgeScheduler(memRepo, 6*time.Hour)
 					purgeScheduler.Start(deps.Ctx)
-					logger.Info("Memory Service v2 purge scheduler started")
+					logger.Info("Memory Service purge scheduler started")
 
 					// Create v2 bridge for existing memory system
 					bridge := memory.NewV2Bridge(memRepo)

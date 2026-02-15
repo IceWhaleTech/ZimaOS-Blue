@@ -107,7 +107,7 @@ type ContinuousQuery struct {
 
 // StoreConfig contains configuration for the metrics store.
 type StoreConfig struct {
-	// InfluxDB connection
+	// Connection
 	URL      string
 	Database string
 	Username string
@@ -159,22 +159,6 @@ const (
 	TagErrorType = "error_type"
 )
 
-// Helper functions
-
-func boolToStatus(b bool) string {
-	if b {
-		return "success"
-	}
-	return "error"
-}
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // Field keys for metrics.
 const (
 	FieldCount           = "count"
@@ -193,3 +177,19 @@ const (
 	FieldMemoryPercent   = "memory_percent"
 	FieldDiskPercent     = "disk_percent"
 )
+
+// Helper functions
+
+func boolToStatus(b bool) string {
+	if b {
+		return "success"
+	}
+	return "error"
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}

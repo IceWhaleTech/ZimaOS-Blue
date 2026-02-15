@@ -12,19 +12,19 @@ export interface EncryptionStatus {
 
 export const encryptionApi = {
   getStatus() {
-    return api.get<EncryptionStatus>('/v2/encryption/status')
+    return api.get<EncryptionStatus>('/encryption/status')
   },
 
   enable(passphrase: string) {
-    return api.post('/v2/encryption/enable', { passphrase })
+    return api.post('/encryption/enable', { passphrase })
   },
 
   disable() {
-    return api.post('/v2/encryption/disable')
+    return api.post('/encryption/disable')
   },
 
   rotateKey(oldPassphrase: string, newPassphrase: string) {
-    return api.post('/v2/encryption/rotate-key', {
+    return api.post('/encryption/rotate-key', {
       old_passphrase: oldPassphrase,
       new_passphrase: newPassphrase,
     })

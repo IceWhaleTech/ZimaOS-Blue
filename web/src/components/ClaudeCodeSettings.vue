@@ -36,7 +36,7 @@ const newDirAlias = ref('')
 const editingIndex = ref<number | null>(null)
 const editPath = ref('')
 const editAlias = ref('')
-const isWhitelistExpanded = ref(false)
+
 
 // Computed properties
 const sourceLabel = computed(() => {
@@ -523,8 +523,9 @@ function formatDate(dateStr?: string) {
             </span>
           </div>
 
-          <!-- Sandbox Toggle with Collapsible Content -->
-          <div class="mb-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg overflow-hidden">
+          <!-- Config Toggles - Flat layout -->
+          <div class="mb-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg divide-y divide-gray-200 dark:divide-slate-600">
+            <!-- Sandbox Toggle -->
             <div class="flex items-center justify-between p-3">
               <div class="flex items-center gap-3">
                 <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.sandboxMode') }}</span>
@@ -545,66 +546,52 @@ function formatDate(dateStr?: string) {
               </button>
             </div>
 
-            <!-- Sandbox nested content (only shown when sandbox is enabled) -->
-            <Transition name="collapse">
-              <div v-if="configInfo?.sandbox_enabled" class="border-t border-gray-200 dark:border-slate-600 p-3 space-y-3">
-                <!-- Network Access Toggle -->
-                <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-lg">
-                  <div class="flex items-center gap-3">
-                    <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.networkAccess') }}</span>
-                    <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.networkAccessDesc') }}</span>
-                  </div>
-                  <button
-                    :disabled="togglingNetwork || !isInstalled"
-                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    :class="configInfo?.network_enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
-                    role="switch"
-                    :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
-                    @click="toggleNetwork"
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="configInfo?.network_enabled ? 'translate-x-5' : 'translate-x-0'"
-                    />
-                  </button>
-                </div>
+            <!-- Network Access Toggle -->
+            <div class="flex items-center justify-between p-3">
+              <div class="flex items-center gap-3">
+                <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.networkAccess') }}</span>
+                <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.networkAccessDesc') }}</span>
+              </div>
+              <button
+                :disabled="togglingNetwork || !isInstalled"
+                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                :class="configInfo?.network_enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
+                role="switch"
+                :aria-checked="configInfo?.network_enabled ? 'true' : 'false'"
+                @click="toggleNetwork"
+              >
+                <span
+                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="configInfo?.network_enabled ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
 
-                <!-- Directory Whitelist with Toggle -->
-                <div class="bg-white dark:bg-slate-800 rounded-lg overflow-hidden">
-                  <div class="flex items-center justify-between p-3 cursor-pointer" @click="isWhitelistExpanded = !isWhitelistExpanded">
-                    <div class="flex items-center gap-3">
-                      <!-- Expand/Collapse Arrow -->
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-4 w-4 text-gray-400 transition-transform duration-200"
-                        :class="{ 'rotate-90': isWhitelistExpanded }"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                      </svg>
-                      <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.directoryWhitelist') }}</span>
-                      <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.directoryWhitelistDesc') }}</span>
-                    </div>
-                    <button
-                      :disabled="togglingWhitelist || !isInstalled"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      :class="isWhitelistEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
-                      role="switch"
-                      :aria-checked="isWhitelistEnabled ? 'true' : 'false'"
-                      @click.stop="toggleWhitelist"
-                    >
-                      <span
-                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                        :class="isWhitelistEnabled ? 'translate-x-5' : 'translate-x-0'"
-                      />
-                    </button>
-                  </div>
+            <!-- Directory Whitelist Toggle -->
+            <div class="flex items-center justify-between p-3">
+              <div class="flex items-center gap-3">
+                <span class="text-gray-900 dark:text-white font-medium">{{ t('claudecode.directoryWhitelist') }}</span>
+                <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('claudecode.directoryWhitelistDesc') }}</span>
+              </div>
+              <button
+                :disabled="togglingWhitelist || !isInstalled"
+                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                :class="isWhitelistEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-slate-600'"
+                role="switch"
+                :aria-checked="isWhitelistEnabled ? 'true' : 'false'"
+                @click="toggleWhitelist"
+              >
+                <span
+                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="isWhitelistEnabled ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+          </div>
 
-                  <!-- Directory Whitelist Content (shown when expanded) -->
-                  <Transition name="collapse">
-                    <div v-if="isWhitelistExpanded" class="border-t border-gray-200 dark:border-slate-600 p-3">
+          <!-- Directory Whitelist Content (shown when whitelist is enabled) -->
+          <Transition name="collapse">
+            <div v-if="isWhitelistEnabled" class="mb-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3">
                       <!-- Existing directories list -->
                       <div v-if="configInfo?.directory_whitelist?.length" class="space-y-2 mb-3">
                         <div
@@ -719,12 +706,8 @@ function formatDate(dateStr?: string) {
                           {{ t('common.add') }}
                         </button>
                       </div>
-                    </div>
-                  </Transition>
-                </div>
-              </div>
-            </Transition>
-          </div>
+            </div>
+          </Transition>
 
           <!-- Version Details - Simplified -->
           <div class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-3 mb-4">

@@ -402,6 +402,13 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 		key.KeyHash = HashAPIKey(key.Key)
 	}
 
+	// Deduplicate: skip if a key with the same hash already exists
+	for _, existing := range provider.APIKeys {
+		if existing.KeyHash == key.KeyHash {
+			return nil // already exists, no-op
+		}
+	}
+
 	provider.APIKeys = append(provider.APIKeys, *key)
 	provider.UpdatedAt = time.Now()
 

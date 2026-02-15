@@ -199,18 +199,18 @@ export interface CreateMemoryEntryRequest {
 export const memoryServiceApi = {
   // Entries
   createEntry: (data: CreateMemoryEntryRequest, namespace?: string) =>
-    api.post<MemoryEntry>('/v2/memories', data, {
+    api.post<MemoryEntry>('/memories', data, {
       headers: namespace ? { 'X-Namespace': namespace } : undefined,
     }),
 
   getEntry: (id: string) =>
-    api.get<MemoryEntry>(`/v2/memories/${id}`),
+    api.get<MemoryEntry>(`/memories/${id}`),
 
   updateEntry: (id: string, content: string) =>
-    api.put<MemoryEntry>(`/v2/memories/${id}`, { content }),
+    api.put<MemoryEntry>(`/memories/${id}`, { content }),
 
   deleteEntry: (id: string) =>
-    api.delete(`/v2/memories/${id}`),
+    api.delete(`/memories/${id}`),
 
   listEntries: (params: {
     namespace?: string
@@ -219,31 +219,31 @@ export const memoryServiceApi = {
     cursor?: string
     limit?: number
   } = {}) =>
-    api.get<MemoryEntryListResponse>('/v2/memories', {
+    api.get<MemoryEntryListResponse>('/memories', {
       params,
       headers: params.namespace ? { 'X-Namespace': params.namespace } : undefined,
     }),
 
   getHistory: (id: string) =>
-    api.get<{ versions: MemoryEntry[]; count: number }>(`/v2/memories/${id}/history`),
+    api.get<{ versions: MemoryEntry[]; count: number }>(`/memories/${id}/history`),
 
   getStats: (namespace?: string) =>
-    api.get<MemoryEntryStats>('/v2/memories/stats', {
+    api.get<MemoryEntryStats>('/memories/stats', {
       headers: namespace ? { 'X-Namespace': namespace } : undefined,
     }),
 
   purgeExpired: () =>
-    api.delete<{ purged: number }>('/v2/memories/expired'),
+    api.delete<{ purged: number }>('/memories/expired'),
 
   // Namespaces
   createNamespace: (id: string, config?: Partial<MemoryNamespace['config']>) =>
-    api.post<MemoryNamespace>('/v2/namespaces', { id, config }),
+    api.post<MemoryNamespace>('/namespaces', { id, config }),
 
   listNamespaces: () =>
-    api.get<{ namespaces: MemoryNamespace[]; count: number }>('/v2/namespaces'),
+    api.get<{ namespaces: MemoryNamespace[]; count: number }>('/namespaces'),
 
   deleteNamespace: (id: string) =>
-    api.delete(`/v2/namespaces/${id}`),
+    api.delete(`/namespaces/${id}`),
 }
 
 export default memoryApi
