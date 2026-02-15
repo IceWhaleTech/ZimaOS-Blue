@@ -1,4 +1,4 @@
-import { apiClient } from './index'
+import api from './client'
 
 export interface EncryptionStatus {
   enabled: boolean
@@ -12,19 +12,19 @@ export interface EncryptionStatus {
 
 export const encryptionApi = {
   getStatus() {
-    return apiClient.get<EncryptionStatus>('/v2/encryption/status')
+    return api.get<EncryptionStatus>('/v2/encryption/status')
   },
 
   enable(passphrase: string) {
-    return apiClient.post('/v2/encryption/enable', { passphrase })
+    return api.post('/v2/encryption/enable', { passphrase })
   },
 
   disable() {
-    return apiClient.post('/v2/encryption/disable')
+    return api.post('/v2/encryption/disable')
   },
 
   rotateKey(oldPassphrase: string, newPassphrase: string) {
-    return apiClient.post('/v2/encryption/rotate-key', {
+    return api.post('/v2/encryption/rotate-key', {
       old_passphrase: oldPassphrase,
       new_passphrase: newPassphrase,
     })

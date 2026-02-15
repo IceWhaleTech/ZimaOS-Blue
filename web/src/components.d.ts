@@ -72,6 +72,7 @@ declare module 'vue' {
     DonutChart: typeof import('./components/DonutChart.vue')['default']
     DownloadProgress: typeof import('./components/cli/DownloadProgress.vue')['default']
     EditUserModal: typeof import('./components/users/EditUserModal.vue')['default']
+    EncryptionSettings: typeof import('./components/settings/EncryptionSettings.vue')['default']
     ErrorBoundary: typeof import('./components/ErrorBoundary.vue')['default']
     ExportDialog: typeof import('./components/companion/ExportDialog.vue')['default']
     FailoverStatus: typeof import('./components/FailoverStatus.vue')['default']
