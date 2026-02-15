@@ -16,7 +16,6 @@ type mockMemoryService struct {
 	statsResult   *MemoryStatsResult
 	statsErr      error
 	backend       string
-	supermemory   bool
 }
 
 func (m *mockMemoryService) Recall(ctx context.Context, query string, limit int) ([]MemorySearchResult, error) {
@@ -42,10 +41,6 @@ func (m *mockMemoryService) Stats(ctx context.Context) (*MemoryStatsResult, erro
 
 func (m *mockMemoryService) GetActiveBackend() string {
 	return m.backend
-}
-
-func (m *mockMemoryService) IsSupermemoryAvailable() bool {
-	return m.supermemory
 }
 
 func TestMemorySearchTool_Definition(t *testing.T) {
@@ -266,7 +261,6 @@ func TestMemoryStatsTool_Execute(t *testing.T) {
 			Backend:        "local",
 		},
 		backend:     "local",
-		supermemory: true,
 	}
 
 	tool := NewMemoryStatsToolWithInterface(mockService)
@@ -286,9 +280,5 @@ func TestMemoryStatsTool_Execute(t *testing.T) {
 
 	if response["backend"] != "local" {
 		t.Errorf("expected backend 'local', got '%v'", response["backend"])
-	}
-
-	if response["supermemory_available"] != true {
-		t.Errorf("expected supermemory_available true, got %v", response["supermemory_available"])
 	}
 }

@@ -49,8 +49,6 @@ func (h *MemoryHandler) RegisterRoutes(g *echo.Group) {
 	// Backend management routes
 	g.GET("/memory/backend", h.GetBackendStatus)
 	g.POST("/memory/backend", h.SetBackend)
-	g.POST("/memory/supermemory/config", h.ConfigureSupermemory)
-	g.POST("/memory/supermemory/test", h.TestSupermemory)
 	// Markdown export/import routes
 	g.GET("/memory/export", h.ExportMarkdown)
 	g.POST("/memory/import", h.ImportMarkdown)
@@ -300,16 +298,13 @@ func (h *MemoryHandler) Stats(c echo.Context) error {
 // GetBackendStatus returns the current backend status.
 func (h *MemoryHandler) GetBackendStatus(c echo.Context) error {
 	activeBackend := "local"
-	supermemoryAvailable := false
 
 	if h.unifiedService != nil {
 		activeBackend = h.unifiedService.GetActiveBackend()
-		supermemoryAvailable = h.unifiedService.IsSupermemoryAvailable()
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"active_backend":        activeBackend,
-		"supermemory_available": supermemoryAvailable,
+		"active_backend": activeBackend,
 	})
 }
 
@@ -334,46 +329,6 @@ func (h *MemoryHandler) SetBackend(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]bool{"success": true})
-}
-
-// ConfigureSupermemory configures the Supermemory backend.
-func (h *MemoryHandler) ConfigureSupermemory(c echo.Context) error {
-	var req struct {
-		Enabled bool   `json:"enabled"`
-		APIKey  string `json:"api_key"`
-		BaseURL string `json:"base_url"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-
-	if h.unifiedService != nil {
-		cfg := memory.SupermemoryConfig{
-			Enabled: req.Enabled,
-			APIKey:  req.APIKey,
-			BaseURL: req.BaseURL,
-		}
-		if err := h.unifiedService.ConfigureSupermemory(cfg); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-		}
-	}
-
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
-}
-
-// TestSupermemory tests the Supermemory connection.
-func (h *MemoryHandler) TestSupermemory(c echo.Context) error {
-	if h.unifiedService == nil || !h.unifiedService.IsSupermemoryAvailable() {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": false,
-			"error":   "Supermemory not configured",
-		})
-	}
-
-	// Test by switching temporarily and checking
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-	})
 }
 
 // ExportMarkdown exports all memories as a Markdown file.

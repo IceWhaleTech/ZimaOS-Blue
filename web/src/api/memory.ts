@@ -55,17 +55,11 @@ export interface PruneResponse {
 }
 
 export interface MemoryBackendConfig {
-  backend: 'local' | 'supermemory'
-  supermemory?: {
-    enabled: boolean
-    api_key: string
-    base_url?: string
-  }
+  backend: 'local'
 }
 
 export interface MemoryBackendStatus {
   active_backend: string
-  supermemory_available: boolean
 }
 
 // Memory API
@@ -121,20 +115,8 @@ export const memoryApi = {
   /**
    * Set active backend
    */
-  setBackend: (backend: 'local' | 'supermemory') =>
+  setBackend: (backend: 'local') =>
     api.post<{ success: boolean }>('/memory/backend', { backend }),
-
-  /**
-   * Configure Supermemory
-   */
-  configureSupermemory: (config: { enabled: boolean; api_key: string; base_url?: string }) =>
-    api.post<{ success: boolean }>('/memory/supermemory/config', config),
-
-  /**
-   * Test Supermemory connection
-   */
-  testSupermemory: () =>
-    api.post<{ success: boolean; error?: string }>('/memory/supermemory/test'),
 
   /**
    * Export memories as Markdown

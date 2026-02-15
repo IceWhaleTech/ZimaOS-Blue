@@ -80,10 +80,5 @@ func (a *ToolsAdapter) GetActiveBackend() string {
 	return a.service.GetActiveBackend()
 }
 
-// IsSupermemoryAvailable returns whether Supermemory is configured.
-func (a *ToolsAdapter) IsSupermemoryAvailable() bool {
-	return a.service.IsSupermemoryAvailable()
-}
-
 // Ensure ToolsAdapter implements tools.MemoryServiceInterface
 var _ tools.MemoryServiceInterface = (*ToolsAdapter)(nil)

@@ -499,7 +499,6 @@ type MemoryServiceInterface interface {
 	Get(ctx context.Context, id string) (*MemoryChunkResult, error)
 	Stats(ctx context.Context) (*MemoryStatsResult, error)
 	GetActiveBackend() string
-	IsSupermemoryAvailable() bool
 }
 
 // MemorySearchResult represents a search result from memory service.

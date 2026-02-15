@@ -217,7 +217,6 @@ func (m *MemoryStatsTool) Execute(ctx context.Context, args map[string]interface
 		"oldest_chunk":          stats.OldestChunk,
 		"newest_chunk":          stats.NewestChunk,
 		"backend":               stats.Backend,
-		"supermemory_available": m.memoryService.IsSupermemoryAvailable(),
 	}
 
 	jsonResult, _ := json.Marshal(response)

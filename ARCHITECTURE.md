@@ -5,10 +5,10 @@
 
 ```
 ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-  🎨 Vue 3 Frontend  (web/)  ── Vibe it / DIY it / 随便换
+  🎨 Vue 3 Frontend  (web/)  ── Vibe it / DIY it / Swap it
 │                                                                                                         │
   Vue 3 + Vite + TypeScript + Tailwind CSS + i18n (18 langs)
-│ Build 后 embed 进 Go binary，也可以独立部署，也可以整个换掉                                                  │
+│ Build output embedded into Go binary; can also deploy standalone or swap entirely                        │
 │                                                                                                         │
   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
 │ │ChatView  │ │Providers │ │Channels  │ │Security  │ │Metrics   │ │Plugins   │ │Settings  │ │
@@ -34,42 +34,49 @@
 ║  │  Echo Router ──► Middleware: Auth → RateLimit → CORS → PromptGuard → Logging → Metrics            │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  OpenAI-Compatible       │    ║
-║  │  │ /v1/messages  │ │ /v1/chat/*    │ │ /v1/models    │ │ /v1/embeddings│  Proxy Endpoints         │    ║
-║  │  │ /v1/complete  │ │ /api/chat     │ │ /v1/providers │ │               │                          │    ║
+║  │  │  Messages     │ │  Chat         │ │  Models       │ │  Embeddings   │  Proxy Endpoints         │    ║
+║  │  │  Completions  │ │  Streaming    │ │  Providers    │ │               │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  Management API          │    ║
-║  │  │ /api/memory/* │ │ /api/auth/*   │ │ /api/metrics/*│ │/api/channels/*│                          │    ║
-║  │  │ /api/v2/mem/* │ │ /api/security │ │ /api/system/* │ │/api/heartbeat │                          │    ║
+║  │  │  Memory       │ │  Auth         │ │  Metrics      │ │  Channels     │                          │    ║
+║  │  │  MemoryV2     │ │  Security     │ │  System       │ │  Heartbeat    │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  Feature API             │    ║
-║  │  │/api/companion │ │ /api/plugins  │ │ /api/skills   │ │ /api/voice    │                          │    ║
-║  │  │/api/personal  │ │ /api/cron     │ │ /api/workflow │ │ /api/tts      │                          │    ║
+║  │  │  Companion    │ │  Plugins      │ │  Skills       │ │  Voice        │                          │    ║
+║  │  │  Personality  │ │  Cron         │ │  Workflow     │ │  TTS          │                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐  WebSocket & Debug       │    ║
-║  │  │ /ws/chat      │ │ /ws/companion │ │ /ws/voice     │ │/debug/pprof/* │                          │    ║
-║  │  │ (SSE stream)  │ │ (events)      │ │ (audio)       │ │(CPU/mem/gortn)│                          │    ║
+║  │  │  ChatStream   │ │  Companion    │ │  VoiceStream  │ │  Profiling    │                          │    ║
+║  │  │  (SSE)        │ │  (events)     │ │  (audio)      │ │(CPU/mem/gortn)│                          │    ║
 ║  │  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘                          │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║         ▼                                                                                                ║
 ║  ┌───────────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  ★ API Proxy Sidecar  (proxy/)  ── 核心热路径，所有 LLM 请求必经                     │    ║
+║  │                  ★ API Proxy Sidecar  (proxy/)  ── Core hot path, all LLM requests pass through  │    ║
 ║  │                                                                                                   │    ║
-║  │  Claude Code CLI / Any OpenAI Client                                                              │    ║
+║  │  Claude Code CLI / Any OpenAI Client / Anthropic SDK / Gemini SDK / OAuth Client                 │    ║
 ║  │       │                                                                                           │    ║
 ║  │       ▼                                                                                           │    ║
-║  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────────────────┐              │    ║
-║  │  │  Auth    │──▶│  Prompt  │──▶│  Context │──▶│  Route   │──▶│  Upstream LLM      │              │    ║
-║  │  │  Gate    │   │  Guard   │   │  Pruner  │   │  Select  │   │  Provider          │              │    ║
-║  │  │(api key) │   │(security)│   │(pruner/) │   │(pool/)   │   │(Anthropic/OpenAI/..)│             │    ║
-║  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └────────────────────┘              │    ║
+║  │  Inbound API Formats (4 upstream protocols)                                                       │    ║
+║  │  ┌──────────────┐ ┌──────────────┐ ┌───────────────┐ ┌──────────────┐                             │    ║
+║  │  │OpenAI Compat │ │Anthropic API │ │  Gemini API   │ │  OAuth API   │                             │    ║
+║  │  │chat/responses│ │  messages    │ │generateContent│ │ token-based  │                             │    ║
+║  │  └──────────────┘ └──────────────┘ └───────────────┘ └──────────────┘                             │    ║
+║  │       │                                                                                           │    ║
+║  │       ▼                                                                                           │    ║
+║  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐                        │    ║
+║  │  │  Auth    │──▶│  Prompt  │──▶│  Context │──▶│  Route   │──▶│ Upstream │                        │    ║
+║  │  │  Gate    │   │  Guard   │   │  Pruner  │   │  Select  │   │ Provider │                        │    ║
+║  │  │(api key) │   │(security)│   │(pruner/) │   │(pool/)   │   │          │                        │    ║
+║  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘                        │    ║
 ║  │                                     │              │              │                               │    ║
 ║  │                                     ▼              ▼              ▼                               │    ║
-║  │                               ┌──────────┐  ┌──────────┐  ┌──────────┐                           │    ║
-║  │                               │  Score   │  │route:auto│  │ Failover │                           │    ║
-║  │                               │  Cache   │  │route:cloud  │ Circuit  │                           │    ║
-║  │                               │(ecache2) │  │route:local  │ Breaker  │                           │    ║
-║  │                               └──────────┘  └──────────┘  └──────────┘                           │    ║
+║  │                               ┌──────────┐  ┌────────────┐  ┌──────────┐                         │    ║
+║  │                               │  Score   │  │ route:auto │  │ Failover │                         │    ║
+║  │                               │  Cache   │  │ route:cloud│  │ Circuit  │                         │    ║
+║  │                               │(ecache2) │  │ route:local│  │ Breaker  │                         │    ║
+║  │                               └──────────┘  └────────────┘  └──────────┘                         │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌─────────────────────────────────────────────────────────────────────────────────────┐          │    ║
 ║  │  │  Two-Level Cache (CC Cache)                                                         │          │    ║
@@ -88,17 +95,21 @@
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Provider Pool  (providerpool/)  ── 统一 LLM 提供商管理                             │    ║
+║  │                  Provider Pool  (providerpool/)  ── Unified LLM provider management               │    ║
 ║  │                                                                                                   │    ║
 ║  │  Provider Types:                                                                                  │    ║
 ║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │    ║
-║  │  │ OpenAI  │ │Anthropic│ │  Ollama │ │  Grok   │ │  Qwen   │ │ Custom  │ │  Trial  │            │    ║
-║  │  │ (cloud) │ │ (cloud) │ │ (local) │ │ (cloud) │ │ (cloud) │ │(OpenAI) │ │ (quota) │            │    ║
+║  │  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │            │    ║
+║  │  │ (cloud) │ │ (cloud) │ │ Gemini  │ │ (cloud) │ │ (Kimi)  │ │ OpenAI  │ │ Router  │            │    ║
 ║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘            │    ║
-║  │  ┌─────────┐ ┌─────────┐                                                                         │    ║
-║  │  │  ACP    │ │  IDE    │  (LM Studio auto-discover)                                               │    ║
-║  │  │(Agent)  │ │(detect) │                                                                          │    ║
-║  │  └─────────┘ └─────────┘                                                                          │    ║
+║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │    ║
+║  │  │AiHubMix │ │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │            │    ║
+║  │  │ (cloud) │ │ (local) │ │ (cloud) │ │ (cloud) │ │  (xAI)  │ │(Alibaba)│ │   AI    │            │    ║
+║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘            │    ║
+║  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐                                    │    ║
+║  │  │ Amazon  │ │  GLM    │ │ Custom  │ │  Trial  │ │  IDE    │                                    │    ║
+║  │  │ Bedrock │ │ (Zhipu) │ │(OpenAI) │ │ (quota) │ │(detect) │                                    │    ║
+║  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘                                    │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                │    ║
 ║  │  │  Health  │ │ Priority │ │  Rate    │ │  API Key │ │  Model   │                                │    ║
@@ -106,12 +117,12 @@
 ║  │  │(circuit) │ │  Engine  │ │(per-prov)│ │  & Usage │ │(auto)    │                                │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘                                │    ║
 ║  │                                                                                                   │    ║
-║  │  API Formats: OpenAI (default) │ Anthropic │ Ollama │ Google AI                                   │    ║
+║  │  API Formats: OpenAI Compat │ Anthropic │ Gemini │ OAuth                                          │    ║
 ║  │  Storage: {dataDir}/providerpool/*.json                                                           │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Context Pruner  (pruner/)  ── 智能上下文裁剪，降低 token 开销                       │    ║
+║  │                  Context Pruner  (pruner/)  ── Smart context pruning, reduce token cost            │    ║
 ║  │                                                                                                   │    ║
 ║  │  Request ──▶ DetectType ──▶ Segmentize ──▶ Score (BM25) ──▶ SelectTopK ──▶ Pruned Output          │    ║
 ║  │                  │              │              │                │                                  │    ║
@@ -123,13 +134,13 @@
 ║  │            │  Data    │  │ Import   │   │ LRU Cache│    │  Select  │                              │    ║
 ║  │            └──────────┘  └──────────┘   └──────────┘    └──────────┘                              │    ║
 ║  │                                                                                                   │    ║
-║  │  Backends: local (line) │ bm25 (segment) │ ir (paragraph) │ remote (SWE-Pruner HTTP)             │    ║
+║  │  Backends: local (line) │ bm25 (segment) │ ir (paragraph) │ swe-pruner (Go native)               │    ║
 ║  │  Middleware: plugs into proxy, processes tool/user/system messages                                │    ║
 ║  │  Config: enabled=false, threshold=0.5, min_lines=50, cache=256 slots                             │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Agent Runtime  ── LLM 交互核心                                                    │    ║
+║  │                  Agent Runtime  ── LLM interaction core                                            │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │    ║
 ║  │  │  LLM Client  │  │  Tool/Func   │  │  Context     │  │  Streaming   │  │  Personality │        │    ║
@@ -149,18 +160,30 @@
 ║  │  │  │        │ │History │     │  │  │Keyword │ │vec     │     │  │  │Entries │ │Isolate │ │     │    ║
 ║  │  │  └────────┘ └────────┘     │  │  │Search  │ │Hybrid  │     │  │  └────────┘ └────────┘ │     │    ║
 ║  │  │  ┌────────┐                │  │  └────────┘ └────────┘     │  │  Purge: every 6h       │     │    ║
-║  │  │  │Compact │ (auto-summary) │  │  Embedding: text-embed-3   │  │  API: /api/v2/memory/* │     │    ║
+║  │  │  │Compact │ (auto-summary) │  │  Embedding: text-embed-3   │  │  API: MemoryV2 module  │     │    ║
 ║  │  │  └────────┘                │  │  AES-256-GCM encryption    │  └────────────────────────┘     │    ║
 ║  │  └─────────────────────────────┘  └─────────────────────────────┘                                │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Channel Adapters  (channel/)  ── 多渠道消息                                       │    ║
+║  │                  Channel Adapters  (channel/)  ── Multi-channel messaging                          │    ║
 ║  │                                                                                                   │    ║
-║  │  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐ ┌──────────┐ ┌────────┐ ┌──────────┐ ┌────────┐  │    ║
-║  │  │  Web   │ │ Telegram │ │ Discord │ │ Slack │ │  WeChat  │ │ Feishu │ │  Matrix  │ │iMessage│  │    ║
-║  │  │(built) │ │   Bot    │ │   Bot   │ │       │ │  Work    │ │ /Lark  │ │          │ │(exper.)│  │    ║
-║  │  └────────┘ └──────────┘ └─────────┘ └───────┘ └──────────┘ └────────┘ └──────────┘ └────────┘  │    ║
+║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │    ║
+║  │  │  Web   │ │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│        │    ║
+║  │  │(built) │ │        │ │        │ │        │ │  Work  │ │ /Lark  │ │        │ │        │        │    ║
+║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │    ║
+║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │    ║
+║  │  │WhatsApp│ │ Signal │ │ Teams  │ │Matter- │ │  Blue  │ │  Zalo  │ │DingTalk│ │ Google │        │    ║
+║  │  │        │ │        │ │        │ │ most   │ │Bubbles │ │        │ │        │ │  Chat  │        │    ║
+║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │    ║
+║  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │    ║
+║  │  │  LINE  │ │Messengr│ │  Next  │ │ Nostr  │ │   QQ   │ │ Twitch │ │Twitter │ │ Viber  │        │    ║
+║  │  │        │ │        │ │  cloud │ │        │ │        │ │        │ │        │ │        │        │    ║
+║  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │    ║
+║  │  ┌────────┐                                                                                      │    ║
+║  │  │Instagrm│                                                                                      │    ║
+║  │  │        │                                                                                      │    ║
+║  │  └────────┘                                                                                      │    ║
 ║  │                                                                                                   │    ║
 ║  │  Manager: central registry, auto-reconnect, message queue                                         │    ║
 ║  │  Humanizer (humanizer/): Markdown → natural text (IM mode / Voice mode)                           │    ║
@@ -179,7 +202,7 @@
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                             │    ║
 ║  │  │  Threat  │ │  Sandbox │ │  Audit   │ │  TLS     │                                             │    ║
 ║  │  │ Detector │ │ Executor │ │  Trail   │ │ Manager  │                                             │    ║
-║  │  │(SQLi/XSS│ │(isolated)│ │(immutable│ │(ACME/LE) │                                             │    ║
+║  │  │(SQLi/XSS│ │(isolated │ │(immutable│ │(ACME/LE) │                                             │    ║
 ║  │  │PromptInj│ │ resource │ │ append)  │ │ auto-    │                                             │    ║
 ║  │  │ CmdInj) │ │ limits)  │ │          │ │ renew    │                                             │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                             │    ║
@@ -205,8 +228,8 @@
 ║  │  ┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐        │    ║
 ║  │  │  Metrics  (metrics/)     │  │  Heartbeat (heartbeat/)  │  │  Companion (companion/)  │        │    ║
 ║  │  │  ┌────────┐ ┌────────┐  │  │  ┌────────┐ ┌────────┐  │  │  ┌────────┐ ┌────────┐  │        │    ║
-║  │  │  │CPU/Mem │ │API Call│  │  │  │Periodic│ │HEARTBEAT  │  │  │  │Realtime│ │Session │  │        │    ║
-║  │  │  │GC/Gortn│ │Token $ │  │  │  │Poll    │ │.md Prompt│  │  │  │Events  │ │Monitor │  │        │    ║
+║  │  │  │CPU/Mem │ │API Call│  │  │  │Periodic│ │HEART-  │  │  │  │Realtime│ │Session │  │        │    ║
+║  │  │  │GC/Gortn│ │Token $ │  │  │  │Poll    │ │BEAT.md │  │  │  │Events  │ │Monitor │  │        │    ║
 ║  │  │  └────────┘ └────────┘  │  │  └────────┘ └────────┘  │  │  └────────┘ └────────┘  │        │    ║
 ║  │  │  SQLite: metrics.db     │  │  Dedup: 24h cache        │  │  WebSocket + JSONL      │        │    ║
 ║  │  │  Interval: 10s, 30pts   │  │  Active hours window     │  │  Retention: 7d/30d/90d  │        │    ║
@@ -230,14 +253,14 @@
 ║  │                  Integrations & Automation                                                         │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │    ║
-║  │  │ Browser  │ │  Home    │ │  Cron    │ │ Workflow │ │  Form   │ │  Ngrok   │ │  Backup  │     │    ║
-║  │  │ (Rod)    │ │Assistant │ │ Schedule │ │ (n8n)   │ │ Filler  │ │ Tunnel   │ │ Restore  │     │    ║
-║  │  │ lazy init│ │  REST    │ │          │ │ nodes   │ │ template│ │ SDK      │ │ 7d retain│     │    ║
+║  │  │ Browser  │ │  Home    │ │  Cron    │ │ Workflow │ │  Form   │ │  Tunnel  │ │  Backup  │     │    ║
+║  │  │ (Rod)    │ │Assistant │ │ Schedule │ │ (n8n)   │ │ Filler  │ │ Manager  │ │ Restore  │     │    ║
+║  │  │ lazy init│ │  REST    │ │          │ │ nodes   │ │ template│ │ (4 provs)│ │ 7d retain│     │    ║
 ║  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘     │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Scheduler  (scheduler/)  ── 优先级任务调度                                         │    ║
+║  │                  Scheduler  (scheduler/)  ── Priority task scheduling                              │    ║
 ║  │                                                                                                   │    ║
 ║  │  Priority: Low → Normal → High → Critical                                                        │    ║
 ║  │  States: Pending → Running → Completed/Failed/Cancelled                                           │    ║
@@ -246,7 +269,7 @@
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
 ║         │                                                                                                ║
 ║  ┌──────┴────────────────────────────────────────────────────────────────────────────────────────────┐    ║
-║  │                  Core Runtime  (v0.1)  ── 稳定内核                                                 │    ║
+║  │                  Core Runtime  (v0.1)  ── Stable kernel                                            │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                  │    ║
 ║  │  │Lifecycle │ │  Worker  │ │  Config  │ │  Logger  │ │  Update  │ │  SysInfo │                  │    ║
@@ -274,10 +297,46 @@
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  External Services                                                                                        │
 │                                                                                                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐              │
-│  │ Anthropic│ │  OpenAI  │ │  Ollama  │ │ Telegram │ │ Discord  │ │  Home    │ │  Let's   │              │
-│  │  API     │ │  API     │ │  (local) │ │  Bot API │ │  Bot API │ │ Assist   │ │ Encrypt  │              │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘              │
+│  LLM Providers                                                                                            │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐       │
+│  │ OpenAI  │ │Anthropic│ │ Google  │ │DeepSeek │ │Moonshot │ │  Azure  │ │  Open   │ │AiHubMix │       │
+│  │         │ │         │ │ Gemini  │ │         │ │ (Kimi)  │ │ OpenAI  │ │ Router  │ │         │       │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘       │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐       │
+│  │  Ollama │ │ MiniMax │ │  Codex  │ │  Grok   │ │  Qwen   │ │ Venice  │ │ Amazon  │ │  GLM    │       │
+│  │ (local) │ │         │ │         │ │  (xAI)  │ │(Alibaba)│ │   AI    │ │ Bedrock │ │ (Zhipu) │       │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘       │
+│                                                                                                            │
+│  Channels (IM / Social)                                                                                   │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                │
+│  │Telegram│ │Discord │ │ Slack  │ │ WeChat │ │ Feishu │ │ Matrix │ │iMessage│ │WhatsApp│                │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                │
+│  │ Signal │ │ Teams  │ │Matter- │ │  Zalo  │ │DingTalk│ │ Google │ │  LINE  │ │Messengr│                │
+│  │        │ │        │ │ most   │ │        │ │        │ │  Chat  │ │        │ │        │                │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                                      │
+│  │  Next  │ │ Nostr  │ │   QQ   │ │ Twitch │ │Twitter │ │ Viber  │                                      │
+│  │  cloud │ │        │ │        │ │        │ │        │ │        │                                      │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                                      │
+│                                                                                                            │
+│  Smart Home & IoT                                                                                         │
+│  ┌──────────┐                                                                                             │
+│  │  Home    │                                                                                             │
+│  │Assistant │                                                                                             │
+│  └──────────┘                                                                                             │
+│                                                                                                            │
+│  Remote Access (tunnel/)                                                                                  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                                                    │
+│  │  Ngrok   │ │Cloudflare│ │  Bore    │ │  Serveo  │                                                    │
+│  │          │ │  Tunnel  │ │          │ │  (SSH)   │                                                    │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘                                                    │
+│                                                                                                            │
+│  Infrastructure                                                                                           │
+│  ┌──────────┐ ┌──────────┐                                                                               │
+│  │  Let's   │ │ Edge TTS │                                                                               │
+│  │ Encrypt  │ │ (MS TTS) │                                                                               │
+│  └──────────┘ └──────────┘                                                                               │
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -316,7 +375,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | Voice | `voice`, `tts`, `stt`, `speech` |
 | Observe | `metrics`, `heartbeat`, `companion`, `profiling`, `leakdetect` |
 | Plugin | `plugin`, `skill`, `skillstore` |
-| Integrate | `browser`, `homeassistant`, `cron`, `workflow`, `formfiller`, `ngrok`, `crawler` |
+| Integrate | `browser`, `homeassistant`, `cron`, `workflow`, `formfiller`, `tunnel`, `crawler` |
 | Scheduler | `scheduler`, `worker`, `workerpool`, `pool` |
 | Core | `lifecycle`, `config`, `logger`, `database`, `cache`, `ratelimit`, `retry`, `timeutil`, `sync` |
 | System | `sysinfo`, `cgroup`, `iotask`, `watcher`, `resources`, `backup`, `update` |

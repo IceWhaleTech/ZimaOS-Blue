@@ -23,13 +23,8 @@ const showExportImportModal = ref(false)
 const newMemoryContent = ref('')
 const newMemoryTags = ref('')
 
-// Supermemory settings
-const activeBackend = ref<'local' | 'supermemory'>('local')
-const supermemoryEnabled = ref(false)
-const supermemoryApiKey = ref('')
-const supermemoryBaseUrl = ref('')
-const testingConnection = ref(false)
-const connectionTestResult = ref<{ success: boolean; error?: string } | null>(null)
+// Backend settings
+const activeBackend = ref<'local'>('local')
 
 // Export/Import state
 const memoryExporting = ref(false)
@@ -55,8 +50,7 @@ async function loadStats() {
 async function loadBackendStatus() {
   try {
     const response = await memoryApi.getBackendStatus()
-    activeBackend.value = response.data.active_backend as 'local' | 'supermemory'
-    supermemoryEnabled.value = response.data.supermemory_available
+    activeBackend.value = response.data.active_backend as 'local'
   } catch (error) {
     console.error('Failed to load backend status:', error)
   }
@@ -174,43 +168,13 @@ function getScoreColor(score: number): string {
   return 'text-gray-500 dark:text-gray-400'
 }
 
-async function switchBackend(backend: 'local' | 'supermemory') {
+async function switchBackend(backend: 'local') {
   try {
     await memoryApi.setBackend(backend)
     activeBackend.value = backend
     await loadStats()
   } catch (error) {
     console.error('Failed to switch backend:', error)
-  }
-}
-
-async function saveSupermemoryConfig() {
-  loading.value = true
-  try {
-    await memoryApi.configureSupermemory({
-      enabled: supermemoryEnabled.value,
-      api_key: supermemoryApiKey.value,
-      base_url: supermemoryBaseUrl.value || undefined,
-    })
-    await loadBackendStatus()
-    showSettingsModal.value = false
-  } catch (error) {
-    console.error('Failed to save supermemory config:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function testSupermemoryConnection() {
-  testingConnection.value = true
-  connectionTestResult.value = null
-  try {
-    const response = await memoryApi.testSupermemory()
-    connectionTestResult.value = response.data
-  } catch (error) {
-    connectionTestResult.value = { success: false, error: String(error) }
-  } finally {
-    testingConnection.value = false
   }
 }
 
@@ -351,7 +315,7 @@ onMounted(() => {
       <div class="flex items-center gap-2 text-sm">
         <span class="text-gray-600 dark:text-gray-400">{{ t('memory.backend') }}:</span>
         <span class="font-medium text-gray-900 dark:text-white dark:text-white">
-          {{ stats.backend === 'supermemory' ? 'Supermemory' : t('memory.localBackend') }}
+          {{ t('memory.localBackend') }}
         </span>
       </div>
     </div>
@@ -601,58 +565,6 @@ onMounted(() => {
                 >
                   {{ t('memory.localBackend') }}
                 </button>
-                <button
-                  class="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  :class="activeBackend === 'supermemory' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
-                  :disabled="!supermemoryEnabled"
-                  @click="switchBackend('supermemory')"
-                >
-                  Supermemory
-                </button>
-              </div>
-            </div>
-
-            <!-- Supermemory Config -->
-            <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">{{ t('memory.supermemoryConfig') }}</h4>
-
-              <div class="space-y-4">
-                <div>
-                  <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">
-                    {{ t('memory.apiKey') }}
-                  </label>
-                  <input
-                    v-model="supermemoryApiKey"
-                    type="password"
-                    :placeholder="t('memory.apiKeyPlaceholder')"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-                  />
-                </div>
-
-                <div>
-                  <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">
-                    {{ t('memory.baseUrl') }} ({{ t('common.optional') }})
-                  </label>
-                  <input
-                    v-model="supermemoryBaseUrl"
-                    type="text"
-                    placeholder="https://api.supermemory.ai/v3"
-                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-                  />
-                </div>
-
-                <div class="flex items-center gap-3">
-                  <button
-                    class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
-                    :disabled="testingConnection || !supermemoryApiKey"
-                    @click="testSupermemoryConnection"
-                  >
-                    {{ testingConnection ? t('common.testing') : t('memory.testConnection') }}
-                  </button>
-                  <span v-if="connectionTestResult" :class="connectionTestResult.success ? 'text-green-600' : 'text-red-600'" class="text-sm">
-                    {{ connectionTestResult.success ? t('memory.connectionSuccess') : connectionTestResult.error }}
-                  </span>
-                </div>
               </div>
             </div>
           </div>
@@ -667,7 +579,7 @@ onMounted(() => {
             <button
               class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
               :disabled="loading"
-              @click="saveSupermemoryConfig"
+              @click="showSettingsModal = false"
             >
               {{ t('common.save') }}
             </button>
