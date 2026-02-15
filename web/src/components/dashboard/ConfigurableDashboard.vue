@@ -21,6 +21,7 @@ import TokenUsageChartCard from './cards/TokenUsageChartCard.vue'
 import LatencyChartCard from './cards/LatencyChartCard.vue'
 import ModelStatsCard from './cards/ModelStatsCard.vue'
 import CacheStatsCard from './cards/CacheStatsCard.vue'
+import TokenEconomyCard from './cards/TokenEconomyCard.vue'
 
 defineProps<{
   metricsHistory?: Array<{
@@ -53,6 +54,7 @@ const componentMap: Record<string, Component> = {
   LatencyChartCard: markRaw(LatencyChartCard),
   ModelStatsCard: markRaw(ModelStatsCard),
   CacheStatsCard: markRaw(CacheStatsCard),
+  TokenEconomyCard: markRaw(TokenEconomyCard),
 }
 
 // Get component from config

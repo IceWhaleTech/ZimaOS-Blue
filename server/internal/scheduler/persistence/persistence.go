@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Common errors
@@ -67,10 +67,14 @@ type Store struct {
 
 // NewStore creates a new persistence store.
 func NewStore(config Config) (*Store, error) {
-	db, err := sql.Open("sqlite", config.DBPath)
+	db, err := sql.Open("sqlite3", config.DBPath)
 	if err != nil {
 		return nil, err
 	}
+
+	// Connection pool limits
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	// Enable WAL mode for better concurrency
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {

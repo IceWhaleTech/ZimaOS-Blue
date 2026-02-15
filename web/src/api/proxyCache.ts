@@ -56,6 +56,26 @@ export interface PrunerConfigUpdate {
   threshold?: number
 }
 
+export interface PrunerModelStatus {
+  ready: boolean
+  downloading: boolean
+  progress?: {
+    file: string
+    file_index: number
+    total_files: number
+    downloaded: number
+    total: number
+    percentage: number
+    speed_human: string
+    eta: string
+  }
+  files?: {
+    filename: string
+    downloaded: boolean
+    size: string
+  }[]
+}
+
 // Proxy cache API (for /v1/* OpenAI-compatible endpoints)
 // All chat requests now route through the proxy, so this is the unified cache
 export const proxyCacheApi = {
@@ -70,4 +90,7 @@ export const proxyCacheApi = {
   getPrunerConfig: () => api.get<PrunerConfig>('/proxy/pruner/config'),
   updatePrunerConfig: (config: PrunerConfigUpdate) =>
     api.put<{ success: boolean; config: PrunerConfig }>('/proxy/pruner/config', config),
+  getPrunerModelStatus: () => api.get<PrunerModelStatus>('/proxy/pruner/model/status'),
+  downloadPrunerModel: () => api.post<{ success: boolean }>('/proxy/pruner/model/download'),
+  cancelPrunerModelDownload: () => api.post<{ success: boolean }>('/proxy/pruner/model/cancel'),
 }

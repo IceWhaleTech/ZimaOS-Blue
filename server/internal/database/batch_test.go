@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupBatchTestDB(t *testing.T) (*sql.DB, func()) {
@@ -20,7 +20,7 @@ func setupBatchTestDB(t *testing.T) (*sql.DB, func()) {
 	}
 	tmpFile.Close()
 
-	db, err := sql.Open("sqlite", tmpFile.Name())
+	db, err := sql.Open("sqlite3", tmpFile.Name())
 	if err != nil {
 		os.Remove(tmpFile.Name())
 		t.Fatalf("Failed to open database: %v", err)
@@ -338,7 +338,7 @@ func BenchmarkBatchExecutor_BatchInsert(b *testing.B) {
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	db, err := sql.Open("sqlite", tmpFile.Name())
+	db, err := sql.Open("sqlite3", tmpFile.Name())
 	if err != nil {
 		b.Fatalf("Failed to open database: %v", err)
 	}
@@ -392,7 +392,7 @@ func BenchmarkSingleInsert(b *testing.B) {
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	db, err := sql.Open("sqlite", tmpFile.Name())
+	db, err := sql.Open("sqlite3", tmpFile.Name())
 	if err != nil {
 		b.Fatalf("Failed to open database: %v", err)
 	}

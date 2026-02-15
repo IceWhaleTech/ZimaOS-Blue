@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // SessionStore interface for session persistence.
@@ -91,10 +91,14 @@ CREATE INDEX IF NOT EXISTS idx_sessions_last_active ON sessions(last_active_at);
 
 // NewSQLiteSessionStore creates a new SQLiteSessionStore.
 func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Connection pool limits
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	// Enable WAL mode and foreign keys
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {

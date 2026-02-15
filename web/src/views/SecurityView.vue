@@ -2,21 +2,24 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { securityApi } from '@/api/security'
+import { systemApi } from '@/api/index'
 import { companionApi, type CompanionSession, type Stats as CompanionStats } from '@/api/companion'
 import { getActiveConnections, getConnectionStats, type Connection, type ConnectionStats } from '@/api/connections'
 import SessionList from '@/components/companion/SessionList.vue'
 import SessionDetail from '@/components/companion/SessionDetail.vue'
 import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
+import type { LogEntry } from '@/api/system'
 
 const { t, te } = useI18n()
 
 // Tab definitions
-type TabId = 'overview' | 'monitoring'
+type TabId = 'overview' | 'monitoring' | 'logs'
 const activeTab = ref<TabId>('overview')
 
 const tabs: { id: TabId; labelKey: string; icon: string }[] = [
   { id: 'overview', labelKey: 'security.tabs.overview', icon: 'shield' },
   { id: 'monitoring', labelKey: 'security.tabs.monitoring', icon: 'activity' },
+  { id: 'logs', labelKey: 'security.tabs.logs', icon: 'list' },
 ]
 
 /** Backend English details string -> security.scan.detailMessages key (for i18n). */
@@ -101,6 +104,92 @@ const fixingItem = ref<string | null>(null) // ID of item being fixed
 const fixPreviewVisible = ref(false)
 const fixPreviewItem = ref<ScanItem | null>(null)
 const expandedItemId = ref<string | null>(null) // ID of expanded item for details
+
+// Logs tab state
+const logs = ref<LogEntry[]>([])
+const logsLoading = ref(false)
+const logLevel = ref('all')
+const logSearch = ref('')
+const logLimit = ref(100)
+
+async function fetchLogs() {
+  logsLoading.value = true
+  try {
+    const response = await systemApi.getLogs({
+      level: logLevel.value === 'all' ? undefined : logLevel.value,
+      search: logSearch.value || undefined,
+      limit: logLimit.value,
+    })
+    logs.value = response.data || []
+  } catch (e) {
+    console.error('Failed to fetch logs:', e)
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+function formatLogTime(timestamp: string) {
+  return new Date(timestamp).toLocaleTimeString()
+}
+
+function getLogLevelClass(level: string) {
+  if (!level) return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+  switch (level.toLowerCase()) {
+    case 'error': return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+    case 'warn': return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
+    case 'info': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+    case 'debug': return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+    default: return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+  }
+}
+
+function isRequestLog(log: LogEntry): boolean {
+  return log.message === 'request' && log.fields?.method !== undefined
+}
+
+function getMethodColor(method: string | undefined): string {
+  if (!method) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+  switch (method.toUpperCase()) {
+    case 'GET': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    case 'POST': return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
+    case 'PUT': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+    case 'PATCH': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    case 'DELETE': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
+
+function getStatusColor(status: number): string {
+  if (status >= 500) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+  if (status >= 400) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+  if (status >= 300) return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
+  if (status >= 200) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+}
+
+function formatLatency(latency: number): string {
+  if (typeof latency !== 'number') return ''
+  if (latency >= 1_000_000_000) return `${(latency / 1_000_000_000).toFixed(2)}s`
+  if (latency >= 1_000_000) return `${(latency / 1_000_000).toFixed(0)}ms`
+  if (latency >= 1_000) return `${(latency / 1_000).toFixed(0)}µs`
+  return `${latency}ns`
+}
+
+async function exportLogs() {
+  const content = logs.value.map(log => `[${log.timestamp}] [${log.level}] ${log.source ? `[${log.source}] ` : ''}${log.message}`).join('\n')
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `echo-logs-${new Date().toISOString().split('T')[0]}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function clearLogs() {
+  if (!confirm(t('system.confirmClearLogs'))) return
+  logs.value = []
+}
 
 // Check if scan should run (once per day)
 function shouldRunScan(): boolean {
@@ -479,7 +568,7 @@ onUnmounted(() => {
               ? 'bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-300 border-b-2 border-gray-900 dark:border-gray-700 -mb-px'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700/50'
           ]"
-          @click="activeTab = tab.id"
+          @click="activeTab = tab.id; if (tab.id === 'logs' && logs.length === 0) fetchLogs()"
         >
           <!-- Shield icon for Overview -->
           <svg v-if="tab.icon === 'shield'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -961,6 +1050,79 @@ onUnmounted(() => {
             @select="selectSession"
             @load-more="loadMoreSessions"
           />
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Content: Logs -->
+    <div v-show="activeTab === 'logs'">
+      <div class="glass-card p-4">
+        <div class="flex flex-wrap gap-4 items-center mb-4">
+          <div class="flex-1 min-w-[200px]">
+            <input
+              v-model="logSearch"
+              type="text"
+              :placeholder="t('system.searchLogs')"
+              class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
+              @keyup.enter="fetchLogs"
+            />
+          </div>
+          <select
+            v-model="logLevel"
+            class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600"
+            @change="fetchLogs"
+          >
+            <option value="all">{{ t('system.allLevels') }}</option>
+            <option value="error">{{ t('system.error') }}</option>
+            <option value="warn">{{ t('system.warning') }}</option>
+            <option value="info">{{ t('system.info') }}</option>
+            <option value="debug">{{ t('system.debug') }}</option>
+          </select>
+          <select
+            v-model="logLimit"
+            class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600"
+            @change="fetchLogs"
+          >
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+            <option :value="200">200</option>
+          </select>
+          <div class="flex gap-2">
+            <button class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg" :disabled="logsLoading" @click="fetchLogs">
+              {{ logsLoading ? t('common.loading') : t('system.refresh') }}
+            </button>
+            <button class="px-3 py-2 bg-gray-100 dark:bg-gray-700/30 hover:bg-gray-200 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300 rounded-lg" :disabled="logs.length === 0" @click="exportLogs">
+              {{ t('system.exportLogs') }}
+            </button>
+            <button class="px-3 py-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 rounded-lg" :disabled="logs.length === 0" @click="clearLogs">
+              {{ t('system.clearLogs') }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="logsLoading" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.loadingLogs') }}</div>
+        <div v-else-if="logs.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.noLogsFound') }}</div>
+        <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[400px] overflow-y-auto font-mono text-sm">
+          <div v-for="(log, index) in logs" :key="index" class="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex gap-3 items-start">
+            <span class="text-gray-400 dark:text-gray-500 flex-shrink-0 w-20">{{ formatLogTime(log.timestamp) }}</span>
+            <span :class="getLogLevelClass(log.level)" class="px-2 py-0.5 rounded text-xs uppercase font-medium flex-shrink-0">{{ log.level }}</span>
+            <span v-if="log.source" class="text-purple-600 dark:text-purple-400 flex-shrink-0">[{{ log.source.split('/').pop()?.split(':')[0] }}]</span>
+            <template v-if="isRequestLog(log)">
+              <span class="px-1.5 py-0.5 text-xs font-medium rounded" :class="getMethodColor(log.fields?.method as string)">
+                {{ log.fields?.method }}
+              </span>
+              <span class="text-gray-900 dark:text-gray-100 break-all flex-1 truncate" :title="log.fields?.uri as string">
+                {{ log.fields?.uri }}
+              </span>
+              <span class="px-1.5 py-0.5 text-xs font-medium rounded" :class="getStatusColor(log.fields?.status as number)">
+                {{ log.fields?.status }}
+              </span>
+              <span class="text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                {{ formatLatency(log.fields?.latency as number) }}
+              </span>
+            </template>
+            <span v-else class="text-gray-700 dark:text-gray-300 break-all">{{ log.message }}</span>
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { securityApi, type CORSConfig, type TLSConfig, type CertificateInfo, type ACMEStatus } from '@/api/security'
+import { systemApi } from '@/api/system'
 
 const { t } = useI18n()
 
@@ -39,6 +40,26 @@ const requestingACME = ref(false)
 
 // HTTPS-only state
 const updatingTLSSettings = ref(false)
+
+// Port configuration state
+interface ServerConfig {
+  host: string
+  port: number
+  actual_port: number
+  port_auto_fallback: boolean
+}
+const serverConfig = ref<ServerConfig | null>(null)
+const portInput = ref('')
+const portEditing = ref(false)
+const portChangeConfirm = ref(false)
+const portChangeCountdown = ref(0)
+const previousPort = ref(0)
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+const portChanged = computed(() => {
+  if (!serverConfig.value) return false
+  return serverConfig.value.port !== serverConfig.value.actual_port
+})
 
 async function fetchCORSConfig() {
   loading.value = true
@@ -236,14 +257,185 @@ async function reloadCertificate() {
   }
 }
 
+// Port configuration functions
+async function fetchServerConfig() {
+  try {
+    const response = await systemApi.getConfig()
+    const config = response.data as { server?: ServerConfig }
+    if (config.server) {
+      serverConfig.value = config.server
+      portInput.value = String(config.server.port)
+    }
+  } catch (e) {
+    console.error('Failed to fetch server config:', e)
+  }
+}
+
+function startEditPort() {
+  if (serverConfig.value) {
+    portInput.value = String(serverConfig.value.port)
+    portEditing.value = true
+  }
+}
+
+function cancelEditPort() {
+  if (serverConfig.value) {
+    portInput.value = String(serverConfig.value.port)
+  }
+  portEditing.value = false
+}
+
+function validatePort(value: string): boolean {
+  const port = parseInt(value, 10)
+  return !isNaN(port) && port >= 1 && port <= 65535
+}
+
+async function savePort() {
+  if (!validatePort(portInput.value)) {
+    emit('status-change', t('service.invalidPort'))
+    return
+  }
+  const newPort = parseInt(portInput.value, 10)
+  const currentPort = serverConfig.value?.actual_port || serverConfig.value?.port || 23456
+  if (newPort === currentPort) {
+    portEditing.value = false
+    return
+  }
+  try {
+    const response = await systemApi.updateConfig({ server: { port: newPort } })
+    if (response.data.success) {
+      portEditing.value = false
+      localStorage.setItem('portChangeInfo', JSON.stringify({
+        previousPort: currentPort,
+        newPort: newPort,
+        timestamp: Date.now()
+      }))
+      await systemApi.restartService()
+      setTimeout(() => {
+        const currentUrl = new URL(window.location.href)
+        currentUrl.port = String(newPort)
+        window.location.href = currentUrl.toString()
+      }, 2000)
+    } else {
+      emit('status-change', t('service.portSaveFailed') + (response.data.message ? `: ${response.data.message}` : ''))
+    }
+  } catch (e) {
+    emit('status-change', t('service.portSaveFailed') + (e instanceof Error ? `: ${e.message}` : ''))
+  }
+}
+
+function checkPortChangeConfirmation() {
+  const portChangeInfoStr = localStorage.getItem('portChangeInfo')
+  if (!portChangeInfoStr) return
+  try {
+    const portChangeInfo = JSON.parse(portChangeInfoStr)
+    const elapsed = Date.now() - portChangeInfo.timestamp
+    if (elapsed < 30000) {
+      previousPort.value = portChangeInfo.previousPort
+      portChangeConfirm.value = true
+      portChangeCountdown.value = Math.max(1, Math.floor((30000 - elapsed) / 1000))
+      countdownTimer = setInterval(() => {
+        portChangeCountdown.value--
+        if (portChangeCountdown.value <= 0) revertPort()
+      }, 1000)
+    } else {
+      localStorage.removeItem('portChangeInfo')
+    }
+  } catch {
+    localStorage.removeItem('portChangeInfo')
+  }
+}
+
+function confirmPortChange() {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+  portChangeConfirm.value = false
+  localStorage.removeItem('portChangeInfo')
+  emit('status-change', t('service.portChangeConfirmed'))
+}
+
+async function revertPort() {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+  portChangeConfirm.value = false
+  const portChangeInfoStr = localStorage.getItem('portChangeInfo')
+  let prevPort = previousPort.value
+  if (portChangeInfoStr) {
+    try { prevPort = JSON.parse(portChangeInfoStr).previousPort } catch { /* use previousPort */ }
+  }
+  localStorage.removeItem('portChangeInfo')
+  try {
+    await systemApi.updateConfig({ server: { port: prevPort } })
+    await systemApi.restartService()
+    setTimeout(() => {
+      const currentUrl = new URL(window.location.href)
+      currentUrl.port = String(prevPort)
+      window.location.href = currentUrl.toString()
+    }, 2000)
+  } catch {
+    emit('status-change', t('service.portRevertFailed'))
+  }
+}
+
 onMounted(() => {
   fetchCORSConfig()
   fetchTLSConfig()
+  fetchServerConfig()
+  checkPortChangeConfirmation()
+})
+
+onUnmounted(() => {
+  if (countdownTimer) clearInterval(countdownTimer)
 })
 </script>
 
 <template>
   <div class="space-y-6">
+    <!-- Port Change Confirmation Dialog -->
+    <div
+      v-if="portChangeConfirm"
+      class="p-4 bg-gray-700 dark:bg-gray-500/30 border border-gray-900 dark:border-white rounded-lg"
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="font-medium text-gray-900 dark:text-white">{{ t('service.portChangeConfirmTitle') }}</div>
+          <div class="text-sm text-gray-900 dark:text-white mt-1">{{ t('service.portChangeConfirmDesc', { seconds: portChangeCountdown }) }}</div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-2xl font-bold text-gray-900 dark:text-white w-10 text-center">{{ portChangeCountdown }}</div>
+          <button class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors" @click="confirmPortChange">{{ t('service.confirmKeep') }}</button>
+          <button class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg text-sm transition-colors" @click="revertPort">{{ t('service.revertNow') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Port Configuration -->
+    <div class="glass-card p-6">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('service.port') }}</h3>
+      <div v-if="serverConfig" class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-medium text-gray-900 dark:text-white">{{ t('service.port') }}</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('service.portDescription') }}</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <template v-if="!portEditing">
+              <div class="text-right">
+                <div class="font-mono text-lg text-gray-900 dark:text-white">{{ serverConfig?.actual_port || serverConfig?.port || '-' }}</div>
+                <div v-if="portChanged" class="text-xs text-yellow-600 dark:text-yellow-400">{{ t('service.configuredPort') }}: {{ serverConfig?.port }}</div>
+              </div>
+              <button class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg transition-colors" @click="startEditPort">{{ t('common.edit') }}</button>
+            </template>
+            <template v-else>
+              <input v-model="portInput" type="number" min="1" max="65535" class="w-24 px-3 py-1.5 text-sm font-mono bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400" :class="{ 'border-red-500': !validatePort(portInput) }" @keyup.enter="savePort" @keyup.escape="cancelEditPort" />
+              <button class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors" :disabled="!validatePort(portInput)" @click="savePort">{{ t('common.save') }}</button>
+              <button class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg transition-colors" @click="cancelEditPort">{{ t('common.cancel') }}</button>
+            </template>
+          </div>
+        </div>
+        <div v-if="serverConfig?.port_auto_fallback && portChanged" class="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs text-yellow-700 dark:text-yellow-300">{{ t('service.portAutoFallbackInfo') }}</div>
+        <div v-if="portEditing" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ t('service.portEditHint') }}</div>
+      </div>
+    </div>
+
     <!-- TLS Configuration -->
     <div class="glass-card p-6">
       <div class="flex items-center justify-between mb-4">

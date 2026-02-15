@@ -77,7 +77,7 @@ func CheckDatabaseIntegrity(dbPath string) error {
 	}
 
 	// Try to open the database
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -124,7 +124,7 @@ func QuickCheckDatabase(dbPath string) error {
 		return nil
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

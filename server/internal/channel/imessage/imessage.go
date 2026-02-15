@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
@@ -105,7 +105,7 @@ func (c *Channel) Start(ctx context.Context) error {
 	}
 
 	// Open database connection (read-only)
-	db, err := sql.Open("sqlite", c.config.DatabasePath+"?mode=ro")
+	db, err := sql.Open("sqlite3", "file:"+c.config.DatabasePath+"?mode=ro")
 	if err != nil {
 		c.setError(fmt.Sprintf("failed to open database: %v", err))
 		return fmt.Errorf("failed to open Messages database: %w", err)

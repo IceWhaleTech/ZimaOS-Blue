@@ -49,8 +49,9 @@ type PruneResponse struct {
 // Config holds pruner configuration.
 type Config struct {
 	Enabled       bool    `mapstructure:"enabled"`
-	Backend       string  `mapstructure:"backend"`        // "local", "bm25", "ir" (default), "code", "remote", "auto"
+	Backend       string  `mapstructure:"backend"`        // "local", "bm25", "ir" (default), "code", "remote", "onnx"
 	RemoteURL     string  `mapstructure:"remote_url"`     // only used when backend=remote/code
+	ModelDir      string  `mapstructure:"model_dir"`      // directory for ONNX model files (onnx backend)
 	Threshold     float64 `mapstructure:"threshold"`
 	MinLines      int     `mapstructure:"min_lines"`
 	TimeoutMs     int     `mapstructure:"timeout_ms"`
@@ -82,6 +83,8 @@ func NewBackend(cfg Config) (Backend, error) {
 		return NewRemoteBackend(cfg.RemoteURL, &http.Client{
 			Timeout: time.Duration(cfg.TimeoutMs) * time.Millisecond,
 		}), nil
+	case "onnx":
+		return NewOnnxBackend(cfg, cfg.ModelDir)
 	default:
 		return nil, fmt.Errorf("unknown pruner backend: %s", cfg.Backend)
 	}

@@ -11,18 +11,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 )
 
 // parsedRequest holds pre-parsed request data to avoid redundant JSON parsing.
 // Created once in ServeHTTP and passed through the call chain.
+// Uses gjson for zero-alloc field extraction instead of map[string]interface{}.
 type parsedRequest struct {
 	body      []byte
 	model     string
 	streaming bool
-	reqMap    map[string]interface{}
 	cacheKey  string // computed once if cache enabled
+	routed    *RouteDecision // non-nil if rule engine rerouted the model
 }
 
 // sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
@@ -31,6 +35,27 @@ var sseBufferPool = sync.Pool{
 		buf := make([]byte, 32768) // 32KB
 		return &buf
 	},
+}
+
+// bodyBufferPool reuses bytes.Buffer for reading request/response bodies.
+var bodyBufferPool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0, 8192)) // 8KB initial
+	},
+}
+
+// readBody reads an io.Reader into a []byte using a pooled buffer.
+func readBody(r io.Reader) ([]byte, error) {
+	buf := bodyBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bodyBufferPool.Put(buf)
+	if _, err := buf.ReadFrom(r); err != nil {
+		return nil, err
+	}
+	// Return a copy — the buffer goes back to the pool
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	return out, nil
 }
 
 // ProxyHandler handles incoming proxy requests.
@@ -59,6 +84,8 @@ type ProxyHandler struct {
 	cache           *CCCache           // Response cache (cc-cache)
 	prunerMw        *pruner.Middleware // Context pruner middleware (optional)
 	apiKeyValidator func(key string) ([]string, error)
+	modelRouter     *ModelRouter       // Model family routing + background downgrade
+	ruleEngine      *RuleEngine        // Condition-based tier routing (header/body/tool/tag)
 }
 
 // NewProxyHandler creates a new proxy handler
@@ -88,6 +115,16 @@ func (ph *ProxyHandler) SetPruner(mw *pruner.Middleware) {
 // SetAPIKeyValidator sets the API key validator function.
 func (ph *ProxyHandler) SetAPIKeyValidator(validator func(key string) ([]string, error)) {
 	ph.apiKeyValidator = validator
+}
+
+// SetModelRouter sets the model router for family-based routing and background downgrade.
+func (ph *ProxyHandler) SetModelRouter(mr *ModelRouter) {
+	ph.modelRouter = mr
+}
+
+// SetRuleEngine sets the condition-based rule engine for tier routing.
+func (ph *ProxyHandler) SetRuleEngine(re *RuleEngine) {
+	ph.ruleEngine = re
 }
 
 // GetCache returns the cache instance for external access.
@@ -135,7 +172,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read request body
-	bodyBytes, _ := io.ReadAll(r.Body)
+	bodyBytes, _ := readBody(r.Body)
 	r.Body.Close()
 
 	// Apply context pruner to reduce token usage (if enabled)
@@ -145,22 +182,19 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Parse body ONCE — extract model, streaming flag, and pre-parsed map
+	// Parse body ONCE — extract model and streaming flag with gjson (zero-alloc)
 	pr := &parsedRequest{body: bodyBytes}
-	if json.Unmarshal(bodyBytes, &pr.reqMap) == nil {
-		if m, ok := pr.reqMap["model"].(string); ok {
-			pr.model = m
-		}
-		if s, ok := pr.reqMap["stream"].(bool); ok {
-			pr.streaming = s
-		}
+	if gjson.ValidBytes(bodyBytes) {
+		pr.model = gjson.GetBytes(bodyBytes, "model").Str
+		pr.streaming = gjson.GetBytes(bodyBytes, "stream").Bool()
 	}
 
-	// Compute canonical cache key ONCE (reused for lookup + store)
-	if ph.cache != nil && pr.reqMap != nil {
-		pr.cacheKey = ph.cache.GenerateCanonicalKeyFromParsed(pr.reqMap)
-	} else if ph.cache != nil {
-		pr.cacheKey = ph.cache.GenerateCanonicalKey(bodyBytes)
+	// Model routing: evaluate rule engine to potentially swap to a cheaper model
+	ph.applyModelRouting(r, pr)
+
+	// Compute canonical cache key from post-routing body (pr.body may differ from bodyBytes after model swap)
+	if ph.cache != nil {
+		pr.cacheKey = ph.cache.GenerateCanonicalKey(pr.body)
 	}
 
 	// Try cache lookup — uses canonical key for semantic dedup
@@ -208,17 +242,17 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fallback: direct forward (streaming or no cache)
+	ph.setRouteHeaders(w, pr)
 	route, err := ph.routeRequestWithMode(pr.model, ph.extractRoutingMode(r))
 	if err != nil {
 		http.Error(w, "No available provider: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
-	// Map model name if needed
+	// Map model name if needed — sjson for zero-alloc in-place edit
 	forwardBody := pr.body
 	if route.Model != nil && pr.model != route.Model.ID {
-		pr.reqMap["model"] = route.Model.ID
-		if newBody, err := json.Marshal(pr.reqMap); err == nil {
+		if newBody, err := sjson.SetBytes(pr.body, "model", route.Model.ID); err == nil {
 			forwardBody = newBody
 		}
 	}
@@ -244,8 +278,7 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CC
 
 	forwardBody := pr.body
 	if route.Model != nil && pr.model != route.Model.ID {
-		pr.reqMap["model"] = route.Model.ID
-		if newBody, err := json.Marshal(pr.reqMap); err == nil {
+		if newBody, err := sjson.SetBytes(pr.body, "model", route.Model.ID); err == nil {
 			forwardBody = newBody
 		}
 	}
@@ -262,7 +295,7 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CC
 		return nil, fmt.Errorf("upstream returned streaming response for non-streaming request")
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +459,7 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 		return
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readBody(resp.Body)
 	if err != nil {
 		w.Header().Set("X-Cache", "MISS")
 		w.WriteHeader(resp.StatusCode)
@@ -468,7 +501,7 @@ func (ph *ProxyHandler) writeSSEFromCache(w http.ResponseWriter, entry *CCCacheE
 func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, resp *http.Response) []byte {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		data, _ := io.ReadAll(resp.Body)
+		data, _ := readBody(resp.Body)
 		w.Write(data)
 		return data
 	}
@@ -525,6 +558,101 @@ func copyHeaders(dst, src http.Header) {
 // isHopByHopHeader checks if header is a hop-by-hop header
 func isHopByHopHeader(header string) bool {
 	return hopByHopHeaders[header]
+}
+
+// applyModelRouting evaluates the rule engine and model router to potentially
+// swap the requested model to a cheaper/smaller one. Mutates pr.model and pr.body.
+func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
+	if pr.model == "" {
+		return
+	}
+
+	// 1. Rule engine: condition-based tier routing (header, body size, tool pattern, system tag)
+	if ph.ruleEngine != nil {
+		req := RouteRequest{
+			Headers:  r.Header,
+			BodySize: len(pr.body),
+		}
+
+		// Extract tools/system only if pre-computed flags say rules need them
+		if ph.ruleEngine.needsTools {
+			toolNames := gjson.GetBytes(pr.body, "tools.#.function.name").Array()
+			if len(toolNames) > 0 {
+				tools := make([]string, len(toolNames))
+				for j, t := range toolNames {
+					tools[j] = t.Str
+				}
+				req.ToolNames = tools
+			}
+		}
+		if ph.ruleEngine.needsSystem {
+			messages := gjson.GetBytes(pr.body, "messages")
+			if messages.Exists() {
+				for _, msg := range messages.Array() {
+					if msg.Get("role").Str == "system" {
+						req.SystemMessage = msg.Get("content").Str
+						break
+					}
+				}
+			}
+			if req.SystemMessage == "" {
+				req.SystemMessage = gjson.GetBytes(pr.body, "system").Str
+			}
+		}
+
+		decision := ph.ruleEngine.Evaluate(&req)
+		if decision != nil && decision.Matched {
+			pr.routed = decision
+			pr.model = decision.Model
+			pr.body = replaceModelInBody(pr.body, decision.Model)
+			return
+		}
+	}
+
+	// 2. Model router: family-based routing + background task downgrade
+	if ph.modelRouter != nil {
+		isBackground := ph.modelRouter.IsBackgroundRequest(r)
+		route, err := ph.modelRouter.RouteModel(pr.model, isBackground)
+		if err == nil && route.TargetModel != pr.model {
+			pr.model = route.TargetModel
+			pr.body = replaceModelInBody(pr.body, route.TargetModel)
+		}
+	}
+}
+
+// replaceModelInBody replaces the "model" field value in JSON body using gjson index.
+// Single allocation (the new []byte) vs sjson's 3 allocations.
+// Falls back to sjson if gjson can't locate the field.
+func replaceModelInBody(body []byte, newModel string) []byte {
+	r := gjson.GetBytes(body, "model")
+	if !r.Exists() || r.Index == 0 {
+		// gjson.Index==0 means it had to parse (not raw index), fall back to sjson
+		if nb, err := sjson.SetBytes(body, "model", newModel); err == nil {
+			return nb
+		}
+		return body
+	}
+	// r.Index points to the start of the raw JSON value (including quotes)
+	// Raw is `"old-model"`, we need to replace with `"new-model"`
+	rawStart := r.Index
+	rawEnd := rawStart + len(r.Raw)
+	quoted := `"` + newModel + `"`
+	out := make([]byte, 0, len(body)-len(r.Raw)+len(quoted))
+	out = append(out, body[:rawStart]...)
+	out = append(out, quoted...)
+	out = append(out, body[rawEnd:]...)
+	return out
+}
+
+// setRouteHeaders adds routing observability headers to the response.
+func (ph *ProxyHandler) setRouteHeaders(w http.ResponseWriter, pr *parsedRequest) {
+	if pr.routed != nil {
+		w.Header().Set("X-Route-Rule", pr.routed.Rule)
+		w.Header().Set("X-Route-Model", pr.routed.Model)
+		if pr.routed.Tier != "" {
+			w.Header().Set("X-Route-Tier", string(pr.routed.Tier))
+		}
+	}
 }
 
 // singleJoiningSlash joins two URL paths

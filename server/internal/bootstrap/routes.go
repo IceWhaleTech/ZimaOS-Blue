@@ -48,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
@@ -544,10 +545,29 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 				slog.Info("Context pruner enabled", "backend", prunerCfg.Backend, "threshold", prunerCfg.Threshold)
 			}
 		}
+		// Pruner model manager (always available for model download)
+		prunerModelDir := filepath.Join(cfg.DataDir, "pruner-models")
+		prunerModelMgr := pruner.NewPrunerModelManager(prunerModelDir)
+
 		// Always register pruner API routes (handler returns disabled status when pruner is off)
-		prunerHandler := pruner.NewAPIHandler(prunerMw, &prunerCfg)
+		prunerHandler := pruner.NewAPIHandler(prunerMw, &prunerCfg, prunerModelMgr)
 		prunerGroup := v1.Group("/proxy/pruner")
 		prunerHandler.RegisterRoutes(prunerGroup)
+
+		// Model router: family-based routing + background task downgrade
+		modelRouterCfg := deps.Config.Proxy.ModelRouter
+		if modelRouterCfg == nil {
+			modelRouterCfg = proxy.DefaultModelRouterConfig()
+		}
+		if modelRouterCfg.Enabled {
+			mr, err := proxy.NewModelRouter(modelRouterCfg)
+			if err != nil {
+				slog.Warn("Failed to create model router", "error", err)
+			} else {
+				proxyHandler.SetModelRouter(mr)
+				slog.Info("Model router enabled", "families", len(modelRouterCfg.Families), "rules", len(modelRouterCfg.RegexCustomRules))
+			}
+		}
 
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
@@ -575,12 +595,50 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	// Memory routes
 	if deps.MemoryHandler != nil {
 		deps.MemoryHandler.RegisterRoutes(v1)
+
+		// Initialize markdown backend for dual-write and backend switching
+		mdDir := ""
+		if deps.Config != nil {
+			mdDir = deps.Config.Memory.MarkdownDir
+		}
+		if mdDir == "" {
+			mdDir = filepath.Join(dataDir, "memory")
+		}
+		mdBackend, mdErr := memory.NewPureMarkdownBackend(mdDir)
+		if mdErr != nil {
+			logger.Warn("Failed to initialize markdown backend", zap.Error(mdErr))
+		} else if deps.MemoryHandler.GetUnifiedService() != nil {
+			uSvc := deps.MemoryHandler.GetUnifiedService()
+			uSvc.SetMarkdownBackend(mdBackend)
+
+			// Set backend mode from config (default: "markdown")
+			backendMode := "markdown"
+			if deps.Config != nil && deps.Config.Memory.Backend != "" {
+				backendMode = deps.Config.Memory.Backend
+			}
+			if setErr := uSvc.SetBackend(backendMode); setErr != nil {
+				logger.Warn("Failed to set memory backend mode", zap.String("mode", backendMode), zap.Error(setErr))
+			} else {
+				logger.Info("Memory backend configured", zap.String("mode", backendMode))
+			}
+
+			// Initialize progressive searcher if local backend available
+			if localSvc := uSvc.GetLocalBackend(); localSvc != nil {
+				ps := memory.NewProgressiveSearcher(localSvc.GetSearcher())
+				deps.MemoryHandler.SetProgressiveSearcher(ps)
+
+				// Register progressive search tool for LLM
+				psTool := memory.NewMemoryProgressiveSearchTool(ps)
+				tools.SetProgressiveSearchTool(psTool)
+				logger.Info("Progressive search enabled")
+			}
+		}
 	}
 
 	// Memory Service v2 routes (versioned entries, namespaces)
 	{
 		memDBPath := filepath.Join(dataDir, "memory_service.db")
-		memDB, err := sql.Open("sqlite", memDBPath)
+		memDB, err := sql.Open("sqlite3", memDBPath)
 		if err != nil {
 			logger.Error("Failed to open memory service database", zap.Error(err))
 		} else {

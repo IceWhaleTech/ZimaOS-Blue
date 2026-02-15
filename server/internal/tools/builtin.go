@@ -490,6 +490,15 @@ func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterfac
 	registry.Register(NewMemorySearchToolWithInterface(memoryService))
 	registry.Register(NewMemoryGetToolWithInterface(memoryService))
 	registry.Register(NewMemoryStatsToolWithInterface(memoryService))
+	if progressiveSearchTool != nil {
+		registry.Register(progressiveSearchTool)
+	}
+}
+
+// SetProgressiveSearchTool sets the progressive search tool for registration.
+// This is called from the memory package to avoid circular imports.
+func SetProgressiveSearchTool(tool Tool) {
+	progressiveSearchTool = tool
 }
 
 // MemoryServiceInterface defines the interface for memory service used by tools.
@@ -500,6 +509,11 @@ type MemoryServiceInterface interface {
 	Stats(ctx context.Context) (*MemoryStatsResult, error)
 	GetActiveBackend() string
 }
+
+// ProgressiveSearchTool is an optional tool that can be registered for progressive search.
+// It implements the Tool interface directly in the memory package to avoid circular imports.
+// Use RegisterProgressiveSearchTool to register it.
+var progressiveSearchTool Tool
 
 // MemorySearchResult represents a search result from memory service.
 type MemorySearchResult struct {

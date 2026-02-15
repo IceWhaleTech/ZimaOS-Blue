@@ -96,7 +96,7 @@ function getTraitValue(p: Personality, trait: { key: string; value: string }): s
         {{ t('personality.empty') }}
       </p>
       <button
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
         @click="openDialog"
       >
         {{ t('personality.createFirst') }}
@@ -156,7 +156,7 @@ function getTraitValue(p: Personality, trait: { key: string; value: string }): s
           <div class="flex flex-col gap-1 flex-shrink-0">
             <button
               v-if="store.activePersonality?.id !== personality.id"
-              class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
+              class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs font-medium transition-colors"
               @click="handleActivate(personality.id)"
             >
               {{ t('personality.activate') }}

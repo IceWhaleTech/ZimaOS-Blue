@@ -11,7 +11,7 @@ import (
 	// Note: sqlite-vec requires CGO sqlite driver (mattn/go-sqlite3).
 	// This store is currently unused. To use it, build with CGO and
 	// change the import below to: _ "github.com/mattn/go-sqlite3"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // SqliteVecStore provides vector storage using sqlite-vec extension.
@@ -36,10 +36,12 @@ func NewSqliteVecStore(cfg SqliteVecConfig) (*SqliteVecStore, error) {
 	}
 
 	// Open with CGO driver and load sqlite-vec extension
-	db, err := sql.Open("sqlite", cfg.DBPath)
+	db, err := sql.Open("sqlite3", cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	// Try to load sqlite-vec extension
 	// The extension file should be in the system library path or specified explicitly

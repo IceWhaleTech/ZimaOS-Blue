@@ -19,11 +19,7 @@ const emit = defineEmits<{
 }>()
 
 // Tab state
-const activeTab = ref<'export' | 'import'>('export')
-
-// Modal state
-const showRetentionModal = ref(false)
-const showCleanupModal = ref(false)
+const activeTab = ref<'export' | 'import' | 'cleanup' | 'retention'>('export')
 
 // Export state
 const exportFormat = ref<'json' | 'encrypted'>('json')
@@ -96,33 +92,6 @@ const hasCleanupTargets = computed(() =>
 const canConfirmCleanup = computed(() =>
   cleanupPassword.value.length >= 6 && hasCleanupTargets.value
 )
-
-// Modal functions
-function openRetentionModal() {
-  showRetentionModal.value = true
-}
-
-function closeRetentionModal() {
-  showRetentionModal.value = false
-}
-
-function openCleanupModal() {
-  showCleanupModal.value = true
-  startCleanup()
-}
-
-function closeCleanupModal() {
-  showCleanupModal.value = false
-  startCleanup() // Reset state
-}
-
-// Expose modal controls for template or parent
-defineExpose({
-  openRetentionModal,
-  closeRetentionModal,
-  openCleanupModal,
-  closeCleanupModal,
-})
 
 // Fetch retention settings on mount
 onMounted(async () => {
@@ -446,32 +415,17 @@ function cancelCleanup() {
     <!-- Tab Header -->
     <div class="flex border-b border-gray-200 dark:border-slate-700">
       <button
+        v-for="tab in (['export', 'import', 'cleanup', 'retention'] as const)"
+        :key="tab"
         :class="[
           'flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center justify-center gap-2',
-          activeTab === 'export'
+          activeTab === tab
             ? 'border-gray-900 dark:border-gray-700 text-gray-900 dark:text-gray-300'
             : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
         ]"
-        @click="activeTab = 'export'"
+        @click="activeTab = tab"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-        </svg>
-        {{ t('userdata.export') }}
-      </button>
-      <button
-        :class="[
-          'flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center justify-center gap-2',
-          activeTab === 'import'
-            ? 'border-gray-900 dark:border-gray-700 text-gray-900 dark:text-gray-300'
-            : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
-        ]"
-        @click="activeTab = 'import'"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        {{ t('userdata.import') }}
+        {{ t(`userdata.tabs.${tab}`) }}
       </button>
     </div>
 
@@ -658,341 +612,205 @@ function cancelCleanup() {
       </div>
     </div>
 
-    <!-- Quick Actions Bar -->
-    <div class="flex gap-2">
-      <button
-        class="flex-1 px-3 py-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-        @click="openRetentionModal"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        {{ t('userdata.retention.title') }}
-      </button>
-      <button
-        class="flex-1 px-3 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-        @click="openCleanupModal"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-        {{ t('userdata.cleanup.title') }}
+    <!-- Cleanup Tab Content -->
+    <div v-show="activeTab === 'cleanup'" class="glass-card p-4 space-y-4">
+      <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.cleanup.description') }}</p>
+
+      <!-- Warning Banner -->
+      <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+        <div class="flex items-start gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div class="text-sm text-amber-700 dark:text-amber-300">
+            <p class="font-medium">{{ t('userdata.cleanup.warning') }}</p>
+            <p class="mt-1 text-amber-600 dark:text-amber-400">{{ t('userdata.cleanup.warningDetail') }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 1: Select Data to Clean -->
+      <div v-if="cleanupStep === 'select'" class="space-y-4">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.selectData') }}</h4>
+        <div class="space-y-2">
+          <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
+            <input v-model="cleanupTargets.chatHistory" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.chatHistory') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.chatHistoryDesc') }}</div>
+            </div>
+            <span class="text-sm text-gray-500 dark:text-slate-400">{{ chatStore.conversations.length }} {{ t('userdata.conversations') }}</span>
+          </label>
+          <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
+            <input v-model="cleanupTargets.sessions" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.sessions') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.sessionsDesc') }}</div>
+            </div>
+            <span class="text-sm text-gray-500 dark:text-slate-400">{{ storageInfo.session_count }}</span>
+          </label>
+          <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
+            <input v-model="cleanupTargets.events" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.events') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.eventsDesc') }}</div>
+            </div>
+            <span class="text-sm text-gray-500 dark:text-slate-400">{{ storageInfo.event_count }}</span>
+          </label>
+          <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
+            <input v-model="cleanupTargets.alerts" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.alerts') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.alertsDesc') }}</div>
+            </div>
+            <span class="text-sm text-gray-500 dark:text-slate-400">{{ storageInfo.alert_count }}</span>
+          </label>
+          <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
+            <input v-model="cleanupTargets.settings" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.settings') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.settingsDesc') }}</div>
+            </div>
+          </label>
+          <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
+            <input v-model="cleanupTargets.cache" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.cache') }}</div>
+              <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.cacheDesc') }}</div>
+            </div>
+          </label>
+        </div>
+        <button
+          :disabled="!hasCleanupTargets || cleanupLoading"
+          class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="previewCleanup"
+        >
+          {{ t('userdata.cleanup.previewButton') }}
+        </button>
+      </div>
+
+      <!-- Step 2: Preview -->
+      <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.previewTitle') }}</h4>
+        <div v-if="cleanupPreviewData" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-2">
+          <div v-if="cleanupPreviewData.chatHistory > 0" class="flex justify-between text-sm">
+            <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.chatHistory') }}</span>
+            <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.chatHistory }} {{ t('userdata.conversations') }}</span>
+          </div>
+          <div v-if="cleanupPreviewData.sessions > 0" class="flex justify-between text-sm">
+            <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.sessions') }}</span>
+            <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.sessions }}</span>
+          </div>
+          <div v-if="cleanupPreviewData.events > 0" class="flex justify-between text-sm">
+            <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.events') }}</span>
+            <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.events }}</span>
+          </div>
+          <div v-if="cleanupPreviewData.alerts > 0" class="flex justify-between text-sm">
+            <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.alerts') }}</span>
+            <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.alerts }}</span>
+          </div>
+          <div v-if="cleanupPreviewData.settings" class="flex justify-between text-sm">
+            <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.settings') }}</span>
+            <span class="font-medium text-red-800 dark:text-red-200">{{ t('userdata.cleanup.willReset') }}</span>
+          </div>
+          <div v-if="cleanupPreviewData.cache" class="flex justify-between text-sm">
+            <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.cache') }}</span>
+            <span class="font-medium text-red-800 dark:text-red-200">{{ t('userdata.cleanup.willClear') }}</span>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors" @click="cancelCleanup">
+            {{ t('common.cancel') }}
+          </button>
+          <button class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors" @click="proceedToConfirm">
+            {{ t('userdata.cleanup.proceedToConfirm') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: Confirm -->
+      <div v-else-if="cleanupStep === 'confirm'" class="space-y-4">
+        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <div class="text-sm text-red-700 dark:text-red-300">
+            <p class="font-medium">{{ t('userdata.cleanup.confirmStep') }}</p>
+            <p class="mt-1 text-red-600 dark:text-red-400">{{ t('userdata.cleanup.confirmHint') }}</p>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ t('userdata.cleanup.enterPassword') }}</label>
+          <input v-model="cleanupPassword" type="password" :placeholder="t('userdata.cleanup.passwordPlaceholder')" class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600" />
+        </div>
+        <div v-if="cleanupError" class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm">
+          {{ cleanupError }}
+        </div>
+        <div class="flex gap-2">
+          <button class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors" @click="cancelCleanup">
+            {{ t('common.cancel') }}
+          </button>
+          <button :disabled="!canConfirmCleanup || cleanupLoading" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" @click="executeCleanup">
+            <svg v-if="cleanupLoading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            {{ cleanupLoading ? t('userdata.cleanup.deleting') : t('userdata.cleanup.confirmDelete') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Retention Tab Content -->
+    <div v-show="activeTab === 'retention'" class="glass-card p-4 space-y-4">
+      <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.retention.description') }}</p>
+
+      <!-- Storage Info -->
+      <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('userdata.retention.storageInfo') }}</h4>
+        <div class="grid grid-cols-3 gap-2 text-sm">
+          <div>
+            <div class="text-gray-500 dark:text-slate-400">{{ t('userdata.retention.sessions') }}</div>
+            <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.session_count }}</div>
+          </div>
+          <div>
+            <div class="text-gray-500 dark:text-slate-400">{{ t('userdata.retention.events') }}</div>
+            <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.event_count }}</div>
+          </div>
+          <div>
+            <div class="text-gray-500 dark:text-slate-400">{{ t('userdata.retention.alerts') }}</div>
+            <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.alert_count }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Retention Settings -->
+      <div class="space-y-3">
+        <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.retention.policy') }}</h4>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('userdata.retention.sessionsRetention') }}</label>
+            <div class="flex items-center gap-2">
+              <input v-model.number="retentionConfig.sessions_days" type="number" min="1" max="365" class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white" />
+              <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('userdata.retention.days') }}</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('userdata.retention.eventsRetention') }}</label>
+            <div class="flex items-center gap-2">
+              <input v-model.number="retentionConfig.events_days" type="number" min="1" max="365" class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white" />
+              <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('userdata.retention.days') }}</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('userdata.retention.alertsRetention') }}</label>
+            <div class="flex items-center gap-2">
+              <input v-model.number="retentionConfig.alerts_days" type="number" min="1" max="365" class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white" />
+              <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('userdata.retention.days') }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button :disabled="retentionLoading" class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" @click="saveRetentionSettings">
+        {{ retentionLoading ? t('common.loading') : t('common.save') }}
       </button>
     </div>
 
-    <!-- Data Retention Modal -->
-    <Teleport to="body">
-      <div v-if="showRetentionModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/50" @click="closeRetentionModal"></div>
-        <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-          <div class="sticky top-0 bg-white dark:bg-slate-800 px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {{ t('userdata.retention.title') }}
-            </h3>
-            <button class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="closeRetentionModal">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div class="p-4 space-y-4">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.retention.description') }}</p>
-
-            <!-- Storage Info -->
-            <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('userdata.retention.storageInfo') }}</h4>
-              <div class="grid grid-cols-3 gap-2 text-sm">
-                <div>
-                  <div class="text-gray-500 dark:text-slate-400">{{ t('userdata.retention.sessions') }}</div>
-                  <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.session_count }}</div>
-                </div>
-                <div>
-                  <div class="text-gray-500 dark:text-slate-400">{{ t('userdata.retention.events') }}</div>
-                  <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.event_count }}</div>
-                </div>
-                <div>
-                  <div class="text-gray-500 dark:text-slate-400">{{ t('userdata.retention.alerts') }}</div>
-                  <div class="font-medium text-gray-900 dark:text-white">{{ storageInfo.alert_count }}</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Retention Settings -->
-            <div class="space-y-3">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.retention.policy') }}</h4>
-              <div class="space-y-2">
-                <div class="flex items-center justify-between">
-                  <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('userdata.retention.sessionsRetention') }}</label>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model.number="retentionConfig.sessions_days"
-                      type="number"
-                      min="1"
-                      max="365"
-                      class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                    />
-                    <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('userdata.retention.days') }}</span>
-                  </div>
-                </div>
-                <div class="flex items-center justify-between">
-                  <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('userdata.retention.eventsRetention') }}</label>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model.number="retentionConfig.events_days"
-                      type="number"
-                      min="1"
-                      max="365"
-                      class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                    />
-                    <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('userdata.retention.days') }}</span>
-                  </div>
-                </div>
-                <div class="flex items-center justify-between">
-                  <label class="text-sm text-gray-700 dark:text-slate-300">{{ t('userdata.retention.alertsRetention') }}</label>
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model.number="retentionConfig.alerts_days"
-                      type="number"
-                      min="1"
-                      max="365"
-                      class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
-                    />
-                    <span class="text-sm text-gray-500 dark:text-slate-400">{{ t('userdata.retention.days') }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Save Button -->
-            <button
-              :disabled="retentionLoading"
-              class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              @click="saveRetentionSettings"
-            >
-              {{ retentionLoading ? t('common.loading') : t('common.save') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- Data Cleanup Modal -->
-    <Teleport to="body">
-      <div v-if="showCleanupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/50" @click="closeCleanupModal"></div>
-        <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-          <div class="sticky top-0 bg-white dark:bg-slate-800 px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              {{ t('userdata.cleanup.title') }}
-            </h3>
-            <button class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="closeCleanupModal">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div class="p-4 space-y-4">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.cleanup.description') }}</p>
-
-            <!-- Warning Banner -->
-            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-              <div class="flex items-start gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div class="text-sm text-amber-700 dark:text-amber-300">
-                  <p class="font-medium">{{ t('userdata.cleanup.warning') }}</p>
-                  <p class="mt-1 text-amber-600 dark:text-amber-400">{{ t('userdata.cleanup.warningDetail') }}</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Step 1: Select Data to Clean -->
-            <div v-if="cleanupStep === 'select'" class="space-y-4">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.selectData') }}</h4>
-
-              <div class="space-y-2">
-                <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
-                  <input v-model="cleanupTargets.chatHistory" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.chatHistory') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.chatHistoryDesc') }}</div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ chatStore.conversations.length }} {{ t('userdata.conversations') }}</span>
-                </label>
-
-                <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
-                  <input v-model="cleanupTargets.sessions" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.sessions') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.sessionsDesc') }}</div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ storageInfo.session_count }}</span>
-                </label>
-
-                <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
-                  <input v-model="cleanupTargets.events" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.events') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.eventsDesc') }}</div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ storageInfo.event_count }}</span>
-                </label>
-
-                <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
-                  <input v-model="cleanupTargets.alerts" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.alerts') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.alertsDesc') }}</div>
-                  </div>
-                  <span class="text-sm text-gray-500 dark:text-slate-400">{{ storageInfo.alert_count }}</span>
-                </label>
-
-                <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
-                  <input v-model="cleanupTargets.settings" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.settings') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.settingsDesc') }}</div>
-                  </div>
-                </label>
-
-                <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700">
-                  <input v-model="cleanupTargets.cache" type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.cache') }}</div>
-                    <div class="text-xs text-gray-500 dark:text-slate-400">{{ t('userdata.cleanup.cacheDesc') }}</div>
-                  </div>
-                </label>
-              </div>
-
-              <button
-                :disabled="!hasCleanupTargets || cleanupLoading"
-                class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                @click="previewCleanup"
-              >
-                {{ t('userdata.cleanup.previewButton') }}
-              </button>
-            </div>
-
-            <!-- Step 2: Preview (Authorization) -->
-            <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
-              <div class="bg-gray-700 dark:bg-gray-500/20 border border-gray-900 dark:border-white dark:border-gray-900 dark:border-white rounded-lg p-3">
-                <div class="flex items-start gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-900 dark:text-white flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  <div class="text-sm text-gray-900 dark:text-white dark:text-white">
-                    <p class="font-medium">{{ t('userdata.cleanup.authorizationStep') }}</p>
-                    <p class="mt-1 text-gray-900 dark:text-white dark:text-white">{{ t('userdata.cleanup.authorizationHint') }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.cleanup.previewTitle') }}</h4>
-
-              <div v-if="cleanupPreviewData" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-2">
-                <div v-if="cleanupPreviewData.chatHistory > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.chatHistory') }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.chatHistory }} {{ t('userdata.conversations') }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.sessions > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.sessions') }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.sessions }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.events > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.events') }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.events }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.alerts > 0" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.alerts') }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.alerts }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.settings" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.settings') }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{ t('userdata.cleanup.willReset') }}</span>
-                </div>
-                <div v-if="cleanupPreviewData.cache" class="flex justify-between text-sm">
-                  <span class="text-red-700 dark:text-red-300">{{ t('userdata.cleanup.cache') }}</span>
-                  <span class="font-medium text-red-800 dark:text-red-200">{{ t('userdata.cleanup.willClear') }}</span>
-                </div>
-              </div>
-
-              <div class="flex gap-2">
-                <button
-                  class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
-                  @click="cancelCleanup"
-                >
-                  {{ t('common.cancel') }}
-                </button>
-                <button
-                  class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
-                  @click="proceedToConfirm"
-                >
-                  {{ t('userdata.cleanup.proceedToConfirm') }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Step 3: Confirm with Password -->
-            <div v-else-if="cleanupStep === 'confirm'" class="space-y-4">
-              <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                <div class="flex items-start gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  <div class="text-sm text-red-700 dark:text-red-300">
-                    <p class="font-medium">{{ t('userdata.cleanup.confirmStep') }}</p>
-                    <p class="mt-1 text-red-600 dark:text-red-400">{{ t('userdata.cleanup.confirmHint') }}</p>
-                    <p class="mt-2 text-xs text-red-500 dark:text-red-400 italic">{{ t('userdata.cleanup.productionHint') }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ t('userdata.cleanup.enterPassword') }}</label>
-                <input
-                  v-model="cleanupPassword"
-                  type="password"
-                  :placeholder="t('userdata.cleanup.passwordPlaceholder')"
-                  class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
-                />
-              </div>
-
-              <!-- Error -->
-              <div v-if="cleanupError" class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm">
-                {{ cleanupError }}
-              </div>
-
-              <div class="flex gap-2">
-                <button
-                  class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
-                  @click="cancelCleanup"
-                >
-                  {{ t('common.cancel') }}
-                </button>
-                <button
-                  :disabled="!canConfirmCleanup || cleanupLoading"
-                  class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  @click="executeCleanup"
-                >
-                  <svg v-if="cleanupLoading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  {{ cleanupLoading ? t('userdata.cleanup.deleting') : t('userdata.cleanup.confirmDelete') }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 

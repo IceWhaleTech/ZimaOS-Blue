@@ -66,20 +66,13 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 	m.mu.Unlock()
 
 	// Create independent context for the tunnel
-	// This prevents panics when the parent context is canceled by Auto manager
-	// The tunnel will run until explicitly stopped via Stop()
 	tunnelCtx, cancel := context.WithCancel(context.Background())
-
-	// Note: trycloudflared only supports quick tunnel (no token-based auth)
-	// For token-based tunnels, users should use the standalone Cloudflare provider
-	// with the cloudflared binary
 
 	// Channel to receive result from goroutine
 	resultCh := make(chan error, 1)
 
 	// Start tunnel in background
 	go func() {
-		// Recover from panics in the trycloudflared library
 		defer func() {
 			if r := recover(); r != nil {
 				m.mu.Lock()
@@ -156,18 +149,11 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 		}
 		return nil, nil
 	case <-time.After(30 * time.Second):
-		// Tunnel creation is taking too long, but don't cancel it
-		// The URL will be available via callback when ready
 		return nil, nil
 	}
 }
 
 // Stop stops the tunnel.
-// IMPORTANT: trycloudflared panics (instead of returning an error) in its own
-// internal goroutine when the context is canceled. Since recover() cannot cross
-// goroutine boundaries, canceling the context would crash the entire process.
-// Instead, we just mark the tunnel as stopped and leave the goroutine to be
-// cleaned up when the process exits.
 func (m *CloudflareManager) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -178,8 +164,6 @@ func (m *CloudflareManager) Stop() error {
 
 	// Do NOT call m.cancel() — it triggers a panic inside trycloudflared's
 	// internal goroutine that we cannot recover from.
-	// The tunnel goroutine will be cleaned up on process exit.
-
 	m.running = false
 	m.url = ""
 	return nil

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // RemoteAccessConfig represents the remote access configuration.
@@ -69,10 +69,12 @@ type Repository struct {
 
 // NewRepository creates a new repository.
 func NewRepository(dbPath string) (*Repository, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	repo := &Repository{db: db}
 	if err := repo.migrate(); err != nil {

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupPoolTestDB(t *testing.T) (*sql.DB, func()) {
@@ -21,7 +21,7 @@ func setupPoolTestDB(t *testing.T) (*sql.DB, func()) {
 	}
 	tmpFile.Close()
 
-	db, err := sql.Open("sqlite", tmpFile.Name())
+	db, err := sql.Open("sqlite3", tmpFile.Name())
 	if err != nil {
 		os.Remove(tmpFile.Name())
 		t.Fatalf("Failed to open database: %v", err)

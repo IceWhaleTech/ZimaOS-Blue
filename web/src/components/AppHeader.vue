@@ -82,17 +82,14 @@ function handleLogout() {
           class="lg:hidden p-2 -ml-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
           @click="emit('toggleSidebar')"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
         </button>
         <!-- Logo/Brand -->
         <div class="flex items-center space-x-3">
-          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
+          <img
+            src="/logo.svg"
+            alt="Logo"
+            class="h-10 w-10 rounded-full object-contain drop-shadow-lg dark:brightness-150"
+          />
           <div class="hidden sm:block">
             <h1 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('brand.name') }}</h1>
             <p class="text-xs text-gray-500 dark:text-slate-400">{{ t('brand.tagline') }}</p>

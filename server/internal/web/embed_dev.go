@@ -22,6 +22,9 @@ func IsEmbedded() bool {
 	return false
 }
 
+// CleanupDist is a no-op for development builds.
+func CleanupDist() {}
+
 // RegisterStaticRoutes sets up a reverse proxy to the Vite dev server for development.
 func RegisterStaticRoutes(e *echo.Echo) {
 	// Proxy to Vite dev server

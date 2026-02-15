@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	// Use pure-Go sqlite driver; vec0 extension won't load but falls back gracefully
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // MemoryChunk represents a chunk of memory with embedding.
@@ -103,10 +103,12 @@ END;
 
 // NewVectorStore creates a new vector store.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
-	db, err := sql.Open("sqlite", cfg.DBPath)
+	db, err := sql.Open("sqlite3", cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	// Enable WAL mode
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {

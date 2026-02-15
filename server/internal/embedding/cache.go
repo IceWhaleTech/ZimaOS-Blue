@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Cache caches embeddings to avoid redundant API calls.
@@ -49,10 +49,12 @@ type CacheConfig struct {
 
 // NewCache creates a new embedding cache.
 func NewCache(cfg CacheConfig) (*Cache, error) {
-	db, err := sql.Open("sqlite", cfg.DBPath)
+	db, err := sql.Open("sqlite3", cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open cache database: %w", err)
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	// Enable WAL mode
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {

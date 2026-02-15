@@ -21,7 +21,7 @@ import glmIcon from '@/assets/providers/glm.svg'
 import defaultIcon from '@/assets/providers/default.svg'
 
 // ZimaOS Blue logo for trial provider
-const zimaosTrialIcon = '/logo.png'
+const zimaosTrialIcon = '/logo.svg'
 
 const props = defineProps<{
   providerId: string

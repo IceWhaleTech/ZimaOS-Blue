@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -38,10 +38,12 @@ type UserRoleService struct {
 
 // NewUserRoleService creates a new user role service
 func NewUserRoleService(dbPath string, rbac *RBAC) (*UserRoleService, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	svc := &UserRoleService{db: db, rbac: rbac}
 	if err := svc.initDB(); err != nil {

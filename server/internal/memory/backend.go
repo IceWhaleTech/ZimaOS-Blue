@@ -43,9 +43,10 @@ type MemoryStats struct {
 
 // UnifiedMemoryService provides a unified interface that can switch between backends.
 type UnifiedMemoryService struct {
-	localBackend  *MemoryService
-	activeBackend MemoryBackend
-	mu            sync.RWMutex
+	localBackend    *MemoryService
+	markdownBackend *PureMarkdownBackend
+	activeBackend   MemoryBackend
+	mu              sync.RWMutex
 }
 
 // NewUnifiedMemoryService creates a new unified memory service.
@@ -72,11 +73,41 @@ func (s *UnifiedMemoryService) SetBackend(backend string) error {
 			return fmt.Errorf("local backend not available")
 		}
 		s.activeBackend = &LocalBackendAdapter{service: s.localBackend}
+	case "markdown":
+		if s.markdownBackend == nil {
+			return fmt.Errorf("markdown backend not available")
+		}
+		s.activeBackend = s.markdownBackend
+	case "mixed":
+		if s.localBackend == nil {
+			return fmt.Errorf("local backend not available")
+		}
+		if s.markdownBackend == nil {
+			return fmt.Errorf("markdown backend not available")
+		}
+		s.activeBackend = NewDualWriteBackend(
+			&LocalBackendAdapter{service: s.localBackend},
+			s.markdownBackend,
+		)
 	default:
 		return fmt.Errorf("unknown backend: %s", backend)
 	}
 
 	return nil
+}
+
+// SetMarkdownBackend sets the markdown backend for dual-write and markdown modes.
+func (s *UnifiedMemoryService) SetMarkdownBackend(md *PureMarkdownBackend) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.markdownBackend = md
+}
+
+// GetLocalBackend returns the local MemoryService (for progressive search).
+func (s *UnifiedMemoryService) GetLocalBackend() *MemoryService {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.localBackend
 }
 
 // GetActiveBackend returns the name of the active backend.

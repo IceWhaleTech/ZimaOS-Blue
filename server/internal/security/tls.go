@@ -27,12 +27,6 @@ import (
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/lego"
 	legolog "github.com/go-acme/lego/v4/log"
-	"github.com/go-acme/lego/v4/providers/dns/alidns"
-	"github.com/go-acme/lego/v4/providers/dns/cloudflare"
-	"github.com/go-acme/lego/v4/providers/dns/godaddy"
-	"github.com/go-acme/lego/v4/providers/dns/namecheap"
-	"github.com/go-acme/lego/v4/providers/dns/route53"
-	"github.com/go-acme/lego/v4/providers/dns/tencentcloud"
 	"github.com/go-acme/lego/v4/registration"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme/autocert"
@@ -604,29 +598,7 @@ func (m *TLSManager) configureDNSChallenge(client *lego.Client, config *ACMEConf
 		os.Setenv(key, value)
 	}
 
-	var provider interface {
-		Present(domain, token, keyAuth string) error
-		CleanUp(domain, token, keyAuth string) error
-	}
-	var err error
-
-	switch strings.ToLower(config.DNSProvider) {
-	case "cloudflare":
-		provider, err = cloudflare.NewDNSProvider()
-	case "route53":
-		provider, err = route53.NewDNSProvider()
-	case "godaddy":
-		provider, err = godaddy.NewDNSProvider()
-	case "namecheap":
-		provider, err = namecheap.NewDNSProvider()
-	case "alidns", "aliyun":
-		provider, err = alidns.NewDNSProvider()
-	case "tencentcloud", "dnspod":
-		provider, err = tencentcloud.NewDNSProvider()
-	default:
-		return fmt.Errorf("unsupported DNS provider: %s", config.DNSProvider)
-	}
-
+	provider, err := newDNSProvider(config.DNSProvider)
 	if err != nil {
 		return fmt.Errorf("failed to create DNS provider %q: %w", config.DNSProvider, err)
 	}

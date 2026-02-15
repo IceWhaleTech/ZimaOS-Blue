@@ -483,6 +483,11 @@ func NewMemoryService(searcher *HybridSearcher) *MemoryService {
 	return &MemoryService{Searcher: searcher}
 }
 
+// GetSearcher returns the underlying HybridSearcher.
+func (s *MemoryService) GetSearcher() *HybridSearcher {
+	return s.Searcher
+}
+
 // Remember stores a memory.
 func (s *MemoryService) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
 	metadata := make(map[string]string)

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
@@ -18,8 +18,8 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	}
 	tmpFile.Close()
 
-	// Use modernc.org/sqlite driver which supports FTS5 without CGO
-	db, err := sql.Open("sqlite", tmpFile.Name())
+	// Use mattn/go-sqlite3 driver which supports FTS5
+	db, err := sql.Open("sqlite3", tmpFile.Name())
 	if err != nil {
 		os.Remove(tmpFile.Name())
 		t.Fatalf("failed to open database: %v", err)

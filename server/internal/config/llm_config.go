@@ -132,8 +132,10 @@ type OllamaEmbeddingConfig struct {
 
 // MemoryConfig holds memory system configuration.
 type MemoryConfig struct {
-	VectorStore  VectorStoreConfig  `mapstructure:"vector_store"`
-	Search       MemorySearchConfig `mapstructure:"search"`
+	VectorStore VectorStoreConfig  `mapstructure:"vector_store"`
+	Search      MemorySearchConfig `mapstructure:"search"`
+	Backend     string             `mapstructure:"backend"`      // "local", "markdown", "mixed" (default: "markdown")
+	MarkdownDir string             `mapstructure:"markdown_dir"` // Base directory for markdown files
 }
 
 // VectorStoreConfig holds vector store configuration.

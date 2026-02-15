@@ -55,11 +55,12 @@ export interface PruneResponse {
 }
 
 export interface MemoryBackendConfig {
-  backend: 'local'
+  backend: string
 }
 
 export interface MemoryBackendStatus {
   active_backend: string
+  available_backends: string[]
 }
 
 // Memory API
@@ -115,7 +116,7 @@ export const memoryApi = {
   /**
    * Set active backend
    */
-  setBackend: (backend: 'local') =>
+  setBackend: (backend: string) =>
     api.post<{ success: boolean }>('/memory/backend', { backend }),
 
   /**

@@ -223,15 +223,22 @@ if errorlevel 1 (
 )
 echo [OK] Web assets copied to server\internal\web\dist
 
-:: Build server (embeds the copied frontend)
+:: Build server with pack-dist (appends web assets to binary)
 echo [INFO] Building Go server...
 cd /d "%PROJECT_ROOT%server"
-go build -ldflags="-s -w" -o blue.exe ./cmd/blue
+go build -ldflags="-s -w" -o bin\blue.exe ./cmd/blue
 if errorlevel 1 (
     echo [ERROR] Failed to build server
     exit /b 1
 )
-echo [OK] Server built: server\blue.exe
+:: Pack dist into binary (tar.gz + 8-byte LE offset trailer)
+echo [INFO] Packing dist into binary...
+tar czf "%TEMP%\zimaos-dist.tar.gz" -C internal\web\dist .
+for %%F in (bin\blue.exe) do set "OFFSET=%%~zF"
+copy /b bin\blue.exe + "%TEMP%\zimaos-dist.tar.gz" bin\blue.exe >nul
+python3 -c "import struct,sys;sys.stdout.buffer.write(struct.pack('<q',%OFFSET%))" >> bin\blue.exe
+del "%TEMP%\zimaos-dist.tar.gz"
+echo [OK] Server built: server\bin\blue.exe
 
 echo [OK] Production build complete!
 goto :eof
@@ -263,10 +270,26 @@ if errorlevel 1 (
 )
 echo [OK] Web assets copied to server\internal\web\dist
 
-:: Start server (production mode, no -tags dev, serves embedded frontend)
-echo [INFO] Starting Go server (production mode, http://localhost:23456)...
+:: Build server with pack-dist (appends web assets to binary)
+echo [INFO] Building Go server (production mode)...
 cd /d "%PROJECT_ROOT%server"
-go run ./cmd/blue
+go build -ldflags="-s -w" -o bin\blue.exe ./cmd/blue
+if errorlevel 1 (
+    echo [ERROR] Failed to build server
+    exit /b 1
+)
+:: Pack dist into binary (tar.gz + 8-byte LE offset trailer)
+echo [INFO] Packing dist into binary...
+tar czf "%TEMP%\zimaos-dist.tar.gz" -C internal\web\dist .
+for %%F in (bin\blue.exe) do set "OFFSET=%%~zF"
+copy /b bin\blue.exe + "%TEMP%\zimaos-dist.tar.gz" bin\blue.exe >nul
+python3 -c "import struct,sys;sys.stdout.buffer.write(struct.pack('<q',%OFFSET%))" >> bin\blue.exe
+del "%TEMP%\zimaos-dist.tar.gz"
+echo [OK] Server built: server\bin\blue.exe
+
+:: Run the built binary
+echo [INFO] Starting server (production mode, http://localhost:23456)...
+bin\blue.exe
 goto :eof
 
 :clean

@@ -1,6 +1,7 @@
 package pruner
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -8,15 +9,17 @@ import (
 
 // APIHandler provides HTTP handlers for pruner management.
 type APIHandler struct {
-	middleware *Middleware
-	config     *Config
+	middleware    *Middleware
+	config       *Config
+	modelManager *PrunerModelManager
 }
 
 // NewAPIHandler creates a new pruner API handler.
-func NewAPIHandler(mw *Middleware, cfg *Config) *APIHandler {
+func NewAPIHandler(mw *Middleware, cfg *Config, mm *PrunerModelManager) *APIHandler {
 	return &APIHandler{
-		middleware: mw,
-		config:    cfg,
+		middleware:    mw,
+		config:       cfg,
+		modelManager: mm,
 	}
 }
 
@@ -26,6 +29,9 @@ func (h *APIHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/config", h.GetConfig)
 	g.PUT("/config", h.UpdateConfig)
 	g.GET("/health", h.HealthCheck)
+	g.POST("/model/download", h.StartModelDownload)
+	g.POST("/model/cancel", h.CancelModelDownload)
+	g.GET("/model/status", h.GetModelStatus)
 }
 
 // GetStats returns pruning statistics.
@@ -114,4 +120,46 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 			"timeout_ms": h.config.TimeoutMs,
 		},
 	})
+}
+
+// StartModelDownload starts downloading the ONNX pruner model.
+// POST /api/v1/proxy/pruner/model/download
+func (h *APIHandler) StartModelDownload(c echo.Context) error {
+	if h.modelManager == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "model manager not initialized",
+		})
+	}
+
+	go func() {
+		_ = h.modelManager.Download(context.Background())
+	}()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "download started",
+	})
+}
+
+// CancelModelDownload cancels the current model download.
+// POST /api/v1/proxy/pruner/model/cancel
+func (h *APIHandler) CancelModelDownload(c echo.Context) error {
+	if h.modelManager == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "model manager not initialized",
+		})
+	}
+	h.modelManager.CancelDownload()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+// GetModelStatus returns the model download status.
+// GET /api/v1/proxy/pruner/model/status
+func (h *APIHandler) GetModelStatus(c echo.Context) error {
+	if h.modelManager == nil {
+		return c.JSON(http.StatusOK, PrunerModelStatus{Ready: false})
+	}
+	return c.JSON(http.StatusOK, h.modelManager.GetStatus())
 }

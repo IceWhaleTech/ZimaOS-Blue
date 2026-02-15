@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // SQLiteStore implements MetricsStore using SQLite for persistence.
@@ -28,10 +28,14 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Connection pool limits
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	// Set pragmas after opening
 	db.Exec("PRAGMA journal_mode=WAL")

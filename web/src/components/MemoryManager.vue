@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { memoryApi, type MemorySearchResult, type MemoryStats } from '@/api/memory'
+import { encryptionApi, type EncryptionStatus } from '@/api/encryption'
 
 const { t } = useI18n()
 
@@ -24,7 +25,8 @@ const newMemoryContent = ref('')
 const newMemoryTags = ref('')
 
 // Backend settings
-const activeBackend = ref<'local'>('local')
+const activeBackend = ref('local')
+const availableBackends = ref<string[]>(['local'])
 
 // Export/Import state
 const memoryExporting = ref(false)
@@ -33,6 +35,19 @@ const memoryError = ref<string | null>(null)
 const memoryImportFile = ref<File | null>(null)
 const memoryImportMode = ref<'append' | 'replace'>('append')
 const memoryFileInputRef = ref<HTMLInputElement | null>(null)
+
+// Encryption state
+const encryptionStatus = ref<EncryptionStatus | null>(null)
+const encryptionLoading = ref(true)
+const encryptionToggling = ref(false)
+const showPassphrase = ref(false)
+const passphrase = ref('')
+const encryptionPollTimer = ref<ReturnType<typeof setInterval> | null>(null)
+
+const migrationPercent = computed(() => {
+  if (!encryptionStatus.value || !encryptionStatus.value.migration_total) return 0
+  return Math.round((encryptionStatus.value.migration_progress / encryptionStatus.value.migration_total) * 100)
+})
 
 // Computed
 const hasMemories = computed(() => memories.value.length > 0 || stats.value?.total_chunks)
@@ -50,7 +65,10 @@ async function loadStats() {
 async function loadBackendStatus() {
   try {
     const response = await memoryApi.getBackendStatus()
-    activeBackend.value = response.data.active_backend as 'local'
+    activeBackend.value = response.data.active_backend
+    if (response.data.available_backends?.length) {
+      availableBackends.value = response.data.available_backends
+    }
   } catch (error) {
     console.error('Failed to load backend status:', error)
   }
@@ -168,7 +186,7 @@ function getScoreColor(score: number): string {
   return 'text-gray-500 dark:text-gray-400'
 }
 
-async function switchBackend(backend: 'local') {
+async function switchBackend(backend: string) {
   try {
     await memoryApi.setBackend(backend)
     activeBackend.value = backend
@@ -260,9 +278,62 @@ function closeExportImportModal() {
   }
 }
 
-onMounted(() => {
+// Encryption functions
+async function fetchEncryptionStatus() {
+  try {
+    const res = await encryptionApi.getStatus()
+    encryptionStatus.value = res.data
+    if (res.data.migrating && !encryptionPollTimer.value) {
+      encryptionPollTimer.value = setInterval(fetchEncryptionStatus, 2000)
+    } else if (!res.data.migrating && encryptionPollTimer.value) {
+      clearInterval(encryptionPollTimer.value)
+      encryptionPollTimer.value = null
+    }
+  } catch {
+    encryptionStatus.value = null
+  }
+}
+
+async function toggleEncryption() {
+  if (encryptionToggling.value || !encryptionStatus.value) return
+  if (encryptionStatus.value.enabled) {
+    encryptionToggling.value = true
+    try {
+      await encryptionApi.disable()
+      emit('status-change', t('encryption.disabled'))
+      await fetchEncryptionStatus()
+    } finally {
+      encryptionToggling.value = false
+    }
+  } else {
+    showPassphrase.value = true
+  }
+}
+
+async function enableWithPassphrase() {
+  if (!passphrase.value.trim()) return
+  encryptionToggling.value = true
+  try {
+    await encryptionApi.enable(passphrase.value)
+    passphrase.value = ''
+    showPassphrase.value = false
+    emit('status-change', t('encryption.enabled'))
+    await fetchEncryptionStatus()
+  } finally {
+    encryptionToggling.value = false
+  }
+}
+
+function cancelPassphrase() {
+  showPassphrase.value = false
+  passphrase.value = ''
+}
+
+onMounted(async () => {
   loadStats()
   loadBackendStatus()
+  await fetchEncryptionStatus()
+  encryptionLoading.value = false
 })
 </script>
 
@@ -315,7 +386,7 @@ onMounted(() => {
       <div class="flex items-center gap-2 text-sm">
         <span class="text-gray-600 dark:text-gray-400">{{ t('memory.backend') }}:</span>
         <span class="font-medium text-gray-900 dark:text-white dark:text-white">
-          {{ t('memory.localBackend') }}
+          {{ t(`memory.backendLabel.${activeBackend}`) }}
         </span>
       </div>
     </div>
@@ -559,12 +630,98 @@ onMounted(() => {
               </label>
               <div class="flex gap-2">
                 <button
+                  v-for="backend in availableBackends"
+                  :key="backend"
                   class="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  :class="activeBackend === 'local' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
-                  @click="switchBackend('local')"
+                  :class="activeBackend === backend ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'"
+                  @click="switchBackend(backend)"
                 >
-                  {{ t('memory.localBackend') }}
+                  {{ t(`memory.backendLabel.${backend}`) }}
                 </button>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                {{ t(`memory.backendDesc.${activeBackend}`) }}
+              </p>
+            </div>
+
+            <!-- Encryption -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('encryption.title') }}
+                  </label>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {{ t('encryption.desc') }}
+                  </p>
+                </div>
+                <button
+                  v-if="encryptionStatus && !encryptionStatus.migrating"
+                  class="relative w-10 h-5 rounded-full transition-colors"
+                  :class="encryptionStatus.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  :disabled="encryptionToggling"
+                  @click="toggleEncryption"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform"
+                    :class="encryptionStatus.enabled ? 'translate-x-5' : ''"
+                  />
+                </button>
+              </div>
+
+              <!-- Passphrase input -->
+              <div v-if="showPassphrase" class="flex gap-2 mb-2">
+                <input
+                  v-model="passphrase"
+                  type="password"
+                  :placeholder="t('encryption.passphrasePlaceholder')"
+                  class="flex-1 px-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200"
+                  @keyup.enter="enableWithPassphrase"
+                />
+                <button
+                  class="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                  :disabled="encryptionToggling || !passphrase.trim()"
+                  @click="enableWithPassphrase"
+                >
+                  {{ t('encryption.confirm') }}
+                </button>
+                <button
+                  class="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg"
+                  @click="cancelPassphrase"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+
+              <!-- Migration progress -->
+              <div v-if="encryptionStatus?.migrating" class="mb-2">
+                <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <span>{{ t('encryption.migrating') }}</span>
+                  <span>{{ migrationPercent }}%</span>
+                </div>
+                <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div class="h-full bg-blue-500 rounded-full transition-all" :style="{ width: migrationPercent + '%' }" />
+                </div>
+              </div>
+
+              <!-- Stats row -->
+              <div v-if="encryptionStatus && !encryptionLoading" class="grid grid-cols-3 gap-3 text-center">
+                <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2">
+                  <div class="text-lg font-bold text-gray-700 dark:text-white">{{ encryptionStatus.encrypted_count }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('encryption.encrypted') }}</div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2">
+                  <div class="text-lg font-bold text-gray-700 dark:text-white">{{ encryptionStatus.plaintext_count }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('encryption.plaintext') }}</div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-2">
+                  <div class="text-lg font-bold text-gray-700 dark:text-white">{{ encryptionStatus.enabled ? 'AES-256' : 'OFF' }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('encryption.algorithm') }}</div>
+                </div>
+              </div>
+
+              <div v-if="encryptionLoading" class="text-center text-sm text-gray-400 py-2">
+                {{ t('common.loading') }}
               </div>
             </div>
           </div>

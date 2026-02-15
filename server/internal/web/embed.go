@@ -3,158 +3,169 @@
 package web
 
 import (
-	"embed"
+	"archive/tar"
+	"compress/gzip"
+	"encoding/binary"
+	"io"
 	"io/fs"
+	"log"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 )
 
-// For production builds, we need to embed from the correct location
-// The dist directory is at the same level as the server directory
-// We'll use a workaround: embed the files and adjust paths accordingly
+var (
+	distFS   fs.FS
+	distDir  string
+	distOnce sync.Once
+)
 
-//go:embed dist
-var embeddedDist embed.FS
+func extractDir() string {
+	if runtime.GOOS == "linux" {
+		if info, err := os.Stat("/dev/shm"); err == nil && info.IsDir() {
+			return "/dev/shm"
+		}
+	}
+	return os.TempDir()
+}
 
-var distFS fs.FS
+// ensureDistFS extracts the appended dist.tar.gz from the binary itself.
+// Layout: [ELF/Mach-O binary][dist.tar.gz][8-byte LE offset of tar.gz start]
+func ensureDistFS() {
+	distOnce.Do(func() {
+		exe, err := os.Executable()
+		if err != nil {
+			log.Printf("[web] os.Executable: %v", err)
+			return
+		}
+		f, err := os.Open(exe)
+		if err != nil {
+			log.Printf("[web] open self: %v", err)
+			return
+		}
+		defer f.Close()
 
-func init() {
-	// Extract the dist subdirectory from embedded files
-	subFS, err := fs.Sub(embeddedDist, "dist")
+		// Read last 8 bytes: tar.gz start offset
+		if _, err := f.Seek(-8, io.SeekEnd); err != nil {
+			log.Printf("[web] seek trailer: %v", err)
+			return
+		}
+		var offset int64
+		if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
+			log.Printf("[web] read trailer: %v", err)
+			return
+		}
+
+		// Seek to tar.gz start and extract
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			log.Printf("[web] seek payload: %v", err)
+			return
+		}
+
+		base := filepath.Join(extractDir(), "zimaos-blue-dist")
+		if err := extractTarGzFromReader(f, base); err != nil {
+			log.Printf("[web] extract: %v", err)
+			return
+		}
+		distDir = base
+		distFS = os.DirFS(base)
+		log.Printf("[web] dist extracted to %s", base)
+	})
+}
+
+func extractTarGzFromReader(r io.Reader, dst string) error {
+	gr, err := gzip.NewReader(r)
 	if err != nil {
-		// Fallback if embedding fails
-		distFS = embeddedDist
-	} else {
-		distFS = subFS
+		return err
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, hdr.Name)
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dst)) {
+			continue
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			os.MkdirAll(target, 0o755)
+		case tar.TypeReg:
+			os.MkdirAll(filepath.Dir(target), 0o755)
+			out, err := os.Create(target)
+			if err != nil {
+				return err
+			}
+			io.Copy(out, tr)
+			out.Close()
+		}
+	}
+	return nil
+}
+
+// CleanupDist removes the extracted dist directory.
+func CleanupDist() {
+	if distDir != "" {
+		os.RemoveAll(distDir)
 	}
 }
 
-// GetFileSystem returns the file system for production builds.
 func GetFileSystem() http.FileSystem {
+	ensureDistFS()
+	if distFS == nil {
+		return nil
+	}
 	return http.FS(distFS)
 }
 
-// GetEmbeddedFS returns the fs.FS for the dist directory.
 func GetEmbeddedFS() fs.FS {
+	ensureDistFS()
 	return distFS
 }
 
-// IsEmbedded returns true if the web assets are embedded (production build).
 func IsEmbedded() bool {
 	return true
 }
 
-// RegisterStaticRoutes registers the static file routes for the frontend.
 func RegisterStaticRoutes(e *echo.Echo) {
-	// Serve static files from dist directory
+	ensureDistFS()
 	e.GET("/*", func(c echo.Context) error {
+		if distFS == nil {
+			return echo.ErrNotFound
+		}
 		path := c.Param("*")
 		if path == "" {
 			path = "index.html"
 		}
-
-		// Skip API routes
 		if strings.HasPrefix(path, "api/") {
 			return echo.ErrNotFound
 		}
-
-		// Legacy/incorrect request for index.js - redirect to root
 		if path == "index.js" {
 			return c.Redirect(http.StatusFound, "/")
 		}
 
-		// Try to open the file
-		f, err := distFS.Open(path)
+		content, err := fs.ReadFile(distFS, path)
 		if err != nil {
-			// File not found - serve index.html for SPA routing
 			if isAssetPath(path) {
 				return echo.ErrNotFound
 			}
-			f, err = distFS.Open("index.html")
+			content, err = fs.ReadFile(distFS, "index.html")
 			if err != nil {
 				return echo.ErrNotFound
 			}
 			path = "index.html"
 		}
-		defer f.Close()
-
-		// Check if it's a directory
-		stat, err := f.Stat()
-		if err != nil {
-			return echo.ErrNotFound
-		}
-
-		if stat.IsDir() {
-			// Try index.html in the directory
-			f.Close()
-			indexPath := filepath.Join(path, "index.html")
-			f, err = distFS.Open(indexPath)
-			if err != nil {
-				// Serve root index.html for SPA
-				f, err = distFS.Open("index.html")
-				if err != nil {
-					return echo.ErrNotFound
-				}
-				path = "index.html"
-			} else {
-				path = indexPath
-			}
-			stat, _ = f.Stat()
-		}
-
-		// Read and serve the file
-		content, err := fs.ReadFile(distFS, path)
-		if err != nil {
-			return echo.ErrNotFound
-		}
-
-		contentType := getContentType(path)
-		return c.Blob(http.StatusOK, contentType, content)
+		return c.Blob(http.StatusOK, getContentType(path), content)
 	})
-}
-
-// isAssetPath returns true if the path looks like a static asset
-func isAssetPath(path string) bool {
-	exts := []string{".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".map", ".json"}
-	for _, ext := range exts {
-		if strings.HasSuffix(path, ext) {
-			return true
-		}
-	}
-	return false
-}
-
-// getContentType returns the content type for a file path
-func getContentType(path string) string {
-	switch {
-	case strings.HasSuffix(path, ".html"):
-		return "text/html; charset=utf-8"
-	case strings.HasSuffix(path, ".js"):
-		return "application/javascript; charset=utf-8"
-	case strings.HasSuffix(path, ".css"):
-		return "text/css; charset=utf-8"
-	case strings.HasSuffix(path, ".json"):
-		return "application/json; charset=utf-8"
-	case strings.HasSuffix(path, ".png"):
-		return "image/png"
-	case strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"):
-		return "image/jpeg"
-	case strings.HasSuffix(path, ".svg"):
-		return "image/svg+xml"
-	case strings.HasSuffix(path, ".ico"):
-		return "image/x-icon"
-	case strings.HasSuffix(path, ".woff"):
-		return "font/woff"
-	case strings.HasSuffix(path, ".woff2"):
-		return "font/woff2"
-	case strings.HasSuffix(path, ".ttf"):
-		return "font/ttf"
-	case strings.HasSuffix(path, ".map"):
-		return "application/json"
-	default:
-		return "application/octet-stream"
-	}
 }

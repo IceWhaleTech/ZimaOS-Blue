@@ -15,7 +15,7 @@ import (
 
 	concpool "github.com/sourcegraph/conc/pool"
 	"go.uber.org/zap"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
@@ -54,6 +54,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 )
@@ -95,14 +96,14 @@ func main() {
 		fmt.Println("  --help           Show this help message")
 		fmt.Println("")
 		// PrintServiceHelp()
-		os.Exit(0)
+		return
 	}
 
 	if *showVersion {
 		fmt.Printf("ZimaOS-Blue %s\n", version)
 		fmt.Printf("Build time: %s\n", buildTime)
 		fmt.Printf("Git commit: %s\n", gitCommit)
-		os.Exit(0)
+		return
 	}
 
 	// Load configuration
@@ -151,7 +152,7 @@ func main() {
 	}
 
 	dbPath := filepath.Join(dataDir, "blue.db")
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to open database")
 	}
@@ -688,6 +689,9 @@ func main() {
 		ttsService.Close()
 		logger.Info().Msg("TTS service cleaned up")
 	}
+
+	// Clean up extracted web dist from tmpfs
+	web.CleanupDist()
 
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }

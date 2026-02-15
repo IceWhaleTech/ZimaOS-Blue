@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean run dev
+.PHONY: all build build-full test lint clean run dev trim-dist
 
 # Variables
 BINARY_NAME=blue
@@ -16,14 +16,46 @@ TRIAL_BASE_URL?=$(ZIMAOS_TRIAL_BASE_URL)
 # -w: Omit DWARF symbol table
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$(TRIAL_API_KEY) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$(TRIAL_BASE_URL)"
 
+# Build tags for full build (with whisper/ASR support)
+TAGS_FULL=-tags whisper
+
 # Default target
 all: lint test build
 
-# Build the binary
-build:
+# Trim embedded web dist (remove build artifacts and pre-compressed duplicates)
+trim-dist:
+	@echo "Trimming web dist..."
+	@rm -f internal/web/dist/stats.html
+	@rm -f internal/web/dist/stats.html.gz
+	@find internal/web/dist -name "*.gz" -delete 2>/dev/null || true
+	@find internal/web/dist -name "*.br" -delete 2>/dev/null || true
+	@rm -rf internal/web/dist/samples
+	@echo "Dist size: $$(du -sh internal/web/dist/ | cut -f1)"
+
+# Pack dist.tar.gz into binary (append + 8-byte LE offset trailer)
+# Layout: [Go binary][dist.tar.gz][8-byte offset of tar.gz start]
+pack-dist:
+	@echo "Packing dist into binary..."
+	@tar czf /tmp/zimaos-dist.tar.gz -C internal/web/dist .
+	@OFFSET=$$(stat -f%z $(BUILD_DIR)/$(BINARY_NAME) 2>/dev/null || stat -c%s $(BUILD_DIR)/$(BINARY_NAME)); \
+	cat /tmp/zimaos-dist.tar.gz >> $(BUILD_DIR)/$(BINARY_NAME); \
+	printf $$(python3 -c "import struct; import sys; sys.stdout.buffer.write(struct.pack('<q', $$OFFSET))") >> $(BUILD_DIR)/$(BINARY_NAME); \
+	echo "Appended dist ($$(du -h /tmp/zimaos-dist.tar.gz | cut -f1)) at offset $$OFFSET"
+	@rm -f /tmp/zimaos-dist.tar.gz
+
+# Build the default binary (self-extract dist, no whisper/ASR)
+build: trim-dist
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+	@$(MAKE) pack-dist
+
+# Build full binary (with whisper/ASR)
+build-full: trim-dist
+	@echo "Building $(BINARY_NAME) (full, with ASR)..."
+	@mkdir -p $(BUILD_DIR)
+	go build $(TAGS_FULL) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+	@$(MAKE) pack-dist
 
 # Run tests
 test:
@@ -85,7 +117,9 @@ docker-build:
 help:
 	@echo "Available targets:"
 	@echo "  all          - Run lint, test, and build"
-	@echo "  build        - Build the binary"
+	@echo "  build        - Build default binary (self-extract dist, no ASR)"
+	@echo "  build-full   - Build full binary (with whisper/ASR)"
+	@echo "  trim-dist    - Remove bloat from embedded web dist"
 	@echo "  test         - Run tests"
 	@echo "  test-coverage- Run tests with coverage report"
 	@echo "  lint         - Run linter"

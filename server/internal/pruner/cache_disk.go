@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // DiskCache provides SQLite-backed cache persistence with TTL expiration.
-// Reuses the same SQLite driver (modernc.org/sqlite) as the proxy's CCCache.
+// Reuses the same SQLite driver (mattn/go-sqlite3) as the proxy's CCCache.
 type DiskCache struct {
 	db  *sql.DB
 	ttl time.Duration
@@ -25,10 +25,12 @@ func NewDiskCache(dbPath string, ttl time.Duration) *DiskCache {
 		return &DiskCache{ttl: ttl}
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return &DiskCache{ttl: ttl}
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	db.Exec("PRAGMA journal_mode=WAL")
 	db.Exec("PRAGMA busy_timeout=5000")

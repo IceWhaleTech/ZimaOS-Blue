@@ -11,10 +11,11 @@ import (
 
 // MemoryHandler handles memory-related endpoints.
 type MemoryHandler struct {
-	service        *memory.MemoryService
-	unifiedService *memory.UnifiedMemoryService
-	layeredService *memory.LayeredMemoryService
-	v2Bridge       *memory.V2Bridge
+	service             *memory.MemoryService
+	unifiedService      *memory.UnifiedMemoryService
+	layeredService      *memory.LayeredMemoryService
+	v2Bridge            *memory.V2Bridge
+	progressiveSearcher *memory.ProgressiveSearcher
 }
 
 // NewMemoryHandler creates a new MemoryHandler.
@@ -35,6 +36,16 @@ func (h *MemoryHandler) SetLayeredService(svc *memory.LayeredMemoryService) {
 // SetV2Bridge sets the v2 memory bridge for mirroring entries.
 func (h *MemoryHandler) SetV2Bridge(bridge *memory.V2Bridge) {
 	h.v2Bridge = bridge
+}
+
+// SetProgressiveSearcher sets the progressive searcher.
+func (h *MemoryHandler) SetProgressiveSearcher(ps *memory.ProgressiveSearcher) {
+	h.progressiveSearcher = ps
+}
+
+// GetUnifiedService returns the unified memory service.
+func (h *MemoryHandler) GetUnifiedService() *memory.UnifiedMemoryService {
+	return h.unifiedService
 }
 
 // RegisterRoutes registers memory routes.
@@ -59,6 +70,8 @@ func (h *MemoryHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/memory/longterm", h.PromoteToLongTerm)
 	g.GET("/memory/longterm", h.GetLongTermMemory)
 	g.POST("/memory/daily/prune", h.PruneDailyLogs)
+	// Progressive search route
+	g.POST("/memory/search/progressive", h.ProgressiveSearch)
 }
 
 // StoreRequest represents a memory store request.
@@ -304,7 +317,8 @@ func (h *MemoryHandler) GetBackendStatus(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"active_backend": activeBackend,
+		"active_backend":     activeBackend,
+		"available_backends": []string{"local", "markdown", "mixed"},
 	})
 }
 
@@ -776,4 +790,27 @@ func (h *MemoryHandler) PruneDailyLogs(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"deleted": deleted,
 	})
+}
+
+// ProgressiveSearch performs 3-layer progressive disclosure search.
+func (h *MemoryHandler) ProgressiveSearch(c echo.Context) error {
+	if h.progressiveSearcher == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "progressive search not configured")
+	}
+
+	var req memory.ProgressiveSearchRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if req.Depth < 1 || req.Depth > 3 {
+		req.Depth = memory.SearchDepthIndex
+	}
+
+	resp, err := h.progressiveSearcher.Search(c.Request().Context(), req)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }

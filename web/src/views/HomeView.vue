@@ -151,9 +151,11 @@ onUnmounted(() => {
     <!-- Hero Section -->
     <div class="hero-section">
       <div class="hero-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
+        <img
+          src="/logo.svg"
+          alt="Logo"
+          class="h-10 w-10 rounded-full object-contain drop-shadow-lg dark:brightness-150"
+        />
       </div>
       <h1 class="hero-title">{{ t('home.welcome') }}</h1>
       <p class="hero-description">{{ t('home.description') }}</p>
@@ -399,7 +401,7 @@ onUnmounted(() => {
   height: 64px;
   margin: 0 auto 16px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #a855f7, #ec4899);
+  background: linear-gradient(135deg,rgb(0, 0, 0),rgb(130, 130, 130));
   display: flex;
   align-items: center;
   justify-content: center;

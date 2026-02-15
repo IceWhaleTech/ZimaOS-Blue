@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
@@ -27,6 +27,7 @@ import (
 // Services holds all initialized services
 type Services struct {
 	DB            *sql.DB
+	DBConn        *database.SQLiteConn // Read-write separated connection
 	Config        *config.Config
 	Logger        *zap.Logger
 	UserService   *user.Service
@@ -55,20 +56,15 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	}
 
 	dbPath := filepath.Join(cfg.DataDir, "blue.db")
-	db, err := sql.Open("sqlite", dbPath)
+	dbConn, err := database.OpenSQLite(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	s.DB = db
-
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Hour)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA foreign_keys=ON")
+	s.DB = dbConn.Writer // backward compat: writer is the default
+	s.DBConn = dbConn
 
 	// User service
-	userRepo, err := user.NewSQLiteRepository(db)
+	userRepo, err := user.NewSQLiteRepository(s.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize user repository: %w", err)
 	}
@@ -101,13 +97,13 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	})
 
 	// API Key service (shares main DB)
-	s.APIKeyService, err = auth.NewAPIKeyServiceWithDB(db)
+	s.APIKeyService, err = auth.NewAPIKeyServiceWithDB(s.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API key service: %w", err)
 	}
 
 	// Memory store (shares main DB)
-	s.MemoryStore, err = memory.NewStoreWithDB(db)
+	s.MemoryStore, err = memory.NewStoreWithDB(s.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize memory store: %w", err)
 	}

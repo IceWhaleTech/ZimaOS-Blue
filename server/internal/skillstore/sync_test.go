@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupSyncTestDB(t *testing.T) (*sql.DB, *Store, func()) {
@@ -23,7 +23,7 @@ func setupSyncTestDB(t *testing.T) (*sql.DB, *Store, func()) {
 	}
 	tmpFile.Close()
 
-	db, err := sql.Open("sqlite", tmpFile.Name())
+	db, err := sql.Open("sqlite3", tmpFile.Name())
 	if err != nil {
 		os.Remove(tmpFile.Name())
 		t.Fatalf("failed to open database: %v", err)

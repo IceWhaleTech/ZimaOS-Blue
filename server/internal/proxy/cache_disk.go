@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite" // Pure-Go SQLite driver (no CGO)
+	_ "github.com/mattn/go-sqlite3" // Pure-Go SQLite driver (no CGO)
 )
 
 // DiskCache implements L2 disk-based cache using SQLite.
@@ -23,12 +23,14 @@ type DiskCache struct {
 
 // NewDiskCache creates a new SQLite-backed disk cache.
 func NewDiskCache(dbPath string) (*DiskCache, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("disk cache: open db: %w", err)
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
-	// Set pragmas after opening (modernc.org/sqlite doesn't support DSN pragmas)
+	// Set pragmas after opening (mattn/go-sqlite3 doesn't support DSN pragmas)
 	db.Exec("PRAGMA journal_mode=WAL")
 	db.Exec("PRAGMA busy_timeout=5000")
 	db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory

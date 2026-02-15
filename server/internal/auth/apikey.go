@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -85,10 +85,12 @@ func WithEncryption(enc *Encryptor) APIKeyServiceOption {
 
 // NewAPIKeyService creates a new API key service with its own SQLite database.
 func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyService, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
 
 	svc := &APIKeyService{db: db, ownsDB: true}
 

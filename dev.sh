@@ -285,10 +285,15 @@ prd_run() {
     cp -r "$PROJECT_ROOT/web/dist" "$PROJECT_ROOT/server/internal/web/dist"
     success "Web assets copied to server/internal/web/dist"
 
-    # Start server (production mode, no -tags dev, serves embedded frontend)
-    info "Starting Go server (production mode, http://localhost:23456)..."
+    # Build server with pack-dist (appends web assets to binary)
+    info "Building Go server (production mode)..."
     cd "$PROJECT_ROOT/server"
-    go run ./cmd/blue
+    make build
+    success "Server built: server/bin/blue"
+
+    # Run the built binary
+    info "Starting server (production mode, http://localhost:23456)..."
+    ./bin/blue
 }
 
 # Clean build artifacts

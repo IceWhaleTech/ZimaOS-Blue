@@ -5,20 +5,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
-import { systemApi, backupApi } from '@/api/index'
+import { backupApi } from '@/api/index'
 import type { LocaleKey } from '@/i18n'
-import type { LogEntry } from '@/api/system'
 import type { BackupInfo } from '@/api/index'
 import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
-import ServiceManagement from '@/components/ServiceManagement.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import HeartbeatSettings from '@/components/settings/HeartbeatSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
-import EncryptionSettings from '@/components/settings/EncryptionSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import MemoryBrowser from '@/components/MemoryBrowser.vue'
 import BackupManager from '@/components/BackupManager.vue'
@@ -36,7 +33,7 @@ const { isTauri, setCloseBehavior } = useTauri()
 const saveStatus = ref<string | null>(null)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata' | 'update' | 'logs'
+type TabType = 'general' | 'llm' | 'network' | 'speech' | 'memory' | 'userdata' | 'update'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 // Timezone
@@ -52,13 +49,6 @@ const timezones = computed(() => {
     return [detectedTimezone, 'UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'Asia/Shanghai']
   }
 })
-
-// System Tab - Logs
-const logs = ref<LogEntry[]>([])
-const logsLoading = ref(false)
-const logLevel = ref('all')
-const logSearch = ref('')
-const logLimit = ref(100)
 
 // System Tab - Backup
 const backups = ref<BackupInfo[]>([])
@@ -95,93 +85,9 @@ function switchTab(tab: TabType) {
   router.replace({ query: { tab } })
 
   // Load data for specific tabs
-  if (tab === 'logs' && logs.value.length === 0) {
-    fetchLogs()
-  } else if (tab === 'userdata' && backups.value.length === 0) {
+  if (tab === 'userdata' && backups.value.length === 0) {
     fetchBackups()
   }
-}
-
-// Logs functions
-async function fetchLogs() {
-  logsLoading.value = true
-  try {
-    const response = await systemApi.getLogs({
-      level: logLevel.value === 'all' ? undefined : logLevel.value,
-      search: logSearch.value || undefined,
-      limit: logLimit.value,
-    })
-    logs.value = response.data || []
-  } catch (e) {
-    console.error('Failed to fetch logs:', e)
-  } finally {
-    logsLoading.value = false
-  }
-}
-
-function formatLogTime(timestamp: string) {
-  return new Date(timestamp).toLocaleTimeString()
-}
-
-function getLogLevelClass(level: string) {
-  if (!level) return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-  switch (level.toLowerCase()) {
-    case 'error': return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
-    case 'warn': return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'
-    case 'info': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-    case 'debug': return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-    default: return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-  }
-}
-
-function isRequestLog(log: LogEntry): boolean {
-  return log.message === 'request' && log.fields?.method !== undefined
-}
-
-function getMethodColor(method: string | undefined): string {
-  if (!method) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-  switch (method.toUpperCase()) {
-    case 'GET': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    case 'POST': return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
-    case 'PUT': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-    case 'PATCH': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'DELETE': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-  }
-}
-
-function getStatusColor(status: number): string {
-  if (status >= 500) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-  if (status >= 400) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  if (status >= 300) return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
-  if (status >= 200) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-}
-
-function formatLatency(latency: number): string {
-  if (typeof latency !== 'number') return ''
-  if (latency >= 1_000_000_000) return `${(latency / 1_000_000_000).toFixed(2)}s`
-  if (latency >= 1_000_000) return `${(latency / 1_000_000).toFixed(0)}ms`
-  if (latency >= 1_000) return `${(latency / 1_000).toFixed(0)}µs`
-  return `${latency}ns`
-}
-
-async function exportLogs() {
-  const content = logs.value.map(log => `[${log.timestamp}] [${log.level}] ${log.source ? `[${log.source}] ` : ''}${log.message}`).join('\n')
-  const blob = new Blob([content], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `echo-logs-${new Date().toISOString().split('T')[0]}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function clearLogs() {
-  if (!confirm(t('system.confirmClearLogs'))) return
-  // Clear logs locally (backend API not available)
-  logs.value = []
-  showSaveStatus(t('system.logsCleared'))
 }
 
 // Backup functions
@@ -280,7 +186,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata', 'update', 'logs'] as const"
+        v-for="tab in ['general', 'llm', 'speech', 'network', 'memory', 'userdata', 'update'] as const"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
         :class="
@@ -362,11 +268,6 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Service Management -->
-      <div class="glass-card p-4">
-        <ServiceManagement />
-      </div>
-
       <!-- Heartbeat -->
       <div class="glass-card p-4">
         <HeartbeatSettings @status-change="showSaveStatus" />
@@ -397,15 +298,14 @@ onMounted(async () => {
       <SpeechSettings />
     </div>
 
+    <!-- Memory Tab -->
+    <div v-if="activeTab === 'memory'" class="space-y-6">
+      <MemoryManager @status-change="showSaveStatus" />
+      <MemoryBrowser @status-change="showSaveStatus" />
+    </div>
+
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
-      <MemoryManager @status-change="showSaveStatus" />
-
-      <MemoryBrowser @status-change="showSaveStatus" />
-
-      <!-- Memory Encryption -->
-      <EncryptionSettings @status-change="showSaveStatus" />
-
       <!-- Personality Management Section -->
       <div class="glass-card p-4">
         <PersonalityManager @status-change="showSaveStatus" />
@@ -432,78 +332,6 @@ onMounted(async () => {
       <UpdateSettings />
     </div>
 
-    <!-- Logs Tab -->
-    <div v-if="activeTab === 'logs'" class="glass-card p-4">
-      <div class="flex flex-wrap gap-4 items-center mb-4">
-        <div class="flex-1 min-w-[200px]">
-          <input
-            v-model="logSearch"
-            type="text"
-            :placeholder="t('system.searchLogs')"
-            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
-            @keyup.enter="fetchLogs"
-          />
-        </div>
-        <select
-          v-model="logLevel"
-          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600"
-          @change="fetchLogs"
-        >
-          <option value="all">{{ t('system.allLevels') }}</option>
-          <option value="error">{{ t('system.error') }}</option>
-          <option value="warn">{{ t('system.warning') }}</option>
-          <option value="info">{{ t('system.info') }}</option>
-          <option value="debug">{{ t('system.debug') }}</option>
-        </select>
-        <select
-          v-model="logLimit"
-          class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600"
-          @change="fetchLogs"
-        >
-          <option :value="50">50</option>
-          <option :value="100">100</option>
-          <option :value="200">200</option>
-        </select>
-        <div class="flex gap-2">
-          <button class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg" :disabled="logsLoading" @click="fetchLogs">
-            {{ logsLoading ? t('common.loading') : t('system.refresh') }}
-          </button>
-          <button class="px-3 py-2 bg-gray-100 dark:bg-gray-700/30 hover:bg-gray-200 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300 rounded-lg" :disabled="logs.length === 0" @click="exportLogs">
-            {{ t('system.exportLogs') }}
-          </button>
-          <button class="px-3 py-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 rounded-lg" :disabled="logs.length === 0" @click="clearLogs">
-            {{ t('system.clearLogs') }}
-          </button>
-        </div>
-      </div>
-
-      <div v-if="logsLoading" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.loadingLogs') }}</div>
-      <div v-else-if="logs.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">{{ t('system.noLogsFound') }}</div>
-      <div v-else class="divide-y divide-gray-200 dark:divide-gray-700 max-h-[400px] overflow-y-auto font-mono text-sm">
-        <div v-for="(log, index) in logs" :key="index" class="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex gap-3 items-start">
-          <span class="text-gray-400 dark:text-gray-500 flex-shrink-0 w-20">{{ formatLogTime(log.timestamp) }}</span>
-          <span :class="getLogLevelClass(log.level)" class="px-2 py-0.5 rounded text-xs uppercase font-medium flex-shrink-0">{{ log.level }}</span>
-          <span v-if="log.source" class="text-purple-600 dark:text-purple-400 flex-shrink-0">[{{ log.source.split('/').pop()?.split(':')[0] }}]</span>
-          <!-- Request log with tags -->
-          <template v-if="isRequestLog(log)">
-            <span class="px-1.5 py-0.5 text-xs font-medium rounded" :class="getMethodColor(log.fields?.method as string)">
-              {{ log.fields?.method }}
-            </span>
-            <span class="text-gray-900 dark:text-gray-100 break-all flex-1 truncate" :title="log.fields?.uri as string">
-              {{ log.fields?.uri }}
-            </span>
-            <span class="px-1.5 py-0.5 text-xs font-medium rounded" :class="getStatusColor(log.fields?.status as number)">
-              {{ log.fields?.status }}
-            </span>
-            <span class="text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
-              {{ formatLatency(log.fields?.latency as number) }}
-            </span>
-          </template>
-          <!-- Regular log message -->
-          <span v-else class="text-gray-700 dark:text-gray-300 break-all">{{ log.message }}</span>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 

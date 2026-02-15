@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   proxyCacheApi,
@@ -7,6 +7,7 @@ import {
   type CacheStats,
   type PrunerConfig,
   type PrunerStats,
+  type PrunerModelStatus,
 } from '@/api/proxyCache'
 
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
@@ -21,20 +22,27 @@ const clearing = ref(false)
 const togglingCache = ref(false)
 const togglingPruner = ref(false)
 const togglingStream = ref(false)
+const modelStatus = ref<PrunerModelStatus | null>(null)
+let modelPollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchAll() {
   loading.value = true
   try {
-    const [cfgRes, statsRes, pCfgRes, pStatsRes] = await Promise.all([
+    const [cfgRes, statsRes, pCfgRes, pStatsRes, modelRes] = await Promise.all([
       proxyCacheApi.getConfig().catch(() => null),
       proxyCacheApi.getStats().catch(() => null),
       proxyCacheApi.getPrunerConfig().catch(() => null),
       proxyCacheApi.getPrunerStats().catch(() => null),
+      proxyCacheApi.getPrunerModelStatus().catch(() => null),
     ])
     if (cfgRes) cacheConfig.value = cfgRes.data
     if (statsRes) cacheStats.value = statsRes.data
     if (pCfgRes) prunerConfig.value = pCfgRes.data
     if (pStatsRes) prunerStats.value = pStatsRes.data
+    if (modelRes) {
+      modelStatus.value = modelRes.data
+      if (modelRes.data.downloading) startModelPoll()
+    }
   } finally {
     loading.value = false
   }
@@ -101,7 +109,50 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB'
+  if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  return (bytes / 1024).toFixed(1) + ' KB'
+}
+
+function startModelPoll() {
+  if (modelPollInterval) return
+  modelPollInterval = setInterval(async () => {
+    try {
+      const res = await proxyCacheApi.getPrunerModelStatus()
+      modelStatus.value = res.data
+      if (!res.data.downloading) {
+        stopModelPoll()
+      }
+    } catch { /* ignore */ }
+  }, 500)
+}
+
+function stopModelPoll() {
+  if (modelPollInterval) {
+    clearInterval(modelPollInterval)
+    modelPollInterval = null
+  }
+}
+
+async function startModelDownload() {
+  try {
+    await proxyCacheApi.downloadPrunerModel()
+    startModelPoll()
+  } catch { /* ignore */ }
+}
+
+async function cancelModelDownload() {
+  try {
+    await proxyCacheApi.cancelPrunerModelDownload()
+    stopModelPoll()
+    const res = await proxyCacheApi.getPrunerModelStatus()
+    modelStatus.value = res.data
+  } catch { /* ignore */ }
+}
+
 onMounted(fetchAll)
+onUnmounted(stopModelPoll)
 </script>
 
 <template>
@@ -248,6 +299,72 @@ onMounted(fetchAll)
           <div v-else class="text-xs text-gray-400 dark:text-gray-500 py-2">
             {{ t('apiProxy.prunerNotAvailable') }}
           </div>
+
+          <!-- ONNX Model Download Section -->
+          <div v-if="modelStatus" class="border-t border-gray-100 dark:border-gray-700 pt-3 mt-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('apiProxy.modelStatus') }}</span>
+                <p class="text-xs text-gray-400 dark:text-gray-500">SWE-Pruner (Qwen3-0.6B ONNX)</p>
+              </div>
+              <div v-if="modelStatus.ready" class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                <span class="text-xs text-green-600 dark:text-green-400">{{ t('apiProxy.modelReady') }}</span>
+              </div>
+              <div v-else-if="modelStatus.downloading" class="flex items-center gap-2">
+                <button
+                  class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                  @click="cancelModelDownload"
+                >
+                  {{ t('apiProxy.cancelDownload') }}
+                </button>
+              </div>
+              <div v-else>
+                <button
+                  class="px-3 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
+                  @click="startModelDownload"
+                >
+                  {{ t('apiProxy.downloadModel') }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Download progress bar -->
+            <div v-if="modelStatus.downloading && modelStatus.progress" class="mt-3 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>{{ modelStatus.progress.file }} ({{ modelStatus.progress.file_index + 1 }}/{{ modelStatus.progress.total_files }})</span>
+                <span>{{ modelStatus.progress.percentage.toFixed(1) }}%</span>
+              </div>
+              <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
+                  :style="{ width: modelStatus.progress.percentage + '%' }"
+                ></div>
+              </div>
+              <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                <span>{{ formatBytes(modelStatus.progress.downloaded) }} / {{ modelStatus.progress.total > 0 ? formatBytes(modelStatus.progress.total) : '...' }}</span>
+                <span>{{ modelStatus.progress.speed_human }} &middot; {{ modelStatus.progress.eta || '...' }}</span>
+              </div>
+            </div>
+
+            <!-- Not downloaded hint -->
+            <div v-if="!modelStatus.ready && !modelStatus.downloading" class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+              {{ t('apiProxy.modelNotDownloaded') }} &middot; ~1.4 GB
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Model Routing Section -->
+      <div class="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.routingTitle') }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.routingDesc') }}</p>
+          </div>
+          <span class="px-2 py-0.5 text-xs rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+            {{ t('common.active') }}
+          </span>
         </div>
       </div>
     </template>

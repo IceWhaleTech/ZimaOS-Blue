@@ -6,18 +6,22 @@
 package timeutil
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 var (
 	// clock stores the cached nanosecond timestamp
-	clock = time.Now().UnixNano()
+	clock    int64
+	initOnce sync.Once
 )
 
-func init() {
-	// Start background goroutine to calibrate time
-	go calibrate()
+func ensureStarted() {
+	initOnce.Do(func() {
+		atomic.StoreInt64(&clock, time.Now().UnixNano())
+		go calibrate()
+	})
 }
 
 // calibrate updates the cached timestamp periodically.
@@ -45,21 +49,25 @@ func calibrate() {
 // This is a cached value updated every 100ms, suitable for most use cases
 // where millisecond precision is acceptable.
 func NowNano() int64 {
+	ensureStarted()
 	return atomic.LoadInt64(&clock)
 }
 
 // Now returns the current time as seconds since Unix epoch.
 func Now() int64 {
+	ensureStarted()
 	return atomic.LoadInt64(&clock) / 1e9
 }
 
 // NowMilli returns the current time as milliseconds since Unix epoch.
 func NowMilli() int64 {
+	ensureStarted()
 	return atomic.LoadInt64(&clock) / 1e6
 }
 
 // NowMicro returns the current time as microseconds since Unix epoch.
 func NowMicro() int64 {
+	ensureStarted()
 	return atomic.LoadInt64(&clock) / 1e3
 }
 
@@ -68,16 +76,19 @@ func NowMicro() int64 {
 // Note: This still creates a time.Time object, so use Now/NowNano/NowMilli
 // when you only need the numeric timestamp.
 func NowTime() time.Time {
+	ensureStarted()
 	return time.Unix(0, atomic.LoadInt64(&clock))
 }
 
 // Since returns the duration since the given nanosecond timestamp.
 func Since(nanoTimestamp int64) time.Duration {
+	ensureStarted()
 	return time.Duration(NowNano() - nanoTimestamp)
 }
 
 // SinceTime returns the duration since the given time.
 func SinceTime(t time.Time) time.Duration {
+	ensureStarted()
 	return time.Duration(NowNano() - t.UnixNano())
 }
 

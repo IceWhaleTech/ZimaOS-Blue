@@ -17,7 +17,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"

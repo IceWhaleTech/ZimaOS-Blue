@@ -1,9 +1,10 @@
 package logger
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // LogEntry represents a structured log entry
@@ -148,48 +149,44 @@ func (rb *RingBuffer) Clear() {
 	rb.count = 0
 }
 
-// parseLogLine parses a JSON log line from zerolog
+// known keys excluded from Fields
+var knownKeys = map[string]bool{
+	"level": true, "message": true, "msg": true,
+	"time": true, "caller": true,
+}
+
+// parseLogLine parses a JSON log line from zerolog using gjson (zero-alloc field extraction).
 func (rb *RingBuffer) parseLogLine(data []byte) *LogEntry {
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	s := string(data)
+	if !gjson.Valid(s) {
 		return nil
 	}
 
-	entry := &LogEntry{
-		Timestamp: time.Now(),
-		Fields:    make(map[string]interface{}),
-	}
+	entry := &LogEntry{Timestamp: time.Now()}
 
-	// Extract standard fields
-	if level, ok := raw["level"].(string); ok {
-		entry.Level = level
-		delete(raw, "level")
+	entry.Level = gjson.Get(s, "level").Str
+	if msg := gjson.Get(s, "message"); msg.Exists() {
+		entry.Message = msg.Str
+	} else {
+		entry.Message = gjson.Get(s, "msg").Str
 	}
-
-	if msg, ok := raw["message"].(string); ok {
-		entry.Message = msg
-		delete(raw, "message")
-	} else if msg, ok := raw["msg"].(string); ok {
-		entry.Message = msg
-		delete(raw, "msg")
-	}
-
-	if timeStr, ok := raw["time"].(string); ok {
-		if t, err := time.Parse(time.RFC3339, timeStr); err == nil {
+	if ts := gjson.Get(s, "time"); ts.Exists() {
+		if t, err := time.Parse(time.RFC3339, ts.Str); err == nil {
 			entry.Timestamp = t
 		}
-		delete(raw, "time")
 	}
+	entry.Caller = gjson.Get(s, "caller").Str
 
-	if caller, ok := raw["caller"].(string); ok {
-		entry.Caller = caller
-		delete(raw, "caller")
-	}
-
-	// Store remaining fields
-	for k, v := range raw {
-		entry.Fields[k] = v
-	}
+	// Collect extra fields only if present
+	gjson.Parse(s).ForEach(func(key, value gjson.Result) bool {
+		if !knownKeys[key.Str] {
+			if entry.Fields == nil {
+				entry.Fields = make(map[string]interface{}, 4)
+			}
+			entry.Fields[key.Str] = value.Value()
+		}
+		return true
+	})
 
 	return entry
 }
