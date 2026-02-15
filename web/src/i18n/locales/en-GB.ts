@@ -14,4 +14,7 @@ export default {
     personality: {
     ...enUS.personality,
   },
+  memoryService: {
+    ...enUS.memoryService,
+  },
 }

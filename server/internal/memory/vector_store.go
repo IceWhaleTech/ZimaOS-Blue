@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	// Use CGO sqlite driver for sqlite-vec extension support
-	_ "github.com/mattn/go-sqlite3"
+	// Use pure-Go sqlite driver; vec0 extension won't load but falls back gracefully
+	_ "modernc.org/sqlite"
 )
 
 // MemoryChunk represents a chunk of memory with embedding.
@@ -48,6 +48,21 @@ type VectorStore struct {
 	enableFTS    bool
 	enableVec    bool // sqlite-vec extension loaded
 	mu           sync.RWMutex
+	encryptor    *ContentEncryptor
+}
+
+// SetEncryptor sets the content encryptor for transparent encryption at rest.
+func (vs *VectorStore) SetEncryptor(enc *ContentEncryptor) {
+	vs.encryptor = enc
+}
+
+// decryptChunkContent decrypts a chunk's content if an encryptor is set.
+func (s *VectorStore) decryptChunkContent(chunk *MemoryChunk) {
+	if s.encryptor != nil {
+		if dec, err := s.encryptor.Decrypt(chunk.Content); err == nil {
+			chunk.Content = dec
+		}
+	}
 }
 
 const vectorStoreSchema = `
@@ -88,7 +103,7 @@ END;
 
 // NewVectorStore creates a new vector store.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
-	db, err := sql.Open("sqlite3", cfg.DBPath)
+	db, err := sql.Open("sqlite", cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -173,6 +188,16 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 		UpdatedAt: time.Now(),
 	}
 
+	// Encrypt content for storage
+	storeContent := content
+	if s.encryptor != nil {
+		enc, err := s.encryptor.Encrypt(content)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt content: %w", err)
+		}
+		storeContent = enc
+	}
+
 	var embJSON, metaJSON []byte
 	var err error
 
@@ -192,7 +217,7 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 
 	_, err = s.db.ExecContext(ctx,
 		"INSERT INTO memory_chunks (id, content, embedding, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		chunk.ID, chunk.Content, string(embJSON), string(metaJSON), chunk.CreatedAt, chunk.UpdatedAt,
+		chunk.ID, storeContent, string(embJSON), string(metaJSON), chunk.CreatedAt, chunk.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store chunk: %w", err)
@@ -251,7 +276,15 @@ func (s *VectorStore) StoreBatch(ctx context.Context, chunks []MemoryChunk) erro
 			metaJSON, _ = json.Marshal(chunks[i].Metadata)
 		}
 
-		_, err = stmt.ExecContext(ctx, chunks[i].ID, chunks[i].Content, string(embJSON), string(metaJSON), chunks[i].CreatedAt, chunks[i].UpdatedAt)
+		// Encrypt content for storage
+		storeContent := chunks[i].Content
+		if s.encryptor != nil {
+			if enc, err := s.encryptor.Encrypt(storeContent); err == nil {
+				storeContent = enc
+			}
+		}
+
+		_, err = stmt.ExecContext(ctx, chunks[i].ID, storeContent, string(embJSON), string(metaJSON), chunks[i].CreatedAt, chunks[i].UpdatedAt)
 		if err != nil {
 			return fmt.Errorf("failed to store chunk: %w", err)
 		}
@@ -304,6 +337,8 @@ func (s *VectorStore) Get(ctx context.Context, id string) (*MemoryChunk, error) 
 		}
 	}
 
+	s.decryptChunkContent(&chunk)
+
 	return &chunk, nil
 }
 
@@ -333,6 +368,7 @@ func (s *VectorStore) GetAll(ctx context.Context) ([]MemoryChunk, error) {
 			json.Unmarshal([]byte(metaJSON.String), &chunk.Metadata)
 		}
 
+		s.decryptChunkContent(&chunk)
 		chunks = append(chunks, chunk)
 	}
 
@@ -412,6 +448,7 @@ func (s *VectorStore) searchVectorVec(ctx context.Context, queryEmb []float32, l
 		// Convert distance to similarity score (1 - distance for cosine)
 		score := float32(1.0 - distance)
 		if score >= minScore {
+			s.decryptChunkContent(&chunk)
 			results = append(results, VectorSearchResult{
 				Chunk:     chunk,
 				Score:     score,
@@ -459,6 +496,7 @@ func (s *VectorStore) searchVectorFallback(ctx context.Context, queryEmb []float
 		// Calculate cosine similarity in Go
 		score := cosineSimilarity(queryEmb, chunk.Embedding)
 		if score >= minScore {
+			s.decryptChunkContent(&chunk)
 			results = append(results, VectorSearchResult{
 				Chunk:     chunk,
 				Score:     score,
@@ -560,6 +598,7 @@ func (s *VectorStore) SearchKeyword(ctx context.Context, query string, limit int
 
 		// BM25 returns negative scores, lower is better
 		// Convert to positive score where higher is better
+		s.decryptChunkContent(&chunk)
 		results = append(results, VectorSearchResult{
 			Chunk:     chunk,
 			Score:     float32(-score),
@@ -601,6 +640,7 @@ func (s *VectorStore) searchKeywordFallback(ctx context.Context, query string, l
 			json.Unmarshal([]byte(metaJSON.String), &chunk.Metadata)
 		}
 
+		s.decryptChunkContent(&chunk)
 		results = append(results, VectorSearchResult{
 			Chunk:     chunk,
 			Score:     1.0, // Default score for LIKE matches
@@ -615,6 +655,16 @@ func (s *VectorStore) searchKeywordFallback(ctx context.Context, query string, l
 func (s *VectorStore) Update(ctx context.Context, id string, content string, emb []float32, metadata map[string]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Encrypt content for storage
+	storeContent := content
+	if s.encryptor != nil {
+		enc, err := s.encryptor.Encrypt(content)
+		if err != nil {
+			return fmt.Errorf("encrypt content: %w", err)
+		}
+		storeContent = enc
+	}
 
 	var embJSON, metaJSON []byte
 	var err error
@@ -635,7 +685,7 @@ func (s *VectorStore) Update(ctx context.Context, id string, content string, emb
 
 	_, err = s.db.ExecContext(ctx,
 		"UPDATE memory_chunks SET content = ?, embedding = ?, metadata = ?, updated_at = ? WHERE id = ?",
-		content, string(embJSON), string(metaJSON), time.Now(), id,
+		storeContent, string(embJSON), string(metaJSON), time.Now(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update chunk: %w", err)

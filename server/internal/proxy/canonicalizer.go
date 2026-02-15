@@ -1,13 +1,17 @@
 package proxy
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+)
+
+// FNV-1a constants for fast, non-cryptographic hashing.
+const (
+	fnvOffset64 uint64 = 14695981039346656037
+	fnvPrime64  uint64 = 1099511628211
 )
 
 // Canonicalizer generates stable cache keys from LLM API requests.
@@ -20,28 +24,57 @@ func NewCanonicalizer() *Canonicalizer {
 	return &Canonicalizer{}
 }
 
-// CanonicalKey generates a SHA256 cache key from the request body.
-// Key = SHA256(model + canonical(messages) + temp_bucket + topP_bucket + maxTokens)
+// CanonicalKey generates a cache key from the request body using FNV-1a.
+// Key = FNV-1a(model + canonical(messages) + temp_bucket + topP_bucket + maxTokens)
 func (c *Canonicalizer) CanonicalKey(body []byte) string {
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
-		// Fallback: hash raw body
-		sum := sha256.Sum256(body)
-		return hex.EncodeToString(sum[:])
+		return c.fnvHashBytes(body)
 	}
+	return c.CanonicalKeyFromParsed(req)
+}
 
+// CanonicalKeyFromParsed generates a cache key from a pre-parsed request map.
+// Avoids redundant JSON parsing when the caller already has the parsed body.
+func (c *Canonicalizer) CanonicalKeyFromParsed(req map[string]interface{}) string {
 	model, _ := req["model"].(string)
 	temp := bucketFloat(getFloat(req, "temperature"), 0.1)
 	topP := bucketFloat(getFloat(req, "top_p"), 0.1)
 	maxTokens := getInt(req, "max_tokens")
 
-	// Sanitize and canonicalize messages
 	msgs := c.sanitizeMessages(req)
 	canonical := c.canonicalMessages(msgs)
 
-	keyData := fmt.Sprintf("%s|%s|%.1f|%.1f|%d", model, canonical, temp, topP, maxTokens)
-	sum := sha256.Sum256([]byte(keyData))
-	return hex.EncodeToString(sum[:])
+	// Build key data with strings.Builder to avoid fmt.Sprintf allocation
+	var b strings.Builder
+	b.Grow(len(model) + len(canonical) + 32)
+	b.WriteString(model)
+	b.WriteByte('|')
+	b.WriteString(canonical)
+	b.WriteByte('|')
+	fmt.Fprintf(&b, "%.1f|%.1f|%d", temp, topP, maxTokens)
+
+	return c.fnvHashString(b.String())
+}
+
+// fnvHashBytes computes FNV-1a hash of raw bytes.
+func (c *Canonicalizer) fnvHashBytes(data []byte) string {
+	hash := fnvOffset64
+	for _, b := range data {
+		hash ^= uint64(b)
+		hash *= fnvPrime64
+	}
+	return fmt.Sprintf("%016x", hash)
+}
+
+// fnvHashString computes FNV-1a hash of a string.
+func (c *Canonicalizer) fnvHashString(s string) string {
+	hash := fnvOffset64
+	for i := 0; i < len(s); i++ {
+		hash ^= uint64(s[i])
+		hash *= fnvPrime64
+	}
+	return fmt.Sprintf("%016x", hash)
 }
 
 // sanitizeMessages removes billing headers, cch tokens, and cc_version from messages.
@@ -114,7 +147,6 @@ func isBillingHeader(content string) bool {
 
 // cleanTrackingTokens removes cch=xxx, cc_version=xxx tokens from content.
 func cleanTrackingTokens(content string) string {
-	// Remove cch=<hex> patterns
 	result := content
 	for _, prefix := range []string{"cch=", "cc_version=", "x-cc-session="} {
 		for {

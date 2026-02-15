@@ -44,7 +44,7 @@ func TestCCCache_L2Promotion(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Delete from L1 only
-	cache.entries.Delete("promo-key")
+	cache.l1.Del("promo-key")
 
 	// Should hit L2 and promote to L1
 	entry, ok := cache.Get("promo-key")
@@ -68,7 +68,7 @@ func TestCCCache_Stats_L1L2Breakdown(t *testing.T) {
 
 	// Wait for L2 write, then evict from L1
 	time.Sleep(100 * time.Millisecond)
-	cache.entries.Delete("s1")
+	cache.l1.Del("s1")
 
 	// L2 hit
 	cache.Get("s1")
@@ -95,8 +95,8 @@ func TestCCCache_CanonicalKey(t *testing.T) {
 	body := []byte(`{"model":"claude-3","messages":[{"role":"user","content":"hi"}]}`)
 	key := cache.GenerateCanonicalKey(body)
 
-	if len(key) != 64 {
-		t.Errorf("expected 64 char key, got %d", len(key))
+	if len(key) != 16 {
+		t.Errorf("expected 16 char key (FNV-1a), got %d", len(key))
 	}
 
 	// Same body should produce same key
@@ -119,11 +119,11 @@ func TestCCCache_Warmup(t *testing.T) {
 	// Wait for async L2 writes
 	time.Sleep(200 * time.Millisecond)
 
-	// Clear L1
-	cache.entries.Range(func(k, _ interface{}) bool {
-		cache.entries.Delete(k)
-		return true
-	})
+	// Clear L1 only (delete known keys)
+	for i := 0; i < 5; i++ {
+		key := "warm-" + string(rune('a'+i))
+		cache.l1.Del(key)
+	}
 
 	loaded := cache.Warmup(10)
 	if loaded != 5 {

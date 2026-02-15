@@ -16,7 +16,9 @@ export interface CacheConfig {
   enabled: boolean
   max_size: number
   max_entry_size: number
-  ttl_seconds: number
+  ttl: number
+  skip_streaming: boolean
+  storage_type: string
 }
 
 export interface CacheConfigUpdate {
@@ -24,6 +26,34 @@ export interface CacheConfigUpdate {
   max_size?: number
   max_entry_size?: number
   ttl_seconds?: number
+  skip_streaming?: boolean
+}
+
+export interface PrunerStats {
+  enabled: boolean
+  stats?: {
+    total_requests: number
+    pruned_requests: number
+    passthrough_requests: number
+    total_tokens_before: number
+    total_tokens_after: number
+    tokens_saved: number
+    avg_compression_rate: number
+    avg_latency_ms: number
+  }
+}
+
+export interface PrunerConfig {
+  enabled: boolean
+  backend: string
+  threshold: number
+  min_lines: number
+  timeout_ms: number
+}
+
+export interface PrunerConfigUpdate {
+  enabled?: boolean
+  threshold?: number
 }
 
 // Proxy cache API (for /v1/* OpenAI-compatible endpoints)
@@ -36,4 +66,8 @@ export const proxyCacheApi = {
   clearCache: () => api.post<{ success: boolean; message: string }>('/proxy/cache/clear'),
   deleteEntry: (key: string) =>
     api.delete<{ success: boolean }>(`/proxy/cache/entry/${encodeURIComponent(key)}`),
+  getPrunerStats: () => api.get<PrunerStats>('/proxy/pruner/stats'),
+  getPrunerConfig: () => api.get<PrunerConfig>('/proxy/pruner/config'),
+  updatePrunerConfig: (config: PrunerConfigUpdate) =>
+    api.put<{ success: boolean; config: PrunerConfig }>('/proxy/pruner/config', config),
 }

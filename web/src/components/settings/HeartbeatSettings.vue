@@ -12,6 +12,13 @@ const loading = ref(false)
 const triggering = ref(false)
 const toggling = ref(false)
 
+// HEARTBEAT.md editor state
+const contentText = ref('')
+const contentLoading = ref(false)
+const contentSaving = ref(false)
+const contentEditing = ref(false)
+const contentDraft = ref('')
+
 const indicatorClass = computed(() => {
   const type = status.value?.last_event?.indicator_type
   switch (type) {
@@ -23,7 +30,6 @@ const indicatorClass = computed(() => {
 })
 
 const statusLabel = computed(() => {
-  if (!status.value?.enabled) return t('common.disabled')
   const evt = status.value?.last_event
   if (!evt) return t('heartbeat.neverRun')
   return evt.status
@@ -38,6 +44,41 @@ async function fetchStatus() {
     console.error('Failed to fetch heartbeat status:', e)
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchContent() {
+  contentLoading.value = true
+  try {
+    const res = await heartbeatApi.getContent()
+    contentText.value = res.data.content
+  } catch (e) {
+    console.error('Failed to fetch heartbeat content:', e)
+  } finally {
+    contentLoading.value = false
+  }
+}
+
+function startEditContent() {
+  contentDraft.value = contentText.value
+  contentEditing.value = true
+}
+
+function cancelEditContent() {
+  contentEditing.value = false
+}
+
+async function saveContent() {
+  contentSaving.value = true
+  try {
+    await heartbeatApi.putContent(contentDraft.value)
+    contentText.value = contentDraft.value
+    contentEditing.value = false
+    emit('status-change', t('heartbeat.contentSaved'))
+  } catch (e) {
+    console.error('Failed to save heartbeat content:', e)
+  } finally {
+    contentSaving.value = false
   }
 }
 
@@ -76,7 +117,10 @@ function formatTime(ts?: string) {
   return new Date(ts).toLocaleString()
 }
 
-onMounted(fetchStatus)
+onMounted(() => {
+  fetchStatus()
+  fetchContent()
+})
 </script>
 
 <template>
@@ -113,13 +157,13 @@ onMounted(fetchStatus)
       </button>
     </div>
 
-    <!-- Status Card -->
-    <div v-if="status" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-      <!-- Enabled / Indicator -->
+    <!-- Status Card (only when enabled) -->
+    <div v-if="status && status.enabled" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+      <!-- Indicator -->
       <div class="flex items-center gap-3">
         <span class="w-2.5 h-2.5 rounded-full" :class="indicatorClass" />
         <span class="text-sm font-medium text-gray-900 dark:text-white">{{ statusLabel }}</span>
-        <span v-if="status.enabled && status.interval" class="ml-auto text-xs text-gray-500 dark:text-gray-400">
+        <span v-if="status.interval" class="ml-auto text-xs text-gray-500 dark:text-gray-400">
           {{ t('heartbeat.interval') }}: {{ status.interval }}
         </span>
       </div>
@@ -141,14 +185,13 @@ onMounted(fetchStatus)
       </div>
 
       <!-- Next Due -->
-      <div v-if="status.enabled && status.next_due" class="text-sm text-gray-600 dark:text-gray-400 flex justify-between">
+      <div v-if="status.next_due" class="text-sm text-gray-600 dark:text-gray-400 flex justify-between">
         <span>{{ t('heartbeat.nextDue') }}</span>
         <span>{{ formatTime(status.next_due) }}</span>
       </div>
 
       <!-- Trigger Button -->
       <button
-        v-if="status.enabled"
         class="w-full mt-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors"
         :class="triggering ? 'bg-gray-300 dark:bg-gray-600 text-gray-500' : 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-300'"
         :disabled="triggering"
@@ -156,6 +199,56 @@ onMounted(fetchStatus)
       >
         {{ triggering ? t('heartbeat.triggering') : t('heartbeat.triggerNow') }}
       </button>
+    </div>
+
+    <!-- HEARTBEAT.md Editor -->
+    <div v-if="status" class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-sm font-medium text-gray-900 dark:text-white">HEARTBEAT.md</span>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('heartbeat.contentDescription') }}</p>
+        </div>
+        <button
+          v-if="!contentEditing"
+          class="px-3 py-1.5 text-sm rounded-lg transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+          @click="startEditContent"
+        >
+          {{ t('common.edit') }}
+        </button>
+        <div v-else class="flex items-center gap-2">
+          <button
+            class="px-3 py-1.5 text-sm rounded-lg transition-colors bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-gray-300"
+            :disabled="contentSaving"
+            @click="saveContent"
+          >
+            {{ contentSaving ? t('common.saving') : t('common.save') }}
+          </button>
+          <button
+            class="px-3 py-1.5 text-sm rounded-lg transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            :disabled="contentSaving"
+            @click="cancelEditContent"
+          >
+            {{ t('common.cancel') }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="contentLoading" class="text-sm text-gray-500 dark:text-gray-400 py-2 text-center">
+        {{ t('common.loading') }}
+      </div>
+      <template v-else>
+        <textarea
+          v-if="contentEditing"
+          v-model="contentDraft"
+          rows="8"
+          class="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+          :placeholder="t('heartbeat.contentPlaceholder')"
+        />
+        <pre
+          v-else
+          class="text-sm font-mono text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded-lg p-3 whitespace-pre-wrap min-h-[4rem] max-h-48 overflow-y-auto"
+        >{{ contentText || t('heartbeat.contentEmpty') }}</pre>
+      </template>
     </div>
 
     <!-- Loading -->

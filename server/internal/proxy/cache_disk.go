@@ -7,30 +7,42 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	_ "modernc.org/sqlite" // Pure-Go SQLite driver (no CGO)
 )
 
 // DiskCache implements L2 disk-based cache using SQLite.
 // Chosen over BadgerDB/BoltDB to avoid adding new dependencies —
 // SQLite is already used elsewhere in the project.
 type DiskCache struct {
-	db   *sql.DB
-	mu   sync.RWMutex
-	path string
+	db       *sql.DB
+	mu       sync.RWMutex
+	path     string
+	hitChan  chan string    // Buffered channel for batched hit count updates
+	stopHits chan struct{}  // Signal to stop the hit batcher
 }
 
 // NewDiskCache creates a new SQLite-backed disk cache.
 func NewDiskCache(dbPath string) (*DiskCache, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("disk cache: open db: %w", err)
 	}
 
-	dc := &DiskCache{db: db, path: dbPath}
+	// Set pragmas after opening (modernc.org/sqlite doesn't support DSN pragmas)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
+
+	dc := &DiskCache{db: db, path: dbPath, hitChan: make(chan string, 256), stopHits: make(chan struct{})}
 	if err := dc.initSchema(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("disk cache: init schema: %w", err)
 	}
+
+	// Release unused memory after schema init
+	db.Exec("PRAGMA shrink_memory")
+
+	go dc.hitBatchLoop()
 
 	return dc, nil
 }
@@ -81,12 +93,12 @@ func (dc *DiskCache) Get(key string) (*CCCacheEntry, bool) {
 		return nil, false
 	}
 
-	// Increment hit count async
-	go func() {
-		dc.mu.Lock()
-		defer dc.mu.Unlock()
-		dc.db.Exec("UPDATE cache_entries SET hit_count = hit_count + 1 WHERE key = ?", key)
-	}()
+	// Batch hit count update via channel (non-blocking)
+	select {
+	case dc.hitChan <- key:
+	default:
+		// Channel full, skip this hit count update
+	}
 
 	var headers map[string]string
 	json.Unmarshal([]byte(headersJSON), &headers)
@@ -216,5 +228,60 @@ func (dc *DiskCache) Count() int64 {
 
 // Close closes the disk cache database.
 func (dc *DiskCache) Close() error {
+	close(dc.stopHits)
 	return dc.db.Close()
+}
+
+// hitBatchLoop collects hit count updates and flushes them in batch every 5 seconds.
+func (dc *DiskCache) hitBatchLoop() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	pending := make(map[string]int64)
+
+	for {
+		select {
+		case key := <-dc.hitChan:
+			pending[key]++
+		case <-ticker.C:
+			dc.flushHits(pending)
+			pending = make(map[string]int64)
+		case <-dc.stopHits:
+			// Drain remaining
+			for {
+				select {
+				case key := <-dc.hitChan:
+					pending[key]++
+				default:
+					dc.flushHits(pending)
+					return
+				}
+			}
+		}
+	}
+}
+
+// flushHits writes accumulated hit counts to SQLite in a single transaction.
+func (dc *DiskCache) flushHits(pending map[string]int64) {
+	if len(pending) == 0 {
+		return
+	}
+	dc.mu.Lock()
+	defer dc.mu.Unlock()
+
+	tx, err := dc.db.Begin()
+	if err != nil {
+		return
+	}
+	stmt, err := tx.Prepare("UPDATE cache_entries SET hit_count = hit_count + ? WHERE key = ?")
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+	defer stmt.Close()
+
+	for key, count := range pending {
+		stmt.Exec(count, key)
+	}
+	tx.Commit()
 }

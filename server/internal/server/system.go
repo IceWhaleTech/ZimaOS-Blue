@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/resources"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/scheduler"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/watcher"
 )
 
@@ -31,6 +32,7 @@ type RuntimeStatus struct {
 	NumGoroutine int    `json:"num_goroutine"`
 	MemAllocMB   uint64 `json:"mem_alloc_mb"`
 	MemSysMB     uint64 `json:"mem_sys_mb"`
+	MemRSSMB     uint64 `json:"mem_rss_mb"`
 	NumGC        uint32 `json:"num_gc"`
 }
 
@@ -71,6 +73,7 @@ func (h *SystemStatusHandler) RegisterSystemRoutes(e *echo.Echo) {
 func (h *SystemStatusHandler) getSystemStatus(c echo.Context) error {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
+	procMem := sysinfo.GetProcessMemInfo()
 
 	status := SystemStatus{
 		Status:    "ok",
@@ -84,6 +87,7 @@ func (h *SystemStatusHandler) getSystemStatus(c echo.Context) error {
 			NumGoroutine: runtime.NumGoroutine(),
 			MemAllocMB:   m.Alloc / 1024 / 1024,
 			MemSysMB:     m.Sys / 1024 / 1024,
+			MemRSSMB:     procMem.RSSB / 1024 / 1024,
 			NumGC:        m.NumGC,
 		},
 	}
@@ -115,9 +119,12 @@ func (h *SystemStatusHandler) getSystemStatus(c echo.Context) error {
 func (h *SystemStatusHandler) getResourceStatus(c echo.Context) error {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
+	procMem := sysinfo.GetProcessMemInfo()
 
 	response := map[string]interface{}{
 		"memory": map[string]interface{}{
+			"rss_mb":         procMem.RSSB / 1024 / 1024,
+			"rss_bytes":      procMem.RSSB,
 			"alloc_mb":       m.Alloc / 1024 / 1024,
 			"total_alloc_mb": m.TotalAlloc / 1024 / 1024,
 			"sys_mb":         m.Sys / 1024 / 1024,

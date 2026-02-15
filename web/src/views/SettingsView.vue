@@ -17,7 +17,10 @@ import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import HeartbeatSettings from '@/components/settings/HeartbeatSettings.vue'
+import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
+import EncryptionSettings from '@/components/settings/EncryptionSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
+import MemoryBrowser from '@/components/MemoryBrowser.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import PersonalityManager from '@/components/PersonalityManager.vue'
 import { useTauri } from '@/composables/useTauri'
@@ -377,6 +380,9 @@ onMounted(async () => {
         <ProviderPoolSection />
       </div>
 
+      <!-- API Proxy Settings (Cache & Pruner) -->
+      <ApiProxySettings @status-change="showSaveStatus" />
+
       <!-- Claude Code CLI Settings -->
       <ClaudeCodeSettings @status-change="showSaveStatus" />
     </div>
@@ -394,6 +400,11 @@ onMounted(async () => {
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
       <MemoryManager @status-change="showSaveStatus" />
+
+      <MemoryBrowser @status-change="showSaveStatus" />
+
+      <!-- Memory Encryption -->
+      <EncryptionSettings @status-change="showSaveStatus" />
 
       <!-- Personality Management Section -->
       <div class="glass-card p-4">

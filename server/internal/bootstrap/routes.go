@@ -28,6 +28,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
@@ -40,6 +41,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
@@ -185,7 +187,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 
-		uptime := time.Since(routesStartTime)
+		uptime := time.Since(routesStartTime).Truncate(time.Second)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":          "ok",
 			"service":         "zimaos-blue",
@@ -524,6 +526,26 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 				return info.Scopes, nil
 			})
 		}
+
+		// Context pruner middleware (optional, disabled by default)
+		if deps.Config.Pruner != nil && deps.Config.Pruner.Enabled {
+			prunerCfg := *deps.Config.Pruner
+			backend, err := pruner.NewBackend(prunerCfg)
+			if err != nil {
+				slog.Warn("Failed to create pruner backend", "error", err)
+			} else {
+				prunerStats := pruner.NewStats()
+				prunerMw := pruner.NewMiddleware(backend, prunerCfg, prunerStats)
+				proxyHandler.SetPruner(prunerMw)
+				slog.Info("Context pruner enabled", "backend", prunerCfg.Backend, "threshold", prunerCfg.Threshold)
+
+				// Register pruner API routes
+				prunerHandler := pruner.NewAPIHandler(prunerMw, &prunerCfg)
+				prunerGroup := v1.Group("/proxy/pruner")
+				prunerHandler.RegisterRoutes(prunerGroup)
+			}
+		}
+
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
@@ -550,6 +572,65 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	// Memory routes
 	if deps.MemoryHandler != nil {
 		deps.MemoryHandler.RegisterRoutes(v1)
+	}
+
+	// Memory Service v2 routes (versioned entries, namespaces)
+	{
+		memDBPath := filepath.Join(dataDir, "memory_service.db")
+		memDB, err := sql.Open("sqlite", memDBPath)
+		if err != nil {
+			logger.Error("Failed to open memory service database", zap.Error(err))
+		} else {
+			memRepo, err := memory.NewMemoryRepository(memDB)
+			if err != nil {
+				logger.Error("Failed to initialize memory service repository", zap.Error(err))
+			} else {
+				memNS, err := memory.NewNamespaceStore(memDB)
+				if err != nil {
+					logger.Error("Failed to initialize memory namespace store", zap.Error(err))
+				} else {
+					memAPIHandler := memory.NewAPIHandler(memRepo, memNS)
+					v2 := api.Group("/v2")
+					memAPIHandler.RegisterRoutes(v2)
+					logger.Info("Memory Service v2 routes registered")
+
+					// Initialize content encryption if configured
+					var memEncryptor *memory.ContentEncryptor
+					if deps.Config != nil {
+						encCfg := deps.Config.Security.Encryption
+						memEncryptor, err = memory.NewContentEncryptor(
+							encCfg.Passphrase, encCfg.KeyPath, encCfg.Enabled,
+						)
+						if err != nil {
+							logger.Warn("Failed to initialize memory encryption", zap.Error(err))
+						} else {
+							memRepo.SetEncryptor(memEncryptor)
+							if encCfg.Enabled {
+								logger.Info("Memory encryption enabled (AES-256-GCM)")
+							}
+						}
+					}
+					if memEncryptor == nil {
+						memEncryptor, _ = memory.NewContentEncryptor("", "", false)
+					}
+
+					// Register encryption management routes
+					encHandler := memory.NewEncryptionHandler(memRepo, memEncryptor)
+					encHandler.RegisterRoutes(v2)
+
+					// Start background purge scheduler
+					purgeScheduler := memory.NewPurgeScheduler(memRepo, 6*time.Hour)
+					purgeScheduler.Start(deps.Ctx)
+					logger.Info("Memory Service v2 purge scheduler started")
+
+					// Create v2 bridge for existing memory system
+					bridge := memory.NewV2Bridge(memRepo)
+					if deps.MemoryHandler != nil {
+						deps.MemoryHandler.SetV2Bridge(bridge)
+					}
+				}
+			}
+		}
 	}
 
 	// Personality routes (protected)

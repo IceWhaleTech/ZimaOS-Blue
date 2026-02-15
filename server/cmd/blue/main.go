@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -69,6 +70,10 @@ func runServer() {
 }
 
 func main() {
+	// Tune GC for lower memory usage: collect more aggressively and set soft memory limit
+	debug.SetGCPercent(30)
+	debug.SetMemoryLimit(48 * 1024 * 1024) // 48MB soft limit
+
 	// Handle Windows service commands (install, uninstall, start, stop, status)
 	// if HandleServiceCommand(os.Args) {
 	// 	return
@@ -152,9 +157,9 @@ func main() {
 	}
 	defer db.Close()
 
-	// Configure database connection pool (optimized for startup performance)
-	db.SetMaxOpenConns(15) // 优化: 增加到 15 以支持并发初始化
-	db.SetMaxIdleConns(8)  // 优化: 增加到 8 以减少连接创建开销
+	// Configure database connection pool (shared by user, memory, apikey tables)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(3)
 	db.SetConnMaxLifetime(time.Hour)
 
 	// Enable WAL mode for better concurrency
@@ -169,19 +174,10 @@ func main() {
 	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
 		logger.Warn().Err(err).Msg("Failed to set synchronous mode")
 	}
-	if _, err := db.Exec("PRAGMA cache_size=-64000"); err != nil {
+	if _, err := db.Exec("PRAGMA cache_size=-2000"); err != nil { // ~2MB page cache (reduced from 8MB for lower idle memory)
 		logger.Warn().Err(err).Msg("Failed to set cache size")
 	}
-
-	// Warm up connection pool for faster startup (parallel)
-	for i := 0; i < 5; i++ {
-		go func() {
-			conn, err := db.Conn(context.Background())
-			if err == nil {
-				conn.Close()
-			}
-		}()
-	}
+	db.Exec("PRAGMA shrink_memory") // Release unused memory after pragma changes
 
 	// Initialize user repository and service
 	userRepo, err := user.NewSQLiteRepository(db)
@@ -191,7 +187,7 @@ func main() {
 
 	// Create password hasher with secure defaults
 	passwordHasher := password.NewHasher(&password.Config{
-		Memory:      64 * 1024, // 64 MB
+		Memory:      32 * 1024, // 32 MB (reduced from 64MB for lower memory spikes, still OWASP-compliant)
 		Iterations:  3,
 		Parallelism: 2,
 		SaltLength:  16,
@@ -221,9 +217,8 @@ func main() {
 	// Set permission service on user handler
 	userHandler.SetPermissionService(permissionService)
 
-	// Initialize memory store for conversations
-	memoryDbPath := filepath.Join(dataDir, "memory.db")
-	memoryStore, err := memory.NewStore(memoryDbPath)
+	// Initialize memory store for conversations (shares main blue.db)
+	memoryStore, err := memory.NewStoreWithDB(db)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize memory store")
 	}
@@ -232,14 +227,12 @@ func main() {
 	llmRegistry := llm.NewProviderRegistry()
 
 	// Register default LLM providers from environment variables
+	// Only register providers with actual API keys to reduce idle memory
 
 	// OpenAI provider
 	openaiKey := os.Getenv("OPENAI_API_KEY")
 	if openaiKey != "" {
 		llmRegistry.Register(llm.NewOpenAIProvider(openaiKey, ""))
-	} else {
-		// Register with empty key - will fail on actual API calls but allows listing
-		llmRegistry.Register(llm.NewOpenAIProvider("", ""))
 	}
 
 	// Claude provider
@@ -254,8 +247,6 @@ func main() {
 	}
 	if claudeKey != "" {
 		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
-	} else {
-		llmRegistry.Register(llm.NewClaudeProvider("", ""))
 	}
 
 	// Ollama provider (local, no API key needed)
@@ -268,22 +259,20 @@ func main() {
 	// Custom OpenAI-compatible provider (for third-party services like DeepSeek, Together, etc.)
 	customKey := os.Getenv("CUSTOM_API_KEY")
 	customURL := os.Getenv("CUSTOM_API_URL")
-	llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
+	if customKey != "" || customURL != "" {
+		llmRegistry.Register(llm.NewCustomProvider(customKey, customURL))
+	}
 
 	// Grok provider (xAI)
 	grokKey := os.Getenv("GROK_API_KEY")
 	if grokKey != "" {
 		llmRegistry.Register(llm.NewGrokProvider(grokKey, ""))
-	} else {
-		llmRegistry.Register(llm.NewGrokProvider("", ""))
 	}
 
 	// Qwen provider (Alibaba Cloud)
 	qwenKey := os.Getenv("QWEN_API_KEY")
 	if qwenKey != "" {
 		llmRegistry.Register(llm.NewQwenProvider(qwenKey, ""))
-	} else {
-		llmRegistry.Register(llm.NewQwenProvider("", ""))
 	}
 
 	// Initialize tools registry and register built-in tools
@@ -328,13 +317,11 @@ func main() {
 		Issuer:            cfg.Security.JWT.Issuer,
 	})
 
-	// Initialize API Key service
-	apiKeyDbPath := filepath.Join(dataDir, "apikeys.db")
-	apiKeyService, err := auth.NewAPIKeyService(apiKeyDbPath)
+	// Initialize API Key service (shares main blue.db)
+	apiKeyService, err := auth.NewAPIKeyServiceWithDB(db)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize API key service")
 	}
-	defer apiKeyService.Close()
 
 	// Initialize Claude Code CLI provider with internal API key for local proxy
 	// This must be done after apiKeyService is ready
@@ -434,7 +421,7 @@ func main() {
 	)
 
 	// Use conc/pool for safer parallel initialization with automatic panic recovery
-	initPool := concpool.New().WithMaxGoroutines(20)
+	initPool := concpool.New().WithMaxGoroutines(8)
 
 	// Use WaitGroup to coordinate critical service initialization
 	var criticalServicesWg sync.WaitGroup
@@ -444,8 +431,8 @@ func main() {
 	criticalServicesWg.Add(1)
 	go func() {
 		defer criticalServicesWg.Done()
-		// Metrics collector (collect every 5 seconds, keep 10 minutes of history)
-		metricsCollector = metrics.NewCollector(5*time.Second, 120)
+		// Metrics collector (collect every 10 seconds, keep 5 minutes of history)
+		metricsCollector = metrics.NewCollector(10*time.Second, 30)
 		metricsCollector.Start()
 		// Metrics writer for detailed API metrics with SQLite persistence
 		metricsConfig := metrics.DefaultWriterConfig()
@@ -658,6 +645,16 @@ func main() {
 			logger.Error().Err(err).Msg("Server error")
 		}
 	})
+
+	// Start HTTPS server if TLS is enabled and certificate is available
+	tlsManager := security.GetGlobalTLSManager()
+	if tlsManager != nil && tlsManager.GetCertificate() != nil {
+		lm.Go(func(ctx context.Context) {
+			if err := srv.StartTLS(); err != nil {
+				logger.Error().Err(err).Msg("HTTPS server error")
+			}
+		})
+	}
 
 	// Wait for shutdown signal
 	quit := make(chan os.Signal, 1)

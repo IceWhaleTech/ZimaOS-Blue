@@ -22,7 +22,7 @@ const testingProvider = ref<string | null>(null)
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
-const activeTab = ref<'all' | 'trial' | 'builtin' | 'ide' | 'custom'>('all')
+const activeTab = ref<'all' | 'trial' | 'builtin' | 'custom'>('all')
 const iconInput = ref<HTMLInputElement | null>(null)
 const uploadingIcon = ref(false)
 
@@ -84,9 +84,6 @@ const filteredProviders = computed(() => {
       break
     case 'custom':
       providers = store.customProviders || []
-      break
-    case 'ide':
-      providers = store.ideProviders || []
       break
   }
 
@@ -152,6 +149,14 @@ function getProviderName(provider: Provider): string {
     return t('providerPool.trial.name')
   }
   return provider.name
+}
+
+function formatKeyLabel(label: string): string {
+  if (label.startsWith('ide_import:')) {
+    const ide = label.substring('ide_import:'.length)
+    return t('providerPool.ideImportLabel', { ide })
+  }
+  return label
 }
 
 // Get localized provider description
@@ -646,6 +651,15 @@ onMounted(() => {
       </div>
       <div class="flex gap-2">
         <button
+          class="px-3 py-1.5 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 rounded-lg flex items-center gap-1 text-sm transition-colors"
+          @click="showIDEDiscoveryModal = true"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {{ t('providerPool.scanIDE') }}
+        </button>
+        <button
           class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
           @click="showAddModal = true"
         >
@@ -658,7 +672,7 @@ onMounted(() => {
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
       <button
-        v-for="tab in ['all', 'trial', 'builtin', 'ide', 'custom'] as const"
+        v-for="tab in ['all', 'trial', 'builtin', 'custom'] as const"
         :key="tab"
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',
@@ -670,7 +684,7 @@ onMounted(() => {
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'all' ? (store.providers?.length || 0) : tab === 'trial' ? (store.trialProviders?.length || 0) : tab === 'builtin' ? (store.builtinProviders?.length || 0) : tab === 'ide' ? (store.ideProviders?.length || 0) : (store.customProviders?.length || 0) }})
+          ({{ tab === 'all' ? (store.providers?.length || 0) : tab === 'trial' ? (store.trialProviders?.length || 0) : tab === 'builtin' ? (store.builtinProviders?.length || 0) : (store.customProviders?.length || 0) }})
         </span>
       </button>
     </div>
@@ -740,22 +754,6 @@ onMounted(() => {
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Provider Cards -->
       <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
-        <!-- IDE Tab Empty State -->
-        <div v-if="activeTab === 'ide' && filteredProviders.length === 0 && !searchQuery" class="text-center py-8">
-          <div class="text-4xl mb-4">🔍</div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            {{ t('ideDiscovery.noIDEsFound') }}
-          </h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            {{ t('ideDiscovery.noConfigsHint') }}
-          </p>
-          <button
-            class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
-            @click="showIDEDiscoveryModal = true"
-          >
-            {{ t('ideDiscovery.scan') }}
-          </button>
-        </div>
         <!-- Drag hint -->
         <p v-if="filteredProviders.length > 1 && !searchQuery" class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -821,7 +819,11 @@ onMounted(() => {
               >
                 {{ provider.location === 'cloud' ? '☁️' : '💻' }}
               </span>
-              <span :class="getStatusColor(provider.status, provider.enabled)" class="text-xs">
+              <span
+                :class="getStatusColor(provider.status, provider.enabled)"
+                class="text-xs"
+                :title="provider.status === 'error' && provider.last_error ? provider.last_error : ''"
+              >
                 {{ getStatusIcon(provider.status, provider.enabled) }}
               </span>
               <label class="relative inline-flex items-center cursor-pointer" @click.stop>
@@ -938,6 +940,17 @@ onMounted(() => {
             </div>
           </div>
 
+          <!-- Error Banner -->
+          <div
+            v-if="currentTabSelectedProvider!.status === 'error' && currentTabSelectedProvider!.last_error"
+            class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+          >
+            <div class="flex items-start gap-2">
+              <span class="text-red-500 flex-shrink-0">⚠</span>
+              <p class="text-xs text-red-600 dark:text-red-400 break-all">{{ currentTabSelectedProvider!.last_error }}</p>
+            </div>
+          </div>
+
           <!-- Model Parameters Section -->
           <div class="mb-4">
             <div class="flex items-center justify-between mb-2">
@@ -1017,7 +1030,7 @@ onMounted(() => {
                 >
                   <div>
                     <span class="text-gray-700 dark:text-white font-mono">{{ key.key_hash }}</span>
-                    <span v-if="key.label" class="ml-2 text-gray-500">({{ key.label }})</span>
+                    <span v-if="key.label" class="ml-2 text-gray-500">({{ formatKeyLabel(key.label) }})</span>
                   </div>
                   <div class="flex items-center gap-3">
                     <span v-if="key.usage_count" class="text-gray-500">

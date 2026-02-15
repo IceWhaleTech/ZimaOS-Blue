@@ -54,7 +54,7 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	dbPath := filepath.Join(cfg.DataDir, "echo.db")
+	dbPath := filepath.Join(cfg.DataDir, "blue.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -100,16 +100,14 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 		Issuer:            appCfg.Security.JWT.Issuer,
 	})
 
-	// API Key service
-	apiKeyDbPath := filepath.Join(cfg.DataDir, "apikeys.db")
-	s.APIKeyService, err = auth.NewAPIKeyService(apiKeyDbPath)
+	// API Key service (shares main DB)
+	s.APIKeyService, err = auth.NewAPIKeyServiceWithDB(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API key service: %w", err)
 	}
 
-	// Memory store
-	memoryDbPath := filepath.Join(cfg.DataDir, "memory.db")
-	s.MemoryStore, err = memory.NewStore(memoryDbPath)
+	// Memory store (shares main DB)
+	s.MemoryStore, err = memory.NewStoreWithDB(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize memory store: %w", err)
 	}

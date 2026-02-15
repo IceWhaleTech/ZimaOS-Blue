@@ -152,6 +152,7 @@ export interface ImportConfig {
   env_var?: string
   source: 'config' | 'env' | 'cc-switch' | 'extension'
   can_import: boolean
+  already_imported?: boolean
   extension_config?: ClaudeCodeExtConfig
 }
 

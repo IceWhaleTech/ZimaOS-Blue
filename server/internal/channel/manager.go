@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
@@ -377,6 +378,7 @@ func (m *Manager) StopChannel(ctx context.Context, name string) error {
 }
 
 // Send sends a message through a specific channel.
+// Content is automatically humanized for IM readability unless Format is "markdown".
 func (m *Manager) Send(ctx context.Context, channelName string, msg OutgoingMessage) error {
 	m.mu.RLock()
 	ch, exists := m.channels[channelName]
@@ -388,6 +390,11 @@ func (m *Manager) Send(ctx context.Context, channelName string, msg OutgoingMess
 
 	if !ch.IsConnected() {
 		return fmt.Errorf("channel %s is not connected", channelName)
+	}
+
+	// Humanize content for IM channels (skip if explicitly markdown)
+	if msg.Format != "markdown" && msg.Content != "" {
+		msg.Content = humanizer.Humanize(msg.Content, humanizer.ModeIM)
 	}
 
 	return ch.Send(ctx, msg)

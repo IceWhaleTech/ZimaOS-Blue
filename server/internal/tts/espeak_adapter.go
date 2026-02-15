@@ -1,3 +1,5 @@
+//go:build espeak
+
 package tts
 
 import (

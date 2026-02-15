@@ -46,10 +46,10 @@ func NewAdaptiveCacheManager(minSize, maxSize, maxMemoryMB int64) *AdaptiveCache
 		currentSize:   minSize,
 		maxMemoryMB:   maxMemoryMB,
 		targetMemMB:   maxMemoryMB * 80 / 100, // Target 80% of max
-		evictionChan:  make(chan EvictionRequest, 1000),
+		evictionChan:  make(chan EvictionRequest, 100),
 		stopChan:      make(chan struct{}),
-		memoryTrend:   make([]uint64, 0, 60), // Track last 60 readings
-		maxTrendSize:  60,
+		memoryTrend:   make([]uint64, 0, 20), // Track last 20 readings
+		maxTrendSize:  20,
 	}
 
 	// Start memory monitor

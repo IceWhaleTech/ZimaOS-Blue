@@ -14,6 +14,7 @@ type MemoryHandler struct {
 	service        *memory.MemoryService
 	unifiedService *memory.UnifiedMemoryService
 	layeredService *memory.LayeredMemoryService
+	v2Bridge       *memory.V2Bridge
 }
 
 // NewMemoryHandler creates a new MemoryHandler.
@@ -29,6 +30,11 @@ func (h *MemoryHandler) SetUnifiedService(svc *memory.UnifiedMemoryService) {
 // SetLayeredService sets the layered memory service.
 func (h *MemoryHandler) SetLayeredService(svc *memory.LayeredMemoryService) {
 	h.layeredService = svc
+}
+
+// SetV2Bridge sets the v2 memory bridge for mirroring entries.
+func (h *MemoryHandler) SetV2Bridge(bridge *memory.V2Bridge) {
+	h.v2Bridge = bridge
 }
 
 // RegisterRoutes registers memory routes.
@@ -88,6 +94,11 @@ func (h *MemoryHandler) Store(c echo.Context) error {
 	chunk, err := h.service.Remember(c.Request().Context(), req.Content, req.Tags)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	// Mirror to v2 memory service
+	if h.v2Bridge != nil {
+		h.v2Bridge.OnRemember(c.Request().Context(), req.Content, req.Tags, "api")
 	}
 
 	return c.JSON(http.StatusCreated, StoreResponse{
@@ -695,6 +706,11 @@ func (h *MemoryHandler) AppendToDaily(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
+	// Mirror to v2 memory service
+	if h.v2Bridge != nil {
+		h.v2Bridge.OnSessionEnd(c.Request().Context(), req.Content, req.Tags)
+	}
+
 	return c.JSON(http.StatusCreated, map[string]bool{"success": true})
 }
 
@@ -765,6 +781,11 @@ func (h *MemoryHandler) PromoteToLongTerm(c echo.Context) error {
 
 	if err := h.layeredService.PromoteToLongTerm(c.Request().Context(), req.Content, category); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	// Mirror to v2 memory service as long-term entry
+	if h.v2Bridge != nil {
+		h.v2Bridge.OnRemember(c.Request().Context(), req.Content, []string{category}, "longterm")
 	}
 
 	return c.JSON(http.StatusCreated, map[string]bool{"success": true})

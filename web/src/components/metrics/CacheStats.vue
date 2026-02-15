@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { proxyCacheApi, type CacheStats } from '@/api/proxyCache'
+import { proxyCacheApi, type CacheStats, type PrunerStats } from '@/api/proxyCache'
 
 const { t } = useI18n()
 
 const stats = ref<CacheStats | null>(null)
+const prunerStats = ref<PrunerStats | null>(null)
 const loading = ref(false)
-const toggling = ref(false)
-const clearing = ref(false)
 
 const hitRate = computed(() => {
   if (!stats.value) return 0
@@ -17,42 +16,27 @@ const hitRate = computed(() => {
   return (stats.value.hits / total) * 100
 })
 
+const tokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
 async function fetchStats() {
   loading.value = true
   try {
-    const res = await proxyCacheApi.getStats()
-    stats.value = res.data
+    const [cacheRes, prunerRes] = await Promise.all([
+      proxyCacheApi.getStats(),
+      proxyCacheApi.getPrunerStats().catch(() => null),
+    ])
+    stats.value = cacheRes.data
+    if (prunerRes) prunerStats.value = prunerRes.data
   } catch {
     // Ignore errors
   } finally {
     loading.value = false
-  }
-}
-
-async function toggleCache() {
-  if (!stats.value || toggling.value) return
-  toggling.value = true
-  try {
-    await proxyCacheApi.updateConfig({ enabled: !stats.value.enabled })
-    await fetchStats()
-  } catch {
-    // Ignore errors
-  } finally {
-    toggling.value = false
-  }
-}
-
-async function clearCache() {
-  if (clearing.value) return
-  if (!confirm(t('cache.confirmClear'))) return
-  clearing.value = true
-  try {
-    await proxyCacheApi.clearCache()
-    await fetchStats()
-  } catch {
-    // Ignore errors
-  } finally {
-    clearing.value = false
   }
 }
 
@@ -63,48 +47,16 @@ defineExpose({ refresh: fetchStats })
 
 <template>
   <div class="space-y-4">
-    <!-- Header with title and actions -->
+    <!-- Header with title and refresh -->
     <div class="flex items-center justify-between">
       <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('cache.proxyCache') }}</h3>
-      <div class="flex items-center gap-3">
-        <!-- Toggle switch -->
-        <label class="flex items-center gap-2 cursor-pointer">
-          <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('cache.enabled') }}</span>
-          <button
-            type="button"
-            :disabled="toggling"
-            :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              stats?.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
-              toggling ? 'opacity-50 cursor-not-allowed' : ''
-            ]"
-            @click="toggleCache"
-          >
-            <span
-              :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                stats?.enabled ? 'translate-x-6' : 'translate-x-1'
-              ]"
-            />
-          </button>
-        </label>
-        <!-- Clear button -->
-        <button
-          :disabled="clearing || !stats?.enabled"
-          class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          @click="clearCache"
-        >
-          {{ clearing ? t('common.loading') : t('cache.clear') }}
-        </button>
-        <!-- Refresh button -->
-        <button
-          :disabled="loading"
-          class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50 transition-colors"
-          @click="fetchStats"
-        >
-          {{ t('common.refresh') }}
-        </button>
-      </div>
+      <button
+        :disabled="loading"
+        class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50 transition-colors"
+        @click="fetchStats"
+      >
+        {{ t('common.refresh') }}
+      </button>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -152,23 +104,23 @@ defineExpose({ refresh: fetchStats })
       </div>
     </div>
 
-    <!-- Bypasses Card -->
+    <!-- Tokens Saved Card (Pruner) -->
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.bypasses') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.tokensSaved') }}</p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats?.bypasses ?? '-' }}
+            {{ tokensSaved > 0 ? formatTokens(tokensSaved) : '-' }}
           </p>
         </div>
         <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
           <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
           </svg>
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ t('cache.streamingSkipped') }}</span>
+        <span>{{ t('cache.prunerCompression') }}: {{ prunerStats?.stats ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}</span>
       </div>
     </div>
 
@@ -182,19 +134,21 @@ defineExpose({ refresh: fetchStats })
           </p>
         </div>
         <div
-:class="[
-          'p-3 rounded-full',
-          stats?.enabled
-            ? 'bg-green-100 dark:bg-green-900/30'
-            : 'bg-gray-100 dark:bg-gray-700'
-        ]">
-          <svg
-:class="[
-            'w-6 h-6',
+          :class="[
+            'p-3 rounded-full',
             stats?.enabled
-              ? 'text-green-600 dark:text-green-400'
-              : 'text-gray-400'
-          ]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              ? 'bg-green-100 dark:bg-green-900/30'
+              : 'bg-gray-100 dark:bg-gray-700'
+          ]"
+        >
+          <svg
+            :class="[
+              'w-6 h-6',
+              stats?.enabled
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-gray-400'
+            ]" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
           </svg>
         </div>

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -186,6 +187,47 @@ func (s *Server) Start() error {
 
 	s.echo.Listener = ln
 	return s.echo.StartServer(server)
+}
+
+// StartTLS starts an HTTPS server on the configured TLS port using the global TLSManager.
+// It creates a separate TLS listener that shares the same Echo router as the HTTP server.
+func (s *Server) StartTLS() error {
+	tlsManager := security.GetGlobalTLSManager()
+	if tlsManager == nil {
+		return fmt.Errorf("TLS manager not initialized")
+	}
+
+	cert := tlsManager.GetCertificate()
+	if cert == nil {
+		return fmt.Errorf("no TLS certificate loaded")
+	}
+
+	httpsPort := tlsManager.GetHTTPSPort()
+	addr := fmt.Sprintf("%s:%d", s.config.Host, httpsPort)
+	logger.Info().Str("addr", addr).Msg("Starting HTTPS server")
+
+	// Create TLS listener
+	tlsConfig := tlsManager.GetTLSConfig()
+	ln, err := tls.Listen("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create TLS listener on %s: %w", addr, err)
+	}
+
+	ln = netutil.LimitListener(ln, 10000)
+
+	logger.Info().
+		Int("https_port", httpsPort).
+		Msg("HTTPS server listening")
+
+	// Serve using the same Echo handler on the TLS listener
+	httpsServer := &http.Server{
+		Handler:      s.echo,
+		ReadTimeout:  s.config.ReadTimeout,
+		WriteTimeout: s.config.WriteTimeout,
+		IdleTimeout:  s.config.IdleTimeout,
+	}
+
+	return httpsServer.Serve(ln)
 }
 
 // isAddrInUse checks if the error indicates the address is already in use

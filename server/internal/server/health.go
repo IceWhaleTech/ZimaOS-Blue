@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
 )
 
 type HealthStatus struct {
@@ -20,7 +22,8 @@ type HealthStatus struct {
 	GoVersion     string    `json:"go_version"`
 	NumCPU        int       `json:"num_cpu"`
 	Goroutines    int       `json:"goroutines"`
-	MemAlloc      uint64    `json:"mem_alloc_bytes"`
+	MemAllocBytes uint64    `json:"mem_alloc_bytes"`
+	MemRSSBytes   uint64    `json:"mem_rss_bytes"`
 }
 
 var (
@@ -55,8 +58,7 @@ func (s *Server) RegisterHealthRoutesOnGroup(g *echo.Group) {
 }
 
 func healthHandler(c echo.Context) error {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+	procMem := sysinfo.GetProcessMemInfo()
 
 	uptime := time.Since(startTime)
 	status := HealthStatus{
@@ -69,7 +71,8 @@ func healthHandler(c echo.Context) error {
 		GoVersion:     runtime.Version(),
 		NumCPU:        runtime.NumCPU(),
 		Goroutines:    runtime.NumGoroutine(),
-		MemAlloc:      m.Alloc,
+		MemAllocBytes: procMem.GoAlloc,
+		MemRSSBytes:   procMem.RSSB,
 	}
 
 	return c.JSON(http.StatusOK, status)

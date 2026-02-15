@@ -139,9 +139,9 @@ func DefaultCacheConfig() *CacheConfig {
 		Enabled:     true, // Enabled by default
 		StorageType: "multilevel",       // L1 memory + L2 disk
 		StoragePath: "./data/cache.db",  // SQLite disk cache path
-		MaxSize:     10000,
+		MaxSize:     1000,
 		MaxEntrySize: 1 << 20, // 1MB
-		MaxMemoryMB:  256,
+		MaxMemoryMB:  64,
 		TTL:          30 * time.Minute,
 		CacheableStatusCodes: []int{200},
 		CacheableMethods:     []string{"POST"}, // LLM APIs use POST
@@ -155,9 +155,9 @@ func DefaultCacheConfig() *CacheConfig {
 			EmbeddingModel:      "",
 		},
 		Warming: CacheWarmingConfig{
-			Enabled:     true,  // Warmup enabled by default
+			Enabled:     false, // Disabled by default for lower idle memory
 			Interval:    5 * time.Minute,
-			MaxRequests: 1000,  // Top-1000 entries
+			MaxRequests: 100,   // Top-100 entries (reduced from 1000)
 		},
 	}
 }
@@ -200,8 +200,8 @@ func DefaultProxyConfig() *ProxyConfig {
 			},
 		},
 		Connection: ConnectionConfig{
-			MaxIdleConns:          100,
-			MaxIdleConnsPerHost:   10,
+			MaxIdleConns:          10,
+			MaxIdleConnsPerHost:   5,
 			MaxConnsPerHost:       100,
 			IdleConnTimeout:       90 * time.Second,
 			KeepAlive:             true,

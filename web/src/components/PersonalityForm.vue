@@ -1,24 +1,24 @@
 <template>
   <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click="$emit('close')">
     <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ personality ? 'Edit Personality' : 'New Personality' }}</h3>
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ personality ? t('personality.editPersonality') : t('personality.newPersonality') }}</h3>
 
       <form @submit.prevent="handleSubmit" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-            <input v-model="form.name" type="text" required class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400" />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('personality.name') }}</label>
+            <input v-model="form.name" type="text" required :placeholder="t('personality.namePlaceholder')" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-            <input v-model="form.description" type="text" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400" />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('personality.label') }}</label>
+            <input v-model="form.description" type="text" :placeholder="t('personality.descriptionPlaceholder')" class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400" />
           </div>
         </div>
 
         <!-- System Prompt Markdown Editor -->
         <div>
           <div class="flex items-center justify-between mb-1">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">System Prompt (Markdown)</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('personality.systemPrompt') }} (Markdown)</label>
             <div class="flex gap-1">
               <button
                 v-for="m in (['edit', 'split', 'preview'] as const)"
@@ -32,7 +32,7 @@
                 ]"
                 @click="editorMode = m"
               >
-                {{ m === 'edit' ? 'Edit' : m === 'split' ? 'Split' : 'Preview' }}
+                {{ t(`personality.editor.${m}`) }}
               </button>
             </div>
           </div>
@@ -45,7 +45,7 @@
               required
               class="w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-4 py-3 font-mono text-sm focus:outline-none resize-none"
               :class="{ 'border-r border-gray-200 dark:border-gray-600': editorMode === 'split' }"
-              placeholder="# Personality&#10;&#10;Write your system prompt in **Markdown** format..."
+              :placeholder="t('personality.systemPromptPlaceholder')"
             ></textarea>
 
             <div
@@ -58,8 +58,8 @@
         </div>
 
         <div class="flex gap-2 pt-2">
-          <button type="button" @click="$emit('close')" class="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Cancel</button>
-          <button type="submit" class="flex-1 px-4 py-2 bg-gray-800 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-gray-400 transition-colors">Save</button>
+          <button type="button" @click="$emit('close')" class="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">{{ t('personality.cancel') }}</button>
+          <button type="submit" class="flex-1 px-4 py-2 bg-gray-800 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-gray-400 transition-colors">{{ t('personality.save') }}</button>
         </div>
       </form>
     </div>
@@ -68,9 +68,12 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { usePersonalityStore } from '@/stores/personality'
 import { renderMarkdown } from '@/utils/markdown'
 import type { Personality } from '@/api/personality'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   personality?: Personality | null
@@ -90,7 +93,7 @@ const form = ref({
 })
 
 const renderedPrompt = computed(() => {
-  if (!form.value.systemPrompt) return '<p class="text-gray-400 italic">No content yet</p>'
+  if (!form.value.systemPrompt) return `<p class="text-gray-400 italic">${t('personality.editor.noContent')}</p>`
   return renderMarkdown(form.value.systemPrompt)
 })
 
@@ -128,7 +131,7 @@ const handleSubmit = async () => {
     }
     emit('save')
   } catch (e) {
-    alert('Error: ' + (e instanceof Error ? e.message : 'Unknown error'))
+    alert(t('personality.error') + ': ' + (e instanceof Error ? e.message : t('personality.unknownError')))
   }
 }
 </script>

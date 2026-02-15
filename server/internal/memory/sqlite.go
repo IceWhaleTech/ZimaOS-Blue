@@ -64,8 +64,9 @@ type Message struct {
 
 // Store provides conversation storage using SQLite.
 type Store struct {
-	db *sql.DB
-	mu sync.Mutex // Mutex for write operations
+	db     *sql.DB
+	mu     sync.Mutex // Mutex for write operations
+	ownsDB bool       // true if this Store opened the DB and should close it
 }
 
 // NewStore creates a new memory store.
@@ -97,12 +98,28 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
 
-	store := &Store{db: db}
+	// Reduce page cache for lower idle memory (~512KB instead of default ~2MB)
+	db.Exec("PRAGMA cache_size=-500")
+
+	store := &Store{db: db, ownsDB: true}
 	if err := store.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
 
+	// Release unused memory after schema init
+	db.Exec("PRAGMA shrink_memory")
+
+	return store, nil
+}
+
+// NewStoreWithDB creates a memory store using an existing shared database connection.
+// The caller is responsible for managing the DB lifecycle (pragmas, connection pool, close).
+func NewStoreWithDB(db *sql.DB) (*Store, error) {
+	store := &Store{db: db, ownsDB: false}
+	if err := store.migrate(); err != nil {
+		return nil, fmt.Errorf("failed to migrate: %w", err)
+	}
 	return store, nil
 }
 
@@ -155,9 +172,12 @@ func (s *Store) migrate() error {
 	return nil
 }
 
-// Close closes the database connection.
+// Close closes the database connection if this Store owns it.
 func (s *Store) Close() error {
-	return s.db.Close()
+	if s.ownsDB {
+		return s.db.Close()
+	}
+	return nil
 }
 
 // CreateConversation creates a new conversation.

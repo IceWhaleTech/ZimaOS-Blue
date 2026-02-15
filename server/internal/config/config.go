@@ -10,6 +10,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 )
 
 type Config struct {
@@ -33,6 +34,7 @@ type Config struct {
 	Statistics    StatisticsConfig    `mapstructure:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
 	Proxy         *proxy.ProxyConfig  `mapstructure:"proxy"`           // v0.10.5.1: API Proxy
+	Pruner        *pruner.Config      `mapstructure:"pruner"`          // v0.10.27: Context Pruner
 	Update        UpdateConfig        `mapstructure:"update"`          // OTA Update
 	Heartbeat     HeartbeatConfig     `mapstructure:"heartbeat"`       // Heartbeat agent polling
 
@@ -159,6 +161,7 @@ type EncryptionConfig struct {
 	Enabled    bool   `mapstructure:"enabled"`
 	KeyPath    string `mapstructure:"key_path"`
 	Passphrase string `mapstructure:"passphrase"`
+	Algorithm  string `mapstructure:"algorithm"` // "aes-256-gcm"
 }
 
 // OIDCConfig holds OIDC provider configuration.
@@ -518,7 +521,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("performance.database.max_idle_conns", 5)
 	v.SetDefault("performance.database.conn_max_lifetime", "1h")
 	v.SetDefault("performance.database.wal_mode", true)
-	v.SetDefault("performance.database.cache_size", 10000)
+	v.SetDefault("performance.database.cache_size", 2000)
 	v.SetDefault("performance.database.page_size", 4096)
 	v.SetDefault("performance.database.checkpoint_interval", "5m")
 	v.SetDefault("performance.database.batch_size", 1000)
@@ -620,6 +623,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.encryption.enabled", false)
 	v.SetDefault("security.encryption.key_path", "./keys/encryption.key")
 	v.SetDefault("security.encryption.passphrase", "")
+	v.SetDefault("security.encryption.algorithm", "aes-256-gcm")
 
 	// LLM defaults
 	v.SetDefault("llm.health_check.enabled", true)
@@ -833,6 +837,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("proxy.quota_monitor.critical_threshold", 5.0)
 	v.SetDefault("proxy.quota_monitor.track_tokens", true)
 	v.SetDefault("proxy.quota_monitor.track_requests", true)
+
+	// Pruner defaults (context pruning for token savings, disabled by default)
+	v.SetDefault("pruner.enabled", false)
+	v.SetDefault("pruner.backend", "local")
+	v.SetDefault("pruner.threshold", 0.5)
+	v.SetDefault("pruner.min_lines", 200)
+	v.SetDefault("pruner.timeout_ms", 5000)
 
 	// Heartbeat defaults
 	v.SetDefault("heartbeat.enabled", false)

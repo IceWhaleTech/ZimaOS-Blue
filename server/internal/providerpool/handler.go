@@ -1041,6 +1041,34 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Collect all existing API key hashes from the registry
+	existingKeyHashes := make(map[string]bool)
+	if h.pool.Registry != nil {
+		for _, provider := range h.pool.Registry.List() {
+			for _, apiKey := range provider.APIKeys {
+				if apiKey.KeyHash != "" {
+					existingKeyHashes[apiKey.KeyHash] = true
+				}
+			}
+		}
+	}
+
+	// Mark configs whose API key already exists in the provider pool
+	for _, cfg := range configs {
+		if !cfg.CanImport {
+			continue
+		}
+		realKey, err := h.pool.IDEDiscovery.GetRealAPIKey(cfg.IDEType)
+		if err != nil || realKey == "" {
+			continue
+		}
+		keyHash := HashAPIKey(realKey)
+		if existingKeyHashes[keyHash] {
+			cfg.AlreadyImported = true
+			cfg.CanImport = false
+		}
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"configs": configs,
 		"total":   len(configs),
@@ -1138,7 +1166,7 @@ func (h *Handler) ImportExtensionConfig(c echo.Context) error {
 
 		key := &APIKey{
 			Key:     cfg.apiKey,
-			Label:   fmt.Sprintf("Imported from %s (Claude Code ext)", ideType),
+			Label:   fmt.Sprintf("ide_import:%s", ideType),
 			KeyHash: HashAPIKey(cfg.apiKey),
 			Enabled: true,
 		}

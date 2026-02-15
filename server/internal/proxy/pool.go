@@ -98,8 +98,8 @@ func (cp *ConnectionPool) Close() {
 // DefaultConnectionConfig returns default connection configuration
 func DefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   10,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   5,
 		MaxConnsPerHost:       100,
 		IdleConnTimeout:       90 * time.Second,
 		KeepAlive:             true,

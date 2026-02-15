@@ -5,7 +5,6 @@ import { useSettingsStore } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
 import { useChatStore } from '@/stores/chat'
-import { usePersonalityStore } from '@/stores/personality'
 import { userDataApi, type UserSettings, type ImportPreview } from '@/api/userdata'
 import { companionSettingsApi, type RetentionConfig, type StorageInfo } from '@/api/companion'
 
@@ -14,14 +13,13 @@ const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
 const chatStore = useChatStore()
-const personalityStore = usePersonalityStore()
 
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
 }>()
 
 // Tab state
-const activeTab = ref<'export' | 'import' | 'personality'>('export')
+const activeTab = ref<'export' | 'import'>('export')
 
 // Modal state
 const showRetentionModal = ref(false)
@@ -129,8 +127,6 @@ defineExpose({
 // Fetch retention settings on mount
 onMounted(async () => {
   await fetchRetentionSettings()
-  await personalityStore.fetchPersonalities()
-  await personalityStore.fetchActive()
 })
 
 async function fetchRetentionSettings() {
@@ -443,103 +439,6 @@ function cancelCleanup() {
   cleanupPassword.value = ''
   cleanupError.value = null
 }
-
-// Personality Management state
-const showPersonalityModal = ref(false)
-const personalityLoading = ref(false)
-const personalityError = ref<string | null>(null)
-const editingPersonality = ref<string | null>(null)
-const personalityForm = ref({
-  name: '',
-  description: '',
-  system_prompt: '',
-})
-
-function openPersonalityModal() {
-  showPersonalityModal.value = true
-  personalityForm.value = { name: '', description: '', system_prompt: '' }
-  editingPersonality.value = null
-  personalityError.value = null
-}
-
-function closePersonalityModal() {
-  showPersonalityModal.value = false
-  editingPersonality.value = null
-  personalityError.value = null
-}
-
-function editPersonality(id: string) {
-  const personality = personalityStore.personalities.find(p => p.id === id)
-  if (personality) {
-    editingPersonality.value = id
-    personalityForm.value = {
-      name: personality.name,
-      description: personality.description,
-      system_prompt: personality.system_prompt,
-    }
-    showPersonalityModal.value = true
-  }
-}
-
-async function savePersonality() {
-  if (!personalityForm.value.name.trim()) {
-    personalityError.value = t('personality.nameRequired')
-    return
-  }
-
-  personalityLoading.value = true
-  personalityError.value = null
-
-  try {
-    if (editingPersonality.value) {
-      await personalityStore.updatePersonality(
-        editingPersonality.value,
-        personalityForm.value.name,
-        personalityForm.value.description,
-        personalityForm.value.system_prompt
-      )
-      emit('status-change', t('personality.updateSuccess'))
-    } else {
-      await personalityStore.createPersonality(
-        personalityForm.value.name,
-        personalityForm.value.description,
-        personalityForm.value.system_prompt
-      )
-      emit('status-change', t('personality.createSuccess'))
-    }
-    closePersonalityModal()
-  } catch (e) {
-    personalityError.value = e instanceof Error ? e.message : t('personality.saveFailed')
-  } finally {
-    personalityLoading.value = false
-  }
-}
-
-async function deletePersonality(id: string) {
-  if (!confirm(t('personality.deleteConfirm'))) return
-
-  personalityLoading.value = true
-  try {
-    await personalityStore.deletePersonality(id)
-    emit('status-change', t('personality.deleteSuccess'))
-  } catch (e) {
-    personalityError.value = e instanceof Error ? e.message : t('personality.deleteFailed')
-  } finally {
-    personalityLoading.value = false
-  }
-}
-
-async function activatePersonality(id: string) {
-  personalityLoading.value = true
-  try {
-    await personalityStore.activatePersonality(id)
-    emit('status-change', t('personality.activateSuccess'))
-  } catch (e) {
-    personalityError.value = e instanceof Error ? e.message : t('personality.activateFailed')
-  } finally {
-    personalityLoading.value = false
-  }
-}
 </script>
 
 <template>
@@ -573,20 +472,6 @@ async function activatePersonality(id: string) {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         {{ t('userdata.import') }}
-      </button>
-      <button
-        :class="[
-          'flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center justify-center gap-2',
-          activeTab === 'personality'
-            ? 'border-gray-900 dark:border-gray-700 text-gray-900 dark:text-gray-300'
-            : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
-        ]"
-        @click="activeTab = 'personality'"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h-2m2 0h2m-2 0v2m0-2v-2m-2 2h-2m2 0h2m-2 0v2m0-2v-2M9 3H5a2 2 0 00-2 2v4a2 2 0 002 2h4V5a2 2 0 00-2-2zm0 0h4a2 2 0 012 2v4a2 2 0 01-2 2h-4v-6a2 2 0 012-2z" />
-        </svg>
-        {{ t('personality.title') }}
       </button>
     </div>
 
@@ -773,78 +658,6 @@ async function activatePersonality(id: string) {
       </div>
     </div>
 
-    <!-- Personality Tab Content -->
-    <div v-show="activeTab === 'personality'" class="glass-card p-4">
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{{ t('personality.description') }}</p>
-
-      <!-- Error -->
-      <div v-if="personalityError" class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm mb-4">
-        {{ personalityError }}
-      </div>
-
-      <!-- Add Button -->
-      <button
-        class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors mb-4 flex items-center justify-center gap-2"
-        @click="openPersonalityModal"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        {{ t('personality.create') }}
-      </button>
-
-      <!-- Personalities List -->
-      <div class="space-y-2">
-        <div v-if="personalityStore.personalities.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
-          {{ t('personality.noPersonalities') }}
-        </div>
-        <div
-          v-for="personality in personalityStore.personalities"
-          :key="personality.id"
-          :class="[
-            'p-4 rounded-lg border transition-colors',
-            personality.is_active
-              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-              : 'bg-gray-50 dark:bg-slate-700/50 border-gray-200 dark:border-slate-600'
-          ]"
-        >
-          <div class="flex items-start justify-between mb-2">
-            <div class="flex-1">
-              <h4 class="font-medium text-gray-900 dark:text-white">{{ personality.name }}</h4>
-              <p class="text-sm text-gray-600 dark:text-gray-400">{{ personality.description }}</p>
-            </div>
-            <span v-if="personality.is_active" class="px-2 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-medium rounded">
-              {{ t('personality.active') }}
-            </span>
-          </div>
-          <div class="flex gap-2">
-            <button
-              v-if="!personality.is_active"
-              :disabled="personalityLoading"
-              class="flex-1 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50"
-              @click="activatePersonality(personality.id)"
-            >
-              {{ t('personality.activate') }}
-            </button>
-            <button
-              :disabled="personalityLoading"
-              class="flex-1 px-3 py-1 text-sm bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded transition-colors disabled:opacity-50"
-              @click="editPersonality(personality.id)"
-            >
-              {{ t('common.edit') }}
-            </button>
-            <button
-              :disabled="personalityLoading"
-              class="flex-1 px-3 py-1 text-sm bg-red-100 dark:bg-red-900/20 hover:bg-red-200 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded transition-colors disabled:opacity-50"
-              @click="deletePersonality(personality.id)"
-            >
-              {{ t('common.delete') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Quick Actions Bar -->
     <div class="flex gap-2">
       <button
@@ -866,72 +679,6 @@ async function activatePersonality(id: string) {
         {{ t('userdata.cleanup.title') }}
       </button>
     </div>
-
-    <!-- Personality Modal -->
-    <Teleport to="body">
-      <div v-if="showPersonalityModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/50" @click="closePersonalityModal"></div>
-        <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-          <div class="sticky top-0 bg-white dark:bg-slate-800 px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-              {{ editingPersonality ? t('personality.edit') : t('personality.create') }}
-            </h3>
-            <button class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="closePersonalityModal">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div class="p-4 space-y-4">
-            <div>
-              <label class="block text-sm text-gray-700 dark:text-slate-300 mb-1">{{ t('personality.name') }}</label>
-              <input
-                v-model="personalityForm.name"
-                type="text"
-                :placeholder="t('personality.namePlaceholder')"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-              />
-            </div>
-            <div>
-              <label class="block text-sm text-gray-700 dark:text-slate-300 mb-1">{{ t('personality.description') }}</label>
-              <textarea
-                v-model="personalityForm.description"
-                :placeholder="t('personality.descriptionPlaceholder')"
-                rows="3"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-              ></textarea>
-            </div>
-            <div>
-              <label class="block text-sm text-gray-700 dark:text-slate-300 mb-1">{{ t('personality.systemPrompt') }}</label>
-              <textarea
-                v-model="personalityForm.system_prompt"
-                :placeholder="t('personality.systemPromptPlaceholder')"
-                rows="4"
-                class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-              ></textarea>
-            </div>
-            <div v-if="personalityError" class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm">
-              {{ personalityError }}
-            </div>
-            <div class="flex gap-2">
-              <button
-                class="flex-1 px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors"
-                @click="closePersonalityModal"
-              >
-                {{ t('common.cancel') }}
-              </button>
-              <button
-                :disabled="personalityLoading || !personalityForm.name.trim()"
-                class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-700 hover:bg-gray-700 dark:bg-gray-700-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                @click="savePersonality"
-              >
-                {{ personalityLoading ? t('common.saving') : t('common.save') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
 
     <!-- Data Retention Modal -->
     <Teleport to="body">

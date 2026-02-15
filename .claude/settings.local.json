@@ -124,7 +124,11 @@
       "WebFetch(domain:betterstack.com)",
       "WebFetch(domain:docs.qoder.com)",
       "Bash(git rm:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(nm:*)",
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:arxiv.org)",
+      "Bash(go tool pprof:*)"
     ]
   }
 }

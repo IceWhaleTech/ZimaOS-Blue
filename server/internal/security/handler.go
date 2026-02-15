@@ -1784,7 +1784,7 @@ func (h *Handler) UploadTLSCert(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, TLSConfigResponse{
 		Enabled:  true,
-		Port:     8443,
+		Port:     tlsManager.GetHTTPSPort(),
 		HasCert:  true,
 		CertInfo: certInfo,
 	})
@@ -1821,7 +1821,7 @@ func (h *Handler) GenerateSelfSignedCert(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, TLSConfigResponse{
 		Enabled:    true,
-		Port:       8443,
+		Port:       tlsManager.GetHTTPSPort(),
 		HasCert:    true,
 		CertInfo:   certInfo,
 		SelfSigned: true,

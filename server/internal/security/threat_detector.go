@@ -78,7 +78,7 @@ type threatPattern struct {
 // NewThreatDetector creates a new threat detector.
 func NewThreatDetector() *ThreatDetector {
 	td := &ThreatDetector{
-		events:  make([]ThreatEvent, 0, 1000),
+		events:  make([]ThreatEvent, 0, 64),
 		maxSize: 1000,
 	}
 	td.initPatterns()

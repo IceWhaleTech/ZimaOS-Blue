@@ -70,6 +70,7 @@ type CreateKeyRequest struct {
 type APIKeyService struct {
 	db        *sql.DB
 	encryptor *Encryptor
+	ownsDB    bool // true if this service opened the DB and should close it
 }
 
 // APIKeyServiceOption is a functional option for APIKeyService.
@@ -82,14 +83,14 @@ func WithEncryption(enc *Encryptor) APIKeyServiceOption {
 	}
 }
 
-// NewAPIKeyService creates a new API key service
+// NewAPIKeyService creates a new API key service with its own SQLite database.
 func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyService, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	svc := &APIKeyService{db: db}
+	svc := &APIKeyService{db: db, ownsDB: true}
 
 	// Apply options
 	for _, opt := range opts {
@@ -104,7 +105,23 @@ func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyServic
 	return svc, nil
 }
 
-// initDB initializes the database schema
+// NewAPIKeyServiceWithDB creates an API key service using an existing shared database connection.
+// The caller is responsible for managing the DB lifecycle (pragmas, connection pool, close).
+func NewAPIKeyServiceWithDB(db *sql.DB, opts ...APIKeyServiceOption) (*APIKeyService, error) {
+	svc := &APIKeyService{db: db, ownsDB: false}
+
+	for _, opt := range opts {
+		opt(svc)
+	}
+
+	if err := svc.initSchema(); err != nil {
+		return nil, err
+	}
+
+	return svc, nil
+}
+
+// initDB initializes pragmas and schema for a standalone database.
 func (s *APIKeyService) initDB() error {
 	// Enable WAL mode for better concurrency
 	_, err := s.db.Exec(`PRAGMA journal_mode=WAL`)
@@ -112,7 +129,22 @@ func (s *APIKeyService) initDB() error {
 		return err
 	}
 
-	_, err = s.db.Exec(`
+	// Reduce page cache for lower idle memory (~512KB)
+	s.db.Exec(`PRAGMA cache_size=-500`)
+
+	if err := s.initSchema(); err != nil {
+		return err
+	}
+
+	// Release unused memory after schema init
+	s.db.Exec(`PRAGMA shrink_memory`)
+
+	return nil
+}
+
+// initSchema creates tables and runs migrations. Safe to call on a shared DB.
+func (s *APIKeyService) initSchema() error {
+	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS api_keys (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
@@ -147,9 +179,12 @@ func (s *APIKeyService) initDB() error {
 	return nil
 }
 
-// Close closes the database connection
+// Close closes the database connection if this service owns it.
 func (s *APIKeyService) Close() error {
-	return s.db.Close()
+	if s.ownsDB {
+		return s.db.Close()
+	}
+	return nil
 }
 
 // CreateKey creates a new API key

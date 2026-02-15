@@ -15,8 +15,8 @@ func TestCanonicalizer_CanonicalKey_SameRequest(t *testing.T) {
 	if key1 != key2 {
 		t.Errorf("same request should produce same key: %s != %s", key1, key2)
 	}
-	if len(key1) != 64 { // SHA256 hex = 64 chars
-		t.Errorf("expected 64 char hex key, got %d", len(key1))
+	if len(key1) != 16 { // FNV-1a hex = 16 chars
+		t.Errorf("expected 16 char hex key, got %d", len(key1))
 	}
 }
 
@@ -88,8 +88,8 @@ func TestCanonicalizer_InvalidJSON(t *testing.T) {
 	c := NewCanonicalizer()
 
 	key := c.CanonicalKey([]byte("not json"))
-	if len(key) != 64 {
-		t.Error("invalid JSON should still produce a valid SHA256 key")
+	if len(key) != 16 {
+		t.Error("invalid JSON should still produce a valid FNV-1a key")
 	}
 }
 
@@ -219,7 +219,7 @@ func TestCanonicalizer_NoMessages(t *testing.T) {
 	c := NewCanonicalizer()
 	body := `{"model":"claude-3-opus","temperature":0.5}`
 	key := c.CanonicalKey([]byte(body))
-	if len(key) != 64 {
+	if len(key) != 16 {
 		t.Error("request without messages should still produce valid key")
 	}
 }

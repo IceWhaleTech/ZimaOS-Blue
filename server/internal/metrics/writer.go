@@ -51,7 +51,7 @@ type WriterConfig struct {
 func DefaultWriterConfig() *WriterConfig {
 	return &WriterConfig{
 		CollectionInterval:    10 * time.Second,
-		MaxSamples:            1000,
+		MaxSamples:            50,
 		EnableSystemMetrics:   true,
 		SystemMetricsInterval: 30 * time.Second,
 		PersistenceInterval:   60 * time.Second, // Save every minute

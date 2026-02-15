@@ -159,6 +159,22 @@ const (
 	TagErrorType = "error_type"
 )
 
+// Helper functions
+
+func boolToStatus(b bool) string {
+	if b {
+		return "success"
+	}
+	return "error"
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // Field keys for metrics.
 const (
 	FieldCount           = "count"

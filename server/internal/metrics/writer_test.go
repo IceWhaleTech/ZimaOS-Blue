@@ -188,8 +188,8 @@ func TestDefaultWriterConfig(t *testing.T) {
 		t.Errorf("Expected CollectionInterval 10s, got %v", config.CollectionInterval)
 	}
 
-	if config.MaxSamples != 1000 {
-		t.Errorf("Expected MaxSamples 1000, got %d", config.MaxSamples)
+	if config.MaxSamples != 50 {
+		t.Errorf("Expected MaxSamples 50, got %d", config.MaxSamples)
 	}
 
 	if !config.EnableSystemMetrics {

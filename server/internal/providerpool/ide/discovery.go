@@ -766,8 +766,9 @@ type ImportConfig struct {
 	Provider   string   `json:"provider,omitempty"` // "anthropic", "openai", etc.
 	ConfigPath string   `json:"config_path,omitempty"`
 	EnvVar     string   `json:"env_var,omitempty"` // Which env var the key came from
-	Source     string   `json:"source"`            // "config", "env", "cc-switch", "extension"
-	CanImport  bool     `json:"can_import"`        // Whether this config can be imported
+	Source          string   `json:"source"`            // "config", "env", "cc-switch", "extension"
+	CanImport       bool     `json:"can_import"`        // Whether this config can be imported
+	AlreadyImported bool     `json:"already_imported"`  // Whether this key already exists in provider pool
 
 	// Claude Code extension config (from IDE settings.json claudeCode.environmentVariables)
 	ExtensionConfig *ClaudeCodeExtConfig `json:"extension_config,omitempty"`

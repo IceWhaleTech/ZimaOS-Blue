@@ -12,6 +12,7 @@ import (
 // SessionMemoryHook saves session summaries to daily memory when sessions end.
 type SessionMemoryHook struct {
 	layeredMemory *LayeredMemoryService
+	v2Bridge      *V2Bridge
 	minMessages   int // Minimum messages to trigger save (default: 3)
 }
 
@@ -26,6 +27,11 @@ func NewSessionMemoryHook(layeredMemory *LayeredMemoryService) *SessionMemoryHoo
 // SetMinMessages sets the minimum message count to trigger memory save.
 func (h *SessionMemoryHook) SetMinMessages(min int) {
 	h.minMessages = min
+}
+
+// SetV2Bridge sets the v2 memory bridge for mirroring session entries.
+func (h *SessionMemoryHook) SetV2Bridge(bridge *V2Bridge) {
+	h.v2Bridge = bridge
 }
 
 // OnSessionEnd implements SessionHook interface.
@@ -52,6 +58,11 @@ func (h *SessionMemoryHook) OnSessionEnd(ctx context.Context, sess *session.Sess
 	// Save to daily log
 	if err := h.layeredMemory.AppendToDaily(ctx, content, tags); err != nil {
 		return fmt.Errorf("failed to save session to daily memory: %w", err)
+	}
+
+	// Mirror to v2 memory service
+	if h.v2Bridge != nil {
+		h.v2Bridge.OnSessionEnd(ctx, content, tags)
 	}
 
 	log.Printf("[INFO] saved session %s to daily memory (reason: %s, messages: %d)",

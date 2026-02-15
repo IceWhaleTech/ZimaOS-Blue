@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -13,6 +14,7 @@ type SystemMetrics struct {
 	Timestamp       time.Time `json:"timestamp"`
 	CPUPercent      float64   `json:"cpu_percent"`
 	MemoryUsedBytes uint64    `json:"memory_used_bytes"`
+	MemoryRSSBytes  uint64    `json:"memory_rss_bytes"`
 	MemoryTotalBytes uint64   `json:"memory_total_bytes"`
 	Goroutines      int       `json:"goroutines"`
 	GCPauseNs       uint64    `json:"gc_pause_ns"`
@@ -77,11 +79,13 @@ func (c *Collector) Stop() {
 func (c *Collector) collect() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
+	procMem := sysinfo.GetProcessMemInfo()
 
 	metrics := SystemMetrics{
 		Timestamp:        timeutil.NowTime(),
 		CPUPercent:       c.estimateCPUPercent(),
 		MemoryUsedBytes:  m.Alloc,
+		MemoryRSSBytes:   procMem.RSSB,
 		MemoryTotalBytes: m.Sys,
 		Goroutines:       runtime.NumGoroutine(),
 		GCPauseNs:        m.PauseTotalNs,

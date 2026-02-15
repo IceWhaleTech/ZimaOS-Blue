@@ -2,25 +2,24 @@ package proxy
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
+
+	ecache2 "github.com/orca-zhang/ecache2"
 )
 
 // CCCache is the main cache implementation for cc-cache.
-// Supports L1 (memory) + L2 (disk) two-level caching with canonicalization and singleflight.
+// L1 uses ecache2 (LRU-2, sharded, lock-free reads) for O(1) get/set/evict.
+// L2 uses SQLite disk cache for persistence across restarts.
 type CCCache struct {
 	config        *CacheConfig
-	entries       sync.Map // map[string]*CCCacheEntry — L1 memory
-	size          int64    // Current number of L1 entries
+	l1            *ecache2.Cache[string] // L1 memory (LRU-2, handles eviction + TTL)
 	canonicalizer *Canonicalizer
 	singleflight  *CacheSingleflight
 	disk          *DiskCache // L2 disk cache (nil if disabled)
@@ -39,7 +38,7 @@ type CCCache struct {
 	// Persistence
 	statsStore StatsStore
 
-	// Cleanup
+	// Cleanup (disk only — L1 TTL handled by ecache2)
 	cleanupTicker *time.Ticker
 	stopCleanup   chan struct{}
 }
@@ -70,7 +69,7 @@ type CCCacheEntry struct {
 	CreatedAt   time.Time         `json:"created_at"`
 	ExpiresAt   time.Time         `json:"expires_at"`
 	HitCount    int64             `json:"hit_count"`
-	ContentHash string            `json:"content_hash"` // For deduplication
+	ContentHash string            `json:"content_hash"`
 }
 
 // NewCCCache creates a new cc-cache instance with L1 memory + optional L2 disk.
@@ -79,14 +78,24 @@ func NewCCCache(config *CacheConfig) *CCCache {
 		config = DefaultCacheConfig()
 	}
 
+	bucketCount := 16
+	bucketSize := config.MaxSize / bucketCount
+	if bucketSize < 10 {
+		bucketSize = 10
+	}
+	ttl := config.TTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+
 	cache := &CCCache{
 		config:        config,
+		l1:            ecache2.NewLRUCache[string](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4)),
 		canonicalizer: NewCanonicalizer(),
 		singleflight:  NewCacheSingleflight(),
 		stopCleanup:   make(chan struct{}),
 	}
 
-	// Initialize L2 disk cache if configured
 	if config.StorageType == "disk" || config.StorageType == "multilevel" {
 		path := config.StoragePath
 		if path == "" {
@@ -94,13 +103,9 @@ func NewCCCache(config *CacheConfig) *CCCache {
 		}
 		if dc, err := NewDiskCache(path); err == nil {
 			cache.disk = dc
-			fmt.Printf("[CCCache] L2 disk cache initialized at %s\n", path)
-		} else {
-			fmt.Printf("[CCCache] L2 disk cache init failed: %v (L1-only mode)\n", err)
 		}
 	}
 
-	// Start cleanup goroutine
 	if config.Enabled {
 		cache.cleanupTicker = time.NewTicker(time.Minute)
 		go cache.cleanupLoop()
@@ -112,7 +117,6 @@ func NewCCCache(config *CacheConfig) *CCCache {
 // SetStatsStore sets the stats persistence store and loads existing stats
 func (c *CCCache) SetStatsStore(store StatsStore) {
 	c.statsStore = store
-	// Load existing stats
 	if stats, err := store.LoadCacheStats(); err == nil && stats != nil {
 		atomic.StoreInt64(&c.hits, stats.Hits)
 		atomic.StoreInt64(&c.misses, stats.Misses)
@@ -126,21 +130,19 @@ func (c *CCCache) SaveStats() error {
 	if c.statsStore == nil {
 		return nil
 	}
-	stats := &CacheStats{
+	return c.statsStore.SaveCacheStats(&CacheStats{
 		Hits:      atomic.LoadInt64(&c.hits),
 		Misses:    atomic.LoadInt64(&c.misses),
 		Evictions: atomic.LoadInt64(&c.evictions),
 		Bypasses:  atomic.LoadInt64(&c.bypasses),
 		UpdatedAt: time.Now(),
-	}
-	return c.statsStore.SaveCacheStats(stats)
+	})
 }
 
-// cleanupLoop periodically removes expired entries and saves stats
+// cleanupLoop periodically cleans L2 disk and saves stats.
 func (c *CCCache) cleanupLoop() {
-	statsTicker := time.NewTicker(5 * time.Minute) // Save stats every 5 minutes
+	statsTicker := time.NewTicker(5 * time.Minute)
 	defer statsTicker.Stop()
-
 	for {
 		select {
 		case <-c.cleanupTicker.C:
@@ -149,25 +151,15 @@ func (c *CCCache) cleanupLoop() {
 			c.SaveStats()
 		case <-c.stopCleanup:
 			c.cleanupTicker.Stop()
-			c.SaveStats() // Save stats on shutdown
+			c.SaveStats()
 			return
 		}
 	}
 }
 
-// cleanup removes expired entries from L1 and L2
+// cleanup removes expired entries from L2 disk.
+// L1 cleanup is not needed — ecache2 handles TTL and eviction internally.
 func (c *CCCache) cleanup() {
-	now := time.Now()
-	c.entries.Range(func(key, value interface{}) bool {
-		entry := value.(*CCCacheEntry)
-		if now.After(entry.ExpiresAt) {
-			c.entries.Delete(key)
-			atomic.AddInt64(&c.size, -1)
-			atomic.AddInt64(&c.evictions, 1)
-		}
-		return true
-	})
-	// Cleanup L2 disk
 	if c.disk != nil {
 		c.disk.Cleanup()
 	}
@@ -183,33 +175,25 @@ func (c *CCCache) Stop() {
 	}
 }
 
-// GenerateKey generates a cache key from request using FNV hash (faster than SHA256)
+// GenerateKey generates a cache key from request using FNV hash.
 func (c *CCCache) GenerateKey(r *http.Request, body []byte) string {
-	// Use FNV-1a hash for better performance
 	const (
 		fnvOffset uint64 = 14695981039346656037
 		fnvPrime  uint64 = 1099511628211
 	)
 	hash := fnvOffset
-
-	// Method
 	for _, b := range r.Method {
 		hash ^= uint64(b)
 		hash *= fnvPrime
 	}
-
-	// Path
 	for _, b := range r.URL.Path {
 		hash ^= uint64(b)
 		hash *= fnvPrime
 	}
-
-	// Query params (sorted, excluding ignored)
 	if r.URL.RawQuery != "" {
 		params := r.URL.Query()
 		keys := make([]string, 0, len(params))
 		for k := range params {
-			// Skip ignored params
 			skip := false
 			for _, ignored := range c.config.KeyIgnoreParams {
 				if k == ignored {
@@ -235,8 +219,6 @@ func (c *CCCache) GenerateKey(r *http.Request, body []byte) string {
 			}
 		}
 	}
-
-	// Include specified headers
 	for _, header := range c.config.KeyIncludeHeaders {
 		if v := r.Header.Get(header); v != "" {
 			for _, b := range header {
@@ -249,15 +231,12 @@ func (c *CCCache) GenerateKey(r *http.Request, body []byte) string {
 			}
 		}
 	}
-
-	// Body hash (for POST requests)
 	if len(body) > 0 {
 		for _, b := range body {
 			hash ^= uint64(b)
 			hash *= fnvPrime
 		}
 	}
-
 	return fmt.Sprintf("%016x", hash)
 }
 
@@ -266,8 +245,6 @@ func (c *CCCache) ShouldCache(r *http.Request) bool {
 	if !c.config.Enabled {
 		return false
 	}
-
-	// Check method
 	methodAllowed := false
 	for _, m := range c.config.CacheableMethods {
 		if r.Method == m {
@@ -278,19 +255,11 @@ func (c *CCCache) ShouldCache(r *http.Request) bool {
 	if !methodAllowed {
 		return false
 	}
-
-	// Check for streaming request
 	if c.config.SkipStreaming {
-		// Check Accept header for streaming
-		accept := r.Header.Get("Accept")
-		if strings.Contains(accept, "text/event-stream") {
+		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 			return false
 		}
-
-		// Check body for stream: true
-		// This is done in the middleware after reading body
 	}
-
 	return true
 }
 
@@ -299,17 +268,24 @@ func (c *CCCache) IsStreamingRequest(body []byte) bool {
 	if !c.config.SkipStreaming {
 		return false
 	}
-
-	// Parse JSON body to check for stream field
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return false
 	}
-
 	if stream, ok := req["stream"].(bool); ok && stream {
 		return true
 	}
+	return false
+}
 
+// IsStreamingRequestFromParsed checks streaming flag from pre-parsed request.
+func (c *CCCache) IsStreamingRequestFromParsed(reqMap map[string]interface{}) bool {
+	if !c.config.SkipStreaming {
+		return false
+	}
+	if stream, ok := reqMap["stream"].(bool); ok && stream {
+		return true
+	}
 	return false
 }
 
@@ -318,46 +294,32 @@ func (c *CCCache) Get(key string) (*CCCacheEntry, bool) {
 	if !c.config.Enabled {
 		return nil, false
 	}
-
-	// L1 memory lookup
-	value, ok := c.entries.Load(key)
-	if ok {
-		entry := value.(*CCCacheEntry)
-		if time.Now().After(entry.ExpiresAt) {
-			c.entries.Delete(key)
-			atomic.AddInt64(&c.size, -1)
-			atomic.AddInt64(&c.evictions, 1)
-		} else {
-			atomic.AddInt64(&c.hits, 1)
-			atomic.AddInt64(&c.l1Hits, 1)
-			atomic.AddInt64(&entry.HitCount, 1)
-			return entry, true
-		}
+	// L1 memory lookup (ecache2 handles TTL internally)
+	if val, ok := c.l1.Get(key); ok {
+		entry := val.(*CCCacheEntry)
+		atomic.AddInt64(&c.hits, 1)
+		atomic.AddInt64(&c.l1Hits, 1)
+		atomic.AddInt64(&entry.HitCount, 1)
+		return entry, true
 	}
-
 	// L2 disk lookup
 	if c.disk != nil {
 		if entry, found := c.disk.Get(key); found {
 			atomic.AddInt64(&c.hits, 1)
 			atomic.AddInt64(&c.diskHits, 1)
-			// Promote to L1
-			c.entries.Store(key, entry)
-			atomic.AddInt64(&c.size, 1)
+			c.l1.Put(key, entry) // Promote to L1
 			return entry, true
 		}
 	}
-
 	atomic.AddInt64(&c.misses, 1)
 	return nil, false
 }
 
-// Set stores a response in L1 memory cache and L2 disk cache (write-through).
+// Set stores a response in L1 memory and L2 disk (write-through).
 func (c *CCCache) Set(key string, body []byte, statusCode int, headers http.Header, provider, model string) {
 	if !c.config.Enabled {
 		return
 	}
-
-	// Check if status code is cacheable
 	cacheable := false
 	for _, code := range c.config.CacheableStatusCodes {
 		if code == statusCode {
@@ -368,29 +330,15 @@ func (c *CCCache) Set(key string, body []byte, statusCode int, headers http.Head
 	if !cacheable {
 		return
 	}
-
-	// Check entry size
 	if len(body) > c.config.MaxEntrySize {
 		return
 	}
-
-	// Check max size and evict if needed
-	currentSize := atomic.LoadInt64(&c.size)
-	if int(currentSize) >= c.config.MaxSize {
-		c.evictOldest()
-	}
-
-	// Convert headers
 	headerMap := make(map[string]string)
 	for k, v := range headers {
 		if len(v) > 0 {
 			headerMap[k] = v[0]
 		}
 	}
-
-	// Calculate content hash for deduplication
-	contentHash := sha256.Sum256(body)
-
 	now := time.Now()
 	entry := &CCCacheEntry{
 		Key:         key,
@@ -401,46 +349,36 @@ func (c *CCCache) Set(key string, body []byte, statusCode int, headers http.Head
 		Model:       model,
 		CreatedAt:   now,
 		ExpiresAt:   now.Add(c.config.TTL),
-		ContentHash: hex.EncodeToString(contentHash[:16]),
+		ContentHash: fnvHashBytes(body),
 	}
-
-	c.entries.Store(key, entry)
-	atomic.AddInt64(&c.size, 1)
-
-	// Write-through to L2 disk
+	c.l1.Put(key, entry)
 	if c.disk != nil {
 		go c.disk.Set(entry)
 	}
 }
 
-// evictOldest removes the oldest entry
-func (c *CCCache) evictOldest() {
-	var oldestKey string
-	var oldestTime time.Time
-
-	c.entries.Range(func(key, value interface{}) bool {
-		entry := value.(*CCCacheEntry)
-		if oldestKey == "" || entry.CreatedAt.Before(oldestTime) {
-			oldestKey = key.(string)
-			oldestTime = entry.CreatedAt
-		}
-		return true
-	})
-
-	if oldestKey != "" {
-		c.entries.Delete(oldestKey)
-		atomic.AddInt64(&c.size, -1)
-		atomic.AddInt64(&c.evictions, 1)
+// fnvHashBytes computes FNV-1a hash of bytes, returning a hex string.
+func fnvHashBytes(data []byte) string {
+	hash := fnvOffset64
+	for _, b := range data {
+		hash ^= uint64(b)
+		hash *= fnvPrime64
 	}
+	return fmt.Sprintf("%016x", hash)
 }
 
-// Clear clears all cache entries (L1 + L2)
+// Clear clears all cache entries. Recreates L1 ecache2 instance.
 func (c *CCCache) Clear() {
-	c.entries.Range(func(key, _ interface{}) bool {
-		c.entries.Delete(key)
-		return true
-	})
-	atomic.StoreInt64(&c.size, 0)
+	bucketCount := 16
+	bucketSize := c.config.MaxSize / bucketCount
+	if bucketSize < 10 {
+		bucketSize = 10
+	}
+	ttl := c.config.TTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	c.l1 = ecache2.NewLRUCache[string](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4))
 	if c.disk != nil {
 		c.disk.Clear()
 	}
@@ -464,27 +402,24 @@ func (c *CCCache) Stats() map[string]interface{} {
 	}
 
 	stats := map[string]interface{}{
-		"enabled":        c.config.Enabled,
-		"storage_type":   c.config.StorageType,
-		"l1_entries":     atomic.LoadInt64(&c.size),
-		"max_entries":    c.config.MaxSize,
-		"hits":           hits,
-		"misses":         misses,
-		"evictions":      atomic.LoadInt64(&c.evictions),
-		"bypasses":       atomic.LoadInt64(&c.bypasses),
-		"hit_rate":       hitRate,
-		"l1_hits":        l1Hits,
-		"l1_hit_rate":    l1HitRate,
-		"disk_hits":      diskHits,
-		"disk_hit_rate":  diskHitRate,
+		"enabled":          c.config.Enabled,
+		"storage_type":     c.config.StorageType,
+		"max_entries":      c.config.MaxSize,
+		"hits":             hits,
+		"misses":           misses,
+		"evictions":        atomic.LoadInt64(&c.evictions),
+		"bypasses":         atomic.LoadInt64(&c.bypasses),
+		"hit_rate":         hitRate,
+		"l1_hits":          l1Hits,
+		"l1_hit_rate":      l1HitRate,
+		"disk_hits":        diskHits,
+		"disk_hit_rate":    diskHitRate,
 		"latency_saved_ms": atomic.LoadInt64(&c.latencySaved),
-		"ttl_seconds":    c.config.TTL.Seconds(),
+		"ttl_seconds":      c.config.TTL.Seconds(),
 	}
-
 	if c.disk != nil {
 		stats["disk_entries"] = c.disk.Count()
 	}
-
 	return stats
 }
 
@@ -499,14 +434,20 @@ func (c *CCCache) RecordLatencySaved(ms int64) {
 }
 
 // GenerateCanonicalKey generates a semantic cache key using the Canonicalizer.
-// This produces stable keys for semantically identical requests.
 func (c *CCCache) GenerateCanonicalKey(body []byte) string {
 	if c.canonicalizer != nil {
 		return c.canonicalizer.CanonicalKey(body)
 	}
-	// Fallback to raw body hash
-	sum := sha256.Sum256(body)
-	return hex.EncodeToString(sum[:])
+	return fnvHashBytes(body)
+}
+
+// GenerateCanonicalKeyFromParsed generates a semantic cache key from pre-parsed request.
+func (c *CCCache) GenerateCanonicalKeyFromParsed(reqMap map[string]interface{}) string {
+	if c.canonicalizer != nil {
+		return c.canonicalizer.CanonicalKeyFromParsed(reqMap)
+	}
+	data, _ := json.Marshal(reqMap)
+	return fnvHashBytes(data)
 }
 
 // GetSingleflight returns the singleflight instance.
@@ -527,13 +468,11 @@ func (c *CCCache) Warmup(topN int) int {
 	entries := c.disk.TopN(topN)
 	loaded := 0
 	for _, entry := range entries {
-		if _, exists := c.entries.Load(entry.Key); !exists {
-			c.entries.Store(entry.Key, entry)
-			atomic.AddInt64(&c.size, 1)
+		if _, exists := c.l1.Get(entry.Key); !exists {
+			c.l1.Put(entry.Key, entry)
 			loaded++
 		}
 	}
-	fmt.Printf("[CCCache] Warmup: loaded %d entries from L2 disk\n", loaded)
 	return loaded
 }
 
@@ -550,13 +489,11 @@ func NewCacheMiddleware(cache *CCCache) *CacheMiddleware {
 // Wrap wraps an http.Handler with caching
 func (cm *CacheMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if caching is enabled and request is cacheable
 		if !cm.cache.ShouldCache(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Read and buffer the request body
 		var bodyBytes []byte
 		if r.Body != nil {
 			bodyBytes, _ = io.ReadAll(r.Body)
@@ -564,21 +501,16 @@ func (cm *CacheMiddleware) Wrap(next http.Handler) http.Handler {
 			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 
-		// Check if this is a streaming request
 		if cm.cache.IsStreamingRequest(bodyBytes) {
 			cm.cache.RecordBypass()
-			// Restore body for next handler
 			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Generate cache key
 		cacheKey := cm.cache.GenerateKey(r, bodyBytes)
 
-		// Try to get from cache
 		if entry, ok := cm.cache.Get(cacheKey); ok {
-			// Cache hit - return cached response
 			for k, v := range entry.Headers {
 				w.Header().Set(k, v)
 			}
@@ -589,22 +521,15 @@ func (cm *CacheMiddleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
-		// Cache miss - capture response
 		recorder := &responseRecorder{
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
 			body:           &bytes.Buffer{},
 		}
-
-		// Restore body for next handler
 		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-		// Call next handler
 		next.ServeHTTP(recorder, r)
 
-		// Store in cache if response is cacheable
 		if !recorder.isStreaming {
-			// Extract provider and model from request body
 			var reqBody map[string]interface{}
 			provider := ""
 			model := ""
@@ -613,18 +538,9 @@ func (cm *CacheMiddleware) Wrap(next http.Handler) http.Handler {
 					model = m
 				}
 			}
-
-			cm.cache.Set(
-				cacheKey,
-				recorder.body.Bytes(),
-				recorder.statusCode,
-				recorder.Header(),
-				provider,
-				model,
-			)
+			cm.cache.Set(cacheKey, recorder.body.Bytes(), recorder.statusCode, recorder.Header(), provider, model)
 		}
 
-		// Add cache headers
 		w.Header().Set("X-Cache", "MISS")
 		w.Header().Set("X-Cache-Key", cacheKey[:16])
 	})
@@ -640,19 +556,15 @@ type responseRecorder struct {
 
 func (rr *responseRecorder) WriteHeader(code int) {
 	rr.statusCode = code
-
-	// Check if this is a streaming response
 	contentType := rr.Header().Get("Content-Type")
 	if strings.Contains(contentType, "text/event-stream") ||
 		strings.Contains(contentType, "application/x-ndjson") {
 		rr.isStreaming = true
 	}
-
 	rr.ResponseWriter.WriteHeader(code)
 }
 
 func (rr *responseRecorder) Write(b []byte) (int, error) {
-	// Only buffer non-streaming responses
 	if !rr.isStreaming {
 		rr.body.Write(b)
 	}

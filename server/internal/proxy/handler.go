@@ -1,16 +1,37 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 )
+
+// parsedRequest holds pre-parsed request data to avoid redundant JSON parsing.
+// Created once in ServeHTTP and passed through the call chain.
+type parsedRequest struct {
+	body      []byte
+	model     string
+	streaming bool
+	reqMap    map[string]interface{}
+	cacheKey  string // computed once if cache enabled
+}
+
+// sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
+var sseBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32768) // 32KB
+		return &buf
+	},
+}
 
 // ProxyHandler handles incoming proxy requests.
 //
@@ -36,6 +57,7 @@ type ProxyHandler struct {
 	failover        *FailoverHandler   // Failover handler
 	providerPool    *providerpool.Pool // Provider Pool for routing and API keys
 	cache           *CCCache           // Response cache (cc-cache)
+	prunerMw        *pruner.Middleware // Context pruner middleware (optional)
 	apiKeyValidator func(key string) ([]string, error)
 }
 
@@ -56,6 +78,11 @@ func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 // SetCache sets the response cache for the proxy handler.
 func (ph *ProxyHandler) SetCache(cache *CCCache) {
 	ph.cache = cache
+}
+
+// SetPruner sets the context pruner middleware for the proxy handler.
+func (ph *ProxyHandler) SetPruner(mw *pruner.Middleware) {
+	ph.prunerMw = mw
 }
 
 // SetAPIKeyValidator sets the API key validator function.
@@ -99,7 +126,6 @@ func (ph *ProxyHandler) extractRoutingMode(r *http.Request) string {
 
 // ServeHTTP implements http.Handler.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("[Proxy] ServeHTTP: method=%s, path=%s\n", r.Method, r.URL.Path)
 	requestStart := time.Now()
 
 	// Handle /v1/models specially
@@ -112,81 +138,93 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, _ := io.ReadAll(r.Body)
 	r.Body.Close()
 
-	// Extract model and streaming flag
-	var model string
-	var isStreaming bool
-	var reqBody map[string]interface{}
-
-	if json.Unmarshal(bodyBytes, &reqBody) == nil {
-		if m, ok := reqBody["model"].(string); ok {
-			model = m
-		}
-		if s, ok := reqBody["stream"].(bool); ok {
-			isStreaming = s
+	// Apply context pruner to reduce token usage (if enabled)
+	if ph.prunerMw != nil && ph.prunerMw.Enabled() {
+		if pruned, err := ph.prunerMw.ProcessRequest(r.Context(), bodyBytes); err == nil {
+			bodyBytes = pruned
 		}
 	}
-	fmt.Printf("[Proxy] request: model=%s, streaming=%v\n", model, isStreaming)
 
-	// Try cache lookup (non-streaming only) — uses canonical key for semantic dedup
-	if ph.cache != nil && !isStreaming {
-		cacheKey := ph.cache.GenerateCanonicalKey(bodyBytes)
-		if entry, ok := ph.cache.Get(cacheKey); ok && entry != nil {
+	// Parse body ONCE — extract model, streaming flag, and pre-parsed map
+	pr := &parsedRequest{body: bodyBytes}
+	if json.Unmarshal(bodyBytes, &pr.reqMap) == nil {
+		if m, ok := pr.reqMap["model"].(string); ok {
+			pr.model = m
+		}
+		if s, ok := pr.reqMap["stream"].(bool); ok {
+			pr.streaming = s
+		}
+	}
+
+	// Compute canonical cache key ONCE (reused for lookup + store)
+	if ph.cache != nil && pr.reqMap != nil {
+		pr.cacheKey = ph.cache.GenerateCanonicalKeyFromParsed(pr.reqMap)
+	} else if ph.cache != nil {
+		pr.cacheKey = ph.cache.GenerateCanonicalKey(bodyBytes)
+	}
+
+	// Try cache lookup — uses canonical key for semantic dedup
+	if ph.cache != nil && pr.cacheKey != "" {
+		if entry, ok := ph.cache.Get(pr.cacheKey); ok && entry != nil {
 			latencyMs := time.Since(requestStart).Milliseconds()
 			ph.cache.RecordLatencySaved(latencyMs)
-			fmt.Printf("[Proxy] cache HIT (key=%s, saved=%dms)\n", cacheKey[:16], latencyMs)
 			w.Header().Set("X-Cache", "HIT")
-			w.Header().Set("X-Cache-Key", cacheKey[:16])
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(entry.StatusCode)
-			w.Write(entry.Body)
+			w.Header().Set("X-Cache-Key", pr.cacheKey[:16])
+			if pr.streaming {
+				ph.writeSSEFromCache(w, entry)
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(entry.StatusCode)
+				w.Write(entry.Body)
+			}
 			return
 		}
 
-		// Singleflight: deduplicate concurrent identical requests
-		if sf := ph.cache.GetSingleflight(); sf != nil {
-			sfEntry, sfErr := sf.Do(r.Context(), cacheKey, 30*time.Second, func() (*CCCacheEntry, error) {
-				return ph.forwardAndCache(r, bodyBytes, reqBody, model, cacheKey)
-			})
-			if sfErr != nil {
-				http.Error(w, sfErr.Error(), http.StatusBadGateway)
-				return
-			}
-			if sfEntry != nil {
-				w.Header().Set("X-Cache", "MISS")
-				w.Header().Set("X-Cache-Key", cacheKey[:16])
-				w.Header().Set("Content-Type", "application/json")
-				for k, v := range sfEntry.Headers {
-					if k != "Content-Type" {
-						w.Header().Set(k, v)
-					}
+		// Singleflight: deduplicate concurrent identical non-streaming requests
+		if !pr.streaming {
+			if sf := ph.cache.GetSingleflight(); sf != nil {
+				sfEntry, sfErr := sf.Do(r.Context(), pr.cacheKey, 30*time.Second, func() (*CCCacheEntry, error) {
+					return ph.forwardAndCache(r, pr)
+				})
+				if sfErr != nil {
+					http.Error(w, sfErr.Error(), http.StatusBadGateway)
+					return
 				}
-				w.WriteHeader(sfEntry.StatusCode)
-				w.Write(sfEntry.Body)
-				return
+				if sfEntry != nil {
+					w.Header().Set("X-Cache", "MISS")
+					w.Header().Set("X-Cache-Key", pr.cacheKey[:16])
+					w.Header().Set("Content-Type", "application/json")
+					for k, v := range sfEntry.Headers {
+						if k != "Content-Type" {
+							w.Header().Set(k, v)
+						}
+					}
+					w.WriteHeader(sfEntry.StatusCode)
+					w.Write(sfEntry.Body)
+					return
+				}
 			}
 		}
 	}
 
 	// Fallback: direct forward (streaming or no cache)
-	route, err := ph.routeRequestWithMode(model, ph.extractRoutingMode(r))
+	route, err := ph.routeRequestWithMode(pr.model, ph.extractRoutingMode(r))
 	if err != nil {
-		fmt.Printf("[Proxy] routing error: %v\n", err)
 		http.Error(w, "No available provider: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	fmt.Printf("[Proxy] routed to provider=%s, model=%v\n", route.Provider.ID, route.Model)
 
 	// Map model name if needed
-	forwardBody := bodyBytes
-	if route.Model != nil && model != route.Model.ID {
-		reqBody["model"] = route.Model.ID
-		if newBody, err := json.Marshal(reqBody); err == nil {
+	forwardBody := pr.body
+	if route.Model != nil && pr.model != route.Model.ID {
+		pr.reqMap["model"] = route.Model.ID
+		if newBody, err := json.Marshal(pr.reqMap); err == nil {
 			forwardBody = newBody
 		}
 	}
 
-	// Forward request
-	r.Body = io.NopCloser(strings.NewReader(string(forwardBody)))
+	// Forward request — use bytes.NewReader for zero-copy
+	r.Body = io.NopCloser(bytes.NewReader(forwardBody))
 	resp, err := ph.forwardToProvider(r, route)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -194,25 +232,25 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	ph.copyResponseWithCache(w, resp, r, bodyBytes, isStreaming)
+	ph.copyResponseWithCache(w, resp, pr)
 }
 
 // forwardAndCache routes, forwards, and caches a request. Used by singleflight.
-func (ph *ProxyHandler) forwardAndCache(r *http.Request, bodyBytes []byte, reqBody map[string]interface{}, model, cacheKey string) (*CCCacheEntry, error) {
-	route, err := ph.routeRequestWithMode(model, ph.extractRoutingMode(r))
+func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CCCacheEntry, error) {
+	route, err := ph.routeRequestWithMode(pr.model, ph.extractRoutingMode(r))
 	if err != nil {
 		return nil, err
 	}
 
-	forwardBody := bodyBytes
-	if route.Model != nil && model != route.Model.ID {
-		reqBody["model"] = route.Model.ID
-		if newBody, err := json.Marshal(reqBody); err == nil {
+	forwardBody := pr.body
+	if route.Model != nil && pr.model != route.Model.ID {
+		pr.reqMap["model"] = route.Model.ID
+		if newBody, err := json.Marshal(pr.reqMap); err == nil {
 			forwardBody = newBody
 		}
 	}
 
-	r.Body = io.NopCloser(strings.NewReader(string(forwardBody)))
+	r.Body = io.NopCloser(bytes.NewReader(forwardBody))
 	resp, err := ph.forwardToProvider(r, route)
 	if err != nil {
 		return nil, err
@@ -231,7 +269,7 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, bodyBytes []byte, reqBo
 
 	// Cache the response
 	if ph.cache != nil && resp.StatusCode == http.StatusOK {
-		ph.cache.Set(cacheKey, respBody, resp.StatusCode, resp.Header, route.Provider.ID, model)
+		ph.cache.Set(pr.cacheKey, respBody, resp.StatusCode, resp.Header, route.Provider.ID, pr.model)
 	}
 
 	// Build entry to return
@@ -323,7 +361,7 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response)
 	w.WriteHeader(resp.StatusCode)
 
 	if isStreamingResponse(resp) {
-		ph.copyStreamingResponse(w, resp)
+		ph.copyStreamingResponseWithCapture(w, resp)
 	} else {
 		io.Copy(w, resp.Body)
 	}
@@ -367,17 +405,24 @@ func (ph *ProxyHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// copyResponseWithCache copies response and caches if applicable
-func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.Response, r *http.Request, reqBody []byte, isStreaming bool) {
+// copyResponseWithCache copies response and caches if applicable.
+// Uses pre-parsed request data to avoid redundant JSON parsing.
+func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.Response, pr *parsedRequest) {
 	copyHeaders(w.Header(), resp.Header)
 
-	if isStreamingResponse(resp) || isStreaming {
-		w.Header().Set("X-Cache", "BYPASS")
-		if ph.cache != nil {
-			ph.cache.RecordBypass()
-		}
+	if isStreamingResponse(resp) || pr.streaming {
+		w.Header().Set("X-Cache", "MISS")
 		w.WriteHeader(resp.StatusCode)
-		ph.copyStreamingResponse(w, resp)
+		// Stream to client while capturing for cache
+		captured := ph.copyStreamingResponseWithCapture(w, resp)
+		// Cache the assembled non-streaming response
+		if ph.cache != nil && resp.StatusCode == http.StatusOK && len(captured) > 0 {
+			assembled := assembleNonStreamingResponse(parseSSEChunks(captured))
+			if len(assembled) > 0 {
+				// Reuse pre-computed cacheKey and model — no re-parsing needed
+				ph.cache.Set(pr.cacheKey, assembled, resp.StatusCode, resp.Header, "", pr.model)
+			}
+		}
 		return
 	}
 
@@ -389,17 +434,10 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 	}
 
 	if ph.cache != nil && resp.StatusCode == http.StatusOK {
-		cacheKey := ph.cache.GenerateCanonicalKey(reqBody)
-		var model string
-		var reqMap map[string]interface{}
-		if json.Unmarshal(reqBody, &reqMap) == nil {
-			if m, ok := reqMap["model"].(string); ok {
-				model = m
-			}
-		}
-		ph.cache.Set(cacheKey, respBody, resp.StatusCode, resp.Header, "", model)
+		// Reuse pre-computed cacheKey and model — no re-parsing needed
+		ph.cache.Set(pr.cacheKey, respBody, resp.StatusCode, resp.Header, "", pr.model)
 		w.Header().Set("X-Cache", "MISS")
-		w.Header().Set("X-Cache-Key", cacheKey[:16])
+		w.Header().Set("X-Cache-Key", pr.cacheKey[:16])
 	} else {
 		w.Header().Set("X-Cache", "BYPASS")
 		if ph.cache != nil {
@@ -411,25 +449,47 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 	w.Write(respBody)
 }
 
-// copyStreamingResponse handles SSE streaming
-func (ph *ProxyHandler) copyStreamingResponse(w http.ResponseWriter, resp *http.Response) {
+// writeSSEFromCache converts a cached non-streaming response to SSE and writes it.
+func (ph *ProxyHandler) writeSSEFromCache(w http.ResponseWriter, entry *CCCacheEntry) {
+	sseData := convertToSSE(entry.Body)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(entry.StatusCode)
+	w.Write(sseData)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// copyStreamingResponseWithCapture streams SSE to client while capturing raw data.
+// Returns the captured SSE bytes for cache assembly.
+// Uses pooled 32KB buffers to reduce GC pressure.
+func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, resp *http.Response) []byte {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		io.Copy(w, resp.Body)
-		return
+		data, _ := io.ReadAll(resp.Body)
+		w.Write(data)
+		return data
 	}
 
-	buf := make([]byte, 8192) // Larger buffer for better throughput
+	var capture bytes.Buffer
+	bufPtr := sseBufferPool.Get().(*[]byte)
+	buf := *bufPtr
+	defer sseBufferPool.Put(bufPtr)
+
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			w.Write(buf[:n])
 			flusher.Flush()
+			capture.Write(buf[:n])
 		}
 		if err != nil {
 			break
 		}
 	}
+	return capture.Bytes()
 }
 
 // isStreamingResponse checks if response is streaming

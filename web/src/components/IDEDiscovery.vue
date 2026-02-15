@@ -86,11 +86,15 @@ const hasImportableConfigs = computed(() => {
 })
 
 const canImportConfigs = computed(() => {
-  return importableConfigs.value.filter(c => c.can_import)
+  return importableConfigs.value.filter(c => c.can_import && !c.already_imported)
+})
+
+const alreadyImportedConfigs = computed(() => {
+  return importableConfigs.value.filter(c => c.already_imported)
 })
 
 const installedOnlyConfigs = computed(() => {
-  return importableConfigs.value.filter(c => !c.can_import)
+  return importableConfigs.value.filter(c => !c.can_import && !c.already_imported)
 })
 
 // Methods
@@ -389,6 +393,45 @@ function getSourceLabel(source: string): string {
             </svg>
             {{ importing === config.ide_type ? t('ideDiscovery.importing') : t('ideDiscovery.import') }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Already Imported Configs Section -->
+    <div v-if="alreadyImportedConfigs.length > 0" class="border-t border-gray-200 dark:border-gray-700 pt-6">
+      <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+        {{ t('ideDiscovery.alreadyImported') }} ({{ alreadyImportedConfigs.length }})
+      </h4>
+
+      <div class="space-y-2">
+        <div
+          v-for="config in alreadyImportedConfigs"
+          :key="config.ide_type"
+          class="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
+              <img
+                v-if="getIDELogo(config.ide_type)"
+                :src="getIDELogo(config.ide_type) ?? undefined"
+                :alt="config.ide_name"
+                class="w-5 h-5 object-contain"
+              />
+              <span v-else class="text-lg">{{ getIDEIcon(config.ide_type) }}</span>
+            </div>
+            <div class="flex-1">
+              <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ config.ide_name }}</h5>
+              <p v-if="config.api_key" class="text-xs text-gray-400 dark:text-gray-500">
+                <code class="px-1 bg-gray-100 dark:bg-gray-700 rounded">{{ config.api_key }}</code>
+              </p>
+            </div>
+            <span class="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+              {{ t('ideDiscovery.imported') }}
+            </span>
+          </div>
         </div>
       </div>
     </div>

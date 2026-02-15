@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // SQLiteStore implements MetricsStore using SQLite for persistence.
@@ -28,10 +28,15 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Set pragmas after opening
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
 
 	store := &SQLiteStore{
 		db:     db,
@@ -42,6 +47,9 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
+
+	// Release unused memory after schema init
+	db.Exec("PRAGMA shrink_memory")
 
 	return store, nil
 }

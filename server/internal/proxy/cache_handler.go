@@ -69,10 +69,11 @@ func (h *CacheAPIHandler) UpdateConfig(c echo.Context) error {
 	}
 
 	var update struct {
-		Enabled      *bool   `json:"enabled"`
-		MaxSize      *int    `json:"max_size"`
-		MaxEntrySize *int    `json:"max_entry_size"`
-		TTLSeconds   *int    `json:"ttl_seconds"`
+		Enabled       *bool `json:"enabled"`
+		MaxSize       *int  `json:"max_size"`
+		MaxEntrySize  *int  `json:"max_entry_size"`
+		TTLSeconds    *int  `json:"ttl_seconds"`
+		SkipStreaming *bool `json:"skip_streaming"`
 	}
 
 	if err := c.Bind(&update); err != nil {
@@ -93,6 +94,9 @@ func (h *CacheAPIHandler) UpdateConfig(c echo.Context) error {
 	}
 	if update.TTLSeconds != nil {
 		h.config.TTL = time.Duration(*update.TTLSeconds) * time.Second
+	}
+	if update.SkipStreaming != nil {
+		h.config.SkipStreaming = *update.SkipStreaming
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -134,7 +138,7 @@ func (h *CacheAPIHandler) DeleteEntry(c echo.Context) error {
 	}
 
 	// Delete from L1
-	h.cache.entries.Delete(key)
+	h.cache.l1.Del(key)
 
 	// Delete from L2 disk
 	if disk := h.cache.GetDisk(); disk != nil {
