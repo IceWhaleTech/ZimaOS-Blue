@@ -13,6 +13,9 @@ crate-type = ["lib", "cdylib", "staticlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation"] }
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png", "devtools"] }
 tauri-plugin-shell = "2"
