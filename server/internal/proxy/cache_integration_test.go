@@ -11,6 +11,7 @@ func newTestCCCache(t *testing.T) *CCCache {
 	t.Helper()
 	dir := t.TempDir()
 	config := DefaultCacheConfig()
+	config.Enabled = true
 	config.StoragePath = filepath.Join(dir, "test_cache.db")
 	config.StorageType = "multilevel"
 	return NewCCCache(config)

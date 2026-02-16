@@ -6,8 +6,8 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
-	if !cfg.Enabled {
-		t.Error("expected Enabled=true by default")
+	if cfg.Enabled {
+		t.Error("expected Enabled=false by default")
 	}
 	if cfg.Backend != "local" {
 		t.Errorf("expected Backend=local, got %s", cfg.Backend)
