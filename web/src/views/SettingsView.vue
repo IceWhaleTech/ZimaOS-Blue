@@ -318,8 +318,8 @@ onMounted(async () => {
       <div v-if="serviceInfo" class="glass-card p-4">
         <div class="flex items-center justify-between">
           <div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ t('service.autoStart') }}</div>
-            <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('service.autoStartDescription') }}</p>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('service.autoStart') }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('service.autoStartDescription') }}</p>
           </div>
           <button
             type="button"

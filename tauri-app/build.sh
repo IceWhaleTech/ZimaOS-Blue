@@ -213,6 +213,38 @@ if [ "$GOOS" = "darwin" ]; then
     # Get app name from tauri.conf.json
     APP_NAME="ZimaOS Blue"
 
+    # ── Copy web dist into .app Resources ──
+    RESOURCES_DIR="$APP_DIR/$APP_NAME.app/Contents/Resources"
+    RESOURCES_DIST="$RESOURCES_DIR/dist"
+    if [ -d "$EMBED_DIR" ] && [ -f "$EMBED_DIR/index.html" ]; then
+        print_step "Copying web dist into .app Resources..."
+        rm -rf "$RESOURCES_DIST"
+        mkdir -p "$RESOURCES_DIST"
+        rsync -a "$EMBED_DIR/" "$RESOURCES_DIST/"
+        print_step "Web dist copied to $RESOURCES_DIST ($(ls -1 "$RESOURCES_DIST" | wc -l | tr -d ' ') files)"
+    else
+        print_warning "Embed dist not found at $EMBED_DIR — .app will not have web UI"
+    fi
+
+    # ── macOS Code Signing ──
+    # Requires: APPLE_SIGNING_IDENTITY env var (e.g. "Developer ID Application: Your Name (TEAMID)")
+    if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+        print_step "Code signing macOS app with identity: $APPLE_SIGNING_IDENTITY"
+
+        # Sign all binaries inside the .app bundle (deep sign)
+        codesign --force --options runtime --deep \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --timestamp \
+            "$APP_DIR/$APP_NAME.app"
+
+        # Verify signature
+        codesign --verify --verbose=2 "$APP_DIR/$APP_NAME.app"
+        print_step "macOS app signed and verified"
+    else
+        print_warning "APPLE_SIGNING_IDENTITY not set — skipping code signing"
+        print_warning "Set it to sign: export APPLE_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)'"
+    fi
+
     # Find existing DMG
     EXISTING_DMG=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -1)
 
@@ -251,6 +283,30 @@ if [ "$GOOS" = "darwin" ]; then
             print_warning "DMG was built but not LZMA compressed"
         fi
 
+        # ── Sign DMG ──
+        if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            print_step "Signing DMG..."
+            codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$EXISTING_DMG"
+            codesign --verify --verbose "$EXISTING_DMG"
+            print_step "DMG signed"
+        fi
+
+        # ── Notarize DMG ──
+        if [ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            print_step "Submitting DMG for Apple notarization..."
+            xcrun notarytool submit "$EXISTING_DMG" \
+                --apple-id "$APPLE_ID" \
+                --team-id "$APPLE_TEAM_ID" \
+                --password "$APPLE_APP_PASSWORD" \
+                --wait
+
+            # Staple the notarization ticket
+            xcrun stapler staple "$EXISTING_DMG"
+            print_step "DMG notarized and stapled"
+        else
+            print_warning "Skipping notarization — set APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD"
+        fi
+
         # Set DMG file icon
         ICON_FILE="$TAURI_DIR/icons/icon.icns"
         if command -v fileicon &> /dev/null; then
@@ -261,6 +317,35 @@ if [ "$GOOS" = "darwin" ]; then
         fi
     else
         print_warning "DMG file not found in $DMG_DIR"
+    fi
+fi
+
+# Step 6b: Post-build processing (Windows only)
+if [ "$GOOS" = "windows" ]; then
+    # ── Windows Code Signing ──
+    # Requires: WINDOWS_CERTIFICATE_THUMBPRINT env var
+    if [ -n "$WINDOWS_CERTIFICATE_THUMBPRINT" ]; then
+        print_step "Code signing Windows binaries..."
+
+        NSIS_DIR="$TAURI_DIR/target/release/bundle/nsis"
+
+        # Sign the main binary
+        MAIN_EXE="$TAURI_DIR/target/release/zimaos-blue.exe"
+        if [ -f "$MAIN_EXE" ]; then
+            signtool sign /sha1 "$WINDOWS_CERTIFICATE_THUMBPRINT" /fd sha256 \
+                /tr http://timestamp.digicert.com /td sha256 "$MAIN_EXE"
+            print_step "Main binary signed"
+        fi
+
+        # Sign the NSIS installer
+        NSIS_EXE=$(find "$NSIS_DIR" -name "*.exe" -type f 2>/dev/null | head -1)
+        if [ -n "$NSIS_EXE" ] && [ -f "$NSIS_EXE" ]; then
+            signtool sign /sha1 "$WINDOWS_CERTIFICATE_THUMBPRINT" /fd sha256 \
+                /tr http://timestamp.digicert.com /td sha256 "$NSIS_EXE"
+            print_step "NSIS installer signed"
+        fi
+    else
+        print_warning "WINDOWS_CERTIFICATE_THUMBPRINT not set — skipping code signing"
     fi
 fi
 

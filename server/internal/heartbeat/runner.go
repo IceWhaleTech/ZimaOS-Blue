@@ -57,15 +57,36 @@ func NewRunner(d RunnerDeps) *Runner {
 func (r *Runner) Run(ctx context.Context) {
 	defer r.stopOnce.Do(func() { close(r.stopped) })
 
+	for {
+		r.mu.RLock()
+		enabled := r.cfg.Enabled
+		r.mu.RUnlock()
+
+		if !enabled {
+			r.deps.Logger.Info("heartbeat: disabled, waiting for enable signal")
+			// Wait for wake signal (enable toggle) or context cancellation
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.wakeCh:
+				continue // Re-check enabled state
+			}
+		}
+
+		r.runLoop(ctx)
+
+		// If runLoop returned but context is not done, it means we were disabled
+		if ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+// runLoop runs the ticker loop while enabled. Returns when disabled or ctx cancelled.
+func (r *Runner) runLoop(ctx context.Context) {
 	r.mu.RLock()
 	cfg := r.cfg
 	r.mu.RUnlock()
-
-	if !cfg.Enabled {
-		r.deps.Logger.Info("heartbeat: disabled")
-		<-ctx.Done()
-		return
-	}
 
 	interval := cfg.Interval
 	if interval <= 0 {
@@ -81,6 +102,15 @@ func (r *Runner) Run(ctx context.Context) {
 	r.deps.Logger.Info("heartbeat: started", zap.Duration("interval", interval))
 
 	for {
+		// Check if still enabled
+		r.mu.RLock()
+		enabled := r.cfg.Enabled
+		r.mu.RUnlock()
+		if !enabled {
+			r.deps.Logger.Info("heartbeat: disabled at runtime")
+			return
+		}
+
 		select {
 		case <-ctx.Done():
 			r.deps.Logger.Info("heartbeat: stopped")
@@ -92,8 +122,14 @@ func (r *Runner) Run(ctx context.Context) {
 			r.mu.Unlock()
 		case reason := <-r.wakeCh:
 			r.deps.Logger.Debug("heartbeat: wake requested", zap.String("reason", reason))
+			// Re-check enabled (might be a disable signal)
+			r.mu.RLock()
+			stillEnabled := r.cfg.Enabled
+			r.mu.RUnlock()
+			if !stillEnabled {
+				return
+			}
 			r.tick(ctx)
-			// Reset ticker after manual wake
 			ticker.Reset(interval)
 			r.mu.Lock()
 			r.nextDue = time.Now().Add(interval)

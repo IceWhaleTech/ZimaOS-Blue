@@ -480,7 +480,7 @@ export const ttsAudioManager = new TTSAudioManager()
 
 // Streaming TTS Queue Manager - plays sentences as they arrive
 class StreamingTTSManager {
-  private queue: Array<{ text: string; audio?: string; contentType?: string }> = []
+  private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean }> = []
   private playIndex = 0 // cursor: next item to play
   private isPlaying = false
   private isStopped = false
@@ -527,9 +527,11 @@ class StreamingTTSManager {
 
     try {
       const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}&format=mp3`)
+      let received = false
 
       es.addEventListener('audio', (e) => {
         if (this.isStopped) { es.close(); return }
+        received = true
         const data = JSON.parse(e.data)
         if (this.queue[index]) {
           this.queue[index].audio = data.audio
@@ -540,9 +542,20 @@ class StreamingTTSManager {
         if (!this.isPlaying) this.playNext()
       })
 
-      es.addEventListener('error', () => es.close())
+      es.addEventListener('error', () => {
+        es.close()
+        // Mark as failed so playNext can skip it instead of retrying forever
+        if (!received && this.queue[index]) {
+          this.queue[index].failed = true
+          if (!this.isPlaying) this.playNext()
+        }
+      })
     } catch (e) {
       console.error('Failed to fetch TTS audio:', e)
+      if (this.queue[index]) {
+        this.queue[index].failed = true
+        if (!this.isPlaying) this.playNext()
+      }
     }
   }
 
@@ -556,11 +569,32 @@ class StreamingTTSManager {
     }
 
     const item = this.queue[this.playIndex]
+
+    // Skip failed items
+    if (item.failed) {
+      this.playIndex++
+      this.playNext()
+      return
+    }
+
     if (!item.audio || !item.contentType) {
-      // Audio not ready yet, wait and retry
+      // Audio not ready yet, wait and retry with a max retry limit
+      const retryKey = `_retries_${this.playIndex}`
+      const retries = (this as any)[retryKey] || 0
+      if (retries > 50) { // 50 * 100ms = 5s max wait per sentence
+        console.warn('TTS audio fetch timeout, skipping sentence:', item.text)
+        delete (this as any)[retryKey]
+        this.playIndex++
+        this.playNext()
+        return
+      }
+      (this as any)[retryKey] = retries + 1
       setTimeout(() => this.playNext(), 100)
       return
     }
+
+    // Clear retry counter
+    delete (this as any)[`_retries_${this.playIndex}`]
 
     this.isPlaying = true
     this.onSentenceStart?.(this.playIndex)
@@ -568,6 +602,12 @@ class StreamingTTSManager {
     try {
       await ttsAudioManager.play(item.audio, item.contentType)
     } catch (e) {
+      // Only log real errors, not intentional stops
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        // Playback was intentionally stopped, don't continue chain
+        this.isPlaying = false
+        return
+      }
       console.error('Failed to play audio:', e)
     }
 

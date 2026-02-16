@@ -1205,6 +1205,7 @@ export default {
     contentPlaceholder: '# 添加需要 Agent 监控的任务\n\n- 检查 API 是否正常响应\n- 确认磁盘使用率低于 90%',
     contentEmpty: '（空 — 心跳检查将被跳过）',
     contentSaved: 'HEARTBEAT.md 已保存',
+    fetchError: '无法加载心跳检测状态',
   },
   service: {
     title: '服务管理',

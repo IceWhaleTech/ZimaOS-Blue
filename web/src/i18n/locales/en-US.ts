@@ -1204,6 +1204,7 @@ export default {
     contentPlaceholder: '# Add tasks for the agent to monitor\n\n- Check if the API is responding\n- Verify disk usage is below 90%',
     contentEmpty: '(empty — heartbeat checks will be skipped)',
     contentSaved: 'HEARTBEAT.md saved',
+    fetchError: 'Failed to load heartbeat status',
   },
   service: {
     title: 'Service Management',

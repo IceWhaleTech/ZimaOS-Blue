@@ -89,7 +89,7 @@ func (s *Server) Echo() *echo.Echo {
 // Returns true if it's our server, false otherwise
 func checkExistingServer(host string, port int) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := fmt.Sprintf("http://%s:%d/health", host, port)
+	url := fmt.Sprintf("http://%s:%d/api/v1/health", host, port)
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -121,13 +121,6 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	logger.Info().Str("addr", addr).Msg("Starting HTTP server")
 
-	// Check if port is in use by another ZimaOS-Blue instance
-	if checkExistingServer(s.config.Host, s.config.Port) {
-		logger.Info().
-			Int("port", s.config.Port).
-			Msg("Found existing ZimaOS-Blue server on port, will reuse")
-	}
-
 	// Create listener with SO_REUSEADDR
 	lc := net.ListenConfig{
 		Control: reusePort,
@@ -135,17 +128,29 @@ func (s *Server) Start() error {
 
 	ln, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
-		// If port is in use and auto fallback is enabled, try port 0 (random)
-		if s.config.PortAutoFallback && isAddrInUse(err) {
-			logger.Warn().
-				Int("configured_port", s.config.Port).
-				Err(err).
-				Msg("Configured port is in use, falling back to random port")
-
-			randomAddr := fmt.Sprintf("%s:0", s.config.Host)
-			ln, err = lc.Listen(context.Background(), "tcp", randomAddr)
-			if err != nil {
-				return fmt.Errorf("failed to create listener on random port: %w", err)
+		if isAddrInUse(err) {
+			// Check if it's our own previous instance — if so, just reuse it
+			if checkExistingServer(s.config.Host, s.config.Port) {
+				logger.Info().
+					Int("port", s.config.Port).
+					Msg("Existing ZimaOS-Blue server already running on port, reusing")
+				actualPort.Store(int32(s.config.Port))
+				security.SetServerPort(s.config.Port)
+				network.SetDynamicPort(s.config.Port)
+				return nil
+			}
+			// Not our server — fallback to random port if enabled
+			if s.config.PortAutoFallback {
+				logger.Warn().
+					Int("configured_port", s.config.Port).
+					Msg("Port in use by another process, falling back to random port")
+				randomAddr := fmt.Sprintf("%s:0", s.config.Host)
+				ln, err = lc.Listen(context.Background(), "tcp", randomAddr)
+				if err != nil {
+					return fmt.Errorf("failed to create listener on random port: %w", err)
+				}
+			} else {
+				return fmt.Errorf("failed to create listener: %w", err)
 			}
 		} else {
 			return fmt.Errorf("failed to create listener: %w", err)

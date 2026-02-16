@@ -421,6 +421,14 @@ function getScanItemDescription(item: ScanItem): string {
   return translated === key ? (item.description || '') : translated
 }
 
+// Get scan item risk/impact/remediation with i18n
+function getItemField(item: ScanItem, field: 'risk' | 'impact' | 'remediation'): string {
+  if (!item[field]) return ''
+  const key = `security.scan.items.${item.id}.${field}`
+  if (te(key)) return t(key)
+  return item[field] || ''
+}
+
 // Get scan item status icon and color
 function getScanStatusClass(status: string): string {
   switch (status) {
@@ -852,13 +860,13 @@ onUnmounted(() => {
                 <span class="font-medium">{{ t('security.scan.details') }}:</span> {{ getItemDetails(item) }}
               </div>
               <div v-if="item.risk" class="text-xs text-gray-600 dark:text-slate-300 mb-2">
-                <span class="font-medium text-orange-600 dark:text-orange-400">{{ t('security.scan.risk') }}:</span> {{ item.risk }}
+                <span class="font-medium text-orange-600 dark:text-orange-400">{{ t('security.scan.risk') }}:</span> {{ getItemField(item, 'risk') }}
               </div>
               <div v-if="item.impact" class="text-xs text-gray-600 dark:text-slate-300 mb-2">
-                <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ item.impact }}
+                <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ getItemField(item, 'impact') }}
               </div>
               <div v-if="item.remediation" class="text-xs text-gray-600 dark:text-slate-300">
-                <span class="font-medium text-green-700 dark:text-green-300">{{ t('security.scan.remediation') }}:</span> {{ item.remediation }}
+                <span class="font-medium text-green-700 dark:text-green-300">{{ t('security.scan.remediation') }}:</span> {{ getItemField(item, 'remediation') }}
               </div>
             </div>
           </div>

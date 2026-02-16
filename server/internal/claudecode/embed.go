@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,9 +18,6 @@ import (
 	"sync"
 	"time"
 )
-
-//go:embed bin/*
-var embeddedBinaries embed.FS
 
 const (
 	// DefaultGCSBucket is the default GCS bucket URL for Claude Code releases.
@@ -38,7 +34,6 @@ const (
 type BinarySource string
 
 const (
-	BinarySourceEmbedded     BinarySource = "embedded"
 	BinarySourceDownloaded   BinarySource = "downloaded"
 	BinarySourceSystem       BinarySource = "system"
 	BinarySourceIDEExtension BinarySource = "ide-extension"
@@ -46,7 +41,6 @@ const (
 
 // VersionInfo contains version information about the Claude Code CLI.
 type VersionInfo struct {
-	EmbeddedVersion  string       `json:"embedded_version,omitempty"`
 	InstalledVersion string       `json:"installed_version,omitempty"`
 	SystemVersion    string       `json:"system_version,omitempty"`
 	LatestVersion    string       `json:"latest_version,omitempty"`
@@ -85,7 +79,6 @@ type BinaryManager struct {
 	allowSystemCLI bool // If true, allow using system-installed CLI
 
 	// Cached version info
-	embeddedVersion  string
 	installedVersion string
 	systemVersion    string
 	binaryPath       string
@@ -137,11 +130,10 @@ func (m *BinaryManager) SetDownloadTimeout(timeout time.Duration) {
 
 // GetBinaryPath returns the path to the Claude Code CLI binary for the current platform.
 // Resolution order:
-// 1. Embedded binary (if available for current platform)
-// 2. Downloaded binary (if exists)
-// 3. IDE extension binary (VS Code, Cursor, etc.)
-// 4. System PATH (if allowed and validated)
-// 5. Download from GCS (if none found)
+// 1. Downloaded binary (if exists)
+// 2. IDE extension binary (VS Code, Cursor, etc.)
+// 3. System PATH (if allowed and validated)
+// 4. Download from GCS (if none found)
 //
 // If requireLatest is true, system CLI will only be used if it matches the latest version.
 func (m *BinaryManager) GetBinaryPath() (string, error) {
@@ -163,20 +155,7 @@ func (m *BinaryManager) GetBinaryPath() (string, error) {
 		}
 	}
 
-	// Try 1: Use embedded binary if available
-	if m.isEmbeddedForPlatform(platform) {
-		if err := m.extractBinary(platform, binaryPath); err == nil {
-			m.extracted = true
-			m.binaryPath = binaryPath
-			m.source = BinarySourceEmbedded
-			m.embeddedVersion, _ = m.getEmbeddedVersion()
-			m.installedVersion = m.embeddedVersion
-			m.validated = true
-			return binaryPath, nil
-		}
-	}
-
-	// Try 2: Check if already downloaded
+	// Try 1: Check if already downloaded
 	if _, err := os.Stat(binaryPath); err == nil {
 		m.extracted = true
 		m.binaryPath = binaryPath
@@ -186,7 +165,7 @@ func (m *BinaryManager) GetBinaryPath() (string, error) {
 		return binaryPath, nil
 	}
 
-	// Try 3: Check IDE extension paths (VS Code, Cursor, etc.)
+	// Try 2: Check IDE extension paths (VS Code, Cursor, etc.)
 	if idePath, ideName := m.findCLIInIDEExtensions(platform, binaryName); idePath != "" {
 		m.extracted = true
 		m.binaryPath = idePath
@@ -200,7 +179,7 @@ func (m *BinaryManager) GetBinaryPath() (string, error) {
 		return idePath, nil
 	}
 
-	// Try 4: Check system PATH (if allowed)
+	// Try 3: Check system PATH (if allowed)
 	if m.allowSystemCLI {
 		if systemPath, version, err := m.findAndValidateSystemCLI(binaryName); err == nil {
 			// Check if we require latest version
@@ -222,7 +201,7 @@ func (m *BinaryManager) GetBinaryPath() (string, error) {
 	}
 
 download:
-	// Try 5: Download from GCS
+	// Try 4: Download from GCS
 	if err := m.downloadLatest(platform, binaryPath); err != nil {
 		return "", fmt.Errorf("claude code CLI not found and download failed: %w", err)
 	}
@@ -232,52 +211,6 @@ download:
 	m.source = BinarySourceDownloaded
 	m.validated = true
 	return binaryPath, nil
-}
-
-// isEmbeddedForPlatform checks if a binary is embedded for the given platform.
-func (m *BinaryManager) isEmbeddedForPlatform(platform string) bool {
-	srcName := fmt.Sprintf("claude-%s", platform)
-	if runtime.GOOS == "windows" {
-		srcName += ".exe"
-	}
-	srcPath := filepath.Join("bin", srcName)
-
-	_, err := embeddedBinaries.ReadFile(srcPath)
-	return err == nil
-}
-
-// extractBinary extracts the embedded binary for the given platform.
-func (m *BinaryManager) extractBinary(platform, destPath string) error {
-	// Determine source filename
-	srcName := fmt.Sprintf("claude-%s", platform)
-	if runtime.GOOS == "windows" {
-		srcName += ".exe"
-	}
-	srcPath := filepath.Join("bin", srcName)
-
-	// Read embedded binary
-	data, err := embeddedBinaries.ReadFile(srcPath)
-	if err != nil {
-		return fmt.Errorf("embedded binary not found for platform %s: %w", platform, err)
-	}
-
-	// Create destination directory
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	// Write binary
-	if err := os.WriteFile(destPath, data, 0755); err != nil {
-		return fmt.Errorf("failed to write binary: %w", err)
-	}
-
-	// Also write version file if embedded
-	if version, err := m.getEmbeddedVersion(); err == nil {
-		versionPath := filepath.Join(filepath.Dir(destPath), "VERSION")
-		os.WriteFile(versionPath, []byte(version), 0644)
-	}
-
-	return nil
 }
 
 // downloadLatest downloads the latest Claude Code CLI binary.
@@ -618,15 +551,6 @@ func (m *BinaryManager) DryRun() error {
 	return m.dryRunCLI(m.binaryPath)
 }
 
-// getEmbeddedVersion returns the version of the embedded Claude Code CLI.
-func (m *BinaryManager) getEmbeddedVersion() (string, error) {
-	data, err := embeddedBinaries.ReadFile("bin/VERSION")
-	if err != nil {
-		return "", fmt.Errorf("version file not found: %w", err)
-	}
-	return strings.TrimSpace(string(data)), nil
-}
-
 // getInstalledVersionFromFile reads the version from the installed VERSION file.
 func (m *BinaryManager) getInstalledVersionFromFile() (string, error) {
 	versionPath := filepath.Join(m.extractDir, "VERSION")
@@ -637,37 +561,12 @@ func (m *BinaryManager) getInstalledVersionFromFile() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// GetVersion returns the version of the embedded Claude Code CLI.
-func (m *BinaryManager) GetVersion() (string, error) {
-	return m.getEmbeddedVersion()
-}
-
 // GetInstalledVersion returns the version of the installed Claude Code CLI.
 func (m *BinaryManager) GetInstalledVersion() (string, error) {
 	if m.installedVersion != "" {
 		return m.installedVersion, nil
 	}
 	return m.getInstalledVersionFromFile()
-}
-
-// IsEmbedded returns true if Claude Code CLI binaries are embedded.
-func (m *BinaryManager) IsEmbedded() bool {
-	entries, err := embeddedBinaries.ReadDir("bin")
-	if err != nil {
-		return false
-	}
-	// Check if there are actual binary files (not just VERSION or .gitkeep)
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "claude-") {
-			return true
-		}
-	}
-	return false
-}
-
-// IsEmbeddedForCurrentPlatform returns true if a binary is embedded for the current platform.
-func (m *BinaryManager) IsEmbeddedForCurrentPlatform() bool {
-	return m.isEmbeddedForPlatform(getPlatformString())
 }
 
 // GetSource returns the source of the current binary.
@@ -683,11 +582,6 @@ func (m *BinaryManager) GetVersionInfo() (*VersionInfo, error) {
 		Platform:  getPlatformString(),
 		Source:    m.source,
 		Validated: m.validated,
-	}
-
-	// Get embedded version if available
-	if embVer, err := m.getEmbeddedVersion(); err == nil {
-		info.EmbeddedVersion = embVer
 	}
 
 	// Get system version if available (don't fail if not found)
@@ -778,64 +672,6 @@ func (m *BinaryManager) Update(version string) error {
 	m.binaryPath = binaryPath
 	m.source = BinarySourceDownloaded
 	m.installedVersion = version
-	return nil
-}
-
-// ListEmbeddedPlatforms returns a list of embedded platform binaries.
-func (m *BinaryManager) ListEmbeddedPlatforms() []string {
-	entries, err := embeddedBinaries.ReadDir("bin")
-	if err != nil {
-		return nil
-	}
-
-	var platforms []string
-	for _, entry := range entries {
-		name := entry.Name()
-		if strings.HasPrefix(name, "claude-") {
-			// Extract platform from filename (e.g., "claude-darwin-arm64" -> "darwin-arm64")
-			platform := strings.TrimPrefix(name, "claude-")
-			platform = strings.TrimSuffix(platform, ".exe")
-			platforms = append(platforms, platform)
-		}
-	}
-	return platforms
-}
-
-// ExtractAll extracts all embedded binaries to the specified directory.
-func (m *BinaryManager) ExtractAll(destDir string) error {
-	entries, err := embeddedBinaries.ReadDir("bin")
-	if err != nil {
-		return fmt.Errorf("failed to read embedded binaries: %w", err)
-	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join("bin", entry.Name())
-		destPath := filepath.Join(destDir, entry.Name())
-
-		srcFile, err := embeddedBinaries.Open(srcPath)
-		if err != nil {
-			return fmt.Errorf("failed to open %s: %w", entry.Name(), err)
-		}
-
-		destFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-		if err != nil {
-			srcFile.Close()
-			return fmt.Errorf("failed to create %s: %w", destPath, err)
-		}
-
-		_, err = io.Copy(destFile, srcFile)
-		srcFile.Close()
-		destFile.Close()
-
-		if err != nil {
-			return fmt.Errorf("failed to copy %s: %w", entry.Name(), err)
-		}
-	}
-
 	return nil
 }
 

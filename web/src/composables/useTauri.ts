@@ -112,6 +112,18 @@ export function useTauri() {
     }
   }
 
+  async function setTrayLocale(locale: string): Promise<void> {
+    if (!isTauriApp.value) return
+    try {
+      const internals = window.__TAURI_INTERNALS__
+      if (internals?.invoke) {
+        await internals.invoke('set_tray_locale', { locale })
+      }
+    } catch (e) {
+      console.error('Failed to set tray locale:', e)
+    }
+  }
+
   return {
     /** Whether the app is running inside Tauri */
     isTauri: readonly(isTauriApp),
@@ -123,6 +135,8 @@ export function useTauri() {
     openInBrowser,
     /** Set close behavior (quit or minimize to tray) */
     setCloseBehavior,
+    /** Sync tray menu language with app locale */
+    setTrayLocale,
   }
 }
 

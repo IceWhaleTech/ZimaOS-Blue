@@ -84,8 +84,8 @@ onMounted(async () => {
     <!-- Version & Check -->
     <div class="flex items-center justify-between">
       <div>
-        <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('settings.update.title') }}</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.update.title') }}</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
           {{ t('settings.update.currentVersion') }}:
           <span class="font-mono font-medium text-gray-900 dark:text-white">{{ info?.current_version || '-' }}</span>
         </p>

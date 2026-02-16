@@ -112,6 +112,18 @@ func localDistCandidates() []string {
 			filepath.Join(dir, "..", "internal", "web", "dist"),
 			filepath.Join(dir, "internal", "web", "dist"),
 		)
+		// macOS .app bundle: Contents/MacOS/exe → Contents/Resources/dist
+		if runtime.GOOS == "darwin" {
+			candidates = append(candidates,
+				filepath.Join(dir, "..", "Resources", "dist"),
+			)
+		}
+		// Windows Tauri bundle: dist next to sidecar binary
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates,
+				filepath.Join(dir, "dist"),
+			)
+		}
 	}
 	return candidates
 }

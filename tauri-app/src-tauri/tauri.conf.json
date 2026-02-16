@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ZimaOS Blue",
+  "mainBinaryName": "blue",
   "identifier": "com.zimaos.blue",
   "version": "0.10.28",
   "build": {
@@ -11,12 +12,16 @@
     "targets": ["nsis", "dmg", "app", "appimage", "deb"],
     "icon": [
       "icons/32x32.png",
+      "icons/48x48.png",
       "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../../web/dist": "dist"
+    },
     "category": "Utility",
     "shortDescription": "AI Gateway for Local LLM Integration",
     "longDescription": "ZimaOS Blue is an AI gateway that provides seamless integration with local LLM providers like Ollama, enabling AI-powered features across your local network.",
@@ -24,7 +29,7 @@
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": "",
+      "timestampUrl": "http://timestamp.digicert.com",
       "wix": null,
       "nsis": {
         "installerIcon": "icons/icon.ico",
@@ -109,11 +114,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/tray.png",
-      "iconAsTemplate": true,
-      "menuOnLeftClick": false
     }
   },
   "plugins": {

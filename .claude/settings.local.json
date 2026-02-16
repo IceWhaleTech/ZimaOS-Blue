@@ -170,7 +170,19 @@
       "Bash(npx --yes sharp-cli:*)",
       "Bash(iconutil -c icns:*)",
       "Bash(pip3 install:*)",
-      "Bash(TMP=\"/tmp/tauri-icons\":*)"
+      "Bash(TMP=\"/tmp/tauri-icons\":*)",
+      "Bash(identify:*)",
+      "Bash(bash:*)",
+      "Bash(xcrun notarytool log:*)",
+      "Bash(rsvg-convert:*)",
+      "Bash(xcode-select:*)",
+      "Bash(security find-identity:*)",
+      "Bash(do magick \"$f\" -define png:color-type=6 \"$f\")",
+      "Bash(while read:*)",
+      "Bash(do sips -s format png -s formatOptions best \"$f\" --out \"$f\")",
+      "Bash(do convert \"$f\" -define png:color-type=6 \"$f\")",
+      "Bash(cargo doc:*)",
+      "Bash(cargo check:*)"
     ]
   }
 }

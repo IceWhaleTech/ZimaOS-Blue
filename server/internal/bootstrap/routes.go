@@ -103,11 +103,11 @@ type RoutesDeps struct {
 	ChannelConfigStore *server.ChannelConfigStore
 	SharedCache        *proxy.CCCache
 	HotReloader        *config.HotReloader
-	HeartbeatHandler   *heartbeat.Handler
 }
 
-// RegisterAllRoutes registers all API routes on the Echo instance
-func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
+// RegisterAllRoutes registers all API routes on the Echo instance.
+// Returns the authenticated API group for late-binding route registration.
+func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	s := deps.Services
 	cfg := deps.ServerConfig
 	logger := deps.Logger
@@ -431,6 +431,38 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	// Cron routes (protected) - /api/cron/*
 	if deps.CronHandler != nil {
 		deps.CronHandler.RegisterRoutes(apiProtected)
+	}
+
+	// Heartbeat routes (protected) - /api/heartbeat/*
+	{
+		hbCfg := &heartbeat.Config{
+			Enabled:      deps.Config.Heartbeat.Enabled,
+			Interval:     deps.Config.Heartbeat.Interval,
+			Prompt:       deps.Config.Heartbeat.Prompt,
+			AckMaxChars:  deps.Config.Heartbeat.AckMaxChars,
+			WorkspaceDir: deps.Config.Heartbeat.WorkspaceDir,
+			LLMProvider:  deps.Config.Heartbeat.LLMProvider,
+			LLMModel:     deps.Config.Heartbeat.LLMModel,
+			Visibility: heartbeat.VisibilityConfig{
+				ShowOk:       deps.Config.Heartbeat.Visibility.ShowOk,
+				ShowAlerts:   deps.Config.Heartbeat.Visibility.ShowAlerts,
+				UseIndicator: deps.Config.Heartbeat.Visibility.UseIndicator,
+			},
+		}
+		if hbCfg.Interval == 0 {
+			hbCfg.Interval = heartbeat.DefaultInterval
+		}
+		if hbCfg.WorkspaceDir == "" {
+			hbCfg.WorkspaceDir = dataDir
+		}
+		hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
+			Config: hbCfg,
+			Logger: logger,
+		})
+		go hbRunner.Run(deps.Ctx)
+		hbHandler := heartbeat.NewHandler(hbRunner)
+		hbHandler.RegisterRoutes(apiProtected)
+		logger.Info("Heartbeat routes registered", zap.Bool("enabled", hbCfg.Enabled))
 	}
 
 	// Home Assistant routes (protected) - /api/homeassistant/*
@@ -787,11 +819,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 		channelConfigHandler.RegisterRoutes(api)
 	}
 
-	// Heartbeat routes
-	if deps.HeartbeatHandler != nil {
-		deps.HeartbeatHandler.RegisterRoutes(api)
-	}
-
 	// Set shared cache on chat handler
 	if deps.SharedCache != nil {
 		deps.ChatHandler.SetCache(deps.SharedCache)
@@ -806,6 +833,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	web.RegisterStaticRoutes(e)
 
 	logger.Info("All routes registered")
+	return apiProtected
 }
 
 // InitMetrics initializes metrics services

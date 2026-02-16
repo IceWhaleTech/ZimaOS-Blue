@@ -165,6 +165,11 @@ export async function setLocale(locale: LocaleKey): Promise<void> {
   ;(i18n.global.locale as { value: string }).value = locale
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.lang = locale
+
+  // Sync tray menu language in Tauri desktop app
+  if (window.__TAURI_INTERNALS__?.invoke) {
+    window.__TAURI_INTERNALS__.invoke('set_tray_locale', { locale }).catch(() => {})
+  }
 }
 
 export function getLocale(): LocaleKey {

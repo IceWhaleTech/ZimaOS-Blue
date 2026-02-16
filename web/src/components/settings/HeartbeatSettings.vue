@@ -9,6 +9,7 @@ const emit = defineEmits<{ 'status-change': [msg: string] }>()
 
 const status = ref<HeartbeatStatus | null>(null)
 const loading = ref(false)
+const fetchError = ref(false)
 const triggering = ref(false)
 const toggling = ref(false)
 
@@ -37,11 +38,13 @@ const statusLabel = computed(() => {
 
 async function fetchStatus() {
   loading.value = true
+  fetchError.value = false
   try {
     const res = await heartbeatApi.getStatus()
     status.value = res.data
   } catch (e) {
     console.error('Failed to fetch heartbeat status:', e)
+    fetchError.value = true
   } finally {
     loading.value = false
   }
@@ -254,6 +257,17 @@ onMounted(() => {
     <!-- Loading -->
     <div v-else-if="loading" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
       {{ t('common.loading') }}
+    </div>
+
+    <!-- Error fallback -->
+    <div v-else-if="fetchError" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center space-y-2">
+      <p>{{ t('heartbeat.fetchError') }}</p>
+      <button
+        class="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+        @click="fetchStatus"
+      >
+        {{ t('common.retry') }}
+      </button>
     </div>
   </div>
 </template>

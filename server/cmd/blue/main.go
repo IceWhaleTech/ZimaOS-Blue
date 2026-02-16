@@ -897,7 +897,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		HotReloader:        hotReloader,
 	}
 
-	bootstrap.RegisterAllRoutes(e, deps)
+	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
 
 	// Register companion and channel routes (after bootstrap)
 	if companionHandler != nil {
@@ -959,17 +959,16 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	channelConfigHandler.SetFactory(channelFactory)
 	channelConfigHandler.RegisterRoutes(e.Group("/api"))
 
-	// Initialize heartbeat runner (after channel manager is ready)
+	// Heartbeat runner + handler (needs channelManager, so created after bootstrap)
 	hbCfg := convertHeartbeatConfig(&cfg.Heartbeat)
 	hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
 		Config:      hbCfg,
 		LLMRegistry: llmRegistry,
 		Channels:    channelManager,
-		Streamer:    nil,
 		Logger:      zapLogger,
 	})
 	hbHandler := heartbeat.NewHandler(hbRunner)
-	hbHandler.RegisterRoutes(e.Group("/api"))
+	hbHandler.RegisterRoutes(apiProtected)
 	lm.Go(hbRunner.Run)
 	logger.Info("Heartbeat runner initialized", zap.Bool("enabled", cfg.Heartbeat.Enabled))
 }

@@ -13,7 +13,6 @@ import (
 
 // VersionResponse is the response for GET /api/v1/claudecode/version
 type VersionResponse struct {
-	EmbeddedVersion  string       `json:"embedded_version,omitempty"`
 	InstalledVersion string       `json:"installed_version,omitempty"`
 	SystemVersion    string       `json:"system_version,omitempty"`
 	LatestVersion    string       `json:"latest_version,omitempty"`
@@ -224,7 +223,6 @@ func (h *Handler) GetVersion(c echo.Context) error {
 	}
 
 	resp := VersionResponse{
-		EmbeddedVersion:  info.EmbeddedVersion,
 		InstalledVersion: info.InstalledVersion,
 		SystemVersion:    info.SystemVersion,
 		ActiveVersion:    info.ActiveVersion,

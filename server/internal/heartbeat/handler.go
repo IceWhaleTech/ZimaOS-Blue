@@ -90,6 +90,8 @@ func (h *Handler) UpdateConfig(c echo.Context) error {
 		h.runner.mu.Lock()
 		h.runner.cfg.Enabled = *req.Enabled
 		h.runner.mu.Unlock()
+		// Wake the runner so it can transition between enabled/disabled states
+		h.runner.RequestNow("config-toggle")
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{

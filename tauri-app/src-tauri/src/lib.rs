@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent,
 };
 
@@ -22,6 +22,41 @@ static QUITTING: AtomicBool = AtomicBool::new(false);
 
 /// Close behavior: false = quit, true = minimize to tray
 static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+/// Stores the tray quit MenuItem so we can update its text dynamically
+struct TrayQuitItem(MenuItem<tauri::Wry>);
+
+/// Map locale string to localized "Quit ZimaOS Blue" label
+fn quit_label_for_locale(locale: &str) -> String {
+    let prefix = locale.split(&['-', '_'][..]).next().unwrap_or("en");
+    let verb = match prefix {
+        "zh" => "退出",
+        "ja" => "終了",
+        "ko" => "종료",
+        "fr" => "Quitter",
+        "de" => "Beenden",
+        "es" => "Salir",
+        "it" => "Esci",
+        "pt" => "Sair",
+        "nl" => "Afsluiten",
+        "ca" => "Sortir",
+        "sv" => "Avsluta",
+        "da" => "Afslut",
+        "nb" | "no" => "Avslutt",
+        "ga" => "Scoir",
+        "pl" => "Zakończ",
+        "cs" => "Ukončit",
+        "sk" => "Ukončiť",
+        "hu" => "Kilépés",
+        "ro" => "Ieșire",
+        "hr" => "Izlaz",
+        "el" => "Έξοδος",
+        "ru" => "Выход",
+        "ml" => "പുറത്തുകടക്കുക",
+        _ => "Quit",
+    };
+    format!("{} ZimaOS Blue", verb)
+}
 
 /// Application state shared across the app
 pub struct AppState {
@@ -61,6 +96,16 @@ fn get_server_port(state: tauri::State<AppState>) -> u16 {
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
+}
+
+/// Update tray menu language to match app locale
+#[tauri::command]
+fn set_tray_locale(app: tauri::AppHandle, locale: String) {
+    let label = quit_label_for_locale(&locale);
+    if let Some(quit_item) = app.try_state::<TrayQuitItem>() {
+        let _ = quit_item.0.set_text(&label);
+        info!("Tray menu language updated to: {} ({})", locale, label);
+    }
 }
 
 /// Set close behavior: "quit" or "minimize"
@@ -229,6 +274,7 @@ pub fn run() {
             get_server_port,
             open_url,
             set_close_behavior,
+            set_tray_locale,
             start_server_with_args,
             server::start_server,
             server::stop_server,
@@ -238,67 +284,42 @@ pub fn run() {
         .setup(|app| {
             info!("Setting up application");
 
-            // Create tray menu with improved styling
-            let show = MenuItem::with_id(app, "show", "📂 Show Window", true, None::<&str>)?;
-            let hide = MenuItem::with_id(app, "hide", "🙈 Hide Window", true, None::<&str>)?;
-            let separator1 = MenuItem::with_id(app, "sep1", "", false, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "❌ Quit", true, None::<&str>)?;
+            // Detect system language for initial tray menu (updated dynamically after webview loads)
+            let quit_label = {
+                let lang = sys_locale::get_locale().unwrap_or_else(|| "en".to_string());
+                quit_label_for_locale(&lang)
+            };
 
-            let menu = Menu::with_items(app, &[&show, &hide, &separator1, &quit])?;
+            // Create tray menu — quit only (right-click menu)
+            let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&quit])?;
 
-            // Build tray icon with embedded image
+            // Build tray icon with template image (macOS auto-adapts for light/dark mode)
             let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
                 .expect("Failed to load tray icon");
             let tray = TrayIconBuilder::new()
                 .icon(icon)
+                .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         info!("Quit requested from tray");
-
-                        // Set quitting flag so ExitRequested handler allows exit
                         QUITTING.store(true, Ordering::SeqCst);
-
-                        // Stop server before exit on macOS
                         #[cfg(target_os = "macos")]
                         {
                             let _ = blue_ffi::stop_server();
                         }
-
                         app.exit(0);
-                    }
-                    "show" => {
-                        // On macOS, restore Dock icon when showing window
-                        #[cfg(target_os = "macos")]
-                        {
-                            use objc2::MainThreadMarker;
-                            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-                            if let Some(mtm) = MainThreadMarker::new() {
-                                let ns_app = NSApplication::sharedApplication(mtm);
-                                ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-                            }
-                        }
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "hide" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.hide();
-                        }
                     }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
                         ..
                     } = event
                     {
-                        // On macOS, restore Dock icon when showing window
                         #[cfg(target_os = "macos")]
                         {
                             use objc2::MainThreadMarker;
@@ -312,6 +333,28 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
+                        } else {
+                            // Window was destroyed — recreate it
+                            let port = if let Some(state) = app.try_state::<AppState>() {
+                                *state.server_port.lock().unwrap()
+                            } else {
+                                23456
+                            };
+                            let url = format!("http://localhost:{}", port);
+                            if let Ok(window) = tauri::WebviewWindowBuilder::new(
+                                app,
+                                "main",
+                                tauri::WebviewUrl::External(url.parse().unwrap()),
+                            )
+                            .title("ZimaOS Blue")
+                            .inner_size(1400.0, 900.0)
+                            .min_inner_size(800.0, 600.0)
+                            .center()
+                            .build()
+                            {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
                     }
                 })
@@ -319,6 +362,7 @@ pub fn run() {
 
             // Store tray icon in app state for cleanup on Windows
             app.manage(tray);
+            app.manage(TrayQuitItem(quit));
 
             // Open devtools in debug builds (must be done in setup, before async tasks)
             #[cfg(debug_assertions)]
