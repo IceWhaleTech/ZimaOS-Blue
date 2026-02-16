@@ -1,16 +1,21 @@
 package tunnel
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"sync"
 	"time"
-
-	"golang.ngrok.com/ngrok"
-	"golang.ngrok.com/ngrok/config"
 )
 
-// NgrokManager manages ngrok tunnels using the ngrok-go SDK.
+// NgrokManager manages ngrok tunnels by spawning the ngrok binary.
 type NgrokManager struct {
 	mu           sync.RWMutex
 	running      bool
@@ -19,8 +24,8 @@ type NgrokManager struct {
 	startedAt    time.Time
 	expiresAt    time.Time
 	renewedCount int
-	tunnel       ngrok.Tunnel
 	cancelFunc   context.CancelFunc
+	cmd          *exec.Cmd
 
 	onURLChange func(url string)
 	onError     func(err error)
@@ -31,7 +36,7 @@ func NewNgrokManager() *NgrokManager {
 	return &NgrokManager{}
 }
 
-// Start starts the ngrok tunnel.
+// Start starts the ngrok tunnel by spawning the ngrok binary.
 func (m *NgrokManager) Start(ctx context.Context, cfg *Config) error {
 	m.mu.Lock()
 	if m.running {
@@ -45,62 +50,83 @@ func (m *NgrokManager) Start(ctx context.Context, cfg *Config) error {
 		port = 23456
 	}
 
-	// Create cancellable context
+	bin, err := ensureNgrokBinary()
+	if err != nil {
+		return fmt.Errorf("ngrok not available: %w", err)
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 
-	// Configure ngrok session
-	opts := []ngrok.ConnectOption{}
+	args := []string{"http", fmt.Sprintf("%d", port), "--log", "stdout", "--log-format", "term"}
 	if cfg.NgrokAuthtoken != "" {
-		opts = append(opts, ngrok.WithAuthtoken(cfg.NgrokAuthtoken))
+		args = append(args, "--authtoken", cfg.NgrokAuthtoken)
 	}
-
-	// Configure HTTP endpoint options
-	endpointOpts := []config.HTTPEndpointOption{
-		config.WithForwardsTo(fmt.Sprintf("localhost:%d", port)),
-	}
-
-	// Add custom domain if provided (requires paid ngrok plan or free static domain)
 	if cfg.NgrokDomain != "" {
-		endpointOpts = append(endpointOpts, config.WithDomain(cfg.NgrokDomain))
+		args = append(args, "--domain", cfg.NgrokDomain)
 	}
 
-	// Start listening
-	tunnel, err := ngrok.Listen(ctx,
-		config.HTTPEndpoint(endpointOpts...),
-		opts...,
-	)
+	cmd := exec.CommandContext(ctx, bin, args...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return fmt.Errorf("failed to start ngrok tunnel: %w", err)
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return fmt.Errorf("failed to start ngrok: %w", err)
 	}
 
-	// Get tunnel URL
-	url := tunnel.URL()
+	urlCh := make(chan string, 1)
+	go func() {
+		re := regexp.MustCompile(`url=(https://[a-zA-Z0-9._-]+\.ngrok[a-zA-Z0-9._-]*)`)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			if matches := re.FindStringSubmatch(scanner.Text()); len(matches) > 1 {
+				select {
+				case urlCh <- matches[1]:
+				default:
+				}
+			}
+		}
+	}()
+
+	var url string
+	select {
+	case url = <-urlCh:
+	case <-time.After(15 * time.Second):
+		cancel()
+		return fmt.Errorf("ngrok: timeout waiting for URL")
+	case <-ctx.Done():
+		cancel()
+		return ctx.Err()
+	}
 
 	m.mu.Lock()
 	m.running = true
 	m.connecting = false
 	m.url = url
-	m.tunnel = tunnel
+	m.cmd = cmd
 	m.cancelFunc = cancel
 	m.startedAt = time.Now()
-	m.expiresAt = m.startedAt.Add(8 * time.Hour) // ngrok free tier expires after 8 hours
+	m.expiresAt = m.startedAt.Add(8 * time.Hour)
 	m.mu.Unlock()
 
-	// Notify URL change
 	if m.onURLChange != nil {
 		m.onURLChange(url)
 	}
 
-	// Monitor tunnel in background
 	go m.monitorTunnel(ctx)
 
 	return nil
 }
 
-// monitorTunnel monitors the tunnel and handles disconnection.
+// monitorTunnel monitors the tunnel process.
 func (m *NgrokManager) monitorTunnel(ctx context.Context) {
-	<-ctx.Done()
+	if m.cmd != nil {
+		m.cmd.Wait()
+	} else {
+		<-ctx.Done()
+	}
 
 	m.mu.Lock()
 	m.running = false
@@ -112,7 +138,6 @@ func (m *NgrokManager) monitorTunnel(ctx context.Context) {
 func (m *NgrokManager) Stop() error {
 	m.mu.Lock()
 	wasRunning := m.running
-	tunnel := m.tunnel
 	cancelFunc := m.cancelFunc
 	m.mu.Unlock()
 
@@ -124,15 +149,11 @@ func (m *NgrokManager) Stop() error {
 		cancelFunc()
 	}
 
-	if tunnel != nil {
-		tunnel.Close()
-	}
-
 	m.mu.Lock()
 	m.running = false
 	m.connecting = false
 	m.url = ""
-	m.tunnel = nil
+	m.cmd = nil
 	m.cancelFunc = nil
 	m.mu.Unlock()
 
@@ -216,4 +237,67 @@ func (m *NgrokManager) ResetExpiry() {
 	defer m.mu.Unlock()
 	m.startedAt = time.Now()
 	m.expiresAt = m.startedAt.Add(8 * time.Hour)
+}
+
+// ensureNgrokBinary finds or downloads the ngrok binary.
+func ensureNgrokBinary() (string, error) {
+	if p, err := exec.LookPath("ngrok"); err == nil {
+		return p, nil
+	}
+	cacheDir, _ := os.UserCacheDir()
+	binName := "ngrok"
+	if runtime.GOOS == "windows" {
+		binName = "ngrok.exe"
+	}
+	cached := filepath.Join(cacheDir, "zimaos-blue", binName)
+	if _, err := os.Stat(cached); err == nil {
+		return cached, nil
+	}
+	dlURL := ngrokBinaryDownloadURL()
+	if dlURL == "" {
+		return "", fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	os.MkdirAll(filepath.Dir(cached), 0o755)
+	resp, err := http.Get(dlURL) //nolint:gosec // trusted URL
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
+	tmp := cached + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return "", err
+	}
+	f.Close()
+	os.Chmod(tmp, 0o755)
+	if err := os.Rename(tmp, cached); err != nil {
+		return "", err
+	}
+	return cached, nil
+}
+
+func ngrokBinaryDownloadURL() string {
+	const base = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-"
+	switch runtime.GOOS + "/" + runtime.GOARCH {
+	case "linux/amd64":
+		return base + "linux-amd64.tgz"
+	case "linux/arm64":
+		return base + "linux-arm64.tgz"
+	case "darwin/amd64":
+		return base + "darwin-amd64.zip"
+	case "darwin/arm64":
+		return base + "darwin-arm64.zip"
+	case "windows/amd64":
+		return base + "windows-amd64.zip"
+	default:
+		return ""
+	}
 }

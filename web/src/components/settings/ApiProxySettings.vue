@@ -108,6 +108,9 @@ async function switchBackend(newBackend: string) {
     const res = await proxyCacheApi.updatePrunerConfig({ backend: newBackend })
     prunerConfig.value = res.data.config
     emit('status-change', t('apiProxy.backendSwitched'))
+  } catch (e: any) {
+    const msg = e?.response?.data?.error || e?.message || 'Unknown error'
+    emit('status-change', `${t('apiProxy.backendSwitchFailed')}: ${msg}`)
   } finally {
     switchingBackend.value = false
   }
@@ -341,6 +344,7 @@ onUnmounted(stopModelPoll)
             >
               <option value="local">{{ t('apiProxy.backendLocal') }}</option>
               <option value="onnx" :disabled="!modelStatus?.ready">{{ t('apiProxy.backendOnnx') }}{{ !modelStatus?.ready ? ' (' + t('apiProxy.modelNotDownloaded') + ')' : '' }}</option>
+              <option value="hybrid" :disabled="!modelStatus?.ready">{{ t('apiProxy.backendHybrid') }}{{ !modelStatus?.ready ? ' (' + t('apiProxy.modelNotDownloaded') + ')' : '' }}</option>
             </select>
           </div>
 

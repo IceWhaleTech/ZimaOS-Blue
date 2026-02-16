@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -63,6 +64,7 @@ type Crawler struct {
 	rateLimits map[string]time.Time
 	rateMu     sync.Mutex
 	results    chan Result
+	wg         sync.WaitGroup
 }
 
 // New creates a new Crawler with the given configuration
@@ -86,19 +88,18 @@ func New(config Config) *Crawler {
 
 // Crawl starts crawling from the given URLs and returns results through a channel
 func (c *Crawler) Crawl(ctx context.Context, urls []string) <-chan Result {
-	var wg sync.WaitGroup
 	sem := make(chan struct{}, c.config.MaxConcurrency)
 
 	for _, u := range urls {
-		wg.Add(1)
+		c.wg.Add(1)
 		go func(startURL string) {
-			defer wg.Done()
+			defer c.wg.Done()
 			c.crawlURL(ctx, startURL, 0, sem)
 		}(u)
 	}
 
 	go func() {
-		wg.Wait()
+		c.wg.Wait()
 		close(c.results)
 	}()
 
@@ -157,20 +158,18 @@ func (c *Crawler) crawlURL(ctx context.Context, targetURL string, depth int, sem
 
 	// Crawl discovered links
 	if result.Error == "" && depth < c.config.MaxDepth {
-		var wg sync.WaitGroup
 		for _, link := range result.Links {
 			absoluteURL := c.resolveURL(targetURL, link)
 			if absoluteURL == "" {
 				continue
 			}
 
-			wg.Add(1)
+			c.wg.Add(1)
 			go func(u string) {
-				defer wg.Done()
+				defer c.wg.Done()
 				c.crawlURL(ctx, u, depth+1, sem)
 			}(absoluteURL)
 		}
-		wg.Wait()
 	}
 }
 
@@ -327,8 +326,14 @@ func (c *Crawler) isDomainAllowed(domain string) bool {
 		return true
 	}
 
+	// Strip port if present
+	host := domain
+	if h, _, err := net.SplitHostPort(domain); err == nil {
+		host = h
+	}
+
 	for _, allowed := range c.config.AllowedDomains {
-		if domain == allowed || strings.HasSuffix(domain, "."+allowed) {
+		if host == allowed || strings.HasSuffix(host, "."+allowed) {
 			return true
 		}
 	}

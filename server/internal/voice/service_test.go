@@ -14,7 +14,6 @@ func TestSynthesizeCaching(t *testing.T) {
 		t.Fatal("NewService returned nil")
 	}
 
-	// Since TTS service is nil, this will fail, but we can test the cache structure
 	voiceSvc := svc.(*service)
 	if voiceSvc.ttsCache == nil {
 		t.Fatal("TTS cache should be initialized")
@@ -47,62 +46,44 @@ func TestServiceCreation(t *testing.T) {
 
 func TestCacheKeyGeneration(t *testing.T) {
 	tests := []struct {
-		name     string
-		req1     *SynthesizeRequest
-		req2     *SynthesizeRequest
-		sameKey  bool
+		name    string
+		req1    *SynthesizeRequest
+		req2    *SynthesizeRequest
+		sameKey bool
 	}{
 		{
 			name: "identical requests",
 			req1: &SynthesizeRequest{
-				Text:     "Hello",
-				Voice:    "voice1",
-				Format:   "mp3",
-				Provider: "edge-tts",
-				Speed:    1.0,
+				Text:   "Hello",
+				Format: "mp3",
 			},
 			req2: &SynthesizeRequest{
-				Text:     "Hello",
-				Voice:    "voice1",
-				Format:   "mp3",
-				Provider: "edge-tts",
-				Speed:    1.0,
+				Text:   "Hello",
+				Format: "mp3",
 			},
 			sameKey: true,
 		},
 		{
 			name: "different text",
 			req1: &SynthesizeRequest{
-				Text:     "Hello",
-				Voice:    "voice1",
-				Format:   "mp3",
-				Provider: "edge-tts",
-				Speed:    1.0,
+				Text:   "Hello",
+				Format: "mp3",
 			},
 			req2: &SynthesizeRequest{
-				Text:     "World",
-				Voice:    "voice1",
-				Format:   "mp3",
-				Provider: "edge-tts",
-				Speed:    1.0,
+				Text:   "World",
+				Format: "mp3",
 			},
 			sameKey: false,
 		},
 		{
-			name: "different provider",
+			name: "different format",
 			req1: &SynthesizeRequest{
-				Text:     "Hello",
-				Voice:    "voice1",
-				Format:   "mp3",
-				Provider: "edge-tts",
-				Speed:    1.0,
+				Text:   "Hello",
+				Format: "mp3",
 			},
 			req2: &SynthesizeRequest{
-				Text:     "Hello",
-				Voice:    "voice1",
-				Format:   "mp3",
-				Provider: "sherpa",
-				Speed:    1.0,
+				Text:   "Hello",
+				Format: "wav",
 			},
 			sameKey: false,
 		},
@@ -110,7 +91,6 @@ func TestCacheKeyGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Generate cache keys manually (same logic as in Synthesize)
 			key1 := generateCacheKey(tt.req1)
 			key2 := generateCacheKey(tt.req2)
 
@@ -124,7 +104,6 @@ func TestCacheKeyGeneration(t *testing.T) {
 	}
 }
 
-// Helper function to generate cache key (same logic as in service)
 func generateCacheKey(req *SynthesizeRequest) string {
-	return req.Text + ":" + req.Voice + ":" + req.Format + ":" + req.Provider
+	return req.Text + ":" + req.Format
 }

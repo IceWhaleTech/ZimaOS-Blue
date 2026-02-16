@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -448,7 +449,22 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
+	// Override from environment variables
+	applyEnvOverrides(&cfg)
+
 	return &cfg, nil
+}
+
+// applyEnvOverrides applies BLUE_* environment variable overrides to the config.
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("BLUE_SERVER_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil {
+			cfg.Server.Port = port
+		}
+	}
+	if v := os.Getenv("BLUE_LOG_LEVEL"); v != "" {
+		cfg.Log.Level = v
+	}
 }
 
 // findConfigFile searches standard locations for config.yaml.

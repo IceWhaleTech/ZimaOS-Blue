@@ -46,14 +46,18 @@ func TestStore_InitSchema(t *testing.T) {
 		t.Fatal("store should not be nil")
 	}
 
-	// Verify tables exist
-	tables := []string{"skills", "skills_fts", "skill_sync_status"}
-	for _, table := range tables {
+	// Verify tables exist (skills_fts requires FTS5 module which may not be available)
+	for _, table := range []string{"skills", "skill_sync_status"} {
 		var name string
 		err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&name)
 		if err != nil {
 			t.Errorf("table %s should exist: %v", table, err)
 		}
+	}
+	// skills_fts is optional — only exists when SQLite has FTS5
+	var ftsName string
+	if err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='skills_fts'").Scan(&ftsName); err != nil {
+		t.Logf("skills_fts not available (FTS5 module not loaded): %v", err)
 	}
 }
 
@@ -263,6 +267,12 @@ func TestStore_Search(t *testing.T) {
 	}
 
 	t.Run("search by query", func(t *testing.T) {
+		// FTS5 query search requires the fts5 SQLite module
+		var ftsName string
+		if err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='skills_fts'").Scan(&ftsName); err != nil {
+			t.Skip("FTS5 module not available, skipping query search test")
+		}
+
 		opts := SearchOptions{
 			Query:    "smart home",
 			Page:     1,

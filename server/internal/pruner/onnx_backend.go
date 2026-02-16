@@ -1,5 +1,3 @@
-//go:build onnx
-
 package pruner
 
 import (
@@ -15,11 +13,14 @@ import (
 
 // OnnxBackend implements Backend using ONNX Runtime for local neural pruning.
 type OnnxBackend struct {
-	session   *ort.AdvancedSession
-	tokenizer *BPETokenizer
-	config    Config
-	maxLen    int
-	mu        sync.Mutex
+	session       *ort.AdvancedSession
+	tokenizer     *BPETokenizer
+	config        Config
+	maxLen        int
+	mu            sync.Mutex
+	inputIDs      *ort.Tensor[int64]
+	attentionMask *ort.Tensor[int64]
+	outputScores  *ort.Tensor[float32]
 }
 
 // NewOnnxBackend creates a new ONNX-based pruning backend.
@@ -72,10 +73,13 @@ func NewOnnxBackend(cfg Config, modelDir string) (*OnnxBackend, error) {
 	}
 
 	return &OnnxBackend{
-		session:   session,
-		tokenizer: tok,
-		config:    cfg,
-		maxLen:    maxLen,
+		session:       session,
+		tokenizer:     tok,
+		config:        cfg,
+		maxLen:        maxLen,
+		inputIDs:      inputIDs,
+		attentionMask: attentionMask,
+		outputScores:  outputScores,
 	}, nil
 }
 
@@ -161,38 +165,14 @@ func (b *OnnxBackend) Prune(ctx context.Context, req PruneRequest) (*PruneRespon
 
 // runInference copies data into pre-allocated tensors and runs the ONNX session.
 func (b *OnnxBackend) runInference(inputIDs, attentionMask []int64) ([]float32, error) {
-	// Get the underlying tensor data slices and copy input data
-	inputs := b.session.Inputs()
-	if len(inputs) < 2 {
-		return nil, fmt.Errorf("expected 2 inputs, got %d", len(inputs))
-	}
-
-	idsTensor, ok := inputs[0].(*ort.Tensor[int64])
-	if !ok {
-		return nil, fmt.Errorf("input_ids tensor type mismatch")
-	}
-	maskTensor, ok := inputs[1].(*ort.Tensor[int64])
-	if !ok {
-		return nil, fmt.Errorf("attention_mask tensor type mismatch")
-	}
-
-	copy(idsTensor.GetData(), inputIDs)
-	copy(maskTensor.GetData(), attentionMask)
+	copy(b.inputIDs.GetData(), inputIDs)
+	copy(b.attentionMask.GetData(), attentionMask)
 
 	if err := b.session.Run(); err != nil {
 		return nil, err
 	}
 
-	outputs := b.session.Outputs()
-	if len(outputs) < 1 {
-		return nil, fmt.Errorf("no outputs from session")
-	}
-	scoresTensor, ok := outputs[0].(*ort.Tensor[float32])
-	if !ok {
-		return nil, fmt.Errorf("output tensor type mismatch")
-	}
-
-	data := scoresTensor.GetData()
+	data := b.outputScores.GetData()
 	result := make([]float32, len(data))
 	copy(result, data)
 	return result, nil

@@ -310,8 +310,10 @@ func (s *FileStorage) LoadUsage(providerID string, start, end time.Time) ([]*Usa
 
 	var records []*UsageRecord
 
-	// Iterate through each day in the range
-	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+	// Iterate through each day in the range (truncate to midnight to cover all days)
+	startDay := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	endDay := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, end.Location())
+	for d := startDay; !d.After(endDay); d = d.AddDate(0, 0, 1) {
 		filePath := s.usageFile(d)
 
 		data, err := os.ReadFile(filePath)

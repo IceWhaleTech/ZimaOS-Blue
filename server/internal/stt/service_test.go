@@ -78,7 +78,7 @@ func TestNewService(t *testing.T) {
 		cfg := &ServiceConfig{
 			Providers: []ProviderConfig{
 				{
-					Type:    ProviderWhisperAPI,
+					Type:    ProviderWhisper,
 					Enabled: false,
 				},
 			},
@@ -307,7 +307,7 @@ func TestAudioFormats(t *testing.T) {
 }
 
 func TestProviderTypes(t *testing.T) {
-	types := []ProviderType{ProviderWhisperAPI, ProviderWhisperLocal, ProviderGoogleSTT, ProviderAzureSTT}
+	types := []ProviderType{ProviderWhisper}
 
 	for _, pt := range types {
 		if pt == "" {

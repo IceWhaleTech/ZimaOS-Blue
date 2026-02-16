@@ -11,6 +11,7 @@ type UsageTracker struct {
 	pricingManager *PricingManager
 	records        chan *UsageRecord
 	done           chan struct{}
+	wg             sync.WaitGroup
 
 	// In-memory aggregation
 	current   map[string]*usageAggregation
@@ -82,13 +83,21 @@ func (t *UsageTracker) SetPricingManager(pm *PricingManager) {
 
 // Start starts the background processing
 func (t *UsageTracker) Start() {
-	go t.processRecords()
-	go t.periodicFlush()
+	t.wg.Add(2)
+	go func() {
+		defer t.wg.Done()
+		t.processRecords()
+	}()
+	go func() {
+		defer t.wg.Done()
+		t.periodicFlush()
+	}()
 }
 
 // Stop stops the tracker and flushes remaining data
 func (t *UsageTracker) Stop() {
 	close(t.done)
+	t.wg.Wait()
 	t.flush()
 }
 

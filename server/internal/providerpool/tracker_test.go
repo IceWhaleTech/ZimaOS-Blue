@@ -68,9 +68,18 @@ func TestUsageTrackerRecord(t *testing.T) {
 }
 
 func TestUsageTrackerGetUsage(t *testing.T) {
-	tracker, cleanup := setupTrackerTest(t)
-	defer cleanup()
+	tmpDir, err := os.MkdirTemp("", "tracker-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
 
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	tracker := NewUsageTracker(storage, WithUsageFlushInterval(100*time.Millisecond), WithUsageBufferSize(100))
 	tracker.Start()
 
 	now := time.Now()
@@ -87,8 +96,8 @@ func TestUsageTrackerGetUsage(t *testing.T) {
 		Success:      true,
 	})
 
-	// Wait for processing
-	time.Sleep(50 * time.Millisecond)
+	// Stop flushes all pending records to storage
+	tracker.Stop()
 
 	// Get usage
 	start := now.Add(-1 * time.Hour)
@@ -105,9 +114,18 @@ func TestUsageTrackerGetUsage(t *testing.T) {
 }
 
 func TestUsageTrackerGetSummary(t *testing.T) {
-	tracker, cleanup := setupTrackerTest(t)
-	defer cleanup()
+	tmpDir, err := os.MkdirTemp("", "tracker-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
 
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	tracker := NewUsageTracker(storage, WithUsageFlushInterval(100*time.Millisecond), WithUsageBufferSize(100))
 	tracker.Start()
 
 	now := time.Now()
@@ -127,8 +145,8 @@ func TestUsageTrackerGetSummary(t *testing.T) {
 		})
 	}
 
-	// Wait for processing
-	time.Sleep(50 * time.Millisecond)
+	// Stop flushes all pending records to storage
+	tracker.Stop()
 
 	// Get summary
 	start := now.Add(-1 * time.Hour)
