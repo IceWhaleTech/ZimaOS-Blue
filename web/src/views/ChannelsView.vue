@@ -774,28 +774,22 @@ async function handleRemoteAccessStart() {
 }
 
 async function handleRemoteAccessStop() {
-  // Check if current host matches the tunnel URL
-  const tunnelUrl = tunnelStatus.value?.url
-  let isAccessingViaTunnel = false
-
-  if (tunnelUrl) {
-    try {
-      const tunnelHost = new URL(tunnelUrl).host
-      isAccessingViaTunnel = window.location.host === tunnelHost
-    } catch {
-      // Invalid URL, ignore
+  // Tauri doesn't support window.confirm — skip confirmation there
+  const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+  if (!isTauri) {
+    const tunnelUrl = tunnelStatus.value?.url
+    let isAccessingViaTunnel = false
+    if (tunnelUrl) {
+      try {
+        isAccessingViaTunnel = window.location.host === new URL(tunnelUrl).host
+      } catch { /* ignore */ }
     }
-  }
-
-  // Show confirmation dialog
-  const confirmMessage = isAccessingViaTunnel
-    ? t('remoteAccess.disconnectConfirmMessageSameHost')
-    : t('remoteAccess.disconnectConfirmMessage')
-
-  const confirmed = window.confirm(`${t('remoteAccess.disconnectConfirmTitle')}\n\n${confirmMessage}`)
-
-  if (!confirmed) {
-    return
+    const confirmMessage = isAccessingViaTunnel
+      ? t('remoteAccess.disconnectConfirmMessageSameHost')
+      : t('remoteAccess.disconnectConfirmMessage')
+    if (!window.confirm(`${t('remoteAccess.disconnectConfirmTitle')}\n\n${confirmMessage}`)) {
+      return
+    }
   }
 
   try {
@@ -925,12 +919,11 @@ watch(() => tunnelStatus.value?.active, (active) => {
           </div>
           <div class="flex items-center gap-3">
             <!-- Toggle for connected state -->
-            <label v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'" class="relative inline-flex items-center cursor-pointer" @click.stop>
+            <label v-if="remoteAccessState === 'connected' || remoteAccessState === 'ready'" class="relative inline-flex items-center cursor-pointer" @click.stop.prevent="remoteAccessState === 'connected' ? handleRemoteAccessStop() : handleRemoteAccessStart()">
               <input
                 :checked="remoteAccessState === 'connected'"
                 type="checkbox"
                 class="sr-only peer"
-                @change="($event.target as HTMLInputElement).checked ? handleRemoteAccessStart() : handleRemoteAccessStop()"
               />
               <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"></div>
             </label>

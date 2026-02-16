@@ -591,14 +591,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if modelRouterCfg == nil {
 			modelRouterCfg = proxy.DefaultModelRouterConfig()
 		}
-		if modelRouterCfg.Enabled {
-			mr, err := proxy.NewModelRouter(modelRouterCfg)
-			if err != nil {
-				slog.Warn("Failed to create model router", "error", err)
-			} else {
-				proxyHandler.SetModelRouter(mr)
-				slog.Info("Model router enabled", "families", len(modelRouterCfg.Families), "rules", len(modelRouterCfg.RegexCustomRules))
-			}
+		mr, err := proxy.NewModelRouter(modelRouterCfg)
+		if err != nil {
+			slog.Warn("Failed to create model router", "error", err)
+		} else {
+			proxyHandler.SetModelRouter(mr)
+			slog.Info("Model router loaded", "families", len(modelRouterCfg.Families), "rules", len(modelRouterCfg.RegexCustomRules), "enabled", modelRouterCfg.Enabled)
 		}
 
 		// Condition-based rule routing (economy rules)
@@ -606,10 +604,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if ruleRoutingCfg == nil {
 			ruleRoutingCfg = proxy.DefaultRoutingConfig()
 		}
-		if ruleRoutingCfg.Enabled && len(ruleRoutingCfg.Rules) > 0 {
+		if len(ruleRoutingCfg.Rules) > 0 {
 			proxyHandler.SetRuleEngine(ruleRoutingCfg.ToRuleEngine())
-			slog.Info("Rule routing enabled", "rules", len(ruleRoutingCfg.Rules))
+			slog.Info("Rule engine loaded", "rules", len(ruleRoutingCfg.Rules), "enabled", ruleRoutingCfg.Enabled)
 		}
+		proxyHandler.SetRoutingEnabled(ruleRoutingCfg.Enabled)
 
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))

@@ -599,10 +599,10 @@ func defaults() Config {
 				TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 60 * time.Second, ForceHTTP2: true,
 			},
 			HealthCheck:  proxy.HealthCheckConfig{Enabled: true, Interval: 30 * time.Second, Timeout: 10 * time.Second},
-			ModelRouter:  &proxy.ModelRouterConfig{Enabled: true, DefaultFamily: "claude-3"},
+			ModelRouter:  &proxy.ModelRouterConfig{Enabled: false, DefaultFamily: "claude-3"},
 			QuotaMonitor: &proxy.QuotaMonitorConfig{Enabled: true, SyncInterval: 5 * time.Minute, WarningThreshold: 20.0, CriticalThreshold: 5.0, TrackTokens: true, TrackRequests: true},
 		},
-		Pruner: &pruner.Config{Enabled: true, Backend: "local", Threshold: 0.5, MinLines: 200, TimeoutMs: 5000},
+		Pruner: &pruner.Config{Enabled: false, Backend: "local", Threshold: 0.5, MinLines: 200, TimeoutMs: 5000},
 		Heartbeat: HeartbeatConfig{
 			Interval: 30 * time.Minute, AckMaxChars: 300, WorkspaceDir: "./data", LLMProvider: "claude", LLMModel: "claude-sonnet-4-5-20250929",
 			Prompt:     "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
