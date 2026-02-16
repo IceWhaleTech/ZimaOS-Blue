@@ -73,6 +73,7 @@ Function DUIPage
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnAgreement" "text" "$LangLicenseAgreement"
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblInstallPath" "text" "$LangInstallPath"
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblRequiredSpace" "text" "$LangRequiredSpace"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnAgree" "text" "$LangConfirm"
 
     Call BindUIControls
     nsNiuniuSkin::ShowPage 0

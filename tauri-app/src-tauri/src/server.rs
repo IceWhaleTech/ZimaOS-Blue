@@ -181,11 +181,20 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
 
     // Start the sidecar using std::process::Command
     // Don't pipe stdout/stderr to avoid blocking when buffer fills up
-    let child = Command::new(&sidecar_path)
-        .env("ECHO_SERVER_PORT", port.to_string())
+    let mut cmd = Command::new(&sidecar_path);
+    cmd.env("ECHO_SERVER_PORT", port.to_string())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+
+    // On Windows, hide the console window
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = cmd.spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
     let pid = child.id();

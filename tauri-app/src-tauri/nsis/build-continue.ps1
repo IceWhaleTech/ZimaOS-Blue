@@ -4,12 +4,10 @@ $env:Path = "C:\mingw64\bin;C:\cmake-3.31.4-windows-x86_64\bin;C:\Users\Administ
 $tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
 $skinDir = "$tauriDir\nsis\skin-installer"
 
-# Step 3: Build Go sidecar (CGO enabled with MinGW)
-Write-Host "[STEP 3] Building Go sidecar (CGO enabled)..."
+# Step 3: Build Go static library (c-archive with MinGW)
+Write-Host "[STEP 3] Building Go static library (c-archive)..."
 Set-Location "g:\GitHub\ZimaOS-Blue\server"
-$sidecarName = "blue-server-x86_64-pc-windows-msvc.exe"
-if (!(Test-Path "$tauriDir\binaries")) { New-Item -ItemType Directory "$tauriDir\binaries" -Force | Out-Null }
-if (!(Test-Path "$tauriDir\bin")) { New-Item -ItemType Directory "$tauriDir\bin" -Force | Out-Null }
+if (!(Test-Path "$tauriDir\lib")) { New-Item -ItemType Directory "$tauriDir\lib" -Force | Out-Null }
 $env:CGO_ENABLED = "1"
 $env:CC = "gcc"
 $env:CXX = "g++"
@@ -21,10 +19,9 @@ if ($env:ZIMAOS_TRIAL_API_KEY) {
 if ($env:ZIMAOS_TRIAL_BASE_URL) {
     $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$($env:ZIMAOS_TRIAL_BASE_URL)"
 }
-go build -ldflags="$goLdflags" -o "$tauriDir\binaries\$sidecarName" ./cmd/blue/
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
-Copy-Item -Force "$tauriDir\binaries\$sidecarName" "$tauriDir\bin\"
-Write-Host "[OK] Sidecar built: $sidecarName"
+Write-Host "[OK] Static library built: lib/libblue.a"
 
 # Step 4: Clean data dir
 if (Test-Path "$tauriDir\data") { Remove-Item -Recurse -Force "$tauriDir\data" }
@@ -49,7 +46,6 @@ foreach ($rd in $releaseDirs) {
     if ($exeName) {
         Copy-Item -Force "$rd\$exeName" "$filesDir\zimaos-blue.exe"
         if (Test-Path "$rd\WebView2Loader.dll") { Copy-Item -Force "$rd\WebView2Loader.dll" $filesDir }
-        Copy-Item -Force "$tauriDir\bin\$sidecarName" "$filesDir\blue-server.exe"
         Write-Host "[OK] Files copied from $rd"
         break
     }
@@ -59,8 +55,6 @@ foreach ($rd in $releaseDirs) {
 Write-Host "[STEP 6.5] Signing executables..."
 & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\zimaos-blue.exe"
 if ($LASTEXITCODE -ne 0) { throw "Failed to sign zimaos-blue.exe" }
-& $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\blue-server.exe"
-if ($LASTEXITCODE -ne 0) { throw "Failed to sign blue-server.exe" }
 Write-Host "[OK] Executables signed"
 
 # Step 7: Build NSIS
