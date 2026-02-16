@@ -12,6 +12,7 @@ fn main() {
         println!("cargo:rustc-link-lib=ws2_32");
         println!("cargo:rustc-link-lib=userenv");
         println!("cargo:rustc-link-lib=ntdll");
+        println!("cargo:rustc-link-lib=winmm");
 
         // Rerun if the library changes
         println!("cargo:rerun-if-changed=lib/libblue.a");
@@ -101,21 +102,6 @@ fn main() {
 
         // Link C++ standard library
         println!("cargo:rustc-link-lib=c++");
-
-        // Rerun if the library changes
-        println!("cargo:rerun-if-changed=lib/libblue.a");
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Link the Go static library (libblue.a built with MinGW CGO)
-        println!("cargo:rustc-link-search=native=lib");
-        println!("cargo:rustc-link-lib=static=blue");
-
-        // Go runtime dependencies on Windows (MinGW libraries)
-        println!("cargo:rustc-link-lib=static=winmm");
-        println!("cargo:rustc-link-lib=static=ws2_32");
-        println!("cargo:rustc-link-lib=static=ntdll");
 
         // Rerun if the library changes
         println!("cargo:rerun-if-changed=lib/libblue.a");

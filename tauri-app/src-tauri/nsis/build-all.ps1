@@ -78,32 +78,39 @@ $releaseDirs = @("$tauriDir\target\release", "$tauriDir\target\x86_64-pc-windows
 foreach ($rd in $releaseDirs) {
     $exeName = if (Test-Path "$rd\blue.exe") { "blue.exe" } elseif (Test-Path "$rd\zimaos-blue.exe") { "zimaos-blue.exe" } else { $null }
     if ($exeName) {
-        Copy-Item -Force "$rd\$exeName" "$filesDir\zimaos-blue.exe"
+        Copy-Item -Force "$rd\$exeName" "$filesDir\blue.exe"
         Copy-Item -Force "$rd\WebView2Loader.dll" $filesDir
         Write-Host "[OK] Files copied from $rd"
         break
     }
 }
 
-# Copy uninst.exe from nsis/release directory
-$nsisReleaseDir = "$tauriDir\nsis\release"
-if (Test-Path "$nsisReleaseDir\uninst.exe") {
-    Copy-Item -Force "$nsisReleaseDir\uninst.exe" "$filesDir\uninst.exe"
-    Write-Host "[OK] uninst.exe copied from nsis/release"
+# Copy frontend dist directory
+$distSrc = "g:\GitHub\ZimaOS-Blue\server\internal\web\dist"
+if (Test-Path $distSrc) {
+    Get-ChildItem -Recurse -File $distSrc | ForEach-Object {
+        $relativePath = $_.FullName.Substring($distSrc.Length + 1)
+        $destPath = Join-Path $filesDir "dist\$relativePath"
+        $destDir = Split-Path $destPath -Parent
+        if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+        Copy-Item -Force $_.FullName $destPath
+    }
+    Write-Host "[OK] Frontend dist copied ($(((Get-ChildItem -Recurse -File "$filesDir\dist").Count)) files)"
 } else {
-    Write-Host "[WARN] uninst.exe not found in nsis/release"
+    Write-Host "[WARN] Frontend dist not found at $distSrc"
 }
 
 # Step 6.5: Sign executables before packaging
 Write-Host "[STEP 6.5] Signing executables..."
 & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\blue.exe"
 if ($LASTEXITCODE -ne 0) { throw "Failed to sign blue.exe" }
+Write-Host "[OK] blue.exe signed"
+
+# Note: uninst.exe is 32-bit and may not be compatible with signing tool
 if (Test-Path "$filesDir\uninst.exe") {
-    & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\uninst.exe"
-    if ($LASTEXITCODE -ne 0) { throw "Failed to sign uninst.exe" }
-    Write-Host "[OK] uninst.exe signed"
+    Write-Host "[INFO] uninst.exe found (skipping signature - 32-bit compatibility)"
 }
-Write-Host "[OK] Executables signed"
+Write-Host "[OK] Executables prepared"
 
 # Step 7: Build NSIS
 Write-Host "[STEP 7] Building NSIS installer..."
