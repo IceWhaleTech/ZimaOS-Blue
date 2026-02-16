@@ -285,6 +285,15 @@ pub fn run() {
     info!("Platform: Windows (using CGO library approach)");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // When second instance is launched, show and focus the first instance
+            info!("Second instance detected, focusing existing window");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())

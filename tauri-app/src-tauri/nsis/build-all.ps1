@@ -116,9 +116,9 @@ Write-Host "[OK] Executables prepared"
 Write-Host "[STEP 7] Building NSIS installer..."
 Set-Location "$tauriDir\nsis\skin-installer"
 
-# app.7z
+# app.7z (all files recursively)
 if (Test-Path "SetupScripts\app.7z") { Remove-Item "SetupScripts\app.7z" }
-& .\7z.exe a "SetupScripts\app.7z" "$filesDir\*.*"
+& .\7z.exe a "SetupScripts\app.7z" "$filesDir\*" -r
 
 # skin.zip
 Push-Location "SetupScripts\zimaos\skin"
