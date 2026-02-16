@@ -60,6 +60,8 @@ export interface PrunerConfigUpdate {
 export interface PrunerModelStatus {
   ready: boolean
   downloading: boolean
+  state?: string
+  error?: string
   progress?: {
     file: string
     file_index: number

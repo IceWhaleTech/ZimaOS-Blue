@@ -2823,6 +2823,9 @@ export default {
     downloadModel: '下载模型',
     downloading: '下载中',
     cancelDownload: '取消',
+    modelConnecting: '连接中...',
+    modelDownloadError: '下载失败',
+    retry: '重试',
     modelSize: '模型大小',
     routingTitle: '模型路由',
     routingDesc: '将简单任务路由到更便宜的模型（如 Haiku、GPT-4o-mini），节省费用',
@@ -4288,6 +4291,48 @@ export default {
     manage: '管理人格',
     viewAll: '查看全部',
     total: '总计',
+    // Personality card
+    card: {
+      active: '活跃',
+      default: '默认',
+      edit: '编辑',
+      activate: '激活',
+      delete: '删除',
+      noDescription: '暂无描述',
+      viewDetails: '查看详情',
+    },
+    // Form validation
+    validation: {
+      nameRequired: '人格名称是必填项',
+      systemPromptRequired: '系统提示词是必填项',
+      nameTooLong: '名称过长（最多 100 个字符）',
+      descriptionTooLong: '描述过长（最多 500 个字符）',
+      systemPromptTooLong: '系统提示词过长（最多 10000 个字符）',
+    },
+    // Templates
+    templates: {
+      title: '人格模板',
+      description: '从预设人格模板开始',
+      useTemplate: '使用模板',
+      custom: '自定义',
+      assistant: '助手',
+      assistantDesc: '友好、专业的智能助手',
+      creative: '创意',
+      creativeDesc: '富有想象力和艺术感的人格',
+      technical: '技术',
+      technicalDesc: '精确且注重细节的技术专家',
+      casual: '休闲',
+      casualDesc: '轻松随意的对话风格',
+    },
+    // Statistics
+    stats: {
+      total: '人格总数',
+      active: '活跃',
+      inactive: '未激活',
+      created: '创建时间',
+      lastUsed: '上次使用',
+      never: '从未使用',
+    },
     // Editor modes
     editor: {
       edit: '编辑',

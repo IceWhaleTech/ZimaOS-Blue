@@ -1,12 +1,4 @@
-# ZimaOS Blue
-
-<p align="center">
-  <img src="docs/public/logo.png" alt="ZimaOS Blue" width="200">
-</p>
-
-<p align="center">
-  <strong>Secure, Observable AI Agent Runtime</strong>
-</p>
+![](./docs/assets/bannerX.png)
 
 <p align="center">
   <strong>English</strong> |
@@ -37,179 +29,213 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Blue** is a lightweight, high-performance AI agent runtime designed for NAS and edge devices. Built with Go, it provides a production-ready platform with zero-config deployment, session monitoring, and comprehensive usage analytics.
+<p align="center">
+  <a href="https://discord.gg/SrCYvumF"><img src="./docs/assets/discord.png" alt="Discord" height="128"></a>&nbsp;&nbsp;
+  <a href="https://www.facebook.com/zimaboard/"><img src="./docs/assets/facebook.png" alt="Facebook" height="128"></a>&nbsp;&nbsp;
+  <a href="https://x.com/ZimaSpace"><img src="./docs/assets/x.png" alt="X" height="128"></a>
+</p>
 
-[Quick Start](#quick-start) · [Features](#core-features)
+## Introduction
+
+Inspired by Clawdbot, we believe the **future** of personal computing will be **shaped by diverse, local-first AI agents** running at the edge.
+
+**ZimaOS Blue is our answer** — a fully **open‑source, auditable, and production‑ready agent runtime and toolkit** that lets you ship private, self‑hosted agents with zero friction.
+
+Built for bold developers who want to **vibe or handcraft their own agents**, Blue is **engineered for performance**: written in **Go**, with a memory footprint as low as 10 MB. It runs on **any x86, Raspberry Pi, Windows, macOS** — anywhere you plug in power.
+
+![](./docs/assets/features.png)
 
 ## Highlights
 
-| Spec | Value |
-|------|-------|
-| **Binary Size** | ~40MB (single executable) |
-| **Memory (Idle)** | ~4MB |
-| **Startup Time** | < 1s |
-| **Dependencies** | None (zero-config deployment) |
+### Local-First Design & Automatic Model Access
 
-## Core Features
+Take it further: it delivers native support for **20+ IM platforms**, **voice‑driven** interfaces for natural, context‑aware dialogue, **zero‑config model switching**you  with IDE scanning, and SOUL‑layered personalities.
 
-### Zero-Config Deployment
+### Fast, Light
 
-- **Single Binary**: Download and run - no runtime dependencies required
-- **Configuration on Demand**: Works out of the box, customize when needed
-- **Cross-Platform**: Windows, macOS, Linux - same binary, same experience
-- **Daemon Support**: Run as a persistent background service
+Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on everything from servers to your desktop devices.
 
-### Session Monitoring
+| Metric | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+|--------|-------------------|------------------------|
+| `--help` cold / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `status` runtime (best of 3) | **< 0.01 s** | 5.98 s |
+| `--help` peak RSS | **~10 MB** | ~394 MB |
+| `status` peak RSS | **~15 MB** | ~1.52 GB |
+| Runtime dependencies | **None** | Node.js 18+ |
 
-- **Real-time Session Tracking**: Monitor all active AI sessions with live status
-- **Conversation History**: Full audit trail of all interactions
-- **Session Replay**: Review and analyze past conversations
-- **Multi-tenant Isolation**: Complete session separation between users
+> Benchmarked on macOS arm64, same host, best of 3 runs. Feb 2026.
 
-### Call Chain Optimization
+### Pure Go, Any Device
 
-- **Request Tracing**: End-to-end visibility of every API call
-- **Latency Analysis**: Identify bottlenecks in the request pipeline
-- **Provider Routing**: Intelligent routing to optimal LLM providers
-- **Circuit Breaker**: Automatic failover on provider failures
+100% Go, static binary. **Cross-compiles to 5 targets** out of the box (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64). No Node runtime, no Python, no containers required. Drop it on a NAS, a Raspberry Pi, an old x86 router, or a Mac — it just runs. **Then layer on your own UI, logic, and agent skills** — one codebase, every platform.
 
-### Usage Analytics
+### Security & Governance
 
-- **Token Consumption**: Track usage per user, session, and provider
-- **Cost Attribution**: Detailed cost breakdown by operation
-- **Rate Limiting**: Per-tenant quota management
-- **Export Reports**: Generate usage reports in multiple formats
+Built-in sidecar API proxy with defense in depth:
+- **Sandbox Execution** – All tool calls run in isolated environments.
+- **Prompt Injection Defense** – 7+ built-in interception strategies.
+- **Session Auditing** – Full session monitoring, every interaction traceable.
+- **RBAC & WebAuthn** – Fine-grained access control with passwordless auth.
 
-### Security Hardening
+## Why Blue
 
-- **Sandbox Execution**: All tool calls run in isolated environments
-- **RBAC**: Fine-grained role-based access control
-- **WebAuthn/Passkeys**: Passwordless FIDO2 authentication
-- **MFA/TOTP**: Multi-factor authentication support
-- **Audit Trail**: Immutable logs of all privileged operations
+We believe **next‑gen personal computing** embraces LLMs — but **controllable, auditable** agents remain the bedrock for both individuals and teams. **Blue delivers**:
+- **Comprehensive Core** – Advanced model management, IM integration, enhanced persona, and natural language interfaces tuned for daily interactions (headsets, voice, smart glasses).
+- **Local‑First, Ultra‑Lightweight, Cross‑Device** – No high‑end hardware required. Runs on anything that can compute.
+- **Secure & Auditable** – Session auditing, sandboxing, permission controls, and a built‑in API proxy that acts as an application‑layer firewall — every byte in/out is visible.
+
+We minimize boilerplate so you **focus on what matters**. Staying true to **ZimaOS's design philosophy**, Blue delivers:
+- **Zero‑to‑One in One Click** – Deploy instantly, no complex config.
+- **Rapid Prototyping** – Vibe or handcraft scenario‑specific tools, interactions, and app packages.
+- **Global‑Ready** – **The world is huge**, and it doesn't default to English. **20+ languages, native**, no barriers.
+- **Open Model Ecosystem** – No vendor lock‑in. Bring your own models.
+
+![](./docs/assets/design_principle.png)
 
 ## Quick Start
 
+### Option 1: Prebuilt Binaries – macOS & Windows (Download & Run)
+
+Get the native application for your desktop – no dependencies, no compilation.
+
+**macOS (Intel/Apple Silicon)**
 ```bash
-# From Source
-git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
-cd ZimaOS-Blue
-make build && ./dist/zimaos-blue server
+curl -L -o echo-macos.zip https://get.zimaos.echo/download/macos && unzip echo-macos.zip && ./echo-server
 ```
 
-Access the dashboard at `http://localhost:3000`
-
-## LLM Provider Configuration
-
-ZimaOS Blue supports multiple LLM providers including local LLM services:
-
-```yaml
-llm:
-  # Cloud providers
-  provider: "openai"  # or "anthropic", "azure", etc.
-  api_key: "your-api-key"
-
-  # Local LLM (optional)
-  # provider: "ollama"
-  # base_url: "http://localhost:11434"
+**Windows (PowerShell)**
+```powershell
+Invoke-WebRequest -Uri https://get.zimaos.echo/download/windows/echo-server.exe -OutFile echo-server.exe
+.\echo-server.exe
 ```
 
-## Architecture
+Prebuilt binaries are also available for Linux; see the downloads page.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Blue                       │
-├─────────────────────────────────────────────────────┤
-│  Session Monitor │ Usage Analytics │ Call Tracing  │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
+### Option 2: The "3-Click" Script (Recommended)
 
-## Observability
-
-```yaml
-# Enable full observability stack
-metrics:
-  enabled: true
-  endpoint: "/metrics"
-
-profiling:
-  enabled: true
-  endpoint_prefix: "/debug/pprof"
-
-audit:
-  enabled: true
-  retention_days: 90
-```
-
-### Metrics Exposed
-
-- Request latency (p50, p95, p99)
-- LLM token usage per provider
-- Tool execution success/failure rates
-- Memory and goroutine counts
-- Circuit breaker state transitions
-
-## Development Setup
-
-### Prerequisites
-
-| Tool | Version | Install |
-|------|---------|---------|
-| Go | 1.21+ | [golang.org](https://golang.org/dl/) |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
-| Make | - | Pre-installed on macOS/Linux |
-
-### Development Mode (Hot Reload)
+Deploy Blue on any x86/ARM Linux/macOS machine instantly:
 
 ```bash
-# Linux / macOS
-./dev.sh
-
-# Windows
-dev.bat
+curl -fsSL https://get.zimaos.echo/install.sh | bash
 ```
 
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:23456`
-
-### Build Commands
+### Option 3: Docker
 
 ```bash
-make build              # Build single binary (frontend embedded)
-make build-embedded     # Build with Claude Code CLI embedded
-make build-all          # Cross-compile for all platforms
-make clean              # Clean build artifacts
+docker run -d \
+  --name zimaos-blue \
+  -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  zimaos/echo:latest
 ```
 
-### Project Structure
+### Option 4: Build from Source
 
-```
-ZimaOS-Blue/
-├── server/             # Go backend
-│   ├── cmd/blue/       # Entry point
-│   └── internal/       # Core modules
-├── web/                # Vue 3 frontend
-│   └── src/
-└── dist/               # Build output
+```bash
+git clone https://github.com/zimaos/blue.git
+cd blue
+go build -o blue-server
+./blue-server
 ```
 
-## Acknowledgments
+## Architecture Overview
 
-- [clawdbot](https://github.com/clawdbot/clawdbot) - Inspiration for the project
-- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - Lightweight ORM
+![](./docs/assets/architecture.png)
 
----
+### Data Flow
+
+**Chat Request (Proxy Hot Path)**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**Channel Message Flow**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**Voice Pipeline**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
+### Package Map (`server/internal/`)
+
+| Layer | Packages |
+|-------|----------|
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, heartbeat, companion, profiling, leakdetect |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+## How to Use
+
+![](./docs/assets/handcraft.png)
+
+## Milestone Timeline
+
+![](./docs/assets/timeline.png)
+
+| Version | Focus | Key Value | Status |
+|---------|-------|-----------|--------|
+| v0.1 | Go Runtime Core | Stable kernel, 24h running | Done |
+| v0.2 | Core Capabilities | Minimal usable, LLM integration | Done |
+| v0.3 | NAS Integration | NAS native, systemd support | Done |
+| v0.4 | Plugin System | Extensible, security basics | Done |
+| v0.5 | Product Baseline | Production ready, documentation | Done |
+| v0.6 | Message Channels | Multi-channel support | Done |
+| v0.7 | Security | OIDC, MFA, audit | Done |
+| v0.8 | Performance | Optimization, caching, benchmarks | Done |
+| v0.9 | Ecosystem | Multi-tenant, browser automation, voice | Done |
+| v0.10.0 | CLI Bundling | CC CLI bundling, detection, auto-update | Done |
+| v0.10.1 | Metrics Monitoring | API stats, token tracking, TTFT | Done |
+| v0.10.2 | CLI Reliability | Process lifecycle, error recovery | Done |
+| v0.10.3 | CLI Integration | Setup wizard, provider auto-detect | Done |
+| v0.10.4 | Tauri Packaging | Desktop app, system tray | Done |
+| v0.10.5 | API Proxy Sidecar | Route selection, prompt guard, usage stats | Done |
+| v0.10.6 | Provider Pool | Multi-provider routing, health check, failover | Done |
+| v0.10.7 | Preview Mode | Unauthenticated access, feature gating | Done |
+| v0.10.8 | Skill Store | Skill store infra, channel validation | Done |
+| v0.10.9–10 | User Management | Sub-users, page-level permissions | Done |
+| v0.10.13–14 | Security & Skills | Security page, skill store redesign | Done |
+| v0.10.15 | Chat Enhancements | Chat UX, message pipeline | Done |
+| v0.10.16 | Speech Module | Sherpa TTS/ASR, eSpeak, provider switching | Done |
+| v0.10.17 | Remote Access | Ngrok, Cloudflare tunnels, ACME certs | Done |
+| v0.10.18–20 | Performance Sprint | Startup/chat perf, context cache | Done |
+| v0.10.21–22 | Prompt & DingTalk | System prompt, DingTalk channel | Done |
+| v0.10.23 | OTA Update | OTA update system | Done |
+| v0.10.24 | Channel Upgrade | 10 channels upgraded from stubs | Done |
+| v0.10.25 | CC Cache | Two-level cache (L1 mem + L2 disk) | Done |
+| v0.10.26 | Humanizer | Response humanization pipeline | Done |
+| v0.10.27 | Context Pruner | BM25 scoring, segmentation, benchmarks | Done |
+| v0.10.28 | Memory Service | Progressive search, dual-write backend | Done |
+
+## Community & Support
+
+- **Issues**: [Please file bugs and feature requests here](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Discussions**: [Discord](https://discord.gg/SrCYvumF)
+- **Follow us** on [GitHub](https://github.com/IceWhaleTech)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. We believe in open source and giving back to the community.
+
+## Contributors
 
 <p align="center">
   Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>

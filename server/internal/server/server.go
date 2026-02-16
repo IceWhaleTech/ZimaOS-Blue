@@ -37,6 +37,11 @@ func GetActualPort() int {
 	return int(actualPort.Load())
 }
 
+// SetActualPort sets the actual port (used by embedded/bluelib mode).
+func SetActualPort(port int) {
+	actualPort.Store(int32(port))
+}
+
 // OnServerStart registers a callback to be called after the server starts
 // and the actual port is known.
 func OnServerStart(callback func(port int)) {

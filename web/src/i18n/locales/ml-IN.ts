@@ -894,10 +894,6 @@ export default {
     antivirusBlockedTitle: 'ngrok ആൻറിവൈറസ് ബ്ലോക്ക് ചെയ്യാം',
     antivirusBlockedDesc: 'കണക്ഷൻ പരാജയപ്പെട്ടാൽ, ആൻറിവൈറസ് ngrok ബ്ലോക്ക് ചെയ്യുന്നുണ്ടോ എന്ന് പരിശോധിച്ച് വൈറ്റ് ലിസ്റ്റിലേക്ക് ചേർക്കുക.',
   },
-  ideDiscovery: enUS.ideDiscovery,
-  userdata: enUS.userdata,
-  connections: enUS.connections,
-  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'കാറ്റലൻ',
     'cs-CZ': 'ചെക്ക്',
@@ -966,10 +962,6 @@ export default {
     clearSearch: 'തിരയൽ മായ്ക്കുക',
     allLoaded: 'എല്ലാ {count} സ്കില്ലുകളും ലോഡ് ചെയ്തു',
   },
-
-    personality: {
-    ...enUS.personality,
-  },
   memoryService: {
     ...enUS.memoryService,
     title: 'മെമ്മറി സേവനം',
@@ -1015,4 +1007,144 @@ export default {
     expiredEntries: 'കാലഹരണപ്പെട്ടത്',
     loadMore: 'കൂടുതൽ ലോഡ് ചെയ്യുക',
   },
+  authProviders: {
+    ...enUS.authProviders,
+    title: 'ആധികാരികത ദാതാക്കൾ',
+  },
+  memory: {
+    ...enUS.memory,
+    title: 'മെമ്മറി മാനേജ്മെന്റ്',
+  },
+  audit: {
+    ...enUS.audit,
+    title: 'ഓഡിറ്റ് ലോഗ്',
+  },
+  update: {
+    ...enUS.update,
+    title: 'സിസ്റ്റം അപ്ഡേറ്റ്',
+  },
+  heartbeat: {
+    ...enUS.heartbeat,
+    title: 'ഹാർട്ട്ബീറ്റ്',
+  },
+  mfa: {
+    ...enUS.mfa,
+    title: 'മൾട്ടി-ഫാക്ടർ ഓഥെന്റിക്കേഷൻ',
+  },
+  webauthn: {
+    ...enUS.webauthn,
+    title: 'WebAuthn',
+  },
+  cache: {
+    ...enUS.cache,
+    title: 'കാഷെ മാനേജ്മെന്റ്',
+  },
+  tokenEconomy: {
+    ...enUS.tokenEconomy,
+    title: 'ടോക്കൺ ഇക്കണോമി',
+  },
+  apiProxy: {
+    ...enUS.apiProxy,
+    title: 'API പ്രോക്സി',
+  },
+  encryption: {
+    ...enUS.encryption,
+    title: 'എൻക്രിപ്ഷൻ',
+  },
+  providerSettings: {
+    ...enUS.providerSettings,
+    title: 'പ്രൊവൈഡർ ക്രമീകരണങ്ങൾ',
+  },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+    title: 'IDE കണ്ടെത്തൽ',
+  },
+  userdata: {
+    ...enUS.userdata,
+    title: 'ഉപയോക്തൃ ഡാറ്റ',
+    tabs: {
+      ...enUS.userdata.tabs,
+      title: 'ടാബുകൾ',
+    },
+    retention: {
+      ...enUS.userdata.retention,
+      title: 'നിക്ഷേപം',
+    },
+    cleanup: {
+      ...enUS.userdata.cleanup,
+      title: 'ക്ലീനപ്പ്',
+    },
+    memory: {
+      ...enUS.userdata.memory,
+      title: 'മെമ്മറി',
+    },
+  },
+  connections: {
+    ...enUS.connections,
+    title: 'കണക്ഷനുകൾ',
+  },
+  mermaid: {
+    ...enUS.mermaid,
+    title: 'Mermaid ഡയഗ്രമുകൾ',
+  },
+  browser: {
+    ...enUS.browser,
+    title: 'ബ്രൗസർ',
+  },
+  hooks: {
+    ...enUS.hooks,
+    title: 'ഹുക്കുകൾ',
+  },
+  sessions: {
+    ...enUS.sessions,
+    title: 'സെഷനുകൾ',
+  },
+  webhook: {
+    ...enUS.webhook,
+    title: 'വെബ്ഹുക്ക്',
+  },
+  personality: {
+    ...enUS.personality,
+    title: 'വ്യക്തിത്വം',
+    card: {
+      ...enUS.personality.card,
+      title: 'കാർഡ്',
+    },
+    validation: {
+      ...enUS.personality.validation,
+      title: 'സാധൂകരണം',
+    },
+    templates: {
+      ...enUS.personality.templates,
+      title: 'ടെംപ്ലേറ്റുകൾ',
+    },
+    stats: {
+      ...enUS.personality.stats,
+      title: 'സ്ഥിതിവിവരക്കണക്കുകൾ',
+    },
+    editor: {
+      ...enUS.personality.editor,
+      title: 'എഡിറ്റർ',
+    },
+  },
+  companion: { ...enUS.companion },
+  automation: { ...enUS.automation },
+  workflow: { ...enUS.workflow },
+  cron: { ...enUS.cron },
+  homeAssistant: { ...enUS.homeAssistant },
+  tools: { ...enUS.tools },
+  skills: { ...enUS.skills },
+  backup: { ...enUS.backup },
+  plugins: { ...enUS.plugins },
+  profile: { ...enUS.profile },
+  footer: { ...enUS.footer },
+  service: { ...enUS.service },
+  autoReply: { ...enUS.autoReply },
+  claudecode: { ...enUS.claudecode },
+  a2ui: { ...enUS.a2ui },
+  sandbox: { ...enUS.sandbox },
+  home: { ...enUS.home },
+  brand: { ...enUS.brand },
+  speech: { ...enUS.speech },
+  users: { ...enUS.users },
 }

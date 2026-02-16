@@ -8,6 +8,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,6 +34,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
@@ -502,22 +504,32 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		HotReloader:        hotReloader,
 	})
 
-	// Start HTTP server
+	// Start HTTP server with explicit listener (to capture actual port)
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+	}
+
+	// Get actual port and propagate to server/security/network packages
+	actualPort := ln.Addr().(*net.TCPAddr).Port
+	server.SetActualPort(actualPort)
+	security.SetServerPort(actualPort)
+	network.SetDynamicPort(actualPort)
+
 	httpServer = &http.Server{
-		Addr:         addr,
 		Handler:      e,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
-	zapLogger.Info("Starting HTTP server", zap.String("addr", addr))
+	zapLogger.Info("Starting HTTP server", zap.String("addr", addr), zap.Int("actual_port", actualPort))
 
 	// Start server in goroutine
 	errCh := make(chan error, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
 	}()

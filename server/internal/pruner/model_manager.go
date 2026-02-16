@@ -18,6 +18,14 @@ type PrunerModelInfo struct {
 	Size     string `json:"size"`
 }
 
+// Download states
+const (
+	StateIdle        = ""
+	StateConnecting  = "connecting"
+	StateDownloading = "downloading"
+	StateError       = "error"
+)
+
 // prunerModelFiles lists all files needed for the ONNX pruner.
 var prunerModelFiles = []PrunerModelInfo{
 	{Filename: "model.onnx", URL: "https://huggingface.co/ayanami-kitasan/code-pruner/resolve/main/model.onnx", Size: "1.4 GB"},
@@ -41,6 +49,8 @@ type ModelDownloadProgress struct {
 type PrunerModelStatus struct {
 	Ready       bool                   `json:"ready"`
 	Downloading bool                   `json:"downloading"`
+	State       string                 `json:"state,omitempty"`
+	Error       string                 `json:"error,omitempty"`
 	Progress    *ModelDownloadProgress `json:"progress,omitempty"`
 	Files       []PrunerFileStatus     `json:"files,omitempty"`
 }
@@ -56,6 +66,8 @@ type PrunerFileStatus struct {
 type PrunerModelManager struct {
 	modelDir    string
 	downloading bool
+	state       string
+	lastError   string
 	progress    *ModelDownloadProgress
 	cancelFunc  context.CancelFunc
 	mu          sync.Mutex
@@ -104,6 +116,8 @@ func (m *PrunerModelManager) GetStatus() PrunerModelStatus {
 	return PrunerModelStatus{
 		Ready:       allReady,
 		Downloading: m.downloading,
+		State:       m.state,
+		Error:       m.lastError,
 		Progress:    m.progress,
 		Files:       files,
 	}
@@ -117,6 +131,8 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 		return fmt.Errorf("download already in progress")
 	}
 	m.downloading = true
+	m.state = StateConnecting
+	m.lastError = ""
 	m.progress = &ModelDownloadProgress{TotalFiles: len(prunerModelFiles)}
 	ctx, m.cancelFunc = context.WithCancel(ctx)
 	m.mu.Unlock()
@@ -124,11 +140,18 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 	defer func() {
 		m.mu.Lock()
 		m.downloading = false
+		if m.state != StateError {
+			m.state = StateIdle
+		}
 		m.cancelFunc = nil
 		m.mu.Unlock()
 	}()
 
 	if err := os.MkdirAll(m.modelDir, 0755); err != nil {
+		m.mu.Lock()
+		m.state = StateError
+		m.lastError = err.Error()
+		m.mu.Unlock()
 		return err
 	}
 
@@ -140,14 +163,21 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 		}
 
 		m.mu.Lock()
+		m.state = StateConnecting
 		m.progress.File = f.Filename
 		m.progress.FileIndex = i
 		m.progress.Downloaded = 0
 		m.progress.Total = 0
 		m.progress.Percentage = 0
+		m.progress.SpeedHuman = ""
+		m.progress.ETA = ""
 		m.mu.Unlock()
 
 		if err := m.downloadFile(ctx, f.URL, destPath); err != nil {
+			m.mu.Lock()
+			m.state = StateError
+			m.lastError = fmt.Sprintf("%s: %v", f.Filename, err)
+			m.mu.Unlock()
 			return fmt.Errorf("download %s: %w", f.Filename, err)
 		}
 	}
@@ -169,6 +199,11 @@ func (m *PrunerModelManager) downloadFile(ctx context.Context, url, destPath str
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %s", resp.Status)
 	}
+
+	// Transition from connecting to downloading
+	m.mu.Lock()
+	m.state = StateDownloading
+	m.mu.Unlock()
 
 	out, err := os.Create(destPath + ".tmp")
 	if err != nil {

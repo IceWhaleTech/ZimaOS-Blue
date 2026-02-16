@@ -66,9 +66,10 @@ type Provider struct {
 	Location    ProviderLocation `json:"location"`  // cloud or local
 	Enabled     bool             `json:"enabled"`
 	Status      ProviderStatus   `json:"status"`
-	BaseURL     string           `json:"base_url,omitempty"`
-	APIVersion  string           `json:"api_version,omitempty"` // e.g., "v1", "2024-01"
-	APIFormat   APIFormat        `json:"api_format,omitempty"`  // openai, anthropic, ollama, google (auto-detected if empty)
+	BaseURL        string           `json:"base_url,omitempty"`
+	APIVersion     string           `json:"api_version,omitempty"`     // e.g., "v1", "2024-01"
+	APIFormat      APIFormat        `json:"api_format,omitempty"`      // openai, anthropic, ollama, google (auto-detected if empty)
+	SkipTLSVerify  bool             `json:"skip_tls_verify,omitempty"` // skip TLS certificate verification for self-signed certs
 
 	// Authentication
 	APIKeys []APIKey     `json:"api_keys,omitempty"`

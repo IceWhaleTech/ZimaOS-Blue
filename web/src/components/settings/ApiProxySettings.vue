@@ -56,7 +56,7 @@ async function fetchAll() {
     if (pStatsRes) prunerStats.value = pStatsRes.data
     if (modelRes) {
       modelStatus.value = modelRes.data
-      if (modelRes.data.downloading) startModelPoll()
+      if (modelRes.data.downloading || modelRes.data.state === 'connecting') startModelPoll()
     }
     if (routingRes) routingEnabled.value = routingRes.data.enabled
     if (rulesRes) routingRules.value = rulesRes.data.rules
@@ -177,7 +177,7 @@ function startModelPoll() {
     try {
       const res = await proxyCacheApi.getPrunerModelStatus()
       modelStatus.value = res.data
-      if (!res.data.downloading) {
+      if (!res.data.downloading && res.data.state !== 'connecting') {
         stopModelPoll()
       }
     } catch { /* ignore */ }
@@ -371,12 +371,30 @@ onUnmounted(stopModelPoll)
                 <span class="w-2 h-2 rounded-full bg-green-500"></span>
                 <span class="text-xs text-green-600 dark:text-green-400">{{ t('apiProxy.modelReady') }}</span>
               </div>
+              <div v-else-if="modelStatus.state === 'connecting'" class="flex items-center gap-2">
+                <div class="animate-spin w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                <span class="text-xs text-blue-600 dark:text-blue-400">{{ t('apiProxy.modelConnecting') }}</span>
+                <button
+                  class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                  @click="cancelModelDownload"
+                >
+                  {{ t('apiProxy.cancelDownload') }}
+                </button>
+              </div>
               <div v-else-if="modelStatus.downloading" class="flex items-center gap-2">
                 <button
                   class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors"
                   @click="cancelModelDownload"
                 >
                   {{ t('apiProxy.cancelDownload') }}
+                </button>
+              </div>
+              <div v-else-if="modelStatus.state === 'error'" class="flex items-center gap-2">
+                <button
+                  class="px-3 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
+                  @click="startModelDownload"
+                >
+                  {{ t('apiProxy.retry') }}
                 </button>
               </div>
               <div v-else>
@@ -389,8 +407,19 @@ onUnmounted(stopModelPoll)
               </div>
             </div>
 
+            <!-- Connecting indicator -->
+            <div v-if="modelStatus.state === 'connecting' && modelStatus.progress" class="mt-3 space-y-1.5">
+              <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span>{{ modelStatus.progress.file }} ({{ modelStatus.progress.file_index + 1 }}/{{ modelStatus.progress.total_files }})</span>
+              </div>
+              <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"></div>
+              </div>
+              <div class="text-xs text-gray-400 dark:text-gray-500">{{ t('apiProxy.modelConnecting') }}</div>
+            </div>
+
             <!-- Download progress bar -->
-            <div v-if="modelStatus.downloading && modelStatus.progress" class="mt-3 space-y-1.5">
+            <div v-if="modelStatus.state === 'downloading' && modelStatus.progress" class="mt-3 space-y-1.5">
               <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                 <span>{{ modelStatus.progress.file }} ({{ modelStatus.progress.file_index + 1 }}/{{ modelStatus.progress.total_files }})</span>
                 <span>{{ modelStatus.progress.percentage.toFixed(1) }}%</span>
@@ -407,8 +436,13 @@ onUnmounted(stopModelPoll)
               </div>
             </div>
 
+            <!-- Error message -->
+            <div v-if="modelStatus.state === 'error' && modelStatus.error" class="mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+              <p class="text-xs text-red-600 dark:text-red-400">{{ t('apiProxy.modelDownloadError') }}: {{ modelStatus.error }}</p>
+            </div>
+
             <!-- Not downloaded hint -->
-            <div v-if="!modelStatus.ready && !modelStatus.downloading" class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+            <div v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="mt-2 text-xs text-gray-400 dark:text-gray-500">
               {{ t('apiProxy.modelNotDownloaded') }} &middot; ~1.4 GB
             </div>
           </div>

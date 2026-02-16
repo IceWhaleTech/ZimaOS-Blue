@@ -286,7 +286,7 @@ func TestBuiltinModels(t *testing.T) {
 	}
 }
 
-func TestGetHealthCheckURL(t *testing.T) {
+func TestGetHealthCheckURLs(t *testing.T) {
 	tests := []struct {
 		provider *Provider
 		expected string
@@ -307,13 +307,20 @@ func TestGetHealthCheckURL(t *testing.T) {
 			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com"},
 			expected: "https://custom.api.com/models",
 		},
+		{
+			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com/"},
+			expected: "https://custom.api.com/models",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.provider.ID, func(t *testing.T) {
-			url := getHealthCheckURL(tt.provider)
-			if url != tt.expected {
-				t.Errorf("Expected %s, got %s", tt.expected, url)
+			urls := getHealthCheckURLs(tt.provider)
+			if len(urls) == 0 {
+				t.Fatal("Expected at least one URL")
+			}
+			if urls[0] != tt.expected {
+				t.Errorf("Expected %s, got %s", tt.expected, urls[0])
 			}
 		})
 	}

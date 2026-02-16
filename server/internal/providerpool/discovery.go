@@ -2,6 +2,7 @@ package providerpool
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,13 +14,14 @@ import (
 
 // ModelDiscovery handles model discovery and caching
 type ModelDiscovery struct {
-	registry *Registry
-	storage  Storage
-	client   *http.Client
-	cache    map[string][]*Model
-	cacheTTL time.Duration
-	cacheAt  map[string]time.Time
-	mu       sync.RWMutex
+	registry       *Registry
+	storage        Storage
+	client         *http.Client
+	insecureClient *http.Client
+	cache          map[string][]*Model
+	cacheTTL       time.Duration
+	cacheAt        map[string]time.Time
+	mu             sync.RWMutex
 }
 
 // NewModelDiscovery creates a new ModelDiscovery
@@ -30,10 +32,24 @@ func NewModelDiscovery(registry *Registry, storage Storage, cacheTTL time.Durati
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		insecureClient: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // user-opted skip for self-signed certs
+			},
+		},
 		cache:    make(map[string][]*Model),
 		cacheTTL: cacheTTL,
 		cacheAt:  make(map[string]time.Time),
 	}
+}
+
+// clientFor returns the appropriate HTTP client for the provider
+func (d *ModelDiscovery) clientFor(provider *Provider) *http.Client {
+	if provider.SkipTLSVerify {
+		return d.insecureClient
+	}
+	return d.client
 }
 
 // FetchModels fetches models from a provider
@@ -373,7 +389,7 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 	}
 
 	// Strategy 2: Try Ollama-style endpoint (/api/tags)
-	models, err = d.tryOllamaStyleEndpoint(ctx, baseURL)
+	models, err = d.tryOllamaStyleEndpoint(ctx, baseURL, provider)
 	if err == nil && len(models) > 0 {
 		// Mark models with provider ID
 		for _, m := range models {
@@ -391,7 +407,7 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 	}
 
 	// Strategy 3: Try LiteLLM-style endpoint (/model/info)
-	models, err = d.tryLiteLLMStyleEndpoint(ctx, baseURL, apiKey)
+	models, err = d.tryLiteLLMStyleEndpoint(ctx, baseURL, apiKey, provider)
 	if err == nil && len(models) > 0 {
 		for _, m := range models {
 			m.ProviderID = provider.ID
@@ -413,7 +429,7 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 }
 
 // tryOllamaStyleEndpoint tries to fetch models using Ollama API format
-func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL string) ([]*Model, error) {
+func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL string, provider *Provider) ([]*Model, error) {
 	// Try multiple path combinations
 	// baseURL might be "https://example.com" or "https://example.com/v1"
 	var urls []string
@@ -437,7 +453,7 @@ func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL str
 			continue
 		}
 
-		resp, err := d.client.Do(req)
+		resp, err := d.clientFor(provider).Do(req)
 		if err != nil {
 			continue
 		}
@@ -496,7 +512,7 @@ func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL str
 }
 
 // tryLiteLLMStyleEndpoint tries to fetch models using LiteLLM API format
-func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL string, apiKey *APIKey) ([]*Model, error) {
+func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL string, apiKey *APIKey, provider *Provider) ([]*Model, error) {
 	// LiteLLM uses /model/info or /models/info
 	var urls []string
 	if strings.HasSuffix(baseURL, "/v1") {
@@ -524,7 +540,7 @@ func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL st
 			req.Header.Set("Authorization", "Bearer "+apiKey.Key)
 		}
 
-		resp, err := d.client.Do(req)
+		resp, err := d.clientFor(provider).Do(req)
 		if err != nil {
 			continue
 		}
@@ -602,7 +618,7 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 
 	var errors []string
 	for _, url := range urls {
-		result, err := d.tryFetchModels(ctx, url, apiKey)
+		result, err := d.tryFetchModels(ctx, url, apiKey, provider)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", url, err))
 			continue
@@ -617,7 +633,7 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 }
 
 // tryFetchModels attempts to fetch models from a single URL
-func (d *ModelDiscovery) tryFetchModels(ctx context.Context, url string, apiKey *APIKey) ([]byte, error) {
+func (d *ModelDiscovery) tryFetchModels(ctx context.Context, url string, apiKey *APIKey, provider *Provider) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -627,7 +643,7 @@ func (d *ModelDiscovery) tryFetchModels(ctx context.Context, url string, apiKey 
 		req.Header.Set("Authorization", "Bearer "+apiKey.Key)
 	}
 
-	resp, err := d.client.Do(req)
+	resp, err := d.clientFor(provider).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +730,7 @@ func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provid
 
 // fetchGoogleModels fetches models from Google Gemini API
 func (d *ModelDiscovery) fetchGoogleModels(ctx context.Context, provider *Provider, apiKey *APIKey) ([]*Model, error) {
-	url := provider.BaseURL + "/v1beta/models"
+	url := strings.TrimSuffix(provider.BaseURL, "/") + "/v1beta/models"
 	if apiKey != nil && apiKey.Key != "" {
 		url += "?key=" + apiKey.Key
 	}
@@ -724,7 +740,7 @@ func (d *ModelDiscovery) fetchGoogleModels(ctx context.Context, provider *Provid
 		return nil, err
 	}
 
-	resp, err := d.client.Do(req)
+	resp, err := d.clientFor(provider).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -820,14 +836,14 @@ func (d *ModelDiscovery) fetchGoogleModels(ctx context.Context, provider *Provid
 
 // fetchOllamaModels fetches models from Ollama API
 func (d *ModelDiscovery) fetchOllamaModels(ctx context.Context, provider *Provider) ([]*Model, error) {
-	url := provider.BaseURL + "/api/tags"
+	url := strings.TrimSuffix(provider.BaseURL, "/") + "/api/tags"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := d.client.Do(req)
+	resp, err := d.clientFor(provider).Do(req)
 	if err != nil {
 		return nil, err
 	}

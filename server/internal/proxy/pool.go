@@ -10,10 +10,11 @@ import (
 
 // ConnectionPool manages HTTP connections to upstream providers
 type ConnectionPool struct {
-	config    *ConnectionConfig
-	transport *http.Transport
-	clients   map[string]*http.Client
-	mu        sync.RWMutex
+	config            *ConnectionConfig
+	transport         *http.Transport
+	insecureTransport *http.Transport
+	clients           map[string]*http.Client
+	mu                sync.RWMutex
 }
 
 // NewConnectionPool creates a new connection pool
@@ -37,17 +38,33 @@ func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
 		},
 	}
 
+	insecureTransport := transport.Clone()
+	insecureTransport.TLSClientConfig = &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true, //nolint:gosec // user-opted skip for self-signed certs
+	}
+
 	return &ConnectionPool{
-		config:    config,
-		transport: transport,
-		clients:   make(map[string]*http.Client),
+		config:            config,
+		transport:         transport,
+		insecureTransport: insecureTransport,
+		clients:           make(map[string]*http.Client),
 	}
 }
 
 // GetClient returns an HTTP client for the given provider
 func (cp *ConnectionPool) GetClient(provider string) *http.Client {
+	return cp.getClient(provider, false)
+}
+
+// GetInsecureClient returns an HTTP client that skips TLS verification
+func (cp *ConnectionPool) GetInsecureClient(provider string) *http.Client {
+	return cp.getClient(provider+":insecure", true)
+}
+
+func (cp *ConnectionPool) getClient(key string, insecure bool) *http.Client {
 	cp.mu.RLock()
-	if client, ok := cp.clients[provider]; ok {
+	if client, ok := cp.clients[key]; ok {
 		cp.mu.RUnlock()
 		return client
 	}
@@ -56,16 +73,20 @@ func (cp *ConnectionPool) GetClient(provider string) *http.Client {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 
-	// Double-check after acquiring write lock
-	if client, ok := cp.clients[provider]; ok {
+	if client, ok := cp.clients[key]; ok {
 		return client
 	}
 
-	client := &http.Client{
-		Transport: cp.transport,
-		Timeout:   0, // No timeout, handled by context
+	t := cp.transport
+	if insecure {
+		t = cp.insecureTransport
 	}
-	cp.clients[provider] = client
+
+	client := &http.Client{
+		Transport: t,
+		Timeout:   0,
+	}
+	cp.clients[key] = client
 	return client
 }
 

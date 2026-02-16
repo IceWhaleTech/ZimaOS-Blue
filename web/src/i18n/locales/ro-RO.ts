@@ -888,10 +888,6 @@ export default {
     antivirusBlockedTitle: 'ngrok poate fi blocat de antivirus',
     antivirusBlockedDesc: 'Dacă conexiunea eșuează, verificați dacă antivirusul blochează ngrok și adăugați-l la whitelist.',
   },
-  ideDiscovery: enUS.ideDiscovery,
-  userdata: enUS.userdata,
-  connections: enUS.connections,
-  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'Catalană',
     'cs-CZ': 'Cehă',
@@ -960,10 +956,6 @@ export default {
     clearSearch: 'Ștergeți căutarea',
     allLoaded: 'Toate cele {count} abilități încărcate',
   },
-
-    personality: {
-    ...enUS.personality,
-  },
   memoryService: {
     ...enUS.memoryService,
     title: 'Serviciu de memorie',
@@ -1013,4 +1005,144 @@ export default {
     expiredEntries: 'Expirate',
     loadMore: 'Încarcă mai multe',
   },
+  authProviders: {
+    ...enUS.authProviders,
+    title: 'Furnizori de autentificare',
+  },
+  memory: {
+    ...enUS.memory,
+    title: 'Gestionare memorie',
+  },
+  audit: {
+    ...enUS.audit,
+    title: 'Jurnal de audit',
+  },
+  update: {
+    ...enUS.update,
+    title: 'Actualizare sistem',
+  },
+  heartbeat: {
+    ...enUS.heartbeat,
+    title: 'Heartbeat',
+  },
+  mfa: {
+    ...enUS.mfa,
+    title: 'Autentificare multifactor',
+  },
+  webauthn: {
+    ...enUS.webauthn,
+    title: 'WebAuthn',
+  },
+  cache: {
+    ...enUS.cache,
+    title: 'Gestionare cache',
+  },
+  tokenEconomy: {
+    ...enUS.tokenEconomy,
+    title: 'Economie de tokeni',
+  },
+  apiProxy: {
+    ...enUS.apiProxy,
+    title: 'Proxy API',
+  },
+  encryption: {
+    ...enUS.encryption,
+    title: 'Criptare',
+  },
+  providerSettings: {
+    ...enUS.providerSettings,
+    title: 'Setări furnizor',
+  },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+    title: 'Descoperire IDE',
+  },
+  userdata: {
+    ...enUS.userdata,
+    title: 'Date utilizator',
+    tabs: {
+      ...enUS.userdata.tabs,
+      title: 'File',
+    },
+    retention: {
+      ...enUS.userdata.retention,
+      title: 'Păstrare',
+    },
+    cleanup: {
+      ...enUS.userdata.cleanup,
+      title: 'Curățare',
+    },
+    memory: {
+      ...enUS.userdata.memory,
+      title: 'Memorie',
+    },
+  },
+  connections: {
+    ...enUS.connections,
+    title: 'Conexiuni',
+  },
+  mermaid: {
+    ...enUS.mermaid,
+    title: 'Diagrame Mermaid',
+  },
+  browser: {
+    ...enUS.browser,
+    title: 'Browser',
+  },
+  hooks: {
+    ...enUS.hooks,
+    title: 'Hook-uri',
+  },
+  sessions: {
+    ...enUS.sessions,
+    title: 'Sesiuni',
+  },
+  webhook: {
+    ...enUS.webhook,
+    title: 'Webhook',
+  },
+  personality: {
+    ...enUS.personality,
+    title: 'Personalitate',
+    card: {
+      ...enUS.personality.card,
+      title: 'Card',
+    },
+    validation: {
+      ...enUS.personality.validation,
+      title: 'Validare',
+    },
+    templates: {
+      ...enUS.personality.templates,
+      title: 'Șabloane',
+    },
+    stats: {
+      ...enUS.personality.stats,
+      title: 'Statistici',
+    },
+    editor: {
+      ...enUS.personality.editor,
+      title: 'Editor',
+    },
+  },
+  companion: { ...enUS.companion },
+  automation: { ...enUS.automation },
+  workflow: { ...enUS.workflow },
+  cron: { ...enUS.cron },
+  homeAssistant: { ...enUS.homeAssistant },
+  tools: { ...enUS.tools },
+  skills: { ...enUS.skills },
+  backup: { ...enUS.backup },
+  plugins: { ...enUS.plugins },
+  profile: { ...enUS.profile },
+  footer: { ...enUS.footer },
+  service: { ...enUS.service },
+  autoReply: { ...enUS.autoReply },
+  claudecode: { ...enUS.claudecode },
+  a2ui: { ...enUS.a2ui },
+  sandbox: { ...enUS.sandbox },
+  home: { ...enUS.home },
+  brand: { ...enUS.brand },
+  speech: { ...enUS.speech },
+  users: { ...enUS.users },
 }

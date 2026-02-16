@@ -38,13 +38,14 @@ type RouteConfig struct {
 
 // ProviderConfig provider configuration
 type ProviderConfig struct {
-	Name        string `json:"name" yaml:"name"`
-	Endpoint    string `json:"endpoint" yaml:"endpoint"`
-	APIKey      string `json:"api_key" yaml:"api_key"`
-	Priority    int    `json:"priority" yaml:"priority"`           // Lower = higher priority
-	Weight      int    `json:"weight" yaml:"weight"`               // For weighted load balancing
-	Enabled     bool   `json:"enabled" yaml:"enabled"`
-	HealthCheck string `json:"health_check" yaml:"health_check"`   // Health check endpoint
+	Name          string `json:"name" yaml:"name"`
+	Endpoint      string `json:"endpoint" yaml:"endpoint"`
+	APIKey        string `json:"api_key" yaml:"api_key"`
+	Priority      int    `json:"priority" yaml:"priority"`
+	Weight        int    `json:"weight" yaml:"weight"`
+	Enabled       bool   `json:"enabled" yaml:"enabled"`
+	HealthCheck   string `json:"health_check" yaml:"health_check"`
+	SkipTLSVerify bool   `json:"skip_tls_verify" yaml:"skip_tls_verify"`
 }
 
 // FailoverConfig failover configuration

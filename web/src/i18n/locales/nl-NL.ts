@@ -1191,10 +1191,6 @@ export default {
     clearSearch: 'Zoekopdracht wissen',
     allLoaded: 'Alle {count} vaardigheden geladen',
   },
-
-    personality: {
-    ...enUS.personality,
-  },
   memoryService: {
     ...enUS.memoryService,
     title: 'Geheugenservice',
@@ -1244,4 +1240,268 @@ export default {
     expiredEntries: 'Verlopen',
     loadMore: 'Meer laden',
   },
+  authProviders: {
+    ...enUS.authProviders,
+    title: 'Authenticatieproviders',
+  },
+  memory: {
+    ...enUS.memory,
+    title: 'Geheugenbeheer',
+  },
+  audit: {
+    ...enUS.audit,
+    title: 'Auditlogboek',
+  },
+  update: {
+    ...enUS.update,
+    title: 'Systeemupdate',
+    checkNow: 'Nu controleren',
+    download: 'Downloaden',
+    upToDate: 'U bent up-to-date',
+  },
+  heartbeat: {
+    ...enUS.heartbeat,
+    title: 'Heartbeat',
+    triggerNow: 'Nu uitvoeren',
+  },
+  mfa: {
+    ...enUS.mfa,
+    title: 'Tweefactorauthenticatie',
+  },
+  webauthn: {
+    ...enUS.webauthn,
+    title: 'Beveiligingssleutels',
+  },
+  cache: {
+    ...enUS.cache,
+    title: 'Cachestatistieken',
+    clear: 'Cache wissen',
+  },
+  tokenEconomy: {
+    ...enUS.tokenEconomy,
+    title: 'Tokeneconomie',
+  },
+  apiProxy: {
+    ...enUS.apiProxy,
+    cacheTitle: 'CC-cache',
+    prunerTitle: 'Contextsnoeier',
+    routingTitle: 'Modelroutering',
+  },
+  encryption: {
+    ...enUS.encryption,
+    title: 'Geheugenversleuteling',
+  },
+  providerSettings: {
+    ...enUS.providerSettings,
+    title: 'Providerinstellingen',
+  },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+    title: 'IDE-configuratiedetectie',
+  },
+  userdata: {
+    ...enUS.userdata,
+    tabs: {
+      ...enUS.userdata.tabs,
+      export: 'Exporteren',
+      import: 'Importeren',
+      cleanup: 'Opschonen',
+      retention: 'Bewaring',
+    },
+    export: 'Gebruikersgegevens exporteren',
+    import: 'Gebruikersgegevens importeren',
+    retention: {
+      ...enUS.userdata.retention,
+      title: 'Gegevensbewaring',
+      description: 'Configureer hoe lang gegevens worden bewaard vóór automatische opschoning',
+    },
+    cleanup: {
+      ...enUS.userdata.cleanup,
+      title: 'Gegevens opschonen',
+      description: 'Geselecteerde gegevens permanent verwijderen. Deze actie kan niet ongedaan worden gemaakt.',
+    },
+    memory: {
+      ...enUS.userdata.memory,
+      title: 'Geheugen',
+      description: 'Exporteer of importeer uw AI-geheugengegevens als Markdown-bestanden.',
+    },
+  },
+  connections: {
+    ...enUS.connections,
+  },
+  mermaid: {
+    ...enUS.mermaid,
+  },
+  browser: {
+    ...enUS.browser,
+  },
+  hooks: {
+    ...enUS.hooks,
+  },
+  sessions: {
+    ...enUS.sessions,
+  },
+  webhook: {
+    ...enUS.webhook,
+  },
+  personality: {
+    ...enUS.personality,
+    title: 'Persoonlijkheden',
+    subtitle: 'Beheer AI-assistentpersoonlijkheden',
+    card: {
+      ...enUS.personality.card,
+    },
+    validation: {
+      ...enUS.personality.validation,
+    },
+    templates: {
+      ...enUS.personality.templates,
+    },
+    stats: {
+      ...enUS.personality.stats,
+    },
+    editor: {
+      ...enUS.personality.editor,
+    },
+  },
+  companion: {
+    ...enUS.companion,
+  },
+  automation: {
+    ...enUS.automation,
+  },
+  workflow: {
+    ...enUS.workflow,
+  },
+  cron: {
+    ...enUS.cron,
+  },
+  homeAssistant: {
+    ...enUS.homeAssistant,
+  },
+  tools: {
+    ...enUS.tools,
+  },
+  skills: {
+    ...enUS.skills,
+  },
+  backup: {
+    ...enUS.backup,
+  },
+  plugins: {
+    ...enUS.plugins,
+  },
+  profile: {
+    ...enUS.profile,
+  },
+  footer: {
+    ...enUS.footer,
+  },
+  service: {
+    ...enUS.service,
+  },
+  autoReply: {
+    ...enUS.autoReply,
+  },
+  claudecode: {
+    ...enUS.claudecode,
+  },
+  a2ui: {
+    ...enUS.a2ui,
+  },
+  sandbox: {
+    ...enUS.sandbox,
+  },
+  home: {
+    ...enUS.home,
+  },
+  brand: {
+    ...enUS.brand,
+  },
+  speech: {
+    ...enUS.speech,
+  },
+  users: {
+    ...enUS.users,
+  },
+
+  // Flat keys in Dutch
+  accept: 'Accepteren',
+  acknowledge: 'Bevestigen',
+  action: 'Actie',
+  cancel: 'Annuleren',
+  change: 'Wijzigen',
+  clear: 'Wissen',
+  click: 'Klikken',
+  close: 'Sluiten',
+  configure: 'Configureren',
+  confirm: 'Bevestigen',
+  consent: 'Toestemming',
+  contextmenu: 'Contextmenu',
+  copied: 'Gekopieerd',
+  copy: 'Kopiëren',
+  create: 'Maken',
+  created: 'Aangemaakt',
+  csv: 'CSV',
+  decline: 'Weigeren',
+  delete: 'Verwijderen',
+  disconnect: 'Verbinding verbreken',
+  dismiss: 'Sluiten',
+  download: 'Downloaden',
+  downloaded: 'Gedownload',
+  edit: 'Bewerken',
+  end: 'Einde',
+  export: 'Exporteren',
+  form: 'Formulier',
+  input: 'Invoer',
+  json: 'JSON',
+  label: 'Label',
+  lastActivity: 'Laatste activiteit',
+  line: 'Regel',
+  loadMore: 'Meer laden',
+  pause: 'Pauzeren',
+  play: 'Afspelen',
+  refresh: 'Vernieuwen',
+  reload: 'Herladen',
+  remove: 'Verwijderen',
+  requestCount: 'Aantal verzoeken',
+  response: 'Antwoord',
+  restore: 'Herstellen',
+  retry: 'Opnieuw proberen',
+  revoke: 'Intrekken',
+  save: 'Opslaan',
+  search: 'Zoeken',
+  seek: 'Zoeken',
+  select: 'Selecteren',
+  send: 'Verzenden',
+  start: 'Starten',
+  success: 'Geslaagd',
+  test: 'Testen',
+  testConnection: 'Verbinding testen',
+  textarea: 'Tekstveld',
+  toggle: 'Schakelen',
+  toggleEnabled: 'Schakelen ingeschakeld',
+  toggleSidebar: 'Zijbalk schakelen',
+  toggleStreaming: 'Streaming schakelen',
+  transcript: 'Transcript',
+  updateField: 'Veld bijwerken',
+
+  // Integration labels
+  telegram: 'Telegram',
+  slack: 'Slack',
+  discord: 'Discord',
+  teams: 'Microsoft Teams',
+  signal: 'Signal',
+  dingtalk: 'DingTalk',
+  feishu: 'Feishu / Lark',
+  googlechat: 'Google Chat',
+  imessage: 'iMessage',
+  matrix: 'Matrix',
+  mattermost: 'Mattermost',
+  qq: 'QQ',
+  instagram: 'Instagram',
+  messenger: 'Messenger',
+  twitch: 'Twitch',
+  twitter: 'X (Twitter)',
+  bluebubbles: 'BlueBubbles',
 }

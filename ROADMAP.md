@@ -484,7 +484,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | v0.10.24 | Channel Upgrade | 10 channels upgraded from stubs | Done |
 | v0.10.25 | CC Cache | Two-level cache (L1 mem + L2 disk) | Done |
 | v0.10.26 | Humanizer | Response humanization pipeline | Done |
-| v0.10.27 | Context Pruner | BM25 scoring, segmentation, benchmarks | Active |
+| v0.10.27 | Context Pruner | BM25 scoring, segmentation, benchmarks | Done |
 | v0.10.28 | Memory Service | Progressive search, dual-write backend | Done |
 
 ---

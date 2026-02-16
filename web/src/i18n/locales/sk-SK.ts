@@ -888,10 +888,6 @@ export default {
     antivirusBlockedTitle: 'ngrok môže byť blokovaný antivírusom',
     antivirusBlockedDesc: 'Ak sa pripojenie nepodarí, skontrolujte, či váš antivírus neblokuje ngrok a pridajte ho do whitelistu.',
   },
-  ideDiscovery: enUS.ideDiscovery,
-  userdata: enUS.userdata,
-  connections: enUS.connections,
-  speech: enUS.speech,
   localeNames: {
     'ca-ES': 'Katalánčina',
     'cs-CZ': 'Čeština',
@@ -960,10 +956,6 @@ export default {
     clearSearch: 'Vymazať vyhľadávanie',
     allLoaded: 'Načítaných všetkých {count} zručností',
   },
-
-    personality: {
-    ...enUS.personality,
-  },
   memoryService: {
     ...enUS.memoryService,
     title: 'Služba pamäte',
@@ -1013,4 +1005,144 @@ export default {
     expiredEntries: 'Vypršané',
     loadMore: 'Načítať ďalšie',
   },
+  authProviders: {
+    ...enUS.authProviders,
+    title: 'Poskytovatelia overenia',
+  },
+  memory: {
+    ...enUS.memory,
+    title: 'Správa pamäte',
+  },
+  audit: {
+    ...enUS.audit,
+    title: 'Protokol auditu',
+  },
+  update: {
+    ...enUS.update,
+    title: 'Aktualizácia systému',
+  },
+  heartbeat: {
+    ...enUS.heartbeat,
+    title: 'Heartbeat',
+  },
+  mfa: {
+    ...enUS.mfa,
+    title: 'Viacfaktorové overenie',
+  },
+  webauthn: {
+    ...enUS.webauthn,
+    title: 'WebAuthn',
+  },
+  cache: {
+    ...enUS.cache,
+    title: 'Správa vyrovnávacej pamäte',
+  },
+  tokenEconomy: {
+    ...enUS.tokenEconomy,
+    title: 'Ekonomika tokenov',
+  },
+  apiProxy: {
+    ...enUS.apiProxy,
+    title: 'API proxy',
+  },
+  encryption: {
+    ...enUS.encryption,
+    title: 'Šifrovanie',
+  },
+  providerSettings: {
+    ...enUS.providerSettings,
+    title: 'Nastavenia poskytovateľa',
+  },
+  ideDiscovery: {
+    ...enUS.ideDiscovery,
+    title: 'Objavenie IDE',
+  },
+  userdata: {
+    ...enUS.userdata,
+    title: 'Údaje používateľa',
+    tabs: {
+      ...enUS.userdata.tabs,
+      title: 'Karty',
+    },
+    retention: {
+      ...enUS.userdata.retention,
+      title: 'Uchovávanie',
+    },
+    cleanup: {
+      ...enUS.userdata.cleanup,
+      title: 'Čistenie',
+    },
+    memory: {
+      ...enUS.userdata.memory,
+      title: 'Pamäť',
+    },
+  },
+  connections: {
+    ...enUS.connections,
+    title: 'Pripojenia',
+  },
+  mermaid: {
+    ...enUS.mermaid,
+    title: 'Mermaid diagramy',
+  },
+  browser: {
+    ...enUS.browser,
+    title: 'Prehliadač',
+  },
+  hooks: {
+    ...enUS.hooks,
+    title: 'Hooky',
+  },
+  sessions: {
+    ...enUS.sessions,
+    title: 'Relácie',
+  },
+  webhook: {
+    ...enUS.webhook,
+    title: 'Webhook',
+  },
+  personality: {
+    ...enUS.personality,
+    title: 'Osobnosť',
+    card: {
+      ...enUS.personality.card,
+      title: 'Karta',
+    },
+    validation: {
+      ...enUS.personality.validation,
+      title: 'Overenie',
+    },
+    templates: {
+      ...enUS.personality.templates,
+      title: 'Šablóny',
+    },
+    stats: {
+      ...enUS.personality.stats,
+      title: 'Štatistiky',
+    },
+    editor: {
+      ...enUS.personality.editor,
+      title: 'Editor',
+    },
+  },
+  companion: { ...enUS.companion },
+  automation: { ...enUS.automation },
+  workflow: { ...enUS.workflow },
+  cron: { ...enUS.cron },
+  homeAssistant: { ...enUS.homeAssistant },
+  tools: { ...enUS.tools },
+  skills: { ...enUS.skills },
+  backup: { ...enUS.backup },
+  plugins: { ...enUS.plugins },
+  profile: { ...enUS.profile },
+  footer: { ...enUS.footer },
+  service: { ...enUS.service },
+  autoReply: { ...enUS.autoReply },
+  claudecode: { ...enUS.claudecode },
+  a2ui: { ...enUS.a2ui },
+  sandbox: { ...enUS.sandbox },
+  home: { ...enUS.home },
+  brand: { ...enUS.brand },
+  speech: { ...enUS.speech },
+  users: { ...enUS.users },
 }

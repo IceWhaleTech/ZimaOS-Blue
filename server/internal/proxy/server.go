@@ -698,6 +698,9 @@ func (ps *ProxyServer) tryAnthropicProvider(
 
 	// Send request
 	client := ps.connPool.GetClient(provider.Name)
+	if provider.SkipTLSVerify {
+		client = ps.connPool.GetInsecureClient(provider.Name)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err

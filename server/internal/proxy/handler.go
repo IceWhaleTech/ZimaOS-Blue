@@ -415,6 +415,9 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 
 	req.Host = targetURL.Host
 
+	if provider.SkipTLSVerify {
+		return ph.connPool.GetInsecureClient(provider.Name).Do(req)
+	}
 	return ph.connPool.GetClient(provider.Name).Do(req)
 }
 

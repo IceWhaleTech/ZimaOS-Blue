@@ -108,6 +108,9 @@ func (hc *HealthChecker) checkProvider(provider *Provider) {
 	}
 
 	client := hc.connPool.GetClient(provider.Config.Name)
+	if provider.Config.SkipTLSVerify {
+		client = hc.connPool.GetInsecureClient(provider.Config.Name)
+	}
 	start := time.Now()
 	resp, err := client.Do(req)
 	latency := time.Since(start)
