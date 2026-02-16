@@ -714,6 +714,39 @@ func (d *Discovery) ExtractAPIKey(ideType IDEType, configPath string) (key strin
 	return "", ""
 }
 
+// ExtractBaseURL extracts the base URL from IDE config file
+func (d *Discovery) ExtractBaseURL(ideType IDEType, configPath string) string {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return ""
+	}
+
+	// Check top-level base_url / api_base_url
+	for _, key := range []string{"base_url", "api_base_url", "apiBaseUrl"} {
+		if url, ok := config[key].(string); ok && url != "" {
+			return url
+		}
+	}
+
+	// For Claude Code, check nested structure and env-style keys
+	if ideType == IDETypeClaudeCode {
+		if providers, ok := config["providers"].(map[string]interface{}); ok {
+			if anthropic, ok := providers["anthropic"].(map[string]interface{}); ok {
+				if url, ok := anthropic["base_url"].(string); ok && url != "" {
+					return url
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
 // maskAPIKey masks an API key for display (shows first 4 and last 4 characters)
 func maskAPIKey(key string) string {
 	if len(key) <= 8 {
@@ -801,10 +834,16 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 		key, masked := d.ExtractAPIKey(ide.Type, ide.ConfigPath)
 		canImport := key != ""
 
+		// Try to get base URL from config file, fall back to proxy URL
+		baseURL := d.ExtractBaseURL(ide.Type, ide.ConfigPath)
+		if baseURL == "" {
+			baseURL = ide.ProxyURL
+		}
+
 		config := &ImportConfig{
 			IDEType:    ide.Type,
 			IDEName:    ide.Name,
-			BaseURL:    ide.ProxyURL,
+			BaseURL:    baseURL,
 			Models:     ide.Models,
 			ConfigPath: ide.ConfigPath,
 			Source:     "config",
@@ -839,6 +878,7 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 	// Also check environment variables
 	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE} {
 		if key, envVar := GetAPIKeyFromEnv(ideType); key != "" {
+			envBaseURL := GetBaseURLFromEnv(ideType)
 			// Check if we already have this IDE from config
 			found := false
 			for _, c := range configs {
@@ -850,6 +890,10 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 						c.Source = "env"
 						c.CanImport = true
 					}
+					// Always prefer env base URL if set
+					if envBaseURL != "" {
+						c.BaseURL = envBaseURL
+					}
 					found = true
 					break
 				}
@@ -859,6 +903,7 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 					IDEType:   ideType,
 					IDEName:   getIDEName(ideType),
 					APIKey:    maskAPIKey(key),
+					BaseURL:   envBaseURL,
 					EnvVar:    envVar,
 					Provider:  getProviderForIDE(ideType),
 					Source:    "env",
@@ -997,6 +1042,46 @@ func (d *Discovery) GetRealAPIKey(ideType IDEType) (string, error) {
 	}
 
 	return key, nil
+}
+
+// GetRealBaseURL returns the base URL configured for an IDE.
+// Checks env vars first (e.g. ANTHROPIC_BASE_URL), then config file.
+func (d *Discovery) GetRealBaseURL(ideType IDEType) string {
+	// Check env var first
+	if url := GetBaseURLFromEnv(ideType); url != "" {
+		return url
+	}
+
+	// Then try config file
+	configPath := findConfigPath(ideType)
+	if configPath == "" {
+		return ""
+	}
+	return d.ExtractBaseURL(ideType, configPath)
+}
+
+// GetBaseURLFromEnv gets base URL from environment variables for an IDE
+func GetBaseURLFromEnv(ideType IDEType) string {
+	envVars := getBaseURLEnvVarsForIDE(ideType)
+	for _, env := range envVars {
+		if val := os.Getenv(env); val != "" {
+			return val
+		}
+	}
+	return ""
+}
+
+// getBaseURLEnvVarsForIDE returns environment variable names for base URL
+func getBaseURLEnvVarsForIDE(ideType IDEType) []string {
+	switch ideType {
+	case IDETypeClaudeCode:
+		return []string{"ANTHROPIC_BASE_URL"}
+	case IDETypeCursor, IDETypeWindsurf, IDETypeQoder, IDETypeKiro:
+		return []string{"OPENAI_BASE_URL"}
+	case IDETypeAntigravity:
+		return []string{"GOOGLE_BASE_URL"}
+	}
+	return nil
 }
 
 // claudeCodeEnvVarProviders maps Claude Code extension env var names to provider info

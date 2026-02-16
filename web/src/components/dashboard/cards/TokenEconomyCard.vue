@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import TokenEconomyCard from '@/components/metrics/TokenEconomyCard.vue'
+import TokenEconomyMetrics from '@/components/metrics/TokenEconomyMetrics.vue'
 </script>
 
 <template>
-  <TokenEconomyCard />
+  <TokenEconomyMetrics />
 </template>

@@ -73,3 +73,33 @@ func ValidateRoutingConfig(cfg *RoutingConfig) []error {
 func (c *RoutingConfig) ToRuleEngine() *RuleEngine {
 	return NewRuleEngine(c.Rules)
 }
+
+// DefaultRoutingConfig returns a RoutingConfig with built-in economy rules.
+func DefaultRoutingConfig() *RoutingConfig {
+	return &RoutingConfig{
+		Enabled: true,
+		Rules: []RoutingRule{
+			{
+				Name:        "small-body-economy",
+				Priority:    10,
+				Condition:   RouteCondition{MaxBodyBytes: 3000},
+				TargetModel: "claude-3-haiku",
+				Tier:        TierEconomy,
+			},
+			{
+				Name:        "file-tools-economy",
+				Priority:    20,
+				Condition:   RouteCondition{ToolPattern: `^(list_files|file_search|grep|get_weather|calculator)$`},
+				TargetModel: "gpt-4o-mini",
+				Tier:        TierEconomy,
+			},
+			{
+				Name:        "orchestrator-cheap",
+				Priority:    30,
+				Condition:   RouteCondition{SystemTag: "[ORCHESTRATOR]"},
+				TargetModel: "deepseek-r1",
+				Tier:        TierStandard,
+			},
+		},
+	}
+}

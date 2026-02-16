@@ -147,7 +147,9 @@ watch(
   () => chatStore.messages.length,
   async () => {
     await nextTick()
-    scrollToBottom()
+    if (isUserNearBottom.value) {
+      scrollToBottom()
+    }
   }
 )
 
@@ -156,7 +158,9 @@ watch(
   () => chatStore.streamingContent,
   async () => {
     await nextTick()
-    scrollToBottom()
+    if (isUserNearBottom.value) {
+      scrollToBottom()
+    }
   }
 )
 
@@ -191,16 +195,40 @@ watch(
   }
 )
 
+// Track whether user is near the bottom of the chat (for auto-scroll during streaming)
+const isUserNearBottom = ref(true)
+const NEAR_BOTTOM_THRESHOLD = 80 // px from bottom to consider "at bottom"
+
+function checkIfNearBottom() {
+  if (useVirtualScroll.value && virtualScrollRef.value) {
+    // For virtual scroll, delegate to its container
+    const container = (virtualScrollRef.value as any).$el?.querySelector?.('.overflow-y-auto') ?? (virtualScrollRef.value as any).containerRef
+    if (container) {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      return scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_THRESHOLD
+    }
+    return true
+  } else if (messagesContainer.value) {
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
+    return scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_THRESHOLD
+  }
+  return true
+}
+
 function scrollToBottom() {
   if (useVirtualScroll.value && virtualScrollRef.value) {
     virtualScrollRef.value.scrollToBottom('smooth')
   } else if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
+  isUserNearBottom.value = true
 }
 
 // Handle scroll for loading more messages
 function handleScroll() {
+  // Update near-bottom tracking
+  isUserNearBottom.value = checkIfNearBottom()
+
   // Skip for virtual scroll - it handles its own scrolling
   if (useVirtualScroll.value) return
 
@@ -433,7 +461,12 @@ onUnmounted(() => {
     </aside>
 
     <!-- Main chat area -->
-    <main class="flex-1 flex flex-col min-w-0 relative">
+    <main
+      class="flex-1 flex flex-col min-w-0 relative"
+      @dragover.prevent="chatInputRef?.handleDragOver($event)"
+      @dragleave="chatInputRef?.handleDragLeave()"
+      @drop.prevent="chatInputRef?.handleDrop($event)"
+    >
       <!-- Chat header -->
       <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -635,24 +668,9 @@ onUnmounted(() => {
           class="h-full flex flex-col items-center justify-center p-4"
         >
           <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-8">
-            <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-glow">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-8 w-8 sm:h-10 sm:w-10 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-            </div>
-            <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ t('chat.startConversation') }}</h3>
-            <p class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mt-8 mb-6">{{ t('chat.startConversationDesc') }}</p>
+            <img src="/logo.svg" alt="Logo" class="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-4 opacity-80 dark:opacity-60" />
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-1">{{ t('chat.startConversation') }}</h3>
+            <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('chat.startConversationDesc') }}</p>
           </div>
 
           <!-- Preset Questions -->

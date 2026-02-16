@@ -22,7 +22,14 @@ const testingProvider = ref<string | null>(null)
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
-const activeTab = ref<'all' | 'trial' | 'builtin' | 'custom'>('all')
+type ProviderTab = 'all' | 'trial' | 'builtin' | 'custom'
+const activeTab = ref<ProviderTab>('all')
+const availableTabs = computed<ProviderTab[]>(() => {
+  const tabs: ProviderTab[] = ['all']
+  if (store.trialProviders?.length) tabs.push('trial')
+  tabs.push('builtin', 'custom')
+  return tabs
+})
 const iconInput = ref<HTMLInputElement | null>(null)
 const uploadingIcon = ref(false)
 
@@ -171,6 +178,11 @@ function getProviderDescription(provider: Provider): string {
   // Fall back to provider's description or base_url
   return provider.description || provider.base_url || ''
 }
+
+// Reset to 'all' if current tab is no longer available (e.g., trial removed)
+watch(availableTabs, (tabs) => {
+  if (!tabs.includes(activeTab.value)) activeTab.value = 'all'
+})
 
 // Clear selection when switching to a tab with no matching provider
 watch(activeTab, () => {
@@ -672,7 +684,7 @@ onMounted(() => {
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
       <button
-        v-for="tab in ['all', 'trial', 'builtin', 'custom'] as const"
+        v-for="tab in availableTabs"
         :key="tab"
         :class="[
           'px-3 py-1.5 rounded-lg transition-colors text-sm',

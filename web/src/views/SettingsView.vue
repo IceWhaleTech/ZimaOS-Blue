@@ -13,14 +13,15 @@ import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
-import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import HeartbeatSettings from '@/components/settings/HeartbeatSettings.vue'
+import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
-import MemoryBrowser from '@/components/MemoryBrowser.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import PersonalityManager from '@/components/PersonalityManager.vue'
 import { useTauri } from '@/composables/useTauri'
+import { serviceApi } from '@/api/service'
+import type { ServiceInfo } from '@/api/service'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -32,9 +33,25 @@ const { isTauri, setCloseBehavior } = useTauri()
 
 const saveStatus = ref<string | null>(null)
 
+// Auto-start state
+const serviceInfo = ref<ServiceInfo | null>(null)
+const autoStartLoading = ref(false)
+const autoStartEnabled = computed(() => serviceInfo.value?.installed && serviceInfo.value?.enabled)
+
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'network' | 'speech' | 'memory' | 'userdata' | 'update'
+type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata' | 'backup'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
+
+
+// Tab icons (heroicons outline, 16x16)
+const tabIcons: Record<TabType, string> = {
+  general: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>',
+  llm: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>',
+  speech: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>',
+  network: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>',
+  userdata: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>',
+  backup: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>',
+}
 
 // Timezone
 const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
@@ -80,12 +97,39 @@ function handleCloseBehaviorChange(behavior: 'quit' | 'minimize') {
   showSaveStatus(t('settings.closeBehaviorSaved'))
 }
 
+async function fetchServiceInfo() {
+  try {
+    const res = await serviceApi.getInfo()
+    serviceInfo.value = res.data
+  } catch { /* service API not available */ }
+}
+
+async function toggleAutoStart() {
+  autoStartLoading.value = true
+  try {
+    if (autoStartEnabled.value) {
+      await serviceApi.disable()
+      await serviceApi.uninstall()
+      showSaveStatus(t('service.disableSuccess'))
+    } else {
+      if (!serviceInfo.value?.installed) await serviceApi.install()
+      await serviceApi.enable()
+      showSaveStatus(t('service.enableSuccess'))
+    }
+    await fetchServiceInfo()
+  } catch (e) {
+    showSaveStatus(autoStartEnabled.value ? t('service.disableFailed') : t('service.enableFailed'))
+  } finally {
+    autoStartLoading.value = false
+  }
+}
+
 function switchTab(tab: TabType) {
   activeTab.value = tab
   router.replace({ query: { tab } })
 
   // Load data for specific tabs
-  if (tab === 'userdata' && backups.value.length === 0) {
+  if (tab === 'backup' && backups.value.length === 0) {
     fetchBackups()
   }
 }
@@ -160,6 +204,7 @@ function _formatBytes(bytes: number) {
 
 onMounted(async () => {
   await settingsStore.fetchProviders()
+  fetchServiceInfo()
 
   // Load data based on initial tab
   const tab = route.query.tab as TabType
@@ -186,16 +231,17 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'speech', 'network', 'memory', 'userdata', 'update'] as const"
+        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata', 'backup'] as const"
         :key="tab"
-        class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
+        class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 flex items-center gap-1.5"
         :class="
           activeTab === tab
-            ? 'text-gray-900 dark:text-white dark:text-white border-b-2 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+            ? 'text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
         "
         @click="switchTab(tab)"
       >
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" v-html="tabIcons[tab]" />
         {{ t(`settings.tab.${tab}`) }}
       </button>
     </div>
@@ -268,9 +314,33 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Heartbeat -->
+      <!-- Auto-start -->
+      <div v-if="serviceInfo" class="glass-card p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-medium text-gray-900 dark:text-white">{{ t('service.autoStart') }}</div>
+            <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('service.autoStartDescription') }}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="autoStartEnabled"
+            :disabled="autoStartLoading"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+            :class="autoStartEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+            @click="toggleAutoStart"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="autoStartEnabled ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- About / Version -->
       <div class="glass-card p-4">
-        <HeartbeatSettings @status-change="showSaveStatus" />
+        <UpdateSettings />
       </div>
     </div>
 
@@ -298,38 +368,35 @@ onMounted(async () => {
       <SpeechSettings />
     </div>
 
-    <!-- Memory Tab -->
-    <div v-if="activeTab === 'memory'" class="space-y-6">
-      <MemoryManager @status-change="showSaveStatus" />
-      <MemoryBrowser @status-change="showSaveStatus" />
-    </div>
-
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
+      <!-- Memory Management -->
+      <MemoryManager @status-change="showSaveStatus" />
+
       <!-- Personality Management Section -->
       <div class="glass-card p-4">
         <PersonalityManager @status-change="showSaveStatus" />
       </div>
 
-      <UserDataExport @status-change="showSaveStatus" />
-
-      <!-- System Backup Section -->
-      <div class="mt-6">
-        <BackupManager
-          :backups="backups"
-          :loading="backupsLoading"
-          :restoring="backupRestoring"
-          @create="onBackupCreate"
-          @restore="restoreBackup"
-          @delete="deleteBackup"
-          @download="onBackupDownload"
-        />
+      <!-- Heartbeat -->
+      <div class="glass-card p-4">
+        <HeartbeatSettings @status-change="showSaveStatus" />
       </div>
+
+      <UserDataExport @status-change="showSaveStatus" />
     </div>
 
-    <!-- Update Tab -->
-    <div v-if="activeTab === 'update'">
-      <UpdateSettings />
+    <!-- Backup Tab -->
+    <div v-if="activeTab === 'backup'">
+      <BackupManager
+        :backups="backups"
+        :loading="backupsLoading"
+        :restoring="backupRestoring"
+        @create="onBackupCreate"
+        @restore="restoreBackup"
+        @delete="deleteBackup"
+        @download="onBackupDownload"
+      />
     </div>
 
   </div>

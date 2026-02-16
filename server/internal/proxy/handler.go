@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -86,15 +87,18 @@ type ProxyHandler struct {
 	apiKeyValidator func(key string) ([]string, error)
 	modelRouter     *ModelRouter       // Model family routing + background downgrade
 	ruleEngine      *RuleEngine        // Condition-based tier routing (header/body/tool/tag)
+	routingEnabled  atomic.Bool        // Toggle for model routing (rule engine + model router)
 }
 
 // NewProxyHandler creates a new proxy handler
 func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *FailoverHandler) *ProxyHandler {
-	return &ProxyHandler{
+	ph := &ProxyHandler{
 		router:   router,
 		connPool: connPool,
 		failover: failover,
 	}
+	ph.routingEnabled.Store(true)
+	return ph
 }
 
 // SetProviderPool sets the Provider Pool for routing and API key lookup.
@@ -130,6 +134,32 @@ func (ph *ProxyHandler) SetRuleEngine(re *RuleEngine) {
 // GetCache returns the cache instance for external access.
 func (ph *ProxyHandler) GetCache() *CCCache {
 	return ph.cache
+}
+
+// IsRoutingEnabled returns whether model routing is enabled.
+func (ph *ProxyHandler) IsRoutingEnabled() bool {
+	return ph.routingEnabled.Load()
+}
+
+// SetRoutingEnabled toggles model routing on/off at runtime.
+func (ph *ProxyHandler) SetRoutingEnabled(enabled bool) {
+	ph.routingEnabled.Store(enabled)
+}
+
+// GetRoutingRules returns the current routing rules with their enabled state.
+func (ph *ProxyHandler) GetRoutingRules() []RoutingRule {
+	if ph.ruleEngine == nil {
+		return nil
+	}
+	return ph.ruleEngine.GetRules()
+}
+
+// SetRoutingRuleEnabled enables or disables a single routing rule by name.
+func (ph *ProxyHandler) SetRoutingRuleEnabled(name string, enabled bool) bool {
+	if ph.ruleEngine == nil {
+		return false
+	}
+	return ph.ruleEngine.SetRuleEnabled(name, enabled)
 }
 
 // extractRoutingMode extracts routing mode from API key scopes.
@@ -563,7 +593,7 @@ func isHopByHopHeader(header string) bool {
 // applyModelRouting evaluates the rule engine and model router to potentially
 // swap the requested model to a cheaper/smaller one. Mutates pr.model and pr.body.
 func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
-	if pr.model == "" {
+	if pr.model == "" || !ph.routingEnabled.Load() {
 		return
 	}
 
@@ -620,27 +650,57 @@ func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
 	}
 }
 
-// replaceModelInBody replaces the "model" field value in JSON body using gjson index.
-// Single allocation (the new []byte) vs sjson's 3 allocations.
-// Falls back to sjson if gjson can't locate the field.
+// modelKeyPattern is the byte pattern for locating the "model" JSON key.
+var modelKeyPattern = []byte(`"model"`)
+
+// replaceModelInBody replaces the "model" field value in JSON body using direct
+// byte scanning. Single allocation (the output []byte). Falls back to sjson if
+// the field can't be located by simple scan.
 func replaceModelInBody(body []byte, newModel string) []byte {
-	r := gjson.GetBytes(body, "model")
-	if !r.Exists() || r.Index == 0 {
-		// gjson.Index==0 means it had to parse (not raw index), fall back to sjson
+	// Find "model" key
+	idx := bytes.Index(body, modelKeyPattern)
+	if idx < 0 {
+		return body
+	}
+	// Skip past "model" and find the colon, then the opening quote of the value
+	pos := idx + len(modelKeyPattern)
+	for pos < len(body) && body[pos] != ':' {
+		pos++
+	}
+	pos++ // skip ':'
+	for pos < len(body) && (body[pos] == ' ' || body[pos] == '\t') {
+		pos++
+	}
+	if pos >= len(body) || body[pos] != '"' {
+		// Not a string value — fall back
 		if nb, err := sjson.SetBytes(body, "model", newModel); err == nil {
 			return nb
 		}
 		return body
 	}
-	// r.Index points to the start of the raw JSON value (including quotes)
-	// Raw is `"old-model"`, we need to replace with `"new-model"`
-	rawStart := r.Index
-	rawEnd := rawStart + len(r.Raw)
-	quoted := `"` + newModel + `"`
-	out := make([]byte, 0, len(body)-len(r.Raw)+len(quoted))
-	out = append(out, body[:rawStart]...)
-	out = append(out, quoted...)
-	out = append(out, body[rawEnd:]...)
+	valStart := pos // opening quote
+	pos++           // skip opening quote
+	for pos < len(body) && body[pos] != '"' {
+		if body[pos] == '\\' {
+			pos++ // skip escaped char
+		}
+		pos++
+	}
+	if pos >= len(body) {
+		return body
+	}
+	valEnd := pos + 1 // past closing quote
+
+	// Build output: body[:valStart] + "newModel" + body[valEnd:]
+	newQuotedLen := 2 + len(newModel) // quotes + model name
+	out := make([]byte, len(body)-(valEnd-valStart)+newQuotedLen)
+	n := copy(out, body[:valStart])
+	out[n] = '"'
+	n++
+	n += copy(out[n:], newModel)
+	out[n] = '"'
+	n++
+	copy(out[n:], body[valEnd:])
 	return out
 }
 

@@ -66,18 +66,6 @@ defineExpose({ refresh: fetchStats })
 
 <template>
   <div class="space-y-4">
-    <!-- Header with title and refresh -->
-    <div class="flex items-center justify-between">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('tokenEconomy.title') }}</h3>
-      <button
-        :disabled="loading"
-        class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50 transition-colors"
-        @click="fetchStats"
-      >
-        {{ t('common.refresh') }}
-      </button>
-    </div>
-
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Cost Saved Card (primary) -->
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">

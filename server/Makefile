@@ -1,9 +1,9 @@
-.PHONY: all build build-full test lint clean run dev trim-dist
+.PHONY: all build build-full test lint clean run dev trim-dist bump-version
 
 # Variables
 BINARY_NAME=blue
 BUILD_DIR=bin
-VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION?=$(shell cat ../VERSION 2>/dev/null || git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME?=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -15,6 +15,10 @@ TRIAL_BASE_URL?=$(ZIMAOS_TRIAL_BASE_URL)
 # -s: Omit symbol table and debug info
 # -w: Omit DWARF symbol table
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$(TRIAL_API_KEY) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$(TRIAL_BASE_URL)"
+
+# CGO is required for mattn/go-sqlite3
+# Windows users: install MinGW-w64 first (https://winlibs.com or `scoop install mingw`)
+export CGO_ENABLED=1
 
 # Build tags for full build (with whisper/ASR support)
 TAGS_FULL=-tags whisper
@@ -39,7 +43,7 @@ pack-dist:
 	@tar czf /tmp/zimaos-dist.tar.gz -C internal/web/dist .
 	@OFFSET=$$(stat -f%z $(BUILD_DIR)/$(BINARY_NAME) 2>/dev/null || stat -c%s $(BUILD_DIR)/$(BINARY_NAME)); \
 	cat /tmp/zimaos-dist.tar.gz >> $(BUILD_DIR)/$(BINARY_NAME); \
-	printf $$(python3 -c "import struct; import sys; sys.stdout.buffer.write(struct.pack('<q', $$OFFSET))") >> $(BUILD_DIR)/$(BINARY_NAME); \
+	V=$$OFFSET; for i in 0 1 2 3 4 5 6 7; do printf "\\$$(printf '%03o' $$((V & 0xFF)))"; V=$$((V >> 8)); done >> $(BUILD_DIR)/$(BINARY_NAME); \
 	echo "Appended dist ($$(du -h /tmp/zimaos-dist.tar.gz | cut -f1)) at offset $$OFFSET"
 	@rm -f /tmp/zimaos-dist.tar.gz
 
@@ -130,3 +134,14 @@ help:
 	@echo "  build-all    - Cross-compile for multiple platforms"
 	@echo "  docker-build - Build Docker image"
 	@echo "  help         - Show this help"
+	@echo "  bump-version - Sync VERSION file to all project files"
+
+# Bump version: reads ../VERSION and patches all version strings across the project
+bump-version:
+	@V=$$(cat ../VERSION | tr -d '[:space:]'); \
+	echo "Bumping version to $$V ..."; \
+	sed -i '' "s/version   = \"[^\"]*\"/version   = \"$$V\"/" cmd/blue/main.go cmd/bluelib/main.go; \
+	sed -i '' "s/^version = \"[^\"]*\"/version = \"$$V\"/" ../tauri-app/src-tauri/Cargo.toml; \
+	sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$$V\"/" ../tauri-app/package.json ../tauri-app/src-tauri/tauri.conf.json; \
+	cd ../tauri-app && npm install --package-lock-only --ignore-scripts 2>/dev/null || true; \
+	echo "Done: $$V"

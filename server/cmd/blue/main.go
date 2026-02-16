@@ -60,7 +60,7 @@ import (
 )
 
 var (
-	version   = "0.10.22"
+	version   = "0.10.28"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -469,9 +469,21 @@ func main() {
 	// Chromium is very heavy on memory, skip at startup
 	logger.Info().Msg("Browser automation will be initialized on first use")
 
-	// TTS service — lazy init, only when speech/voice features are used
-	// eSpeak-NG CGO is moderately heavy, skip at startup
-	logger.Info().Msg("TTS service will be initialized on first use")
+	// TTS service — edge-tts is lightweight (pure Go, no CGO), safe to init at startup
+	{
+		var err error
+		ttsService, err = tts.NewService(&tts.ServiceConfig{
+			DefaultProvider: tts.ProviderEdge,
+			Providers: []tts.ProviderConfig{
+				{Type: tts.ProviderEdge, Enabled: true},
+			},
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize TTS service, speech features will be limited")
+		} else {
+			logger.Info().Msg("TTS service initialized (edge-tts)")
+		}
+	}
 
 	// Critical services in parallel pool
 	initPool.Go(func() {
@@ -729,39 +741,43 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
-	// Initialize memory handler (only if vector store is enabled)
+	// Initialize memory handler with lazy init (vector_memory.db created on first request)
 	var memoryHandler *server.MemoryHandler
 	if cfg.Memory.VectorStore.Enabled {
-		vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
-		vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
-			DBPath:       vectorDbPath,
-			EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
-			MaxChunks:    10000,
-			EnableFTS:    true,
-			EnableVec:    true,
-		})
-		if err != nil {
-			logger.Warn("Failed to initialize vector store", zap.Error(err))
-		} else {
+		memoryHandler = server.NewLazyMemoryHandler(func(h *server.MemoryHandler) error {
+			vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
+			vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
+				DBPath:       vectorDbPath,
+				EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
+				MaxChunks:    10000,
+				EnableFTS:    true,
+				EnableVec:    true,
+			})
+			if err != nil {
+				logger.Warn("Failed to initialize vector store", zap.Error(err))
+				return err
+			}
 			hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
 			memoryService := memory.NewMemoryService(hybridSearcher)
 			unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
-			memoryHandler = server.NewMemoryHandler(memoryService)
-			memoryHandler.SetUnifiedService(unifiedService)
+			h.SetService(memoryService)
+			h.SetUnifiedService(unifiedService)
 
-		memoryDir := filepath.Join(dataDir, "memory")
-		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
-			BaseDir:            memoryDir,
-			DailyRetentionDays: 30,
+			memoryDir := filepath.Join(dataDir, "memory")
+			layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
+				BaseDir:            memoryDir,
+				DailyRetentionDays: 30,
+			})
+			if err != nil {
+				logger.Warn("Failed to initialize layered memory service", zap.Error(err))
+			} else {
+				h.SetLayeredService(layeredService)
+			}
+			toolsAdapter := memory.NewToolsAdapter(unifiedService)
+			tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
+			logger.Info("Vector memory store initialized lazily")
+			return nil
 		})
-		if err != nil {
-			logger.Warn("Failed to initialize layered memory service", zap.Error(err))
-		} else {
-			memoryHandler.SetLayeredService(layeredService)
-		}
-		toolsAdapter := memory.NewToolsAdapter(unifiedService)
-		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
-		}
 	} else {
 		logger.Info("Vector memory store disabled by config")
 	}

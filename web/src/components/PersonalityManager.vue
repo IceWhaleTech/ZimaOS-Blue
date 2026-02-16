@@ -14,7 +14,7 @@ const emit = defineEmits<{
 }>()
 
 onMounted(async () => {
-  await store.fetchPersonalities()
+  await Promise.all([store.fetchPersonalities(), store.fetchActive()])
 })
 
 function openDialog() {

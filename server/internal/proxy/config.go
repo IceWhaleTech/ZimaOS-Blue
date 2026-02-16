@@ -17,6 +17,7 @@ type ProxyConfig struct {
 	ModelRouter  *ModelRouterConfig  `json:"model_router" yaml:"model_router"`   // NEW: Model Router
 	QuotaMonitor *QuotaMonitorConfig `json:"quota_monitor" yaml:"quota_monitor"` // NEW: Quota Monitor
 	Cache        *CacheConfig        `json:"cache" yaml:"cache"`                 // cc-cache: Response caching
+	RuleRouting  *RoutingConfig      `json:"rule_routing" yaml:"rule_routing"`   // Condition-based routing rules
 }
 
 // PortConfig port configuration

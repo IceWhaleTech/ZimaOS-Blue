@@ -9,7 +9,7 @@ import (
 )
 
 func TestApplyModelRouting_RuleEngineSwapsModel(t *testing.T) {
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
 			Name:        "small-body-haiku",
@@ -42,7 +42,7 @@ func TestApplyModelRouting_RuleEngineSwapsModel(t *testing.T) {
 }
 
 func TestApplyModelRouting_NoMatchPassthrough(t *testing.T) {
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
 			Name:        "tool-only",
@@ -79,7 +79,7 @@ func TestApplyModelRouting_ModelRouterBackgroundDowngrade(t *testing.T) {
 		},
 	})
 
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetModelRouter(mr)
 
 	body := []byte(`{"model":"claude-3-opus","messages":[]}`)
@@ -107,7 +107,7 @@ func TestApplyModelRouting_RuleEngineTakesPriority(t *testing.T) {
 		},
 	})
 
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetModelRouter(mr)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
@@ -137,7 +137,7 @@ func TestApplyModelRouting_RuleEngineTakesPriority(t *testing.T) {
 }
 
 func TestApplyModelRouting_EmptyModel(t *testing.T) {
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{Name: "catch-all", Priority: 1, Condition: RouteCondition{MaxBodyBytes: 999999}, TargetModel: "haiku"},
 	}))
@@ -153,7 +153,7 @@ func TestApplyModelRouting_EmptyModel(t *testing.T) {
 }
 
 func TestApplyModelRouting_LazyToolExtraction(t *testing.T) {
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
 			Name:        "tool-match",

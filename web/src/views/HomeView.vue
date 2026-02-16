@@ -150,11 +150,11 @@ onUnmounted(() => {
   <div class="home-page">
     <!-- Hero Section -->
     <div class="hero-section">
-      <div class="hero-icon">
+      <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-700/60 shadow-sm">
         <img
           src="/logo.svg"
           alt="Logo"
-          class="h-10 w-10 rounded-full object-contain drop-shadow-lg dark:brightness-150"
+          class="h-9 w-9 object-contain dark:brightness-150"
         />
       </div>
       <h1 class="hero-title">{{ t('home.welcome') }}</h1>
@@ -394,18 +394,6 @@ onUnmounted(() => {
   text-align: center;
   margin-bottom: 24px;
   padding-top: 48px;
-}
-
-.hero-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 16px;
-  border-radius: 16px;
-  background: linear-gradient(135deg,rgb(0, 0, 0),rgb(130, 130, 130));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.3);
 }
 
 .hero-title {

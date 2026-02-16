@@ -1,4 +1,10 @@
 import api from './index'
+import type { AxiosError } from 'axios'
+
+// Returns true if the error is a 404 (feature not enabled on backend)
+function isNotFound(error: unknown): boolean {
+  return (error as AxiosError)?.response?.status === 404
+}
 
 // Types
 export interface BrowserTask {
@@ -77,8 +83,10 @@ export interface TaskTemplate {
 // API functions
 // Note: Browser routes are registered under /api/browser/* (without /v1)
 export async function getTasks(): Promise<BrowserTask[]> {
-  const response = await api.get('/browser/tasks', { baseURL: '/api' })
-  return response.data
+  try {
+    const response = await api.get('/browser/tasks', { baseURL: '/api' })
+    return response.data
+  } catch (e) { if (isNotFound(e)) return []; throw e }
 }
 
 export async function getTask(taskId: string): Promise<BrowserTask> {
@@ -104,8 +112,10 @@ export async function deleteTask(taskId: string): Promise<void> {
 }
 
 export async function getSessions(): Promise<BrowserSession[]> {
-  const response = await api.get('/browser/sessions', { baseURL: '/api' })
-  return response.data
+  try {
+    const response = await api.get('/browser/sessions', { baseURL: '/api' })
+    return response.data
+  } catch (e) { if (isNotFound(e)) return []; throw e }
 }
 
 export async function getSession(sessionId: string): Promise<BrowserSession> {
@@ -255,8 +265,10 @@ export interface BrowserSecurityConfig {
 // Security API functions
 // Note: Browser security routes are also under /api/browser/* (without /v1)
 export async function getSecurityConfig(): Promise<BrowserSecurityConfig> {
-  const response = await api.get('/browser/security', { baseURL: '/api' })
-  return response.data
+  try {
+    const response = await api.get('/browser/security', { baseURL: '/api' })
+    return response.data
+  } catch (e) { if (isNotFound(e)) return { allowed_domains: [], blocked_domains: [] }; throw e }
 }
 
 export async function updateSecurityConfig(config: BrowserSecurityConfig): Promise<void> {

@@ -28,9 +28,10 @@ func NewStore(db *sql.DB) (*Store, error) {
 }
 
 // initSchema creates the necessary tables and indexes.
+// Core tables are required; FTS5 is best-effort (some SQLite builds lack it).
 func (s *Store) initSchema() error {
-	schema := `
-	-- Skills table
+	// Step 1: Core tables (must succeed)
+	coreSchema := `
 	CREATE TABLE IF NOT EXISTS skills (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
@@ -61,39 +62,6 @@ func (s *Store) initSchema() error {
 		search_content TEXT
 	);
 
-	-- Full-text search virtual table
-	CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
-		id,
-		name,
-		summary,
-		description,
-		author,
-		category,
-		tags,
-		readme,
-		content='skills',
-		content_rowid='rowid'
-	);
-
-	-- Triggers to keep FTS in sync
-	CREATE TRIGGER IF NOT EXISTS skills_ai AFTER INSERT ON skills BEGIN
-		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
-		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS skills_ad AFTER DELETE ON skills BEGIN
-		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
-		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS skills_au AFTER UPDATE ON skills BEGIN
-		INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
-		VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
-		INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
-		VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
-	END;
-
-	-- Sync status table
 	CREATE TABLE IF NOT EXISTS skill_sync_status (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		source_id TEXT NOT NULL,
@@ -106,7 +74,6 @@ func (s *Store) initSchema() error {
 		UNIQUE(source_id)
 	);
 
-	-- Indexes for common queries
 	CREATE INDEX IF NOT EXISTS idx_skills_source ON skills(source_id);
 	CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
 	CREATE INDEX IF NOT EXISTS idx_skills_stars ON skills(stars DESC);
@@ -116,14 +83,41 @@ func (s *Store) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_skills_dedup_key ON skills(dedup_key);
 	CREATE INDEX IF NOT EXISTS idx_skills_rating ON skills(rating DESC);
 	`
-
-	_, err := s.db.Exec(schema)
-	if err != nil {
-		return err
+	if _, err := s.db.Exec(coreSchema); err != nil {
+		return fmt.Errorf("core tables: %w", err)
 	}
 
 	// Migration: add readme_hash column if not exists
 	_, _ = s.db.Exec("ALTER TABLE skills ADD COLUMN readme_hash TEXT")
+
+	// Step 2: FTS5 (best-effort — search degrades gracefully without it)
+	ftsStatements := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
+			id, name, summary, description, author, category, tags, readme,
+			content='skills', content_rowid='rowid'
+		)`,
+		`CREATE TRIGGER IF NOT EXISTS skills_ai AFTER INSERT ON skills BEGIN
+			INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+			VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS skills_ad AFTER DELETE ON skills BEGIN
+			INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+			VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS skills_au AFTER UPDATE ON skills BEGIN
+			INSERT INTO skills_fts(skills_fts, rowid, id, name, summary, description, author, category, tags, readme)
+			VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.description, old.author, old.category, old.tags, old.readme);
+			INSERT INTO skills_fts(rowid, id, name, summary, description, author, category, tags, readme)
+			VALUES (new.rowid, new.id, new.name, new.summary, new.description, new.author, new.category, new.tags, new.readme);
+		END`,
+	}
+	for _, stmt := range ftsStatements {
+		if _, err := s.db.Exec(stmt); err != nil {
+			// FTS5 failure is non-fatal — log and continue
+			fmt.Printf("[skillstore] FTS5 setup warning: %v\n", err)
+			break
+		}
+	}
 
 	return nil
 }

@@ -1,7 +1,6 @@
 package providerpool
 
 import (
-	"os"
 	"time"
 )
 
@@ -13,17 +12,14 @@ var (
 )
 
 const (
-	// TrialAPIKeyEnvVar is the environment variable name for trial API key (runtime override)
-	TrialAPIKeyEnvVar = "ZIMAOS_TRIAL_API_KEY"
-	// TrialBaseURLEnvVar is the environment variable name for trial base URL (runtime override)
-	TrialBaseURLEnvVar = "ZIMAOS_TRIAL_BASE_URL"
 	// DefaultTrialBaseURL is the default base URL for trial provider
 	DefaultTrialBaseURL = "https://api-paid.tribios.top/"
 )
 
-// BuiltinProviders returns the list of built-in provider configurations
+// BuiltinProviders returns the list of built-in provider configurations.
+// The trial provider is only included if a trial API key was injected at build time.
 func BuiltinProviders() []*Provider {
-	return []*Provider{
+	providers := []*Provider{
 		{
 			ID:          "openai",
 			Name:        "OpenAI",
@@ -296,7 +292,11 @@ func BuiltinProviders() []*Provider {
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		},
-		{
+	}
+
+	// Only include trial provider if API key was injected at build time
+	if trialAPIKey != "" {
+		providers = append(providers, &Provider{
 			ID:          "zimaos-blue-trial",
 			Name:        "ZimaOS Blue Trial",
 			Type:        ProviderTypeTrial,
@@ -313,42 +313,31 @@ func BuiltinProviders() []*Provider {
 			APIKeys:     getTrialAPIKeys(),
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
-		},
+		})
 	}
+
+	return providers
 }
 
-// getTrialBaseURL returns the trial provider base URL
-// Priority: 1. Environment variable (runtime override) 2. Build-time value 3. Default
+// getTrialBaseURL returns the trial provider base URL (build-time value or default).
 func getTrialBaseURL() string {
-	// Runtime override via environment variable
-	if url := os.Getenv(TrialBaseURLEnvVar); url != "" {
-		return url
-	}
-	// Build-time injected value
 	if trialBaseURL != "" {
 		return trialBaseURL
 	}
-	// Default
 	return DefaultTrialBaseURL
 }
 
-// getTrialAPIKeys returns the trial API keys
-// Priority: 1. Environment variable (runtime override) 2. Build-time value
+// getTrialAPIKeys returns the trial API keys from build-time injection.
+// Returns nil if no key was injected.
 func getTrialAPIKeys() []APIKey {
-	apiKey := os.Getenv(TrialAPIKeyEnvVar)
-	if apiKey == "" {
-		apiKey = trialAPIKey
-	}
-
-	if apiKey == "" {
+	if trialAPIKey == "" {
 		return nil
 	}
-
 	return []APIKey{
 		{
 			ID:        "trial-key",
-			Key:       apiKey,
-			KeyHash:   HashAPIKey(apiKey),
+			Key:       trialAPIKey,
+			KeyHash:   HashAPIKey(trialAPIKey),
 			Label:     "Trial API Key",
 			Enabled:   true,
 			CreatedAt: time.Now(),

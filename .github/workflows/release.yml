@@ -1,0 +1,268 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.24"
+  NODE_VERSION: "20"
+  BINARY_NAME: blue
+
+jobs:
+  build-web:
+    name: Build Web Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install & Build
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist/
+          retention-days: 1
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: build-web
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            runner: macos-14
+          - goos: darwin
+            goarch: amd64
+            runner: macos-13
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+            cross: true
+          - goos: windows
+            goarch: amd64
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: server/go.sum
+
+      - name: Download web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: server/internal/web/dist/
+
+      - name: Trim dist
+        shell: bash
+        working-directory: server
+        run: |
+          rm -f internal/web/dist/stats.html
+          find internal/web/dist -name "*.gz" -delete 2>/dev/null || true
+          find internal/web/dist -name "*.br" -delete 2>/dev/null || true
+          rm -rf internal/web/dist/samples
+
+      # Linux arm64 cross-compile needs aarch64 C toolchain for CGO (sqlite3)
+      - name: Install cross-compiler (linux/arm64)
+        if: matrix.cross
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+
+      - name: Build binary
+        working-directory: server
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+          ZIMAOS_TRIAL_API_KEY: ${{ secrets.ZIMAOS_TRIAL_API_KEY }}
+          ZIMAOS_TRIAL_BASE_URL: ${{ secrets.ZIMAOS_TRIAL_BASE_URL }}
+        run: |
+          # Cross-compile CC for linux/arm64
+          if [[ "${{ matrix.cross }}" == "true" ]]; then
+            export CC=aarch64-linux-gnu-gcc
+          fi
+
+          VERSION="${GITHUB_REF_NAME}"
+          GIT_COMMIT="$(git rev-parse --short HEAD)"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          LDFLAGS="-s -w"
+          LDFLAGS="${LDFLAGS} -X main.version=${VERSION}"
+          LDFLAGS="${LDFLAGS} -X main.gitCommit=${GIT_COMMIT}"
+          LDFLAGS="${LDFLAGS} -X main.buildTime=${BUILD_TIME}"
+          LDFLAGS="${LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=${ZIMAOS_TRIAL_API_KEY}"
+          LDFLAGS="${LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=${ZIMAOS_TRIAL_BASE_URL}"
+
+          EXT=""
+          if [[ "${GOOS}" == "windows" ]]; then EXT=".exe"; fi
+
+          mkdir -p bin
+          go build -ldflags "${LDFLAGS}" -o "bin/${BINARY_NAME}${EXT}" ./cmd/blue
+
+      - name: Pack dist into binary
+        working-directory: server
+        shell: bash
+        env:
+          RUNNER_TMP: ${{ runner.temp }}
+        run: |
+          EXT=""
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then EXT=".exe"; fi
+          BINARY="bin/${BINARY_NAME}${EXT}"
+
+          DIST_TAR="${RUNNER_TMP}/zimaos-dist.tar.gz"
+          tar czf "${DIST_TAR}" -C internal/web/dist .
+
+          # Get binary size (cross-platform stat)
+          if [[ "$(uname)" == "Darwin" ]]; then
+            OFFSET=$(stat -f%z "${BINARY}")
+          else
+            OFFSET=$(stat -c%s "${BINARY}" 2>/dev/null || wc -c < "${BINARY}" | tr -d ' ')
+          fi
+
+          # Export for python subprocess (avoids shell string escaping issues on Windows)
+          export PACK_DIST_TAR="${DIST_TAR}"
+          export PACK_BINARY="${BINARY}"
+          export PACK_OFFSET="${OFFSET}"
+
+          # Use python for binary-safe append (avoids CRLF issues on Windows Git Bash)
+          PYTHON=python3
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then PYTHON=python; fi
+
+          $PYTHON -c "
+          import struct, os
+          with open(os.environ['PACK_DIST_TAR'], 'rb') as f:
+              dist = f.read()
+          with open(os.environ['PACK_BINARY'], 'ab') as f:
+              f.write(dist)
+              f.write(struct.pack('<Q', int(os.environ['PACK_OFFSET'])))
+          "
+
+      - name: Create archive & checksum
+        working-directory: server/bin
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE="${BINARY_NAME}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          EXT=""
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then EXT=".exe"; fi
+
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            7z a "${ARCHIVE}.zip" "${BINARY_NAME}${EXT}"
+            sha256sum "${ARCHIVE}.zip" > "${ARCHIVE}.zip.sha256"
+          else
+            tar czf "${ARCHIVE}.tar.gz" "${BINARY_NAME}${EXT}"
+            shasum -a 256 "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            server/bin/*.tar.gz
+            server/bin/*.zip
+            server/bin/*.sha256
+          retention-days: 1
+
+  release:
+    name: Upload Release Assets
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: blue-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lhR ./artifacts
+
+      - name: Upload assets to release
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const tag = context.payload.release.tag_name;
+
+            const dir = './artifacts';
+            const files = fs.readdirSync(dir);
+            for (const file of files) {
+              const filePath = path.join(dir, file);
+              if (!fs.statSync(filePath).isFile()) continue;
+              console.log(`Uploading ${file}...`);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: context.payload.release.id,
+                name: file,
+                data: fs.readFileSync(filePath)
+              });
+            }
+
+      - name: Update release body with download links
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = context.payload.release.tag_name;
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const dl = `https://github.com/${repo}/releases/download/${tag}`;
+
+            const existing = context.payload.release.body || '';
+
+            const downloads = [
+              '',
+              '---',
+              '',
+              '## Downloads',
+              '',
+              '**macOS:**',
+              `- [macOS Apple Silicon (arm64)](${dl}/blue-${tag}-darwin-arm64.tar.gz)`,
+              `- [macOS Intel (amd64)](${dl}/blue-${tag}-darwin-amd64.tar.gz)`,
+              '',
+              '**Linux:**',
+              `- [Linux x86_64 (amd64)](${dl}/blue-${tag}-linux-amd64.tar.gz)`,
+              `- [Linux aarch64 (arm64)](${dl}/blue-${tag}-linux-arm64.tar.gz)`,
+              '',
+              '**Windows:**',
+              `- [Windows x86_64 (amd64)](${dl}/blue-${tag}-windows-amd64.zip)`,
+              '',
+              '**Checksums:** Each archive has a corresponding `.sha256` file.',
+            ].join('\n');
+
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: existing + downloads
+            });

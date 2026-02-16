@@ -36,46 +36,84 @@ func extractDir() string {
 
 // ensureDistFS extracts the appended dist.tar.gz from the binary itself.
 // Layout: [ELF/Mach-O binary][dist.tar.gz][8-byte LE offset of tar.gz start]
+// Falls back to local dist/ directory if extraction fails (e.g. go run / go build without make).
 func ensureDistFS() {
 	distOnce.Do(func() {
-		exe, err := os.Executable()
-		if err != nil {
-			log.Printf("[web] os.Executable: %v", err)
+		if tryExtractAppended() {
 			return
 		}
-		f, err := os.Open(exe)
-		if err != nil {
-			log.Printf("[web] open self: %v", err)
-			return
+		// Fallback: serve from local dist/ relative to executable or working directory
+		for _, candidate := range localDistCandidates() {
+			if info, err := os.Stat(filepath.Join(candidate, "index.html")); err == nil && !info.IsDir() {
+				distFS = os.DirFS(candidate)
+				log.Printf("[web] serving dist from local: %s", candidate)
+				return
+			}
 		}
-		defer f.Close()
-
-		// Read last 8 bytes: tar.gz start offset
-		if _, err := f.Seek(-8, io.SeekEnd); err != nil {
-			log.Printf("[web] seek trailer: %v", err)
-			return
-		}
-		var offset int64
-		if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
-			log.Printf("[web] read trailer: %v", err)
-			return
-		}
-
-		// Seek to tar.gz start and extract
-		if _, err := f.Seek(offset, io.SeekStart); err != nil {
-			log.Printf("[web] seek payload: %v", err)
-			return
-		}
-
-		base := filepath.Join(extractDir(), "zimaos-blue-dist")
-		if err := extractTarGzFromReader(f, base); err != nil {
-			log.Printf("[web] extract: %v", err)
-			return
-		}
-		distDir = base
-		distFS = os.DirFS(base)
-		log.Printf("[web] dist extracted to %s", base)
+		log.Printf("[web] no dist available (build with 'make build' to embed)")
 	})
+}
+
+func tryExtractAppended() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		log.Printf("[web] os.Executable: %v", err)
+		return false
+	}
+	f, err := os.Open(exe)
+	if err != nil {
+		log.Printf("[web] open self: %v", err)
+		return false
+	}
+	defer f.Close()
+
+	// Read last 8 bytes: tar.gz start offset
+	if _, err := f.Seek(-8, io.SeekEnd); err != nil {
+		return false
+	}
+	var offset int64
+	if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
+		return false
+	}
+	// Sanity check: offset must be positive and less than file size
+	fi, err := f.Stat()
+	if err != nil || offset <= 0 || offset >= fi.Size()-8 {
+		return false
+	}
+
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return false
+	}
+
+	base := filepath.Join(extractDir(), "zimaos-blue-dist")
+	if err := extractTarGzFromReader(f, base); err != nil {
+		log.Printf("[web] extract: %v", err)
+		return false
+	}
+	distDir = base
+	distFS = os.DirFS(base)
+	log.Printf("[web] dist extracted to %s", base)
+	return true
+}
+
+func localDistCandidates() []string {
+	var candidates []string
+	// Relative to working directory
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(wd, "internal", "web", "dist"),
+			filepath.Join(wd, "server", "internal", "web", "dist"),
+		)
+	}
+	// Relative to executable
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(dir, "..", "internal", "web", "dist"),
+			filepath.Join(dir, "internal", "web", "dist"),
+		)
+	}
+	return candidates
 }
 
 func extractTarGzFromReader(r io.Reader, dst string) error {

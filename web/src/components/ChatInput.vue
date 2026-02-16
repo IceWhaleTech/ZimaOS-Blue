@@ -454,15 +454,12 @@ function setInput(text: string) {
   })
 }
 
-defineExpose({ focus, setInput })
+defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
 </script>
 
 <template>
   <div
     class="chat-input-wrapper px-3 sm:px-4 pb-3 sm:pb-4 pt-2"
-    @dragover="handleDragOver"
-    @dragleave="handleDragLeave"
-    @drop="handleDrop"
   >
     <div
       class="chat-input-container glass-card shadow-lg rounded-2xl p-3 sm:p-4 max-w-4xl mx-auto"

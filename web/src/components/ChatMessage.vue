@@ -224,10 +224,11 @@ async function handleCopyMessage() {
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
   clearIncrementalState(props.message.id, props.message.conversation_id)
-  // Stop any playing audio for this message
-  if (isSpeaking.value) {
+  // Only stop manually-triggered TTS (not auto-play streaming which survives component remount)
+  // When streaming ends, the message component remounts with a new server ID —
+  // we must not kill the streaming TTS manager during that transition.
+  if (isSpeaking.value && !hasAutoPlayed.value) {
     ttsAudioManager.stop()
-    streamingTTSManager.stop()
   }
 })
 
@@ -236,7 +237,7 @@ const hasAutoPlayed = ref(false)
 const lastPlayedLength = ref(0)
 
 // Watch for content changes during streaming to play incrementally
-watch(() => props.message.content, async (newContent, _oldContent) => {
+watch(() => props.message.content, (newContent, _oldContent) => {
   if (!props.isStreaming || !isAssistant.value) return
 
   const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
@@ -262,8 +263,8 @@ watch(() => props.message.content, async (newContent, _oldContent) => {
     if (newText.trim()) {
       isSpeaking.value = true
       hasAutoPlayed.value = true
-      await streamingTTSManager.streamText(newText)
-      isSpeaking.value = false
+      // Don't await — let playback run in background so watcher can fire again
+      streamingTTSManager.streamText(newText)
     }
   }
 })
@@ -291,10 +292,13 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
       const remaining = textContent.slice(completeSentences.length).trim()
 
       if (remaining) {
-        isSpeaking.value = true
-        const provider = localStorage.getItem('tts-provider') || 'edge-tts'
-        await playTTSAudio(remaining, provider)
+        // Append remaining text to the streaming queue (non-blocking)
+        streamingTTSManager.streamText(remaining)
+      }
+      // Set onComplete to clear isSpeaking when all audio finishes
+      streamingTTSManager.onComplete = () => {
         isSpeaking.value = false
+        streamingTTSManager.onComplete = null
       }
     } else {
       // Play full text if nothing was played during streaming
@@ -307,6 +311,7 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
 
     // Reset for next message
     lastPlayedLength.value = 0
+    hasAutoPlayed.value = false
   }
 })
 
@@ -394,7 +399,8 @@ async function checkTTSModelReady(): Promise<boolean> {
 
 async function handlePlayTTS() {
   if (isSpeaking.value) {
-    // Stop current playback
+    // Stop current playback (both manual and streaming)
+    streamingTTSManager.stop()
     ttsAudioManager.stop()
     isSpeaking.value = false
     return

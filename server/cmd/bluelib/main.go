@@ -50,7 +50,7 @@ import (
 )
 
 var (
-	version   = "0.10.22"
+	version   = "0.10.28"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -412,22 +412,26 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 	// Initialize shared cache
 	sharedCache := proxy.NewCCCache(proxy.DefaultCacheConfig())
 
-	// Initialize memory handler
+	// Initialize memory handler with lazy init (vector_memory.db created on first request)
 	var memoryHandler *server.MemoryHandler
-	vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
-	vectorStore, _ := memory.NewVectorStore(memory.VectorStoreConfig{
-		DBPath:       vectorDbPath,
-		EmbeddingDim: 1536,
-		MaxChunks:    10000,
-		EnableFTS:    true,
-		EnableVec:    true,
-	})
-	if vectorStore != nil {
+	memoryHandler = server.NewLazyMemoryHandler(func(h *server.MemoryHandler) error {
+		vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
+		vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
+			DBPath:       vectorDbPath,
+			EmbeddingDim: 1536,
+			MaxChunks:    10000,
+			EnableFTS:    true,
+			EnableVec:    true,
+		})
+		if err != nil {
+			zapLogger.Warn("Failed to initialize vector store", zap.Error(err))
+			return err
+		}
 		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
 		memoryService := memory.NewMemoryService(hybridSearcher)
 		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
-		memoryHandler = server.NewMemoryHandler(memoryService)
-		memoryHandler.SetUnifiedService(unifiedService)
+		h.SetService(memoryService)
+		h.SetUnifiedService(unifiedService)
 
 		// Initialize LayeredMemoryService for dual-layer memory architecture
 		memoryDir := filepath.Join(dataDir, "memory")
@@ -438,14 +442,16 @@ func runServer(ctx context.Context, port int, dataDir string) error {
 		if err != nil {
 			zapLogger.Warn("Failed to initialize layered memory service", zap.Error(err))
 		} else {
-			memoryHandler.SetLayeredService(layeredService)
+			h.SetLayeredService(layeredService)
 			zapLogger.Info("Layered memory service initialized", zap.String("dir", memoryDir))
 		}
 
 		// Register memory tools for AI agent access
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(services.ToolRegistry, toolsAdapter)
-	}
+		zapLogger.Info("Vector memory store initialized lazily")
+		return nil
+	})
 
 	// Create Echo server
 	e := echo.New()

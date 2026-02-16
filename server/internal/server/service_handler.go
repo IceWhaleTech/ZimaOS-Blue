@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -411,8 +412,7 @@ func (h *ServiceHandler) Enable(c echo.Context) error {
 	case "windows":
 		output, err = h.runCommand("sc", "config", h.serviceName, "start=", "auto")
 	case "darwin":
-		// launchd services with RunAtLoad are automatically enabled
-		output = "launchd services are enabled by default when installed"
+		output, err = h.runCommand("launchctl", "enable", h.getLaunchdDomainTarget())
 	case "linux":
 		output, err = h.runCommand("systemctl", "enable", h.getSystemdUnit())
 	default:
@@ -446,7 +446,7 @@ func (h *ServiceHandler) Disable(c echo.Context) error {
 	case "windows":
 		output, err = h.runCommand("sc", "config", h.serviceName, "start=", "demand")
 	case "darwin":
-		output, err = h.runCommand("launchctl", "disable", "gui/"+h.getLaunchdLabel())
+		output, err = h.runCommand("launchctl", "disable", h.getLaunchdDomainTarget())
 	case "linux":
 		output, err = h.runCommand("systemctl", "disable", h.getSystemdUnit())
 	default:
@@ -481,6 +481,15 @@ func (h *ServiceHandler) runCommand(name string, args ...string) (string, error)
 
 func (h *ServiceHandler) getLaunchdLabel() string {
 	return "com.icewhale.zimaos-blue"
+}
+
+// getLaunchdDomainTarget returns "gui/<uid>/<label>" for launchctl enable/disable.
+func (h *ServiceHandler) getLaunchdDomainTarget() string {
+	uid := "0"
+	if u, err := user.Current(); err == nil {
+		uid = u.Uid
+	}
+	return "gui/" + uid + "/" + h.getLaunchdLabel()
 }
 
 func (h *ServiceHandler) getSystemdUnit() string {

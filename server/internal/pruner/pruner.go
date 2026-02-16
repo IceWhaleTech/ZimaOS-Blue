@@ -58,10 +58,10 @@ type Config struct {
 	CacheCapacity int     `mapstructure:"cache_capacity"` // LRU cache slots (default 256)
 }
 
-// DefaultConfig returns the default pruner configuration (disabled by default).
+// DefaultConfig returns the default pruner configuration (enabled by default).
 func DefaultConfig() Config {
 	return Config{
-		Enabled:       false,
+		Enabled:       true,
 		Backend:       "local",
 		Threshold:     0.5,
 		MinLines:      50,

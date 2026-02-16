@@ -85,10 +85,9 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
     {
         info!("Starting Blue server via CGO library (macOS) with args: {:?}", args);
 
-        // Get data directory
-        let data_dir = app.path().app_data_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .ok();
+        // Get data directory (~/.zimaos-blue/)
+        let data_dir = dirs::home_dir()
+            .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string());
 
         // Start server via FFI with args
         blue_ffi::start_server_with_args(23456, data_dir.as_deref(), args.as_deref())?;
@@ -133,10 +132,9 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     {
         info!("Starting Blue server via CGO library (macOS)");
 
-        // Get data directory
-        let data_dir = app.path().app_data_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .ok();
+        // Get data directory (~/.zimaos-blue/)
+        let data_dir = dirs::home_dir()
+            .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string());
 
         // Start server via FFI
         blue_ffi::start_server(23456, data_dir.as_deref())?;

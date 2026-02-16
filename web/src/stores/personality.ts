@@ -57,6 +57,9 @@ export const usePersonalityStore = defineStore('personality', () => {
     try {
       await personalityApi.delete(id)
       personalities.value = personalities.value.filter(p => p.id !== id)
+      if (activePersonality.value?.id === id) {
+        activePersonality.value = null
+      }
     } catch (e) {
       throw e
     }

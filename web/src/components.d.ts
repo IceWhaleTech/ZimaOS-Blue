@@ -147,6 +147,7 @@ declare module 'vue' {
     SystemStatusCard: typeof import('./components/dashboard/cards/SystemStatusCard.vue')['default']
     TalkMode: typeof import('./components/chat/TalkMode.vue')['default']
     TokenEconomyCard: typeof import('./components/dashboard/cards/TokenEconomyCard.vue')['default']
+    TokenEconomyMetrics: typeof import('./components/metrics/TokenEconomyMetrics.vue')['default']
     TokenUsageChart: typeof import('./components/metrics/TokenUsageChart.vue')['default']
     TokenUsageChartCard: typeof import('./components/dashboard/cards/TokenUsageChartCard.vue')['default']
     ToolCallNode: typeof import('./components/companion/nodes/ToolCallNode.vue')['default']

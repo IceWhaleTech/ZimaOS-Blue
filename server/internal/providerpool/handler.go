@@ -1085,8 +1085,15 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// Determine provider ID based on IDE type
+	// Get the base URL (from env var or config file)
+	baseURL := h.pool.IDEDiscovery.GetRealBaseURL(ideType)
+
+	// Determine provider ID: if a custom base URL is set, import as custom provider
 	providerID := getProviderIDForIDE(ideType)
+	isCustomURL := baseURL != ""
+	if isCustomURL {
+		providerID = "custom-" + string(ideType)
+	}
 
 	// Add API key to the provider
 	key := &APIKey{
@@ -1097,18 +1104,42 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 	}
 
 	if err := h.pool.Registry.AddAPIKey(providerID, key); err != nil {
-		// If provider doesn't exist, try to enable it first
 		if err == ErrProviderNotFound {
-			// Try to enable the builtin provider
-			if enableErr := h.pool.Registry.Enable(providerID); enableErr != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "provider not found: " + providerID})
-			}
-			// Retry adding the key
-			if err = h.pool.Registry.AddAPIKey(providerID, key); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			if isCustomURL {
+				// Create a new custom provider for the third-party API
+				provider := &Provider{
+					ID:        providerID,
+					Name:      string(ideType) + " (Custom API)",
+					Type:      ProviderTypeCustom,
+					Location:  ProviderLocationCloud,
+					Enabled:   true,
+					Status:    ProviderStatusActive,
+					BaseURL:   baseURL,
+					APIFormat: getAPIFormatForIDE(ideType),
+					Priority:  45,
+					Icon:      getIconForIDE(ideType),
+					APIKeys:   []APIKey{*key},
+				}
+				if regErr := h.pool.Registry.Register(provider); regErr != nil {
+					return c.JSON(http.StatusInternalServerError, map[string]string{"error": regErr.Error()})
+				}
+			} else {
+				// Try to enable the builtin provider
+				if enableErr := h.pool.Registry.Enable(providerID); enableErr != nil {
+					return c.JSON(http.StatusInternalServerError, map[string]string{"error": "provider not found: " + providerID})
+				}
+				if err = h.pool.Registry.AddAPIKey(providerID, key); err != nil {
+					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				}
 			}
 		} else {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	} else if isCustomURL {
+		// Key added successfully, update base URL on existing custom provider
+		if provider, err := h.pool.Registry.Get(providerID); err == nil {
+			provider.BaseURL = baseURL
+			h.pool.Registry.Update(provider)
 		}
 	}
 
@@ -1119,6 +1150,7 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 		"message":     "configuration imported successfully",
 		"provider_id": providerID,
 		"ide_type":    ideType,
+		"base_url":    baseURL,
 	})
 }
 
@@ -1164,6 +1196,13 @@ func (h *Handler) ImportExtensionConfig(c echo.Context) error {
 			continue
 		}
 
+		// If a custom base URL is set, create a custom provider instead of the builtin one
+		targetID := providerID
+		isCustomURL := cfg.baseURL != ""
+		if isCustomURL {
+			targetID = "custom-" + providerID + "-" + string(ideType)
+		}
+
 		key := &APIKey{
 			Key:     cfg.apiKey,
 			Label:   fmt.Sprintf("ide_import:%s", ideType),
@@ -1171,29 +1210,45 @@ func (h *Handler) ImportExtensionConfig(c echo.Context) error {
 			Enabled: true,
 		}
 
-		if err := h.pool.Registry.AddAPIKey(providerID, key); err != nil {
+		if err := h.pool.Registry.AddAPIKey(targetID, key); err != nil {
 			if err == ErrProviderNotFound {
-				if enableErr := h.pool.Registry.Enable(providerID); enableErr != nil {
-					continue
-				}
-				if err = h.pool.Registry.AddAPIKey(providerID, key); err != nil {
-					continue
+				if isCustomURL {
+					provider := &Provider{
+						ID:        targetID,
+						Name:      string(ideType) + " (Custom API)",
+						Type:      ProviderTypeCustom,
+						Location:  ProviderLocationCloud,
+						Enabled:   true,
+						Status:    ProviderStatusActive,
+						BaseURL:   cfg.baseURL,
+						APIFormat: getAPIFormatForProvider(providerID),
+						Priority:  45,
+						Icon:      getIconForIDE(ideType),
+						APIKeys:   []APIKey{*key},
+					}
+					if regErr := h.pool.Registry.Register(provider); regErr != nil {
+						continue
+					}
+				} else {
+					if enableErr := h.pool.Registry.Enable(targetID); enableErr != nil {
+						continue
+					}
+					if err = h.pool.Registry.AddAPIKey(targetID, key); err != nil {
+						continue
+					}
 				}
 			} else {
 				continue
 			}
-		}
-
-		// Update base URL if provided
-		if cfg.baseURL != "" {
-			if provider, err := h.pool.Registry.Get(providerID); err == nil {
+		} else if isCustomURL {
+			if provider, err := h.pool.Registry.Get(targetID); err == nil {
 				provider.BaseURL = cfg.baseURL
 				h.pool.Registry.Update(provider)
 			}
 		}
 
-		h.pool.Registry.Enable(providerID)
-		imported = append(imported, providerID)
+		h.pool.Registry.Enable(targetID)
+		imported = append(imported, targetID)
 	}
 
 	if len(imported) == 0 {
@@ -1305,6 +1360,46 @@ func getProviderIDForIDE(ideType ide.IDEType) string {
 		return "github"
 	}
 	return "openai"
+}
+
+// getAPIFormatForIDE returns the API format for an IDE type
+func getAPIFormatForIDE(ideType ide.IDEType) APIFormat {
+	switch ideType {
+	case ide.IDETypeClaudeCode:
+		return APIFormatAnthropic
+	case ide.IDETypeAntigravity:
+		return APIFormatGoogle
+	default:
+		return APIFormatOpenAI
+	}
+}
+
+// getAPIFormatForProvider returns the API format based on provider ID
+func getAPIFormatForProvider(providerID string) APIFormat {
+	switch providerID {
+	case "anthropic":
+		return APIFormatAnthropic
+	case "google":
+		return APIFormatGoogle
+	default:
+		return APIFormatOpenAI
+	}
+}
+
+// getIconForIDE returns the icon name for an IDE type
+func getIconForIDE(ideType ide.IDEType) string {
+	switch ideType {
+	case ide.IDETypeClaudeCode:
+		return "anthropic"
+	case ide.IDETypeCursor:
+		return "cursor"
+	case ide.IDETypeWindsurf:
+		return "windsurf"
+	case ide.IDETypeAntigravity:
+		return "google"
+	default:
+		return "custom"
+	}
 }
 
 // Pricing handlers

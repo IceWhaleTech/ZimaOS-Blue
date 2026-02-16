@@ -77,7 +77,7 @@ func BenchmarkOriginResolution_Miss(b *testing.B) {
 }
 
 func BenchmarkApplyModelRouting_HeaderOnly(b *testing.B) {
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{Name: "economy", Priority: 1, Condition: RouteCondition{Header: "X-Tier", HeaderValue: "economy"}, TargetModel: "haiku", Tier: TierEconomy},
 	}))
@@ -93,7 +93,7 @@ func BenchmarkApplyModelRouting_HeaderOnly(b *testing.B) {
 }
 
 func BenchmarkApplyModelRouting_NoMatch(b *testing.B) {
-	ph := &ProxyHandler{}
+	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{Name: "r1", Priority: 1, Condition: RouteCondition{Header: "X-Tier", HeaderValue: "economy"}, TargetModel: "haiku"},
 		{Name: "r2", Priority: 2, Condition: RouteCondition{MaxBodyBytes: 50}, TargetModel: "mini"},

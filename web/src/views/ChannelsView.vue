@@ -875,11 +875,11 @@ watch(() => tunnelStatus.value?.active, (active) => {
 
     <!-- Stats -->
     <div class="grid grid-cols-2 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ enabledCount }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('channels.enabledChannels') }}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ connectedCount }}</div>
         <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('channels.connectedChannels') }}</div>
       </div>
@@ -894,7 +894,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
     <!-- Channel List -->
     <div v-else class="space-y-3">
       <!-- Remote Access Card (Recommended) -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-900 dark:border-gray-400 overflow-hidden">
+      <div class="bg-white dark:bg-gray-700/30 rounded-lg border border-gray-900 dark:border-gray-400 overflow-hidden">
         <!-- Remote Access Header -->
         <div
           class="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"

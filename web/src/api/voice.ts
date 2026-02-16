@@ -409,6 +409,7 @@ class TTSAudioManager {
   private currentAudio: HTMLAudioElement | null = null
   private currentUrl: string | null = null
   private onStopCallback: (() => void) | null = null
+  private pendingReject: ((reason?: unknown) => void) | null = null
 
   play(base64: string, contentType: string, onStop?: () => void): Promise<void> {
     // Stop any currently playing audio
@@ -422,18 +423,22 @@ class TTSAudioManager {
       this.currentAudio = audio
       this.currentUrl = url
       this.onStopCallback = onStop || null
+      this.pendingReject = reject
 
       audio.onended = () => {
+        this.pendingReject = null
         this.cleanup()
         resolve()
       }
 
       audio.onerror = (e) => {
+        this.pendingReject = null
         this.cleanup()
         reject(e)
       }
 
       audio.play().catch((e) => {
+        this.pendingReject = null
         this.cleanup()
         reject(e)
       })
@@ -443,7 +448,11 @@ class TTSAudioManager {
   stop(): boolean {
     if (this.currentAudio) {
       this.currentAudio.pause()
+      const rejectFn = this.pendingReject
+      this.pendingReject = null
       this.cleanup()
+      // Reject the pending promise so callers (e.g. playNext) don't hang
+      if (rejectFn) rejectFn(new DOMException('Playback stopped', 'AbortError'))
       return true
     }
     return false
@@ -472,6 +481,7 @@ export const ttsAudioManager = new TTSAudioManager()
 // Streaming TTS Queue Manager - plays sentences as they arrive
 class StreamingTTSManager {
   private queue: Array<{ text: string; audio?: string; contentType?: string }> = []
+  private playIndex = 0 // cursor: next item to play
   private isPlaying = false
   private isStopped = false
   private currentEventSource: EventSource | null = null
@@ -485,25 +495,31 @@ class StreamingTTSManager {
     return sentences.map(s => s.trim()).filter(s => s.length > 0)
   }
 
-  // Start streaming TTS for text
+  // Append new text to the queue without stopping current playback
   async streamText(text: string): Promise<void> {
-    this.stop()
-    this.isStopped = false
-    this.queue = []
+    if (this.isStopped) {
+      // First call or after stop — reset state
+      this.isStopped = false
+      this.queue = []
+      this.playIndex = 0
+    }
 
     const sentences = this.splitIntoSentences(text)
     if (sentences.length === 0) return
 
-    // Initialize queue with sentences
-    this.queue = sentences.map(s => ({ text: s }))
-
-    // Start fetching audio for all sentences in parallel
-    sentences.forEach((sentence, index) => {
-      this.fetchAudio(sentence, index)
+    // Append new sentences to queue, fetch audio for each
+    const startIndex = this.queue.length
+    for (const s of sentences) {
+      this.queue.push({ text: s })
+    }
+    sentences.forEach((sentence, i) => {
+      this.fetchAudio(sentence, startIndex + i)
     })
 
-    // Start playing
-    this.playNext()
+    // Kick off playback if not already running
+    if (!this.isPlaying) {
+      this.playNext()
+    }
   }
 
   private async fetchAudio(text: string, index: number) {
@@ -520,6 +536,8 @@ class StreamingTTSManager {
           this.queue[index].contentType = data.content_type
         }
         es.close()
+        // Nudge playback in case it was waiting for this audio
+        if (!this.isPlaying) this.playNext()
       })
 
       es.addEventListener('error', () => es.close())
@@ -530,24 +548,22 @@ class StreamingTTSManager {
 
   private async playNext() {
     if (this.isStopped || this.isPlaying) return
-
-    // Find next sentence with audio ready
-    const index = this.queue.findIndex(item => item.audio && item.contentType)
-    if (index === -1) {
-      // No audio ready yet, wait and retry
-      if (this.queue.some(item => !item.audio)) {
-        setTimeout(() => this.playNext(), 100)
-      } else {
-        this.onComplete?.()
-      }
+    if (this.playIndex >= this.queue.length) {
+      // All items played — check if more might arrive
+      // (caller may append more via streamText)
+      this.onComplete?.()
       return
     }
 
-    const item = this.queue[index]
-    if (!item.audio || !item.contentType) return
+    const item = this.queue[this.playIndex]
+    if (!item.audio || !item.contentType) {
+      // Audio not ready yet, wait and retry
+      setTimeout(() => this.playNext(), 100)
+      return
+    }
 
     this.isPlaying = true
-    this.onSentenceStart?.(index)
+    this.onSentenceStart?.(this.playIndex)
 
     try {
       await ttsAudioManager.play(item.audio, item.contentType)
@@ -555,14 +571,11 @@ class StreamingTTSManager {
       console.error('Failed to play audio:', e)
     }
 
-    // Remove played item and continue
-    this.queue.splice(index, 1)
     this.isPlaying = false
+    this.playIndex++
 
-    if (!this.isStopped && this.queue.length > 0) {
+    if (!this.isStopped) {
       this.playNext()
-    } else if (this.queue.length === 0) {
-      this.onComplete?.()
     }
   }
 
@@ -570,6 +583,7 @@ class StreamingTTSManager {
     this.isStopped = true
     this.isPlaying = false
     this.queue = []
+    this.playIndex = 0
     this.currentEventSource?.close()
     ttsAudioManager.stop()
   }

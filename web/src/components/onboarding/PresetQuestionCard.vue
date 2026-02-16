@@ -16,11 +16,11 @@ const hasImageAttachment = computed(() => props.question.attachments?.some(a => 
 
 <template>
   <button
-    class="group flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 hover:border-gray-900 dark:border-gray-700 dark:hover:border-gray-900 dark:border-gray-700 hover:shadow-md transition-all duration-200 text-left w-full"
+    class="group flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 hover:shadow-md transition-all duration-200 text-left w-full"
     @click="emit('click', question)"
   >
     <span v-if="question.icon" class="text-xl flex-shrink-0">{{ question.icon }}</span>
-    <span class="flex-1 text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:text-gray-300 transition-colors">
+    <span class="flex-1 text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
       {{ question.text }}
     </span>
     <!-- Attachment indicator -->

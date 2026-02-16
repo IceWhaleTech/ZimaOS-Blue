@@ -569,12 +569,74 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 			}
 		}
 
+		// Condition-based rule routing (economy rules)
+		ruleRoutingCfg := deps.Config.Proxy.RuleRouting
+		if ruleRoutingCfg == nil {
+			ruleRoutingCfg = proxy.DefaultRoutingConfig()
+		}
+		if ruleRoutingCfg.Enabled && len(ruleRoutingCfg.Rules) > 0 {
+			proxyHandler.SetRuleEngine(ruleRoutingCfg.ToRuleEngine())
+			slog.Info("Rule routing enabled", "rules", len(ruleRoutingCfg.Rules))
+		}
+
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/embeddings", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/models", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/messages", echo.WrapHandler(proxyHandler))
+
+		// Model routing toggle API
+		routingGroup := v1.Group("/proxy/routing")
+		routingGroup.GET("/config", func(c echo.Context) error {
+			return c.JSON(200, map[string]interface{}{
+				"enabled": proxyHandler.IsRoutingEnabled(),
+			})
+		})
+		routingGroup.PUT("/config", func(c echo.Context) error {
+			var req struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := c.Bind(&req); err != nil {
+				return c.JSON(400, map[string]string{"error": "invalid request"})
+			}
+			if req.Enabled != nil {
+				proxyHandler.SetRoutingEnabled(*req.Enabled)
+			}
+			return c.JSON(200, map[string]interface{}{
+				"success": true,
+				"enabled": proxyHandler.IsRoutingEnabled(),
+			})
+		})
+		routingGroup.GET("/rules", func(c echo.Context) error {
+			rules := proxyHandler.GetRoutingRules()
+			if rules == nil {
+				rules = []proxy.RoutingRule{}
+			}
+			return c.JSON(200, map[string]interface{}{
+				"rules": rules,
+			})
+		})
+		routingGroup.PUT("/rules/:name", func(c echo.Context) error {
+			name := c.Param("name")
+			var req struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := c.Bind(&req); err != nil {
+				return c.JSON(400, map[string]string{"error": "invalid request"})
+			}
+			if req.Enabled == nil {
+				return c.JSON(400, map[string]string{"error": "enabled field required"})
+			}
+			if !proxyHandler.SetRoutingRuleEnabled(name, *req.Enabled) {
+				return c.JSON(404, map[string]string{"error": "rule not found"})
+			}
+			return c.JSON(200, map[string]interface{}{
+				"success": true,
+				"name":    name,
+				"enabled": *req.Enabled,
+			})
+		})
 	}
 
 	// Ngrok remote access routes
@@ -636,58 +698,54 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) {
 	}
 
 	// Memory Service v2 routes (versioned entries, namespaces)
+	// Reuse the main database (blue.db) — v2 tables have distinct names and use IF NOT EXISTS.
 	{
-		memDBPath := filepath.Join(dataDir, "memory_service.db")
-		memDB, err := sql.Open("sqlite3", memDBPath)
+		memDB := deps.DB
+		memRepo, err := memory.NewMemoryRepository(memDB)
 		if err != nil {
-			logger.Error("Failed to open memory service database", zap.Error(err))
+			logger.Error("Failed to initialize memory service repository", zap.Error(err))
 		} else {
-			memRepo, err := memory.NewMemoryRepository(memDB)
+			memNS, err := memory.NewNamespaceStore(memDB)
 			if err != nil {
-				logger.Error("Failed to initialize memory service repository", zap.Error(err))
+				logger.Error("Failed to initialize memory namespace store", zap.Error(err))
 			} else {
-				memNS, err := memory.NewNamespaceStore(memDB)
-				if err != nil {
-					logger.Error("Failed to initialize memory namespace store", zap.Error(err))
-				} else {
-					memAPIHandler := memory.NewAPIHandler(memRepo, memNS)
-					memAPIHandler.RegisterRoutes(v1)
-					logger.Info("Memory Service routes registered")
+				memAPIHandler := memory.NewAPIHandler(memRepo, memNS)
+				memAPIHandler.RegisterRoutes(v1)
+				logger.Info("Memory Service routes registered")
 
-					// Initialize content encryption if configured
-					var memEncryptor *memory.ContentEncryptor
-					if deps.Config != nil {
-						encCfg := deps.Config.Security.Encryption
-						memEncryptor, err = memory.NewContentEncryptor(
-							encCfg.Passphrase, encCfg.KeyPath, encCfg.Enabled,
-						)
-						if err != nil {
-							logger.Warn("Failed to initialize memory encryption", zap.Error(err))
-						} else {
-							memRepo.SetEncryptor(memEncryptor)
-							if encCfg.Enabled {
-								logger.Info("Memory encryption enabled (AES-256-GCM)")
-							}
+				// Initialize content encryption if configured
+				var memEncryptor *memory.ContentEncryptor
+				if deps.Config != nil {
+					encCfg := deps.Config.Security.Encryption
+					memEncryptor, err = memory.NewContentEncryptor(
+						encCfg.Passphrase, encCfg.KeyPath, encCfg.Enabled,
+					)
+					if err != nil {
+						logger.Warn("Failed to initialize memory encryption", zap.Error(err))
+					} else {
+						memRepo.SetEncryptor(memEncryptor)
+						if encCfg.Enabled {
+							logger.Info("Memory encryption enabled (AES-256-GCM)")
 						}
 					}
-					if memEncryptor == nil {
-						memEncryptor, _ = memory.NewContentEncryptor("", "", false)
-					}
+				}
+				if memEncryptor == nil {
+					memEncryptor, _ = memory.NewContentEncryptor("", "", false)
+				}
 
-					// Register encryption management routes
-					encHandler := memory.NewEncryptionHandler(memRepo, memEncryptor)
-					encHandler.RegisterRoutes(v1)
+				// Register encryption management routes
+				encHandler := memory.NewEncryptionHandler(memRepo, memEncryptor)
+				encHandler.RegisterRoutes(v1)
 
-					// Start background purge scheduler
-					purgeScheduler := memory.NewPurgeScheduler(memRepo, 6*time.Hour)
-					purgeScheduler.Start(deps.Ctx)
-					logger.Info("Memory Service purge scheduler started")
+				// Start background purge scheduler
+				purgeScheduler := memory.NewPurgeScheduler(memRepo, 6*time.Hour)
+				purgeScheduler.Start(deps.Ctx)
+				logger.Info("Memory Service purge scheduler started")
 
-					// Create v2 bridge for existing memory system
-					bridge := memory.NewV2Bridge(memRepo)
-					if deps.MemoryHandler != nil {
-						deps.MemoryHandler.SetV2Bridge(bridge)
-					}
+				// Create v2 bridge for existing memory system
+				bridge := memory.NewV2Bridge(memRepo)
+				if deps.MemoryHandler != nil {
+					deps.MemoryHandler.SetV2Bridge(bridge)
 				}
 			}
 		}

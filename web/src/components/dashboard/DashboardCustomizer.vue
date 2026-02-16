@@ -15,7 +15,7 @@ const categories = [
   { id: 'overview', labelKey: 'dashboard.categories.overview' },
   { id: 'system', labelKey: 'dashboard.categories.system' },
   { id: 'metrics', labelKey: 'dashboard.categories.metrics' },
-]
+] as const
 
 const filteredCards = computed(() => {
   const cards = cardRegistry.map((config) => {

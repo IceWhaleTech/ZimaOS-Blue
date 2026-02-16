@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // ModelOrigin indicates where a model runs.
@@ -37,6 +38,12 @@ type RoutingRule struct {
 	Origin      ModelOrigin    `yaml:"origin" json:"origin"`
 	Tier        ModelTier      `yaml:"tier" json:"tier,omitempty"`
 	Fallback    string         `yaml:"fallback" json:"fallback,omitempty"`
+	Enabled     *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"` // nil = enabled (default true)
+}
+
+// IsEnabled returns whether this rule is enabled (nil defaults to true).
+func (r *RoutingRule) IsEnabled() bool {
+	return r.Enabled == nil || *r.Enabled
 }
 
 // RouteCondition defines when a rule matches. All non-zero fields must match (AND logic).
@@ -145,11 +152,19 @@ func evaluateCondition(cond *RouteCondition, toolRe *regexp.Regexp, req *RouteRe
 	}
 }
 
-// compiledRoutingRule holds a rule with pre-compiled regex and pre-built reason string.
+// compiledRoutingRule holds a rule with pre-compiled regex and pre-built decision.
+// Condition fields are flattened to avoid pointer chasing through rule.Condition on the hot path.
 type compiledRoutingRule struct {
-	rule   RoutingRule
-	toolRe *regexp.Regexp
-	reason string // pre-built at init time, zero allocs at eval time
+	rule      RoutingRule
+	toolRe    *regexp.Regexp
+	decision  RouteDecision  // pre-built at init time, returned by pointer on match (zero allocs)
+	disabled  *atomic.Bool   // runtime toggle (default false = enabled); pointer avoids copy-lock
+	// Flattened condition fields — avoid indirection through rule.Condition on hot path
+	hasHeader bool
+	headerKey string
+	headerVal string
+	maxBody   int
+	sysTag    string
 }
 
 // RuleEngine evaluates routing rules in priority order with pre-compiled regexes.
@@ -157,6 +172,29 @@ type RuleEngine struct {
 	rules      []compiledRoutingRule
 	needsTools  bool // pre-computed: any rule uses ToolPattern
 	needsSystem bool // pre-computed: any rule uses SystemTag
+}
+
+// GetRules returns a snapshot of all rules with their enabled state.
+func (e *RuleEngine) GetRules() []RoutingRule {
+	out := make([]RoutingRule, len(e.rules))
+	for i := range e.rules {
+		out[i] = e.rules[i].rule
+		enabled := !e.rules[i].disabled.Load()
+
+		out[i].Enabled = &enabled
+	}
+	return out
+}
+
+// SetRuleEnabled enables or disables a rule by name. Returns false if not found.
+func (e *RuleEngine) SetRuleEnabled(name string, enabled bool) bool {
+	for i := range e.rules {
+		if e.rules[i].rule.Name == name {
+			e.rules[i].disabled.Store(!enabled)
+			return true
+		}
+	}
+	return false
 }
 
 // buildReason pre-builds the reason string for a rule condition.
@@ -185,12 +223,32 @@ func NewRuleEngine(rules []RoutingRule) *RuleEngine {
 		return sorted[i].Priority < sorted[j].Priority
 	})
 
-	compiled := make([]compiledRoutingRule, len(sorted))
+	compiled := make([]compiledRoutingRule, 0, len(sorted))
 	var needsTools, needsSystem bool
-	for i, r := range sorted {
+	for _, r := range sorted {
+		if !r.Condition.hasCondition() {
+			continue // skip rules with no condition at init time
+		}
 		cr := compiledRoutingRule{
-			rule:   r,
-			reason: buildReason(&r.Condition),
+			rule: r,
+			decision: RouteDecision{
+				Matched:  true,
+				Model:    r.TargetModel,
+				Origin:   r.Origin,
+				Tier:     r.Tier,
+				Fallback: r.Fallback,
+				Rule:     r.Name,
+				Reason:   buildReason(&r.Condition),
+			},
+			disabled:  &atomic.Bool{},
+			hasHeader: r.Condition.Header != "",
+			headerKey: r.Condition.Header,
+			headerVal: r.Condition.HeaderValue,
+			maxBody:   r.Condition.MaxBodyBytes,
+			sysTag:    r.Condition.SystemTag,
+		}
+		if !r.IsEnabled() {
+			cr.disabled.Store(true)
 		}
 		if r.Condition.ToolPattern != "" {
 			cr.toolRe, _ = regexp.Compile(r.Condition.ToolPattern)
@@ -199,22 +257,51 @@ func NewRuleEngine(rules []RoutingRule) *RuleEngine {
 		if r.Condition.SystemTag != "" {
 			needsSystem = true
 		}
-		compiled[i] = cr
+		compiled = append(compiled, cr)
 	}
 	return &RuleEngine{rules: compiled, needsTools: needsTools, needsSystem: needsSystem}
 }
 
-// Evaluate returns the first matching rule's decision, or nil if none match.
+// Evaluate returns the first matching rule's pre-built decision, or nil if none match.
+// Condition checks are inlined to avoid function call overhead and heap allocation.
+// Rules without conditions are filtered at init time — no need to re-check here.
 func (e *RuleEngine) Evaluate(req *RouteRequest) *RouteDecision {
-	for i := range e.rules {
-		cr := &e.rules[i]
-		if !cr.rule.Condition.hasCondition() {
+	rules := e.rules // local copy of slice header for bounds-check elimination
+	for i := range rules {
+		cr := &rules[i]
+		if cr.disabled.Load() {
 			continue
 		}
-		d := evaluateCondition(&cr.rule.Condition, cr.toolRe, req, cr.rule.Name, cr.rule.TargetModel, cr.rule.Origin, cr.rule.Tier, cr.rule.Fallback, cr.reason)
-		if d.Matched {
-			return d
+		// Header check (cheapest — single map lookup)
+		if cr.hasHeader {
+			if !strings.EqualFold(req.Headers.Get(cr.headerKey), cr.headerVal) {
+				continue
+			}
 		}
+		// Body size check (integer compare)
+		if cr.maxBody > 0 && req.BodySize > cr.maxBody {
+			continue
+		}
+		// Tool pattern check (regex — most expensive)
+		if cr.toolRe != nil {
+			matched := false
+			for _, tool := range req.ToolNames {
+				if cr.toolRe.MatchString(tool) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		// System tag check (string search)
+		if cr.sysTag != "" {
+			if !strings.Contains(req.SystemMessage, cr.sysTag) {
+				continue
+			}
+		}
+		return &cr.decision
 	}
 	return nil
 }

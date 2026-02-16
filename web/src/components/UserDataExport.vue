@@ -415,7 +415,7 @@ function cancelCleanup() {
     <!-- Tab Header -->
     <div class="flex border-b border-gray-200 dark:border-slate-700">
       <button
-        v-for="tab in (['export', 'import', 'cleanup', 'retention'] as const)"
+        v-for="tab in (['export', 'import', 'retention', 'cleanup'] as const)"
         :key="tab"
         :class="[
           'flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center justify-center gap-2',

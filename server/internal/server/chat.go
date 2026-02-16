@@ -1750,7 +1750,7 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse,
 
 	// Check if conversation already has a custom title (not the default/auto-generated one)
 	conv, err := h.store.GetConversation(context.Background(), convID)
-	if err == nil && conv != nil && conv.Title != "" {
+	if err == nil && conv != nil && conv.Title != "" && !isDefaultTitle(conv.Title) {
 		// If the title doesn't look like an auto-generated one (truncated user message),
 		// skip updating it. Auto-generated titles typically end with "..." or match the start of userMessage
 		currentTitle := conv.Title

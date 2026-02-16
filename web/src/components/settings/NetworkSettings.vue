@@ -408,13 +408,12 @@ onUnmounted(() => {
     </div>
 
     <!-- Port Configuration -->
-    <div class="glass-card p-6">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('service.port') }}</h3>
-      <div v-if="serverConfig" class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
+    <div class="glass-card p-4">
+      <div v-if="serverConfig">
         <div class="flex items-center justify-between">
           <div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ t('service.port') }}</div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('service.portDescription') }}</div>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('service.port') }}</h3>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('service.portDescription') }}</div>
           </div>
           <div class="flex items-center gap-3">
             <template v-if="!portEditing">
@@ -440,7 +439,7 @@ onUnmounted(() => {
     <div class="glass-card p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ t('settings.network.tls.title') }}
           </h3>
           <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -547,7 +546,7 @@ onUnmounted(() => {
     <div class="glass-card p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('settings.network.corsTitle') }}</h3>
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('settings.network.corsTitle') }}</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('settings.network.corsDescription') }}</p>
         </div>
         <button class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600" :disabled="loading" @click="fetchCORSConfig">

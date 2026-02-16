@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -16,11 +17,38 @@ type MemoryHandler struct {
 	layeredService      *memory.LayeredMemoryService
 	v2Bridge            *memory.V2Bridge
 	progressiveSearcher *memory.ProgressiveSearcher
+
+	// Lazy init support: defer vector store creation to first request
+	initOnce sync.Once
+	initFunc func() // called once on first request to populate service fields
+	initErr  error
 }
 
 // NewMemoryHandler creates a new MemoryHandler.
 func NewMemoryHandler(service *memory.MemoryService) *MemoryHandler {
 	return &MemoryHandler{service: service}
+}
+
+// NewLazyMemoryHandler creates a handler that defers heavy init to first request.
+// The initFunc should set up the service chain and call the Set* methods on the handler.
+func NewLazyMemoryHandler(initFunc func(h *MemoryHandler) error) *MemoryHandler {
+	h := &MemoryHandler{}
+	h.initFunc = func() {
+		h.initErr = initFunc(h)
+	}
+	return h
+}
+
+// ensureInit triggers lazy initialization if configured.
+func (h *MemoryHandler) ensureInit() {
+	if h.initFunc != nil {
+		h.initOnce.Do(h.initFunc)
+	}
+}
+
+// SetService sets the core memory service.
+func (h *MemoryHandler) SetService(svc *memory.MemoryService) {
+	h.service = svc
 }
 
 // SetUnifiedService sets the unified memory service for backend switching.
@@ -89,6 +117,7 @@ type StoreResponse struct {
 
 // Store stores a new memory.
 func (h *MemoryHandler) Store(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -151,6 +180,7 @@ type SearchResultItem struct {
 
 // Search searches memories.
 func (h *MemoryHandler) Search(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -218,6 +248,7 @@ func (h *MemoryHandler) Search(c echo.Context) error {
 
 // Get retrieves a memory by ID.
 func (h *MemoryHandler) Get(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -246,6 +277,7 @@ func (h *MemoryHandler) Get(c echo.Context) error {
 
 // Delete deletes a memory.
 func (h *MemoryHandler) Delete(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -269,6 +301,7 @@ type PruneResponse struct {
 
 // Prune removes old memories.
 func (h *MemoryHandler) Prune(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -283,6 +316,7 @@ func (h *MemoryHandler) Prune(c echo.Context) error {
 
 // Clear removes all memories.
 func (h *MemoryHandler) Clear(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -296,6 +330,7 @@ func (h *MemoryHandler) Clear(c echo.Context) error {
 
 // Stats returns memory statistics.
 func (h *MemoryHandler) Stats(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -310,6 +345,7 @@ func (h *MemoryHandler) Stats(c echo.Context) error {
 
 // GetBackendStatus returns the current backend status.
 func (h *MemoryHandler) GetBackendStatus(c echo.Context) error {
+	h.ensureInit()
 	activeBackend := "local"
 
 	if h.unifiedService != nil {
@@ -324,6 +360,7 @@ func (h *MemoryHandler) GetBackendStatus(c echo.Context) error {
 
 // SetBackend switches the active memory backend.
 func (h *MemoryHandler) SetBackend(c echo.Context) error {
+	h.ensureInit()
 	var req struct {
 		Backend string `json:"backend"`
 	}
@@ -347,6 +384,7 @@ func (h *MemoryHandler) SetBackend(c echo.Context) error {
 
 // ExportMarkdown exports all memories as a Markdown file.
 func (h *MemoryHandler) ExportMarkdown(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -496,6 +534,7 @@ type ImportMarkdownResponse struct {
 
 // ImportMarkdown imports memories from Markdown content.
 func (h *MemoryHandler) ImportMarkdown(c echo.Context) error {
+	h.ensureInit()
 	if h.service == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
 	}
@@ -658,6 +697,7 @@ type AppendToDailyRequest struct {
 
 // AppendToDaily appends content to today's daily log.
 func (h *MemoryHandler) AppendToDaily(c echo.Context) error {
+	h.ensureInit()
 	if h.layeredService == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "layered memory service not configured")
 	}
@@ -685,6 +725,7 @@ func (h *MemoryHandler) AppendToDaily(c echo.Context) error {
 
 // ListDailyLogs returns a list of available daily log dates.
 func (h *MemoryHandler) ListDailyLogs(c echo.Context) error {
+	h.ensureInit()
 	if h.layeredService == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "layered memory service not configured")
 	}
@@ -702,6 +743,7 @@ func (h *MemoryHandler) ListDailyLogs(c echo.Context) error {
 
 // GetDailyLog returns a specific day's log content.
 func (h *MemoryHandler) GetDailyLog(c echo.Context) error {
+	h.ensureInit()
 	if h.layeredService == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "layered memory service not configured")
 	}
@@ -730,6 +772,7 @@ type PromoteToLongTermRequest struct {
 
 // PromoteToLongTerm promotes content to the long-term memory layer.
 func (h *MemoryHandler) PromoteToLongTerm(c echo.Context) error {
+	h.ensureInit()
 	if h.layeredService == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "layered memory service not configured")
 	}
@@ -762,6 +805,7 @@ func (h *MemoryHandler) PromoteToLongTerm(c echo.Context) error {
 
 // GetLongTermMemory returns the long-term memory content.
 func (h *MemoryHandler) GetLongTermMemory(c echo.Context) error {
+	h.ensureInit()
 	if h.layeredService == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "layered memory service not configured")
 	}
@@ -778,6 +822,7 @@ func (h *MemoryHandler) GetLongTermMemory(c echo.Context) error {
 
 // PruneDailyLogs removes old daily logs based on retention policy.
 func (h *MemoryHandler) PruneDailyLogs(c echo.Context) error {
+	h.ensureInit()
 	if h.layeredService == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "layered memory service not configured")
 	}
@@ -794,6 +839,7 @@ func (h *MemoryHandler) PruneDailyLogs(c echo.Context) error {
 
 // ProgressiveSearch performs 3-layer progressive disclosure search.
 func (h *MemoryHandler) ProgressiveSearch(c echo.Context) error {
+	h.ensureInit()
 	if h.progressiveSearcher == nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "progressive search not configured")
 	}

@@ -54,6 +54,7 @@ export interface PrunerConfig {
 export interface PrunerConfigUpdate {
   enabled?: boolean
   threshold?: number
+  backend?: string
 }
 
 export interface PrunerModelStatus {
@@ -76,6 +77,23 @@ export interface PrunerModelStatus {
   }[]
 }
 
+export interface RoutingRule {
+  name: string
+  priority: number
+  condition: {
+    header?: string
+    header_value?: string
+    max_body_bytes?: number
+    tool_pattern?: string
+    system_tag?: string
+  }
+  target_model: string
+  origin: string
+  tier?: string
+  fallback?: string
+  enabled?: boolean
+}
+
 // Proxy cache API (for /v1/* OpenAI-compatible endpoints)
 // All chat requests now route through the proxy, so this is the unified cache
 export const proxyCacheApi = {
@@ -93,4 +111,10 @@ export const proxyCacheApi = {
   getPrunerModelStatus: () => api.get<PrunerModelStatus>('/proxy/pruner/model/status'),
   downloadPrunerModel: () => api.post<{ success: boolean }>('/proxy/pruner/model/download'),
   cancelPrunerModelDownload: () => api.post<{ success: boolean }>('/proxy/pruner/model/cancel'),
+  getRoutingConfig: () => api.get<{ enabled: boolean }>('/proxy/routing/config'),
+  updateRoutingConfig: (config: { enabled: boolean }) =>
+    api.put<{ success: boolean; enabled: boolean }>('/proxy/routing/config', config),
+  getRoutingRules: () => api.get<{ rules: RoutingRule[] }>('/proxy/routing/rules'),
+  updateRoutingRule: (name: string, config: { enabled: boolean }) =>
+    api.put<{ success: boolean; name: string; enabled: boolean }>(`/proxy/routing/rules/${encodeURIComponent(name)}`, config),
 }

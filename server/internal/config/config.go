@@ -838,8 +838,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("proxy.quota_monitor.track_tokens", true)
 	v.SetDefault("proxy.quota_monitor.track_requests", true)
 
-	// Pruner defaults (context pruning for token savings, disabled by default)
-	v.SetDefault("pruner.enabled", false)
+	// Pruner defaults (context pruning for token savings, enabled by default)
+	v.SetDefault("pruner.enabled", true)
 	v.SetDefault("pruner.backend", "local")
 	v.SetDefault("pruner.threshold", 0.5)
 	v.SetDefault("pruner.min_lines", 200)

@@ -163,7 +163,14 @@
       "Bash(/tmp/memprof.go << 'GOEOF'\npackage main\n\nimport \\(\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n\t\"runtime\"\n\t\"runtime/pprof\"\n\t\"time\"\n\\)\n\nfunc main\\(\\) {\n\t// Start the blue server in background\n\tcmd := exec.Command\\(\"/tmp/blue-prof\", \"serve\", \"--port\", \"19877\"\\)\n\tcmd.Stdout = os.Stdout\n\tcmd.Stderr = os.Stderr\n\tif err := cmd.Start\\(\\); err != nil {\n\t\tfmt.Fprintf\\(os.Stderr, \"Failed to start: %v\\\\n\", err\\)\n\t\tos.Exit\\(1\\)\n\t}\n\n\t// Wait for startup\n\ttime.Sleep\\(5 * time.Second\\)\n\n\t// This won't work — we need to profile from inside the process\n\t// Let me just use /proc or ps instead\n\tfmt.Printf\\(\"PID: %d\\\\n\", cmd.Process.Pid\\)\n\n\t// Kill\n\tcmd.Process.Kill\\(\\)\n}\nGOEOF)",
       "Bash(# Start server again to get detailed memory stats /tmp/blue-prof serve --port 19878 2>&1 & BLUE_PID=$! sleep 8 echo \"\"=== Process Memory ===\"\" ps -o pid,rss,vsz -p $BLUE_PID echo \"\"\"\" echo \"\"=== Runtime MemStats ===\"\" curl -s \"\"http://localhost:6060/debug/pprof/heap?debug=1\"\" 2>&1)",
       "Bash(pgrep:*)",
-      "Bash(xargs kill:*)"
+      "Bash(xargs kill:*)",
+      "Bash(for:*)",
+      "Bash(gh release view:*)",
+      "Bash(comm -23:*)",
+      "Bash(npx --yes sharp-cli:*)",
+      "Bash(iconutil -c icns:*)",
+      "Bash(pip3 install:*)",
+      "Bash(TMP=\"/tmp/tauri-icons\":*)"
     ]
   }
 }
