@@ -182,7 +182,10 @@
       "Bash(do sips -s format png -s formatOptions best \"$f\" --out \"$f\")",
       "Bash(do convert \"$f\" -define png:color-type=6 \"$f\")",
       "Bash(cargo doc:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(pip install:*)",
+      "Bash(xxd:*)",
+      "Bash(npx tauri build --help:*)"
     ]
   }
 }

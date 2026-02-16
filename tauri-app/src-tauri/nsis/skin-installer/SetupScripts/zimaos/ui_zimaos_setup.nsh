@@ -74,7 +74,10 @@ Function DUIPage
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "licensename" "text" "$LangLicenseAgreement"
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnInstall" "text" "$LangOneClickInstall"
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnRun" "text" "$LangStartUsing"
-	#nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnAgreement" "text" "  用户许可协议"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "chkAgree" "text" "$LangIAgree"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnAgreement" "text" "$LangLicenseAgreement"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblInstallPath" "text" "$LangInstallPath"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblRequiredSpace" "text" "$LangRequiredSpace"
 
     Call BindUIControls
     nsNiuniuSkin::ShowPage 0
@@ -94,6 +97,10 @@ Function un.DUIPage
 	nsNiuniuSkin::SetWindowSize $hInstallDlg 508 418
 	Call un.BindUnInstUIControls
 
+	# Set dynamic text for uninstall page
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblUninstallConfirm" "text" "$LangUninstallConfirm"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnUnInstall" "text" "$LangConfirm"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnClose" "text" "$LangCancel"
 
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "chkAutoRun" "selected" "true"
 
@@ -195,7 +202,7 @@ Function OnRichEditTextChange
 	
 	Call IsSetupPathIlleagal
 	${If} $R5 == "0"
-		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "text" "路径非法"
+		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "text" "$LangPathInvalid"
 		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "textcolor" "#ffff0000"
 		nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnInstall" "enabled" "false"
 		goto TextChangeAbort
@@ -206,9 +213,9 @@ Function OnRichEditTextChange
 	    
 		IntOp $R1  $R0 % 1024	
 		IntOp $R0  $R0 / 1024;		
-		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "text" "剩余空间：$R0.$R1GB"
+		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "text" "$LangRemainingSpace $R0.$R1GB"
 	${Else}
-		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "text" "剩余空间：$R0.$R1MB"
+		nsNiuniuSkin::SetControlAttribute $hInstallDlg "local_space" "text" "$LangRemainingSpace $R0.$R1MB"
      ${endif}
 	
 	nsNiuniuSkin::GetControlAttribute $hInstallDlg "chkAgree" "selected"
@@ -257,7 +264,7 @@ SectionEnd
 Function ShowMsgBox
 	nsNiuniuSkin::InitSkinSubPage "msgBox.xml" "btnOK" "btnCancel,btnClose"  ; "提示" "${PRODUCT_NAME} 正在运行，请退出后重试!" 0
 	Pop $hInstallSubDlg
-	nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "lblTitle" "text" "提示"
+	nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "lblTitle" "text" "$LangTip"
 	nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "lblMsg" "text" "$R8"
 	${If} "$R7" == "1"
 		nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "hlCancel" "visible" "true"
@@ -280,7 +287,7 @@ Function OnBtnInstall
 	Pop $R0
 	
 	${If} $R0 == 0
-        StrCpy $R8 "${PRODUCT_NAME} 正在运行，请退出后重试!"
+        StrCpy $R8 "$LangRunning"
 		StrCpy $R7 "0"
 		Call ShowMsgBox
 		goto InstallAbort
@@ -296,13 +303,13 @@ Function OnBtnInstall
 	
 	Call IsSetupPathIlleagal
 	${If} $R5 == "0"
-		StrCpy $R8 "路径非法，请使用正确的路径安装!"
+		StrCpy $R8 "$LangPathInvalid"
 		StrCpy $R7 "0"
 		Call ShowMsgBox
 		goto InstallAbort
     ${EndIf}	
 	${If} $R5 == "-1"
-		StrCpy $R8 "目标磁盘空间不足，请使用其他的磁盘安装!"
+		StrCpy $R8 "$LangDiskSpaceLow"
 		StrCpy $R7 "0"
 		Call ShowMsgBox
 		goto InstallAbort
@@ -326,7 +333,7 @@ Function OnBtnInstall
     
 	Call CreateShortcut
 	#TODO: 自己添加的代码 添加到桌面快捷方式的动作 在此添加 
-	CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${EXE_NAME}"	
+	CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${EXE_NAME}" "" "$INSTDIR\logo.ico"
 	Call CreateUninstall
     
 			
@@ -363,7 +370,7 @@ FunctionEnd
 #安装界面点击退出，给出提示 
 Function OnExitDUISetup
 	${If} $InstallState == "0"		
-		StrCpy $R8 "安装尚未完成，您确定退出安装么？"
+		StrCpy $R8 "$LangExitConfirm"
 		StrCpy $R7 "1"
 		Call ShowMsgBox
 		pop $0
@@ -459,7 +466,7 @@ FunctionEnd
 Function un.ShowMsgBox
 	nsNiuniuSkin::InitSkinSubPage "msgBox.xml" "btnOK" "btnCancel,btnClose"  ; "提示" "${PRODUCT_NAME} 正在运行，请退出后重试!" 0
 	Pop $hInstallSubDlg
-	nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "lblTitle" "text" "提示"
+	nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "lblTitle" "text" "$LangTip"
 	nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "lblMsg" "text" "$R8"
 	${If} "$R7" == "1"
 		nsNiuniuSkin::SetControlAttribute $hInstallSubDlg "hlCancel" "visible" "true"
@@ -483,7 +490,7 @@ Function un.onUninstall
 	Pop $R0
 	
 	${If} $R0 == 0
-		StrCpy $R8 "${PRODUCT_NAME} 正在运行，请退出后重试!"
+		StrCpy $R8 "$LangRunning"
 		StrCpy $R7 "0"
 		Call un.ShowMsgBox
 		goto InstallAbort
