@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
+
+const hfMirrorHost = "hf-mirror.com"
 
 // PrunerModelInfo describes a downloadable pruner model file.
 type PrunerModelInfo struct {
@@ -173,7 +176,7 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 		m.progress.ETA = ""
 		m.mu.Unlock()
 
-		if err := m.downloadFile(ctx, f.URL, destPath); err != nil {
+		if err := m.downloadFileWithMirror(ctx, f.URL, destPath); err != nil {
 			m.mu.Lock()
 			m.state = StateError
 			m.lastError = fmt.Sprintf("%s: %v", f.Filename, err)
@@ -182,6 +185,19 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (m *PrunerModelManager) downloadFileWithMirror(ctx context.Context, url, destPath string) error {
+	err := m.downloadFile(ctx, url, destPath)
+	if err == nil {
+		return nil
+	}
+	// If original HuggingFace URL failed, try hf-mirror
+	mirrorURL := strings.Replace(url, "huggingface.co", hfMirrorHost, 1)
+	if mirrorURL == url {
+		return err
+	}
+	return m.downloadFile(ctx, mirrorURL, destPath)
 }
 
 func (m *PrunerModelManager) downloadFile(ctx context.Context, url, destPath string) error {

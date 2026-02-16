@@ -13,7 +13,7 @@ var (
 
 const (
 	// DefaultTrialBaseURL is the default base URL for trial provider
-	DefaultTrialBaseURL = "https://api-paid.tribios.top/"
+	DefaultTrialBaseURL = "https://paid.tribiosapi.top/"
 )
 
 // BuiltinProviders returns the list of built-in provider configurations.

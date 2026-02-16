@@ -281,51 +281,6 @@ func TestClaudeCodeConfigWithDefaults(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeConfigWithAPIKeyAndBaseURL(t *testing.T) {
-	// Test configuration matching user's setup:
-	// ANTHROPIC_BASE_URL: https://paid.tribiosapi.top/
-	// ANTHROPIC_AUTH_TOKEN: sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE
-	config := ClaudeCodeConfig{
-		APIKey:  "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE",
-		BaseURL: "https://paid.tribiosapi.top/",
-	}
-	result := config.WithDefaults()
-
-	// Verify ANTHROPIC_AUTH_TOKEN is set correctly (not ANTHROPIC_API_KEY)
-	if result.Backend.Env == nil {
-		t.Fatal("expected Backend.Env to be initialized")
-	}
-
-	authToken, ok := result.Backend.Env["ANTHROPIC_AUTH_TOKEN"]
-	if !ok {
-		t.Error("expected ANTHROPIC_AUTH_TOKEN to be set in environment")
-	}
-	if authToken != "sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE" {
-		t.Errorf("expected ANTHROPIC_AUTH_TOKEN to be 'sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE', got '%s'", authToken)
-	}
-
-	// Verify ANTHROPIC_BASE_URL is set correctly
-	baseURL, ok := result.Backend.Env["ANTHROPIC_BASE_URL"]
-	if !ok {
-		t.Error("expected ANTHROPIC_BASE_URL to be set in environment")
-	}
-	if baseURL != "https://paid.tribiosapi.top/" {
-		t.Errorf("expected ANTHROPIC_BASE_URL to be 'https://paid.tribiosapi.top/', got '%s'", baseURL)
-	}
-
-	// Verify ANTHROPIC_API_KEY is NOT set (we use AUTH_TOKEN instead)
-	if _, ok := result.Backend.Env["ANTHROPIC_API_KEY"]; ok {
-		t.Error("ANTHROPIC_API_KEY should not be set, use ANTHROPIC_AUTH_TOKEN instead")
-	}
-
-	// Verify ANTHROPIC_AUTH_TOKEN is removed from ClearEnv
-	for _, key := range result.Backend.ClearEnv {
-		if key == "ANTHROPIC_AUTH_TOKEN" {
-			t.Error("ANTHROPIC_AUTH_TOKEN should be removed from ClearEnv when API key is set")
-		}
-	}
-}
-
 func TestClaudeCodeConfigWithAPIKeyOnly(t *testing.T) {
 	config := ClaudeCodeConfig{
 		APIKey: "test-api-key",

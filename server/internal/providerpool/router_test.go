@@ -1012,12 +1012,12 @@ func TestCustomProviderWithProvIDFormat(t *testing.T) {
 	// Register custom provider with prov_xxx ID format (like user's actual config)
 	customProvider := &Provider{
 		ID:        "prov_dedd1b4d0489003f",
-		Name:      "tribios",
+		Name:      "xxxxxxx",
 		Type:      ProviderTypeCustom,
 		Location:  ProviderLocationCloud,
 		Enabled:   true,
 		Status:    ProviderStatusActive,
-		BaseURL:   "https://api-paid.tribios.top",
+		BaseURL:   "https://yyy.xxxxxxx.com/",
 		APIFormat: APIFormatOpenAI,
 		Priority:  90,
 		APIKeys: []APIKey{

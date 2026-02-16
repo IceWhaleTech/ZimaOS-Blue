@@ -51,7 +51,7 @@ jobs:
             runner: macos-14
           - goos: darwin
             goarch: amd64
-            runner: macos-13
+            runner: macos-15
           - goos: linux
             goarch: amd64
             runner: ubuntu-latest

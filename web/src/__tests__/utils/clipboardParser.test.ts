@@ -6,7 +6,7 @@ describe('Clipboard Parser', () => {
     it('should return high probability for standard URLs', () => {
       expect(getUrlProbability('https://api.openai.com/v1/chat')).toBeGreaterThan(0.6)
       expect(getUrlProbability('http://localhost:3000/api')).toBeGreaterThan(0.5)
-      expect(getUrlProbability('https://paid.tribiosapi.top/')).toBeGreaterThan(0.6)
+      expect(getUrlProbability('https://test.claude-api-dummy.com/')).toBeGreaterThan(0.6)
     })
 
     it('should return moderate probability for www URLs', () => {
@@ -14,7 +14,7 @@ describe('Clipboard Parser', () => {
     })
 
     it('should return low probability for tokens', () => {
-      expect(getUrlProbability('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')).toBeLessThan(0.3)
+      expect(getUrlProbability('sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBeLessThan(0.3)
       expect(getUrlProbability('ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBeLessThan(0.3)
     })
 
@@ -81,18 +81,18 @@ describe('Clipboard Parser', () => {
   describe('parseClipboardData', () => {
     describe('URL + Token pattern', () => {
       it('should parse URL and token on separate lines', () => {
-        const data = `https://paid.tribiosapi.top/
-sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE`
+        const data = `https://test.claude-api-dummy.com/
+sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         const result = parseClipboardData(data)
-        expect(result['url']).toBe('https://paid.tribiosapi.top/')
+        expect(result['url']).toBe('https://test.claude-api-dummy.com/')
         expect(result['api_key']).toBe('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')
       })
 
       it('should parse token and URL in reverse order', () => {
-        const data = `sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE
-https://paid.tribiosapi.top/`
+        const data = `sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+https://test.claude-api-dummy.com/`
         const result = parseClipboardData(data)
-        expect(result['url']).toBe('https://paid.tribiosapi.top/')
+        expect(result['url']).toBe('https://test.claude-api-dummy.com/')
         expect(result['api_key']).toBe('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')
       })
 
@@ -251,11 +251,11 @@ MODEL=gpt-4`
       })
 
       it('should parse third-party API config', () => {
-        const data = `https://paid.tribiosapi.top/
-sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE`
+        const data = `https://test.claude-api-dummy.com/
+sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         const result = parseClipboardData(data)
-        expect(result['api_url']).toBe('https://paid.tribiosapi.top/')
-        expect(result['api_key']).toBe('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')
+        expect(result['api_url']).toBe('https://test.claude-api-dummy.com/')
+        expect(result['api_key']).toBe('sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
       })
 
       it('should parse JSON-like format without braces', () => {

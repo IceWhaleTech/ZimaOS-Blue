@@ -391,7 +391,7 @@ onUnmounted(stopModelPoll)
               </div>
               <div v-else-if="modelStatus.state === 'error'" class="flex items-center gap-2">
                 <button
-                  class="px-3 py-1.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
+                  class="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
                   @click="startModelDownload"
                 >
                   {{ t('apiProxy.retry') }}
