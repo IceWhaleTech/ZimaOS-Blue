@@ -77,7 +77,7 @@ func (c *RoutingConfig) ToRuleEngine() *RuleEngine {
 // DefaultRoutingConfig returns a RoutingConfig with built-in economy rules.
 func DefaultRoutingConfig() *RoutingConfig {
 	return &RoutingConfig{
-		Enabled: true,
+		Enabled: false,
 		Rules: []RoutingRule{
 			{
 				Name:        "small-body-economy",

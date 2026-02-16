@@ -138,7 +138,7 @@ type CacheWarmingConfig struct {
 // DefaultCacheConfig returns default cache configuration
 func DefaultCacheConfig() *CacheConfig {
 	return &CacheConfig{
-		Enabled:     true, // Enabled by default
+		Enabled:     false, // Disabled by default to reduce startup RSS
 		StorageType: "multilevel",       // L1 memory + L2 disk
 		StoragePath: "./data/cache.db",  // SQLite disk cache path
 		MaxSize:     1000,
