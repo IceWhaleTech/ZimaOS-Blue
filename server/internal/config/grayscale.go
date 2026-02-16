@@ -9,68 +9,68 @@ import (
 
 // GrayscaleConfig holds grayscale/feature flag configuration.
 type GrayscaleConfig struct {
-	Enabled  bool          `mapstructure:"enabled"`
-	Flags    []FeatureFlag `mapstructure:"flags"`
-	ABTests  []ABTest      `mapstructure:"ab_tests"`
-	Versions []ConfigVersion `mapstructure:"versions"`
+	Enabled  bool          `yaml:"enabled"`
+	Flags    []FeatureFlag `yaml:"flags"`
+	ABTests  []ABTest      `yaml:"ab_tests"`
+	Versions []ConfigVersion `yaml:"versions"`
 }
 
 // FeatureFlag represents a single feature flag with targeting rules.
 type FeatureFlag struct {
-	Name        string           `mapstructure:"name"`
-	Description string           `mapstructure:"description"`
-	Enabled     bool             `mapstructure:"enabled"`
-	Percentage  float64          `mapstructure:"percentage"` // 0-100, for percentage rollout
-	Users       []string         `mapstructure:"users"`      // Specific user IDs
-	Groups      []string         `mapstructure:"groups"`     // User groups
-	Variants    []FlagVariant    `mapstructure:"variants"`   // For multivariate flags
-	Rules       []TargetingRule  `mapstructure:"rules"`      // Advanced targeting rules
-	DefaultValue interface{}     `mapstructure:"default_value"`
-	CreatedAt   time.Time        `mapstructure:"created_at"`
-	UpdatedAt   time.Time        `mapstructure:"updated_at"`
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description"`
+	Enabled     bool             `yaml:"enabled"`
+	Percentage  float64          `yaml:"percentage"` // 0-100, for percentage rollout
+	Users       []string         `yaml:"users"`      // Specific user IDs
+	Groups      []string         `yaml:"groups"`     // User groups
+	Variants    []FlagVariant    `yaml:"variants"`   // For multivariate flags
+	Rules       []TargetingRule  `yaml:"rules"`      // Advanced targeting rules
+	DefaultValue interface{}     `yaml:"default_value"`
+	CreatedAt   time.Time        `yaml:"created_at"`
+	UpdatedAt   time.Time        `yaml:"updated_at"`
 }
 
 // FlagVariant represents a variant in a multivariate flag.
 type FlagVariant struct {
-	Name       string      `mapstructure:"name"`
-	Value      interface{} `mapstructure:"value"`
-	Weight     float64     `mapstructure:"weight"` // Percentage weight (0-100)
+	Name       string      `yaml:"name"`
+	Value      interface{} `yaml:"value"`
+	Weight     float64     `yaml:"weight"` // Percentage weight (0-100)
 }
 
 // TargetingRule represents an advanced targeting rule.
 type TargetingRule struct {
-	Attribute string   `mapstructure:"attribute"` // e.g., "country", "version", "platform"
-	Operator  string   `mapstructure:"operator"`  // "eq", "neq", "in", "not_in", "gt", "lt", "contains"
-	Values    []string `mapstructure:"values"`
+	Attribute string   `yaml:"attribute"` // e.g., "country", "version", "platform"
+	Operator  string   `yaml:"operator"`  // "eq", "neq", "in", "not_in", "gt", "lt", "contains"
+	Values    []string `yaml:"values"`
 }
 
 // ABTest represents an A/B test configuration.
 type ABTest struct {
-	Name        string       `mapstructure:"name"`
-	Description string       `mapstructure:"description"`
-	Enabled     bool         `mapstructure:"enabled"`
-	StartTime   time.Time    `mapstructure:"start_time"`
-	EndTime     time.Time    `mapstructure:"end_time"`
-	Variants    []ABVariant  `mapstructure:"variants"`
-	TrafficPct  float64      `mapstructure:"traffic_pct"` // Percentage of traffic in test
-	Metrics     []string     `mapstructure:"metrics"`     // Metrics to track
+	Name        string       `yaml:"name"`
+	Description string       `yaml:"description"`
+	Enabled     bool         `yaml:"enabled"`
+	StartTime   time.Time    `yaml:"start_time"`
+	EndTime     time.Time    `yaml:"end_time"`
+	Variants    []ABVariant  `yaml:"variants"`
+	TrafficPct  float64      `yaml:"traffic_pct"` // Percentage of traffic in test
+	Metrics     []string     `yaml:"metrics"`     // Metrics to track
 }
 
 // ABVariant represents a variant in an A/B test.
 type ABVariant struct {
-	Name       string      `mapstructure:"name"`
-	Value      interface{} `mapstructure:"value"`
-	Weight     float64     `mapstructure:"weight"` // Percentage weight
-	IsControl  bool        `mapstructure:"is_control"`
+	Name       string      `yaml:"name"`
+	Value      interface{} `yaml:"value"`
+	Weight     float64     `yaml:"weight"` // Percentage weight
+	IsControl  bool        `yaml:"is_control"`
 }
 
 // ConfigVersion represents a versioned configuration.
 type ConfigVersion struct {
-	Version     string                 `mapstructure:"version"`
-	Description string                 `mapstructure:"description"`
-	CreatedAt   time.Time              `mapstructure:"created_at"`
-	Values      map[string]interface{} `mapstructure:"values"`
-	Active      bool                   `mapstructure:"active"`
+	Version     string                 `yaml:"version"`
+	Description string                 `yaml:"description"`
+	CreatedAt   time.Time              `yaml:"created_at"`
+	Values      map[string]interface{} `yaml:"values"`
+	Active      bool                   `yaml:"active"`
 }
 
 // EvaluationContext provides context for flag evaluation.

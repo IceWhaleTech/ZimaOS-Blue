@@ -17,13 +17,13 @@ import (
 
 // Config contains DingTalk channel configuration.
 type Config struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	AppKey      string `mapstructure:"app_key"`
-	AppSecret   string `mapstructure:"app_secret"`
-	AgentID     string `mapstructure:"agent_id"`
-	RobotCode   string `mapstructure:"robot_code"`
-	WebhookURL  string `mapstructure:"webhook_url"`
-	SignSecret  string `mapstructure:"sign_secret"`
+	Enabled     bool   `yaml:"enabled"`
+	AppKey      string `yaml:"app_key"`
+	AppSecret   string `yaml:"app_secret"`
+	AgentID     string `yaml:"agent_id"`
+	RobotCode   string `yaml:"robot_code"`
+	WebhookURL  string `yaml:"webhook_url"`
+	SignSecret  string `yaml:"sign_secret"`
 }
 
 // Channel implements the channel.Channel interface for DingTalk.

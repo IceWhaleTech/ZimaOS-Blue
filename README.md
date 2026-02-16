@@ -2,25 +2,32 @@
 
 <p align="center">
   <strong>English</strong> |
-  <a href="./i18n/zh_CN/README.md">简体中文</a> |
-  <a href="./i18n/zh_TW/README.md">繁體中文</a> |
+  <a href="./i18n/ca_ES/README.md">Català</a> |
+  <a href="./i18n/cs_CZ/README.md">Čeština</a> |
+  <a href="./i18n/da_DK/README.md">Dansk</a> |
+  <a href="./i18n/de_DE/README.md">Deutsch</a> |
+  <a href="./i18n/el_GR/README.md">Ελληνικά</a> |
+  <a href="./i18n/en_GB/README.md">English (UK)</a> |
+  <a href="./i18n/es_ES/README.md">Español</a> |
+  <a href="./i18n/fr_FR/README.md">Français</a> |
+  <a href="./i18n/ga_IE/README.md">Gaeilge</a> |
+  <a href="./i18n/hr_HR/README.md">Hrvatski</a> |
+  <a href="./i18n/hu_HU/README.md">Magyar</a> |
+  <a href="./i18n/it_IT/README.md">Italiano</a> |
   <a href="./i18n/ja_JP/README.md">日本語</a> |
   <a href="./i18n/ko_KR/README.md">한국어</a> |
-  <a href="./i18n/de_DE/README.md">Deutsch</a> |
-  <a href="./i18n/fr_FR/README.md">Français</a> |
-  <a href="./i18n/es_ES/README.md">Español</a> |
-  <a href="./i18n/it_IT/README.md">Italiano</a> |
-  <a href="./i18n/pt_BR/README.md">Português</a> |
-  <a href="./i18n/ru_RU/README.md">Русский</a> |
-  <a href="./i18n/ar_SA/README.md">العربية</a> |
-  <a href="./i18n/hi_IN/README.md">हिन्दी</a> |
-  <a href="./i18n/th_TH/README.md">ไทย</a> |
-  <a href="./i18n/vi_VN/README.md">Tiếng Việt</a> |
-  <a href="./i18n/id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="./i18n/tr_TR/README.md">Türkçe</a> |
-  <a href="./i18n/pl_PL/README.md">Polski</a> |
+  <a href="./i18n/ml_IN/README.md">മലയാളം</a> |
+  <a href="./i18n/nb_NO/README.md">Norsk Bokmål</a> |
   <a href="./i18n/nl_NL/README.md">Nederlands</a> |
-  <a href="./i18n/sv_SE/README.md">Svenska</a>
+  <a href="./i18n/pl_PL/README.md">Polski</a> |
+  <a href="./i18n/pt_BR/README.md">Português (BR)</a> |
+  <a href="./i18n/pt_PT/README.md">Português (PT)</a> |
+  <a href="./i18n/ro_RO/README.md">Română</a> |
+  <a href="./i18n/ru_RU/README.md">Русский</a> |
+  <a href="./i18n/sk_SK/README.md">Slovenčina</a> |
+  <a href="./i18n/sv_SE/README.md">Svenska</a> |
+  <a href="./i18n/zh_CN/README.md">简体中文</a> |
+  <a href="./i18n/zh_TW/README.md">繁體中文</a>
 </p>
 
 <p align="center">
@@ -30,9 +37,15 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="./docs/assets/discord.png" alt="Discord" height="128"></a>&nbsp;&nbsp;
-  <a href="https://www.facebook.com/zimaboard/"><img src="./docs/assets/facebook.png" alt="Facebook" height="128"></a>&nbsp;&nbsp;
-  <a href="https://x.com/ZimaSpace"><img src="./docs/assets/x.png" alt="X" height="128"></a>
+  <a href="https://discord.gg/SrCYvumF"><img src="./docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://www.facebook.com/zimaboard/"><img src="./docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://x.com/ZimaSpace"><img src="./docs/assets/x.png" alt="X" height="128" /></a>&nbsp;&nbsp;
+  <img src="./docs/assets/wechat.png" height="128"/>
+  <details style="display:inline-block;">
+    <summary style="list-style:none;cursor:pointer;">
+    </summary>
+
+  </details>
 </p>
 
 ## Introduction
@@ -67,7 +80,7 @@ Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on
 
 ### Pure Go, Any Device
 
-100% Go, static binary. **Cross-compiles to 5 targets** out of the box (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64). No Node runtime, no Python, no containers required. Drop it on a NAS, a Raspberry Pi, an old x86 router, or a Mac — it just runs. **Then layer on your own UI, logic, and agent skills** — one codebase, every platform.
+100% Go, static binary. **Cross-compiles to 5 targets** out of the box (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). No Node runtime, no Python, no containers required. Drop it on a NAS, a Raspberry Pi, an old x86 router, or a Mac — it just runs. **Then layer on your own UI, logic, and agent skills** — one codebase, every platform.
 
 ### Security & Governance
 
@@ -94,48 +107,31 @@ We minimize boilerplate so you **focus on what matters**. Staying true to **Zima
 
 ## Quick Start
 
-### Option 1: Prebuilt Binaries – macOS & Windows (Download & Run)
+### Option 1: Download Desktop App (macOS & Windows)
 
-Get the native application for your desktop – no dependencies, no compilation.
+Get the native application — no dependencies, no compilation.
 
-**macOS (Intel/Apple Silicon)**
+- **macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- **Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+
+### Option 2: Install Script
+
+**macOS / Linux**
 ```bash
-curl -L -o echo-macos.zip https://get.zimaos.echo/download/macos && unzip echo-macos.zip && ./echo-server
+curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
 **Windows (PowerShell)**
 ```powershell
-Invoke-WebRequest -Uri https://get.zimaos.echo/download/windows/echo-server.exe -OutFile echo-server.exe
-.\echo-server.exe
+irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-Prebuilt binaries are also available for Linux; see the downloads page.
-
-### Option 2: The "3-Click" Script (Recommended)
-
-Deploy Blue on any x86/ARM Linux/macOS machine instantly:
+### Option 3: Build from Source
 
 ```bash
-curl -fsSL https://get.zimaos.echo/install.sh | bash
-```
-
-### Option 3: Docker
-
-```bash
-docker run -d \
-  --name zimaos-blue \
-  -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  zimaos/echo:latest
-```
-
-### Option 4: Build from Source
-
-```bash
-git clone https://github.com/zimaos/blue.git
-cd blue
-go build -o blue-server
-./blue-server
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+./dev.sh
 ```
 
 ## Architecture Overview

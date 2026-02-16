@@ -2,6 +2,7 @@ package pruner
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -92,6 +93,7 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 	var update struct {
 		Enabled   *bool    `json:"enabled"`
 		Threshold *float64 `json:"threshold"`
+		Backend   *string  `json:"backend"`
 	}
 
 	if err := c.Bind(&update); err != nil {
@@ -108,6 +110,13 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 	}
 	if update.Threshold != nil {
 		h.config.Threshold = *update.Threshold
+	}
+	if update.Backend != nil && *update.Backend != h.config.Backend {
+		if err := h.switchBackend(*update.Backend); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": err.Error(),
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -132,7 +141,14 @@ func (h *APIHandler) StartModelDownload(c echo.Context) error {
 	}
 
 	go func() {
-		_ = h.modelManager.Download(context.Background())
+		if err := h.modelManager.Download(context.Background()); err == nil {
+			// Auto-switch to ONNX after successful download
+			if err := h.switchBackend("onnx"); err != nil {
+				log.Printf("[pruner] auto-switch to onnx failed: %v", err)
+			} else {
+				log.Printf("[pruner] auto-switched to onnx backend")
+			}
+		}
 	}()
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -162,4 +178,19 @@ func (h *APIHandler) GetModelStatus(c echo.Context) error {
 		return c.JSON(http.StatusOK, PrunerModelStatus{Ready: false})
 	}
 	return c.JSON(http.StatusOK, h.modelManager.GetStatus())
+}
+
+// switchBackend creates a new backend and swaps it into the middleware.
+func (h *APIHandler) switchBackend(name string) error {
+	oldBackend := h.config.Backend
+	h.config.Backend = name
+	b, err := NewBackend(*h.config)
+	if err != nil {
+		h.config.Backend = oldBackend
+		return err
+	}
+	if h.middleware != nil {
+		h.middleware.SetBackend(b)
+	}
+	return nil
 }

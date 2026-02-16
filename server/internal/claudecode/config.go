@@ -11,91 +11,91 @@ import (
 // This is modeled after Clawdbot's CliBackendConfig for compatibility.
 type CliBackendConfig struct {
 	// Command is the CLI executable path (absolute or on PATH).
-	Command string `mapstructure:"command" json:"command"`
+	Command string `yaml:"command" json:"command"`
 
 	// Args are base arguments applied to every invocation.
-	Args []string `mapstructure:"args" json:"args,omitempty"`
+	Args []string `yaml:"args" json:"args,omitempty"`
 
 	// Output is the output parsing mode: "json", "text", or "jsonl".
-	Output string `mapstructure:"output" json:"output,omitempty"`
+	Output string `yaml:"output" json:"output,omitempty"`
 
 	// ResumeOutput is the output parsing mode when resuming a CLI session.
-	ResumeOutput string `mapstructure:"resume_output" json:"resume_output,omitempty"`
+	ResumeOutput string `yaml:"resume_output" json:"resume_output,omitempty"`
 
 	// Input is the prompt input mode: "arg" or "stdin".
-	Input string `mapstructure:"input" json:"input,omitempty"`
+	Input string `yaml:"input" json:"input,omitempty"`
 
 	// MaxPromptArgChars is the max prompt length for arg mode (if exceeded, stdin is used).
-	MaxPromptArgChars int `mapstructure:"max_prompt_arg_chars" json:"max_prompt_arg_chars,omitempty"`
+	MaxPromptArgChars int `yaml:"max_prompt_arg_chars" json:"max_prompt_arg_chars,omitempty"`
 
 	// Env contains extra environment variables injected for this CLI.
-	Env map[string]string `mapstructure:"env" json:"env,omitempty"`
+	Env map[string]string `yaml:"env" json:"env,omitempty"`
 
 	// ClearEnv lists environment variables to remove before launching this CLI.
-	ClearEnv []string `mapstructure:"clear_env" json:"clear_env,omitempty"`
+	ClearEnv []string `yaml:"clear_env" json:"clear_env,omitempty"`
 
 	// ModelArg is the flag used to pass model id (e.g., "--model").
-	ModelArg string `mapstructure:"model_arg" json:"model_arg,omitempty"`
+	ModelArg string `yaml:"model_arg" json:"model_arg,omitempty"`
 
 	// ModelAliases maps config model id to CLI model id.
-	ModelAliases map[string]string `mapstructure:"model_aliases" json:"model_aliases,omitempty"`
+	ModelAliases map[string]string `yaml:"model_aliases" json:"model_aliases,omitempty"`
 
 	// SessionArg is the flag used to pass session id (e.g., "--session-id").
-	SessionArg string `mapstructure:"session_arg" json:"session_arg,omitempty"`
+	SessionArg string `yaml:"session_arg" json:"session_arg,omitempty"`
 
 	// SessionArgs are extra args used when resuming a session (use {sessionId} placeholder).
-	SessionArgs []string `mapstructure:"session_args" json:"session_args,omitempty"`
+	SessionArgs []string `yaml:"session_args" json:"session_args,omitempty"`
 
 	// ResumeArgs are alternate args to use when resuming a session (use {sessionId} placeholder).
-	ResumeArgs []string `mapstructure:"resume_args" json:"resume_args,omitempty"`
+	ResumeArgs []string `yaml:"resume_args" json:"resume_args,omitempty"`
 
 	// SessionMode determines when to pass session ids: "always", "existing", or "none".
-	SessionMode string `mapstructure:"session_mode" json:"session_mode,omitempty"`
+	SessionMode string `yaml:"session_mode" json:"session_mode,omitempty"`
 
 	// SessionIdFields are JSON fields to read session id from (in order).
-	SessionIdFields []string `mapstructure:"session_id_fields" json:"session_id_fields,omitempty"`
+	SessionIdFields []string `yaml:"session_id_fields" json:"session_id_fields,omitempty"`
 
 	// SystemPromptArg is the flag used to pass system prompt (e.g., "--append-system-prompt").
-	SystemPromptArg string `mapstructure:"system_prompt_arg" json:"system_prompt_arg,omitempty"`
+	SystemPromptArg string `yaml:"system_prompt_arg" json:"system_prompt_arg,omitempty"`
 
 	// SystemPromptMode is the system prompt behavior: "append" or "replace".
-	SystemPromptMode string `mapstructure:"system_prompt_mode" json:"system_prompt_mode,omitempty"`
+	SystemPromptMode string `yaml:"system_prompt_mode" json:"system_prompt_mode,omitempty"`
 
 	// SystemPromptWhen determines when to send system prompt: "first", "always", or "never".
-	SystemPromptWhen string `mapstructure:"system_prompt_when" json:"system_prompt_when,omitempty"`
+	SystemPromptWhen string `yaml:"system_prompt_when" json:"system_prompt_when,omitempty"`
 
 	// ImageArg is the flag used to pass image paths.
-	ImageArg string `mapstructure:"image_arg" json:"image_arg,omitempty"`
+	ImageArg string `yaml:"image_arg" json:"image_arg,omitempty"`
 
 	// ImageMode determines how to pass multiple images: "repeat" or "list".
-	ImageMode string `mapstructure:"image_mode" json:"image_mode,omitempty"`
+	ImageMode string `yaml:"image_mode" json:"image_mode,omitempty"`
 
 	// Serialize indicates whether to serialize runs for this CLI.
-	Serialize bool `mapstructure:"serialize" json:"serialize,omitempty"`
+	Serialize bool `yaml:"serialize" json:"serialize,omitempty"`
 }
 
 // SandboxConfig holds sandbox-specific configuration for Claude Code CLI.
 type SandboxConfig struct {
 	// Enabled indicates whether sandbox mode is enabled.
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
+	Enabled bool `yaml:"enabled" json:"enabled"`
 
 	// MemoryLimit is the memory limit in bytes (default: 512MB).
-	MemoryLimit int64 `mapstructure:"memory_limit" json:"memory_limit,omitempty"`
+	MemoryLimit int64 `yaml:"memory_limit" json:"memory_limit,omitempty"`
 
 	// CPULimit is the CPU limit (1.0 = 1 core, default: 1.0).
-	CPULimit float64 `mapstructure:"cpu_limit" json:"cpu_limit,omitempty"`
+	CPULimit float64 `yaml:"cpu_limit" json:"cpu_limit,omitempty"`
 
 	// ProcessLimit is the maximum number of processes (default: 50).
-	ProcessLimit int `mapstructure:"process_limit" json:"process_limit,omitempty"`
+	ProcessLimit int `yaml:"process_limit" json:"process_limit,omitempty"`
 
 	// NetworkEnabled allows network access (default: true for API calls).
-	NetworkEnabled bool `mapstructure:"network_enabled" json:"network_enabled"`
+	NetworkEnabled bool `yaml:"network_enabled" json:"network_enabled"`
 
 	// AllowedPaths are paths that can be accessed (in addition to WorkspaceDir).
-	AllowedPaths []string `mapstructure:"allowed_paths" json:"allowed_paths,omitempty"`
+	AllowedPaths []string `yaml:"allowed_paths" json:"allowed_paths,omitempty"`
 
 	// DeniedPaths are paths that cannot be accessed.
-	DeniedPaths []string `mapstructure:"denied_paths" json:"denied_paths,omitempty"`
+	DeniedPaths []string `yaml:"denied_paths" json:"denied_paths,omitempty"`
 }
 
 // DefaultSandboxConfig returns the default sandbox configuration.
@@ -120,40 +120,40 @@ func DefaultSandboxConfig() SandboxConfig {
 // ClaudeCodeConfig holds the main Claude Code CLI configuration.
 type ClaudeCodeConfig struct {
 	// Enabled indicates whether Claude Code CLI integration is enabled.
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
+	Enabled bool `yaml:"enabled" json:"enabled"`
 
 	// Command is the path to the claude CLI executable.
-	Command string `mapstructure:"command" json:"command"`
+	Command string `yaml:"command" json:"command"`
 
 	// WorkspaceDir is the default workspace directory for CLI operations.
-	WorkspaceDir string `mapstructure:"workspace_dir" json:"workspace_dir"`
+	WorkspaceDir string `yaml:"workspace_dir" json:"workspace_dir"`
 
 	// DefaultModel is the default model to use (e.g., "opus", "sonnet", "haiku").
-	DefaultModel string `mapstructure:"default_model" json:"default_model"`
+	DefaultModel string `yaml:"default_model" json:"default_model"`
 
 	// Timeout is the maximum duration for a CLI execution.
-	Timeout time.Duration `mapstructure:"timeout" json:"timeout"`
+	Timeout time.Duration `yaml:"timeout" json:"timeout"`
 
 	// SessionTTL is the time-to-live for CLI sessions.
-	SessionTTL time.Duration `mapstructure:"session_ttl" json:"session_ttl"`
+	SessionTTL time.Duration `yaml:"session_ttl" json:"session_ttl"`
 
 	// APIKey is the Anthropic API key for authentication.
-	APIKey string `mapstructure:"api_key" json:"api_key,omitempty"`
+	APIKey string `yaml:"api_key" json:"api_key,omitempty"`
 
 	// BaseURL is the base URL for the Anthropic API (optional, for custom endpoints).
-	BaseURL string `mapstructure:"base_url" json:"base_url,omitempty"`
+	BaseURL string `yaml:"base_url" json:"base_url,omitempty"`
 
 	// ActualProvider is the actual provider name used by the CLI proxy (e.g., "anthropic", "openai").
-	ActualProvider string `mapstructure:"actual_provider" json:"actual_provider,omitempty"`
+	ActualProvider string `yaml:"actual_provider" json:"actual_provider,omitempty"`
 
 	// ActualModel is the actual model name used by the CLI proxy (e.g., "claude-3-5-sonnet-20241022").
-	ActualModel string `mapstructure:"actual_model" json:"actual_model,omitempty"`
+	ActualModel string `yaml:"actual_model" json:"actual_model,omitempty"`
 
 	// Backend contains the CLI backend configuration.
-	Backend CliBackendConfig `mapstructure:"backend" json:"backend"`
+	Backend CliBackendConfig `yaml:"backend" json:"backend"`
 
 	// Sandbox contains sandbox configuration for secure execution.
-	Sandbox SandboxConfig `mapstructure:"sandbox" json:"sandbox"`
+	Sandbox SandboxConfig `yaml:"sandbox" json:"sandbox"`
 }
 
 // DefaultClaudeCodeBackend returns the default Claude Code CLI backend configuration.

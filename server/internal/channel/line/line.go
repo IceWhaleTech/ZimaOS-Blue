@@ -24,10 +24,10 @@ import (
 
 // Config contains LINE channel configuration.
 type Config struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	ChannelID          string `mapstructure:"channel_id"`
-	ChannelSecret      string `mapstructure:"channel_secret"`
-	ChannelAccessToken string `mapstructure:"channel_access_token"`
+	Enabled            bool   `yaml:"enabled"`
+	ChannelID          string `yaml:"channel_id"`
+	ChannelSecret      string `yaml:"channel_secret"`
+	ChannelAccessToken string `yaml:"channel_access_token"`
 }
 
 const (

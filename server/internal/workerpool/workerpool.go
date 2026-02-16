@@ -35,16 +35,16 @@ type Task struct {
 // Config holds worker pool configuration.
 type Config struct {
 	// IOPoolSize is the number of workers for IO tasks.
-	IOPoolSize int `yaml:"io_pool_size" mapstructure:"io_pool_size"`
+	IOPoolSize int `yaml:"io_pool_size" yaml:"io_pool_size"`
 
 	// ComputePoolSize is the number of workers for compute tasks.
-	ComputePoolSize int `yaml:"compute_pool_size" mapstructure:"compute_pool_size"`
+	ComputePoolSize int `yaml:"compute_pool_size" yaml:"compute_pool_size"`
 
 	// QueueSize is the maximum number of pending tasks per pool.
-	QueueSize int `yaml:"queue_size" mapstructure:"queue_size"`
+	QueueSize int `yaml:"queue_size" yaml:"queue_size"`
 
 	// Enabled enables the worker pool.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 }
 
 // DefaultConfig returns the default configuration.

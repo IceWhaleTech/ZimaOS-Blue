@@ -30,12 +30,12 @@ const (
 
 // Config contains Twitch channel configuration.
 type Config struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	ClientID     string `mapstructure:"client_id"`
-	ClientSecret string `mapstructure:"client_secret"`
-	OAuthToken   string `mapstructure:"oauth_token"`
-	BotUsername  string `mapstructure:"bot_username"`
-	Channels     string `mapstructure:"channels"`
+	Enabled      bool   `yaml:"enabled"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	OAuthToken   string `yaml:"oauth_token"`
+	BotUsername  string `yaml:"bot_username"`
+	Channels     string `yaml:"channels"`
 }
 
 // Channel implements the channel.Channel interface for Twitch IRC.

@@ -180,162 +180,162 @@ type StreamingHandler func(ctx context.Context, msg Message) (<-chan string, err
 // Config contains common configuration for all channels.
 type Config struct {
 	// Enabled indicates if channels are globally enabled.
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled"`
 	// DefaultTimeoutSeconds is the default timeout for operations.
-	DefaultTimeoutSeconds int `mapstructure:"default_timeout_seconds"`
+	DefaultTimeoutSeconds int `yaml:"default_timeout_seconds"`
 	// MaxMessageLength is the maximum message length.
-	MaxMessageLength int `mapstructure:"max_message_length"`
+	MaxMessageLength int `yaml:"max_message_length"`
 	// Telegram configuration.
-	Telegram TelegramConfig `mapstructure:"telegram"`
+	Telegram TelegramConfig `yaml:"telegram"`
 	// Discord configuration.
-	Discord DiscordConfig `mapstructure:"discord"`
+	Discord DiscordConfig `yaml:"discord"`
 	// Slack configuration.
-	Slack SlackConfig `mapstructure:"slack"`
+	Slack SlackConfig `yaml:"slack"`
 	// WeChatWork configuration.
-	WeChatWork WeChatWorkConfig `mapstructure:"wechat_work"`
+	WeChatWork WeChatWorkConfig `yaml:"wechat_work"`
 	// Feishu configuration.
-	Feishu FeishuConfig `mapstructure:"feishu"`
+	Feishu FeishuConfig `yaml:"feishu"`
 	// Matrix configuration.
-	Matrix MatrixConfig `mapstructure:"matrix"`
+	Matrix MatrixConfig `yaml:"matrix"`
 	// iMessage configuration (macOS only).
-	IMessage IMessageConfig `mapstructure:"imessage"`
+	IMessage IMessageConfig `yaml:"imessage"`
 	// WhatsApp configuration.
-	WhatsApp WhatsAppConfig `mapstructure:"whatsapp"`
+	WhatsApp WhatsAppConfig `yaml:"whatsapp"`
 	// Signal configuration.
-	Signal SignalConfig `mapstructure:"signal"`
+	Signal SignalConfig `yaml:"signal"`
 	// Teams configuration.
-	Teams TeamsConfig `mapstructure:"teams"`
+	Teams TeamsConfig `yaml:"teams"`
 	// Mattermost configuration.
-	Mattermost MattermostConfig `mapstructure:"mattermost"`
+	Mattermost MattermostConfig `yaml:"mattermost"`
 	// BlueBubbles configuration.
-	BlueBubbles BlueBubblesConfig `mapstructure:"bluebubbles"`
+	BlueBubbles BlueBubblesConfig `yaml:"bluebubbles"`
 	// Zalo configuration.
-	Zalo ZaloConfig `mapstructure:"zalo"`
+	Zalo ZaloConfig `yaml:"zalo"`
 }
 
 // TelegramConfig contains Telegram bot configuration.
 type TelegramConfig struct {
-	Enabled       bool     `mapstructure:"enabled"`
-	BotToken      string   `mapstructure:"bot_token"`
-	WebhookURL    string   `mapstructure:"webhook_url"`
-	AllowedUsers  []string `mapstructure:"allowed_users"`
-	AllowedGroups []string `mapstructure:"allowed_groups"`
-	Proxy         string   `mapstructure:"proxy"`
+	Enabled       bool     `yaml:"enabled"`
+	BotToken      string   `yaml:"bot_token"`
+	WebhookURL    string   `yaml:"webhook_url"`
+	AllowedUsers  []string `yaml:"allowed_users"`
+	AllowedGroups []string `yaml:"allowed_groups"`
+	Proxy         string   `yaml:"proxy"`
 }
 
 // DiscordConfig contains Discord bot configuration.
 type DiscordConfig struct {
-	Enabled       bool     `mapstructure:"enabled"`
-	BotToken      string   `mapstructure:"bot_token"`
-	ApplicationID string   `mapstructure:"application_id"`
-	AllowedGuilds []string `mapstructure:"allowed_guilds"`
-	AllowedUsers  []string `mapstructure:"allowed_users"`
+	Enabled       bool     `yaml:"enabled"`
+	BotToken      string   `yaml:"bot_token"`
+	ApplicationID string   `yaml:"application_id"`
+	AllowedGuilds []string `yaml:"allowed_guilds"`
+	AllowedUsers  []string `yaml:"allowed_users"`
 }
 
 // SlackConfig contains Slack bot configuration.
 type SlackConfig struct {
-	Enabled         bool     `mapstructure:"enabled"`
-	BotToken        string   `mapstructure:"bot_token"`
-	AppToken        string   `mapstructure:"app_token"`
-	SigningSecret   string   `mapstructure:"signing_secret"`
-	AllowedChannels []string `mapstructure:"allowed_channels"`
-	AllowedUsers    []string `mapstructure:"allowed_users"`
+	Enabled         bool     `yaml:"enabled"`
+	BotToken        string   `yaml:"bot_token"`
+	AppToken        string   `yaml:"app_token"`
+	SigningSecret   string   `yaml:"signing_secret"`
+	AllowedChannels []string `yaml:"allowed_channels"`
+	AllowedUsers    []string `yaml:"allowed_users"`
 }
 
 // WeChatWorkConfig contains WeChat Work configuration.
 type WeChatWorkConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	CorpID         string `mapstructure:"corp_id"`
-	AgentID        string `mapstructure:"agent_id"`
-	Secret         string `mapstructure:"secret"`
-	Token          string `mapstructure:"token"`
-	EncodingAESKey string `mapstructure:"encoding_aes_key"`
-	CallbackURL    string `mapstructure:"callback_url"`
+	Enabled        bool   `yaml:"enabled"`
+	CorpID         string `yaml:"corp_id"`
+	AgentID        string `yaml:"agent_id"`
+	Secret         string `yaml:"secret"`
+	Token          string `yaml:"token"`
+	EncodingAESKey string `yaml:"encoding_aes_key"`
+	CallbackURL    string `yaml:"callback_url"`
 }
 
 // FeishuConfig contains Feishu/Lark configuration.
 type FeishuConfig struct {
-	Enabled           bool   `mapstructure:"enabled"`
-	AppID             string `mapstructure:"app_id"`
-	AppSecret         string `mapstructure:"app_secret"`
-	VerificationToken string `mapstructure:"verification_token"`
-	EncryptKey        string `mapstructure:"encrypt_key"`
+	Enabled           bool   `yaml:"enabled"`
+	AppID             string `yaml:"app_id"`
+	AppSecret         string `yaml:"app_secret"`
+	VerificationToken string `yaml:"verification_token"`
+	EncryptKey        string `yaml:"encrypt_key"`
 }
 
 // MatrixConfig contains Matrix configuration.
 type MatrixConfig struct {
-	Enabled      bool     `mapstructure:"enabled"`
-	Homeserver   string   `mapstructure:"homeserver"`
-	UserID       string   `mapstructure:"user_id"`
-	AccessToken  string   `mapstructure:"access_token"`
-	DeviceID     string   `mapstructure:"device_id"`
-	AllowedRooms []string `mapstructure:"allowed_rooms"`
+	Enabled      bool     `yaml:"enabled"`
+	Homeserver   string   `yaml:"homeserver"`
+	UserID       string   `yaml:"user_id"`
+	AccessToken  string   `yaml:"access_token"`
+	DeviceID     string   `yaml:"device_id"`
+	AllowedRooms []string `yaml:"allowed_rooms"`
 }
 
 // IMessageConfig contains iMessage configuration (macOS only).
 type IMessageConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	DatabasePath   string   `mapstructure:"database_path"`
-	PollIntervalMS int      `mapstructure:"poll_interval_ms"`
-	AllowedNumbers []string `mapstructure:"allowed_numbers"`
-	AllowedEmails  []string `mapstructure:"allowed_emails"`
+	Enabled        bool     `yaml:"enabled"`
+	DatabasePath   string   `yaml:"database_path"`
+	PollIntervalMS int      `yaml:"poll_interval_ms"`
+	AllowedNumbers []string `yaml:"allowed_numbers"`
+	AllowedEmails  []string `yaml:"allowed_emails"`
 }
 
 // WhatsAppConfig contains WhatsApp configuration.
 type WhatsAppConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	PhoneNumber    string   `mapstructure:"phone_number"`
-	SessionPath    string   `mapstructure:"session_path"`
-	AllowedNumbers []string `mapstructure:"allowed_numbers"`
-	QRTimeout      int      `mapstructure:"qr_timeout_seconds"`
-	ReconnectDelay int      `mapstructure:"reconnect_delay_seconds"`
+	Enabled        bool     `yaml:"enabled"`
+	PhoneNumber    string   `yaml:"phone_number"`
+	SessionPath    string   `yaml:"session_path"`
+	AllowedNumbers []string `yaml:"allowed_numbers"`
+	QRTimeout      int      `yaml:"qr_timeout_seconds"`
+	ReconnectDelay int      `yaml:"reconnect_delay_seconds"`
 }
 
 // SignalConfig contains Signal configuration.
 type SignalConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	PhoneNumber    string   `mapstructure:"phone_number"`
-	ConfigPath     string   `mapstructure:"config_path"`
-	SignalCLIPath  string   `mapstructure:"signal_cli_path"`
-	AllowedNumbers []string `mapstructure:"allowed_numbers"`
-	UseJsonRpc     bool     `mapstructure:"use_json_rpc"`
+	Enabled        bool     `yaml:"enabled"`
+	PhoneNumber    string   `yaml:"phone_number"`
+	ConfigPath     string   `yaml:"config_path"`
+	SignalCLIPath  string   `yaml:"signal_cli_path"`
+	AllowedNumbers []string `yaml:"allowed_numbers"`
+	UseJsonRpc     bool     `yaml:"use_json_rpc"`
 }
 
 // TeamsConfig contains Microsoft Teams configuration.
 type TeamsConfig struct {
-	Enabled      bool     `mapstructure:"enabled"`
-	AppID        string   `mapstructure:"app_id"`
-	AppPassword  string   `mapstructure:"app_password"`
-	TenantID     string   `mapstructure:"tenant_id"`
-	AllowedTeams []string `mapstructure:"allowed_teams"`
-	AllowedUsers []string `mapstructure:"allowed_users"`
+	Enabled      bool     `yaml:"enabled"`
+	AppID        string   `yaml:"app_id"`
+	AppPassword  string   `yaml:"app_password"`
+	TenantID     string   `yaml:"tenant_id"`
+	AllowedTeams []string `yaml:"allowed_teams"`
+	AllowedUsers []string `yaml:"allowed_users"`
 }
 
 // MattermostConfig contains Mattermost configuration.
 type MattermostConfig struct {
-	Enabled         bool     `mapstructure:"enabled"`
-	ServerURL       string   `mapstructure:"server_url"`
-	BotToken        string   `mapstructure:"bot_token"`
-	AllowedChannels []string `mapstructure:"allowed_channels"`
-	AllowedUsers    []string `mapstructure:"allowed_users"`
+	Enabled         bool     `yaml:"enabled"`
+	ServerURL       string   `yaml:"server_url"`
+	BotToken        string   `yaml:"bot_token"`
+	AllowedChannels []string `yaml:"allowed_channels"`
+	AllowedUsers    []string `yaml:"allowed_users"`
 }
 
 // BlueBubblesConfig contains BlueBubbles (iMessage bridge) configuration.
 type BlueBubblesConfig struct {
-	Enabled      bool     `mapstructure:"enabled"`
-	ServerURL    string   `mapstructure:"server_url"`
-	Password     string   `mapstructure:"password"`
-	AllowedChats []string `mapstructure:"allowed_chats"`
+	Enabled      bool     `yaml:"enabled"`
+	ServerURL    string   `yaml:"server_url"`
+	Password     string   `yaml:"password"`
+	AllowedChats []string `yaml:"allowed_chats"`
 }
 
 // ZaloConfig contains Zalo Official Account configuration.
 type ZaloConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	OAID         string `mapstructure:"oa_id"`
-	AccessToken  string `mapstructure:"access_token"`
-	RefreshToken string `mapstructure:"refresh_token"`
-	AppID        string `mapstructure:"app_id"`
-	SecretKey    string `mapstructure:"secret_key"`
+	Enabled      bool   `yaml:"enabled"`
+	OAID         string `yaml:"oa_id"`
+	AccessToken  string `yaml:"access_token"`
+	RefreshToken string `yaml:"refresh_token"`
+	AppID        string `yaml:"app_id"`
+	SecretKey    string `yaml:"secret_key"`
 }
 
 // DefaultConfig returns the default channel configuration.

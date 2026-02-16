@@ -21,11 +21,11 @@ import (
 
 // Config contains Viber channel configuration.
 type Config struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	AuthToken  string `mapstructure:"auth_token"`
-	BotName    string `mapstructure:"bot_name"`
-	BotAvatar  string `mapstructure:"bot_avatar"`
-	WebhookURL string `mapstructure:"webhook_url"`
+	Enabled    bool   `yaml:"enabled"`
+	AuthToken  string `yaml:"auth_token"`
+	BotName    string `yaml:"bot_name"`
+	BotAvatar  string `yaml:"bot_avatar"`
+	WebhookURL string `yaml:"webhook_url"`
 }
 
 const (

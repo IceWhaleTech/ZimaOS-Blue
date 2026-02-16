@@ -6,28 +6,28 @@ import (
 
 // Config holds unified speech configuration.
 type Config struct {
-	TTS TTSConfig `json:"tts" yaml:"tts" mapstructure:"tts"`
-	ASR ASRConfig `json:"asr" yaml:"asr" mapstructure:"asr"`
+	TTS TTSConfig `json:"tts" yaml:"tts" yaml:"tts"`
+	ASR ASRConfig `json:"asr" yaml:"asr" yaml:"asr"`
 }
 
 // TTSConfig holds TTS-specific configuration.
 type TTSConfig struct {
-	Provider string  `json:"provider" yaml:"provider" mapstructure:"provider"`
-	Model    string  `json:"model" yaml:"model" mapstructure:"model"`
-	Speed    float32 `json:"speed" yaml:"speed" mapstructure:"speed"`    // Speech rate (0.5-2.0, default 1.0)
-	Pitch    float32 `json:"pitch" yaml:"pitch" mapstructure:"pitch"`    // Pitch adjustment (-10 to 10, default 0)
-	Volume   float32 `json:"volume" yaml:"volume" mapstructure:"volume"` // Volume (0-100, default 100)
+	Provider string  `json:"provider" yaml:"provider" yaml:"provider"`
+	Model    string  `json:"model" yaml:"model" yaml:"model"`
+	Speed    float32 `json:"speed" yaml:"speed" yaml:"speed"`    // Speech rate (0.5-2.0, default 1.0)
+	Pitch    float32 `json:"pitch" yaml:"pitch" yaml:"pitch"`    // Pitch adjustment (-10 to 10, default 0)
+	Volume   float32 `json:"volume" yaml:"volume" yaml:"volume"` // Volume (0-100, default 100)
 }
 
 // ASRConfig holds ASR-specific configuration.
 type ASRConfig struct {
-	Enabled        bool          `json:"enabled" yaml:"enabled" mapstructure:"enabled"`
-	Provider       string        `json:"provider" yaml:"provider" mapstructure:"provider"`
-	Model          string        `json:"model" yaml:"model" mapstructure:"model"`
-	ModelDir       string        `json:"model_dir" yaml:"model_dir" mapstructure:"model_dir"`
-	DefaultLang    string        `json:"default_language" yaml:"default_language" mapstructure:"default_language"`
-	EditBeforeSend bool          `json:"edit_before_send" yaml:"edit_before_send" mapstructure:"edit_before_send"`
-	MaxDuration    time.Duration `json:"max_duration" yaml:"max_duration" mapstructure:"max_duration"`
+	Enabled        bool          `json:"enabled" yaml:"enabled" yaml:"enabled"`
+	Provider       string        `json:"provider" yaml:"provider" yaml:"provider"`
+	Model          string        `json:"model" yaml:"model" yaml:"model"`
+	ModelDir       string        `json:"model_dir" yaml:"model_dir" yaml:"model_dir"`
+	DefaultLang    string        `json:"default_language" yaml:"default_language" yaml:"default_language"`
+	EditBeforeSend bool          `json:"edit_before_send" yaml:"edit_before_send" yaml:"edit_before_send"`
+	MaxDuration    time.Duration `json:"max_duration" yaml:"max_duration" yaml:"max_duration"`
 }
 
 // TranscriptionResult with edit support.

@@ -27,12 +27,12 @@ import (
 
 // Config contains Twitter/X channel configuration.
 type Config struct {
-	Enabled           bool   `mapstructure:"enabled"`
-	APIKey            string `mapstructure:"api_key"`
-	APISecret         string `mapstructure:"api_secret"`
-	AccessToken       string `mapstructure:"access_token"`
-	AccessTokenSecret string `mapstructure:"access_token_secret"`
-	BearerToken       string `mapstructure:"bearer_token"`
+	Enabled           bool   `yaml:"enabled"`
+	APIKey            string `yaml:"api_key"`
+	APISecret         string `yaml:"api_secret"`
+	AccessToken       string `yaml:"access_token"`
+	AccessTokenSecret string `yaml:"access_token_secret"`
+	BearerToken       string `yaml:"bearer_token"`
 }
 
 const (

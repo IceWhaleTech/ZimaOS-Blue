@@ -16,9 +16,9 @@ const (
 
 // Config holds humanizer configuration.
 type Config struct {
-	Enabled      bool `mapstructure:"enabled" yaml:"enabled"`
-	IMEnabled    bool `mapstructure:"im_enabled" yaml:"im_enabled"`
-	VoiceEnabled bool `mapstructure:"voice_enabled" yaml:"voice_enabled"`
+	Enabled      bool `yaml:"enabled" yaml:"enabled"`
+	IMEnabled    bool `yaml:"im_enabled" yaml:"im_enabled"`
+	VoiceEnabled bool `yaml:"voice_enabled" yaml:"voice_enabled"`
 }
 
 // DefaultConfig returns the default configuration with all modes enabled.

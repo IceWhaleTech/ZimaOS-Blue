@@ -24,11 +24,11 @@ import (
 
 // Config contains Instagram channel configuration.
 type Config struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	PageAccessToken string `mapstructure:"page_access_token"`
-	AppSecret       string `mapstructure:"app_secret"`
-	VerifyToken     string `mapstructure:"verify_token"`
-	IGAccountID     string `mapstructure:"ig_account_id"`
+	Enabled         bool   `yaml:"enabled"`
+	PageAccessToken string `yaml:"page_access_token"`
+	AppSecret       string `yaml:"app_secret"`
+	VerifyToken     string `yaml:"verify_token"`
+	IGAccountID     string `yaml:"ig_account_id"`
 }
 
 const (

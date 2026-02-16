@@ -16,9 +16,9 @@ import (
 
 // HotReloadConfig holds hot reload configuration
 type HotReloadConfig struct {
-	Enabled             bool          `mapstructure:"enabled"`
-	WatchInterval       time.Duration `mapstructure:"watch_interval"`
-	ValidateBeforeApply bool          `mapstructure:"validate_before_apply"`
+	Enabled             bool          `yaml:"enabled"`
+	WatchInterval       time.Duration `yaml:"watch_interval"`
+	ValidateBeforeApply bool          `yaml:"validate_before_apply"`
 }
 
 // ReloadEvent represents a configuration reload event

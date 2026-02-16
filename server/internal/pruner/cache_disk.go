@@ -1,9 +1,8 @@
 package pruner
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/gob"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -87,8 +86,7 @@ func (d *DiskCache) Get(key string) ([]ScoredSegment, bool) {
 	}
 
 	var segments []ScoredSegment
-	dec := gob.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(&segments); err != nil {
+	if err := json.Unmarshal(data, &segments); err != nil {
 		return nil, false
 	}
 
@@ -104,16 +102,15 @@ func (d *DiskCache) Put(key string, segments []ScoredSegment) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(segments); err != nil {
+	data, err := json.Marshal(segments)
+	if err != nil {
 		return
 	}
 
 	d.db.Exec(`
 		INSERT OR REPLACE INTO pruner_cache (key, data, created_at)
 		VALUES (?, ?, ?)
-	`, key, buf.Bytes(), time.Now().UTC().Format(time.RFC3339))
+	`, key, data, time.Now().UTC().Format(time.RFC3339))
 }
 
 // Cleanup removes expired entries.

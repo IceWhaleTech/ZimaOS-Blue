@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -63,71 +60,133 @@ func (c *CalculatorTool) Execute(ctx context.Context, args map[string]interface{
 	return string(jsonResult), nil
 }
 
-// evaluateExpression safely evaluates a mathematical expression.
+// evaluateExpression safely evaluates a mathematical expression using a
+// hand-written recursive descent parser (avoids importing go/parser).
 func evaluateExpression(expr string) (float64, error) {
-	// Parse the expression as a Go expression
-	node, err := parser.ParseExpr(expr)
+	p := &exprParser{input: expr}
+	result, err := p.parseExpr()
 	if err != nil {
-		return 0, fmt.Errorf("invalid expression: %w", err)
+		return 0, err
 	}
-
-	return evalNode(node)
+	p.skipSpace()
+	if p.pos < len(p.input) {
+		return 0, fmt.Errorf("unexpected character at position %d: %c", p.pos, p.input[p.pos])
+	}
+	return result, nil
 }
 
-func evalNode(node ast.Expr) (float64, error) {
-	switch n := node.(type) {
-	case *ast.BasicLit:
-		if n.Kind == token.INT || n.Kind == token.FLOAT {
-			return strconv.ParseFloat(n.Value, 64)
-		}
-		return 0, fmt.Errorf("unsupported literal type: %v", n.Kind)
+type exprParser struct {
+	input string
+	pos   int
+}
 
-	case *ast.UnaryExpr:
-		val, err := evalNode(n.X)
+func (p *exprParser) skipSpace() {
+	for p.pos < len(p.input) && p.input[p.pos] == ' ' {
+		p.pos++
+	}
+}
+
+// parseExpr handles + and -
+func (p *exprParser) parseExpr() (float64, error) {
+	left, err := p.parseTerm()
+	if err != nil {
+		return 0, err
+	}
+	for {
+		p.skipSpace()
+		if p.pos >= len(p.input) {
+			return left, nil
+		}
+		op := p.input[p.pos]
+		if op != '+' && op != '-' {
+			return left, nil
+		}
+		p.pos++
+		right, err := p.parseTerm()
 		if err != nil {
 			return 0, err
 		}
-		switch n.Op {
-		case token.SUB:
-			return -val, nil
-		case token.ADD:
-			return val, nil
-		default:
-			return 0, fmt.Errorf("unsupported unary operator: %v", n.Op)
+		if op == '+' {
+			left += right
+		} else {
+			left -= right
 		}
+	}
+}
 
-	case *ast.BinaryExpr:
-		left, err := evalNode(n.X)
+// parseTerm handles * and /
+func (p *exprParser) parseTerm() (float64, error) {
+	left, err := p.parseUnary()
+	if err != nil {
+		return 0, err
+	}
+	for {
+		p.skipSpace()
+		if p.pos >= len(p.input) {
+			return left, nil
+		}
+		op := p.input[p.pos]
+		if op != '*' && op != '/' {
+			return left, nil
+		}
+		p.pos++
+		right, err := p.parseUnary()
 		if err != nil {
 			return 0, err
 		}
-		right, err := evalNode(n.Y)
-		if err != nil {
-			return 0, err
-		}
-
-		switch n.Op {
-		case token.ADD:
-			return left + right, nil
-		case token.SUB:
-			return left - right, nil
-		case token.MUL:
-			return left * right, nil
-		case token.QUO:
+		if op == '*' {
+			left *= right
+		} else {
 			if right == 0 {
 				return 0, errors.New("division by zero")
 			}
-			return left / right, nil
-		default:
-			return 0, fmt.Errorf("unsupported operator: %v", n.Op)
+			left /= right
 		}
-
-	case *ast.ParenExpr:
-		return evalNode(n.X)
-
-	default:
-		return 0, fmt.Errorf("unsupported expression type: %T", node)
 	}
+}
+
+// parseUnary handles unary + and -
+func (p *exprParser) parseUnary() (float64, error) {
+	p.skipSpace()
+	if p.pos < len(p.input) && p.input[p.pos] == '-' {
+		p.pos++
+		val, err := p.parseUnary()
+		return -val, err
+	}
+	if p.pos < len(p.input) && p.input[p.pos] == '+' {
+		p.pos++
+		return p.parseUnary()
+	}
+	return p.parsePrimary()
+}
+
+// parsePrimary handles numbers and parenthesized expressions
+func (p *exprParser) parsePrimary() (float64, error) {
+	p.skipSpace()
+	if p.pos >= len(p.input) {
+		return 0, errors.New("unexpected end of expression")
+	}
+	if p.input[p.pos] == '(' {
+		p.pos++
+		val, err := p.parseExpr()
+		if err != nil {
+			return 0, err
+		}
+		p.skipSpace()
+		if p.pos >= len(p.input) || p.input[p.pos] != ')' {
+			return 0, errors.New("missing closing parenthesis")
+		}
+		p.pos++
+		return val, nil
+	}
+	start := p.pos
+	for p.pos < len(p.input) && (p.input[p.pos] >= '0' && p.input[p.pos] <= '9' || p.input[p.pos] == '.') {
+		p.pos++
+	}
+	if p.pos == start {
+		return 0, fmt.Errorf("unexpected character: %c", p.input[p.pos])
+	}
+	return strconv.ParseFloat(p.input[start:p.pos], 64)
 }
 
 // SystemInfoTool returns system information.

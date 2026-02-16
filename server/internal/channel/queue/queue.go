@@ -49,21 +49,21 @@ type QueuedMessage struct {
 // Config contains queue configuration.
 type Config struct {
 	// MaxSize is the maximum number of messages in the queue.
-	MaxSize int `mapstructure:"max_size"`
+	MaxSize int `yaml:"max_size"`
 	// MaxRetries is the maximum number of retry attempts.
-	MaxRetries int `mapstructure:"max_retries"`
+	MaxRetries int `yaml:"max_retries"`
 	// RetryDelayMS is the initial retry delay in milliseconds.
-	RetryDelayMS int `mapstructure:"retry_delay_ms"`
+	RetryDelayMS int `yaml:"retry_delay_ms"`
 	// RetryBackoffMultiplier is the multiplier for exponential backoff.
-	RetryBackoffMultiplier float64 `mapstructure:"retry_backoff_multiplier"`
+	RetryBackoffMultiplier float64 `yaml:"retry_backoff_multiplier"`
 	// ProcessingTimeoutSeconds is the timeout for processing a message.
-	ProcessingTimeoutSeconds int `mapstructure:"processing_timeout_seconds"`
+	ProcessingTimeoutSeconds int `yaml:"processing_timeout_seconds"`
 	// PersistPath is the path to persist the queue (empty for in-memory only).
-	PersistPath string `mapstructure:"persist_path"`
+	PersistPath string `yaml:"persist_path"`
 	// CleanupIntervalSeconds is the interval for cleaning up completed messages.
-	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
+	CleanupIntervalSeconds int `yaml:"cleanup_interval_seconds"`
 	// RetentionSeconds is how long to keep completed messages.
-	RetentionSeconds int `mapstructure:"retention_seconds"`
+	RetentionSeconds int `yaml:"retention_seconds"`
 }
 
 // DefaultConfig returns the default queue configuration.

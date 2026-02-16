@@ -185,15 +185,15 @@ func runModelsSet(cmd *cobra.Command, args []string) {
 	model := args[0]
 
 	// Load config and set default model
-	v, err := loadConfig()
+	m, err := loadConfigMap()
 	if err != nil {
 		printModelsError("Failed to load config", err)
 		return
 	}
 
-	v.Set("llm.default_model", model)
+	setNestedKey(m, "llm.default_model", model)
 
-	if err := saveConfig(v); err != nil {
+	if err := saveConfigMap(m); err != nil {
 		printModelsError("Failed to save config", err)
 		return
 	}

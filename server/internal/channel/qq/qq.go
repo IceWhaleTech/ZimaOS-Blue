@@ -22,11 +22,11 @@ import (
 
 // Config contains QQ Bot channel configuration.
 type Config struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	AppID     string `mapstructure:"app_id"`
-	AppSecret string `mapstructure:"app_secret"`
-	Token     string `mapstructure:"token"`
-	Sandbox   bool   `mapstructure:"sandbox"`
+	Enabled   bool   `yaml:"enabled"`
+	AppID     string `yaml:"app_id"`
+	AppSecret string `yaml:"app_secret"`
+	Token     string `yaml:"token"`
+	Sandbox   bool   `yaml:"sandbox"`
 }
 
 const (

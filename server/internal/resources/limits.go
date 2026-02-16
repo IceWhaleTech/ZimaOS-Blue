@@ -10,19 +10,19 @@ import (
 // Config holds resource limit configuration.
 type Config struct {
 	// MaxMemoryMB is the maximum memory in megabytes (0 = no limit).
-	MaxMemoryMB int64 `yaml:"max_memory_mb" mapstructure:"max_memory_mb"`
+	MaxMemoryMB int64 `yaml:"max_memory_mb" yaml:"max_memory_mb"`
 
 	// MaxCPUPercent is the maximum CPU percentage (0 = no limit).
-	MaxCPUPercent int `yaml:"max_cpu_percent" mapstructure:"max_cpu_percent"`
+	MaxCPUPercent int `yaml:"max_cpu_percent" yaml:"max_cpu_percent"`
 
 	// MaxOpenFiles is the maximum number of open files.
-	MaxOpenFiles uint64 `yaml:"max_open_files" mapstructure:"max_open_files"`
+	MaxOpenFiles uint64 `yaml:"max_open_files" yaml:"max_open_files"`
 
 	// MaxGoroutines is the maximum number of goroutines (0 = no limit).
-	MaxGoroutines int `yaml:"max_goroutines" mapstructure:"max_goroutines"`
+	MaxGoroutines int `yaml:"max_goroutines" yaml:"max_goroutines"`
 
 	// GCPercent is the garbage collection target percentage.
-	GCPercent int `yaml:"gc_percent" mapstructure:"gc_percent"`
+	GCPercent int `yaml:"gc_percent" yaml:"gc_percent"`
 }
 
 // DefaultConfig returns the default resource configuration.

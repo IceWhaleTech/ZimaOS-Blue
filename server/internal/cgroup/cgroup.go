@@ -33,72 +33,72 @@ var (
 // Config holds cgroup configuration.
 type Config struct {
 	// Enabled indicates whether cgroup management is enabled.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 
 	// CgroupRoot is the cgroup v2 mount point.
-	CgroupRoot string `yaml:"cgroup_root" mapstructure:"cgroup_root"`
+	CgroupRoot string `yaml:"cgroup_root" yaml:"cgroup_root"`
 
 	// CgroupName is the name of the cgroup to use.
-	CgroupName string `yaml:"cgroup_name" mapstructure:"cgroup_name"`
+	CgroupName string `yaml:"cgroup_name" yaml:"cgroup_name"`
 
 	// IO contains IO bandwidth limit configuration.
-	IO IOConfig `yaml:"io" mapstructure:"io"`
+	IO IOConfig `yaml:"io" yaml:"io"`
 
 	// Memory contains memory limit configuration (optional, can use systemd).
-	Memory MemoryConfig `yaml:"memory" mapstructure:"memory"`
+	Memory MemoryConfig `yaml:"memory" yaml:"memory"`
 
 	// CPU contains CPU limit configuration (optional, can use systemd).
-	CPU CPUConfig `yaml:"cpu" mapstructure:"cpu"`
+	CPU CPUConfig `yaml:"cpu" yaml:"cpu"`
 }
 
 // IOConfig holds IO bandwidth limit configuration.
 type IOConfig struct {
 	// Enabled indicates whether IO limits are enabled.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 
 	// ReadBPS is the maximum read bytes per second (0 = unlimited).
-	ReadBPS uint64 `yaml:"read_bps" mapstructure:"read_bps"`
+	ReadBPS uint64 `yaml:"read_bps" yaml:"read_bps"`
 
 	// WriteBPS is the maximum write bytes per second (0 = unlimited).
-	WriteBPS uint64 `yaml:"write_bps" mapstructure:"write_bps"`
+	WriteBPS uint64 `yaml:"write_bps" yaml:"write_bps"`
 
 	// ReadIOPS is the maximum read IO operations per second (0 = unlimited).
-	ReadIOPS uint64 `yaml:"read_iops" mapstructure:"read_iops"`
+	ReadIOPS uint64 `yaml:"read_iops" yaml:"read_iops"`
 
 	// WriteIOPS is the maximum write IO operations per second (0 = unlimited).
-	WriteIOPS uint64 `yaml:"write_iops" mapstructure:"write_iops"`
+	WriteIOPS uint64 `yaml:"write_iops" yaml:"write_iops"`
 
 	// Devices is a list of device major:minor numbers to apply limits to.
 	// If empty, limits are applied to all devices.
-	Devices []string `yaml:"devices" mapstructure:"devices"`
+	Devices []string `yaml:"devices" yaml:"devices"`
 }
 
 // MemoryConfig holds memory limit configuration.
 type MemoryConfig struct {
 	// Enabled indicates whether memory limits via cgroup are enabled.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 
 	// MaxBytes is the maximum memory in bytes (0 = unlimited).
-	MaxBytes uint64 `yaml:"max_bytes" mapstructure:"max_bytes"`
+	MaxBytes uint64 `yaml:"max_bytes" yaml:"max_bytes"`
 
 	// HighBytes is the memory high threshold in bytes (0 = disabled).
-	HighBytes uint64 `yaml:"high_bytes" mapstructure:"high_bytes"`
+	HighBytes uint64 `yaml:"high_bytes" yaml:"high_bytes"`
 
 	// SwapMaxBytes is the maximum swap in bytes (0 = unlimited).
-	SwapMaxBytes uint64 `yaml:"swap_max_bytes" mapstructure:"swap_max_bytes"`
+	SwapMaxBytes uint64 `yaml:"swap_max_bytes" yaml:"swap_max_bytes"`
 }
 
 // CPUConfig holds CPU limit configuration.
 type CPUConfig struct {
 	// Enabled indicates whether CPU limits via cgroup are enabled.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 
 	// MaxPercent is the maximum CPU percentage (0 = unlimited).
 	// This is converted to cpu.max format: quota period.
-	MaxPercent int `yaml:"max_percent" mapstructure:"max_percent"`
+	MaxPercent int `yaml:"max_percent" yaml:"max_percent"`
 
 	// Weight is the CPU weight (1-10000, default 100).
-	Weight int `yaml:"weight" mapstructure:"weight"`
+	Weight int `yaml:"weight" yaml:"weight"`
 }
 
 // DefaultConfig returns the default cgroup configuration.

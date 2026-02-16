@@ -39,13 +39,13 @@ type TaskRecord struct {
 // Config holds persistence configuration.
 type Config struct {
 	// DBPath is the path to the SQLite database file.
-	DBPath string `yaml:"db_path" mapstructure:"db_path"`
+	DBPath string `yaml:"db_path" yaml:"db_path"`
 
 	// Enabled enables task persistence.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 
 	// RetentionDays is the number of days to keep completed tasks.
-	RetentionDays int `yaml:"retention_days" mapstructure:"retention_days"`
+	RetentionDays int `yaml:"retention_days" yaml:"retention_days"`
 }
 
 // DefaultConfig returns the default configuration.

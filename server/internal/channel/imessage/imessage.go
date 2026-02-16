@@ -44,11 +44,11 @@ type Channel struct {
 
 // Config contains iMessage channel configuration.
 type Config struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	DatabasePath   string   `mapstructure:"database_path"`
-	PollInterval   int      `mapstructure:"poll_interval_ms"`
-	AllowedNumbers []string `mapstructure:"allowed_numbers"`
-	AllowedEmails  []string `mapstructure:"allowed_emails"`
+	Enabled        bool     `yaml:"enabled"`
+	DatabasePath   string   `yaml:"database_path"`
+	PollInterval   int      `yaml:"poll_interval_ms"`
+	AllowedNumbers []string `yaml:"allowed_numbers"`
+	AllowedEmails  []string `yaml:"allowed_emails"`
 }
 
 // DefaultConfig returns the default iMessage configuration.

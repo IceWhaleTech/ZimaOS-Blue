@@ -34,22 +34,22 @@ type Event struct {
 // Config holds watcher configuration.
 type Config struct {
 	// Paths to watch.
-	Paths []string `yaml:"paths" mapstructure:"paths"`
+	Paths []string `yaml:"paths" yaml:"paths"`
 
 	// Events to listen for.
-	Events []EventType `yaml:"events" mapstructure:"events"`
+	Events []EventType `yaml:"events" yaml:"events"`
 
 	// Recursive enables recursive watching.
-	Recursive bool `yaml:"recursive" mapstructure:"recursive"`
+	Recursive bool `yaml:"recursive" yaml:"recursive"`
 
 	// DebounceMs is the debounce duration in milliseconds.
-	DebounceMs int `yaml:"debounce_ms" mapstructure:"debounce_ms"`
+	DebounceMs int `yaml:"debounce_ms" yaml:"debounce_ms"`
 
 	// Enabled enables the watcher.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 
 	// IgnorePatterns are glob patterns to ignore.
-	IgnorePatterns []string `yaml:"ignore_patterns" mapstructure:"ignore_patterns"`
+	IgnorePatterns []string `yaml:"ignore_patterns" yaml:"ignore_patterns"`
 }
 
 // DefaultConfig returns the default watcher configuration.

@@ -1,34 +1,33 @@
-# ZimaOS Blue
-
-<p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
-</p>
-
-<p align="center">
-  <strong>安全、可观测的 AI 智能体运行时</strong>
-</p>
+![](../../docs/assets/bannerX.png)
 
 <p align="center">
   <a href="../../README.md">English</a> |
-  <strong>简体中文</strong> |
-  <a href="../zh_TW/README.md">繁體中文</a> |
+  <a href="../ca_ES/README.md">Català</a> |
+  <a href="../cs_CZ/README.md">Čeština</a> |
+  <a href="../da_DK/README.md">Dansk</a> |
+  <a href="../de_DE/README.md">Deutsch</a> |
+  <a href="../el_GR/README.md">Ελληνικά</a> |
+  <a href="../en_GB/README.md">English (UK)</a> |
+  <a href="../es_ES/README.md">Español</a> |
+  <a href="../fr_FR/README.md">Français</a> |
+  <a href="../ga_IE/README.md">Gaeilge</a> |
+  <a href="../hr_HR/README.md">Hrvatski</a> |
+  <a href="../hu_HU/README.md">Magyar</a> |
+  <a href="../it_IT/README.md">Italiano</a> |
   <a href="../ja_JP/README.md">日本語</a> |
   <a href="../ko_KR/README.md">한국어</a> |
-  <a href="../de_DE/README.md">Deutsch</a> |
-  <a href="../fr_FR/README.md">Français</a> |
-  <a href="../es_ES/README.md">Español</a> |
-  <a href="../it_IT/README.md">Italiano</a> |
-  <a href="../pt_BR/README.md">Português</a> |
-  <a href="../ru_RU/README.md">Русский</a> |
-  <a href="../ar_SA/README.md">العربية</a> |
-  <a href="../hi_IN/README.md">हिन्दी</a> |
-  <a href="../th_TH/README.md">ไทย</a> |
-  <a href="../vi_VN/README.md">Tiếng Việt</a> |
-  <a href="../id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="../tr_TR/README.md">Türkçe</a> |
-  <a href="../pl_PL/README.md">Polski</a> |
+  <a href="../ml_IN/README.md">മലയാളം</a> |
+  <a href="../nb_NO/README.md">Norsk Bokmål</a> |
   <a href="../nl_NL/README.md">Nederlands</a> |
-  <a href="../sv_SE/README.md">Svenska</a>
+  <a href="../pl_PL/README.md">Polski</a> |
+  <a href="../pt_BR/README.md">Português (BR)</a> |
+  <a href="../pt_PT/README.md">Português (PT)</a> |
+  <a href="../ro_RO/README.md">Română</a> |
+  <a href="../ru_RU/README.md">Русский</a> |
+  <a href="../sk_SK/README.md">Slovenčina</a> |
+  <a href="../sv_SE/README.md">Svenska</a> |
+  <strong>简体中文</strong> |
+  <a href="../zh_TW/README.md">繁體中文</a>
 </p>
 
 <p align="center">
@@ -37,179 +36,202 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**ZimaOS Blue** 是面向 NAS 与边缘设备的轻量、高性能 AI 智能体运行时。使用 Go 构建，提供零配置部署、会话监控与全面使用分析的生产级平台。
+<p align="center">
+  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>&nbsp;&nbsp;
+  <img src="../../docs/assets/wechat.png" height="128"/>
+  <details style="display:inline-block;">
+    <summary style="list-style:none;cursor:pointer;">
+    </summary>
 
-[快速开始](#快速开始) · [功能特性](#核心功能)
+  </details>
+</p>
+
+## 简介
+
+受 Clawdbot 启发，我们相信个人计算的**未来**将由**多样化的、本地优先的 AI 智能体**在边缘端塑造。
+
+**ZimaOS Blue 是我们的答案** —— 一个完全**开源、可审计、生产就绪的智能体运行时与工具集**，让你零摩擦地交付私有、自托管的智能体。
+
+为那些想要**随心构建或精心打造自己智能体**的大胆开发者而生，Blue **为性能而设计**：使用 **Go** 编写，内存占用低至 10 MB。它可以运行在**任何 x86、Raspberry Pi、Windows、macOS** —— 只要有电的地方。
+
+![](../../docs/assets/features.png)
 
 ## 亮点
 
-| 规格 | 数值 |
-|------|------|
-| **二进制大小** | ~40MB（单可执行文件） |
-| **内存（空闲）** | ~4MB |
-| **启动时间** | < 1s |
-| **依赖** | 无（零配置部署） |
+### 本地优先设计与自动模型接入
 
-## 核心功能
+更进一步：它原生支持 **20+ 即时通讯平台**、**语音驱动**的自然上下文感知对话界面、**零配置模型切换**（支持 IDE 扫描）以及 SOUL 分层人格系统。
 
-### 零配置部署
+### 快速、轻量
 
-- **单一二进制**：下载即用，无需运行时依赖
-- **按需配置**：开箱可用，需要时再自定义
-- **跨平台**：Windows、macOS、Linux 同一二进制、同一体验
-- **守护进程**：可作为常驻后台服务运行
+Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务器到桌面设备，静默运行于一切之上。
 
-### 会话监控
+| 指标 | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+|--------|-------------------|------------------------|
+| `--help` 冷启动 / 热启动 | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `status` 运行时间（3 次最优） | **< 0.01 s** | 5.98 s |
+| `--help` 峰值 RSS | **~10 MB** | ~394 MB |
+| `status` 峰值 RSS | **~15 MB** | ~1.52 GB |
+| 运行时依赖 | **无** | Node.js 18+ |
 
-- **实时会话追踪**：监控所有活跃 AI 会话及实时状态
-- **对话历史**：完整交互审计记录
-- **会话回放**：回顾与分析历史对话
-- **多租户隔离**：用户间会话完全分离
+> 基准测试环境：macOS arm64，同一主机，3 次运行取最优。2026 年 2 月。
 
-### 调用链优化
+### 纯 Go，任意设备
 
-- **请求追踪**：每次 API 调用的端到端可见性
-- **延迟分析**：定位请求链路中的瓶颈
-- **提供商路由**：智能路由至最优 LLM 提供商
-- **熔断器**：提供商故障时自动切换
+100% Go，静态二进制。**开箱即可交叉编译至 5 个目标平台**（![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。无需 Node 运行时、无需 Python、无需容器。把它放到 NAS、Raspberry Pi、旧 x86 路由器或 Mac 上 —— 直接运行。**然后叠加你自己的 UI、逻辑和智能体技能** —— 一套代码，全平台通用。
 
-### 使用分析
+### 安全与治理
 
-- **Token 消耗**：按用户、会话、提供商统计使用量
-- **成本归属**：按操作详细成本拆分
-- **限流**：按租户的配额管理
-- **导出报告**：多种格式生成使用报告
+内置 Sidecar API 代理，纵深防御：
+- **沙箱执行** – 所有工具调用在隔离环境中运行。
+- **提示注入防御** – 7+ 种内置拦截策略。
+- **会话审计** – 全量会话监控，每次交互可追溯。
+- **RBAC 与 WebAuthn** – 细粒度访问控制，支持无密码认证。
 
-### 安全加固
+## 为什么选择 Blue
 
-- **沙箱执行**：所有工具调用在隔离环境中运行
-- **RBAC**：细粒度基于角色的访问控制
-- **WebAuthn/Passkeys**：无密码 FIDO2 认证
-- **MFA/TOTP**：多因素认证
-- **审计链**：所有特权操作不可变日志
+我们相信**下一代个人计算**将拥抱 LLM —— 但**可控、可审计**的智能体仍然是个人和团队的基石。**Blue 提供**：
+- **全面的核心能力** – 高级模型管理、即时通讯集成、增强人格，以及为日常交互（耳机、语音、智能眼镜）调优的自然语言界面。
+- **本地优先、超轻量、跨设备** – 无需高端硬件。能计算的地方就能运行。
+- **安全可审计** – 会话审计、沙箱隔离、权限控制，以及内置的 API 代理充当应用层防火墙 —— 每一个字节的进出都清晰可见。
+
+我们最大限度减少样板代码，让你**专注于真正重要的事**。秉承 **ZimaOS 的设计哲学**，Blue 提供：
+- **一键从零到一** – 即时部署，无需复杂配置。
+- **快速原型开发** – 随心或精心打造场景化工具、交互和应用包。
+- **全球化就绪** – **世界很大**，不应默认只有英语。**20+ 种语言，原生支持**，零障碍。
+- **开放模型生态** – 无供应商锁定。自带模型即可。
+
+![](../../docs/assets/design_principle.png)
 
 ## 快速开始
 
+### 方式一：下载桌面应用（macOS 与 Windows）
+
+获取原生应用 —— 无依赖、无需编译。
+
+- **macOS**：[下载 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- **Windows**：[下载安装程序](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+
+### 方式二：安装脚本
+
+**macOS / Linux**
 ```bash
-# 从源码
+curl -fsSL https://ota.zimaos.com/blue | sh
+```
+
+**Windows (PowerShell)**
+```powershell
+irm https://ota.zimaos.com/blue/windows | iex
+```
+
+### 方式三：从源码构建
+
+```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-make build && ./dist/zimaos-blue server
-```
-
-在 `http://localhost:3000` 访问控制台。
-
-## LLM 提供商配置
-
-ZimaOS Blue 支持多种 LLM 提供商，包括本地 LLM 服务：
-
-```yaml
-llm:
-  # 云提供商
-  provider: "openai"  # 或 "anthropic", "azure" 等
-  api_key: "your-api-key"
-
-  # 本地 LLM（可选）
-  # provider: "ollama"
-  # base_url: "http://localhost:11434"
-```
-
-## 架构
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Blue                       │
-├─────────────────────────────────────────────────────┤
-│  Session Monitor │ Usage Analytics │ Call Tracing  │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
-
-## 可观测性
-
-```yaml
-# 启用完整可观测性栈
-metrics:
-  enabled: true
-  endpoint: "/metrics"
-
-profiling:
-  enabled: true
-  endpoint_prefix: "/debug/pprof"
-
-audit:
-  enabled: true
-  retention_days: 90
-```
-
-### 暴露的指标
-
-- 请求延迟（p50、p95、p99）
-- 各提供商 LLM 的 token 使用量
-- 工具执行成功/失败率
-- 内存与 goroutine 计数
-- 熔断器状态转换
-
-## 开发环境
-
-### 前置条件
-
-| 工具 | 版本 | 安装 |
-|------|------|------|
-| Go | 1.21+ | [golang.org](https://golang.org/dl/) |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
-| Make | - | macOS/Linux 通常已预装 |
-
-### 开发模式（热重载）
-
-```bash
-# Linux / macOS
 ./dev.sh
-
-# Windows
-dev.bat
 ```
 
-- 前端：`http://localhost:3000`
-- 后端：`http://localhost:23456`
+## 架构概览
 
-### 构建命令
+![](../../docs/assets/architecture.png)
 
-```bash
-make build              # 构建单一二进制（前端内嵌）
-make build-embedded     # 构建并内嵌 Claude Code CLI
-make build-all          # 全平台交叉编译
-make clean              # 清理构建产物
+### 数据流
+
+**聊天请求（代理热路径）**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
 ```
 
-### 项目结构
-
+**频道消息流**
 ```
-ZimaOS-Blue/
-├── server/             # Go 后端
-│   ├── cmd/blue/       # 入口
-│   └── internal/       # 核心模块
-├── web/                # Vue 3 前端
-│   └── src/
-└── dist/               # 构建输出
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
-## 致谢
+**语音管线**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
 
-- [clawdbot](https://github.com/clawdbot/clawdbot) - 项目灵感来源
-- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) - 轻量级 ORM
+### 包结构图（`server/internal/`）
 
----
+| 层级 | 包 |
+|-------|----------|
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, heartbeat, companion, profiling, leakdetect |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+## 如何使用
+
+![](../../docs/assets/handcraft.png)
+
+## 里程碑时间线
+
+![](../../docs/assets/timeline.png)
+
+| 版本 | 重点 | 核心价值 | 状态 |
+|---------|-------|-----------|--------|
+| v0.1 | Go 运行时核心 | 稳定内核，24 小时运行 | 已完成 |
+| v0.2 | 核心能力 | 最小可用，LLM 集成 | 已完成 |
+| v0.3 | NAS 集成 | NAS 原生，systemd 支持 | 已完成 |
+| v0.4 | 插件系统 | 可扩展，安全基础 | 已完成 |
+| v0.5 | 产品基线 | 生产就绪，文档完善 | 已完成 |
+| v0.6 | 消息频道 | 多频道支持 | 已完成 |
+| v0.7 | 安全 | OIDC、MFA、审计 | 已完成 |
+| v0.8 | 性能 | 优化、缓存、基准测试 | 已完成 |
+| v0.9 | 生态系统 | 多租户、浏览器自动化、语音 | 已完成 |
+| v0.10.0 | CLI 打包 | CC CLI 打包、检测、自动更新 | 已完成 |
+| v0.10.1 | 指标监控 | API 统计、Token 追踪、TTFT | 已完成 |
+| v0.10.2 | CLI 可靠性 | 进程生命周期、错误恢复 | 已完成 |
+| v0.10.3 | CLI 集成 | 设置向导、提供商自动检测 | 已完成 |
+| v0.10.4 | Tauri 打包 | 桌面应用、系统托盘 | 已完成 |
+| v0.10.5 | API 代理 Sidecar | 路由选择、提示防护、用量统计 | 已完成 |
+| v0.10.6 | Provider Pool | 多提供商路由、健康检查、故障转移 | 已完成 |
+| v0.10.7 | 预览模式 | 免认证访问、功能门控 | 已完成 |
+| v0.10.8 | 技能商店 | 技能商店基础设施、频道验证 | 已完成 |
+| v0.10.9–10 | 用户管理 | 子用户、页面级权限 | 已完成 |
+| v0.10.13–14 | 安全与技能 | 安全页面、技能商店重构 | 已完成 |
+| v0.10.15 | 聊天增强 | 聊天体验、消息管线 | 已完成 |
+| v0.10.16 | 语音模块 | Sherpa TTS/ASR、eSpeak、提供商切换 | 已完成 |
+| v0.10.17 | 远程访问 | Ngrok、Cloudflare 隧道、ACME 证书 | 已完成 |
+| v0.10.18–20 | 性能冲刺 | 启动/聊天性能、上下文缓存 | 已完成 |
+| v0.10.21–22 | 提示词与钉钉 | 系统提示词、钉钉频道 | 已完成 |
+| v0.10.23 | OTA 更新 | OTA 更新系统 | 已完成 |
+| v0.10.24 | 频道升级 | 10 个频道从桩代码升级 | 已完成 |
+| v0.10.25 | CC Cache | 两级缓存（L1 内存 + L2 磁盘） | 已完成 |
+| v0.10.26 | Humanizer | 回复人性化管线 | 已完成 |
+| v0.10.27 | 上下文裁剪器 | BM25 评分、分段、基准测试 | 已完成 |
+| v0.10.28 | 记忆服务 | 渐进式搜索、双写后端 | 已完成 |
+
+## 社区与支持
+
+- **问题反馈**：[请在此提交 Bug 和功能请求](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **讨论交流**：[Discord](https://discord.gg/SrCYvumF)
+- **关注我们**：[GitHub](https://github.com/IceWhaleTech)
+
+## 许可证
+
+本项目基于 MIT 许可证开源 - 详见 [LICENSE](../../LICENSE) 文件。我们信仰开源，致力于回馈社区。
+
+## 贡献者
 
 <p align="center">
   Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>

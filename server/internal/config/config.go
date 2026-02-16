@@ -1,12 +1,13 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
@@ -14,855 +15,585 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig        `mapstructure:"server"`
-	Log           LogConfig           `mapstructure:"log"`
-	Worker        WorkerConfig        `mapstructure:"worker"`
-	Resources     ResourcesConfig     `mapstructure:"resources"`
-	Cgroup        CgroupConfig        `mapstructure:"cgroup"`
-	Channels      channel.Config      `mapstructure:"channels"`
-	Performance   PerformanceConfig   `mapstructure:"performance"`
-	Security      SecurityConfig      `mapstructure:"security"`
-	LLM           LLMConfig           `mapstructure:"llm"`
-	Session       SessionConfig       `mapstructure:"session"`
-	Embedding     EmbeddingConfig     `mapstructure:"embedding"`
-	Memory        MemoryConfig        `mapstructure:"memory"`
-	Grayscale     GrayscaleConfig     `mapstructure:"grayscale"`
-	Companion     CompanionConfig     `mapstructure:"companion"`
-	ClaudeCodeCLI ClaudeCodeCLIConfig `mapstructure:"claude_code_cli"` // v0.10.3: Separated from LLM
-	FirstRun      FirstRunConfig      `mapstructure:"first_run"`       // v0.10.3
-	CCSwitch      CCSwitchConfig      `mapstructure:"cc_switch"`       // v0.10.3
-	Statistics    StatisticsConfig    `mapstructure:"statistics"`      // v0.10.3
-	ToolCalling   ToolCallingConfig   `mapstructure:"tool_calling"`    // v0.10.3
-	Proxy         *proxy.ProxyConfig  `mapstructure:"proxy"`           // v0.10.5.1: API Proxy
-	Pruner        *pruner.Config      `mapstructure:"pruner"`          // v0.10.27: Context Pruner
-	Update        UpdateConfig        `mapstructure:"update"`          // OTA Update
-	Heartbeat     HeartbeatConfig     `mapstructure:"heartbeat"`       // Heartbeat agent polling
+	Server        ServerConfig        `yaml:"server"`
+	Log           LogConfig           `yaml:"log"`
+	Worker        WorkerConfig        `yaml:"worker"`
+	Resources     ResourcesConfig     `yaml:"resources"`
+	Cgroup        CgroupConfig        `yaml:"cgroup"`
+	Channels      channel.Config      `yaml:"channels"`
+	Performance   PerformanceConfig   `yaml:"performance"`
+	Security      SecurityConfig      `yaml:"security"`
+	LLM           LLMConfig           `yaml:"llm"`
+	Session       SessionConfig       `yaml:"session"`
+	Embedding     EmbeddingConfig     `yaml:"embedding"`
+	Memory        MemoryConfig        `yaml:"memory"`
+	Grayscale     GrayscaleConfig     `yaml:"grayscale"`
+	Companion     CompanionConfig     `yaml:"companion"`
+	ClaudeCodeCLI ClaudeCodeCLIConfig `yaml:"claude_code_cli"` // v0.10.3: Separated from LLM
+	FirstRun      FirstRunConfig      `yaml:"first_run"`       // v0.10.3
+	CCSwitch      CCSwitchConfig      `yaml:"cc_switch"`       // v0.10.3
+	Statistics    StatisticsConfig    `yaml:"statistics"`      // v0.10.3
+	ToolCalling   ToolCallingConfig   `yaml:"tool_calling"`    // v0.10.3
+	Proxy         *proxy.ProxyConfig  `yaml:"proxy"`           // v0.10.5.1: API Proxy
+	Pruner        *pruner.Config      `yaml:"pruner"`          // v0.10.27: Context Pruner
+	Update        UpdateConfig        `yaml:"update"`          // OTA Update
+	Heartbeat     HeartbeatConfig     `yaml:"heartbeat"`       // Heartbeat agent polling
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
-	ClaudeCode ClaudeCodeConfig `mapstructure:"claudecode"`
+	ClaudeCode ClaudeCodeConfig `yaml:"claudecode"`
 }
 
 // ClaudeCodeConfig holds Claude Code CLI integration configuration (v0.10).
 // Deprecated: Use ClaudeCodeCLIConfig instead.
 type ClaudeCodeConfig struct {
-	Enabled      bool                      `mapstructure:"enabled"`
-	Command      string                    `mapstructure:"command"`
-	WorkspaceDir string                    `mapstructure:"workspace_dir"`
-	DefaultModel string                    `mapstructure:"default_model"`
-	Timeout      time.Duration             `mapstructure:"timeout"`
-	SessionTTL   time.Duration             `mapstructure:"session_ttl"`
-	APIKey       string                    `mapstructure:"api_key"`
-	BaseURL      string                    `mapstructure:"base_url"`
-	Backend      ClaudeCodeBackendConfig   `mapstructure:"backend"`
+	Enabled      bool                      `yaml:"enabled"`
+	Command      string                    `yaml:"command"`
+	WorkspaceDir string                    `yaml:"workspace_dir"`
+	DefaultModel string                    `yaml:"default_model"`
+	Timeout      time.Duration             `yaml:"timeout"`
+	SessionTTL   time.Duration             `yaml:"session_ttl"`
+	APIKey       string                    `yaml:"api_key"`
+	BaseURL      string                    `yaml:"base_url"`
+	Backend      ClaudeCodeBackendConfig   `yaml:"backend"`
 }
 
 // ClaudeCodeBackendConfig holds CLI backend configuration.
 type ClaudeCodeBackendConfig struct {
-	Args             []string          `mapstructure:"args"`
-	ResumeArgs       []string          `mapstructure:"resume_args"`
-	Output           string            `mapstructure:"output"`
-	Input            string            `mapstructure:"input"`
-	MaxPromptArgChars int              `mapstructure:"max_prompt_arg_chars"`
-	Env              map[string]string `mapstructure:"env"`
-	ClearEnv         []string          `mapstructure:"clear_env"`
-	ModelArg         string            `mapstructure:"model_arg"`
-	ModelAliases     map[string]string `mapstructure:"model_aliases"`
-	SessionArg       string            `mapstructure:"session_arg"`
-	SessionMode      string            `mapstructure:"session_mode"`
-	SystemPromptArg  string            `mapstructure:"system_prompt_arg"`
-	SystemPromptMode string            `mapstructure:"system_prompt_mode"`
-	SystemPromptWhen string            `mapstructure:"system_prompt_when"`
-	Serialize        bool              `mapstructure:"serialize"`
+	Args             []string          `yaml:"args"`
+	ResumeArgs       []string          `yaml:"resume_args"`
+	Output           string            `yaml:"output"`
+	Input            string            `yaml:"input"`
+	MaxPromptArgChars int              `yaml:"max_prompt_arg_chars"`
+	Env              map[string]string `yaml:"env"`
+	ClearEnv         []string          `yaml:"clear_env"`
+	ModelArg         string            `yaml:"model_arg"`
+	ModelAliases     map[string]string `yaml:"model_aliases"`
+	SessionArg       string            `yaml:"session_arg"`
+	SessionMode      string            `yaml:"session_mode"`
+	SystemPromptArg  string            `yaml:"system_prompt_arg"`
+	SystemPromptMode string            `yaml:"system_prompt_mode"`
+	SystemPromptWhen string            `yaml:"system_prompt_when"`
+	Serialize        bool              `yaml:"serialize"`
 }
 
 // CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
 type CompanionConfig struct {
-	Enabled     bool                         `mapstructure:"enabled"`
-	Storage     CompanionStorageConfig       `mapstructure:"storage"`
-	WebSocket   CompanionWebSocketConfig     `mapstructure:"websocket"`
-	Retention   CompanionRetentionConfig     `mapstructure:"retention"`
-	Alerts      CompanionAlertConfig         `mapstructure:"alerts"`
-	Security    CompanionSecurityConfig      `mapstructure:"security"`
-	Performance CompanionPerformanceConfig   `mapstructure:"performance"`
+	Enabled     bool                         `yaml:"enabled"`
+	Storage     CompanionStorageConfig       `yaml:"storage"`
+	WebSocket   CompanionWebSocketConfig     `yaml:"websocket"`
+	Retention   CompanionRetentionConfig     `yaml:"retention"`
+	Alerts      CompanionAlertConfig         `yaml:"alerts"`
+	Security    CompanionSecurityConfig      `yaml:"security"`
+	Performance CompanionPerformanceConfig   `yaml:"performance"`
 }
 
 // CompanionStorageConfig holds companion storage configuration.
 type CompanionStorageConfig struct {
-	BasePath string `mapstructure:"base_path"`
-	Format   string `mapstructure:"format"`
+	BasePath string `yaml:"base_path"`
+	Format   string `yaml:"format"`
 }
 
 // CompanionWebSocketConfig holds companion WebSocket configuration.
 type CompanionWebSocketConfig struct {
-	PingInterval    time.Duration `mapstructure:"ping_interval"`
-	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
-	ReadBufferSize  int           `mapstructure:"read_buffer_size"`
-	WriteBufferSize int           `mapstructure:"write_buffer_size"`
+	PingInterval    time.Duration `yaml:"ping_interval"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"`
+	ReadBufferSize  int           `yaml:"read_buffer_size"`
+	WriteBufferSize int           `yaml:"write_buffer_size"`
 }
 
 // CompanionRetentionConfig holds companion data retention configuration.
 type CompanionRetentionConfig struct {
-	EventsDays   int `mapstructure:"events_days"`
-	SessionsDays int `mapstructure:"sessions_days"`
-	AlertsDays   int `mapstructure:"alerts_days"`
+	EventsDays   int `yaml:"events_days"`
+	SessionsDays int `yaml:"sessions_days"`
+	AlertsDays   int `yaml:"alerts_days"`
 }
 
 // CompanionAlertConfig holds companion alert configuration.
 type CompanionAlertConfig struct {
-	Enabled         bool                    `mapstructure:"enabled"`
-	ThreatThreshold string                  `mapstructure:"threat_threshold"`
-	Channels        []CompanionAlertChannel `mapstructure:"channels"`
+	Enabled         bool                    `yaml:"enabled"`
+	ThreatThreshold string                  `yaml:"threat_threshold"`
+	Channels        []CompanionAlertChannel `yaml:"channels"`
 }
 
 // CompanionAlertChannel represents an alert notification channel.
 type CompanionAlertChannel struct {
-	Type       string            `mapstructure:"type"`
-	URL        string            `mapstructure:"url,omitempty"`
-	Recipients []string          `mapstructure:"recipients,omitempty"`
-	Headers    map[string]string `mapstructure:"headers,omitempty"`
+	Type       string            `yaml:"type"`
+	URL        string            `yaml:"url,omitempty"`
+	Recipients []string          `yaml:"recipients,omitempty"`
+	Headers    map[string]string `yaml:"headers,omitempty"`
 }
 
 // CompanionSecurityConfig holds companion security integration configuration.
 type CompanionSecurityConfig struct {
-	PromptGuardIntegration bool `mapstructure:"prompt_guard_integration"`
-	AuditLogIntegration    bool `mapstructure:"audit_log_integration"`
-	SandboxMonitor         bool `mapstructure:"sandbox_monitor"`
+	PromptGuardIntegration bool `yaml:"prompt_guard_integration"`
+	AuditLogIntegration    bool `yaml:"audit_log_integration"`
+	SandboxMonitor         bool `yaml:"sandbox_monitor"`
 }
 
 // CompanionPerformanceConfig holds companion performance configuration.
 type CompanionPerformanceConfig struct {
-	MaxConcurrentSessions int           `mapstructure:"max_concurrent_sessions"`
-	EventBufferSize       int           `mapstructure:"event_buffer_size"`
-	BatchWriteInterval    time.Duration `mapstructure:"batch_write_interval"`
+	MaxConcurrentSessions int           `yaml:"max_concurrent_sessions"`
+	EventBufferSize       int           `yaml:"event_buffer_size"`
+	BatchWriteInterval    time.Duration `yaml:"batch_write_interval"`
 }
 
 // SecurityConfig holds security-related configuration (v0.7).
 type SecurityConfig struct {
-	JWT        JWTConfig        `mapstructure:"jwt"`
-	OIDC       OIDCConfig       `mapstructure:"oidc"`
-	Users      UsersConfig      `mapstructure:"users"`
-	Password   PasswordConfig   `mapstructure:"password"`
-	MFA        MFAConfig        `mapstructure:"mfa"`
-	Audit      AuditConfig      `mapstructure:"audit"`
-	Sandbox    SandboxConfig    `mapstructure:"sandbox"`
-	Encryption EncryptionConfig `mapstructure:"encryption"`
+	JWT        JWTConfig        `yaml:"jwt"`
+	OIDC       OIDCConfig       `yaml:"oidc"`
+	Users      UsersConfig      `yaml:"users"`
+	Password   PasswordConfig   `yaml:"password"`
+	MFA        MFAConfig        `yaml:"mfa"`
+	Audit      AuditConfig      `yaml:"audit"`
+	Sandbox    SandboxConfig    `yaml:"sandbox"`
+	Encryption EncryptionConfig `yaml:"encryption"`
 }
 
 // JWTConfig holds JWT authentication configuration.
 type JWTConfig struct {
-	Secret            string        `mapstructure:"secret"`
-	Expiration        time.Duration `mapstructure:"expiration"`
-	RefreshExpiration time.Duration `mapstructure:"refresh_expiration"`
-	Issuer            string        `mapstructure:"issuer"`
+	Secret            string        `yaml:"secret"`
+	Expiration        time.Duration `yaml:"expiration"`
+	RefreshExpiration time.Duration `yaml:"refresh_expiration"`
+	Issuer            string        `yaml:"issuer"`
 }
 
 // EncryptionConfig holds encryption configuration for sensitive data.
 type EncryptionConfig struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	KeyPath    string `mapstructure:"key_path"`
-	Passphrase string `mapstructure:"passphrase"`
-	Algorithm  string `mapstructure:"algorithm"` // "aes-256-gcm"
+	Enabled    bool   `yaml:"enabled"`
+	KeyPath    string `yaml:"key_path"`
+	Passphrase string `yaml:"passphrase"`
+	Algorithm  string `yaml:"algorithm"` // "aes-256-gcm"
 }
 
 // OIDCConfig holds OIDC provider configuration.
 type OIDCConfig struct {
-	Enabled                bool          `mapstructure:"enabled"`
-	Issuer                 string        `mapstructure:"issuer"`
-	SigningKeyPath         string        `mapstructure:"signing_key_path"`
-	SigningKeyRotationDays int           `mapstructure:"signing_key_rotation_days"`
-	AccessTokenTTL         time.Duration `mapstructure:"access_token_ttl"`
-	RefreshTokenTTL        time.Duration `mapstructure:"refresh_token_ttl"`
-	AuthorizationCodeTTL   time.Duration `mapstructure:"authorization_code_ttl"`
-	Clients                []OIDCClient  `mapstructure:"clients"`
+	Enabled                bool          `yaml:"enabled"`
+	Issuer                 string        `yaml:"issuer"`
+	SigningKeyPath         string        `yaml:"signing_key_path"`
+	SigningKeyRotationDays int           `yaml:"signing_key_rotation_days"`
+	AccessTokenTTL         time.Duration `yaml:"access_token_ttl"`
+	RefreshTokenTTL        time.Duration `yaml:"refresh_token_ttl"`
+	AuthorizationCodeTTL   time.Duration `yaml:"authorization_code_ttl"`
+	Clients                []OIDCClient  `yaml:"clients"`
 }
 
 // OIDCClient holds OIDC client configuration.
 type OIDCClient struct {
-	ClientID          string   `mapstructure:"client_id"`
-	ClientSecret      string   `mapstructure:"client_secret"`
-	RedirectURIs      []string `mapstructure:"redirect_uris"`
-	AllowedScopes     []string `mapstructure:"allowed_scopes"`
-	AllowedGrantTypes []string `mapstructure:"allowed_grant_types"`
-	Public            bool     `mapstructure:"public"`
+	ClientID          string   `yaml:"client_id"`
+	ClientSecret      string   `yaml:"client_secret"`
+	RedirectURIs      []string `yaml:"redirect_uris"`
+	AllowedScopes     []string `yaml:"allowed_scopes"`
+	AllowedGrantTypes []string `yaml:"allowed_grant_types"`
+	Public            bool     `yaml:"public"`
 }
 
 // UsersConfig holds user management configuration.
 type UsersConfig struct {
-	AllowRegistration        bool   `mapstructure:"allow_registration"`
-	RequireEmailVerification bool   `mapstructure:"require_email_verification"`
-	DefaultRole              string `mapstructure:"default_role"`
+	AllowRegistration        bool   `yaml:"allow_registration"`
+	RequireEmailVerification bool   `yaml:"require_email_verification"`
+	DefaultRole              string `yaml:"default_role"`
 }
 
 // PasswordConfig holds password policy configuration.
 type PasswordConfig struct {
-	MinLength        int           `mapstructure:"min_length"`
-	RequireUppercase bool          `mapstructure:"require_uppercase"`
-	RequireLowercase bool          `mapstructure:"require_lowercase"`
-	RequireNumber    bool          `mapstructure:"require_number"`
-	RequireSpecial   bool          `mapstructure:"require_special"`
-	HistoryCount     int           `mapstructure:"history_count"`
-	ExpirationDays   int           `mapstructure:"expiration_days"`
-	LockoutThreshold int           `mapstructure:"lockout_threshold"`
-	LockoutDuration  time.Duration `mapstructure:"lockout_duration"`
+	MinLength        int           `yaml:"min_length"`
+	RequireUppercase bool          `yaml:"require_uppercase"`
+	RequireLowercase bool          `yaml:"require_lowercase"`
+	RequireNumber    bool          `yaml:"require_number"`
+	RequireSpecial   bool          `yaml:"require_special"`
+	HistoryCount     int           `yaml:"history_count"`
+	ExpirationDays   int           `yaml:"expiration_days"`
+	LockoutThreshold int           `yaml:"lockout_threshold"`
+	LockoutDuration  time.Duration `yaml:"lockout_duration"`
 }
 
 // MFAConfig holds MFA configuration.
 type MFAConfig struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	Required           bool   `mapstructure:"required"`
-	Issuer             string `mapstructure:"issuer"`
-	RecoveryCodesCount int    `mapstructure:"recovery_codes_count"`
+	Enabled            bool   `yaml:"enabled"`
+	Required           bool   `yaml:"required"`
+	Issuer             string `yaml:"issuer"`
+	RecoveryCodesCount int    `yaml:"recovery_codes_count"`
 }
 
 // AuditConfig holds audit logging configuration.
 type AuditConfig struct {
-	Enabled         bool          `mapstructure:"enabled"`
-	RetentionDays   int           `mapstructure:"retention_days"`
-	LogRequestBody  bool          `mapstructure:"log_request_body"`
-	LogResponseBody bool          `mapstructure:"log_response_body"`
-	ExcludedPaths   []string      `mapstructure:"excluded_paths"`
-	CleanupInterval time.Duration `mapstructure:"cleanup_interval"`
+	Enabled         bool          `yaml:"enabled"`
+	RetentionDays   int           `yaml:"retention_days"`
+	LogRequestBody  bool          `yaml:"log_request_body"`
+	LogResponseBody bool          `yaml:"log_response_body"`
+	ExcludedPaths   []string      `yaml:"excluded_paths"`
+	CleanupInterval time.Duration `yaml:"cleanup_interval"`
 }
 
 // SandboxConfig holds sandbox execution configuration.
 type SandboxConfig struct {
-	Enabled        bool          `mapstructure:"enabled"`
-	DefaultTimeout time.Duration `mapstructure:"default_timeout"`
-	MaxTimeout     time.Duration `mapstructure:"max_timeout"`
-	MemoryLimit    string        `mapstructure:"memory_limit"`
-	CPULimit       float64       `mapstructure:"cpu_limit"`
-	ProcessLimit   int           `mapstructure:"process_limit"`
-	NetworkEnabled bool          `mapstructure:"network_enabled"`
+	Enabled        bool          `yaml:"enabled"`
+	DefaultTimeout time.Duration `yaml:"default_timeout"`
+	MaxTimeout     time.Duration `yaml:"max_timeout"`
+	MemoryLimit    string        `yaml:"memory_limit"`
+	CPULimit       float64       `yaml:"cpu_limit"`
+	ProcessLimit   int           `yaml:"process_limit"`
+	NetworkEnabled bool          `yaml:"network_enabled"`
 }
 
 // ResourcesConfig holds resource limit configuration.
 type ResourcesConfig struct {
-	MaxMemoryMB   int64  `mapstructure:"max_memory_mb"`
-	MaxCPUPercent int    `mapstructure:"max_cpu_percent"`
-	MaxOpenFiles  uint64 `mapstructure:"max_open_files"`
-	MaxGoroutines int    `mapstructure:"max_goroutines"`
-	GCPercent     int    `mapstructure:"gc_percent"`
+	MaxMemoryMB   int64  `yaml:"max_memory_mb"`
+	MaxCPUPercent int    `yaml:"max_cpu_percent"`
+	MaxOpenFiles  uint64 `yaml:"max_open_files"`
+	MaxGoroutines int    `yaml:"max_goroutines"`
+	GCPercent     int    `yaml:"gc_percent"`
 }
 
 // CgroupConfig holds cgroup v2 configuration.
 type CgroupConfig struct {
-	Enabled    bool              `mapstructure:"enabled"`
-	CgroupRoot string            `mapstructure:"cgroup_root"`
-	CgroupName string            `mapstructure:"cgroup_name"`
-	IO         CgroupIOConfig    `mapstructure:"io"`
-	Memory     CgroupMemConfig   `mapstructure:"memory"`
-	CPU        CgroupCPUConfig   `mapstructure:"cpu"`
+	Enabled    bool              `yaml:"enabled"`
+	CgroupRoot string            `yaml:"cgroup_root"`
+	CgroupName string            `yaml:"cgroup_name"`
+	IO         CgroupIOConfig    `yaml:"io"`
+	Memory     CgroupMemConfig   `yaml:"memory"`
+	CPU        CgroupCPUConfig   `yaml:"cpu"`
 }
 
 // CgroupIOConfig holds IO bandwidth limit configuration.
 type CgroupIOConfig struct {
-	Enabled   bool     `mapstructure:"enabled"`
-	ReadBPS   uint64   `mapstructure:"read_bps"`
-	WriteBPS  uint64   `mapstructure:"write_bps"`
-	ReadIOPS  uint64   `mapstructure:"read_iops"`
-	WriteIOPS uint64   `mapstructure:"write_iops"`
-	Devices   []string `mapstructure:"devices"`
+	Enabled   bool     `yaml:"enabled"`
+	ReadBPS   uint64   `yaml:"read_bps"`
+	WriteBPS  uint64   `yaml:"write_bps"`
+	ReadIOPS  uint64   `yaml:"read_iops"`
+	WriteIOPS uint64   `yaml:"write_iops"`
+	Devices   []string `yaml:"devices"`
 }
 
 // CgroupMemConfig holds cgroup memory limit configuration.
 type CgroupMemConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	MaxBytes     uint64 `mapstructure:"max_bytes"`
-	HighBytes    uint64 `mapstructure:"high_bytes"`
-	SwapMaxBytes uint64 `mapstructure:"swap_max_bytes"`
+	Enabled      bool   `yaml:"enabled"`
+	MaxBytes     uint64 `yaml:"max_bytes"`
+	HighBytes    uint64 `yaml:"high_bytes"`
+	SwapMaxBytes uint64 `yaml:"swap_max_bytes"`
 }
 
 // CgroupCPUConfig holds cgroup CPU limit configuration.
 type CgroupCPUConfig struct {
-	Enabled    bool `mapstructure:"enabled"`
-	MaxPercent int  `mapstructure:"max_percent"`
-	Weight     int  `mapstructure:"weight"`
+	Enabled    bool `yaml:"enabled"`
+	MaxPercent int  `yaml:"max_percent"`
+	Weight     int  `yaml:"weight"`
 }
 
 // UpdateConfig holds OTA update configuration.
 type UpdateConfig struct {
-	Enabled        bool          `mapstructure:"enabled"`
-	CheckInterval  time.Duration `mapstructure:"check_interval"`
-	AutoDownload   bool          `mapstructure:"auto_download"`
-	AutoApply      bool          `mapstructure:"auto_apply"`
-	ReleaseChannel string        `mapstructure:"release_channel"`
-	BackupCount    int           `mapstructure:"backup_count"`
-	StoragePath    string        `mapstructure:"storage_path"`
+	Enabled        bool          `yaml:"enabled"`
+	CheckInterval  time.Duration `yaml:"check_interval"`
+	AutoDownload   bool          `yaml:"auto_download"`
+	AutoApply      bool          `yaml:"auto_apply"`
+	ReleaseChannel string        `yaml:"release_channel"`
+	BackupCount    int           `yaml:"backup_count"`
+	StoragePath    string        `yaml:"storage_path"`
 }
 
 // HeartbeatConfig holds heartbeat agent polling configuration.
 type HeartbeatConfig struct {
-	Enabled         bool                    `mapstructure:"enabled"`
-	Interval        time.Duration           `mapstructure:"interval"`
-	Prompt          string                  `mapstructure:"prompt"`
-	AckMaxChars     int                     `mapstructure:"ack_max_chars"`
-	WorkspaceDir    string                  `mapstructure:"workspace_dir"`
-	LLMProvider     string                  `mapstructure:"llm_provider"`
-	LLMModel        string                  `mapstructure:"llm_model"`
-	ActiveHours     *HeartbeatActiveHours   `mapstructure:"active_hours"`
-	Visibility      HeartbeatVisibility     `mapstructure:"visibility"`
-	DeliveryChannel string                  `mapstructure:"delivery_channel"`
-	DeliveryChatID  string                  `mapstructure:"delivery_chat_id"`
+	Enabled         bool                    `yaml:"enabled"`
+	Interval        time.Duration           `yaml:"interval"`
+	Prompt          string                  `yaml:"prompt"`
+	AckMaxChars     int                     `yaml:"ack_max_chars"`
+	WorkspaceDir    string                  `yaml:"workspace_dir"`
+	LLMProvider     string                  `yaml:"llm_provider"`
+	LLMModel        string                  `yaml:"llm_model"`
+	ActiveHours     *HeartbeatActiveHours   `yaml:"active_hours"`
+	Visibility      HeartbeatVisibility     `yaml:"visibility"`
+	DeliveryChannel string                  `yaml:"delivery_channel"`
+	DeliveryChatID  string                  `yaml:"delivery_chat_id"`
 }
 
 // HeartbeatActiveHours defines the time window when heartbeat is allowed to run.
 type HeartbeatActiveHours struct {
-	Start    string `mapstructure:"start"`
-	End      string `mapstructure:"end"`
-	Timezone string `mapstructure:"timezone"`
+	Start    string `yaml:"start"`
+	End      string `yaml:"end"`
+	Timezone string `yaml:"timezone"`
 }
 
 // HeartbeatVisibility controls what heartbeat results are delivered.
 type HeartbeatVisibility struct {
-	ShowOk       bool `mapstructure:"show_ok"`
-	ShowAlerts   bool `mapstructure:"show_alerts"`
-	UseIndicator bool `mapstructure:"use_indicator"`
+	ShowOk       bool `yaml:"show_ok"`
+	ShowAlerts   bool `yaml:"show_alerts"`
+	UseIndicator bool `yaml:"use_indicator"`
 }
 
 type ServerConfig struct {
-	Host             string        `mapstructure:"host"`
-	Port             int           `mapstructure:"port"`
-	PortAutoFallback bool          `mapstructure:"port_auto_fallback"` // Auto fallback to random port if configured port is in use
-	ReadTimeout      time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout     time.Duration `mapstructure:"write_timeout"`
-	IdleTimeout      time.Duration `mapstructure:"idle_timeout"`
-	TLS              TLSConfig     `mapstructure:"tls"`
+	Host             string        `yaml:"host"`
+	Port             int           `yaml:"port"`
+	PortAutoFallback bool          `yaml:"port_auto_fallback"` // Auto fallback to random port if configured port is in use
+	ReadTimeout      time.Duration `yaml:"read_timeout"`
+	WriteTimeout     time.Duration `yaml:"write_timeout"`
+	IdleTimeout      time.Duration `yaml:"idle_timeout"`
+	TLS              TLSConfig     `yaml:"tls"`
 }
 
 // TLSConfig holds TLS/HTTPS configuration.
 type TLSConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	Port        int    `mapstructure:"port"`         // HTTPS port, default 443
-	CertFile    string `mapstructure:"cert_file"`    // Path to certificate file
-	KeyFile     string `mapstructure:"key_file"`     // Path to private key file
-	AutoCert    bool   `mapstructure:"auto_cert"`    // Enable automatic certificate via ACME
-	ACMEEmail   string `mapstructure:"acme_email"`   // Email for ACME registration
-	ACMEDomains string `mapstructure:"acme_domains"` // Comma-separated domains for ACME
-	ACMEProvider string `mapstructure:"acme_provider"` // letsencrypt, zerossl, or custom
-	ACMEDir     string `mapstructure:"acme_dir"`     // Directory to store ACME certificates
-	SelfSigned  bool   `mapstructure:"self_signed"`  // Generate self-signed certificate
+	Enabled     bool   `yaml:"enabled"`
+	Port        int    `yaml:"port"`         // HTTPS port, default 443
+	CertFile    string `yaml:"cert_file"`    // Path to certificate file
+	KeyFile     string `yaml:"key_file"`     // Path to private key file
+	AutoCert    bool   `yaml:"auto_cert"`    // Enable automatic certificate via ACME
+	ACMEEmail   string `yaml:"acme_email"`   // Email for ACME registration
+	ACMEDomains string `yaml:"acme_domains"` // Comma-separated domains for ACME
+	ACMEProvider string `yaml:"acme_provider"` // letsencrypt, zerossl, or custom
+	ACMEDir     string `yaml:"acme_dir"`     // Directory to store ACME certificates
+	SelfSigned  bool   `yaml:"self_signed"`  // Generate self-signed certificate
 }
 
 type LogConfig struct {
-	Level  string `mapstructure:"level"`
-	Format string `mapstructure:"format"` // json or console
-	Output string `mapstructure:"output"` // stdout, stderr, or file path
+	Level  string `yaml:"level"`
+	Format string `yaml:"format"` // json or console
+	Output string `yaml:"output"` // stdout, stderr, or file path
 }
 
 type WorkerConfig struct {
-	PoolSize    int `mapstructure:"pool_size"`
-	MaxQueueLen int `mapstructure:"max_queue_len"`
+	PoolSize    int `yaml:"pool_size"`
+	MaxQueueLen int `yaml:"max_queue_len"`
 }
 
 // PerformanceConfig holds performance optimization configuration.
 type PerformanceConfig struct {
-	Database    DatabasePerfConfig    `mapstructure:"database"`
-	Memory      MemoryPerfConfig      `mapstructure:"memory"`
-	Concurrency ConcurrencyPerfConfig `mapstructure:"concurrency"`
-	Network     NetworkPerfConfig     `mapstructure:"network"`
-	Cache       CachePerfConfig       `mapstructure:"cache"`
-	Profiling   ProfilingPerfConfig   `mapstructure:"profiling"`
+	Database    DatabasePerfConfig    `yaml:"database"`
+	Memory      MemoryPerfConfig      `yaml:"memory"`
+	Concurrency ConcurrencyPerfConfig `yaml:"concurrency"`
+	Network     NetworkPerfConfig     `yaml:"network"`
+	Cache       CachePerfConfig       `yaml:"cache"`
+	Profiling   ProfilingPerfConfig   `yaml:"profiling"`
 }
 
 // DatabasePerfConfig holds database performance configuration.
 type DatabasePerfConfig struct {
-	PoolSize            int           `mapstructure:"pool_size"`
-	MaxIdleConns        int           `mapstructure:"max_idle_conns"`
-	ConnMaxLifetime     time.Duration `mapstructure:"conn_max_lifetime"`
-	WALMode             bool          `mapstructure:"wal_mode"`
-	CacheSize           int           `mapstructure:"cache_size"`
-	PageSize            int           `mapstructure:"page_size"`
-	CheckpointInterval  time.Duration `mapstructure:"checkpoint_interval"`
-	BatchSize           int           `mapstructure:"batch_size"`
-	SlowQueryThreshold  time.Duration `mapstructure:"slow_query_threshold"`
-	EnableQueryCache    bool          `mapstructure:"enable_query_cache"`
+	PoolSize            int           `yaml:"pool_size"`
+	MaxIdleConns        int           `yaml:"max_idle_conns"`
+	ConnMaxLifetime     time.Duration `yaml:"conn_max_lifetime"`
+	WALMode             bool          `yaml:"wal_mode"`
+	CacheSize           int           `yaml:"cache_size"`
+	PageSize            int           `yaml:"page_size"`
+	CheckpointInterval  time.Duration `yaml:"checkpoint_interval"`
+	BatchSize           int           `yaml:"batch_size"`
+	SlowQueryThreshold  time.Duration `yaml:"slow_query_threshold"`
+	EnableQueryCache    bool          `yaml:"enable_query_cache"`
 }
 
 // MemoryPerfConfig holds memory performance configuration.
 type MemoryPerfConfig struct {
-	GOGC           int    `mapstructure:"gogc"`
-	GOMemLimit     string `mapstructure:"gomemlimit"`
-	BufferPoolSize int    `mapstructure:"buffer_pool_size"`
-	ObjectPoolSize int    `mapstructure:"object_pool_size"`
+	GOGC           int    `yaml:"gogc"`
+	GOMemLimit     string `yaml:"gomemlimit"`
+	BufferPoolSize int    `yaml:"buffer_pool_size"`
+	ObjectPoolSize int    `yaml:"object_pool_size"`
 }
 
 // ConcurrencyPerfConfig holds concurrency performance configuration.
 type ConcurrencyPerfConfig struct {
-	WorkerPoolSize    int `mapstructure:"worker_pool_size"`
-	MaxGoroutines     int `mapstructure:"max_goroutines"`
-	ChannelBufferSize int `mapstructure:"channel_buffer_size"`
+	WorkerPoolSize    int `yaml:"worker_pool_size"`
+	MaxGoroutines     int `yaml:"max_goroutines"`
+	ChannelBufferSize int `yaml:"channel_buffer_size"`
 }
 
 // NetworkPerfConfig holds network performance configuration.
 type NetworkPerfConfig struct {
-	HTTP2Enabled       bool          `mapstructure:"http2_enabled"`
-	KeepAliveTimeout   time.Duration `mapstructure:"keep_alive_timeout"`
-	CompressionEnabled bool          `mapstructure:"compression_enabled"`
-	CompressionLevel   int           `mapstructure:"compression_level"`
-	RequestTimeout     time.Duration `mapstructure:"request_timeout"`
-	RetryMaxAttempts   int           `mapstructure:"retry_max_attempts"`
-	RetryBackoffBase   time.Duration `mapstructure:"retry_backoff_base"`
+	HTTP2Enabled       bool          `yaml:"http2_enabled"`
+	KeepAliveTimeout   time.Duration `yaml:"keep_alive_timeout"`
+	CompressionEnabled bool          `yaml:"compression_enabled"`
+	CompressionLevel   int           `yaml:"compression_level"`
+	RequestTimeout     time.Duration `yaml:"request_timeout"`
+	RetryMaxAttempts   int           `yaml:"retry_max_attempts"`
+	RetryBackoffBase   time.Duration `yaml:"retry_backoff_base"`
 }
 
 // CachePerfConfig holds cache performance configuration.
 type CachePerfConfig struct {
-	L1Enabled      bool          `mapstructure:"l1_enabled"`
-	L1Size         int           `mapstructure:"l1_size"`
-	L1TTL          time.Duration `mapstructure:"l1_ttl"`
-	L2Enabled      bool          `mapstructure:"l2_enabled"`
-	L2Path         string        `mapstructure:"l2_path"`
-	L2Size         string        `mapstructure:"l2_size"`
-	L2TTL          time.Duration `mapstructure:"l2_ttl"`
-	EvictionPolicy string        `mapstructure:"eviction_policy"`
+	L1Enabled      bool          `yaml:"l1_enabled"`
+	L1Size         int           `yaml:"l1_size"`
+	L1TTL          time.Duration `yaml:"l1_ttl"`
+	L2Enabled      bool          `yaml:"l2_enabled"`
+	L2Path         string        `yaml:"l2_path"`
+	L2Size         string        `yaml:"l2_size"`
+	L2TTL          time.Duration `yaml:"l2_ttl"`
+	EvictionPolicy string        `yaml:"eviction_policy"`
 }
 
 // ProfilingPerfConfig holds profiling configuration.
 type ProfilingPerfConfig struct {
-	PprofEnabled     bool   `mapstructure:"pprof_enabled"`
-	PprofPath        string `mapstructure:"pprof_path"`
-	MetricsEnabled   bool   `mapstructure:"metrics_enabled"`
-	BenchmarkEnabled bool   `mapstructure:"benchmark_enabled"`
+	PprofEnabled     bool   `yaml:"pprof_enabled"`
+	PprofPath        string `yaml:"pprof_path"`
+	MetricsEnabled   bool   `yaml:"metrics_enabled"`
+	BenchmarkEnabled bool   `yaml:"benchmark_enabled"`
 }
 
 func Load(configPath string) (*Config, error) {
-	v := viper.New()
+	cfg := defaults()
 
-	// Set defaults
-	setDefaults(v)
-
-	// Config file
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-	} else {
-		v.SetConfigName("config")
-		v.SetConfigType("yaml")
-		// Search order: current dir -> ./config -> /etc/zimaos-blue -> $HOME/.zimaos-blue
-		v.AddConfigPath(".")
-		v.AddConfigPath("./config")
-		v.AddConfigPath("/etc/zimaos-blue")
-		// Add home directory as fallback
-		if home, err := os.UserHomeDir(); err == nil {
-			v.AddConfigPath(filepath.Join(home, ".zimaos-blue"))
-		}
+	// Resolve config file path
+	path := configPath
+	if path == "" {
+		path = findConfigFile()
 	}
 
-	// Environment variables
-	v.SetEnvPrefix("ECHO")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	// Read config file (ignore if not found)
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) && configPath == "" {
+				// Auto-discovered path doesn't exist — use defaults
+				return &cfg, nil
+			}
 			return nil, err
 		}
-	}
-
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, err
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return nil, err
+		}
 	}
 
 	return &cfg, nil
 }
 
-func setDefaults(v *viper.Viper) {
-	// Server defaults
-	v.SetDefault("server.host", "0.0.0.0")
-	v.SetDefault("server.port", 23456)
-	v.SetDefault("server.port_auto_fallback", true)
-	v.SetDefault("server.read_timeout", "30s")
-	v.SetDefault("server.write_timeout", "30s")
-	v.SetDefault("server.idle_timeout", "120s")
+// findConfigFile searches standard locations for config.yaml.
+func findConfigFile() string {
+	candidates := []string{
+		"config.yaml",
+		"config.yml",
+		"config/config.yaml",
+		"config/config.yml",
+		"/etc/zimaos-blue/config.yaml",
+		"/etc/zimaos-blue/config.yml",
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(home, ".zimaos-blue", "config.yaml"),
+			filepath.Join(home, ".zimaos-blue", "config.yml"),
+		)
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
 
-	// Log defaults
-	v.SetDefault("log.level", "info")
-	v.SetDefault("log.format", "console")
-	v.SetDefault("log.output", "stdout")
+func defaults() Config {
+	return Config{
+		Server: ServerConfig{
+			Host: "0.0.0.0", Port: 23456, PortAutoFallback: true,
+			ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second,
+		},
+		Log:    LogConfig{Level: "info", Format: "console", Output: "stdout"},
+		Worker: WorkerConfig{PoolSize: 10, MaxQueueLen: 100},
+		Resources: ResourcesConfig{
+			MaxMemoryMB: 512, MaxCPUPercent: 50, MaxOpenFiles: 65536, MaxGoroutines: 10000, GCPercent: 100,
+		},
+		Cgroup: CgroupConfig{
+			CgroupRoot: "/sys/fs/cgroup", CgroupName: "zimaos-blue",
+			CPU: CgroupCPUConfig{Weight: 100},
+		},
 
-	// Worker defaults
-	v.SetDefault("worker.pool_size", 10)
-	v.SetDefault("worker.max_queue_len", 100)
+		Channels: channel.Config{DefaultTimeoutSeconds: 30, MaxMessageLength: 4096},
+		Performance: PerformanceConfig{
+			Database: DatabasePerfConfig{
+				PoolSize: 10, MaxIdleConns: 5, ConnMaxLifetime: time.Hour, WALMode: true,
+				CacheSize: 2000, PageSize: 4096, CheckpointInterval: 5 * time.Minute,
+				BatchSize: 1000, SlowQueryThreshold: 100 * time.Millisecond, EnableQueryCache: true,
+			},
+			Memory:      MemoryPerfConfig{GOGC: 100, GOMemLimit: "512MB", BufferPoolSize: 1000, ObjectPoolSize: 500},
+			Concurrency: ConcurrencyPerfConfig{WorkerPoolSize: 100, MaxGoroutines: 10000, ChannelBufferSize: 100},
+			Network: NetworkPerfConfig{
+				HTTP2Enabled: true, KeepAliveTimeout: 30 * time.Second, CompressionEnabled: true,
+				CompressionLevel: 6, RequestTimeout: 30 * time.Second, RetryMaxAttempts: 3, RetryBackoffBase: 100 * time.Millisecond,
+			},
+			Cache: CachePerfConfig{
+				L1Enabled: true, L1Size: 1000, L1TTL: 5 * time.Minute,
+				L2Enabled: true, L2Path: "./cache", L2Size: "100MB", L2TTL: time.Hour, EvictionPolicy: "lru",
+			},
+			Profiling: ProfilingPerfConfig{PprofEnabled: true, PprofPath: "/debug/pprof", MetricsEnabled: true},
+		},
 
-	// Resources defaults
-	v.SetDefault("resources.max_memory_mb", 512)
-	v.SetDefault("resources.max_cpu_percent", 50)
-	v.SetDefault("resources.max_open_files", 65536)
-	v.SetDefault("resources.max_goroutines", 10000)
-	v.SetDefault("resources.gc_percent", 100)
+		Security: SecurityConfig{
+			JWT: JWTConfig{Secret: "change-me-in-production-use-a-strong-secret-key", Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
+			OIDC: OIDCConfig{Enabled: true, Issuer: "http://localhost:23456", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
+			Users:    UsersConfig{DefaultRole: "user"},
+			Password: PasswordConfig{MinLength: 12, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
+			MFA:      MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
+			Audit:    AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
+			Sandbox:  SandboxConfig{Enabled: true, DefaultTimeout: 30 * time.Second, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},
+			Encryption: EncryptionConfig{KeyPath: "./keys/encryption.key", Algorithm: "aes-256-gcm"},
+		},
 
-	// Cgroup defaults (disabled by default)
-	v.SetDefault("cgroup.enabled", false)
-	v.SetDefault("cgroup.cgroup_root", "/sys/fs/cgroup")
-	v.SetDefault("cgroup.cgroup_name", "zimaos-blue")
-	v.SetDefault("cgroup.io.enabled", false)
-	v.SetDefault("cgroup.io.read_bps", 0)
-	v.SetDefault("cgroup.io.write_bps", 0)
-	v.SetDefault("cgroup.io.read_iops", 0)
-	v.SetDefault("cgroup.io.write_iops", 0)
-	v.SetDefault("cgroup.memory.enabled", false)
-	v.SetDefault("cgroup.cpu.enabled", false)
-	v.SetDefault("cgroup.cpu.weight", 100)
+		LLM: LLMConfig{
+			HealthCheck: LLMHealthCheckConfig{Enabled: true, Interval: 30 * time.Second, Timeout: 5 * time.Second, UnhealthyThreshold: 3, RecoveryThreshold: 2},
+			Metrics:     LLMMetricsConfig{Enabled: true, IncludeLatencyHistogram: true, IncludeTokenCounts: true, IncludeErrorBreakdown: true},
+		},
+		Session: SessionConfig{
+			MaxTokens: 8000, MaxMessages: 100, IdleTimeout: 30 * time.Minute,
+			Compaction:  SessionCompactionConfig{Enabled: true, Threshold: 0.8, Strategy: "summarize", SummaryMaxTokens: 500, PreserveRecent: 5, AutoCompact: true, AutoCompactInterval: 5 * time.Minute},
+			Persistence: SessionPersistenceConfig{Enabled: true, Path: "./data/sessions.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
+			Isolation:   SessionIsolationConfig{ByAgent: true, ByChannel: true, ByPeer: true},
+			Cleanup:     SessionCleanupConfig{Enabled: true, ArchiveAfter: 168 * time.Hour, DeleteAfter: 720 * time.Hour, CleanupInterval: time.Hour},
+		},
+		Embedding: EmbeddingConfig{
+			Provider: "openai", Model: "text-embedding-3-small", Dimensions: 1536, BatchSize: 100, Timeout: 30 * time.Second,
+			Cache:  EmbeddingCacheConfig{Enabled: true, MaxEntries: 10000, TTL: 24 * time.Hour},
+			OpenAI: OpenAIEmbeddingConfig{BaseURL: "https://api.openai.com"},
+			Ollama: OllamaEmbeddingConfig{BaseURL: "http://localhost:11434"},
+		},
+		Memory: MemoryConfig{
+			VectorStore: VectorStoreConfig{Enabled: true, DBPath: "./data/memory.db", Dimensions: 1536},
+			Search:      MemorySearchConfig{VectorWeight: 0.7, KeywordWeight: 0.3, MinScore: 0.5, MaxResults: 10},
+		},
 
-	// Channel defaults (disabled by default)
-	v.SetDefault("channels.enabled", false)
-	v.SetDefault("channels.default_timeout_seconds", 30)
-	v.SetDefault("channels.max_message_length", 4096)
-	v.SetDefault("channels.telegram.enabled", false)
-	v.SetDefault("channels.discord.enabled", false)
-	v.SetDefault("channels.slack.enabled", false)
-	v.SetDefault("channels.wechat_work.enabled", false)
-	v.SetDefault("channels.feishu.enabled", false)
-	v.SetDefault("channels.matrix.enabled", false)
+		Companion: CompanionConfig{
+			Enabled: true,
+			Storage:   CompanionStorageConfig{BasePath: "./data/companion", Format: "jsonl"},
+			WebSocket: CompanionWebSocketConfig{PingInterval: 30 * time.Second, WriteTimeout: 10 * time.Second, ReadBufferSize: 1024, WriteBufferSize: 1024},
+			Retention: CompanionRetentionConfig{EventsDays: 7, SessionsDays: 30, AlertsDays: 90},
+			Alerts:    CompanionAlertConfig{Enabled: true, ThreatThreshold: "medium"},
+			Security:  CompanionSecurityConfig{PromptGuardIntegration: true, AuditLogIntegration: true, SandboxMonitor: true},
+			Performance: CompanionPerformanceConfig{MaxConcurrentSessions: 1000, EventBufferSize: 10000, BatchWriteInterval: time.Second},
+		},
+		ClaudeCode: ClaudeCodeConfig{
+			Command: "claude", WorkspaceDir: ".", DefaultModel: "sonnet", Timeout: 5 * time.Minute, SessionTTL: 24 * time.Hour,
+			Backend: ClaudeCodeBackendConfig{
+				Args: []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"},
+				ResumeArgs: []string{"-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}"},
+				Output: "json", Input: "arg", MaxPromptArgChars: 100000, ModelArg: "--model",
+				ModelAliases: map[string]string{"opus": "opus", "sonnet": "sonnet", "haiku": "haiku"},
+				SessionArg: "--session-id", SessionMode: "always",
+				SystemPromptArg: "--append-system-prompt", SystemPromptMode: "append", SystemPromptWhen: "first",
+				ClearEnv: []string{"ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_OLD"}, Serialize: true,
+			},
+		},
 
-	// Performance defaults
-	// Database
-	v.SetDefault("performance.database.pool_size", 10)
-	v.SetDefault("performance.database.max_idle_conns", 5)
-	v.SetDefault("performance.database.conn_max_lifetime", "1h")
-	v.SetDefault("performance.database.wal_mode", true)
-	v.SetDefault("performance.database.cache_size", 2000)
-	v.SetDefault("performance.database.page_size", 4096)
-	v.SetDefault("performance.database.checkpoint_interval", "5m")
-	v.SetDefault("performance.database.batch_size", 1000)
-	v.SetDefault("performance.database.slow_query_threshold", "100ms")
-	v.SetDefault("performance.database.enable_query_cache", true)
+		ClaudeCodeCLI: *DefaultClaudeCodeCLIConfig(),
+		FirstRun:      *DefaultFirstRunConfig(),
+		CCSwitch:      *DefaultCCSwitchConfig(),
+		Statistics:    *DefaultStatisticsConfig(),
+		ToolCalling:   *DefaultToolCallingConfig(),
 
-	// Memory
-	v.SetDefault("performance.memory.gogc", 100)
-	v.SetDefault("performance.memory.gomemlimit", "512MB")
-	v.SetDefault("performance.memory.buffer_pool_size", 1000)
-	v.SetDefault("performance.memory.object_pool_size", 500)
-
-	// Concurrency
-	v.SetDefault("performance.concurrency.worker_pool_size", 100)
-	v.SetDefault("performance.concurrency.max_goroutines", 10000)
-	v.SetDefault("performance.concurrency.channel_buffer_size", 100)
-
-	// Network
-	v.SetDefault("performance.network.http2_enabled", true)
-	v.SetDefault("performance.network.keep_alive_timeout", "30s")
-	v.SetDefault("performance.network.compression_enabled", true)
-	v.SetDefault("performance.network.compression_level", 6)
-	v.SetDefault("performance.network.request_timeout", "30s")
-	v.SetDefault("performance.network.retry_max_attempts", 3)
-	v.SetDefault("performance.network.retry_backoff_base", "100ms")
-
-	// Cache
-	v.SetDefault("performance.cache.l1_enabled", true)
-	v.SetDefault("performance.cache.l1_size", 1000)
-	v.SetDefault("performance.cache.l1_ttl", "5m")
-	v.SetDefault("performance.cache.l2_enabled", true)
-	v.SetDefault("performance.cache.l2_path", "./cache")
-	v.SetDefault("performance.cache.l2_size", "100MB")
-	v.SetDefault("performance.cache.l2_ttl", "1h")
-	v.SetDefault("performance.cache.eviction_policy", "lru")
-
-	// Profiling
-	v.SetDefault("performance.profiling.pprof_enabled", true)
-	v.SetDefault("performance.profiling.pprof_path", "/debug/pprof")
-	v.SetDefault("performance.profiling.metrics_enabled", true)
-	v.SetDefault("performance.profiling.benchmark_enabled", false)
-
-	// Security defaults (v0.7)
-	// JWT
-	v.SetDefault("security.jwt.secret", "change-me-in-production-use-a-strong-secret-key")
-	v.SetDefault("security.jwt.expiration", "24h")
-	v.SetDefault("security.jwt.refresh_expiration", "720h")
-	v.SetDefault("security.jwt.issuer", "zimaos-blue")
-
-	// OIDC
-	v.SetDefault("security.oidc.enabled", true)
-	v.SetDefault("security.oidc.issuer", "http://localhost:23456")
-	v.SetDefault("security.oidc.signing_key_path", "./keys/oidc.key")
-	v.SetDefault("security.oidc.signing_key_rotation_days", 90)
-	v.SetDefault("security.oidc.access_token_ttl", "1h")
-	v.SetDefault("security.oidc.refresh_token_ttl", "720h")
-	v.SetDefault("security.oidc.authorization_code_ttl", "10m")
-
-	// Users
-	v.SetDefault("security.users.allow_registration", false)
-	v.SetDefault("security.users.require_email_verification", false)
-	v.SetDefault("security.users.default_role", "user")
-
-	// Password
-	v.SetDefault("security.password.min_length", 12)
-	v.SetDefault("security.password.require_uppercase", true)
-	v.SetDefault("security.password.require_lowercase", true)
-	v.SetDefault("security.password.require_number", true)
-	v.SetDefault("security.password.require_special", true)
-	v.SetDefault("security.password.history_count", 5)
-	v.SetDefault("security.password.expiration_days", 0)
-	v.SetDefault("security.password.lockout_threshold", 5)
-	v.SetDefault("security.password.lockout_duration", "15m")
-
-	// MFA
-	v.SetDefault("security.mfa.enabled", true)
-	v.SetDefault("security.mfa.required", false)
-	v.SetDefault("security.mfa.issuer", "ZimaOS-Blue")
-	v.SetDefault("security.mfa.recovery_codes_count", 8)
-
-	// Audit
-	v.SetDefault("security.audit.enabled", true)
-	v.SetDefault("security.audit.retention_days", 90)
-	v.SetDefault("security.audit.log_request_body", false)
-	v.SetDefault("security.audit.log_response_body", false)
-	v.SetDefault("security.audit.excluded_paths", []string{"/health", "/metrics"})
-	v.SetDefault("security.audit.cleanup_interval", "24h")
-
-	// Sandbox
-	v.SetDefault("security.sandbox.enabled", true)
-	v.SetDefault("security.sandbox.default_timeout", "30s")
-	v.SetDefault("security.sandbox.max_timeout", "5m")
-	v.SetDefault("security.sandbox.memory_limit", "256MB")
-	v.SetDefault("security.sandbox.cpu_limit", 1.0)
-	v.SetDefault("security.sandbox.process_limit", 10)
-	v.SetDefault("security.sandbox.network_enabled", false)
-
-	// Encryption
-	v.SetDefault("security.encryption.enabled", false)
-	v.SetDefault("security.encryption.key_path", "./keys/encryption.key")
-	v.SetDefault("security.encryption.passphrase", "")
-	v.SetDefault("security.encryption.algorithm", "aes-256-gcm")
-
-	// LLM defaults
-	v.SetDefault("llm.health_check.enabled", true)
-	v.SetDefault("llm.health_check.interval", "30s")
-	v.SetDefault("llm.health_check.timeout", "5s")
-	v.SetDefault("llm.health_check.unhealthy_threshold", 3)
-	v.SetDefault("llm.health_check.recovery_threshold", 2)
-	v.SetDefault("llm.metrics.enabled", true)
-	v.SetDefault("llm.metrics.include_latency_histogram", true)
-	v.SetDefault("llm.metrics.include_token_counts", true)
-	v.SetDefault("llm.metrics.include_error_breakdown", true)
-
-	// Session defaults
-	v.SetDefault("session.max_tokens", 8000)
-	v.SetDefault("session.max_messages", 100)
-	v.SetDefault("session.idle_timeout", "30m")
-	v.SetDefault("session.compaction.enabled", true)
-	v.SetDefault("session.compaction.threshold", 0.8)
-	v.SetDefault("session.compaction.strategy", "summarize")
-	v.SetDefault("session.compaction.summary_max_tokens", 500)
-	v.SetDefault("session.compaction.preserve_recent", 5)
-	v.SetDefault("session.compaction.auto_compact", true)
-	v.SetDefault("session.compaction.auto_compact_interval", "5m")
-	v.SetDefault("session.persistence.enabled", true)
-	v.SetDefault("session.persistence.path", "./data/sessions.db")
-	v.SetDefault("session.persistence.interval", "1m")
-	v.SetDefault("session.persistence.on_message", true)
-	v.SetDefault("session.persistence.on_compact", true)
-	v.SetDefault("session.isolation.by_agent", true)
-	v.SetDefault("session.isolation.by_channel", true)
-	v.SetDefault("session.isolation.by_peer", true)
-	v.SetDefault("session.isolation.by_thread", false)
-	v.SetDefault("session.cleanup.enabled", true)
-	v.SetDefault("session.cleanup.archive_after", "168h")
-	v.SetDefault("session.cleanup.delete_after", "720h")
-	v.SetDefault("session.cleanup.cleanup_interval", "1h")
-
-	// Embedding defaults
-	v.SetDefault("embedding.provider", "openai")
-	v.SetDefault("embedding.model", "text-embedding-3-small")
-	v.SetDefault("embedding.dimensions", 1536)
-	v.SetDefault("embedding.batch_size", 100)
-	v.SetDefault("embedding.timeout", "30s")
-	v.SetDefault("embedding.cache.enabled", true)
-	v.SetDefault("embedding.cache.max_entries", 10000)
-	v.SetDefault("embedding.cache.ttl", "24h")
-	v.SetDefault("embedding.openai.base_url", "https://api.openai.com")
-	v.SetDefault("embedding.ollama.base_url", "http://localhost:11434")
-
-	// Memory defaults
-	v.SetDefault("memory.vector_store.enabled", true)
-	v.SetDefault("memory.vector_store.db_path", "./data/memory.db")
-	v.SetDefault("memory.vector_store.dimensions", 1536)
-	v.SetDefault("memory.search.vector_weight", 0.7)
-	v.SetDefault("memory.search.keyword_weight", 0.3)
-	v.SetDefault("memory.search.min_score", 0.5)
-	v.SetDefault("memory.search.max_results", 10)
-
-	// Grayscale/Feature flags defaults
-	v.SetDefault("grayscale.enabled", false)
-
-	// Companion defaults (v0.9.1)
-	v.SetDefault("companion.enabled", true)
-	v.SetDefault("companion.storage.base_path", "./data/companion")
-	v.SetDefault("companion.storage.format", "jsonl")
-	v.SetDefault("companion.websocket.ping_interval", "30s")
-	v.SetDefault("companion.websocket.write_timeout", "10s")
-	v.SetDefault("companion.websocket.read_buffer_size", 1024)
-	v.SetDefault("companion.websocket.write_buffer_size", 1024)
-	v.SetDefault("companion.retention.events_days", 7)
-	v.SetDefault("companion.retention.sessions_days", 30)
-	v.SetDefault("companion.retention.alerts_days", 90)
-	v.SetDefault("companion.alerts.enabled", true)
-	v.SetDefault("companion.alerts.threat_threshold", "medium")
-	v.SetDefault("companion.security.prompt_guard_integration", true)
-	v.SetDefault("companion.security.audit_log_integration", true)
-	v.SetDefault("companion.security.sandbox_monitor", true)
-	v.SetDefault("companion.performance.max_concurrent_sessions", 1000)
-	v.SetDefault("companion.performance.event_buffer_size", 10000)
-	v.SetDefault("companion.performance.batch_write_interval", "1s")
-
-	// Claude Code CLI defaults (v0.10) - Deprecated
-	v.SetDefault("claudecode.enabled", false)
-	v.SetDefault("claudecode.command", "claude")
-	v.SetDefault("claudecode.workspace_dir", ".")
-	v.SetDefault("claudecode.default_model", "sonnet")
-	v.SetDefault("claudecode.timeout", "5m")
-	v.SetDefault("claudecode.session_ttl", "24h")
-	v.SetDefault("claudecode.backend.args", []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"})
-	v.SetDefault("claudecode.backend.resume_args", []string{"-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}"})
-	v.SetDefault("claudecode.backend.output", "json")
-	v.SetDefault("claudecode.backend.input", "arg")
-	v.SetDefault("claudecode.backend.max_prompt_arg_chars", 100000)
-	v.SetDefault("claudecode.backend.model_arg", "--model")
-	v.SetDefault("claudecode.backend.model_aliases", map[string]string{
-		"opus":   "opus",
-		"sonnet": "sonnet",
-		"haiku":  "haiku",
-	})
-	v.SetDefault("claudecode.backend.session_arg", "--session-id")
-	v.SetDefault("claudecode.backend.session_mode", "always")
-	v.SetDefault("claudecode.backend.system_prompt_arg", "--append-system-prompt")
-	v.SetDefault("claudecode.backend.system_prompt_mode", "append")
-	v.SetDefault("claudecode.backend.system_prompt_when", "first")
-	v.SetDefault("claudecode.backend.clear_env", []string{"ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_OLD"})
-	v.SetDefault("claudecode.backend.serialize", true)
-
-	// Claude Code CLI defaults (v0.10.3) - New separated configuration
-	// Master switch - strongly recommended to keep enabled
-	v.SetDefault("claude_code_cli.enabled", true)
-	// Installation settings
-	v.SetDefault("claude_code_cli.install.path", "")
-	v.SetDefault("claude_code_cli.install.auto_update", false)
-	v.SetDefault("claude_code_cli.install.verify_checksum", true)
-	// Download settings
-	v.SetDefault("claude_code_cli.download.base_url", "https://storage.googleapis.com/anthropic-public/claude-code")
-	v.SetDefault("claude_code_cli.download.cache_dir", "")
-	// Feature toggles (only effective when enabled=true)
-	v.SetDefault("claude_code_cli.features.skills", true)
-	v.SetDefault("claude_code_cli.features.tool_calling", true)
-	v.SetDefault("claude_code_cli.features.file_operations", true)
-	v.SetDefault("claude_code_cli.features.terminal_commands", true)
-	v.SetDefault("claude_code_cli.features.mcp_integration", true)
-	v.SetDefault("claude_code_cli.features.agent_mode", true)
-	v.SetDefault("claude_code_cli.features.project_context", true)
-	// Backend settings (for advanced users)
-	v.SetDefault("claude_code_cli.backend.command", "claude")
-	v.SetDefault("claude_code_cli.backend.workspace_dir", ".")
-	v.SetDefault("claude_code_cli.backend.default_model", "sonnet")
-	v.SetDefault("claude_code_cli.backend.timeout", "5m")
-	v.SetDefault("claude_code_cli.backend.session_ttl", "24h")
-	v.SetDefault("claude_code_cli.backend.args", []string{"-p", "--output-format", "text", "--dangerously-skip-permissions"})
-	v.SetDefault("claude_code_cli.backend.resume_args", []string{"-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"})
-	v.SetDefault("claude_code_cli.backend.output", "text")
-	v.SetDefault("claude_code_cli.backend.resume_output", "text")
-	v.SetDefault("claude_code_cli.backend.input", "arg")
-	v.SetDefault("claude_code_cli.backend.max_prompt_arg_chars", 100000)
-	v.SetDefault("claude_code_cli.backend.model_arg", "--model")
-	v.SetDefault("claude_code_cli.backend.model_aliases", map[string]string{
-		"opus":   "opus",
-		"sonnet": "sonnet",
-		"haiku":  "haiku",
-	})
-	v.SetDefault("claude_code_cli.backend.session_arg", "--session-id")
-	v.SetDefault("claude_code_cli.backend.session_mode", "always")
-	v.SetDefault("claude_code_cli.backend.system_prompt_arg", "--append-system-prompt")
-	v.SetDefault("claude_code_cli.backend.system_prompt_mode", "append")
-	v.SetDefault("claude_code_cli.backend.system_prompt_when", "first")
-	v.SetDefault("claude_code_cli.backend.serialize", true)
-
-	// First-run wizard defaults (v0.10.3)
-	v.SetDefault("first_run.enabled", true)
-	v.SetDefault("first_run.show_provider_detection", true)
-	v.SetDefault("first_run.show_cli_download", true)
-	v.SetDefault("first_run.allow_skip", true)
-	v.SetDefault("first_run.recommend_cli", true)
-
-	// cc-switch integration defaults (v0.10.3)
-	v.SetDefault("cc_switch.enabled", true)
-	v.SetDefault("cc_switch.config_path", "")
-	v.SetDefault("cc_switch.sync_profiles", true)
-
-	// Statistics collection defaults (v0.10.3)
-	v.SetDefault("statistics.enabled", true)
-	v.SetDefault("statistics.opt_in_required", true)
-	v.SetDefault("statistics.storage_path", "")
-	v.SetDefault("statistics.retention_days", 90)
-
-	// Tool calling adapter defaults (v0.10.3)
-	v.SetDefault("tool_calling.auto_detect", true)
-	v.SetDefault("tool_calling.detection_timeout", "5s")
-	v.SetDefault("tool_calling.adapters.cli_proxy.enabled", true)
-	v.SetDefault("tool_calling.adapters.cli_proxy.prompt_template", "default")
-	v.SetDefault("tool_calling.adapters.cc_nexus.enabled", true)
-	v.SetDefault("tool_calling.adapters.cc_nexus.schema_mapping", "auto")
-	v.SetDefault("tool_calling.provider_overrides.ollama.tool_calling", "adapter")
-	v.SetDefault("tool_calling.provider_overrides.custom.tool_calling", "auto")
-
-	// API Proxy defaults (v0.10.5.1)
-	v.SetDefault("proxy.enabled", true)
-	v.SetDefault("proxy.port.value", 0)
-	v.SetDefault("proxy.port.range", "9000-9100")
-	v.SetDefault("proxy.port.bind_address", "127.0.0.1")
-	v.SetDefault("proxy.port.port_file", "")
-	v.SetDefault("proxy.routing.default_provider", "anthropic")
-	v.SetDefault("proxy.routing.load_balancing", "priority")
-	v.SetDefault("proxy.routing.failover.enabled", true)
-	v.SetDefault("proxy.routing.failover.max_retries", 3)
-	v.SetDefault("proxy.routing.failover.retry_delay", "1s")
-	v.SetDefault("proxy.routing.failover.circuit_breaker", true)
-	v.SetDefault("proxy.routing.failover.failure_threshold", 5)
-	v.SetDefault("proxy.routing.failover.recovery_timeout", "30s")
-	v.SetDefault("proxy.connection.max_idle_conns", 100)
-	v.SetDefault("proxy.connection.max_idle_conns_per_host", 10)
-	v.SetDefault("proxy.connection.max_conns_per_host", 100)
-	v.SetDefault("proxy.connection.idle_conn_timeout", "90s")
-	v.SetDefault("proxy.connection.keep_alive", true)
-	v.SetDefault("proxy.connection.keep_alive_interval", "30s")
-	v.SetDefault("proxy.connection.dial_timeout", "30s")
-	v.SetDefault("proxy.connection.tls_handshake_timeout", "10s")
-	v.SetDefault("proxy.connection.response_header_timeout", "60s")
-	v.SetDefault("proxy.connection.force_http2", true)
-	v.SetDefault("proxy.health_check.enabled", true)
-	v.SetDefault("proxy.health_check.interval", "30s")
-	v.SetDefault("proxy.health_check.timeout", "10s")
-	v.SetDefault("proxy.model_router.enabled", true)
-	v.SetDefault("proxy.model_router.default_family", "claude-3")
-	v.SetDefault("proxy.quota_monitor.enabled", true)
-	v.SetDefault("proxy.quota_monitor.sync_interval", "5m")
-	v.SetDefault("proxy.quota_monitor.warning_threshold", 20.0)
-	v.SetDefault("proxy.quota_monitor.critical_threshold", 5.0)
-	v.SetDefault("proxy.quota_monitor.track_tokens", true)
-	v.SetDefault("proxy.quota_monitor.track_requests", true)
-
-	// Pruner defaults (context pruning for token savings, enabled by default)
-	v.SetDefault("pruner.enabled", true)
-	v.SetDefault("pruner.backend", "local")
-	v.SetDefault("pruner.threshold", 0.5)
-	v.SetDefault("pruner.min_lines", 200)
-	v.SetDefault("pruner.timeout_ms", 5000)
-
-	// Heartbeat defaults
-	v.SetDefault("heartbeat.enabled", false)
-	v.SetDefault("heartbeat.interval", "30m")
-	v.SetDefault("heartbeat.prompt", "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.")
-	v.SetDefault("heartbeat.ack_max_chars", 300)
-	v.SetDefault("heartbeat.workspace_dir", "./data")
-	v.SetDefault("heartbeat.llm_provider", "claude")
-	v.SetDefault("heartbeat.llm_model", "claude-sonnet-4-5-20250929")
-	v.SetDefault("heartbeat.visibility.show_ok", false)
-	v.SetDefault("heartbeat.visibility.show_alerts", true)
-	v.SetDefault("heartbeat.visibility.use_indicator", true)
-
-	// OTA Update defaults
-	v.SetDefault("update.enabled", true)
-	v.SetDefault("update.check_interval", "24h")
-	v.SetDefault("update.auto_download", false)
-	v.SetDefault("update.auto_apply", false)
-	v.SetDefault("update.release_channel", "stable")
-	v.SetDefault("update.backup_count", 3)
-	v.SetDefault("update.storage_path", "./data/updates")
+		Proxy: &proxy.ProxyConfig{
+			Enabled: true,
+			Port:    proxy.PortConfig{Range: "9000-9100", BindAddress: "127.0.0.1"},
+			Routing: proxy.RouteConfig{DefaultProvider: "anthropic", LoadBalancing: "priority",
+				Failover: proxy.FailoverConfig{Enabled: true, MaxRetries: 3, RetryDelay: time.Second, CircuitBreaker: true, FailureThreshold: 5, RecoveryTimeout: 30 * time.Second}},
+			Connection: proxy.ConnectionConfig{
+				MaxIdleConns: 100, MaxIdleConnsPerHost: 10, MaxConnsPerHost: 100, IdleConnTimeout: 90 * time.Second,
+				KeepAlive: true, KeepAliveInterval: 30 * time.Second, DialTimeout: 30 * time.Second,
+				TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 60 * time.Second, ForceHTTP2: true,
+			},
+			HealthCheck:  proxy.HealthCheckConfig{Enabled: true, Interval: 30 * time.Second, Timeout: 10 * time.Second},
+			ModelRouter:  &proxy.ModelRouterConfig{Enabled: true, DefaultFamily: "claude-3"},
+			QuotaMonitor: &proxy.QuotaMonitorConfig{Enabled: true, SyncInterval: 5 * time.Minute, WarningThreshold: 20.0, CriticalThreshold: 5.0, TrackTokens: true, TrackRequests: true},
+		},
+		Pruner: &pruner.Config{Enabled: true, Backend: "local", Threshold: 0.5, MinLines: 200, TimeoutMs: 5000},
+		Heartbeat: HeartbeatConfig{
+			Interval: 30 * time.Minute, AckMaxChars: 300, WorkspaceDir: "./data", LLMProvider: "claude", LLMModel: "claude-sonnet-4-5-20250929",
+			Prompt:     "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+			Visibility: HeartbeatVisibility{ShowAlerts: true, UseIndicator: true},
+		},
+		Update: UpdateConfig{
+			Enabled: true, CheckInterval: 24 * time.Hour, ReleaseChannel: "stable", BackupCount: 3, StoragePath: "./data/updates",
+		},
+	}
 }

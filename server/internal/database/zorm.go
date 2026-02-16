@@ -18,15 +18,15 @@ type ZormDB struct {
 // ZormConfig holds zorm database configuration.
 type ZormConfig struct {
 	// DSN is the data source name
-	DSN string `mapstructure:"dsn"`
+	DSN string `yaml:"dsn"`
 	// MaxOpenConns is the maximum number of open connections
-	MaxOpenConns int `mapstructure:"max_open_conns"`
+	MaxOpenConns int `yaml:"max_open_conns"`
 	// MaxIdleConns is the maximum number of idle connections
-	MaxIdleConns int `mapstructure:"max_idle_conns"`
+	MaxIdleConns int `yaml:"max_idle_conns"`
 	// ConnMaxLifetime is the maximum lifetime of a connection
-	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
 	// ConnMaxIdleTime is the maximum idle time of a connection
-	ConnMaxIdleTime time.Duration `mapstructure:"conn_max_idle_time"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time"`
 }
 
 // DefaultZormConfig returns default zorm configuration.

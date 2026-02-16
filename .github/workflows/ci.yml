@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.24"
+  NODE_VERSION: "20"
+
+jobs:
+  web:
+    name: Web Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install & Build
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+  server:
+    name: Server Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: server/go.sum
+
+      - name: Create stub web dist
+        run: mkdir -p server/internal/web/dist && touch server/internal/web/dist/.gitkeep
+
+      - name: Build
+        working-directory: server
+        run: go build ./cmd/blue
+
+      - name: Test
+        working-directory: server
+        run: go test ./... -count=1 -timeout 5m

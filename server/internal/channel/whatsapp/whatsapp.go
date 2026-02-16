@@ -42,12 +42,12 @@ type Channel struct {
 
 // Config contains WhatsApp channel configuration.
 type Config struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	PhoneNumber    string   `mapstructure:"phone_number"`
-	SessionPath    string   `mapstructure:"session_path"`
-	AllowedNumbers []string `mapstructure:"allowed_numbers"`
-	QRTimeout      int      `mapstructure:"qr_timeout_seconds"`
-	ReconnectDelay int      `mapstructure:"reconnect_delay_seconds"`
+	Enabled        bool     `yaml:"enabled"`
+	PhoneNumber    string   `yaml:"phone_number"`
+	SessionPath    string   `yaml:"session_path"`
+	AllowedNumbers []string `yaml:"allowed_numbers"`
+	QRTimeout      int      `yaml:"qr_timeout_seconds"`
+	ReconnectDelay int      `yaml:"reconnect_delay_seconds"`
 }
 
 // DefaultConfig returns the default WhatsApp configuration.

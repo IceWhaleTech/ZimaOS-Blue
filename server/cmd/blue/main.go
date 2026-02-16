@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -52,6 +51,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
@@ -65,49 +65,26 @@ var (
 	gitCommit = "unknown"
 )
 
-// runServer is the main server entry point, called by cobra commands
-func runServer() {
-	main()
+func main() {
+	// Fast-path: CLI subcommands bypass cobra to minimize page faults and RSS.
+	// All init() functions have already run, but we avoid touching cobra's
+	// command tree, flag parsing, and the heavy code paths they pull in.
+	if len(os.Args) > 1 {
+		if cliDispatch(os.Args[1:]) {
+			return
+		}
+	}
+	Execute()
 }
 
-func main() {
-	// Tune GC for lower memory usage: collect more aggressively and set soft memory limit
-	debug.SetGCPercent(30)
-	debug.SetMemoryLimit(48 * 1024 * 1024) // 48MB soft limit
+// runServer is the main server entry point, called by cobra rootCmd
+func runServer() {
+	// Tune GC: GOGC=50 balances memory vs CPU; 128MB soft limit avoids excessive GC thrashing
+	debug.SetGCPercent(50)
+	debug.SetMemoryLimit(128 * 1024 * 1024) // 128MB soft limit
 
-	// Handle Windows service commands (install, uninstall, start, stop, status)
-	// if HandleServiceCommand(os.Args) {
-	// 	return
-	// }
-
-	// Parse flags
-	configPath := flag.String("config", "", "Path to config file")
-	showVersion := flag.Bool("v", false, "Show version information")
-	showHelp := flag.Bool("help", false, "Show help information")
-	flag.Parse()
-
-	if *showHelp {
-		fmt.Printf("ZimaOS-Blue %s - A Local-first Agent Runtime for Builders with Bolder Mind\n\n", version)
-		fmt.Println("Usage: blue [options] [command]")
-		fmt.Println("")
-		fmt.Println("Options:")
-		fmt.Println("  --config <path>  Path to config file")
-		fmt.Println("  -v               Show version information")
-		fmt.Println("  --help           Show this help message")
-		fmt.Println("")
-		// PrintServiceHelp()
-		return
-	}
-
-	if *showVersion {
-		fmt.Printf("ZimaOS-Blue %s\n", version)
-		fmt.Printf("Build time: %s\n", buildTime)
-		fmt.Printf("Git commit: %s\n", gitCommit)
-		return
-	}
-
-	// Load configuration
-	cfg, err := config.Load(*configPath)
+	// Load configuration (cfgFile is set by cobra's --config flag)
+	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
@@ -116,7 +93,7 @@ func main() {
 	// Initialize HotReloader for config changes
 	var hotReloader *config.HotReloader
 	var err2 error
-	hotReloader, err2 = config.NewHotReloader(*configPath, cfg, &config.HotReloadConfig{
+	hotReloader, err2 = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
 		Enabled:             true,
 		WatchInterval:       5 * time.Second,
 		ValidateBeforeApply: true,
@@ -971,6 +948,20 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	hbHandler.RegisterRoutes(apiProtected)
 	lm.Go(hbRunner.Run)
 	logger.Info("Heartbeat runner initialized", zap.Bool("enabled", cfg.Heartbeat.Enabled))
+
+	// OTA update checker (background, non-blocking)
+	updateCfg := &update.Config{
+		Enabled:        true,
+		StoragePath:    filepath.Join(dataDir, "updates"),
+		BackupCount:    2,
+		ReleaseChannel: "stable",
+	}
+	updateHandler := update.NewHandler(version, updateCfg)
+	otaChecker := update.NewOTAChecker(version, dataDir, "")
+	updateHandler.SetOTAChecker(otaChecker)
+	updateHandler.RegisterRoutes(apiProtected)
+	lm.Go(otaChecker.Run)
+	logger.Info("OTA update checker started")
 }
 
 // convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.

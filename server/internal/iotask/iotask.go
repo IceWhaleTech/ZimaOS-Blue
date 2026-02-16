@@ -76,16 +76,16 @@ type Progress struct {
 // Config holds IO task manager configuration.
 type Config struct {
 	// MaxConcurrent is the maximum number of concurrent IO tasks.
-	MaxConcurrent int `yaml:"max_concurrent" mapstructure:"max_concurrent"`
+	MaxConcurrent int `yaml:"max_concurrent" yaml:"max_concurrent"`
 
 	// BufferSize is the buffer size for file operations.
-	BufferSize int `yaml:"buffer_size" mapstructure:"buffer_size"`
+	BufferSize int `yaml:"buffer_size" yaml:"buffer_size"`
 
 	// RateLimitBytesPerSec limits the IO rate (0 = unlimited).
-	RateLimitBytesPerSec int64 `yaml:"rate_limit_bytes_per_sec" mapstructure:"rate_limit_bytes_per_sec"`
+	RateLimitBytesPerSec int64 `yaml:"rate_limit_bytes_per_sec" yaml:"rate_limit_bytes_per_sec"`
 
 	// Enabled enables the IO task manager.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 }
 
 // DefaultConfig returns the default configuration.

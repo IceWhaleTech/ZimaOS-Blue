@@ -145,17 +145,10 @@ func TestTunnelHandler_StartTunnel_InvalidProvider(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Status code = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-
-	var resp map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to unmarshal response: %v", err)
-	}
-
-	if resp["success"] != false {
-		t.Error("Expected success to be false")
+	// Unknown providers are mapped to auto, which will attempt to connect.
+	// In test environment without network, this returns 500 (connection failure).
+	if rec.Code != http.StatusOK && rec.Code != http.StatusInternalServerError {
+		t.Errorf("Status code = %d, want 200 or 500", rec.Code)
 	}
 }
 
@@ -287,9 +280,6 @@ func TestTunnelHandler_GetDiagnostics(t *testing.T) {
 	if _, ok := diagnostics["tunnel_running"]; !ok {
 		t.Error("Diagnostics should contain tunnel_running")
 	}
-	if _, ok := diagnostics["ssh_available"]; !ok {
-		t.Error("Diagnostics should contain ssh_available")
-	}
 	if _, ok := diagnostics["hints"]; !ok {
 		t.Error("Diagnostics should contain hints")
 	}
@@ -330,37 +320,6 @@ func TestTunnelHandler_BackwardsCompatibility(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("Path %s: Status code = %d, want %d", path, rec.Code, http.StatusOK)
 		}
-	}
-}
-
-// Test tunnel provider implementations
-func TestServeoManager_GetStatus_Initial(t *testing.T) {
-	m := tunnel.NewServeoManager()
-
-	status := m.GetStatus()
-	if status.Active {
-		t.Error("Expected tunnel to be inactive initially")
-	}
-	if status.Connecting {
-		t.Error("Expected tunnel to not be connecting initially")
-	}
-	if status.Provider != tunnel.ProviderServeo {
-		t.Errorf("Expected provider to be serveo, got %s", status.Provider)
-	}
-}
-
-func TestLocalhostRunManager_GetStatus_Initial(t *testing.T) {
-	m := tunnel.NewLocalhostRunManager()
-
-	status := m.GetStatus()
-	if status.Active {
-		t.Error("Expected tunnel to be inactive initially")
-	}
-	if status.Connecting {
-		t.Error("Expected tunnel to not be connecting initially")
-	}
-	if status.Provider != tunnel.ProviderLocalhostRun {
-		t.Errorf("Expected provider to be localhost_run, got %s", status.Provider)
 	}
 }
 
@@ -406,7 +365,7 @@ func TestProviderInfos(t *testing.T) {
 		providerMap[info.ID] = info
 	}
 
-	// auto (Serveo) doesn't require key
+	// auto doesn't require key
 	if providerMap[tunnel.ProviderAuto].RequiresKey {
 		t.Error("auto should not require key")
 	}
@@ -419,11 +378,6 @@ func TestProviderInfos(t *testing.T) {
 	// cloudflare requires key
 	if !providerMap[tunnel.ProviderCloudflare].RequiresKey {
 		t.Error("cloudflare should require key")
-	}
-
-	// localtunnel does not require key
-	if providerMap[tunnel.ProviderLocalTunnel].RequiresKey {
-		t.Error("localtunnel should not require key")
 	}
 }
 

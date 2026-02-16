@@ -22,11 +22,11 @@ import (
 
 // Config contains Nextcloud Talk channel configuration.
 type Config struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	ServerURL   string `mapstructure:"server_url"`
-	Username    string `mapstructure:"username"`
-	Password    string `mapstructure:"password"`
-	RoomToken   string `mapstructure:"room_token"`
+	Enabled     bool   `yaml:"enabled"`
+	ServerURL   string `yaml:"server_url"`
+	Username    string `yaml:"username"`
+	Password    string `yaml:"password"`
+	RoomToken   string `yaml:"room_token"`
 }
 
 const (

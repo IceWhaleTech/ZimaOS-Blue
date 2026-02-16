@@ -24,10 +24,10 @@ import (
 
 // Config contains Facebook Messenger channel configuration.
 type Config struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	PageAccessToken string `mapstructure:"page_access_token"`
-	AppSecret       string `mapstructure:"app_secret"`
-	VerifyToken     string `mapstructure:"verify_token"`
+	Enabled         bool   `yaml:"enabled"`
+	PageAccessToken string `yaml:"page_access_token"`
+	AppSecret       string `yaml:"app_secret"`
+	VerifyToken     string `yaml:"verify_token"`
 }
 
 const (

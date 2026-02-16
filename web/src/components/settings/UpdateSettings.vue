@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { updateApi, type UpdateInfoResponse, type UpdateInfo } from '@/api/update'
+import { updateApi, type UpdateInfoResponse, type OTAStatus } from '@/api/update'
 
 const { t } = useI18n()
 
 const info = ref<UpdateInfoResponse | null>(null)
-const updateInfo = ref<UpdateInfo | null>(null)
+const otaStatus = ref<OTAStatus | null>(null)
 const loading = ref(false)
 const showUpdateDialog = ref(false)
-const downloading = ref(false)
-const downloaded = ref(false)
-const progress = ref(0)
 const autoCheck = ref(true)
 const checkError = ref<string | null>(null)
 const showUpToDate = ref(false)
@@ -20,7 +17,6 @@ const fetchInfo = async () => {
   try {
     const res = await updateApi.info()
     info.value = res.data
-    downloaded.value = !!info.value?.status?.downloaded_path
   } catch (e) { console.error(e) }
 }
 
@@ -29,8 +25,8 @@ const checkUpdate = async () => {
   checkError.value = null
   showUpToDate.value = false
   try {
-    const res = await updateApi.check()
-    updateInfo.value = res.data
+    const res = await updateApi.ota()
+    otaStatus.value = res.data
     await fetchInfo()
     if (res.data.update_available) {
       showUpdateDialog.value = true
@@ -45,26 +41,15 @@ const checkUpdate = async () => {
   } finally { loading.value = false }
 }
 
-const downloadUpdate = async () => {
-  downloading.value = true
-  progress.value = 0
-  try {
-    await updateApi.download()
-    const poll = setInterval(async () => {
-      await fetchInfo()
-      progress.value = info.value?.status?.progress || 0
-      if (info.value?.status?.state !== 'downloading') {
-        clearInterval(poll)
-        downloading.value = false
-        downloaded.value = !!info.value?.status?.downloaded_path
-      }
-    }, 500)
-  } catch { downloading.value = false }
+function openDownload() {
+  const url = otaStatus.value?.client_download_url || otaStatus.value?.download_url
+  if (url) window.open(url, '_blank')
 }
 
-const applyUpdate = async () => {
-  if (!confirm('Restart and apply update?')) return
-  await updateApi.apply()
+function openReleaseNotes() {
+  if (otaStatus.value?.release_note_url) {
+    window.open(otaStatus.value.release_note_url, '_blank')
+  }
 }
 
 function toggleAutoCheck() {
@@ -75,7 +60,12 @@ function toggleAutoCheck() {
 onMounted(async () => {
   autoCheck.value = localStorage.getItem('update_auto_check') !== 'false'
   await fetchInfo()
-  if (autoCheck.value) checkUpdate()
+  // Fetch cached OTA result
+  try {
+    const res = await updateApi.ota()
+    otaStatus.value = res.data
+    if (res.data.update_available) showUpdateDialog.value = true
+  } catch { /* ignore */ }
 })
 </script>
 
@@ -133,7 +123,7 @@ onMounted(async () => {
 
     <!-- Update Dialog -->
     <Teleport to="body">
-      <div v-if="showUpdateDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div v-if="showUpdateDialog && otaStatus?.update_available" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/50" @click="showUpdateDialog = false"/>
         <div class="relative bg-white dark:bg-gray-700 rounded-xl shadow-xl max-w-md w-full">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -146,21 +136,19 @@ onMounted(async () => {
           </div>
           <div class="p-6">
             <div class="flex items-center justify-center gap-4 mb-6">
-              <span class="text-lg font-mono text-gray-500 dark:text-gray-400">{{ info?.current_version }}</span>
+              <span class="text-lg font-mono text-gray-500 dark:text-gray-400">{{ otaStatus.current_version }}</span>
               <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
               </svg>
-              <span class="text-lg font-mono font-semibold text-green-600 dark:text-green-400">{{ updateInfo?.latest_version }}</span>
+              <span class="text-lg font-mono font-semibold text-green-600 dark:text-green-400">{{ otaStatus.latest_version }}</span>
             </div>
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 max-h-48 overflow-y-auto">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('settings.update.releaseNotes') }}</h4>
-              <pre class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap font-sans">{{ updateInfo?.release_notes || t('settings.update.noReleaseNotes') }}</pre>
-            </div>
-            <div v-if="downloading" class="mt-4">
-              <div class="h-2 bg-gray-200 dark:bg-gray-500 rounded-full overflow-hidden">
-                <div class="h-full bg-gray-700 dark:bg-gray-300 transition-all duration-300" :style="{ width: progress + '%' }"/>
-              </div>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 text-center">{{ progress.toFixed(1) }}%</p>
+            <div v-if="otaStatus.release_note_url" class="mb-4">
+              <button @click="openReleaseNotes" class="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+                {{ t('settings.update.releaseNotes') }}
+              </button>
             </div>
           </div>
           <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
@@ -171,18 +159,10 @@ onMounted(async () => {
               {{ t('common.cancel') }}
             </button>
             <button
-              v-if="!downloading && !downloaded"
-              @click="downloadUpdate"
+              @click="openDownload"
               class="px-4 py-2 bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-gray-300 text-white dark:text-gray-900 text-sm font-medium rounded-lg transition-colors"
             >
               {{ t('settings.update.download') }}
-            </button>
-            <button
-              v-if="downloaded"
-              @click="applyUpdate"
-              class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              {{ t('settings.update.restartAndUpdate') }}
             </button>
           </div>
         </div>

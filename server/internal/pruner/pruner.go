@@ -48,14 +48,14 @@ type PruneResponse struct {
 
 // Config holds pruner configuration.
 type Config struct {
-	Enabled       bool    `mapstructure:"enabled"`
-	Backend       string  `mapstructure:"backend"`        // "local", "bm25", "ir" (default), "code", "remote", "onnx"
-	RemoteURL     string  `mapstructure:"remote_url"`     // only used when backend=remote/code
-	ModelDir      string  `mapstructure:"model_dir"`      // directory for ONNX model files (onnx backend)
-	Threshold     float64 `mapstructure:"threshold"`
-	MinLines      int     `mapstructure:"min_lines"`
-	TimeoutMs     int     `mapstructure:"timeout_ms"`
-	CacheCapacity int     `mapstructure:"cache_capacity"` // LRU cache slots (default 256)
+	Enabled       bool    `yaml:"enabled"`
+	Backend       string  `yaml:"backend"`        // "local", "bm25", "ir" (default), "code", "remote", "onnx"
+	RemoteURL     string  `yaml:"remote_url"`     // only used when backend=remote/code
+	ModelDir      string  `yaml:"model_dir"`      // directory for ONNX model files (onnx backend)
+	Threshold     float64 `yaml:"threshold"`
+	MinLines      int     `yaml:"min_lines"`
+	TimeoutMs     int     `yaml:"timeout_ms"`
+	CacheCapacity int     `yaml:"cache_capacity"` // LRU cache slots (default 256)
 }
 
 // DefaultConfig returns the default pruner configuration (enabled by default).

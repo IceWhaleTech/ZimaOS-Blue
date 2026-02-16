@@ -20,10 +20,10 @@ import (
 
 // Config holds backup configuration
 type Config struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	Schedule      string `mapstructure:"schedule"` // cron expression
-	RetentionDays int    `mapstructure:"retention_days"`
-	Path          string `mapstructure:"path"`
+	Enabled       bool   `yaml:"enabled"`
+	Schedule      string `yaml:"schedule"` // cron expression
+	RetentionDays int    `yaml:"retention_days"`
+	Path          string `yaml:"path"`
 }
 
 // BackupInfo contains metadata about a backup

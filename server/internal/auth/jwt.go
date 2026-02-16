@@ -41,10 +41,10 @@ const (
 
 // JWTConfig holds JWT configuration
 type JWTConfig struct {
-	Secret            string        `mapstructure:"secret"`
-	Expiration        time.Duration `mapstructure:"expiration"`
-	RefreshExpiration time.Duration `mapstructure:"refresh_expiration"`
-	Issuer            string        `mapstructure:"issuer"`
+	Secret            string        `yaml:"secret"`
+	Expiration        time.Duration `yaml:"expiration"`
+	RefreshExpiration time.Duration `yaml:"refresh_expiration"`
+	Issuer            string        `yaml:"issuer"`
 }
 
 // UserClaims represents the custom claims in JWT

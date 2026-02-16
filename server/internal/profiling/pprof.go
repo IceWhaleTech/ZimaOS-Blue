@@ -10,9 +10,9 @@ import (
 
 // Config holds profiling configuration
 type Config struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	EndpointPrefix string `mapstructure:"endpoint_prefix"`
-	AuthRequired   bool   `mapstructure:"auth_required"`
+	Enabled        bool   `yaml:"enabled"`
+	EndpointPrefix string `yaml:"endpoint_prefix"`
+	AuthRequired   bool   `yaml:"auth_required"`
 }
 
 // Profiler provides pprof profiling endpoints

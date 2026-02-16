@@ -20,15 +20,15 @@ type QueryStats struct {
 // OptimizerConfig holds configuration for the query optimizer.
 type OptimizerConfig struct {
 	// SlowQueryThreshold is the duration above which a query is considered slow.
-	SlowQueryThreshold time.Duration `mapstructure:"slow_query_threshold"`
+	SlowQueryThreshold time.Duration `yaml:"slow_query_threshold"`
 	// EnableQueryCache enables query result caching.
-	EnableQueryCache bool `mapstructure:"enable_query_cache"`
+	EnableQueryCache bool `yaml:"enable_query_cache"`
 	// QueryCacheTTL is the TTL for cached query results.
-	QueryCacheTTL time.Duration `mapstructure:"query_cache_ttl"`
+	QueryCacheTTL time.Duration `yaml:"query_cache_ttl"`
 	// MaxCachedQueries is the maximum number of queries to cache.
-	MaxCachedQueries int `mapstructure:"max_cached_queries"`
+	MaxCachedQueries int `yaml:"max_cached_queries"`
 	// LogSlowQueries enables logging of slow queries.
-	LogSlowQueries bool `mapstructure:"log_slow_queries"`
+	LogSlowQueries bool `yaml:"log_slow_queries"`
 }
 
 // DefaultOptimizerConfig returns the default optimizer configuration.
@@ -45,11 +45,11 @@ func DefaultOptimizerConfig() OptimizerConfig {
 // BatchConfig holds configuration for batch operations.
 type BatchConfig struct {
 	// BatchSize is the number of items per batch.
-	BatchSize int `mapstructure:"batch_size"`
+	BatchSize int `yaml:"batch_size"`
 	// MaxRetries is the maximum number of retries for failed batches.
-	MaxRetries int `mapstructure:"max_retries"`
+	MaxRetries int `yaml:"max_retries"`
 	// RetryDelay is the delay between retries.
-	RetryDelay time.Duration `mapstructure:"retry_delay"`
+	RetryDelay time.Duration `yaml:"retry_delay"`
 }
 
 // DefaultBatchConfig returns the default batch configuration.
@@ -64,19 +64,19 @@ func DefaultBatchConfig() BatchConfig {
 // WALConfig holds configuration for SQLite WAL mode.
 type WALConfig struct {
 	// Enabled enables WAL mode.
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled"`
 	// CheckpointInterval is the interval between automatic checkpoints.
-	CheckpointInterval time.Duration `mapstructure:"checkpoint_interval"`
+	CheckpointInterval time.Duration `yaml:"checkpoint_interval"`
 	// CheckpointThreshold is the number of pages before triggering a checkpoint.
-	CheckpointThreshold int `mapstructure:"checkpoint_threshold"`
+	CheckpointThreshold int `yaml:"checkpoint_threshold"`
 	// CacheSize is the number of pages to cache (negative = KB).
-	CacheSize int `mapstructure:"cache_size"`
+	CacheSize int `yaml:"cache_size"`
 	// PageSize is the database page size in bytes.
-	PageSize int `mapstructure:"page_size"`
+	PageSize int `yaml:"page_size"`
 	// BusyTimeout is the timeout for busy connections in milliseconds.
-	BusyTimeout int `mapstructure:"busy_timeout"`
+	BusyTimeout int `yaml:"busy_timeout"`
 	// SynchronousMode is the synchronous mode (OFF, NORMAL, FULL, EXTRA).
-	SynchronousMode string `mapstructure:"synchronous_mode"`
+	SynchronousMode string `yaml:"synchronous_mode"`
 }
 
 // DefaultWALConfig returns the default WAL configuration.
@@ -95,15 +95,15 @@ func DefaultWALConfig() WALConfig {
 // PoolConfig holds configuration for connection pooling.
 type PoolConfig struct {
 	// MaxOpenConns is the maximum number of open connections.
-	MaxOpenConns int `mapstructure:"max_open_conns"`
+	MaxOpenConns int `yaml:"max_open_conns"`
 	// MaxIdleConns is the maximum number of idle connections.
-	MaxIdleConns int `mapstructure:"max_idle_conns"`
+	MaxIdleConns int `yaml:"max_idle_conns"`
 	// ConnMaxLifetime is the maximum lifetime of a connection.
-	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
 	// ConnMaxIdleTime is the maximum idle time of a connection.
-	ConnMaxIdleTime time.Duration `mapstructure:"conn_max_idle_time"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time"`
 	// HealthCheckInterval is the interval between health checks.
-	HealthCheckInterval time.Duration `mapstructure:"health_check_interval"`
+	HealthCheckInterval time.Duration `yaml:"health_check_interval"`
 }
 
 // DefaultPoolConfig returns the default pool configuration.

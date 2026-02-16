@@ -64,15 +64,15 @@ type WebhookHandler func(ctx context.Context, event *WebhookEvent) (interface{},
 // Config contains webhook service configuration.
 type Config struct {
 	// Enabled indicates if webhooks are enabled.
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled"`
 	// SecretLength is the length of generated secrets.
-	SecretLength int `mapstructure:"secret_length"`
+	SecretLength int `yaml:"secret_length"`
 	// MaxPayloadSize is the maximum payload size in bytes.
-	MaxPayloadSize int64 `mapstructure:"max_payload_size"`
+	MaxPayloadSize int64 `yaml:"max_payload_size"`
 	// EventRetentionHours is how long to keep events.
-	EventRetentionHours int `mapstructure:"event_retention_hours"`
+	EventRetentionHours int `yaml:"event_retention_hours"`
 	// MaxEventsPerWebhook is the maximum events to keep per webhook.
-	MaxEventsPerWebhook int `mapstructure:"max_events_per_webhook"`
+	MaxEventsPerWebhook int `yaml:"max_events_per_webhook"`
 }
 
 // DefaultConfig returns the default webhook configuration.

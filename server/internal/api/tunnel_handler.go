@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"runtime"
 	"strconv"
 	"sync"
@@ -123,7 +122,8 @@ func (h *TunnelHandler) StartTunnel(c echo.Context) error {
 	if provider == "" {
 		provider = tunnel.ProviderAuto // Default to auto mode
 	}
-	if provider == tunnel.ProviderLocalhostRun || provider == tunnel.ProviderServeo || provider == tunnel.ProviderLocalTunnel {
+	// Map any legacy provider names to auto
+	if provider != tunnel.ProviderNgrok && provider != tunnel.ProviderCloudflare && provider != tunnel.ProviderAuto {
 		provider = tunnel.ProviderAuto
 	}
 
@@ -364,7 +364,8 @@ func (h *TunnelHandler) GetTunnelConfig(c echo.Context) error {
 	}
 
 	// Normalize legacy providers to auto for API response
-	if config.DefaultProvider == "localhost_run" || config.DefaultProvider == "serveo" {
+	switch config.DefaultProvider {
+	case "localhost_run", "serveo", "localtunnel", "bore":
 		config.DefaultProvider = "auto"
 	}
 
@@ -392,7 +393,8 @@ func (h *TunnelHandler) UpdateTunnelConfig(c echo.Context) error {
 	}
 
 	// Normalize legacy providers to auto when saving
-	if config.DefaultProvider == "localhost_run" || config.DefaultProvider == "serveo" {
+	switch config.DefaultProvider {
+	case "localhost_run", "serveo", "localtunnel", "bore":
 		config.DefaultProvider = "auto"
 	}
 
@@ -464,8 +466,6 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 		"os": map[string]string{
 			"platform": runtime.GOOS,
 		},
-		"ssh_available":  checkSSHAvailable(),
-		"bore_available": tunnel.CheckBoreAvailable(),
 	}
 
 	if active != nil {
@@ -481,14 +481,7 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 	}
 
 	// Generate hints
-	hints := []string{}
-	// Serveo uses built-in Go SSH, so system ssh is not required for Auto mode
-	if !diagnostics["bore_available"].(bool) {
-		hints = append(hints, "bore is not available. Auto mode may have limited options.")
-	}
-	if len(hints) == 0 {
-		hints = append(hints, "All tunnel providers are available.")
-	}
+	hints := []string{"All tunnel providers are available."}
 	diagnostics["hints"] = hints
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -497,8 +490,3 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 	})
 }
 
-// checkSSHAvailable checks if SSH client is available.
-func checkSSHAvailable() bool {
-	_, err := exec.LookPath("ssh")
-	return err == nil
-}

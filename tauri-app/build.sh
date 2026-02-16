@@ -209,18 +209,23 @@ else
     print_step "Sidecar built: $SIDECAR_NAME (no UPX compression)"
 fi
 
-# Step 4: Clean up data directory before build
+# Step 4b: Clean up data directory before build
 print_step "Cleaning up data directory..."
 rm -rf "$TAURI_DIR/data"
 mkdir -p "$TAURI_DIR/data"
 
-# Step 5: Build Tauri app
+# Step 5: Clean Cargo cache (ensures icon/config changes take effect)
+print_step "Cleaning Cargo cache..."
+cd "$TAURI_DIR"
+cargo clean
+
+# Step 6: Build Tauri app
 print_step "Building Tauri application..."
 cd "$SCRIPT_DIR"
 npm install
 npm run build
 
-# Step 6: Post-build processing (macOS only)
+# Step 7: Post-build processing (macOS only)
 if [ "$GOOS" = "darwin" ]; then
     print_step "Post-processing macOS build..."
 
@@ -367,7 +372,7 @@ if [ "$GOOS" = "windows" ]; then
     fi
 fi
 
-# Step 7: Print build results
+# Step 8: Print build results
 echo ""
 echo "=========================================="
 echo "Build Complete!"

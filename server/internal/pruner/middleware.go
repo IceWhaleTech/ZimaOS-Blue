@@ -152,6 +152,11 @@ func (m *Middleware) SetEnabled(enabled bool) {
 	m.config.Enabled = enabled
 }
 
+// SetBackend swaps the pruning backend at runtime.
+func (m *Middleware) SetBackend(b Backend) {
+	m.backend = b
+}
+
 // GetStats returns the current pruning statistics.
 func (m *Middleware) GetStats() *Stats {
 	return m.stats

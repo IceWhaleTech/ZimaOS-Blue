@@ -30,10 +30,10 @@ import (
 
 // Config contains Nostr channel configuration.
 type Config struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	PrivateKey string `mapstructure:"private_key"` // 64 hex chars
-	PublicKey  string `mapstructure:"public_key"`  // derived if empty
-	Relays     string `mapstructure:"relays"`      // comma-separated relay URLs
+	Enabled    bool   `yaml:"enabled"`
+	PrivateKey string `yaml:"private_key"` // 64 hex chars
+	PublicKey  string `yaml:"public_key"`  // derived if empty
+	Relays     string `yaml:"relays"`      // comma-separated relay URLs
 }
 
 // secp256k1 curve parameters.

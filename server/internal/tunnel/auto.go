@@ -30,17 +30,13 @@ type AutoManager struct {
 }
 
 // NewAutoManager creates a new auto tunnel manager.
-// Auto tries Bore, Serveo, LocalTunnel, and Cloudflare in parallel; whichever connects first is used.
+// Auto uses Cloudflare Quick Tunnel.
 func NewAutoManager() *AutoManager {
-	// Initialize blacklist (ignore errors, will work without it)
 	blacklist, _ := NewBlacklist("")
 
 	return &AutoManager{
 		providerOrder: []Provider{
 			ProviderCloudflare,
-			ProviderBore,
-			ProviderServeo,
-			ProviderLocalTunnel,
 		},
 		blacklist: blacklist,
 	}
@@ -85,12 +81,6 @@ func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 
 		var manager Manager
 		switch provider {
-		case ProviderServeo:
-			manager = NewServeoManager()
-		case ProviderBore:
-			manager = NewBoreManager()
-		case ProviderLocalTunnel:
-			manager = NewLocalTunnelManager()
 		case ProviderCloudflare:
 			manager = NewCloudflareManager()
 		default:

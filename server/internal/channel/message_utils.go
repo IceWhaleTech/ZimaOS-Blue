@@ -7,6 +7,7 @@ import (
 )
 
 // Common AI response tags to strip
+var multiNewlineRe = regexp.MustCompile(`\n{3,}`)
 var aiTagPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?s)<thinking>.*?</thinking>`),
 	regexp.MustCompile(`(?s)<system>.*?</system>`),
@@ -25,8 +26,7 @@ func StripAITags(content string) string {
 	// Clean up extra whitespace left behind
 	result = strings.TrimSpace(result)
 	// Replace multiple newlines with double newline
-	multiNewline := regexp.MustCompile(`\n{3,}`)
-	result = multiNewline.ReplaceAllString(result, "\n\n")
+	result = multiNewlineRe.ReplaceAllString(result, "\n\n")
 	return result
 }
 

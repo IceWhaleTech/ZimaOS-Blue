@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+// Pre-compiled regexps to avoid re-compiling on every call.
+var (
+	datePatternRe    = regexp.MustCompile(`-\d{4}[-]?\d{2}[-]?\d{2}$`)
+	delimiterSplitRe = regexp.MustCompile(`[-_.:@/]`)
+	pureDigitsRe     = regexp.MustCompile(`^\d+$`)
+)
+
 // BuiltinModelPricing contains known model pricing (per 1M tokens, USD)
 // Updated: 2025-01
 var BuiltinModelPricing = map[string]*ModelPricing{
@@ -194,8 +201,7 @@ func normalizeModelID(modelID string) string {
 	normalized := strings.ToLower(modelID)
 
 	// Remove date suffixes (e.g., "-20251101", "-2024-08-06")
-	datePattern := regexp.MustCompile(`-\d{4}[-]?\d{2}[-]?\d{2}$`)
-	normalized = datePattern.ReplaceAllString(normalized, "")
+	normalized = datePatternRe.ReplaceAllString(normalized, "")
 
 	// Remove version suffixes like "-latest", "-preview"
 	normalized = strings.TrimSuffix(normalized, "-latest")
@@ -208,12 +214,12 @@ func extractKeywords(modelID string) []string {
 	normalized := strings.ToLower(modelID)
 
 	// Split by common delimiters
-	parts := regexp.MustCompile(`[-_.:@/]`).Split(normalized, -1)
+	parts := delimiterSplitRe.Split(normalized, -1)
 
 	// Filter out empty strings and pure numbers
 	keywords := make([]string, 0, len(parts))
 	for _, part := range parts {
-		if part != "" && !regexp.MustCompile(`^\d+$`).MatchString(part) {
+		if part != "" && !pureDigitsRe.MatchString(part) {
 			keywords = append(keywords, part)
 		}
 	}

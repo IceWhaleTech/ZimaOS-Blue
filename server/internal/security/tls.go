@@ -3,7 +3,6 @@ package security
 
 import (
 	"context"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -12,7 +11,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -22,13 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-acme/lego/v4/certcrypto"
-	"github.com/go-acme/lego/v4/certificate"
-	"github.com/go-acme/lego/v4/challenge/http01"
-	"github.com/go-acme/lego/v4/lego"
-	legolog "github.com/go-acme/lego/v4/log"
-	"github.com/go-acme/lego/v4/registration"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -431,19 +424,8 @@ type ACMEStatus struct {
 	DaysUntilExp  int              `json:"days_until_expiry,omitempty"`
 }
 
-// legoUser implements registration.User for lego ACME client.
-type legoUser struct {
-	email      string
-	key        *ecdsa.PrivateKey
-	registration *registration.Resource
-}
-
-func (u *legoUser) GetEmail() string                        { return u.email }
-func (u *legoUser) GetRegistration() *registration.Resource { return u.registration }
-func (u *legoUser) GetPrivateKey() crypto.PrivateKey        { return u.key }
-
 // RequestACMECertificate requests a certificate from an ACME provider.
-// Supports both HTTP-01 and DNS-01 challenges via the lego library.
+// Uses golang.org/x/crypto/acme directly instead of lego.
 func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 	if config.Email == "" {
 		return fmt.Errorf("email is required for ACME registration")
@@ -456,7 +438,6 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 	if challengeType == "" {
 		challengeType = "http-01"
 	}
-
 	if challengeType == "dns-01" && config.DNSProvider == "" {
 		return fmt.Errorf("DNS provider is required for DNS-01 challenge")
 	}
@@ -464,7 +445,6 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Update config
 	m.config.ACMEEmail = config.Email
 	m.config.ACMEDomains = config.Domains
 	m.config.ACMEProvider = config.Provider
@@ -474,7 +454,6 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 		m.config.ACMEDir = config.CacheDir
 	}
 
-	// Create cache directory
 	cacheDir := m.config.ACMEDir
 	if cacheDir == "" {
 		cacheDir = "./data/certs/acme"
@@ -483,63 +462,136 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 		return fmt.Errorf("failed to create ACME cache directory: %w", err)
 	}
 
-	// Suppress lego's verbose logging
-	legolog.Logger = log.New(os.Stderr, "acme: ", log.LstdFlags)
-
-	// Generate private key for ACME account
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	// Generate account key
+	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("failed to generate ACME account key: %w", err)
 	}
 
-	user := &legoUser{email: config.Email, key: privateKey}
-
-	// Configure lego client
-	legoConfig := lego.NewConfig(user)
-	legoConfig.Certificate.KeyType = certcrypto.EC256
-
-	// Set ACME directory URL
-	acmeURL := ACMEProviderURL(config.Provider)
-	if acmeURL != "" {
-		legoConfig.CADirURL = acmeURL
+	acmeClient := &acme.Client{
+		Key:          accountKey,
+		DirectoryURL: ACMEProviderURL(config.Provider),
 	}
 
-	client, err := lego.NewClient(legoConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create ACME client: %w", err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
-	// Configure challenge solver
-	if challengeType == "dns-01" {
-		if err := m.configureDNSChallenge(client, config); err != nil {
-			return fmt.Errorf("failed to configure DNS-01 challenge: %w", err)
-		}
-	} else {
-		// HTTP-01: listen on port 80
-		err := client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "80"))
-		if err != nil {
-			return fmt.Errorf("failed to configure HTTP-01 challenge: %w", err)
-		}
-	}
-
-	// Register ACME account
-	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
-	if err != nil {
+	// Register account
+	acct := &acme.Account{Contact: []string{"mailto:" + config.Email}}
+	if _, err := acmeClient.Register(ctx, acct, acme.AcceptTOS); err != nil {
 		return fmt.Errorf("failed to register ACME account: %w", err)
 	}
-	user.registration = reg
 
-	// Request certificate
-	request := certificate.ObtainRequest{
-		Domains: config.Domains,
-		Bundle:  true,
-	}
-	certificates, err := client.Certificate.Obtain(request)
+	// Create order
+	order, err := acmeClient.AuthorizeOrder(ctx, acme.DomainIDs(config.Domains...))
 	if err != nil {
-		return fmt.Errorf("failed to obtain certificate: %w", err)
+		return fmt.Errorf("failed to create ACME order: %w", err)
 	}
 
-	// Save certificate to disk
+	// Solve challenges
+	for _, authzURL := range order.AuthzURLs {
+		authz, err := acmeClient.GetAuthorization(ctx, authzURL)
+		if err != nil {
+			return fmt.Errorf("failed to get authorization: %w", err)
+		}
+		if authz.Status == acme.StatusValid {
+			continue
+		}
+
+		var chal *acme.Challenge
+		for _, c := range authz.Challenges {
+			if (challengeType == "dns-01" && c.Type == "dns-01") ||
+				(challengeType == "http-01" && c.Type == "http-01") {
+				chal = c
+				break
+			}
+		}
+		if chal == nil {
+			return fmt.Errorf("no %s challenge found for %s", challengeType, authz.Identifier.Value)
+		}
+
+		if challengeType == "dns-01" {
+			// Set DNS credentials as env vars
+			for key, value := range config.DNSCredentials {
+				os.Setenv(key, value)
+			}
+			provider, err := newDNSProvider(config.DNSProvider)
+			if err != nil {
+				return fmt.Errorf("failed to create DNS provider: %w", err)
+			}
+			keyAuth, err := acmeClient.DNS01ChallengeRecord(chal.Token)
+			if err != nil {
+				return fmt.Errorf("failed to compute DNS-01 record: %w", err)
+			}
+			if err := provider.Present(authz.Identifier.Value, chal.Token, keyAuth); err != nil {
+				return fmt.Errorf("failed to present DNS-01 challenge: %w", err)
+			}
+			defer provider.CleanUp(authz.Identifier.Value, chal.Token, keyAuth)
+			// Wait for DNS propagation
+			time.Sleep(10 * time.Second)
+		} else {
+			// HTTP-01: serve challenge response
+			resp, err := acmeClient.HTTP01ChallengeResponse(chal.Token)
+			if err != nil {
+				return fmt.Errorf("failed to compute HTTP-01 response: %w", err)
+			}
+			path := acmeClient.HTTP01ChallengePath(chal.Token)
+			srv := &http.Server{Addr: ":80", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == path {
+					w.Write([]byte(resp))
+				}
+			})}
+			go srv.ListenAndServe()
+			defer srv.Shutdown(ctx)
+		}
+
+		// Accept challenge
+		if _, err := acmeClient.Accept(ctx, chal); err != nil {
+			return fmt.Errorf("failed to accept challenge: %w", err)
+		}
+		if _, err := acmeClient.WaitAuthorization(ctx, authzURL); err != nil {
+			return fmt.Errorf("authorization failed: %w", err)
+		}
+	}
+
+	// Generate cert key and CSR
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("failed to generate certificate key: %w", err)
+	}
+
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		DNSNames: config.Domains,
+	}, certKey)
+	if err != nil {
+		return fmt.Errorf("failed to create CSR: %w", err)
+	}
+
+	// Wait for order to be ready, then finalize
+	order, err = acmeClient.WaitOrder(ctx, order.URI)
+	if err != nil {
+		return fmt.Errorf("order not ready: %w", err)
+	}
+
+	derChain, _, err := acmeClient.CreateOrderCert(ctx, order.FinalizeURL, csr, true)
+	if err != nil {
+		return fmt.Errorf("failed to finalize order: %w", err)
+	}
+
+	// Encode cert chain PEM
+	var certPEM []byte
+	for _, der := range derChain {
+		certPEM = append(certPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})...)
+	}
+
+	// Encode private key PEM
+	keyDER, err := x509.MarshalECPrivateKey(certKey)
+	if err != nil {
+		return fmt.Errorf("failed to marshal private key: %w", err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	// Save to disk
 	certFile := m.config.CertFile
 	keyFile := m.config.KeyFile
 	if certFile == "" {
@@ -554,28 +606,27 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 	if err := os.MkdirAll(filepath.Dir(certFile), 0750); err != nil {
 		return fmt.Errorf("failed to create cert directory: %w", err)
 	}
-	if err := os.WriteFile(certFile, certificates.Certificate, 0644); err != nil {
+	if err := os.WriteFile(certFile, certPEM, 0644); err != nil {
 		return fmt.Errorf("failed to write certificate: %w", err)
 	}
-	if err := os.WriteFile(keyFile, certificates.PrivateKey, 0600); err != nil {
+	if err := os.WriteFile(keyFile, keyPEM, 0600); err != nil {
 		return fmt.Errorf("failed to write private key: %w", err)
 	}
 
 	// Load into memory
-	cert, err := tls.X509KeyPair(certificates.Certificate, certificates.PrivateKey)
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return fmt.Errorf("failed to parse certificate: %w", err)
 	}
 	m.certificate = &cert
 
-	// Parse certificate info
 	if len(cert.Certificate) > 0 {
 		if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
 			m.certInfo = parseCertInfo(x509Cert)
 		}
 	}
 
-	// Also set up autocert for HTTP-01 auto-renewal fallback
+	// Set up autocert for HTTP-01 auto-renewal
 	if challengeType == "http-01" {
 		m.autocertMgr = &autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
@@ -585,25 +636,8 @@ func (m *TLSManager) RequestACMECertificate(config *ACMEConfig) error {
 		}
 	}
 
-	// Start renewal checker
 	m.startRenewalChecker()
-
 	return nil
-}
-
-// configureDNSChallenge sets up DNS-01 challenge with provider credentials.
-func (m *TLSManager) configureDNSChallenge(client *lego.Client, config *ACMEConfig) error {
-	// Set credentials as environment variables (lego providers read from env)
-	for key, value := range config.DNSCredentials {
-		os.Setenv(key, value)
-	}
-
-	provider, err := newDNSProvider(config.DNSProvider)
-	if err != nil {
-		return fmt.Errorf("failed to create DNS provider %q: %w", config.DNSProvider, err)
-	}
-
-	return client.Challenge.SetDNS01Provider(provider)
 }
 
 // startRenewalChecker starts a background goroutine to check certificate expiry

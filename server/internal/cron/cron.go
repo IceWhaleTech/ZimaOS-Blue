@@ -64,15 +64,15 @@ type JobHandler func(ctx context.Context, job *Job) (interface{}, error)
 // Config contains cron service configuration.
 type Config struct {
 	// Enabled indicates if cron is enabled.
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled"`
 	// MaxConcurrentJobs is the maximum number of concurrent jobs.
-	MaxConcurrentJobs int `mapstructure:"max_concurrent_jobs"`
+	MaxConcurrentJobs int `yaml:"max_concurrent_jobs"`
 	// JobTimeoutSeconds is the default job timeout.
-	JobTimeoutSeconds int `mapstructure:"job_timeout_seconds"`
+	JobTimeoutSeconds int `yaml:"job_timeout_seconds"`
 	// ExecutionRetentionHours is how long to keep execution history.
-	ExecutionRetentionHours int `mapstructure:"execution_retention_hours"`
+	ExecutionRetentionHours int `yaml:"execution_retention_hours"`
 	// MaxExecutionsPerJob is the maximum executions to keep per job.
-	MaxExecutionsPerJob int `mapstructure:"max_executions_per_job"`
+	MaxExecutionsPerJob int `yaml:"max_executions_per_job"`
 }
 
 // DefaultConfig returns the default cron configuration.

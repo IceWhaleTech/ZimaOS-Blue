@@ -21,10 +21,10 @@ import (
 
 // Config contains Google Chat channel configuration.
 type Config struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	WebhookURL string `mapstructure:"webhook_url"`
-	SpaceID    string `mapstructure:"space_id"`
-	APIKey     string `mapstructure:"api_key"`
+	Enabled    bool   `yaml:"enabled"`
+	WebhookURL string `yaml:"webhook_url"`
+	SpaceID    string `yaml:"space_id"`
+	APIKey     string `yaml:"api_key"`
 }
 
 // webhookEvent represents a Google Chat webhook event.

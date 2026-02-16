@@ -22,9 +22,9 @@ type BufferPool struct {
 // BufferPoolConfig holds configuration for the buffer pool.
 type BufferPoolConfig struct {
 	// InitialSize is the initial buffer size.
-	InitialSize int `mapstructure:"initial_size"`
+	InitialSize int `yaml:"initial_size"`
 	// MaxSize is the maximum buffer size to pool (larger buffers are discarded).
-	MaxSize int `mapstructure:"max_size"`
+	MaxSize int `yaml:"max_size"`
 }
 
 // DefaultBufferPoolConfig returns the default buffer pool configuration.

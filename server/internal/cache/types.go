@@ -99,15 +99,15 @@ const (
 // Config holds cache configuration.
 type Config struct {
 	// MaxSize is the maximum number of entries.
-	MaxSize int `mapstructure:"max_size"`
+	MaxSize int `yaml:"max_size"`
 	// MaxMemory is the maximum memory usage in bytes (0 = unlimited).
-	MaxMemory int64 `mapstructure:"max_memory"`
+	MaxMemory int64 `yaml:"max_memory"`
 	// DefaultTTL is the default TTL for entries (0 = no expiration).
-	DefaultTTL time.Duration `mapstructure:"default_ttl"`
+	DefaultTTL time.Duration `yaml:"default_ttl"`
 	// EvictionPolicy is the eviction policy to use.
-	EvictionPolicy EvictionPolicy `mapstructure:"eviction_policy"`
+	EvictionPolicy EvictionPolicy `yaml:"eviction_policy"`
 	// CleanupInterval is the interval for cleaning up expired entries.
-	CleanupInterval time.Duration `mapstructure:"cleanup_interval"`
+	CleanupInterval time.Duration `yaml:"cleanup_interval"`
 	// OnEvict is called when an entry is evicted.
 	OnEvict func(key string, value interface{})
 }
@@ -127,7 +127,7 @@ func DefaultConfig() Config {
 type L1Config struct {
 	Config
 	// ShardCount is the number of shards for concurrent access.
-	ShardCount int `mapstructure:"shard_count"`
+	ShardCount int `yaml:"shard_count"`
 }
 
 // DefaultL1Config returns the default L1 cache configuration.
@@ -142,13 +142,13 @@ func DefaultL1Config() L1Config {
 type L2Config struct {
 	Config
 	// Path is the directory path for disk cache.
-	Path string `mapstructure:"path"`
+	Path string `yaml:"path"`
 	// MaxDiskSize is the maximum disk usage in bytes.
-	MaxDiskSize int64 `mapstructure:"max_disk_size"`
+	MaxDiskSize int64 `yaml:"max_disk_size"`
 	// Compression enables compression for stored values.
-	Compression bool `mapstructure:"compression"`
+	Compression bool `yaml:"compression"`
 	// CompressionLevel is the compression level (1-9).
-	CompressionLevel int `mapstructure:"compression_level"`
+	CompressionLevel int `yaml:"compression_level"`
 }
 
 // DefaultL2Config returns the default L2 cache configuration.
@@ -164,12 +164,12 @@ func DefaultL2Config() L2Config {
 
 // MultiLevelConfig holds multi-level cache configuration.
 type MultiLevelConfig struct {
-	L1 L1Config `mapstructure:"l1"`
-	L2 L2Config `mapstructure:"l2"`
+	L1 L1Config `yaml:"l1"`
+	L2 L2Config `yaml:"l2"`
 	// PromoteOnHit promotes entries from L2 to L1 on hit.
-	PromoteOnHit bool `mapstructure:"promote_on_hit"`
+	PromoteOnHit bool `yaml:"promote_on_hit"`
 	// WriteThrough writes to both L1 and L2 on set.
-	WriteThrough bool `mapstructure:"write_through"`
+	WriteThrough bool `yaml:"write_through"`
 }
 
 // DefaultMultiLevelConfig returns the default multi-level cache configuration.

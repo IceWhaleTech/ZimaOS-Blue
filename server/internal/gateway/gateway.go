@@ -53,21 +53,21 @@ type RequestHandler func(ctx context.Context, conn *Connection, msg *Message) (*
 // Config contains gateway configuration.
 type Config struct {
 	// Enabled indicates if the gateway is enabled.
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled"`
 	// ReadBufferSize is the WebSocket read buffer size.
-	ReadBufferSize int `mapstructure:"read_buffer_size"`
+	ReadBufferSize int `yaml:"read_buffer_size"`
 	// WriteBufferSize is the WebSocket write buffer size.
-	WriteBufferSize int `mapstructure:"write_buffer_size"`
+	WriteBufferSize int `yaml:"write_buffer_size"`
 	// MaxMessageSize is the maximum message size in bytes.
-	MaxMessageSize int64 `mapstructure:"max_message_size"`
+	MaxMessageSize int64 `yaml:"max_message_size"`
 	// PingInterval is the interval for ping messages.
-	PingIntervalSeconds int `mapstructure:"ping_interval_seconds"`
+	PingIntervalSeconds int `yaml:"ping_interval_seconds"`
 	// PongTimeout is the timeout for pong responses.
-	PongTimeoutSeconds int `mapstructure:"pong_timeout_seconds"`
+	PongTimeoutSeconds int `yaml:"pong_timeout_seconds"`
 	// WriteTimeout is the timeout for write operations.
-	WriteTimeoutSeconds int `mapstructure:"write_timeout_seconds"`
+	WriteTimeoutSeconds int `yaml:"write_timeout_seconds"`
 	// MaxConnections is the maximum number of connections.
-	MaxConnections int `mapstructure:"max_connections"`
+	MaxConnections int `yaml:"max_connections"`
 }
 
 // DefaultConfig returns the default gateway configuration.

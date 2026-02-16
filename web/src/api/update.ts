@@ -27,6 +27,15 @@ export interface UpdateInfoResponse {
   uptime: string
 }
 
+export interface OTAStatus {
+  current_version: string
+  update_available: boolean
+  latest_version?: string
+  download_url?: string
+  release_note_url?: string
+  client_download_url?: string
+}
+
 export const updateApi = {
   check: () => api.get<UpdateInfo>('/system/update/check'),
   info: () => api.get<UpdateInfoResponse>('/system/update/info'),
@@ -34,4 +43,5 @@ export const updateApi = {
   apply: () => api.post<{ status: string }>('/system/update/apply'),
   rollback: () => api.post<{ status: string }>('/system/update/rollback'),
   history: () => api.get<any[]>('/system/update/history'),
+  ota: () => api.get<OTAStatus>('/system/update/ota'),
 }

@@ -179,6 +179,11 @@ function startModelPoll() {
       modelStatus.value = res.data
       if (!res.data.downloading && res.data.state !== 'connecting') {
         stopModelPoll()
+        // Refresh config — backend may have auto-switched to ONNX
+        try {
+          const cfgRes = await proxyCacheApi.getPrunerConfig()
+          prunerConfig.value = cfgRes.data
+        } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
   }, 500)
@@ -443,7 +448,7 @@ onUnmounted(stopModelPoll)
 
             <!-- Not downloaded hint -->
             <div v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              {{ t('apiProxy.modelNotDownloaded') }} &middot; ~1.4 GB
+              {{ t('apiProxy.modelNotDownloaded') }} &middot; ~607 MB
             </div>
           </div>
         </div>

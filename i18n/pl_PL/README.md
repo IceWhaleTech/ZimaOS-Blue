@@ -1,215 +1,237 @@
-# ZimaOS Blue
-
-<p align="center">
-  <img src="../../docs/public/logo.png" alt="ZimaOS Blue" width="200">
-</p>
-
-<p align="center">
-  <strong>Bezpieczne, obserwowalne środowisko uruchomieniowe agenta AI</strong>
-</p>
+![](../../docs/assets/bannerX.png)
 
 <p align="center">
   <a href="../../README.md">English</a> |
-  <a href="../zh_CN/README.md">简体中文</a> |
-  <a href="../zh_TW/README.md">繁體中文</a> |
+  <a href="../ca_ES/README.md">Català</a> |
+  <a href="../cs_CZ/README.md">Čeština</a> |
+  <a href="../da_DK/README.md">Dansk</a> |
+  <a href="../de_DE/README.md">Deutsch</a> |
+  <a href="../el_GR/README.md">Ελληνικά</a> |
+  <a href="../en_GB/README.md">English (UK)</a> |
+  <a href="../es_ES/README.md">Español</a> |
+  <a href="../fr_FR/README.md">Français</a> |
+  <a href="../ga_IE/README.md">Gaeilge</a> |
+  <a href="../hr_HR/README.md">Hrvatski</a> |
+  <a href="../hu_HU/README.md">Magyar</a> |
+  <a href="../it_IT/README.md">Italiano</a> |
   <a href="../ja_JP/README.md">日本語</a> |
   <a href="../ko_KR/README.md">한국어</a> |
-  <a href="../de_DE/README.md">Deutsch</a> |
-  <a href="../fr_FR/README.md">Français</a> |
-  <a href="../es_ES/README.md">Español</a> |
-  <a href="../it_IT/README.md">Italiano</a> |
-  <a href="../pt_BR/README.md">Português</a> |
-  <a href="../ru_RU/README.md">Русский</a> |
-  <a href="../ar_SA/README.md">العربية</a> |
-  <a href="../hi_IN/README.md">हिन्दी</a> |
-  <a href="../th_TH/README.md">ไทย</a> |
-  <a href="../vi_VN/README.md">Tiếng Việt</a> |
-  <a href="../id_ID/README.md">Bahasa Indonesia</a> |
-  <a href="../tr_TR/README.md">Türkçe</a> |
-  <strong>Polski</strong> |
+  <a href="../ml_IN/README.md">മലയാളം</a> |
+  <a href="../nb_NO/README.md">Norsk Bokmål</a> |
   <a href="../nl_NL/README.md">Nederlands</a> |
-  <a href="../sv_SE/README.md">Svenska</a>
+  <strong>Polski</strong> |
+  <a href="../pt_BR/README.md">Português (BR)</a> |
+  <a href="../pt_PT/README.md">Português (PT)</a> |
+  <a href="../ro_RO/README.md">Română</a> |
+  <a href="../ru_RU/README.md">Русский</a> |
+  <a href="../sk_SK/README.md">Slovenčina</a> |
+  <a href="../sv_SE/README.md">Svenska</a> |
+  <a href="../zh_CN/README.md">简体中文</a> |
+  <a href="../zh_TW/README.md">繁體中文</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="Status CI"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="Wydanie GitHub"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="Licencja MIT"></a>
 </p>
 
-**ZimaOS Blue** to lekkie, wydajne środowisko uruchomieniowe agenta AI zaprojektowane dla NAS i urządzeń brzegowych. Zbudowane w Go, oferuje platformę gotową do produkcji z wdrożeniem bez konfiguracji, monitorowaniem sesji i analityką użycia.
+<p align="center">
+  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>&nbsp;&nbsp;
+  <img src="../../docs/assets/wechat.png" height="128"/>
+  <details style="display:inline-block;">
+    <summary style="list-style:none;cursor:pointer;">
+    </summary>
 
-[Szybki start](#szybki-start) · [Funkcje](#funkcje-główne)
+  </details>
+</p>
 
-## Najważniejsze
+## Wprowadzenie
 
-| Specyfikacja | Wartość |
-|------|------|
-| **Rozmiar binarki** | ~40 MB (pojedynczy plik wykonywalny) |
-| **Pamięć (bezczynność)** | ~4 MB |
-| **Czas uruchomienia** | &lt; 1 s |
-| **Zależności** | Brak (wdrożenie bez konfiguracji) |
+Zainspirowani przez Clawdbot, wierzymy, że **przyszłość** komputerów osobistych będzie **kształtowana przez zróżnicowanych, lokalnych agentów AI** działających na brzegu sieci.
 
-## Funkcje główne
+**ZimaOS Blue to nasza odpowiedź** — w pełni **otwartoźródłowe, audytowalne i gotowe produkcyjnie środowisko uruchomieniowe agentów oraz zestaw narzędzi**, który pozwala wdrażać prywatnych, samodzielnie hostowanych agentów bez żadnych przeszkód.
 
-### Wdrożenie bez konfiguracji
+Stworzony dla odważnych programistów, którzy chcą **tworzyć własnych agentów w dowolny sposób**, Blue jest **zoptymalizowany pod kątem wydajności**: napisany w **Go**, ze zużyciem pamięci już od 10 MB. Działa na **dowolnym x86, Raspberry Pi, Windows, macOS** — wszędzie, gdzie podłączysz zasilanie.
 
-- **Pojedyncza binarka**: pobierz i uruchom, bez zależności środowiska uruchomieniowego
-- **Konfiguracja na żądanie**: działa od razu, dostosuj w razie potrzeby
-- **Wieloplatformowość**: Windows, macOS, Linux — ta sama binarka, to samo doświadczenie
-- **Wsparcie demona**: uruchamianie jako usługa w tle
+![](../../docs/assets/features.png)
 
-### Monitorowanie sesji
+## Najważniejsze cechy
 
-- **Śledzenie sesji w czasie rzeczywistym**: monitoruj wszystkie aktywne sesje AI i ich stan
-- **Historia konwersacji**: pełna ścieżka audytu wszystkich interakcji
-- **Odtwarzanie sesji**: przeglądaj i analizuj przeszłe konwersacje
-- **Izolacja wielodostępowa**: pełne rozdzielenie sesji między użytkownikami
+### Lokalne podejście i automatyczny dostęp do modeli
 
-### Optymalizacja łańcucha wywołań
+Idąc dalej: oferuje natywne wsparcie dla **ponad 20 platform komunikacyjnych**, interfejsy **sterowane głosem** do naturalnego, kontekstowego dialogu, **automatyczne przełączanie modeli** ze skanowaniem IDE oraz wielowarstwowe osobowości SOUL.
 
-- **Śledzenie żądań**: widoczność end-to-end każdego wywołania API
-- **Analiza opóźnień**: identyfikacja wąskich gardeł w potoku żądań
-- **Routing dostawców**: inteligentne kierowanie do optymalnych dostawców LLM
-- **Wyłącznik**: automatyczne przełączanie awaryjne przy błędach dostawcy
+### Szybki, lekki
 
-### Analityka użycia
+Kompilowany natywnie w Go — bez interpretera, bez maszyny wirtualnej, bez narzutu. Działa cicho na wszystkim, od serwerów po urządzenia biurkowe.
 
-- **Zużycie tokenów**: śledzenie użycia na użytkownika, sesję i dostawcę
-- **Atrybucja kosztów**: szczegółowy podział kosztów według operacji
-- **Ograniczanie szybkości**: zarządzanie limitami na tenant
-- **Eksport raportów**: generowanie raportów użycia w wielu formatach
+| Metryka | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+|---------|-------------------|------------------------|
+| `--help` zimny / ciepły start | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `status` czas wykonania (najlepszy z 3) | **< 0.01 s** | 5.98 s |
+| `--help` szczytowe RSS | **~10 MB** | ~394 MB |
+| `status` szczytowe RSS | **~15 MB** | ~1.52 GB |
+| Zależności uruchomieniowe | **Brak** | Node.js 18+ |
 
-### Wzmacnianie bezpieczeństwa
+> Testy przeprowadzone na macOS arm64, ten sam host, najlepszy z 3 przebiegów. Luty 2026.
 
-- **Wykonanie w piaskownicy**: wszystkie wywołania narzędzi w izolowanych środowiskach
-- **RBAC**: szczegółowa kontrola dostępu oparta na rolach
-- **WebAuthn/Passkeys**: uwierzytelnianie FIDO2 bez hasła
-- **MFA/TOTP**: uwierzytelnianie wieloskładnikowe
-- **Ścieżka audytu**: niezmienne dzienniki wszystkich operacji uprzywilejowanych
+### Czysty Go, dowolne urządzenie
+
+100% Go, statyczny plik binarny. **Kompilacja krzyżowa na 5 platform** od razu (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node, bez Pythona, bez kontenerów. Wrzuć go na NAS, Raspberry Pi, stary router x86 lub Maca — po prostu działa. **Następnie dodaj własny interfejs, logikę i umiejętności agenta** — jeden kod źródłowy, każda platforma.
+
+### Bezpieczeństwo i zarządzanie
+
+Wbudowany sidecar proxy API z wielowarstwową obroną:
+- **Izolowane wykonanie** – Wszystkie wywołania narzędzi działają w odizolowanych środowiskach.
+- **Obrona przed wstrzykiwaniem promptów** – Ponad 7 wbudowanych strategii przechwytywania.
+- **Audyt sesji** – Pełne monitorowanie sesji, każda interakcja jest śledzona.
+- **RBAC i WebAuthn** – Szczegółowa kontrola dostępu z uwierzytelnianiem bezhasłowym.
+
+## Dlaczego Blue
+
+Wierzymy, że **komputery osobiste nowej generacji** obejmują LLM — ale **kontrolowalni, audytowalni** agenci pozostają fundamentem zarówno dla osób indywidualnych, jak i zespołów. **Blue zapewnia**:
+- **Kompleksowy rdzeń** – Zaawansowane zarządzanie modelami, integracja z komunikatorami, rozbudowana persona i interfejsy języka naturalnego dostosowane do codziennych interakcji (słuchawki, głos, inteligentne okulary).
+- **Lokalne podejście, ultralekki, wieloplatformowy** – Nie wymaga wydajnego sprzętu. Działa na wszystkim, co potrafi obliczać.
+- **Bezpieczny i audytowalny** – Audyt sesji, sandboxing, kontrola uprawnień i wbudowany proxy API działający jako zapora warstwy aplikacji — każdy bajt wejścia/wyjścia jest widoczny.
+
+Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni **filozofii projektowej ZimaOS**, Blue zapewnia:
+- **Od zera do jedynki jednym kliknięciem** – Natychmiastowe wdrożenie, bez skomplikowanej konfiguracji.
+- **Szybkie prototypowanie** – Twórz narzędzia, interakcje i pakiety aplikacji dopasowane do scenariuszy.
+- **Gotowy na cały świat** – **Świat jest ogromny** i nie domyślnie angielski. **Ponad 20 języków, natywnie**, bez barier.
+- **Otwarty ekosystem modeli** – Bez uzależnienia od dostawcy. Przynieś własne modele.
+
+![](../../docs/assets/design_principle.png)
 
 ## Szybki start
 
+### Opcja 1: Pobierz aplikację desktopową (macOS i Windows)
+
+Pobierz natywną aplikację — bez zależności, bez kompilacji.
+
+- **macOS**: [Pobierz DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- **Windows**: [Pobierz instalator](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+
+### Opcja 2: Skrypt instalacyjny
+
+**macOS / Linux**
 ```bash
-# Ze źródeł
+curl -fsSL https://ota.zimaos.com/blue | sh
+```
+
+**Windows (PowerShell)**
+```powershell
+irm https://ota.zimaos.com/blue/windows | iex
+```
+
+### Opcja 3: Kompilacja ze źródeł
+
+```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-make build && ./dist/zimaos-blue server
-```
-
-Panel dostępny pod adresem `http://localhost:3000`.
-
-## Konfiguracja dostawców LLM
-
-ZimaOS Blue obsługuje wielu dostawców LLM, w tym lokalne usługi LLM:
-
-```yaml
-llm:
-  # Dostawcy chmurowi
-  provider: "openai"  # lub "anthropic", "azure" itd.
-  api_key: "your-api-key"
-
-  # Lokalny LLM (opcjonalnie)
-  # provider: "ollama"
-  # base_url: "http://localhost:11434"
-```
-
-## Architektura
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    ZimaOS Blue                       │
-├─────────────────────────────────────────────────────┤
-│  Session Monitor │ Usage Analytics │ Call Tracing  │
-├─────────────────────────────────────────────────────┤
-│  Audit Log  │  Metrics  │  RBAC  │  Rate Limiter   │
-├─────────────────────────────────────────────────────┤
-│              Sandbox Execution Layer                 │
-│         Tool Isolation │ Resource Limits            │
-├─────────────────────────────────────────────────────┤
-│              Agent Runtime (Go)                      │
-│  LLM Provider │ Tools │ Memory │ Circuit Breaker   │
-├─────────────────────────────────────────────────────┤
-│              Local Data Layer                        │
-│  SQLite │ ECache │ Encrypted Storage                │
-└─────────────────────────────────────────────────────┘
-```
-
-## Obserwowalność
-
-```yaml
-# Włącz pełny stos obserwowalności
-metrics:
-  enabled: true
-  endpoint: "/metrics"
-
-profiling:
-  enabled: true
-  endpoint_prefix: "/debug/pprof"
-
-audit:
-  enabled: true
-  retention_days: 90
-```
-
-### Udostępniane metryki
-
-- Opóźnienie żądań (p50, p95, p99)
-- Użycie tokenów LLM na dostawcę
-- Wskaźniki sukcesu/porażki wykonania narzędzi
-- Liczniki pamięci i goroutine
-- Przejścia stanu wyłącznika
-
-## Środowisko deweloperskie
-
-### Wymagania
-
-| Narzędzie | Wersja | Instalacja |
-|------|---------|---------|
-| Go | 1.21+ | [golang.org](https://golang.org/dl/) |
-| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
-| Make | - | Preinstalowane w macOS/Linux |
-
-### Tryb deweloperski (hot reload)
-
-```bash
-# Linux / macOS
 ./dev.sh
-
-# Windows
-dev.bat
 ```
 
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:23456`
+## Przegląd architektury
 
-### Polecenia budowania
+![](../../docs/assets/architecture.png)
 
-```bash
-make build              # Pojedyncza binarka (frontend wbudowany)
-make build-embedded     # Budowanie z wbudowanym Claude Code CLI
-make build-all          # Kompilacja krzyżowa dla wszystkich platform
-make clean              # Czyszczenie artefaktów budowania
+### Przepływ danych
+
+**Żądanie czatu (gorąca ścieżka proxy)**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
 ```
 
-### Struktura projektu
-
+**Przepływ wiadomości kanałowych**
 ```
-ZimaOS-Blue/
-├── server/             # Backend Go
-│   ├── cmd/blue/       # Punkt wejścia
-│   └── internal/       # Moduły rdzenia
-├── web/                # Frontend Vue 3
-│   └── src/
-└── dist/               # Wynik budowania
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
-## Podziękowania
+**Potok głosowy**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
 
-- [clawdbot](https://github.com/clawdbot/clawdbot) – Inspiracja projektu
-- [IceWhaleTech/zorm](https://github.com/IceWhaleTech/zorm) – Lekki ORM
+### Mapa pakietów (`server/internal/`)
 
----
+| Warstwa | Pakiety |
+|---------|---------|
+| Brama | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Dostawca | providerpool, providers, llm |
+| Przycinanie | pruner (detector, segmenter, bm25, pipeline, cache) |
+| Agent | context, tools, personality, humanizer |
+| Pamięć | memory, embedding, kvstore |
+| Kanał | channel, autoreply, i18n |
+| Bezpieczeństwo | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
+| Głos | voice, tts, stt, speech |
+| Obserwacja | metrics, heartbeat, companion, profiling, leakdetect |
+| Wtyczka | plugin, skill, skillstore |
+| Integracja | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Harmonogram | scheduler, worker, workerpool, pool |
+| Rdzeń | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Wielodostęp | tenant, user, session, preview |
+
+## Jak używać
+
+![](../../docs/assets/handcraft.png)
+
+## Harmonogram kamieni milowych
+
+![](../../docs/assets/timeline.png)
+
+| Wersja | Obszar | Kluczowa wartość | Status |
+|--------|--------|------------------|--------|
+| v0.1 | Rdzeń środowiska Go | Stabilne jądro, praca 24h | Done |
+| v0.2 | Podstawowe możliwości | Minimalnie użyteczny, integracja LLM | Done |
+| v0.3 | Integracja z NAS | Natywne wsparcie NAS, obsługa systemd | Done |
+| v0.4 | System wtyczek | Rozszerzalność, podstawy bezpieczeństwa | Done |
+| v0.5 | Baza produktowa | Gotowy produkcyjnie, dokumentacja | Done |
+| v0.6 | Kanały wiadomości | Obsługa wielu kanałów | Done |
+| v0.7 | Bezpieczeństwo | OIDC, MFA, audyt | Done |
+| v0.8 | Wydajność | Optymalizacja, cache, benchmarki | Done |
+| v0.9 | Ekosystem | Wielodostęp, automatyzacja przeglądarki, głos | Done |
+| v0.10.0 | Pakietowanie CLI | Pakietowanie CC CLI, wykrywanie, auto-aktualizacja | Done |
+| v0.10.1 | Monitorowanie metryk | Statystyki API, śledzenie tokenów, TTFT | Done |
+| v0.10.2 | Niezawodność CLI | Cykl życia procesów, odzyskiwanie po błędach | Done |
+| v0.10.3 | Integracja CLI | Kreator konfiguracji, auto-wykrywanie dostawców | Done |
+| v0.10.4 | Pakietowanie Tauri | Aplikacja desktopowa, zasobnik systemowy | Done |
+| v0.10.5 | Sidecar proxy API | Wybór tras, ochrona promptów, statystyki użycia | Done |
+| v0.10.6 | Pula dostawców | Routing wielu dostawców, health check, failover | Done |
+| v0.10.7 | Tryb podglądu | Dostęp bez uwierzytelnienia, bramkowanie funkcji | Done |
+| v0.10.8 | Sklep umiejętności | Infrastruktura sklepu umiejętności, walidacja kanałów | Done |
+| v0.10.9–10 | Zarządzanie użytkownikami | Podużytkownicy, uprawnienia na poziomie stron | Done |
+| v0.10.13–14 | Bezpieczeństwo i umiejętności | Strona bezpieczeństwa, przeprojektowanie sklepu umiejętności | Done |
+| v0.10.15 | Ulepszenia czatu | UX czatu, potok wiadomości | Done |
+| v0.10.16 | Moduł mowy | Sherpa TTS/ASR, eSpeak, przełączanie dostawców | Done |
+| v0.10.17 | Zdalny dostęp | Tunele Ngrok, Cloudflare, certyfikaty ACME | Done |
+| v0.10.18–20 | Sprint wydajności | Wydajność startu/czatu, cache kontekstu | Done |
+| v0.10.21–22 | Prompt i DingTalk | Prompt systemowy, kanał DingTalk | Done |
+| v0.10.23 | Aktualizacja OTA | System aktualizacji OTA | Done |
+| v0.10.24 | Rozbudowa kanałów | 10 kanałów zaktualizowanych ze stubów | Done |
+| v0.10.25 | CC Cache | Dwupoziomowy cache (L1 pamięć + L2 dysk) | Done |
+| v0.10.26 | Humanizer | Potok humanizacji odpowiedzi | Done |
+| v0.10.27 | Przycinanie kontekstu | Scoring BM25, segmentacja, benchmarki | Done |
+| v0.10.28 | Usługa pamięci | Wyszukiwanie progresywne, backend dual-write | Done |
+
+## Społeczność i wsparcie
+
+- **Zgłoszenia**: [Zgłaszaj błędy i propozycje funkcji tutaj](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Dyskusje**: [Discord](https://discord.gg/SrCYvumF)
+- **Śledź nas** na [GitHub](https://github.com/IceWhaleTech)
+
+## Licencja
+
+Ten projekt jest udostępniony na licencji MIT — szczegóły w pliku [LICENSE](../../LICENSE). Wierzymy w open source i dzielenie się ze społecznością.
+
+## Współtwórcy
 
 <p align="center">
   Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>

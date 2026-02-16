@@ -10,13 +10,9 @@ import (
 type Provider string
 
 const (
-	ProviderAuto         Provider = "auto"
-	ProviderNgrok        Provider = "ngrok"
-	ProviderLocalhostRun Provider = "localhost_run"
-	ProviderServeo       Provider = "serveo"
-	ProviderLocalTunnel  Provider = "localtunnel"
-	ProviderBore         Provider = "bore"
-	ProviderCloudflare   Provider = "cloudflare"
+	ProviderAuto       Provider = "auto"
+	ProviderNgrok      Provider = "ngrok"
+	ProviderCloudflare Provider = "cloudflare"
 )
 
 // Status represents the current tunnel status.
@@ -29,7 +25,7 @@ type Status struct {
 	RemainingTime  string    `json:"remaining_time,omitempty"`
 	RenewedCount   int       `json:"renewed_count"`
 	Provider       Provider  `json:"provider,omitempty"`
-	TunnelPassword string    `json:"tunnel_password,omitempty"` // For LocalTunnel (loca.lt): IP from mytunnelpassword
+	TunnelPassword string    `json:"tunnel_password,omitempty"`
 }
 
 // Config represents provider-specific configuration.
@@ -86,15 +82,14 @@ type ProviderInfo struct {
 }
 
 // GetProviderInfos returns information about all available providers for the UI.
-// LocalTunnel is not listed separately; it is used internally by Auto (Bore/Serveo/LocalTunnel/Cloudflare in parallel).
 func GetProviderInfos() []ProviderInfo {
 	return []ProviderInfo{
 		{
 			ID:          ProviderAuto,
 			Name:        "Auto",
-			Description: "Bore, Serveo, LocalTunnel, or Cloudflare (no signup; tries in parallel, first success wins)",
+			Description: "Cloudflare Quick Tunnel (no signup required)",
 			RequiresKey: false,
-			DocURL:      "https://github.com/ekzhang/bore",
+			DocURL:      "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/",
 		},
 		{
 			ID:          ProviderNgrok,

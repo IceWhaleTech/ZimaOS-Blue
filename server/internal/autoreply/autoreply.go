@@ -69,11 +69,11 @@ type TemplateContext struct {
 // Config contains auto-reply service configuration.
 type Config struct {
 	// Enabled indicates if auto-reply is enabled.
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled"`
 	// MaxRulesPerChannel is the maximum rules per channel.
-	MaxRulesPerChannel int `mapstructure:"max_rules_per_channel"`
+	MaxRulesPerChannel int `yaml:"max_rules_per_channel"`
 	// DefaultCooldownSeconds is the cooldown between replies to same user.
-	DefaultCooldownSeconds int `mapstructure:"default_cooldown_seconds"`
+	DefaultCooldownSeconds int `yaml:"default_cooldown_seconds"`
 }
 
 // DefaultConfig returns the default auto-reply configuration.

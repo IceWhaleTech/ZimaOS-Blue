@@ -1,17 +1,22 @@
 package ngrok
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"sync"
 	"time"
-
-	"golang.ngrok.com/ngrok"
-	"golang.ngrok.com/ngrok/config"
 )
 
-// SDKTunnelManager manages ngrok tunnels using the ngrok-go SDK.
-// This replaces the binary-based approach with a native Go SDK.
+// SDKTunnelManager manages ngrok tunnels via ngrok subprocess.
+// Auto-downloads the ngrok binary if not found.
 type SDKTunnelManager struct {
 	repository *Repository
 	authtoken  string
@@ -24,22 +29,17 @@ type SDKTunnelManager struct {
 	expiresAt    time.Time
 	renewedCount int
 	sessionID    string
-	tunnel       ngrok.Tunnel
 	cancelFunc   context.CancelFunc
+	cmd          *exec.Cmd
 
-	// Callbacks
 	OnURLChange func(url string)
 	OnError     func(err error)
 }
 
-// NewSDKTunnelManager creates a new SDK-based tunnel manager.
 func NewSDKTunnelManager(repo *Repository) *SDKTunnelManager {
-	return &SDKTunnelManager{
-		repository: repo,
-	}
+	return &SDKTunnelManager{repository: repo}
 }
 
-// Start starts the ngrok tunnel using the SDK.
 func (tm *SDKTunnelManager) Start(ctx context.Context, port int, authtoken string) error {
 	tm.mu.Lock()
 	if tm.running {
@@ -48,172 +48,218 @@ func (tm *SDKTunnelManager) Start(ctx context.Context, port int, authtoken strin
 	}
 	tm.mu.Unlock()
 
-	// Create cancellable context
+	bin, err := ensureNgrok()
+	if err != nil {
+		return fmt.Errorf("ngrok not available: %w", err)
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 
-	// Configure ngrok session
-	opts := []ngrok.ConnectOption{}
+	args := []string{"http", fmt.Sprintf("%d", port), "--log", "stdout", "--log-format", "term"}
 	if authtoken != "" {
-		opts = append(opts, ngrok.WithAuthtoken(authtoken))
+		args = append(args, "--authtoken", authtoken)
 	}
 
-	// Start listening
-	tunnel, err := ngrok.Listen(ctx,
-		config.HTTPEndpoint(
-			config.WithForwardsTo(fmt.Sprintf("localhost:%d", port)),
-		),
-		opts...,
-	)
+	cmd := exec.CommandContext(ctx, bin, args...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return fmt.Errorf("failed to start ngrok tunnel: %w", err)
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return fmt.Errorf("failed to start ngrok: %w", err)
 	}
 
-	// Get tunnel URL
-	url := tunnel.URL()
+	urlCh := make(chan string, 1)
+	go func() {
+		re := regexp.MustCompile(`url=(https://[a-zA-Z0-9._-]+\.ngrok[a-zA-Z0-9._-]*)`)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			if m := re.FindStringSubmatch(scanner.Text()); len(m) > 1 {
+				select {
+				case urlCh <- m[1]:
+				default:
+				}
+			}
+		}
+	}()
+
+	var url string
+	select {
+	case url = <-urlCh:
+	case <-time.After(15 * time.Second):
+		cancel()
+		return fmt.Errorf("ngrok: timeout waiting for URL")
+	case <-ctx.Done():
+		cancel()
+		return ctx.Err()
+	}
 
 	tm.mu.Lock()
 	tm.running = true
-	tm.connecting = false // SDK returns URL immediately
+	tm.connecting = false
 	tm.url = url
 	tm.authtoken = authtoken
-	tm.tunnel = tunnel
 	tm.cancelFunc = cancel
+	tm.cmd = cmd
 	tm.startedAt = time.Now()
 	tm.expiresAt = calculateExpiresAt(tm.startedAt)
 	tm.mu.Unlock()
 
-	// Create session record in database if repository is available
 	if tm.repository != nil {
-		session := &RemoteAccessSession{
-			TunnelURL:    url,
-			StartedAt:    tm.startedAt,
-			ExpiresAt:    tm.expiresAt,
-			RenewedCount: 0,
-			Status:       "active",
-		}
-		sessionID, err := tm.repository.CreateSession(ctx, session)
-		if err == nil {
+		session := &RemoteAccessSession{TunnelURL: url, StartedAt: tm.startedAt, ExpiresAt: tm.expiresAt, Status: "active"}
+		if sid, err := tm.repository.CreateSession(ctx, session); err == nil {
 			tm.mu.Lock()
-			tm.sessionID = sessionID
+			tm.sessionID = sid
 			tm.mu.Unlock()
 		}
 	}
-
-	// Notify URL change
 	if tm.OnURLChange != nil {
 		tm.OnURLChange(url)
 	}
-
-	// Monitor tunnel in background
 	go tm.monitorTunnel(ctx)
-
 	return nil
 }
 
-// monitorTunnel monitors the tunnel and handles disconnection.
 func (tm *SDKTunnelManager) monitorTunnel(ctx context.Context) {
-	// Wait for context cancellation or listener close
-	<-ctx.Done()
-
+	if tm.cmd != nil {
+		tm.cmd.Wait()
+	} else {
+		<-ctx.Done()
+	}
 	tm.mu.Lock()
 	sessionID := tm.sessionID
 	tm.running = false
 	tm.connecting = false
 	tm.mu.Unlock()
-
-	// Mark session as ended in database
 	if tm.repository != nil && sessionID != "" {
 		tm.repository.EndSession(context.Background(), sessionID, "stopped", "")
 	}
 }
 
-// Stop stops the ngrok tunnel.
 func (tm *SDKTunnelManager) Stop() error {
 	tm.mu.Lock()
 	sessionID := tm.sessionID
 	wasRunning := tm.running
-	tunnel := tm.tunnel
 	cancelFunc := tm.cancelFunc
 	tm.mu.Unlock()
-
 	if !wasRunning {
-		return nil // Not an error to stop when not running
+		return nil
 	}
-
-	// Cancel context
 	if cancelFunc != nil {
 		cancelFunc()
 	}
-
-	// Close tunnel
-	if tunnel != nil {
-		tunnel.Close()
-	}
-
 	tm.mu.Lock()
 	tm.running = false
 	tm.connecting = false
 	tm.url = ""
-	tm.tunnel = nil
+	tm.cmd = nil
 	tm.cancelFunc = nil
 	tm.mu.Unlock()
-
-	// Mark session as stopped in database
 	if tm.repository != nil && sessionID != "" {
 		tm.repository.EndSession(context.Background(), sessionID, "stopped", "")
 	}
-
 	return nil
 }
 
-// IsRunning returns true if the tunnel is running.
 func (tm *SDKTunnelManager) IsRunning() bool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	return tm.running
 }
 
-// GetStatus returns the current tunnel status.
 func (tm *SDKTunnelManager) GetStatus() TunnelStatus {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
-
 	if !tm.running {
 		return TunnelStatus{Active: false}
 	}
-
-	remaining := calculateRemainingTime(tm.expiresAt)
-
 	return TunnelStatus{
-		Active:        tm.running,
-		Connecting:    tm.connecting,
-		URL:           tm.url,
-		StartedAt:     tm.startedAt,
-		ExpiresAt:     tm.expiresAt,
-		RemainingTime: formatRemainingTime(remaining),
+		Active: true, Connecting: tm.connecting, URL: tm.url,
+		StartedAt: tm.startedAt, ExpiresAt: tm.expiresAt,
+		RemainingTime: formatRemainingTime(calculateRemainingTime(tm.expiresAt)),
 		RenewedCount:  tm.renewedCount,
 	}
 }
 
-// GetURL returns the current tunnel URL.
 func (tm *SDKTunnelManager) GetURL() string {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	return tm.url
 }
 
-// IncrementRenewedCount increments the renewal counter.
 func (tm *SDKTunnelManager) IncrementRenewedCount() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	tm.renewedCount++
 }
 
-// ResetExpiry resets the expiry time (called after renewal).
 func (tm *SDKTunnelManager) ResetExpiry() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	tm.startedAt = time.Now()
 	tm.expiresAt = calculateExpiresAt(tm.startedAt)
+}
+
+func ensureNgrok() (string, error) {
+	if p, err := exec.LookPath("ngrok"); err == nil {
+		return p, nil
+	}
+	cacheDir, _ := os.UserCacheDir()
+	binName := "ngrok"
+	if runtime.GOOS == "windows" {
+		binName = "ngrok.exe"
+	}
+	cached := filepath.Join(cacheDir, "zimaos-blue", binName)
+	if _, err := os.Stat(cached); err == nil {
+		return cached, nil
+	}
+	dlURL := ngrokDownloadURL()
+	if dlURL == "" {
+		return "", fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	os.MkdirAll(filepath.Dir(cached), 0o755)
+	resp, err := http.Get(dlURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
+	tmp := cached + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return "", err
+	}
+	f.Close()
+	os.Chmod(tmp, 0o755)
+	if err := os.Rename(tmp, cached); err != nil {
+		return "", err
+	}
+	return cached, nil
+}
+
+func ngrokDownloadURL() string {
+	const base = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-"
+	switch runtime.GOOS + "/" + runtime.GOARCH {
+	case "linux/amd64":
+		return base + "linux-amd64.tgz"
+	case "linux/arm64":
+		return base + "linux-arm64.tgz"
+	case "darwin/amd64":
+		return base + "darwin-amd64.zip"
+	case "darwin/arm64":
+		return base + "darwin-arm64.zip"
+	case "windows/amd64":
+		return base + "windows-amd64.zip"
+	default:
+		return ""
+	}
 }

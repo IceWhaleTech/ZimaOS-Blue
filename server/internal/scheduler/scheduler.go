@@ -65,19 +65,19 @@ type TaskHandler func(ctx context.Context, task *Task) error
 // Config holds scheduler configuration.
 type Config struct {
 	// MaxConcurrent is the maximum number of concurrent tasks.
-	MaxConcurrent int `yaml:"max_concurrent" mapstructure:"max_concurrent"`
+	MaxConcurrent int `yaml:"max_concurrent" yaml:"max_concurrent"`
 
 	// DefaultMaxRetries is the default max retries for tasks.
-	DefaultMaxRetries int `yaml:"default_max_retries" mapstructure:"default_max_retries"`
+	DefaultMaxRetries int `yaml:"default_max_retries" yaml:"default_max_retries"`
 
 	// RetryDelay is the delay between retries.
-	RetryDelay time.Duration `yaml:"retry_delay" mapstructure:"retry_delay"`
+	RetryDelay time.Duration `yaml:"retry_delay" yaml:"retry_delay"`
 
 	// DefaultTimeout is the default timeout for tasks.
-	DefaultTimeout time.Duration `yaml:"default_timeout" mapstructure:"default_timeout"`
+	DefaultTimeout time.Duration `yaml:"default_timeout" yaml:"default_timeout"`
 
 	// Enabled enables the scheduler.
-	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	Enabled bool `yaml:"enabled" yaml:"enabled"`
 }
 
 // DefaultConfig returns the default scheduler configuration.

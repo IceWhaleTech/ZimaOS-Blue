@@ -21,11 +21,11 @@ type Integration struct {
 
 // Config holds ZimaOS integration configuration.
 type Config struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	APIEndpoint string `mapstructure:"api_endpoint"`
-	AppID       string `mapstructure:"app_id"`
-	AppSecret   string `mapstructure:"app_secret"`
-	DataPath    string `mapstructure:"data_path"`
+	Enabled     bool   `yaml:"enabled"`
+	APIEndpoint string `yaml:"api_endpoint"`
+	AppID       string `yaml:"app_id"`
+	AppSecret   string `yaml:"app_secret"`
+	DataPath    string `yaml:"data_path"`
 }
 
 // SystemInfo contains ZimaOS system information.

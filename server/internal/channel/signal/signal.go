@@ -45,12 +45,12 @@ type Channel struct {
 
 // Config contains Signal channel configuration.
 type Config struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	PhoneNumber    string   `mapstructure:"phone_number"`
-	ConfigPath     string   `mapstructure:"config_path"`
-	SignalCLIPath  string   `mapstructure:"signal_cli_path"`
-	AllowedNumbers []string `mapstructure:"allowed_numbers"`
-	UseJsonRpc     bool     `mapstructure:"use_json_rpc"`
+	Enabled        bool     `yaml:"enabled"`
+	PhoneNumber    string   `yaml:"phone_number"`
+	ConfigPath     string   `yaml:"config_path"`
+	SignalCLIPath  string   `yaml:"signal_cli_path"`
+	AllowedNumbers []string `yaml:"allowed_numbers"`
+	UseJsonRpc     bool     `yaml:"use_json_rpc"`
 }
 
 // DefaultConfig returns the default Signal configuration.

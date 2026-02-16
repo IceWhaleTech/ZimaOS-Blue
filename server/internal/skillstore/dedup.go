@@ -10,6 +10,12 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+var (
+	dedupSpaceRe  = regexp.MustCompile(`\s+`)
+	dedupCleanRe  = regexp.MustCompile(`[^a-z0-9\-_]`)
+	dedupHyphenRe = regexp.MustCompile(`-+`)
+)
+
 // GenerateDedupKey generates a deduplication key from name and author.
 // Format: normalized_name:normalized_author
 func GenerateDedupKey(name, author string) string {
@@ -39,19 +45,16 @@ func NormalizeString(s string) string {
 	s = strings.TrimSpace(s)
 
 	// Replace multiple spaces with single space
-	spaceRegex := regexp.MustCompile(`\s+`)
-	s = spaceRegex.ReplaceAllString(s, " ")
+	s = dedupSpaceRe.ReplaceAllString(s, " ")
 
 	// Replace spaces with hyphens
 	s = strings.ReplaceAll(s, " ", "-")
 
 	// Remove special characters except hyphen, underscore, and alphanumeric
-	cleanRegex := regexp.MustCompile(`[^a-z0-9\-_]`)
-	s = cleanRegex.ReplaceAllString(s, "")
+	s = dedupCleanRe.ReplaceAllString(s, "")
 
 	// Remove consecutive hyphens
-	hyphenRegex := regexp.MustCompile(`-+`)
-	s = hyphenRegex.ReplaceAllString(s, "-")
+	s = dedupHyphenRe.ReplaceAllString(s, "-")
 
 	// Trim hyphens from start and end
 	s = strings.Trim(s, "-")

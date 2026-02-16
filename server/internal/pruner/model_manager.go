@@ -7,18 +7,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
 
-const hfMirrorHost = "hf-mirror.com"
 
 // PrunerModelInfo describes a downloadable pruner model file.
 type PrunerModelInfo struct {
-	Filename string `json:"filename"`
-	URL      string `json:"url"`
-	Size     string `json:"size"`
+	Filename string   `json:"filename"`
+	URL      string   `json:"url"`
+	Mirrors  []string `json:"-"` // fallback URLs (hf-mirror, modelscope, etc.)
+	Size     string   `json:"size"`
 }
 
 // Download states
@@ -31,9 +30,21 @@ const (
 
 // prunerModelFiles lists all files needed for the ONNX pruner.
 var prunerModelFiles = []PrunerModelInfo{
-	{Filename: "model.onnx", URL: "https://huggingface.co/ayanami-kitasan/code-pruner/resolve/main/model.onnx", Size: "1.4 GB"},
-	{Filename: "vocab.json", URL: "https://huggingface.co/ayanami-kitasan/code-pruner/resolve/main/vocab.json", Size: "2.8 MB"},
-	{Filename: "merges.txt", URL: "https://huggingface.co/ayanami-kitasan/code-pruner/resolve/main/merges.txt", Size: "1.7 MB"},
+	{Filename: "model.onnx", URL: "https://huggingface.co/orca-zhang/code-pruner-onnx/resolve/main/model.onnx",
+		Mirrors: []string{
+			"https://hf-mirror.com/orca-zhang/code-pruner-onnx/resolve/main/model.onnx",
+			"https://modelscope.cn/models/orcazhang/code-pruner-onnx/resolve/master/model.onnx",
+		}, Size: "607 MB"},
+	{Filename: "vocab.json", URL: "https://huggingface.co/orca-zhang/code-pruner-onnx/resolve/main/vocab.json",
+		Mirrors: []string{
+			"https://hf-mirror.com/orca-zhang/code-pruner-onnx/resolve/main/vocab.json",
+			"https://modelscope.cn/models/orcazhang/code-pruner-onnx/resolve/master/vocab.json",
+		}, Size: "2.6 MB"},
+	{Filename: "merges.txt", URL: "https://huggingface.co/orca-zhang/code-pruner-onnx/resolve/main/merges.txt",
+		Mirrors: []string{
+			"https://hf-mirror.com/orca-zhang/code-pruner-onnx/resolve/main/merges.txt",
+			"https://modelscope.cn/models/orcazhang/code-pruner-onnx/resolve/master/merges.txt",
+		}, Size: "1.6 MB"},
 }
 
 // ModelDownloadProgress tracks download progress.
@@ -176,7 +187,7 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 		m.progress.ETA = ""
 		m.mu.Unlock()
 
-		if err := m.downloadFileWithMirror(ctx, f.URL, destPath); err != nil {
+		if err := m.downloadWithFallback(ctx, f.URL, f.Mirrors, destPath); err != nil {
 			m.mu.Lock()
 			m.state = StateError
 			m.lastError = fmt.Sprintf("%s: %v", f.Filename, err)
@@ -187,17 +198,17 @@ func (m *PrunerModelManager) Download(ctx context.Context) error {
 	return nil
 }
 
-func (m *PrunerModelManager) downloadFileWithMirror(ctx context.Context, url, destPath string) error {
-	err := m.downloadFile(ctx, url, destPath)
-	if err == nil {
-		return nil
+func (m *PrunerModelManager) downloadWithFallback(ctx context.Context, primaryURL string, mirrors []string, destPath string) error {
+	urls := append([]string{primaryURL}, mirrors...)
+	var lastErr error
+	for _, u := range urls {
+		if err := m.downloadFile(ctx, u, destPath); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
 	}
-	// If original HuggingFace URL failed, try hf-mirror
-	mirrorURL := strings.Replace(url, "huggingface.co", hfMirrorHost, 1)
-	if mirrorURL == url {
-		return err
-	}
-	return m.downloadFile(ctx, mirrorURL, destPath)
+	return lastErr
 }
 
 func (m *PrunerModelManager) downloadFile(ctx context.Context, url, destPath string) error {

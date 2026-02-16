@@ -22,17 +22,18 @@ type Handler struct {
 	status         *UpdateStatus
 	latestInfo     *UpdateInfo
 	history        []UpdateHistory
+	otaChecker     *OTAChecker
 }
 
 // Config holds update configuration
 type Config struct {
-	Enabled        bool          `mapstructure:"enabled"`
-	CheckInterval  time.Duration `mapstructure:"check_interval"`
-	AutoDownload   bool          `mapstructure:"auto_download"`
-	AutoApply      bool          `mapstructure:"auto_apply"`
-	ReleaseChannel string        `mapstructure:"release_channel"`
-	BackupCount    int           `mapstructure:"backup_count"`
-	StoragePath    string        `mapstructure:"storage_path"`
+	Enabled        bool          `yaml:"enabled"`
+	CheckInterval  time.Duration `yaml:"check_interval"`
+	AutoDownload   bool          `yaml:"auto_download"`
+	AutoApply      bool          `yaml:"auto_apply"`
+	ReleaseChannel string        `yaml:"release_channel"`
+	BackupCount    int           `yaml:"backup_count"`
+	StoragePath    string        `yaml:"storage_path"`
 }
 
 // NewHandler creates a new update handler
@@ -56,6 +57,12 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/system/update/apply", h.Apply)
 	g.POST("/system/update/rollback", h.Rollback)
 	g.GET("/system/update/history", h.History)
+	g.GET("/system/update/ota", h.OTAStatus)
+}
+
+// SetOTAChecker attaches the background OTA checker to the handler.
+func (h *Handler) SetOTAChecker(ota *OTAChecker) {
+	h.otaChecker = ota
 }
 
 // Check checks for available updates
@@ -197,4 +204,28 @@ func (h *Handler) LoadHistory(path string) error {
 		return err
 	}
 	return json.Unmarshal(data, &h.history)
+}
+
+// OTAStatus returns the latest OTA check result.
+// GET /api/v1/system/update/ota
+func (h *Handler) OTAStatus(c echo.Context) error {
+	if h.otaChecker == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"current_version":  h.currentVersion,
+			"update_available": false,
+		})
+	}
+	latest := h.otaChecker.GetLatest()
+	available := h.otaChecker.UpdateAvailable()
+	resp := map[string]interface{}{
+		"current_version":  h.currentVersion,
+		"update_available": available,
+	}
+	if latest != nil {
+		resp["latest_version"] = latest.Version
+		resp["download_url"] = latest.DownloadURL
+		resp["release_note_url"] = latest.ReleaseNoteURL
+		resp["client_download_url"] = latest.ClientDownloadURL
+	}
+	return c.JSON(http.StatusOK, resp)
 }

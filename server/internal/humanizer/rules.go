@@ -32,6 +32,10 @@ var (
 	// Whitespace cleanup
 	multiBlankLineRe = regexp.MustCompile(`\n{3,}`)
 	trailingSpaceRe  = regexp.MustCompile(`(?m)[ \t]+$`)
+
+	// Italic strip patterns (used in stripItalic)
+	italicStarStripRe  = regexp.MustCompile(`(?:^|\s)\*([^*\n]+?)\*(?:\s|$|[.,!?;:])`)
+	italicUnderStripRe = regexp.MustCompile(`(?:^|\s)_([^_\n]+?)_(?:\s|$|[.,!?;:])`)
 )
 
 // stripCodeFences handles fenced code blocks.
@@ -71,7 +75,7 @@ func stripBold(text string) string {
 // Careful not to match bold ** or already-stripped content.
 func stripItalic(text string) string {
 	// Simple approach: strip remaining single * and _ wrappers
-	text = regexp.MustCompile(`(?:^|\s)\*([^*\n]+?)\*(?:\s|$|[.,!?;:])`).ReplaceAllStringFunc(text, func(m string) string {
+	text = italicStarStripRe.ReplaceAllStringFunc(text, func(m string) string {
 		inner := strings.TrimSpace(m)
 		inner = strings.TrimPrefix(inner, "*")
 		inner = strings.TrimSuffix(inner, "*")
@@ -86,7 +90,7 @@ func stripItalic(text string) string {
 		}
 		return prefix + strings.TrimSpace(inner) + suffix
 	})
-	text = regexp.MustCompile(`(?:^|\s)_([^_\n]+?)_(?:\s|$|[.,!?;:])`).ReplaceAllStringFunc(text, func(m string) string {
+	text = italicUnderStripRe.ReplaceAllStringFunc(text, func(m string) string {
 		inner := strings.TrimSpace(m)
 		inner = strings.TrimPrefix(inner, "_")
 		inner = strings.TrimSuffix(inner, "_")
