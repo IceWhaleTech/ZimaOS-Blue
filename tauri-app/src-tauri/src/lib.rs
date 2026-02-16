@@ -58,7 +58,30 @@ fn quit_label_for_locale(locale: &str) -> String {
     format!("{} ZimaOS Blue", verb)
 }
 
-/// Application state shared across the app
+/// Gracefully shut down: stop Go server, then terminate the app via AppKit.
+/// This avoids C exit() which races with Go runtime cleanup.
+#[cfg(target_os = "macos")]
+fn graceful_quit(app_handle: &tauri::AppHandle) {
+    if QUITTING.swap(true, Ordering::SeqCst) {
+        return; // Already quitting
+    }
+    info!("Graceful quit: stopping Go server");
+    let _ = blue_ffi::stop_server();
+
+    // Destroy all windows so the run-loop has nothing left to keep alive
+    for (_, window) in app_handle.webview_windows() {
+        let _ = window.destroy();
+    }
+
+    // Ask AppKit to terminate normally — this unwinds the run-loop
+    // instead of calling C exit(), giving Go runtime a clean shutdown.
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+    if let Some(mtm) = MainThreadMarker::new() {
+        let ns_app = NSApplication::sharedApplication(mtm);
+        ns_app.terminate(None);
+    }
+}
 pub struct AppState {
     pub server_port: std::sync::Mutex<u16>,
     pub server_running: std::sync::Mutex<bool>,
@@ -305,12 +328,13 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         info!("Quit requested from tray");
-                        QUITTING.store(true, Ordering::SeqCst);
                         #[cfg(target_os = "macos")]
+                        graceful_quit(&app.app_handle());
+                        #[cfg(not(target_os = "macos"))]
                         {
-                            let _ = blue_ffi::stop_server();
+                            QUITTING.store(true, Ordering::SeqCst);
+                            app.exit(0);
                         }
-                        app.exit(0);
                     }
                     _ => {}
                 })
@@ -445,12 +469,13 @@ pub fn run() {
                         }
                     } else if !QUITTING.load(Ordering::SeqCst) {
                         // "quit" behavior: stop server and exit
-                        QUITTING.store(true, Ordering::SeqCst);
                         #[cfg(target_os = "macos")]
+                        graceful_quit(app_handle);
+                        #[cfg(not(target_os = "macos"))]
                         {
-                            let _ = blue_ffi::stop_server();
+                            QUITTING.store(true, Ordering::SeqCst);
+                            app_handle.exit(0);
                         }
-                        app_handle.exit(0);
                     }
                 }
                 RunEvent::Exit => {

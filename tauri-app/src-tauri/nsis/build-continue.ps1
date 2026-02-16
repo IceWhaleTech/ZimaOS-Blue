@@ -13,7 +13,15 @@ if (!(Test-Path "$tauriDir\bin")) { New-Item -ItemType Directory "$tauriDir\bin"
 $env:CGO_ENABLED = "1"
 $env:CC = "gcc"
 $env:CXX = "g++"
-go build -ldflags="-s -w" -o "$tauriDir\binaries\$sidecarName" ./cmd/blue/
+# Build ldflags with trial provider config (from environment)
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_API_KEY) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$($env:ZIMAOS_TRIAL_API_KEY)"
+}
+if ($env:ZIMAOS_TRIAL_BASE_URL) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$($env:ZIMAOS_TRIAL_BASE_URL)"
+}
+go build -ldflags="$goLdflags" -o "$tauriDir\binaries\$sidecarName" ./cmd/blue/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
 Copy-Item -Force "$tauriDir\binaries\$sidecarName" "$tauriDir\bin\"
 Write-Host "[OK] Sidecar built: $sidecarName"

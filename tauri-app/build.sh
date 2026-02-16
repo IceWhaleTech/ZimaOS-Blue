@@ -17,6 +17,24 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TAURI_DIR="$SCRIPT_DIR/src-tauri"
 LIB_DIR="$TAURI_DIR/lib"
 
+# Version and build metadata
+VERSION=$(cat "$PROJECT_ROOT/VERSION" 2>/dev/null || git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Trial provider configuration (from environment variables)
+TRIAL_API_KEY="${ZIMAOS_TRIAL_API_KEY:-}"
+TRIAL_BASE_URL="${ZIMAOS_TRIAL_BASE_URL:-}"
+
+# Go ldflags — must match server/Makefile
+GO_LDFLAGS="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT} -X main.buildTime=${BUILD_TIME}"
+if [ -n "$TRIAL_API_KEY" ]; then
+    GO_LDFLAGS="$GO_LDFLAGS -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=${TRIAL_API_KEY}"
+fi
+if [ -n "$TRIAL_BASE_URL" ]; then
+    GO_LDFLAGS="$GO_LDFLAGS -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=${TRIAL_BASE_URL}"
+fi
+
 echo "=========================================="
 echo "ZimaOS Blue - Tauri Build Script"
 echo "=========================================="
@@ -146,7 +164,7 @@ if [ "$GOOS" = "darwin" ]; then
 
     # Build for current architecture
     CGO_ENABLED=1 go build -buildmode=c-archive \
-        -ldflags="-s -w" \
+        -ldflags="$GO_LDFLAGS" \
         -o "$LIB_DIR/libblue.a" \
         ./cmd/bluelib/
 
@@ -182,7 +200,7 @@ else
     fi
 
     # Build with optimizations (NO UPX compression!)
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
+    CGO_ENABLED=0 go build -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
 
     # Also copy to bin directory for resources bundling
     mkdir -p "$TAURI_DIR/bin"

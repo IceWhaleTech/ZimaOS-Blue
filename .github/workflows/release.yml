@@ -128,13 +128,16 @@ jobs:
       - name: Pack dist into binary
         working-directory: server
         shell: bash
-        env:
-          RUNNER_TMP: ${{ runner.temp }}
         run: |
           EXT=""
           if [[ "${{ matrix.goos }}" == "windows" ]]; then EXT=".exe"; fi
           BINARY="bin/${BINARY_NAME}${EXT}"
 
+          # Convert runner.temp to Unix path on Windows (D:\a\_temp -> /d/a/_temp)
+          RUNNER_TMP="${{ runner.temp }}"
+          if command -v cygpath &>/dev/null; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
           DIST_TAR="${RUNNER_TMP}/zimaos-dist.tar.gz"
           tar czf "${DIST_TAR}" -C internal/web/dist .
 
