@@ -118,10 +118,11 @@ func localDistCandidates() []string {
 				filepath.Join(dir, "..", "Resources", "dist"),
 			)
 		}
-		// Windows Tauri bundle: dist next to sidecar binary
+		// Windows Tauri bundle: check multiple locations
 		if runtime.GOOS == "windows" {
 			candidates = append(candidates,
-				filepath.Join(dir, "dist"),
+				filepath.Join(dir, "dist"),           // Next to exe
+				filepath.Join(dir, "..", "dist"),     // Parent directory
 			)
 		}
 	}

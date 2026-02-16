@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+$originalDir = Get-Location
 $basePath = "C:\Users\Administrator\AppData\Local\nvm\v20.20.0;C:\Users\Administrator\.cargo\bin;C:\Program Files\Go\bin;" + $env:Path
 $env:Path = $basePath
 
@@ -28,30 +29,29 @@ Copy-Item -Recurse -Force "g:\GitHub\ZimaOS-Blue\web\dist\*" $embedDir
 Get-ChildItem -Recurse -Filter "*.map" $embedDir | Remove-Item -Force
 Write-Host "[OK] Frontend copied"
 
-# Step 3: Build Go sidecar (needs MinGW in PATH for CGO)
-Write-Host "[STEP 3] Building Go sidecar (CGO enabled)..."
+# Step 3: Build Go static library (needs MinGW in PATH for CGO)
+Write-Host "[STEP 3] Building Go static library (CGO enabled)..."
 Set-Location "g:\GitHub\ZimaOS-Blue\server"
 $tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
-$sidecarName = "blue-server-x86_64-pc-windows-msvc.exe"
-if (!(Test-Path "$tauriDir\binaries")) { New-Item -ItemType Directory "$tauriDir\binaries" -Force | Out-Null }
-if (!(Test-Path "$tauriDir\bin")) { New-Item -ItemType Directory "$tauriDir\bin" -Force | Out-Null }
+if (!(Test-Path "$tauriDir\lib")) { New-Item -ItemType Directory "$tauriDir\lib" -Force | Out-Null }
 # Temporarily add MinGW to PATH for CGO
 $env:Path = "C:\mingw64\bin;" + $basePath
 $env:CGO_ENABLED = "1"
 $env:CC = "gcc"
 $env:CXX = "g++"
-# Build ldflags with trial provider config (from environment)
-$goLdflags = "-s -w"
-if ($env:ZIMAOS_TRIAL_API_KEY) {
-    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$($env:ZIMAOS_TRIAL_API_KEY)"
+# Build as C archive (static library) with trial config
+$trialKey = $env:ZIMAOS_TRIAL_API_KEY
+$trialURL = $env:ZIMAOS_TRIAL_BASE_URL
+if (!$trialURL) { $trialURL = "https://paid.tribiosapi.top/" }
+$ldflags = "-s -w"
+if ($trialKey) {
+    $ldflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$trialKey"
+    $ldflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$trialURL"
+    Write-Host "[INFO] Building with trial provider: $trialURL"
 }
-if ($env:ZIMAOS_TRIAL_BASE_URL) {
-    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$($env:ZIMAOS_TRIAL_BASE_URL)"
-}
-go build -ldflags="$goLdflags" -o "$tauriDir\binaries\$sidecarName" ./cmd/blue/
-if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
-Copy-Item -Force "$tauriDir\binaries\$sidecarName" "$tauriDir\bin\"
-Write-Host "[OK] Sidecar built: $sidecarName"
+go build -buildmode=c-archive -ldflags="$ldflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib
+if ($LASTEXITCODE -ne 0) { throw "Go static library build failed" }
+Write-Host "[OK] Static library built: libblue.a"
 # Restore PATH without MinGW (avoid link.exe conflict with MSVC)
 $env:Path = $basePath
 Remove-Item Env:\CGO_ENABLED -ErrorAction SilentlyContinue
@@ -76,34 +76,65 @@ Write-Host "[OK] Tauri build complete (no-bundle, using custom NSIS skin install
 Write-Host "[STEP 6] Preparing NSIS files..."
 $skinDir = "$tauriDir\nsis\skin-installer"
 $filesDir = "$skinDir\FilesToInstall"
+# Clean old files
+if (Test-Path $filesDir) { Remove-Item -Recurse -Force $filesDir }
+New-Item -ItemType Directory -Path $filesDir -Force | Out-Null
 $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe"
 $releaseDirs = @("$tauriDir\target\release", "$tauriDir\target\x86_64-pc-windows-msvc\release", "$tauriDir\target\x86_64-pc-windows-gnu\release")
 foreach ($rd in $releaseDirs) {
     $exeName = if (Test-Path "$rd\blue.exe") { "blue.exe" } elseif (Test-Path "$rd\zimaos-blue.exe") { "zimaos-blue.exe" } else { $null }
     if ($exeName) {
-        Copy-Item -Force "$rd\$exeName" "$filesDir\zimaos-blue.exe"
+        Copy-Item -Force "$rd\$exeName" "$filesDir\blue.exe"
         Copy-Item -Force "$rd\WebView2Loader.dll" $filesDir
-        Copy-Item -Force "$tauriDir\bin\$sidecarName" "$filesDir\blue-server.exe"
         Write-Host "[OK] Files copied from $rd"
         break
     }
 }
 
+# Copy uninst.exe from nsis/release directory
+$nsisReleaseDir = "$tauriDir\nsis\release"
+if (Test-Path "$nsisReleaseDir\uninst.exe") {
+    Copy-Item -Force "$nsisReleaseDir\uninst.exe" "$filesDir\uninst.exe"
+    Write-Host "[OK] uninst.exe copied from nsis/release"
+} else {
+    Write-Host "[WARN] uninst.exe not found in nsis/release"
+}
+
+# Copy frontend dist directory
+$distSrc = "g:\GitHub\ZimaOS-Blue\server\internal\web\dist"
+if (Test-Path $distSrc) {
+    Get-ChildItem -Recurse -File $distSrc | ForEach-Object {
+        $relativePath = $_.FullName.Substring($distSrc.Length + 1)
+        $destPath = Join-Path $filesDir "dist\$relativePath"
+        $destDir = Split-Path $destPath -Parent
+        if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+        Copy-Item -Force $_.FullName $destPath
+    }
+    Write-Host "[OK] Frontend dist copied ($(((Get-ChildItem -Recurse -File "$filesDir\dist").Count)) files)"
+} else {
+    Write-Host "[WARN] Frontend dist not found at $distSrc"
+}
+
+# No longer copying logo.ico - shortcuts will use blue.exe embedded icon
+
 # Step 6.5: Sign executables before packaging
 Write-Host "[STEP 6.5] Signing executables..."
-& $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\zimaos-blue.exe"
-if ($LASTEXITCODE -ne 0) { throw "Failed to sign zimaos-blue.exe" }
-& $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\blue-server.exe"
-if ($LASTEXITCODE -ne 0) { throw "Failed to sign blue-server.exe" }
+& $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\blue.exe"
+if ($LASTEXITCODE -ne 0) { throw "Failed to sign blue.exe" }
+if (Test-Path "$filesDir\uninst.exe") {
+    & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\uninst.exe"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to sign uninst.exe" }
+    Write-Host "[OK] uninst.exe signed"
+}
 Write-Host "[OK] Executables signed"
 
 # Step 7: Build NSIS
 Write-Host "[STEP 7] Building NSIS installer..."
 Set-Location "$tauriDir\nsis\skin-installer"
 
-# app.7z
+# app.7z (all files recursively)
 if (Test-Path "SetupScripts\app.7z") { Remove-Item "SetupScripts\app.7z" }
-& .\7z.exe a "SetupScripts\app.7z" "$filesDir\*.*"
+& .\7z.exe a "SetupScripts\app.7z" "$filesDir\*" -r
 
 # skin.zip
 Push-Location "SetupScripts\zimaos\skin"
@@ -129,3 +160,6 @@ Write-Host "=========================================="
 Write-Host "Build Complete!"
 Write-Host "=========================================="
 Get-ChildItem "Output\ZimaOS-*_*.exe" | ForEach-Object { Write-Host "Output: $($_.FullName) ($([math]::Round($_.Length/1MB, 1)) MB)" }
+
+# Return to original directory
+Set-Location $originalDir

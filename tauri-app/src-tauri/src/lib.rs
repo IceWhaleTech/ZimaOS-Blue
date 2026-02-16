@@ -4,8 +4,8 @@
 mod server;
 mod tray;
 
-// macOS: Use CGO library approach (FFI to Go static library)
-#[cfg(target_os = "macos")]
+// macOS & Windows: Use CGO library approach (FFI to Go static library)
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod blue_ffi;
 
 use log::{error, info};
@@ -146,12 +146,11 @@ async fn start_server_with_args(app: tauri::AppHandle, args: Option<String>) -> 
 }
 
 /// Start the server using platform-specific approach with optional command-line arguments
-/// - macOS: Uses CGO library (FFI to Go static library) for faster startup
-/// - Windows: Uses sidecar process
+/// - macOS & Windows: Uses CGO library (FFI to Go static library) for faster startup
 async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<String>) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        info!("Starting Blue server via CGO library (macOS) with args: {:?}", args);
+        info!("Starting Blue server via CGO library with args: {:?}", args);
 
         // Get data directory (~/.zimaos-blue/)
         let data_dir = dirs::home_dir()
@@ -185,9 +184,9 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
-        // Windows/Linux: Use sidecar process approach
+        // Linux: Use sidecar process approach
         info!("Starting Blue server via sidecar process with args: {:?}", args);
         server::start_sidecar_server(app).await
     }
@@ -196,9 +195,9 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
 /// Start the server using platform-specific approach
 #[allow(dead_code)]
 async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        info!("Starting Blue server via CGO library (macOS)");
+        info!("Starting Blue server via CGO library");
 
         // Get data directory (~/.zimaos-blue/)
         let data_dir = dirs::home_dir()
@@ -213,11 +212,11 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
             *state.server_running.lock().unwrap() = true;
         }
 
-        // Wait for server to be ready with exponential backoff (optimized for macOS FFI)
+        // Wait for server to be ready with exponential backoff
         let url = "http://localhost:23456/api/v1/health";
-        let mut delay_ms = 25u64;  // 优化: 更快的首次检查
+        let mut delay_ms = 25u64;
         let max_delay_ms = 100u64;
-        let max_attempts = 8;      // 优化: 减少重试次数
+        let max_attempts = 8;
 
         for i in 0..max_attempts {
             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
@@ -233,9 +232,9 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
-        // Windows/Linux: Use sidecar process approach
+        // Linux: Use sidecar process approach
         info!("Starting Blue server via sidecar process");
         server::start_sidecar_server(app).await
     }
@@ -244,9 +243,9 @@ async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
 /// Stop the server using platform-specific approach
 #[allow(dead_code)]
 async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        info!("Stopping Blue server via CGO library (macOS)");
+        info!("Stopping Blue server via CGO library");
         blue_ffi::stop_server()?;
 
         if let Some(state) = app.try_state::<AppState>() {
@@ -255,7 +254,7 @@ async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
         Ok(())
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
         server::stop_server(app.clone()).await
     }
@@ -283,7 +282,7 @@ pub fn run() {
     info!("Platform: macOS (using CGO library approach)");
 
     #[cfg(target_os = "windows")]
-    info!("Platform: Windows (using sidecar approach)");
+    info!("Platform: Windows (using CGO library approach)");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

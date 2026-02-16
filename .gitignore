@@ -121,3 +121,6 @@ pnpm-debug.log*
 
 # Claude
 .claude/
+
+app.7z
+skin.zip

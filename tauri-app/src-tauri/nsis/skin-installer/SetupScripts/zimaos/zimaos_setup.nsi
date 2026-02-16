@@ -3,7 +3,7 @@
 !define PRODUCT_PATHNAME                "ZimaOS_Blue"
 !define INSTALL_APPEND_PATH             "ZimaOS Blue"
 !define INSTALL_DEFALT_SETUPPATH        ""
-!define EXE_NAME                        "zimaos-blue.exe"
+!define EXE_NAME                        "blue.exe"
 !define PRODUCT_VERSION                 "0.10.28.0"
 !define PRODUCT_PUBLISHER               "ZimaOS Team"
 !define PRODUCT_LEGAL                   "ZimaOS Team Copyright 2024"

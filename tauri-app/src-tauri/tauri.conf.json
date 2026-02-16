@@ -114,11 +114,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/tray.png",
-      "iconAsTemplate": true,
-      "menuOnLeftClick": false
     }
   },
   "plugins": {

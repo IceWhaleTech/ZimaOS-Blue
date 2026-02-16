@@ -135,7 +135,7 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let default_port = 8080u16;
+    let default_port = 23456u16;
 
     // Check if there's an existing healthy server on port 23456
     if check_existing_server(default_port).await {

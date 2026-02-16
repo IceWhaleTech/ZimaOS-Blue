@@ -1,10 +1,8 @@
-// Blue Server FFI bindings for macOS
-// Links to the Go static library (libblue.a) via CGO
+// Blue Server FFI bindings for macOS and Windows
+// Links to the Go static library (libblue.a on macOS, libblue.lib on Windows) via CGO
 //
-// This module is only compiled on macOS where we use the CGO library approach
-// instead of the sidecar process approach used on Windows.
+// This module provides FFI bindings to the Go server library for both platforms.
 
-#![cfg(target_os = "macos")]
 #![allow(dead_code)]
 
 use log::{error, info};
@@ -13,6 +11,41 @@ use std::os::raw::{c_char, c_int};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // FFI declarations for the Go library exports
+// macOS: links to libblue.a
+// Windows: links to libblue.lib
+#[cfg(target_os = "macos")]
+#[link(name = "blue", kind = "static")]
+extern "C" {
+    /// Start the Blue server with command-line arguments
+    /// port: The port to listen on (0 for auto-select)
+    /// data_dir: Path to the data directory (can be null for default)
+    /// args: Command-line arguments as a single string (can be null)
+    /// Returns: 0 on success, non-zero on error
+    fn BlueServerStartWithArgs(port: c_int, data_dir: *const c_char, args: *const c_char) -> c_int;
+
+    /// Start the Blue server (legacy, without args)
+    /// port: The port to listen on (0 for auto-select)
+    /// data_dir: Path to the data directory (can be null for default)
+    /// Returns: 0 on success, non-zero on error
+    fn BlueServerStart(port: c_int, data_dir: *const c_char) -> c_int;
+
+    /// Stop the Blue server
+    /// Returns: 0 on success, non-zero on error
+    fn BlueServerStop() -> c_int;
+
+    /// Check if the server is running
+    /// Returns: 1 if running, 0 if not
+    fn BlueServerIsRunning() -> c_int;
+
+    /// Get the server version string
+    /// Returns: A C string that must be freed with BlueServerFreeString
+    fn BlueServerGetVersion() -> *mut c_char;
+
+    /// Free a string returned by the Go library
+    fn BlueServerFreeString(s: *mut c_char);
+}
+
+#[cfg(target_os = "windows")]
 #[link(name = "blue", kind = "static")]
 extern "C" {
     /// Start the Blue server with command-line arguments

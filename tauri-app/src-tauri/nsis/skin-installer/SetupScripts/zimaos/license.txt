@@ -1,12 +1,12 @@
-﻿ZimaOS Blue
+ZimaOS Blue
 
 END USER LICENSE AGREEMENT (EULA)
 Last Updated: Feb 16, 2026
 
-This End User License Agreement (“Agreement”) is a legal agreement between you (“User”, “you”) and Icewhale Technology Limited (“Company”, “we”, “us”, or “our”) governing your use of the ZimaOS Blue software (“Software”).
+This End User License Agreement ("Agreement") is a legal agreement between you ("User", "you") and Icewhale Technology Limited ("Company", "we", "us", or "our") governing your use of the ZimaOS Blue software ("Software").
 
 ZimaOS Blue is positioned as:
-“ZimaOS Blue – A Local-first Agent Runtime for Builders with Bolder Mind. Fully Open Source & Dual Supervision.”
+"ZimaOS Blue - A Local-first Agent Runtime for Builders with Bolder Mind. Fully Open Source & Dual Supervision."
 
 By installing, copying, accessing, or using the Software, you agree to be bound by this Agreement. If you do not agree, do not install or use the Software.
 
@@ -116,7 +116,7 @@ Upon termination, you must cease use and delete copies of the Software.
 
 12. Disclaimer of Warranties
 
-THE SOFTWARE IS PROVIDED “AS IS” WITHOUT WARRANTIES OF ANY KIND.
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND.
 
 13. Limitation of Liability
 

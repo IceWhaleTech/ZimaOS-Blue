@@ -5902,6 +5902,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-shell",
  "tokio",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

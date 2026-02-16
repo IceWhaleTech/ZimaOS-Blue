@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 	"unsafe"
@@ -57,9 +58,21 @@ var (
 	gitCommit = "unknown"
 )
 
-// getMacOSDataDir returns the macOS data directory path
-func getMacOSDataDir() string {
-	return filepath.Join(os.ExpandEnv("$HOME"), "Library", "Application Support", "com.zimaos.blue")
+// getDataDir returns the platform-specific data directory path
+func getDataDir() string {
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(os.ExpandEnv("$HOME"), "Library", "Application Support", "com.zimaos.blue")
+	}
+	if runtime.GOOS == "windows" {
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			localAppData = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Local")
+		}
+		return filepath.Join(localAppData, "ZimaOS Blue")
+	}
+	// Linux
+	home := os.ExpandEnv("$HOME")
+	return filepath.Join(home, ".zimaos-blue")
 }
 
 // Global state for the server
@@ -82,7 +95,7 @@ func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 	}
 
 	goPort := int(port)
-	goDataDir := getMacOSDataDir()
+	goDataDir := getDataDir()
 	goArgs := C.GoString(args)
 
 	// Set environment variables for config
@@ -120,7 +133,7 @@ func BlueServerStart(port C.int, dataDir *C.char) C.int {
 	}
 
 	goPort := int(port)
-	goDataDir := getMacOSDataDir()
+	goDataDir := getDataDir()
 
 	// Set environment variables for config
 	if goPort > 0 {

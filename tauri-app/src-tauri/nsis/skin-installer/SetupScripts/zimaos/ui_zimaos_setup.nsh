@@ -41,15 +41,10 @@ UninstPage custom un.DUIPage
 # ======================= DUILIB 自定义页面 =========================
 Var hInstallDlg
 Var hInstallSubDlg
-Var sCmdFlag
-Var sCmdSetupPath
-Var sSetupPath 
-Var sReserveData   #卸载时是否保留数据 
-Var InstallState   #是在安装中还是安装完成  
-Var UnInstallValue  #卸载的进度  
-
-Var temp11
-Var temp12
+Var sSetupPath
+Var sReserveData   #卸载时是否保留数据
+Var InstallState   #是在安装中还是安装完成
+Var UnInstallValue  #卸载的进度
 Function DUIPage
     StrCpy $InstallState "0"	#设置未安装完成状态
 	Call SetLanguageStrings
@@ -100,7 +95,7 @@ Function un.DUIPage
 	# Set dynamic text for uninstall page
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblUninstallConfirm" "text" "$LangUninstallConfirm"
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnUnInstall" "text" "$LangConfirm"
-	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnClose" "text" "$LangCancel"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnCancelUninstall" "text" "$LangCancel"
 
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "chkAutoRun" "selected" "true"
 
@@ -115,9 +110,9 @@ Function un.BindUnInstUIControls
 	
 	GetFunctionAddress $0 un.onUninstall
     nsNiuniuSkin::BindCallBack $hInstallDlg "btnUnInstall" $0
-	
+
 	GetFunctionAddress $0 un.ExitDUISetup
-    nsNiuniuSkin::BindCallBack $hInstallDlg "btnClose" $0
+    nsNiuniuSkin::BindCallBack $hInstallDlg "btnCancelUninstall" $0
 FunctionEnd
 
 #绑定安装的界面事件 
@@ -545,7 +540,6 @@ Function un.onDeleteFileFound
 		nsNiuniuSkin::SetControlAttribute $hInstallDlg "un_progress_pos" "text" "$UnInstallValue%"
 		
 		Sleep 100
-	${EndIf}	
-	undelete:
-	Push "LocateNext"	
+	${EndIf}
+	Push "LocateNext"
 FunctionEnd
