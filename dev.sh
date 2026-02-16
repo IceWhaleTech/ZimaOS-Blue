@@ -7,7 +7,7 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-COMMAND="${1:-start}"
+COMMAND="${1:-prd}"
 
 # Enable CGO for eSpeak-NG static linking
 export CGO_ENABLED=1

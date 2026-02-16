@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,6 +42,9 @@ type CCCache struct {
 	// Cleanup (disk only — L1 TTL handled by ecache2)
 	cleanupTicker *time.Ticker
 	stopCleanup   chan struct{}
+
+	// Lazy initialization
+	initOnce sync.Once
 }
 
 // StatsStore interface for persisting cache statistics
@@ -72,46 +76,52 @@ type CCCacheEntry struct {
 	ContentHash string            `json:"content_hash"`
 }
 
-// NewCCCache creates a new cc-cache instance with L1 memory + optional L2 disk.
+// NewCCCache creates a new cc-cache instance. The expensive L1 memory cache,
+// L2 disk cache, and cleanup goroutine are lazily initialized on first use
+// to reduce startup RSS.
 func NewCCCache(config *CacheConfig) *CCCache {
 	if config == nil {
 		config = DefaultCacheConfig()
 	}
 
-	bucketCount := 16
-	bucketSize := config.MaxSize / bucketCount
-	if bucketSize < 10 {
-		bucketSize = 10
-	}
-	ttl := config.TTL
-	if ttl <= 0 {
-		ttl = 5 * time.Minute
-	}
-
-	cache := &CCCache{
+	return &CCCache{
 		config:        config,
-		l1:            ecache2.NewLRUCache[string](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4)),
 		canonicalizer: NewCanonicalizer(),
 		singleflight:  NewCacheSingleflight(),
 		stopCleanup:   make(chan struct{}),
 	}
+}
 
-	if config.StorageType == "disk" || config.StorageType == "multilevel" {
-		path := config.StoragePath
-		if path == "" {
-			path = "./data/cache.db"
+// ensureInit lazily initializes L1 memory cache, L2 disk cache, and cleanup goroutine.
+func (c *CCCache) ensureInit() {
+	c.initOnce.Do(func() {
+		bucketCount := 16
+		bucketSize := c.config.MaxSize / bucketCount
+		if bucketSize < 10 {
+			bucketSize = 10
 		}
-		if dc, err := NewDiskCache(path); err == nil {
-			cache.disk = dc
+		ttl := c.config.TTL
+		if ttl <= 0 {
+			ttl = 5 * time.Minute
 		}
-	}
 
-	if config.Enabled {
-		cache.cleanupTicker = time.NewTicker(time.Minute)
-		go cache.cleanupLoop()
-	}
+		c.l1 = ecache2.NewLRUCache[string](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4))
 
-	return cache
+		if c.config.StorageType == "disk" || c.config.StorageType == "multilevel" {
+			path := c.config.StoragePath
+			if path == "" {
+				path = "./data/cache.db"
+			}
+			if dc, err := NewDiskCache(path); err == nil {
+				c.disk = dc
+			}
+		}
+
+		if c.config.Enabled {
+			c.cleanupTicker = time.NewTicker(time.Minute)
+			go c.cleanupLoop()
+		}
+	})
 }
 
 // SetStatsStore sets the stats persistence store and loads existing stats
@@ -167,6 +177,10 @@ func (c *CCCache) cleanup() {
 
 // Stop stops the cache cleanup goroutine and closes L2 disk.
 func (c *CCCache) Stop() {
+	// Only stop if actually initialized
+	if c.l1 == nil {
+		return
+	}
 	if c.cleanupTicker != nil {
 		close(c.stopCleanup)
 	}
@@ -294,6 +308,7 @@ func (c *CCCache) Get(key string) (*CCCacheEntry, bool) {
 	if !c.config.Enabled {
 		return nil, false
 	}
+	c.ensureInit()
 	// L1 memory lookup (ecache2 handles TTL internally)
 	if val, ok := c.l1.Get(key); ok {
 		entry := val.(*CCCacheEntry)
@@ -320,6 +335,7 @@ func (c *CCCache) Set(key string, body []byte, statusCode int, headers http.Head
 	if !c.config.Enabled {
 		return
 	}
+	c.ensureInit()
 	cacheable := false
 	for _, code := range c.config.CacheableStatusCodes {
 		if code == statusCode {
@@ -369,6 +385,7 @@ func fnvHashBytes(data []byte) string {
 
 // Clear clears all cache entries. Recreates L1 ecache2 instance.
 func (c *CCCache) Clear() {
+	c.ensureInit()
 	bucketCount := 16
 	bucketSize := c.config.MaxSize / bucketCount
 	if bucketSize < 10 {
@@ -386,6 +403,7 @@ func (c *CCCache) Clear() {
 
 // Stats returns cache statistics with L1/L2 breakdown.
 func (c *CCCache) Stats() map[string]interface{} {
+	c.ensureInit()
 	hits := atomic.LoadInt64(&c.hits)
 	misses := atomic.LoadInt64(&c.misses)
 	l1Hits := atomic.LoadInt64(&c.l1Hits)
@@ -457,11 +475,13 @@ func (c *CCCache) GetSingleflight() *CacheSingleflight {
 
 // GetDisk returns the L2 disk cache (nil if not configured).
 func (c *CCCache) GetDisk() *DiskCache {
+	c.ensureInit()
 	return c.disk
 }
 
 // Warmup loads top-N entries from L2 disk into L1 memory.
 func (c *CCCache) Warmup(topN int) int {
+	c.ensureInit()
 	if c.disk == nil {
 		return 0
 	}

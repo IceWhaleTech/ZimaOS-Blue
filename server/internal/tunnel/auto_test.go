@@ -6,23 +6,6 @@ import (
 	"time"
 )
 
-func TestAutoManager_BlacklistIntegration(t *testing.T) {
-	am := NewAutoManager()
-
-	if am.blacklist == nil {
-		t.Error("Blacklist should be initialized")
-	}
-
-	err := am.blacklist.Add(ProviderCloudflare, "test failure")
-	if err != nil {
-		t.Fatalf("Failed to add provider to blacklist: %v", err)
-	}
-
-	if !am.blacklist.IsBlacklisted(ProviderCloudflare) {
-		t.Error("Provider should be blacklisted")
-	}
-}
-
 func TestAutoManager_ProviderOrder(t *testing.T) {
 	am := NewAutoManager()
 

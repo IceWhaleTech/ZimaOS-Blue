@@ -11,7 +11,7 @@ set "COMMAND=%~1"
 :: Enable CGO for eSpeak-NG static linking
 set "CGO_ENABLED=1"
 
-if "%COMMAND%"=="" set "COMMAND=start"
+if "%COMMAND%"=="" set "COMMAND=prd"
 
 :: Subroutines must be defined before goto (Windows batch quirk)
 goto :run

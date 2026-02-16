@@ -360,7 +360,7 @@ func (c *StatisticsCollector) Clear() error {
 	c.events = make([]APICallEvent, 0)
 
 	// Remove persisted data
-	eventsFile := filepath.Join(c.storagePath, "events.json")
+	eventsFile := filepath.Join(c.storagePath, "events.jsonl")
 	os.Remove(eventsFile)
 
 	return nil

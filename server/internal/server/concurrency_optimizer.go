@@ -9,6 +9,7 @@ import (
 type ConcurrencyOptimizer struct {
 	// Request queue for batching
 	requestQueue chan interface{}
+	queueSize    int
 	batchSize    int
 	batchTimeout int64 // milliseconds
 
@@ -16,15 +17,25 @@ type ConcurrencyOptimizer struct {
 	totalRequests   int64
 	cachedRequests  int64
 	batchedRequests int64
+
+	// Lazy init
+	initOnce sync.Once
 }
 
-// NewConcurrencyOptimizer creates a new concurrency optimizer
+// NewConcurrencyOptimizer creates a new concurrency optimizer.
+// The request queue channel is lazily allocated on first use.
 func NewConcurrencyOptimizer(queueSize, batchSize int) *ConcurrencyOptimizer {
 	return &ConcurrencyOptimizer{
-		requestQueue: make(chan interface{}, queueSize),
+		queueSize:    queueSize,
 		batchSize:    batchSize,
 		batchTimeout: 100, // 100ms
 	}
+}
+
+func (co *ConcurrencyOptimizer) ensureInit() {
+	co.initOnce.Do(func() {
+		co.requestQueue = make(chan interface{}, co.queueSize)
+	})
 }
 
 // RecordRequest records a request for metrics

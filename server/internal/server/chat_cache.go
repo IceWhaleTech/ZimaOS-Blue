@@ -9,10 +9,11 @@ import (
 
 // ConversationCache caches conversation messages to reduce database queries.
 type ConversationCache struct {
-	entries map[string]*cacheEntry
-	mu      sync.RWMutex
-	ttl     time.Duration
-	maxSize int
+	entries  map[string]*cacheEntry
+	mu       sync.RWMutex
+	ttl      time.Duration
+	maxSize  int
+	initOnce sync.Once
 }
 
 type cacheEntry struct {
@@ -21,21 +22,25 @@ type cacheEntry struct {
 }
 
 // NewConversationCache creates a new conversation cache.
+// The cleanup goroutine is lazily started on first write to reduce startup overhead.
 func NewConversationCache(ttl time.Duration, maxSize int) *ConversationCache {
-	cache := &ConversationCache{
-		entries: make(map[string]*cacheEntry),
+	return &ConversationCache{
 		ttl:     ttl,
 		maxSize: maxSize,
 	}
+}
 
-	// Start cleanup goroutine
-	go cache.cleanupLoop()
-
-	return cache
+// ensureInit lazily initializes the entries map and cleanup goroutine.
+func (c *ConversationCache) ensureInit() {
+	c.initOnce.Do(func() {
+		c.entries = make(map[string]*cacheEntry)
+		go c.cleanupLoop()
+	})
 }
 
 // Get retrieves messages from cache if available and not expired.
 func (c *ConversationCache) Get(conversationID string) ([]memory.Message, bool) {
+	c.ensureInit()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -58,6 +63,7 @@ func (c *ConversationCache) Get(conversationID string) ([]memory.Message, bool) 
 
 // Set stores messages in cache.
 func (c *ConversationCache) Set(conversationID string, messages []memory.Message) {
+	c.ensureInit()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -79,6 +85,7 @@ func (c *ConversationCache) Set(conversationID string, messages []memory.Message
 
 // Invalidate removes a conversation from cache.
 func (c *ConversationCache) Invalidate(conversationID string) {
+	c.ensureInit()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -87,6 +94,7 @@ func (c *ConversationCache) Invalidate(conversationID string) {
 
 // Clear removes all entries from cache.
 func (c *ConversationCache) Clear() {
+	c.ensureInit()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -95,6 +103,7 @@ func (c *ConversationCache) Clear() {
 
 // Stats returns cache statistics.
 func (c *ConversationCache) Stats() CacheStats {
+	c.ensureInit()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

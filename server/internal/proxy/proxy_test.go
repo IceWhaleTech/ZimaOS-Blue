@@ -514,8 +514,15 @@ func TestProxyServer(t *testing.T) {
 			t.Error("GetEndpoint returned empty string")
 		}
 
-		// Test status endpoint
-		resp, err := http.Get(endpoint + "/api/v1/proxy/status")
+		// Wait for server to be ready
+		var resp *http.Response
+		for i := 0; i < 20; i++ {
+			resp, err = http.Get(endpoint + "/api/v1/proxy/status")
+			if err == nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 		if err != nil {
 			t.Fatalf("failed to get status: %v", err)
 		}

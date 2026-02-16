@@ -134,6 +134,7 @@ func TestStatsHandler_GetRecentEvents(t *testing.T) {
 func TestStatsHandler_ClearStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
+	collector.SetSyncPersist(true)
 	consentManager := stats.NewConsentManager(tmpDir, collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)

@@ -1,6 +1,7 @@
 package network
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -57,21 +58,13 @@ func TestAddressDetector_GetPreferredAddress(t *testing.T) {
 }
 
 func TestDetectInterfaceType(t *testing.T) {
-	tests := []struct {
+	type testCase struct {
 		name     string
 		expected InterfaceType
-	}{
-		// macOS
-		{"en0", InterfaceTypeWiFi},
-		{"en1", InterfaceTypeEthernet},
+	}
 
-		// Linux
-		{"wlan0", InterfaceTypeWiFi},
-		{"wlp3s0", InterfaceTypeWiFi},
-		{"eth0", InterfaceTypeEthernet},
-		{"enp0s3", InterfaceTypeEthernet},
-		{"ens33", InterfaceTypeEthernet},
-
+	// Platform-independent cases
+	tests := []testCase{
 		// Virtual
 		{"docker0", InterfaceTypeVirtual},
 		{"veth123", InterfaceTypeVirtual},
@@ -84,6 +77,23 @@ func TestDetectInterfaceType(t *testing.T) {
 
 		// Unknown
 		{"unknown123", InterfaceTypeUnknown},
+	}
+
+	// Platform-specific cases
+	if runtime.GOOS == "darwin" {
+		tests = append(tests,
+			testCase{"en0", InterfaceTypeWiFi},
+			testCase{"en1", InterfaceTypeEthernet},
+		)
+	}
+	if runtime.GOOS == "linux" {
+		tests = append(tests,
+			testCase{"wlan0", InterfaceTypeWiFi},
+			testCase{"wlp3s0", InterfaceTypeWiFi},
+			testCase{"eth0", InterfaceTypeEthernet},
+			testCase{"enp0s3", InterfaceTypeEthernet},
+			testCase{"ens33", InterfaceTypeEthernet},
+		)
 	}
 
 	for _, tt := range tests {

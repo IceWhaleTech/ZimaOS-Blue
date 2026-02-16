@@ -26,19 +26,15 @@ type AutoManager struct {
 
 	// Providers to try in order (no auth required first)
 	providerOrder []Provider
-	blacklist     *Blacklist
 }
 
 // NewAutoManager creates a new auto tunnel manager.
 // Auto uses Cloudflare Quick Tunnel.
 func NewAutoManager() *AutoManager {
-	blacklist, _ := NewBlacklist("")
-
 	return &AutoManager{
 		providerOrder: []Provider{
 			ProviderCloudflare,
 		},
-		blacklist: blacklist,
 	}
 }
 
@@ -74,11 +70,6 @@ func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 	// Forward URL to Auto's callback so handler gets notified as soon as any provider has URL
 	onURL := m.onURLChange
 	for _, provider := range m.providerOrder {
-		// Skip blacklisted providers
-		if m.blacklist != nil && m.blacklist.IsBlacklisted(provider) {
-			continue
-		}
-
 		var manager Manager
 		switch provider {
 		case ProviderCloudflare:
@@ -100,7 +91,6 @@ func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 				Subdomain: cfg.Subdomain,
 			}
 
-			startTime := time.Now()
 			err := mgr.Start(ctx, providerCfg)
 			if err != nil {
 				select {
@@ -131,12 +121,6 @@ func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 				}
 
 				if !mgr.IsRunning() {
-					// Check if this was an immediate failure (< 5 seconds)
-					if time.Since(startTime) < ImmediateFailureThreshold {
-						if m.blacklist != nil {
-							m.blacklist.Add(prov, "immediate failure")
-						}
-					}
 					select {
 					case errChan <- fmt.Errorf("%s: connection failed or timed out", prov):
 					case <-ctx.Done():
@@ -146,12 +130,6 @@ func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 			}
 
 			mgr.Stop()
-			// Check if this was an immediate failure (< 5 seconds)
-			if time.Since(startTime) < ImmediateFailureThreshold {
-				if m.blacklist != nil {
-					m.blacklist.Add(prov, "connection timeout")
-				}
-			}
 			select {
 			case errChan <- fmt.Errorf("%s: connection failed or timed out", prov):
 			case <-ctx.Done():

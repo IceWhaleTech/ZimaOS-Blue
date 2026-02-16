@@ -359,10 +359,6 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		eventStop:        make(chan struct{}),
 		providerCache:    make(map[string]llm.Provider),
 		maxProviderCacheSize: 20, // LRU cache size
-		requestPool:      NewRequestPool(),
-		responsePool:     NewResponsePool(),
-		concurrencyOpt:   NewConcurrencyOptimizer(1000, 10),
-		fastPathCache:    NewFastPathCache(),
 		conversationCache: NewConversationCache(5*time.Minute, 100), // 5min TTL, max 100 conversations
 	}
 	// Start async event processor

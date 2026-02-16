@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -180,7 +181,7 @@ func TestHandler_GetStatus(t *testing.T) {
 	// First execute a command
 	req := NewExecutionRequest("echo", "hello")
 	req.Timeout = 5 * time.Second
-	result, _ := manager.Execute(nil, req)
+	result, _ := manager.Execute(context.Background(), req)
 
 	e := echo.New()
 	httpReq := httptest.NewRequest(http.MethodGet, "/api/v1/sandbox/status/"+result.ID, nil)

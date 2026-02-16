@@ -165,6 +165,7 @@ func TestStatisticsCollector_CalculateCost(t *testing.T) {
 func TestStatisticsCollector_Clear(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	collector.SetSyncPersist(true)
 
 	// Record some events
 	for i := 0; i < 5; i++ {
