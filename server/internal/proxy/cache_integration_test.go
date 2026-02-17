@@ -178,6 +178,7 @@ func TestCCCache_DisabledCache(t *testing.T) {
 
 func TestCCCache_MemoryOnly(t *testing.T) {
 	config := DefaultCacheConfig()
+	config.Enabled = true
 	config.StorageType = "memory"
 	cache := NewCCCache(config)
 	defer cache.Stop()

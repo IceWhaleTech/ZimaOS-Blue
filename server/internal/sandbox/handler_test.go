@@ -244,7 +244,7 @@ func TestHandler_Kill(t *testing.T) {
 
 	// Execute in goroutine
 	go func() {
-		manager.Execute(nil, req)
+		manager.Execute(context.Background(), req)
 	}()
 
 	// Wait for process to start

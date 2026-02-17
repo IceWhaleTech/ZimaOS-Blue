@@ -2010,6 +2010,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 
 		if chunk.Done {
+			// If there are pending tool calls, skip persistence and final SSE —
+			// the tool loop will reset fullContent and re-stream.
+			if len(streamToolCalls) > 0 {
+				return nil
+			}
+
 			// Use actual model from response if available, otherwise use request model
 			if actualModel != "" {
 				model = actualModel

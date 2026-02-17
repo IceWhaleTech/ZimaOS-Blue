@@ -213,7 +213,7 @@ func TestModelMapping(t *testing.T) {
 	}{
 		{"gpt-4o", "claude-3-5-sonnet-20241022"},
 		{"gpt-4o-mini", "claude-3-5-haiku-20241022"},
-		{"claude-3-5-sonnet", "claude-3-5-sonnet-20241022"},
+		{"claude-3-5-sonnet", "claude-3-5-sonnet"}, // Claude names pass through as-is
 		{"custom-model", "custom-model"},
 	}
 
