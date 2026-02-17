@@ -284,7 +284,27 @@ func (m *PrunerModelManager) downloadFile(ctx context.Context, url, destPath str
 		}
 	}
 
-	return os.Rename(destPath+".tmp", destPath)
+	// Close file before rename (Windows requirement)
+	if err := out.Close(); err != nil {
+		os.Remove(destPath + ".tmp")
+		return fmt.Errorf("close file: %w", err)
+	}
+
+	// Remove existing file if present
+	if _, err := os.Stat(destPath); err == nil {
+		if err := os.Remove(destPath); err != nil {
+			os.Remove(destPath + ".tmp")
+			return fmt.Errorf("remove existing file: %w", err)
+		}
+	}
+
+	// Rename temp file to final name
+	if err := os.Rename(destPath+".tmp", destPath); err != nil {
+		os.Remove(destPath + ".tmp")
+		return fmt.Errorf("rename file: %w", err)
+	}
+
+	return nil
 }
 
 // CancelDownload cancels the current download.
