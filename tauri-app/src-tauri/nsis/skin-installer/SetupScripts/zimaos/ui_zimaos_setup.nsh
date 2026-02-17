@@ -513,7 +513,9 @@ Function un.RemoveFiles
 	${Locate} "$INSTDIR" "/G=0 /M=*.*" "un.onDeleteFileFound"
 	StrCpy $InstallState "1"
 	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnClose" "enabled" "true"
-	nsNiuniuSkin::SetControlAttribute $hInstallDlg "slrUnInstProgress" "value" "100"	
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "slrUnInstProgress" "value" "100"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "lblUninstallComplete" "text" "$LangUninstallComplete"
+	nsNiuniuSkin::SetControlAttribute $hInstallDlg "btnUninstalled" "text" "$LangFinish"
 	nsNiuniuSkin::ShowPageItem $hInstallDlg "wizardTab" ${INSTALL_PAGE_UNISTFINISH}
 FunctionEnd
 

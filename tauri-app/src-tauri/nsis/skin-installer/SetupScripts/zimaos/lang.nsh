@@ -19,6 +19,8 @@ Var LangUninstallConfirm
 Var LangTip
 Var LangConfirm
 Var LangCancel
+Var LangUninstallComplete
+Var LangFinish
 
 Function SetLanguageStrings
   System::Call 'kernel32::GetUserDefaultUILanguage() i .r0'
@@ -42,9 +44,11 @@ Function SetLanguageStrings
   StrCpy $LangTip "Notice"
   StrCpy $LangConfirm "OK"
   StrCpy $LangCancel "Cancel"
+  StrCpy $LangUninstallComplete "${PRODUCT_NAME} has been uninstalled"
+  StrCpy $LangFinish "Finish"
 
   ; Chinese Simplified (0x0804)
-  IntCmp $0 2052 0 +21 +21
+  IntCmp $0 2052 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} 安装程序"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} 卸载程序"
     StrCpy $LangOneClickInstall "一键安装"
@@ -63,10 +67,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "提示"
     StrCpy $LangConfirm "确 定"
     StrCpy $LangCancel "取 消"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} 已卸载"
+    StrCpy $LangFinish "完 成"
     Goto LangDone
 
   ; Chinese Traditional (0x0404)
-  IntCmp $0 1028 0 +21 +21
+  IntCmp $0 1028 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} 安裝程式"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} 解除安裝"
     StrCpy $LangOneClickInstall "一鍵安裝"
@@ -85,10 +91,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "提示"
     StrCpy $LangConfirm "確 定"
     StrCpy $LangCancel "取 消"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} 已解除安裝"
+    StrCpy $LangFinish "完 成"
     Goto LangDone
 
   ; Japanese (0x0411)
-  IntCmp $0 1041 0 +21 +21
+  IntCmp $0 1041 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} セットアップ"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} アンインストール"
     StrCpy $LangOneClickInstall "インストール"
@@ -107,10 +115,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "通知"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "キャンセル"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} はアンインストールされました"
+    StrCpy $LangFinish "完了"
     Goto LangDone
 
   ; Korean (0x0412)
-  IntCmp $0 1042 0 +21 +21
+  IntCmp $0 1042 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} 설치"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} 제거"
     StrCpy $LangOneClickInstall "설치"
@@ -129,10 +139,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "알림"
     StrCpy $LangConfirm "확인"
     StrCpy $LangCancel "취소"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME}이(가) 제거되었습니다"
+    StrCpy $LangFinish "완료"
     Goto LangDone
 
   ; German (0x0407)
-  IntCmp $0 1031 0 +21 +21
+  IntCmp $0 1031 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Installation"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Deinstallation"
     StrCpy $LangOneClickInstall "Installieren"
@@ -151,10 +163,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Hinweis"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Abbrechen"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} wurde deinstalliert"
+    StrCpy $LangFinish "Fertig"
     Goto LangDone
 
   ; French (0x040C)
-  IntCmp $0 1036 0 +21 +21
+  IntCmp $0 1036 0 +23 +23
     StrCpy $LangInstallTitle "Installation de ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Desinstallation de ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Installer"
@@ -173,10 +187,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Information"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annuler"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} a ete desinstalle"
+    StrCpy $LangFinish "Terminer"
     Goto LangDone
 
   ; Spanish (0x0C0A)
-  IntCmp $0 3082 0 +21 +21
+  IntCmp $0 3082 0 +23 +23
     StrCpy $LangInstallTitle "Instalacion de ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Desinstalacion de ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instalar"
@@ -195,10 +211,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Aviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancelar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} ha sido desinstalado"
+    StrCpy $LangFinish "Finalizar"
     Goto LangDone
 
   ; Portuguese Brazil (0x0416)
-  IntCmp $0 1046 0 +21 +21
+  IntCmp $0 1046 0 +23 +23
     StrCpy $LangInstallTitle "Instalacao do ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Desinstalacao do ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instalar"
@@ -217,10 +235,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Aviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancelar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} foi desinstalado"
+    StrCpy $LangFinish "Concluir"
     Goto LangDone
 
   ; Portuguese Portugal (0x0816)
-  IntCmp $0 2070 0 +21 +21
+  IntCmp $0 2070 0 +23 +23
     StrCpy $LangInstallTitle "Instalacao do ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Desinstalacao do ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instalar"
@@ -239,10 +259,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Aviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancelar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} foi desinstalado"
+    StrCpy $LangFinish "Concluir"
     Goto LangDone
 
   ; Russian (0x0419)
-  IntCmp $0 1049 0 +21 +21
+  IntCmp $0 1049 0 +23 +23
     StrCpy $LangInstallTitle "Ustanovka ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Udalenie ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Ustanovit"
@@ -261,10 +283,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Uvedomlenie"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Otmena"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} byl udalen"
+    StrCpy $LangFinish "Gotovo"
     Goto LangDone
 
   ; Italian (0x0410)
-  IntCmp $0 1040 0 +21 +21
+  IntCmp $0 1040 0 +23 +23
     StrCpy $LangInstallTitle "Installazione di ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Disinstallazione di ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Installa"
@@ -283,10 +307,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Avviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annulla"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} e stato disinstallato"
+    StrCpy $LangFinish "Fine"
     Goto LangDone
 
   ; Dutch (0x0413)
-  IntCmp $0 1043 0 +21 +21
+  IntCmp $0 1043 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Installatie"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Verwijderen"
     StrCpy $LangOneClickInstall "Installeren"
@@ -305,10 +331,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Melding"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annuleren"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} is verwijderd"
+    StrCpy $LangFinish "Voltooien"
     Goto LangDone
 
   ; Polish (0x0415)
-  IntCmp $0 1045 0 +21 +21
+  IntCmp $0 1045 0 +23 +23
     StrCpy $LangInstallTitle "Instalacja ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Deinstalacja ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Zainstaluj"
@@ -327,10 +355,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Informacja"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Anuluj"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} zostal odinstalowany"
+    StrCpy $LangFinish "Zakoncz"
     Goto LangDone
 
   ; Czech (0x0405)
-  IntCmp $0 1029 0 +21 +21
+  IntCmp $0 1029 0 +23 +23
     StrCpy $LangInstallTitle "Instalace ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Odinstalace ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instalovat"
@@ -349,10 +379,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Upozorneni"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Zrusit"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} byl odinstalovany"
+    StrCpy $LangFinish "Dokoncit"
     Goto LangDone
 
   ; Slovak (0x041B)
-  IntCmp $0 1051 0 +21 +21
+  IntCmp $0 1051 0 +23 +23
     StrCpy $LangInstallTitle "Instalacia ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Odinstalovanie ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instalovat"
@@ -371,10 +403,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Upozornenie"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Zrusit"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} bol odinstalovany"
+    StrCpy $LangFinish "Dokoncit"
     Goto LangDone
 
   ; Hungarian (0x040E)
-  IntCmp $0 1038 0 +21 +21
+  IntCmp $0 1038 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Telepites"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Eltavolitas"
     StrCpy $LangOneClickInstall "Telepites"
@@ -393,10 +427,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Ertesites"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Megse"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} eltavolitva"
+    StrCpy $LangFinish "Befejez"
     Goto LangDone
 
   ; Romanian (0x0418)
-  IntCmp $0 1048 0 +21 +21
+  IntCmp $0 1048 0 +23 +23
     StrCpy $LangInstallTitle "Instalare ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Dezinstalare ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instaleaza"
@@ -415,10 +451,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Notificare"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Anuleaza"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} a fost dezinstalat"
+    StrCpy $LangFinish "Finalizare"
     Goto LangDone
 
   ; Swedish (0x041D)
-  IntCmp $0 1053 0 +21 +21
+  IntCmp $0 1053 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Installation"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Avinstallation"
     StrCpy $LangOneClickInstall "Installera"
@@ -437,10 +475,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Meddelande"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Avbryt"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} har avinstallerats"
+    StrCpy $LangFinish "Slutfor"
     Goto LangDone
 
   ; Danish (0x0406)
-  IntCmp $0 1030 0 +21 +21
+  IntCmp $0 1030 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Installation"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Afinstallation"
     StrCpy $LangOneClickInstall "Installer"
@@ -459,10 +499,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Besked"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annuller"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} er afinstalleret"
+    StrCpy $LangFinish "Afslut"
     Goto LangDone
 
   ; Norwegian Bokmal (0x0414)
-  IntCmp $0 1044 0 +21 +21
+  IntCmp $0 1044 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Installasjon"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Avinstallasjon"
     StrCpy $LangOneClickInstall "Installer"
@@ -481,10 +523,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Melding"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Avbryt"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} er avinstallert"
+    StrCpy $LangFinish "Fullfore"
     Goto LangDone
 
   ; Croatian (0x041A)
-  IntCmp $0 1050 0 +21 +21
+  IntCmp $0 1050 0 +23 +23
     StrCpy $LangInstallTitle "Instalacija ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Deinstalacija ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instaliraj"
@@ -503,10 +547,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Obavijest"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Odustani"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} je deinstaliran"
+    StrCpy $LangFinish "Zavrsi"
     Goto LangDone
 
   ; Greek (0x0408)
-  IntCmp $0 1032 0 +21 +21
+  IntCmp $0 1032 0 +23 +23
     StrCpy $LangInstallTitle "Egkatastasi ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Apegkatastasi ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Egkatastasi"
@@ -525,10 +571,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Eidopoiisi"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Akyrosi"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} apegkatastathike"
+    StrCpy $LangFinish "Telos"
     Goto LangDone
 
   ; Catalan (0x0403)
-  IntCmp $0 1027 0 +21 +21
+  IntCmp $0 1027 0 +23 +23
     StrCpy $LangInstallTitle "Installacio de ${PRODUCT_NAME}"
     StrCpy $LangUninstallTitle "Desinstallacio de ${PRODUCT_NAME}"
     StrCpy $LangOneClickInstall "Instal-lar"
@@ -547,10 +595,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Avis"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancel-lar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} s'ha desinstal-lat"
+    StrCpy $LangFinish "Finalitzar"
     Goto LangDone
 
   ; Irish (0x083C)
-  IntCmp $0 2108 0 +21 +21
+  IntCmp $0 2108 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Setup"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Uninstall"
     StrCpy $LangOneClickInstall "Suiteail"
@@ -569,10 +619,12 @@ Function SetLanguageStrings
     StrCpy $LangTip "Fogra"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cealaigh"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} disuiteailte"
+    StrCpy $LangFinish "Criochnaigh"
     Goto LangDone
 
   ; Malayalam (0x044C)
-  IntCmp $0 1100 0 +21 +21
+  IntCmp $0 1100 0 +23 +23
     StrCpy $LangInstallTitle "${PRODUCT_NAME} Setup"
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Uninstall"
     StrCpy $LangOneClickInstall "Install"
@@ -591,6 +643,8 @@ Function SetLanguageStrings
     StrCpy $LangTip "Notice"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancel"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} has been uninstalled"
+    StrCpy $LangFinish "Finish"
     Goto LangDone
 
 LangDone:
@@ -606,255 +660,307 @@ Function un.SetLanguageStrings
   StrCpy $LangTip "Notice"
   StrCpy $LangConfirm "OK"
   StrCpy $LangCancel "Cancel"
+  StrCpy $LangUninstallComplete "${PRODUCT_NAME} has been uninstalled"
+  StrCpy $LangFinish "Finish"
 
   ; Chinese Simplified (0x0804)
-  IntCmp $0 2052 0 +8 +8
+  IntCmp $0 2052 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} 卸载程序"
     StrCpy $LangUninstallConfirm "确定要卸载 ${PRODUCT_NAME} 吗？"
     StrCpy $LangRunning "${PRODUCT_NAME} 正在运行，请退出后重试!"
     StrCpy $LangTip "提示"
     StrCpy $LangConfirm "确 定"
     StrCpy $LangCancel "取 消"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} 已卸载"
+    StrCpy $LangFinish "完 成"
     Goto UnLangDone
 
   ; Chinese Traditional (0x0404)
-  IntCmp $0 1028 0 +8 +8
+  IntCmp $0 1028 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} 解除安裝"
     StrCpy $LangUninstallConfirm "確定要解除安裝 ${PRODUCT_NAME} 嗎？"
     StrCpy $LangRunning "${PRODUCT_NAME} 正在運行，請退出後重試!"
     StrCpy $LangTip "提示"
     StrCpy $LangConfirm "確 定"
     StrCpy $LangCancel "取 消"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} 已解除安裝"
+    StrCpy $LangFinish "完 成"
     Goto UnLangDone
 
   ; Japanese (0x0411)
-  IntCmp $0 1041 0 +8 +8
+  IntCmp $0 1041 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} アンインストール"
     StrCpy $LangUninstallConfirm "${PRODUCT_NAME} をアンインストールしますか？"
     StrCpy $LangRunning "${PRODUCT_NAME} が実行中です。終了してから再試行してください。"
     StrCpy $LangTip "通知"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "キャンセル"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} はアンインストールされました"
+    StrCpy $LangFinish "完了"
     Goto UnLangDone
 
   ; Korean (0x0412)
-  IntCmp $0 1042 0 +8 +8
+  IntCmp $0 1042 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} 제거"
     StrCpy $LangUninstallConfirm "${PRODUCT_NAME}을(를) 제거하시겠습니까?"
     StrCpy $LangRunning "${PRODUCT_NAME}이(가) 실행 중입니다. 종료 후 다시 시도하세요."
     StrCpy $LangTip "알림"
     StrCpy $LangConfirm "확인"
     StrCpy $LangCancel "취소"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME}이(가) 제거되었습니다"
+    StrCpy $LangFinish "완료"
     Goto UnLangDone
 
   ; German (0x0407)
-  IntCmp $0 1031 0 +8 +8
+  IntCmp $0 1031 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Deinstallation"
     StrCpy $LangUninstallConfirm "${PRODUCT_NAME} wirklich deinstallieren?"
     StrCpy $LangRunning "${PRODUCT_NAME} wird ausgefuhrt. Bitte beenden Sie es zuerst!"
     StrCpy $LangTip "Hinweis"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Abbrechen"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} wurde deinstalliert"
+    StrCpy $LangFinish "Fertig"
     Goto UnLangDone
 
   ; French (0x040C)
-  IntCmp $0 1036 0 +8 +8
+  IntCmp $0 1036 0 +10 +10
     StrCpy $LangUninstallTitle "Desinstallation de ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Voulez-vous vraiment desinstaller ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} est en cours d'execution. Veuillez le fermer!"
     StrCpy $LangTip "Information"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annuler"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} a ete desinstalle"
+    StrCpy $LangFinish "Terminer"
     Goto UnLangDone
 
   ; Spanish (0x0C0A)
-  IntCmp $0 3082 0 +8 +8
+  IntCmp $0 3082 0 +10 +10
     StrCpy $LangUninstallTitle "Desinstalacion de ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Desea desinstalar ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} esta en ejecucion. Cierrelo primero!"
     StrCpy $LangTip "Aviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancelar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} ha sido desinstalado"
+    StrCpy $LangFinish "Finalizar"
     Goto UnLangDone
 
   ; Portuguese Brazil (0x0416)
-  IntCmp $0 1046 0 +8 +8
+  IntCmp $0 1046 0 +10 +10
     StrCpy $LangUninstallTitle "Desinstalacao do ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Deseja desinstalar o ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} esta em execucao. Feche-o primeiro!"
     StrCpy $LangTip "Aviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancelar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} foi desinstalado"
+    StrCpy $LangFinish "Concluir"
     Goto UnLangDone
 
   ; Portuguese Portugal (0x0816)
-  IntCmp $0 2070 0 +8 +8
+  IntCmp $0 2070 0 +10 +10
     StrCpy $LangUninstallTitle "Desinstalacao do ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Deseja desinstalar o ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} esta em execucao. Feche-o primeiro!"
     StrCpy $LangTip "Aviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancelar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} foi desinstalado"
+    StrCpy $LangFinish "Concluir"
     Goto UnLangDone
 
   ; Russian (0x0419)
-  IntCmp $0 1049 0 +8 +8
+  IntCmp $0 1049 0 +10 +10
     StrCpy $LangUninstallTitle "Udalenie ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Udalit ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} zapushen. Zakroyte ego!"
     StrCpy $LangTip "Uvedomlenie"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Otmena"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} byl udalen"
+    StrCpy $LangFinish "Gotovo"
     Goto UnLangDone
 
   ; Italian (0x0410)
-  IntCmp $0 1040 0 +8 +8
+  IntCmp $0 1040 0 +10 +10
     StrCpy $LangUninstallTitle "Disinstallazione di ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Disinstallare ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} e in esecuzione. Chiuderlo prima!"
     StrCpy $LangTip "Avviso"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annulla"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} e stato disinstallato"
+    StrCpy $LangFinish "Fine"
     Goto UnLangDone
 
   ; Dutch (0x0413)
-  IntCmp $0 1043 0 +8 +8
+  IntCmp $0 1043 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Verwijderen"
     StrCpy $LangUninstallConfirm "${PRODUCT_NAME} verwijderen?"
     StrCpy $LangRunning "${PRODUCT_NAME} is actief. Sluit het eerst!"
     StrCpy $LangTip "Melding"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annuleren"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} is verwijderd"
+    StrCpy $LangFinish "Voltooien"
     Goto UnLangDone
 
   ; Polish (0x0415)
-  IntCmp $0 1045 0 +8 +8
+  IntCmp $0 1045 0 +10 +10
     StrCpy $LangUninstallTitle "Deinstalacja ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Czy na pewno chcesz odinstalowac ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} jest uruchomiony. Zamknij go najpierw!"
     StrCpy $LangTip "Informacja"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Anuluj"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} zostal odinstalowany"
+    StrCpy $LangFinish "Zakoncz"
     Goto UnLangDone
 
   ; Czech (0x0405)
-  IntCmp $0 1029 0 +8 +8
+  IntCmp $0 1029 0 +10 +10
     StrCpy $LangUninstallTitle "Odinstalace ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Opravdu chcete odinstalovat ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} je spusten. Nejprve ho ukoncete!"
     StrCpy $LangTip "Upozorneni"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Zrusit"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} byl odinstalovany"
+    StrCpy $LangFinish "Dokoncit"
     Goto UnLangDone
 
   ; Slovak (0x041B)
-  IntCmp $0 1051 0 +8 +8
+  IntCmp $0 1051 0 +10 +10
     StrCpy $LangUninstallTitle "Odinstalovanie ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Naozaj chcete odinstalovanie ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} je spusteny. Najprv ho ukoncite!"
     StrCpy $LangTip "Upozornenie"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Zrusit"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} bol odinstalovany"
+    StrCpy $LangFinish "Dokoncit"
     Goto UnLangDone
 
   ; Hungarian (0x040E)
-  IntCmp $0 1038 0 +8 +8
+  IntCmp $0 1038 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Eltavolitas"
     StrCpy $LangUninstallConfirm "Biztosan el akarja tavolitani a ${PRODUCT_NAME} programot?"
     StrCpy $LangRunning "${PRODUCT_NAME} fut. Kerem, zarje be eloszor!"
     StrCpy $LangTip "Ertesites"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Megse"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} eltavolitva"
+    StrCpy $LangFinish "Befejez"
     Goto UnLangDone
 
   ; Romanian (0x0418)
-  IntCmp $0 1048 0 +8 +8
+  IntCmp $0 1048 0 +10 +10
     StrCpy $LangUninstallTitle "Dezinstalare ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Sigur doriti sa dezinstalati ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} ruleaza. Inchideti-l mai intai!"
     StrCpy $LangTip "Notificare"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Anuleaza"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} a fost dezinstalat"
+    StrCpy $LangFinish "Finalizare"
     Goto UnLangDone
 
   ; Swedish (0x041D)
-  IntCmp $0 1053 0 +8 +8
+  IntCmp $0 1053 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Avinstallation"
     StrCpy $LangUninstallConfirm "Vill du avinstallera ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} kors. Stang det forst!"
     StrCpy $LangTip "Meddelande"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Avbryt"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} har avinstallerats"
+    StrCpy $LangFinish "Slutfor"
     Goto UnLangDone
 
   ; Danish (0x0406)
-  IntCmp $0 1030 0 +8 +8
+  IntCmp $0 1030 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Afinstallation"
     StrCpy $LangUninstallConfirm "Vil du afinstallere ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} korer. Luk det forst!"
     StrCpy $LangTip "Besked"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Annuller"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} er afinstalleret"
+    StrCpy $LangFinish "Afslut"
     Goto UnLangDone
 
   ; Norwegian Bokmal (0x0414)
-  IntCmp $0 1044 0 +8 +8
+  IntCmp $0 1044 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Avinstallasjon"
     StrCpy $LangUninstallConfirm "Vil du avinstallere ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} kjorer. Lukk det forst!"
     StrCpy $LangTip "Melding"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Avbryt"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} er avinstallert"
+    StrCpy $LangFinish "Fullfore"
     Goto UnLangDone
 
   ; Croatian (0x041A)
-  IntCmp $0 1050 0 +8 +8
+  IntCmp $0 1050 0 +10 +10
     StrCpy $LangUninstallTitle "Deinstalacija ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Zelite li deinstalirati ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} je pokrenut. Zatvorite ga prvo!"
     StrCpy $LangTip "Obavijest"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Odustani"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} je deinstaliran"
+    StrCpy $LangFinish "Zavrsi"
     Goto UnLangDone
 
   ; Greek (0x0408)
-  IntCmp $0 1032 0 +8 +8
+  IntCmp $0 1032 0 +10 +10
     StrCpy $LangUninstallTitle "Apegkatastasi ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Thelete na apegkatastisete to ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} ekteleite. Kleiste to prota!"
     StrCpy $LangTip "Eidopoiisi"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Akyrosi"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} apegkatastathike"
+    StrCpy $LangFinish "Telos"
     Goto UnLangDone
 
   ; Catalan (0x0403)
-  IntCmp $0 1027 0 +8 +8
+  IntCmp $0 1027 0 +10 +10
     StrCpy $LangUninstallTitle "Desinstallacio de ${PRODUCT_NAME}"
     StrCpy $LangUninstallConfirm "Voleu desinstal-lar ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} s'esta executant. Tanqueu-lo primer!"
     StrCpy $LangTip "Avis"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancel-lar"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} s'ha desinstal-lat"
+    StrCpy $LangFinish "Finalitzar"
     Goto UnLangDone
 
   ; Irish (0x083C)
-  IntCmp $0 2108 0 +8 +8
+  IntCmp $0 2108 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Uninstall"
     StrCpy $LangUninstallConfirm "An bhfuil tu cinnte gur mian leat ${PRODUCT_NAME} a dhisuiteail?"
     StrCpy $LangRunning "${PRODUCT_NAME} ag rith. Dun e ar dtus!"
     StrCpy $LangTip "Fogra"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cealaigh"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} disuiteailte"
+    StrCpy $LangFinish "Criochnaigh"
     Goto UnLangDone
 
   ; Malayalam (0x044C) - falls back to English
-  IntCmp $0 1100 0 +8 +8
+  IntCmp $0 1100 0 +10 +10
     StrCpy $LangUninstallTitle "${PRODUCT_NAME} Uninstall"
     StrCpy $LangUninstallConfirm "Are you sure you want to uninstall ${PRODUCT_NAME}?"
     StrCpy $LangRunning "${PRODUCT_NAME} is running. Please close it first!"
     StrCpy $LangTip "Notice"
     StrCpy $LangConfirm "OK"
     StrCpy $LangCancel "Cancel"
+    StrCpy $LangUninstallComplete "${PRODUCT_NAME} has been uninstalled"
+    StrCpy $LangFinish "Finish"
     Goto UnLangDone
 
 UnLangDone:
