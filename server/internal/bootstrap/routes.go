@@ -616,6 +616,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Toggle persistence: restore saved states on startup
 		toggleKV, kvErr := kvstore.NewSQLiteStore(filepath.Join(cfg.DataDir, "settings.db"))
 		var toggleStore *proxy.ToggleStore
+		getToggleState := func() *proxy.ToggleState {
+			return &proxy.ToggleState{
+				CacheEnabled:   cacheConfig.Enabled,
+				PrunerEnabled:  prunerMw != nil && prunerMw.Enabled(),
+				RoutingEnabled: proxyHandler.IsRoutingEnabled(),
+			}
+		}
 		if kvErr != nil {
 			slog.Warn("Failed to create toggle kvstore", "error", kvErr)
 		} else {
@@ -629,13 +636,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				slog.Info("Restored feature toggles", "cache", saved.CacheEnabled, "pruner", saved.PrunerEnabled, "routing", saved.RoutingEnabled)
 			}
 			// Wire toggle persistence into cache and pruner handlers
-			getToggleState := func() *proxy.ToggleState {
-				return &proxy.ToggleState{
-					CacheEnabled:   cacheConfig.Enabled,
-					PrunerEnabled:  prunerMw != nil && prunerMw.Enabled(),
-					RoutingEnabled: proxyHandler.IsRoutingEnabled(),
-				}
-			}
 			if cacheHandler != nil {
 				cacheHandler.SetTogglePersistence(toggleStore, getToggleState)
 			}
@@ -676,11 +676,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				if toggleStore != nil {
 					ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
 					defer cancel()
-					toggleStore.Save(ctx, &proxy.ToggleState{
-						CacheEnabled:   cacheConfig.Enabled,
-						PrunerEnabled:  prunerMw != nil && prunerMw.Enabled(),
-						RoutingEnabled: *req.Enabled,
-					})
+					toggleStore.Save(ctx, getToggleState())
 				}
 			}
 			return c.JSON(200, map[string]interface{}{
