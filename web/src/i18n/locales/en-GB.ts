@@ -55,4 +55,27 @@ export default {
   search: {
     resultCount: '{count} results',
   },
+  chat: {
+    ...enUS.chat,
+    startRecording: 'Start recording',
+    stopRecording: 'Stop recording',
+    recording: 'Recording...',
+    holdToSpeak: 'Hold to speak',
+    releaseToSend: 'Release to send',
+    clickToRecord: 'Click to record',
+    switchToKeyboard: 'Switch to keyboard',
+    switchToVoice: 'Switch to voice',
+    voiceTranscribing: 'Transcribing...',
+    voiceTranscriptionError: 'Failed to transcribe audio',
+    voiceRecordingError: 'A recording error occurred',
+    voiceMicrophoneError: 'Could not access microphone',
+    dismiss: 'Dismiss',
+    transcription: {
+      title: 'Transcription',
+      placeholder: 'Transcribed text will appear here...',
+      send: 'Send',
+      confidence: '{percent}% confidence',
+      hint: 'Press Ctrl+Enter to send, Esc to cancel',
+    },
+  },
 }

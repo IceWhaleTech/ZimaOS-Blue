@@ -89,6 +89,7 @@ export class SSEClient {
       const decoder = new TextDecoder()
       let buffer = ''
       let receivedData = false
+      let finalChunkData: StreamChunk | undefined
 
       while (this.isConnected) {
         const { done, value } = await reader.read()
@@ -97,6 +98,9 @@ export class SSEClient {
           // Stream closed without [DONE] - check if we received any data
           if (!receivedData) {
             options.onError?.(new Error('NO_STREAM_DATA'))
+          } else if (finalChunkData) {
+            // Stream closed after done:true but before [DONE] — still complete
+            options.onComplete?.(finalChunkData)
           }
           break
         }
@@ -110,11 +114,12 @@ export class SSEClient {
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              // Check if we received any actual data
+              // [DONE] arrives after the server has persisted the message to DB.
+              // Fire onComplete here (not on done:true) so fetchMessages sees the saved data.
               if (!receivedData) {
                 options.onError?.(new Error('NO_STREAM_DATA'))
               } else {
-                options.onComplete?.()
+                options.onComplete?.(finalChunkData)
               }
               this.isConnected = false
               break
@@ -135,14 +140,15 @@ export class SSEClient {
               options.onMessage(chunk)
 
               if (chunk.done) {
-                // Check if we received any actual data
+                // Save the final chunk (with provider/model/stats metadata)
+                // but do NOT fire onComplete yet — wait for [DONE] which arrives
+                // after the server has persisted the message to the database.
                 if (!receivedData && !chunk.delta) {
                   options.onError?.(new Error('NO_STREAM_DATA'))
-                } else {
-                  options.onComplete?.(chunk)
+                  this.isConnected = false
+                  break
                 }
-                this.isConnected = false
-                break
+                finalChunkData = chunk
               }
             } catch {
               // Ignore parse errors for non-JSON data

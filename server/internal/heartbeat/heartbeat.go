@@ -17,6 +17,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
+// ChatFunc is a function that sends a chat request and returns a response.
+// This allows heartbeat to use any backend (proxy, direct provider, etc).
+type ChatFunc func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error)
+
 var activeHoursPattern = regexp.MustCompile(`^([01]\d|2[0-3]|24):([0-5]\d)$`)
 
 // RunResult represents the outcome of a single heartbeat execution.
@@ -28,12 +32,12 @@ type RunResult struct {
 
 // RunDeps holds dependencies for runOnce.
 type RunDeps struct {
-	Config      *Config
-	LLMRegistry *llm.ProviderRegistry
-	Channels    *channel.Manager
-	Streamer    *companion.EventStreamer
-	Dedup       *DedupCache
-	Logger      *zap.Logger
+	Config   *Config
+	ChatFn   ChatFunc
+	Channels *channel.Manager
+	Streamer *companion.EventStreamer
+	Dedup    *DedupCache
+	Logger   *zap.Logger
 }
 
 // RunOnce executes a single heartbeat check.
@@ -76,24 +80,11 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 	}
 	// If file doesn't exist, proceed — the LLM prompt says "if it exists".
 
-	// Call LLM
-	if deps.LLMRegistry == nil {
-		emit("failed", "no-llm-registry")
-		deps.Logger.Error("heartbeat: LLM registry not available")
-		return RunResult{Status: "failed", Reason: "no-llm-registry"}
-	}
-	providerName := cfg.LLMProvider
-	if providerName == "" {
-		// Fallback: pick first available provider
-		if names := deps.LLMRegistry.List(); len(names) > 0 {
-			providerName = names[0]
-		}
-	}
-	provider := deps.LLMRegistry.Get(providerName)
-	if provider == nil {
-		emit("failed", "provider-not-found")
-		deps.Logger.Error("heartbeat: LLM provider not found", zap.String("provider", providerName))
-		return RunResult{Status: "failed", Reason: "provider-not-found"}
+	// Call LLM via proxy
+	if deps.ChatFn == nil {
+		emit("failed", "no-chat-func")
+		deps.Logger.Error("heartbeat: chat function not available")
+		return RunResult{Status: "failed", Reason: "no-chat-func"}
 	}
 
 	prompt := cfg.Prompt
@@ -101,7 +92,7 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 		prompt = DefaultPrompt
 	}
 
-	resp, err := provider.Chat(ctx, llm.ChatRequest{
+	resp, err := deps.ChatFn(ctx, llm.ChatRequest{
 		Model: cfg.LLMModel,
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},

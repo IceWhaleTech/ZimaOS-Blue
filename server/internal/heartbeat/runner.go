@@ -9,7 +9,6 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 // Runner manages the periodic heartbeat loop.
@@ -27,11 +26,11 @@ type Runner struct {
 
 // RunnerDeps holds dependencies for creating a Runner.
 type RunnerDeps struct {
-	Config      *Config
-	LLMRegistry *llm.ProviderRegistry
-	Channels    *channel.Manager
-	Streamer    *companion.EventStreamer
-	Logger      *zap.Logger
+	Config   *Config
+	ChatFn   ChatFunc
+	Channels *channel.Manager
+	Streamer *companion.EventStreamer
+	Logger   *zap.Logger
 }
 
 // NewRunner creates a new heartbeat runner.
@@ -41,12 +40,12 @@ func NewRunner(d RunnerDeps) *Runner {
 		cfg:   d.Config,
 		dedup: dedup,
 		deps: RunDeps{
-			Config:      d.Config,
-			LLMRegistry: d.LLMRegistry,
-			Channels:    d.Channels,
-			Streamer:    d.Streamer,
-			Dedup:       dedup,
-			Logger:      d.Logger,
+			Config:   d.Config,
+			ChatFn:   d.ChatFn,
+			Channels: d.Channels,
+			Streamer: d.Streamer,
+			Dedup:    dedup,
+			Logger:   d.Logger,
 		},
 		wakeCh:  make(chan string, 1),
 		stopped: make(chan struct{}),

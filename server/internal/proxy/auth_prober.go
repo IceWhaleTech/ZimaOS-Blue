@@ -164,27 +164,12 @@ func (ap *AuthProber) ProbeAndForward(
 		}
 		ap.Apply(req, strat, apiKey, provider)
 
-		// Debug: log request details
-		bodySnippet := ""
+		// Restore body so the actual request can read it
 		if req.Body != nil {
 			if bodyBytes, readErr := io.ReadAll(req.Body); readErr == nil {
-				if len(bodyBytes) > 800 {
-					bodySnippet = string(bodyBytes[:800])
-				} else {
-					bodySnippet = string(bodyBytes)
-				}
-				// Restore body for actual request
 				req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			}
 		}
-		slog.Info("[proxy] upstream request",
-			"url", req.URL.String(),
-			"strategy", strat.String(),
-			"authorization", req.Header.Get("Authorization"),
-			"x-api-key", req.Header.Get("x-api-key"),
-			"anthropic-version", req.Header.Get("anthropic-version"),
-			"body", bodySnippet,
-		)
 
 		resp, err := doRequest(req)
 		if err != nil {

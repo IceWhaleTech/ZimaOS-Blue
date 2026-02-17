@@ -355,8 +355,9 @@ onUnmounted(stopModelPoll)
 
       <!-- Context Pruner Section -->
       <div class="glass-card p-4">
-        <div class="flex items-center justify-between mb-4">
-          <div>
+        <!-- Header: title + toggle -->
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex-1 min-w-0">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
               {{ t('apiProxy.prunerTitle') }}
               <a
@@ -371,14 +372,13 @@ onUnmounted(stopModelPoll)
                 </svg>
               </a>
             </h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.prunerDesc') }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('apiProxy.prunerSavings') }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{{ t('apiProxy.prunerDesc') }}</p>
           </div>
           <button
             type="button"
             :disabled="togglingPruner || !prunerConfig"
             :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors mt-0.5',
               prunerConfig?.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
               (togglingPruner || !prunerConfig) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
             ]"
@@ -388,86 +388,89 @@ onUnmounted(stopModelPoll)
           </button>
         </div>
 
-        <div class="space-y-3">
-          <!-- Backend selector -->
-          <div v-if="prunerConfig?.enabled" class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-            <div>
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('apiProxy.backend') }}</span>
-              <p class="text-xs text-gray-400 dark:text-gray-500">{{ prunerConfig.backend === 'onnx' ? t('apiProxy.backendOnnxDesc') : t('apiProxy.backendLocalDesc') }}</p>
-            </div>
-            <select
-              :value="prunerConfig.backend"
-              :disabled="switchingBackend"
-              class="text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-              @change="switchBackend(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="local">{{ t('apiProxy.backendLocal') }}</option>
-              <option value="onnx" :disabled="!modelStatus?.ready">{{ t('apiProxy.backendOnnx') }}{{ !modelStatus?.ready ? ' (' + t('apiProxy.modelNotDownloaded') + ')' : '' }}</option>
-              <option value="hybrid" :disabled="!modelStatus?.ready">{{ t('apiProxy.backendHybrid') }}{{ !modelStatus?.ready ? ' (' + t('apiProxy.modelNotDownloaded') + ')' : '' }}</option>
-            </select>
-          </div>
+        <!-- Savings hint (always visible, below header) -->
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">{{ t('apiProxy.prunerSavings') }}</p>
 
-          <!-- Pruner info row -->
-          <div v-if="prunerConfig?.enabled" class="grid grid-cols-3 gap-3 pt-1">
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('apiProxy.threshold') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ prunerConfig.threshold }}</p>
-            </div>
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('cache.tokensSaved') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatTokens(prunerStats?.stats?.tokens_saved ?? 0) }}</p>
-            </div>
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('cache.prunerCompression') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ prunerStats?.stats ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}
-              </p>
-            </div>
-          </div>
-          <div v-else-if="prunerConfig?.enabled" class="text-xs text-gray-400 dark:text-gray-500 py-2">
-            {{ t('apiProxy.prunerNotAvailable') }}
-          </div>
-
-          <!-- ONNX Model Download Section -->
-          <div v-if="prunerConfig?.enabled && modelStatus" class="border-t border-gray-100 dark:border-gray-700 pt-3 mt-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('apiProxy.modelStatus') }}</span>
-                <p class="text-xs text-gray-400 dark:text-gray-500">SWE-Pruner (Qwen3-0.6B ONNX)</p>
+        <template v-if="prunerConfig?.enabled">
+          <!-- Engine selector + Stats — grouped in a subtle card -->
+          <div class="mt-4 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] p-3 space-y-3">
+            <!-- Backend selector row -->
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('apiProxy.backend') }}</span>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ prunerConfig.backend === 'onnx' ? t('apiProxy.backendOnnxDesc') : t('apiProxy.backendLocalDesc') }}</p>
               </div>
-              <div v-if="modelStatus.ready" class="flex items-center gap-1.5">
+              <select
+                :value="prunerConfig.backend"
+                :disabled="switchingBackend"
+                class="text-sm flex-shrink-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                @change="switchBackend(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="local">{{ t('apiProxy.backendLocal') }}</option>
+                <option value="onnx" :disabled="!modelStatus?.ready">{{ t('apiProxy.backendOnnx') }}{{ !modelStatus?.ready ? ' (' + t('apiProxy.modelNotDownloaded') + ')' : '' }}</option>
+                <option value="hybrid" :disabled="!modelStatus?.ready">{{ t('apiProxy.backendHybrid') }}{{ !modelStatus?.ready ? ' (' + t('apiProxy.modelNotDownloaded') + ')' : '' }}</option>
+              </select>
+            </div>
+
+            <!-- Stats row -->
+            <div class="grid grid-cols-3 gap-3 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
+              <div class="text-center py-1.5">
+                <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('apiProxy.threshold') }}</p>
+                <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">{{ prunerConfig.threshold }}</p>
+              </div>
+              <div class="text-center py-1.5 border-x border-gray-100 dark:border-white/[0.06]">
+                <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('cache.tokensSaved') }}</p>
+                <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">{{ formatTokens(prunerStats?.stats?.tokens_saved ?? 0) }}</p>
+              </div>
+              <div class="text-center py-1.5">
+                <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('cache.prunerCompression') }}</p>
+                <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">
+                  {{ prunerStats?.stats ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ONNX Model Status — separate card -->
+          <div v-if="modelStatus" class="mt-3 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] p-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('apiProxy.modelStatus') }}</span>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">SWE-Pruner (Qwen3-0.6B ONNX)</p>
+              </div>
+              <div v-if="modelStatus.ready" class="flex items-center gap-1.5 flex-shrink-0">
                 <span class="w-2 h-2 rounded-full bg-green-500"></span>
-                <span class="text-xs text-green-600 dark:text-green-400">{{ t('apiProxy.modelReady') }}</span>
+                <span class="text-xs font-medium text-green-600 dark:text-green-400">{{ t('apiProxy.modelReady') }}</span>
               </div>
-              <div v-else-if="modelStatus.state === 'connecting'" class="flex items-center gap-2">
+              <div v-else-if="modelStatus.state === 'connecting'" class="flex items-center gap-2 flex-shrink-0">
                 <div class="animate-spin w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
                 <span class="text-xs text-blue-600 dark:text-blue-400">{{ t('apiProxy.modelConnecting') }}</span>
                 <button
-                  class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                  class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors cursor-pointer"
                   @click="cancelModelDownload"
                 >
                   {{ t('apiProxy.cancelDownload') }}
                 </button>
               </div>
-              <div v-else-if="modelStatus.downloading" class="flex items-center gap-2">
+              <div v-else-if="modelStatus.downloading" class="flex items-center gap-2 flex-shrink-0">
                 <button
-                  class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                  class="px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors cursor-pointer"
                   @click="cancelModelDownload"
                 >
                   {{ t('apiProxy.cancelDownload') }}
                 </button>
               </div>
-              <div v-else-if="modelStatus.state === 'error'" class="flex items-center gap-2">
+              <div v-else-if="modelStatus.state === 'error'" class="flex-shrink-0">
                 <button
-                  class="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  class="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors cursor-pointer"
                   @click="startModelDownload"
                 >
                   {{ t('apiProxy.retry') }}
                 </button>
               </div>
-              <div v-else>
+              <div v-else class="flex-shrink-0">
                 <button
-                  class="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  class="px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors cursor-pointer"
                   @click="startModelDownload"
                 >
                   {{ t('apiProxy.downloadModel') }}
@@ -480,7 +483,7 @@ onUnmounted(stopModelPoll)
               <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                 <span>{{ modelStatus.progress.file }} ({{ modelStatus.progress.file_index + 1 }}/{{ modelStatus.progress.total_files }})</span>
               </div>
-              <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"></div>
               </div>
               <div class="text-xs text-gray-400 dark:text-gray-500">{{ t('apiProxy.modelConnecting') }}</div>
@@ -492,7 +495,7 @@ onUnmounted(stopModelPoll)
                 <span>{{ modelStatus.progress.file }} ({{ modelStatus.progress.file_index + 1 }}/{{ modelStatus.progress.total_files }})</span>
                 <span>{{ modelStatus.progress.percentage.toFixed(1) }}%</span>
               </div>
-              <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
                   class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
                   :style="{ width: modelStatus.progress.percentage + '%' }"
@@ -505,18 +508,16 @@ onUnmounted(stopModelPoll)
             </div>
 
             <!-- Error message -->
-            <div v-if="modelStatus.state === 'error' && modelStatus.error" class="mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+            <div v-if="modelStatus.state === 'error' && modelStatus.error" class="mt-2.5 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
               <p class="text-xs text-red-600 dark:text-red-400">{{ t('apiProxy.modelDownloadError') }}: {{ modelStatus.error }}</p>
             </div>
 
             <!-- Not downloaded hint -->
-            <div v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="mt-2 space-y-1">
-              <p class="text-xs text-gray-400 dark:text-gray-500">
-                {{ t('apiProxy.modelNotDownloaded') }} &middot; ~607 MB
-              </p>
-            </div>
+            <p v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+              {{ t('apiProxy.modelNotDownloaded') }} &middot; ~607 MB
+            </p>
           </div>
-        </div>
+        </template>
       </div>
 
       <!-- Model Routing Section -->

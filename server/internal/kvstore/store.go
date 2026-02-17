@@ -200,11 +200,12 @@ func matchGlob(pattern, str string) bool {
 
 // SQLiteStore is a SQLite-backed key-value store.
 type SQLiteStore struct {
-	db *sql.DB
-	mu sync.Mutex
+	db     *sql.DB
+	mu     sync.Mutex
+	ownsDB bool // true if this store opened the DB and should close it
 }
 
-// NewSQLiteStore creates a new SQLite-backed store.
+// NewSQLiteStore creates a new SQLite-backed store with its own database file.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -226,12 +227,22 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
 
-	store := &SQLiteStore{db: db}
+	store := &SQLiteStore{db: db, ownsDB: true}
 	if err := store.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
 
+	return store, nil
+}
+
+// NewSQLiteStoreWithDB creates a kvstore backed by an existing *sql.DB connection.
+// The caller retains ownership of the DB — Close() on this store is a no-op.
+func NewSQLiteStoreWithDB(db *sql.DB) (*SQLiteStore, error) {
+	store := &SQLiteStore{db: db, ownsDB: false}
+	if err := store.migrate(); err != nil {
+		return nil, fmt.Errorf("failed to migrate kvstore table: %w", err)
+	}
 	return store, nil
 }
 
@@ -249,9 +260,12 @@ func (s *SQLiteStore) migrate() error {
 	return err
 }
 
-// Close closes the database connection.
+// Close closes the database connection if this store owns it.
 func (s *SQLiteStore) Close() error {
-	return s.db.Close()
+	if s.ownsDB {
+		return s.db.Close()
+	}
+	return nil
 }
 
 // Get retrieves a value by key.

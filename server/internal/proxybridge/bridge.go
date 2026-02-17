@@ -122,12 +122,6 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	if err != nil {
 		return fmt.Errorf("bridge marshal: %w", err)
 	}
-	// Debug: log marshaled request body (truncated)
-	if len(body) > 500 {
-		slog.Info("[bridge] request body (truncated)", "model", req.Model, "body", string(body[:500]))
-	} else {
-		slog.Info("[bridge] request body", "model", req.Model, "body", string(body))
-	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {

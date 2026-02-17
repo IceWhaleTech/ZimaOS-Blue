@@ -369,6 +369,30 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 	return &msg, nil
 }
 
+// UpdateMessageContent updates the content (and optionally stats) of an existing message.
+// Used for incremental persistence during streaming.
+func (s *Store) UpdateMessageContent(ctx context.Context, messageID, content string, stats *MessageStats) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if stats != nil {
+		statsJSON, err := json.Marshal(stats)
+		if err != nil {
+			return fmt.Errorf("failed to marshal stats: %w", err)
+		}
+		_, err = s.db.ExecContext(ctx,
+			"UPDATE messages SET content = ?, stats = ? WHERE id = ?",
+			content, statsJSON, messageID,
+		)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE messages SET content = ? WHERE id = ?",
+		content, messageID,
+	)
+	return err
+}
+
 // GetMessages retrieves messages for a conversation.
 func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,

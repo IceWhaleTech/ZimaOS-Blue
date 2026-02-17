@@ -1926,6 +1926,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var streamCompleted bool    // true when chunk.Done fired for final round (persistence deferred)
 	var finalLatencyMs, finalTTFTMs, finalTPS float64
 
+	// Incremental persistence: insert placeholder message before streaming starts.
+	// This ensures a page refresh mid-stream still shows partial content.
+	var streamingMsgID string
+	var lastFlushLen int
+	const flushInterval = 512 // flush to DB every N new chars
+
 	for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
 	streamToolCalls = streamToolCalls[:0]
 	streamErrorHandled = false
@@ -1980,12 +1986,16 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			flusher.Flush()
 			// Persist partial content if any was streamed before the error
 			if fullContent != "" {
-				h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:     "assistant",
-					Content:  fullContent,
-					Provider: providerName,
-					Model:    model,
-				})
+				if streamingMsgID != "" {
+					h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
+				} else {
+					h.store.AddMessage(context.Background(), convID, memory.Message{
+						Role:     "assistant",
+						Content:  fullContent,
+						Provider: providerName,
+						Model:    model,
+					})
+				}
 			}
 			h.conversationCache.Invalidate(convID)
 			streamErrorHandled = true
@@ -1993,6 +2003,26 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 
 		fullContent += chunk.Delta
+
+		// Incremental persistence: insert or update the message in DB periodically
+		// so a page refresh mid-stream still shows partial content.
+		if chunk.Delta != "" && len(fullContent)-lastFlushLen >= flushInterval {
+			if streamingMsgID == "" {
+				// First flush — insert placeholder
+				if m, err := h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:     "assistant",
+					Content:  fullContent,
+					Provider: providerName,
+					Model:    model,
+				}); err == nil {
+					streamingMsgID = m.ID
+					h.conversationCache.Invalidate(convID)
+				}
+			} else {
+				h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
+			}
+			lastFlushLen = len(fullContent)
+		}
 
 		// Track token usage from chunks
 		if chunk.Usage != nil {
@@ -2213,10 +2243,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
 			}
 			if fullContent != "" {
-				h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:    "assistant",
-					Content: fullContent + "\n\n[Response interrupted]",
-				})
+				if streamingMsgID != "" {
+					h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent+"\n\n[Response interrupted]", nil)
+				} else {
+					h.store.AddMessage(context.Background(), convID, memory.Message{
+						Role:    "assistant",
+						Content: fullContent + "\n\n[Response interrupted]",
+					})
+				}
 			}
 			data := map[string]interface{}{
 				"cancelled": true,
@@ -2239,12 +2273,16 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		// Persist partial content so the user doesn't lose what was already streamed
 		if fullContent != "" {
-			h.store.AddMessage(context.Background(), convID, memory.Message{
-				Role:     "assistant",
-				Content:  fullContent,
-				Provider: providerName,
-				Model:    model,
-			})
+			if streamingMsgID != "" {
+				h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
+			} else {
+				h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:     "assistant",
+					Content:  fullContent,
+					Provider: providerName,
+					Model:    model,
+				})
+			}
 			h.conversationCache.Invalidate(convID)
 		}
 		errData, _ := json.Marshal(map[string]interface{}{
@@ -2257,23 +2295,37 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return nil
 	}
 
-	// Persist assistant message AFTER typeless cards are appended to fullContent
-	if streamCompleted && fullContent != "" {
-		if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-			Role:     "assistant",
-			Content:  fullContent,
-			Provider: providerName,
-			Model:    model,
-			Stats: &memory.MessageStats{
-				InputTokens:     totalInputTokens,
-				OutputTokens:    totalOutputTokens,
-				TotalTokens:     totalInputTokens + totalOutputTokens,
-				LatencyMs:       int64(finalLatencyMs),
-				TTFTMs:          int64(finalTTFTMs),
-				TokensPerSecond: finalTPS,
-			},
-		}); addErr != nil {
-			logger.Error().Err(addErr).Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
+	// Persist assistant message AFTER typeless cards are appended to fullContent.
+	// Safety net: also persist if fullContent is non-empty even when streamCompleted
+	// wasn't explicitly set (e.g., missing finish_reason from provider, bridge error).
+	if fullContent != "" && (streamCompleted || err == nil) {
+		if !streamCompleted {
+			logger.Warn().Str("conv_id", convID).Str("model", model).Msg("[chat] persisting message without explicit stream completion (safety net)")
+		}
+		finalStats := &memory.MessageStats{
+			InputTokens:     totalInputTokens,
+			OutputTokens:    totalOutputTokens,
+			TotalTokens:     totalInputTokens + totalOutputTokens,
+			LatencyMs:       int64(finalLatencyMs),
+			TTFTMs:          int64(finalTTFTMs),
+			TokensPerSecond: finalTPS,
+		}
+		if streamingMsgID != "" {
+			// Update the incrementally-persisted message with final content + stats
+			if updErr := h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, finalStats); updErr != nil {
+				logger.Error().Err(updErr).Str("conv_id", convID).Msg("[chat] failed to update streaming message")
+			}
+		} else {
+			// No incremental message was created (short response) — insert now
+			if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
+				Role:     "assistant",
+				Content:  fullContent,
+				Provider: providerName,
+				Model:    model,
+				Stats:    finalStats,
+			}); addErr != nil {
+				logger.Error().Err(addErr).Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
+			}
 		}
 		h.conversationCache.Invalidate(convID)
 

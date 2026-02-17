@@ -956,10 +956,21 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Heartbeat runner + handler (needs channelManager, so created after bootstrap)
 	hbCfg := convertHeartbeatConfig(&cfg.Heartbeat)
 	hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
-		Config:      hbCfg,
-		LLMRegistry: llmRegistry,
-		Channels:    channelManager,
-		Logger:      zapLogger,
+		Config: hbCfg,
+		ChatFn: func() heartbeat.ChatFunc {
+			pc := server.NewProxyClient(cfg.Server.Port)
+			if apiKeyService != nil {
+				if info, err := apiKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
+					Name:   "heartbeat-internal",
+					Scopes: []string{"chat", "proxy", "route:auto"},
+				}); err == nil {
+					pc.SetAPIKey(info.Key)
+				}
+			}
+			return pc.Chat
+		}(),
+		Channels: channelManager,
+		Logger:   zapLogger,
 	})
 	hbHandler := heartbeat.NewHandler(hbRunner)
 	hbHandler.RegisterRoutes(apiProtected)

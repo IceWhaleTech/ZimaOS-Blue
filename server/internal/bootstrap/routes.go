@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -173,6 +174,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	previewModeService := preview.NewModeService(s.UserService)
 	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
 	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService)
+	previewHandler.SetDataDir(dataDir)
 	previewHandler.RegisterRoutes(e)
 	logger.Info("Preview mode routes registered")
 
@@ -456,9 +458,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			hbCfg.WorkspaceDir = dataDir
 		}
 		hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
-			Config:      hbCfg,
-			LLMRegistry: s.LLMRegistry,
-			Logger:      logger,
+			Config: hbCfg,
+			ChatFn: func() heartbeat.ChatFunc {
+				pc := server.NewProxyClient(cfg.Port)
+				if deps.APIKeyService != nil {
+					if info, err := deps.APIKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
+						Name:   "heartbeat-internal",
+						Scopes: []string{"chat", "proxy", "route:auto"},
+					}); err == nil {
+						pc.SetAPIKey(info.Key)
+					}
+				}
+				return pc.Chat
+			}(),
+			Logger: logger,
 		})
 		go hbRunner.Run(deps.Ctx)
 		hbHandler := heartbeat.NewHandler(hbRunner)
@@ -613,8 +626,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		proxyHandler.SetRoutingEnabled(ruleRoutingCfg.Enabled)
 
-		// Toggle persistence: restore saved states on startup
-		toggleKV, kvErr := kvstore.NewSQLiteStore(filepath.Join(cfg.DataDir, "settings.db"))
+		// Toggle persistence: use main blue.db for kvstore (merged from former settings.db)
+		toggleKV, kvErr := kvstore.NewSQLiteStoreWithDB(deps.DB)
+		if kvErr == nil {
+			// Migrate data from legacy settings.db if it exists
+			migrateSettingsDB(filepath.Join(cfg.DataDir, "settings.db"), toggleKV)
+		}
 		var toggleStore *proxy.ToggleStore
 		getToggleState := func() *proxy.ToggleState {
 			return &proxy.ToggleState{
@@ -895,4 +912,48 @@ func InitMetrics(dataDir string) (*metrics.Collector, *metrics.MetricsWriter) {
 	metricsWriter.Start()
 
 	return metricsCollector, metricsWriter
+}
+
+// migrateSettingsDB copies data from the legacy settings.db into the main kvstore table
+// (now in blue.db) and removes the old file.
+func migrateSettingsDB(oldPath string, dest *kvstore.SQLiteStore) {
+	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
+		return
+	}
+
+	old, err := kvstore.NewSQLiteStore(oldPath)
+	if err != nil {
+		slog.Warn("Failed to open legacy settings.db for migration", "error", err)
+		return
+	}
+	defer old.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	keys, err := old.Keys(ctx, "%")
+	if err != nil {
+		slog.Warn("Failed to read keys from legacy settings.db", "error", err)
+		return
+	}
+
+	for _, key := range keys {
+		val, err := old.Get(ctx, key)
+		if err != nil {
+			continue
+		}
+		if str, ok := val.(string); ok {
+			dest.Set(ctx, key, str, 0)
+		}
+	}
+
+	old.Close()
+	if err := os.Remove(oldPath); err != nil {
+		slog.Warn("Failed to remove legacy settings.db", "error", err)
+	} else {
+		slog.Info("Migrated settings.db into blue.db and removed legacy file", "keys", len(keys))
+	}
+	// Clean up WAL/SHM files
+	os.Remove(oldPath + "-wal")
+	os.Remove(oldPath + "-shm")
 }

@@ -197,6 +197,7 @@ type AnthropicStreamEvent struct {
 		Type        string `json:"type"`
 		Text        string `json:"text,omitempty"`
 		PartialJSON string `json:"partial_json,omitempty"`
+		StopReason  string `json:"stop_reason,omitempty"`
 	} `json:"delta,omitempty"`
 	Message *AnthropicResponse `json:"message,omitempty"`
 	Usage   *struct {
@@ -996,13 +997,11 @@ func (fc *FormatConverter) convertAnthropicStream(reader io.Reader, writer http.
 		}
 
 		chunk := fc.convertStreamEvent(event, &messageID, &model)
-		if chunk == nil {
-			continue
+		if chunk != nil {
+			chunkJSON, _ := json.Marshal(chunk)
+			writer.Write([]byte("data: " + string(chunkJSON) + "\n\n"))
+			flusher.Flush()
 		}
-
-		chunkJSON, _ := json.Marshal(chunk)
-		writer.Write([]byte("data: " + string(chunkJSON) + "\n\n"))
-		flusher.Flush()
 
 		if event.Type == "message_stop" {
 			writer.Write([]byte("data: [DONE]\n\n"))
@@ -1112,8 +1111,12 @@ func (fc *FormatConverter) convertStreamEvent(event AnthropicStreamEvent, messag
 	case "message_delta":
 		finishReason := ""
 		if event.Delta != nil {
-			// Map stop reason
-			switch event.Delta.Type {
+			// Map stop reason — Claude sends stop_reason in delta, not type
+			stopReason := event.Delta.StopReason
+			if stopReason == "" {
+				stopReason = event.Delta.Type // fallback for older format
+			}
+			switch stopReason {
 			case "end_turn":
 				finishReason = "stop"
 			case "max_tokens":

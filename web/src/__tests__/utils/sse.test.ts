@@ -253,5 +253,128 @@ describe('SSE Client', () => {
       expect(onComplete).not.toHaveBeenCalled()
       expect(onMessage).not.toHaveBeenCalled()
     })
+
+    it('should fire onComplete exactly once on [DONE], not on done:true chunk', async () => {
+      // Simulates the real server flow:
+      //   1. delta chunks with content
+      //   2. done:true chunk with provider/model/stats metadata
+      //   3. [DONE] marker (sent AFTER server persists to DB)
+      // onComplete must fire only on step 3 so fetchMessages sees persisted data.
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"delta":"Hello "}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"delta":"world"}\n\n'),
+            })
+          }
+          if (callCount === 3) {
+            // done:true with metadata — server has NOT persisted yet
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode(
+                'data: {"delta":"","done":true,"provider":"openai","model":"gpt-4o","stats":{"input_tokens":10,"output_tokens":5}}\n\n'
+              ),
+            })
+          }
+          if (callCount === 4) {
+            // [DONE] — server has persisted the message
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onError = vi.fn()
+      const onComplete = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o' },
+        { onMessage, onError, onComplete }
+      )
+
+      // onComplete fires exactly once
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      // It carries the metadata from the done:true chunk
+      expect(onComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          done: true,
+          provider: 'openai',
+          model: 'gpt-4o',
+          stats: expect.objectContaining({ input_tokens: 10, output_tokens: 5 }),
+        })
+      )
+      expect(onError).not.toHaveBeenCalled()
+      // All 3 chunks were delivered to onMessage (2 deltas + 1 done:true)
+      expect(onMessage).toHaveBeenCalledTimes(3)
+    })
+
+    it('should fire onComplete with metadata when stream closes after done:true but before [DONE]', async () => {
+      // Edge case: connection drops after done:true but before [DONE]
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"delta":"Hi"}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"delta":"","done":true,"provider":"anthropic","model":"claude"}\n\n'),
+            })
+          }
+          // Stream closes without [DONE]
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onError = vi.fn()
+      const onComplete = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'anthropic', model: 'claude' },
+        { onMessage, onError, onComplete }
+      )
+
+      // Should still fire onComplete with the saved metadata
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ done: true, provider: 'anthropic', model: 'claude' })
+      )
+      expect(onError).not.toHaveBeenCalled()
+    })
   })
 })
