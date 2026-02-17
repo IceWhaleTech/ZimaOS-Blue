@@ -712,6 +712,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				"enabled": *req.Enabled,
 			})
 		})
+		routingGroup.GET("/stats", func(c echo.Context) error {
+			return c.JSON(200, proxyHandler.GetRoutingStats())
+		})
 	}
 
 	// Ngrok remote access routes

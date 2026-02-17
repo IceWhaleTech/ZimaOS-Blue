@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -19,6 +20,33 @@ const (
 	claudeAPIVersion     = "2023-06-01"
 	claudeTimeout        = 120 * time.Second
 )
+
+// ToolCapLevel represents the tool capability level of a provider endpoint.
+type ToolCapLevel int
+
+const (
+	ToolCapNative   ToolCapLevel = iota // Native tool_use supported
+	ToolCapPrompt                       // Tools via system prompt injection
+	ToolCapNone                         // No tools at all
+	ToolCapUnknown  ToolCapLevel = -1   // Not yet probed
+)
+
+// toolCapCache stores the remembered tool capability level per baseURL.
+// Key: baseURL string, Value: ToolCapLevel
+var toolCapCache sync.Map
+
+// RecallToolCap returns the cached tool capability level for a baseURL.
+func RecallToolCap(baseURL string) ToolCapLevel {
+	if v, ok := toolCapCache.Load(baseURL); ok {
+		return v.(ToolCapLevel)
+	}
+	return ToolCapUnknown
+}
+
+// RememberToolCap caches the tool capability level for a baseURL.
+func RememberToolCap(baseURL string, level ToolCapLevel) {
+	toolCapCache.Store(baseURL, level)
+}
 
 // ClaudeProvider implements the Provider interface for Anthropic Claude.
 type ClaudeProvider struct {
@@ -263,44 +291,110 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 	// Set stream flag
 	req.Stream = true
 	claudeReq := p.convertRequest(req)
+	origSystem := claudeReq.System
 
-	// Marshal request
-	body, err := json.Marshal(claudeReq)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+	// Check cached tool capability level — skip straight to what worked before
+	cachedLevel := RecallToolCap(p.baseURL)
+	hasTools := len(req.Tools) > 0
+
+	if hasTools && cachedLevel != ToolCapUnknown {
+		fmt.Printf("[ClaudeProvider] using cached tool level %d for %s\n", cachedLevel, p.baseURL)
+		p.applyToolLevel(&claudeReq, cachedLevel, req.Tools, origSystem)
 	}
 
-	// Create HTTP request
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
+	// Try the request
+	resp, err := p.doClaudeRequest(ctx, claudeReq)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", p.apiKey)
-	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
-	httpReq.Header.Set("Accept", "text/event-stream")
-	fmt.Printf("[ClaudeProvider] sending request to %s\n", p.baseURL+"/v1/messages")
-
-	// Send request
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		fmt.Printf("[ClaudeProvider] request error: %v\n", err)
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 	fmt.Printf("[ClaudeProvider] response status: %d\n", resp.StatusCode)
 
-	// Check for HTTP error
-	if resp.StatusCode != http.StatusOK {
-		// Read error body for more details
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		fmt.Printf("[ClaudeProvider] error response: %s\n", string(bodyBytes))
-		return fmt.Errorf("Claude API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	if resp.StatusCode == http.StatusOK {
+		// Remember what worked (only if we had tools to degrade)
+		if hasTools && cachedLevel == ToolCapUnknown {
+			RememberToolCap(p.baseURL, ToolCapNative)
+			fmt.Printf("[ClaudeProvider] remembered tool level: native for %s\n", p.baseURL)
+		}
+		return p.parseSSEStreamCallback(ctx, resp.Body, req.Model, callback)
 	}
 
-	// Parse SSE stream directly with callback
-	return p.parseSSEStreamCallback(ctx, resp.Body, req.Model, callback)
+	// Non-OK: read error body
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	fmt.Printf("[ClaudeProvider] error response: %s\n", string(bodyBytes))
+
+	// Progressive tool degradation on 400 (only if we have tools and haven't already degraded past this)
+	if resp.StatusCode == http.StatusBadRequest && hasTools {
+		startLevel := ToolCapNative
+		if cachedLevel != ToolCapUnknown {
+			startLevel = cachedLevel
+		}
+
+		// Try each level below the current one
+		for level := startLevel + 1; level <= ToolCapNone; level++ {
+			fmt.Printf("[ClaudeProvider] tools degradation: trying level %d for %s\n", level, p.baseURL)
+			// Reset to original system prompt before applying new level
+			claudeReq.System = origSystem
+			claudeReq.Tools = nil // clear before reapply
+			p.applyToolLevel(&claudeReq, level, req.Tools, origSystem)
+
+			retryResp, retryErr := p.doClaudeRequest(ctx, claudeReq)
+			if retryErr != nil {
+				continue
+			}
+			if retryResp.StatusCode == http.StatusOK {
+				RememberToolCap(p.baseURL, level)
+				fmt.Printf("[ClaudeProvider] remembered tool level: %d for %s\n", level, p.baseURL)
+				defer retryResp.Body.Close()
+				return p.parseSSEStreamCallback(ctx, retryResp.Body, req.Model, callback)
+			}
+			rb, _ := io.ReadAll(retryResp.Body)
+			retryResp.Body.Close()
+			fmt.Printf("[ClaudeProvider] level %d failed (status %d): %s\n", level, retryResp.StatusCode, string(rb))
+			if retryResp.StatusCode != http.StatusBadRequest {
+				return fmt.Errorf("Claude API returned status %d: %s", retryResp.StatusCode, string(rb))
+			}
+		}
+	}
+
+	return fmt.Errorf("Claude API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+}
+
+// doClaudeRequest marshals and sends a claude request, returning the raw HTTP response.
+func (p *ClaudeProvider) doClaudeRequest(ctx context.Context, claudeReq claudeRequest) (*http.Response, error) {
+	body, err := json.Marshal(claudeReq)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", p.apiKey)
+	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
+	httpReq.Header.Set("Accept", "text/event-stream")
+	return p.client.Do(httpReq)
+}
+
+// applyToolLevel modifies claudeReq in-place to match the given tool capability level.
+func (p *ClaudeProvider) applyToolLevel(claudeReq *claudeRequest, level ToolCapLevel, tools []Tool, origSystem string) {
+	switch level {
+	case ToolCapNative:
+		// Already set by convertRequest — nothing to do
+	case ToolCapPrompt:
+		claudeReq.Tools = nil
+		toolPrompt := toolsToSystemPrompt(tools)
+		if origSystem != "" {
+			claudeReq.System = origSystem + "\n\n" + toolPrompt
+		} else {
+			claudeReq.System = toolPrompt
+		}
+	case ToolCapNone:
+		claudeReq.Tools = nil
+		claudeReq.System = origSystem
+	}
 }
 
 // parseSSEStreamCallback parses SSE stream and calls callback for each chunk.
@@ -840,6 +934,24 @@ func (p *ClaudeProvider) convertRequest(req ChatRequest) claudeRequest {
 	}
 
 	return claudeReq
+}
+
+// toolsToSystemPrompt converts tool definitions into a system prompt instruction.
+func toolsToSystemPrompt(tools []Tool) string {
+	var sb strings.Builder
+	sb.WriteString("You have access to the following tools. When you need to use a tool, respond with a JSON block in this exact format:\n")
+	sb.WriteString("```tool_call\n{\"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}\n```\n\n")
+	sb.WriteString("Available tools:\n")
+	for _, t := range tools {
+		sb.WriteString("- **" + t.Name + "**: " + t.Description + "\n")
+		if t.Parameters != nil {
+			if paramJSON, err := json.Marshal(t.Parameters); err == nil {
+				sb.WriteString("  Parameters: " + string(paramJSON) + "\n")
+			}
+		}
+	}
+	sb.WriteString("\nOnly use a tool if it is clearly needed. Otherwise respond normally.")
+	return sb.String()
 }
 
 // convertResponse converts a Claude response to ChatResponse.

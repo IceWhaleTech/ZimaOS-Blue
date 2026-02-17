@@ -149,15 +149,8 @@ func mapProviderID(providerID string) string {
 
 // getProviderFromPool retrieves a provider from the Provider Pool and creates an LLM provider instance.
 // This handles custom providers (prov_xxx IDs) by looking up their configuration in the pool.
+// Provider instances are created fresh each time to ensure API key changes take effect immediately.
 func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, error) {
-	// Check cache first (fast path)
-	h.providerCacheMu.RLock()
-	if provider, exists := h.providerCache[providerID]; exists {
-		h.providerCacheMu.RUnlock()
-		return provider, nil
-	}
-	h.providerCacheMu.RUnlock()
-
 	if h.providerPool == nil {
 		return nil, fmt.Errorf("provider pool not configured")
 	}
@@ -182,7 +175,7 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 		}
 	}
 
-	logger.Debug().Str("provider_id", providerID).Str("api_format", string(poolProvider.APIFormat)).Str("base_url", poolProvider.BaseURL).Msg("[chat] getProviderFromPool")
+	logger.Debug().Str("provider_id", providerID).Str("api_format", string(poolProvider.APIFormat)).Str("base_url", poolProvider.BaseURL).Bool("has_key", apiKey != "").Msg("[chat] getProviderFromPool")
 
 	// Create LLM provider based on API format
 	var provider llm.Provider
@@ -195,18 +188,6 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 		// Default to OpenAI-compatible format (covers OpenAI, Google, and custom providers)
 		provider = llm.NewCustomProvider(apiKey, poolProvider.BaseURL)
 	}
-
-	// Cache the provider (with LRU eviction if needed)
-	h.providerCacheMu.Lock()
-	if len(h.providerCache) >= h.maxProviderCacheSize {
-		// Simple eviction: remove first entry (not true LRU, but good enough)
-		for k := range h.providerCache {
-			delete(h.providerCache, k)
-			break
-		}
-	}
-	h.providerCache[providerID] = provider
-	h.providerCacheMu.Unlock()
 
 	return provider, nil
 }
@@ -241,6 +222,13 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 								defaultModel := ""
 								if len(nextProvider.AllowedModels) > 0 {
 									defaultModel = nextProvider.AllowedModels[0]
+								} else if h.providerPool.Discovery != nil {
+									if models, err := h.providerPool.Discovery.GetModels(nextProvider.ID); err == nil && len(models) > 0 {
+										defaultModel = models[0].ID
+									}
+								}
+								if defaultModel == "" {
+									defaultModel = "claude-opus-4-6"
 								}
 								return provider, nextProvider.ID, defaultModel, nil
 							}
@@ -266,7 +254,7 @@ func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error)
 				}
 				// Fallback to common default model if still empty
 				if defaultModel == "" {
-					defaultModel = "claude-sonnet-4-20250514"
+					defaultModel = "claude-opus-4-6"
 				}
 				fmt.Printf("[getDefaultProvider] using provider=%s, defaultModel=%s\n", poolProvider.ID, defaultModel)
 				return provider, poolProvider.ID, defaultModel, nil
@@ -327,13 +315,8 @@ type ChatHandler struct {
 	eventQueue chan func()
 	eventStop  chan struct{}
 
-	// Performance optimization: Provider cache (LRU)
-	providerCache map[string]llm.Provider
-
 	// Performance optimization: Conversation message cache
 	conversationCache *ConversationCache
-	providerCacheMu sync.RWMutex
-	maxProviderCacheSize int
 
 	// Performance optimization: Object pools
 	requestPool  *RequestPool
@@ -366,8 +349,6 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		convToSession:    make(map[string]string),
 		eventQueue:       make(chan func(), 100), // Buffered channel for async events
 		eventStop:        make(chan struct{}),
-		providerCache:    make(map[string]llm.Provider),
-		maxProviderCacheSize: 20, // LRU cache size
 		conversationCache: NewConversationCache(5*time.Minute, 100), // 5min TTL, max 100 conversations
 	}
 	// Start async event processor
@@ -847,6 +828,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			for imRound := 0; imRound < maxToolRounds; imRound++ {
 				if h.proxyBridge != nil {
 					resp, err = h.proxyBridge.Chat(ctx, req)
+					if err != nil {
+						logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider")
+						resp, err = provider.Chat(ctx, req)
+					}
 				} else {
 					resp, err = provider.Chat(ctx, req)
 				}
@@ -1139,6 +1124,9 @@ Respond in the same language as the conversation.`},
 	var resp *llm.ChatResponse
 	if h.proxyBridge != nil {
 		resp, err = h.proxyBridge.Chat(ctx, req)
+		if err != nil {
+			resp, err = provider.Chat(ctx, req)
+		}
 	} else {
 		resp, err = provider.Chat(ctx, req)
 	}
@@ -1466,6 +1454,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	for round := 0; round < maxToolRounds; round++ {
 		if h.proxyBridge != nil {
 			resp, err = h.proxyBridge.Chat(c.Request().Context(), chatReq)
+			if err != nil {
+				resp, err = provider.Chat(c.Request().Context(), chatReq)
+			}
 		} else {
 			resp, err = provider.Chat(c.Request().Context(), chatReq)
 		}
@@ -2162,6 +2153,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	if h.proxyBridge != nil {
 		err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+		if err != nil {
+			logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider")
+			err = provider.ChatStreamCallback(ctx, chatReq, streamCb)
+		}
 	} else {
 		err = provider.ChatStreamCallback(ctx, chatReq, streamCb)
 	}
@@ -2247,7 +2242,20 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			flusher.Flush()
 			return nil
 		}
-		// Other error - already handled in callback
+		// Other error — send error to client via SSE so frontend doesn't get NO_STREAM_DATA
+		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
+		errMsg := "An error occurred while streaming the response"
+		if h.metricsRecorder != nil {
+			latencyMs := float64(time.Since(startTime).Milliseconds())
+			h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "error")
+		}
+		errData, _ := json.Marshal(map[string]interface{}{
+			"error":   errMsg,
+			"done":    true,
+			"delta":   "",
+		})
+		c.Response().Write([]byte("data: " + string(errData) + "\n\n"))
+		flusher.Flush()
 		return nil
 	}
 
@@ -2394,6 +2402,9 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 	)
 	if h.proxyBridge != nil {
 		resp, err = h.proxyBridge.Chat(ctx, req)
+		if err != nil {
+			resp, err = provider.Chat(ctx, req)
+		}
 	} else {
 		resp, err = provider.Chat(ctx, req)
 	}

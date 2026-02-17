@@ -17,4 +17,42 @@ export default {
   memoryService: {
     ...enUS.memoryService,
   },
+  tools: {
+    names: {
+      'Web Search': 'Web Search',
+      'Calculator': 'Calculator',
+      'System Info': 'System Info',
+      'Current Time': 'Current Time',
+      'File Read': 'File Read',
+      'File Write': 'File Write',
+      'Memory Search': 'Memory Search',
+      'Memory Store': 'Memory Store',
+      'Memory Get': 'Memory Get',
+      'Memory Stats': 'Memory Stats',
+    },
+    params: {
+      query: 'Query',
+      region: 'Region',
+      max_results: 'Max Results',
+      path: 'Path',
+      content: 'Content',
+      filename: 'Filename',
+      expression: 'Expression',
+      keyword: 'Keyword',
+      limit: 'Limit',
+      offset: 'Offset',
+      id: 'ID',
+    },
+    calling: 'Calling Tools',
+    callingProgress: 'Calling Tools...',
+    callCount: 'Tool Calls ({count})',
+  },
+  thinking: {
+    title: 'Thinking Process',
+    expand: 'Expand',
+    inProgress: 'Thinking...',
+  },
+  search: {
+    resultCount: '{count} results',
+  },
 }

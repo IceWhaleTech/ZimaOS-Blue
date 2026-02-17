@@ -424,7 +424,7 @@ export default {
   download: 'Descarregar',
   downloaded: 'Descarregado',
   refresh: 'Actualizar',
-  search: 'Pesquisar',
+
   remove: 'Remover',
   restore: 'Restaurar',
   configure: 'Configurar',
@@ -450,4 +450,42 @@ export default {
   updateField: 'Atualizar campo',
 
   // Integration labels come from ptBR spread - no overrides needed
+  tools: {
+    names: {
+      'Web Search': 'Pesquisa web',
+      'Calculator': 'Calculadora',
+      'System Info': 'Informações do sistema',
+      'Current Time': 'Hora atual',
+      'File Read': 'Ler ficheiro',
+      'File Write': 'Escrever ficheiro',
+      'Memory Search': 'Pesquisa de memória',
+      'Memory Store': 'Armazenar memória',
+      'Memory Get': 'Obter memória',
+      'Memory Stats': 'Estatísticas de memória',
+    },
+    params: {
+      query: 'Consulta',
+      region: 'Região',
+      max_results: 'Máx. resultados',
+      path: 'Caminho',
+      content: 'Conteúdo',
+      filename: 'Nome do ficheiro',
+      expression: 'Expressão',
+      keyword: 'Palavra-chave',
+      limit: 'Limite',
+      offset: 'Deslocamento',
+      id: 'ID',
+    },
+    calling: 'A chamar ferramentas',
+    callingProgress: 'A chamar ferramentas...',
+    callCount: 'Chamadas de ferramentas ({count})',
+  },
+  thinking: {
+    title: 'Processo de pensamento',
+    expand: 'Expandir',
+    inProgress: 'A pensar...',
+  },
+  search: {
+    resultCount: '{count} resultados',
+  },
 }

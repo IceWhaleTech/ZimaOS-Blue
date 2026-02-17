@@ -13,6 +13,7 @@ import (
 	"time"
 
 	ecache2 "github.com/orca-zhang/ecache2"
+	"github.com/tidwall/gjson"
 )
 
 // CCCache is the main cache implementation for cc-cache.
@@ -36,6 +37,10 @@ type CCCache struct {
 	diskHits     int64
 	latencySaved int64 // Total latency saved in milliseconds
 
+	// Token savings (parsed from cached response usage)
+	inputTokensSaved  int64
+	outputTokensSaved int64
+
 	// Persistence
 	statsStore StatsStore
 
@@ -55,11 +60,13 @@ type StatsStore interface {
 
 // CacheStats represents persistable cache statistics
 type CacheStats struct {
-	Hits      int64     `json:"hits"`
-	Misses    int64     `json:"misses"`
-	Evictions int64     `json:"evictions"`
-	Bypasses  int64     `json:"bypasses"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Hits              int64     `json:"hits"`
+	Misses            int64     `json:"misses"`
+	Evictions         int64     `json:"evictions"`
+	Bypasses          int64     `json:"bypasses"`
+	InputTokensSaved  int64     `json:"input_tokens_saved"`
+	OutputTokensSaved int64     `json:"output_tokens_saved"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // CCCacheEntry represents a cached response
@@ -132,6 +139,8 @@ func (c *CCCache) SetStatsStore(store StatsStore) {
 		atomic.StoreInt64(&c.misses, stats.Misses)
 		atomic.StoreInt64(&c.evictions, stats.Evictions)
 		atomic.StoreInt64(&c.bypasses, stats.Bypasses)
+		atomic.StoreInt64(&c.inputTokensSaved, stats.InputTokensSaved)
+		atomic.StoreInt64(&c.outputTokensSaved, stats.OutputTokensSaved)
 	}
 }
 
@@ -141,11 +150,13 @@ func (c *CCCache) SaveStats() error {
 		return nil
 	}
 	return c.statsStore.SaveCacheStats(&CacheStats{
-		Hits:      atomic.LoadInt64(&c.hits),
-		Misses:    atomic.LoadInt64(&c.misses),
-		Evictions: atomic.LoadInt64(&c.evictions),
-		Bypasses:  atomic.LoadInt64(&c.bypasses),
-		UpdatedAt: time.Now(),
+		Hits:              atomic.LoadInt64(&c.hits),
+		Misses:            atomic.LoadInt64(&c.misses),
+		Evictions:         atomic.LoadInt64(&c.evictions),
+		Bypasses:          atomic.LoadInt64(&c.bypasses),
+		InputTokensSaved:  atomic.LoadInt64(&c.inputTokensSaved),
+		OutputTokensSaved: atomic.LoadInt64(&c.outputTokensSaved),
+		UpdatedAt:         time.Now(),
 	})
 }
 
@@ -315,6 +326,7 @@ func (c *CCCache) Get(key string) (*CCCacheEntry, bool) {
 		atomic.AddInt64(&c.hits, 1)
 		atomic.AddInt64(&c.l1Hits, 1)
 		atomic.AddInt64(&entry.HitCount, 1)
+		c.accumulateTokens(entry.Body)
 		return entry, true
 	}
 	// L2 disk lookup
@@ -323,11 +335,31 @@ func (c *CCCache) Get(key string) (*CCCacheEntry, bool) {
 			atomic.AddInt64(&c.hits, 1)
 			atomic.AddInt64(&c.diskHits, 1)
 			c.l1.Put(key, entry) // Promote to L1
+			c.accumulateTokens(entry.Body)
 			return entry, true
 		}
 	}
 	atomic.AddInt64(&c.misses, 1)
 	return nil, false
+}
+
+// accumulateTokens parses usage from a cached response body and adds to token counters.
+// Supports OpenAI (prompt_tokens/completion_tokens) and Anthropic (input_tokens/output_tokens).
+func (c *CCCache) accumulateTokens(body []byte) {
+	if len(body) == 0 {
+		return
+	}
+	// OpenAI format: usage.prompt_tokens / usage.completion_tokens
+	if pt := gjson.GetBytes(body, "usage.prompt_tokens"); pt.Exists() {
+		atomic.AddInt64(&c.inputTokensSaved, pt.Int())
+		atomic.AddInt64(&c.outputTokensSaved, gjson.GetBytes(body, "usage.completion_tokens").Int())
+		return
+	}
+	// Anthropic format: usage.input_tokens / usage.output_tokens
+	if it := gjson.GetBytes(body, "usage.input_tokens"); it.Exists() {
+		atomic.AddInt64(&c.inputTokensSaved, it.Int())
+		atomic.AddInt64(&c.outputTokensSaved, gjson.GetBytes(body, "usage.output_tokens").Int())
+	}
 }
 
 // Set stores a response in L1 memory and L2 disk (write-through).
@@ -420,20 +452,22 @@ func (c *CCCache) Stats() map[string]interface{} {
 	}
 
 	stats := map[string]interface{}{
-		"enabled":          c.config.Enabled,
-		"storage_type":     c.config.StorageType,
-		"max_entries":      c.config.MaxSize,
-		"hits":             hits,
-		"misses":           misses,
-		"evictions":        atomic.LoadInt64(&c.evictions),
-		"bypasses":         atomic.LoadInt64(&c.bypasses),
-		"hit_rate":         hitRate,
-		"l1_hits":          l1Hits,
-		"l1_hit_rate":      l1HitRate,
-		"disk_hits":        diskHits,
-		"disk_hit_rate":    diskHitRate,
-		"latency_saved_ms": atomic.LoadInt64(&c.latencySaved),
-		"ttl_seconds":      c.config.TTL.Seconds(),
+		"enabled":              c.config.Enabled,
+		"storage_type":         c.config.StorageType,
+		"max_entries":          c.config.MaxSize,
+		"hits":                 hits,
+		"misses":               misses,
+		"evictions":            atomic.LoadInt64(&c.evictions),
+		"bypasses":             atomic.LoadInt64(&c.bypasses),
+		"hit_rate":             hitRate,
+		"l1_hits":              l1Hits,
+		"l1_hit_rate":          l1HitRate,
+		"disk_hits":            diskHits,
+		"disk_hit_rate":        diskHitRate,
+		"latency_saved_ms":     atomic.LoadInt64(&c.latencySaved),
+		"input_tokens_saved":   atomic.LoadInt64(&c.inputTokensSaved),
+		"output_tokens_saved":  atomic.LoadInt64(&c.outputTokensSaved),
+		"ttl_seconds":          c.config.TTL.Seconds(),
 	}
 	if c.disk != nil {
 		stats["disk_entries"] = c.disk.Count()

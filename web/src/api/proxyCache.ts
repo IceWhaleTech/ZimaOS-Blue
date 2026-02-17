@@ -10,6 +10,8 @@ export interface CacheStats {
   bypasses: number
   hit_rate: number
   ttl_seconds?: number
+  input_tokens_saved?: number
+  output_tokens_saved?: number
 }
 
 export interface CacheConfig {
@@ -96,6 +98,12 @@ export interface RoutingRule {
   enabled?: boolean
 }
 
+export interface RoutingStats {
+  routed_requests: number
+  tokens_routed: number
+  cost_saved_usd: number
+}
+
 // Proxy cache API (for /v1/* OpenAI-compatible endpoints)
 // All chat requests now route through the proxy, so this is the unified cache
 export const proxyCacheApi = {
@@ -119,4 +127,5 @@ export const proxyCacheApi = {
   getRoutingRules: () => api.get<{ rules: RoutingRule[] }>('/proxy/routing/rules'),
   updateRoutingRule: (name: string, config: { enabled: boolean }) =>
     api.put<{ success: boolean; name: string; enabled: boolean }>(`/proxy/routing/rules/${encodeURIComponent(name)}`, config),
+  getRoutingStats: () => api.get<RoutingStats>('/proxy/routing/stats'),
 }

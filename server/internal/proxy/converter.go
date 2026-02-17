@@ -582,7 +582,7 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 
 	anthropicReq.System = systemContent
 
-	// Convert tools
+	// Convert tools (native Anthropic format)
 	for _, tool := range req.Tools {
 		if tool.Type == "function" {
 			anthropicReq.Tools = append(anthropicReq.Tools, AnthropicTool{
@@ -637,19 +637,14 @@ func (fc *FormatConverter) convertContentPart(part map[string]interface{}) *Anth
 // convertModel converts OpenAI model name to Anthropic model name
 func (fc *FormatConverter) convertModel(model string) string {
 	// Map common model names
+	// Only map cross-family names (GPT→Claude). Claude model names are passed
+	// through as-is so relay/provider config controls the actual model used.
 	modelMap := map[string]string{
-		"gpt-4":                       "claude-3-opus-20240229",
-		"gpt-4-turbo":                 "claude-3-opus-20240229",
-		"gpt-4o":                      "claude-3-5-sonnet-20241022",
-		"gpt-4o-mini":                 "claude-3-5-haiku-20241022",
-		"gpt-3.5-turbo":               "claude-3-haiku-20240307",
-		"claude-3-opus":               "claude-3-opus-20240229",
-		"claude-3-sonnet":             "claude-3-sonnet-20240229",
-		"claude-3-haiku":              "claude-3-haiku-20240307",
-		"claude-3-5-sonnet":           "claude-3-5-sonnet-20241022",
-		"claude-3-5-haiku":            "claude-3-5-haiku-20241022",
-		"claude-sonnet-4":             "claude-sonnet-4-20250514",
-		"claude-opus-4":               "claude-opus-4-20250514",
+		"gpt-4":         "claude-3-opus-20240229",
+		"gpt-4-turbo":   "claude-3-opus-20240229",
+		"gpt-4o":        "claude-3-5-sonnet-20241022",
+		"gpt-4o-mini":   "claude-3-5-haiku-20241022",
+		"gpt-3.5-turbo": "claude-3-haiku-20240307",
 	}
 
 	if mapped, ok := modelMap[model]; ok {

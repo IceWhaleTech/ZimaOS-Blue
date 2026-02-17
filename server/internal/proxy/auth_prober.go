@@ -1,0 +1,225 @@
+package proxy
+
+import (
+	"bytes"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/orca-zhang/ecache"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+)
+
+// AuthStrategy represents an authentication method to try against an upstream provider.
+type AuthStrategy int
+
+const (
+	AuthBearer    AuthStrategy = iota // Authorization: Bearer <key>
+	AuthXAPIKey                       // x-api-key: <key>
+	AuthAnthropic                     // x-api-key + anthropic-version header
+	AuthNone                          // No auth header
+)
+
+func (s AuthStrategy) String() string {
+	switch s {
+	case AuthBearer:
+		return "bearer"
+	case AuthXAPIKey:
+		return "x-api-key"
+	case AuthAnthropic:
+		return "anthropic"
+	case AuthNone:
+		return "none"
+	}
+	return "unknown"
+}
+
+// AuthProber manages auth strategy probing and remembers what works.
+type AuthProber struct {
+	cache *ecache.Cache // key: "providerID:host" → AuthStrategy (as int)
+}
+
+// NewAuthProber creates a new auth prober with 1-hour TTL memory.
+func NewAuthProber() *AuthProber {
+	return &AuthProber{
+		cache: ecache.NewLRUCache(4, 64, 1*time.Hour),
+	}
+}
+
+// cacheKey builds the memory key scoped to provider + upstream host.
+func cacheKey(providerID, baseURL string) string {
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		return providerID + ":" + u.Host
+	}
+	return providerID
+}
+
+// Recall returns the cached winning strategy, if any.
+func (ap *AuthProber) Recall(providerID, baseURL string) (AuthStrategy, bool) {
+	if v, ok := ap.cache.Get(cacheKey(providerID, baseURL)); ok {
+		if s, ok := v.(AuthStrategy); ok {
+			return s, true
+		}
+	}
+	return 0, false
+}
+
+// Remember caches the winning auth strategy for a provider+host.
+func (ap *AuthProber) Remember(providerID, baseURL string, strategy AuthStrategy) {
+	ap.cache.Put(cacheKey(providerID, baseURL), strategy)
+}
+
+// Forget evicts the cached strategy (e.g. on provider config change).
+func (ap *AuthProber) Forget(providerID, baseURL string) {
+	ap.cache.Del(cacheKey(providerID, baseURL))
+}
+
+// Strategies returns an ordered list of auth strategies to try.
+// The cached winner (if any) is placed first for zero-latency happy path.
+func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *providerpool.APIKey) []AuthStrategy {
+	hasKey := apiKey != nil && apiKey.Key != ""
+
+	// No key → only try without auth
+	if !hasKey {
+		return []AuthStrategy{AuthNone}
+	}
+
+	// Build base order by API format
+	var base []AuthStrategy
+	switch provider.APIFormat {
+	case providerpool.APIFormatAnthropic:
+		base = []AuthStrategy{AuthAnthropic, AuthBearer, AuthXAPIKey, AuthNone}
+	case providerpool.APIFormatOllama:
+		base = []AuthStrategy{AuthNone, AuthBearer}
+	default: // openai, google, custom
+		base = []AuthStrategy{AuthBearer, AuthXAPIKey, AuthNone}
+	}
+
+	// If we have a cached winner, move it to front
+	if cached, ok := ap.Recall(provider.ID, provider.BaseURL); ok {
+		reordered := []AuthStrategy{cached}
+		for _, s := range base {
+			if s != cached {
+				reordered = append(reordered, s)
+			}
+		}
+		return reordered
+	}
+
+	return base
+}
+
+// Apply sets the appropriate auth headers on the request for the given strategy.
+func (ap *AuthProber) Apply(req *http.Request, strategy AuthStrategy, apiKey *providerpool.APIKey, provider *providerpool.Provider) {
+	// Clear any existing auth headers first
+	req.Header.Del("Authorization")
+	req.Header.Del("x-api-key")
+	req.Header.Del("anthropic-version")
+
+	key := ""
+	if apiKey != nil {
+		key = apiKey.Key
+	}
+
+	switch strategy {
+	case AuthBearer:
+		req.Header.Set("Authorization", "Bearer "+key)
+	case AuthXAPIKey:
+		req.Header.Set("x-api-key", key)
+	case AuthAnthropic:
+		req.Header.Set("x-api-key", key)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	case AuthNone:
+		// No auth headers
+	}
+
+	// Always apply provider custom headers (may override above)
+	for k, v := range provider.Headers {
+		req.Header.Set(k, v)
+	}
+}
+
+// isAuthError returns true if the HTTP status indicates an authentication failure.
+func isAuthError(statusCode int) bool {
+	return statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden
+}
+
+// ProbeAndForward tries auth strategies in order until one succeeds (non-401/403).
+// Returns the successful response, or an error if all strategies are exhausted.
+func (ap *AuthProber) ProbeAndForward(
+	provider *providerpool.Provider,
+	apiKey *providerpool.APIKey,
+	buildRequest func() (*http.Request, error),
+	doRequest func(*http.Request) (*http.Response, error),
+) (*http.Response, error) {
+	strategies := ap.Strategies(provider, apiKey)
+
+	for i, strat := range strategies {
+		req, err := buildRequest()
+		if err != nil {
+			return nil, err
+		}
+		ap.Apply(req, strat, apiKey, provider)
+
+		// Debug: log request details
+		bodySnippet := ""
+		if req.Body != nil {
+			if bodyBytes, readErr := io.ReadAll(req.Body); readErr == nil {
+				if len(bodyBytes) > 800 {
+					bodySnippet = string(bodyBytes[:800])
+				} else {
+					bodySnippet = string(bodyBytes)
+				}
+				// Restore body for actual request
+				req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			}
+		}
+		slog.Info("[proxy] upstream request",
+			"url", req.URL.String(),
+			"strategy", strat.String(),
+			"authorization", req.Header.Get("Authorization"),
+			"x-api-key", req.Header.Get("x-api-key"),
+			"anthropic-version", req.Header.Get("anthropic-version"),
+			"body", bodySnippet,
+		)
+
+		resp, err := doRequest(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if !isAuthError(resp.StatusCode) {
+			// Success (or non-auth error like 400/500) — remember and return
+			ap.Remember(provider.ID, provider.BaseURL, strat)
+			return resp, nil
+		}
+
+		// Auth failed — drain body and try next strategy
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+
+		slog.Warn("[proxy] auth strategy failed",
+			"provider", provider.ID,
+			"strategy", strat.String(),
+			"status", resp.StatusCode,
+			"attempt", i+1,
+			"remaining", len(strategies)-i-1,
+		)
+	}
+
+	// All strategies exhausted — evict stale cache entry
+	ap.Forget(provider.ID, provider.BaseURL)
+	return nil, &AuthExhaustedError{ProviderID: provider.ID}
+}
+
+// AuthExhaustedError indicates all auth strategies failed for a provider.
+type AuthExhaustedError struct {
+	ProviderID string
+}
+
+func (e *AuthExhaustedError) Error() string {
+	return "all auth strategies exhausted for provider " + e.ProviderID
+}

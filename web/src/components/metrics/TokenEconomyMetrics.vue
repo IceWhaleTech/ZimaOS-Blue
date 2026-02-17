@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { proxyCacheApi, type CacheStats, type PrunerStats } from '@/api/proxyCache'
+import { proxyCacheApi, type CacheStats, type PrunerStats, type RoutingStats } from '@/api/proxyCache'
 
 const { t } = useI18n()
 
 const stats = ref<CacheStats | null>(null)
 const prunerStats = ref<PrunerStats | null>(null)
+const routingStats = ref<RoutingStats | null>(null)
 const loading = ref(false)
 
 const hitRate = computed(() => {
@@ -16,18 +17,26 @@ const hitRate = computed(() => {
   return (stats.value.hits / total) * 100
 })
 
-const tokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
+const cacheTokensSaved = computed(() => {
+  return (stats.value?.input_tokens_saved ?? 0) + (stats.value?.output_tokens_saved ?? 0)
+})
+
+const prunerTokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
 
 const totalTokensSaved = computed(() => {
-  // Cache tokens saved estimate: hits * avg_tokens (rough: 500 tokens per cached response)
-  const cacheTokens = (stats.value?.hits ?? 0) * 500
-  const prunerTokens = tokensSaved.value
-  return cacheTokens + prunerTokens
+  return cacheTokensSaved.value + prunerTokensSaved.value + (routingStats.value?.tokens_routed ?? 0)
 })
 
 const costSaved = computed(() => {
-  // Estimate: $3/M input tokens (Claude Sonnet pricing)
-  return (totalTokensSaved.value / 1_000_000) * 3.0
+  // Cache: use real input/output tokens with $3/$15 per 1M (Sonnet pricing)
+  const cacheInput = stats.value?.input_tokens_saved ?? 0
+  const cacheOutput = stats.value?.output_tokens_saved ?? 0
+  const cacheCost = (cacheInput / 1_000_000) * 3.0 + (cacheOutput / 1_000_000) * 15.0
+  // Pruner: saved tokens are input tokens (context reduction), use $3/M
+  const prunerCost = (prunerTokensSaved.value / 1_000_000) * 3.0
+  // Router: already computed as USD on backend
+  const routerCost = routingStats.value?.cost_saved_usd ?? 0
+  return cacheCost + prunerCost + routerCost
 })
 
 function formatTokens(n: number): string {
@@ -46,12 +55,14 @@ function formatCost(n: number): string {
 async function fetchStats() {
   loading.value = true
   try {
-    const [cacheRes, prunerRes] = await Promise.all([
+    const [cacheRes, prunerRes, routingRes] = await Promise.all([
       proxyCacheApi.getStats(),
       proxyCacheApi.getPrunerStats().catch(() => null),
+      proxyCacheApi.getRoutingStats().catch(() => null),
     ])
     stats.value = cacheRes.data
     if (prunerRes) prunerStats.value = prunerRes.data
+    if (routingRes) routingStats.value = routingRes.data
   } catch {
     // Ignore errors
   } finally {
@@ -123,7 +134,7 @@ defineExpose({ refresh: fetchStats })
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ stats?.entries ?? 0 }} {{ t('tokenEconomy.entries') }}</span>
+        <span>{{ cacheTokensSaved > 0 ? formatTokens(cacheTokensSaved) + ' tokens' : (stats?.entries ?? 0) + ' ' + t('tokenEconomy.entries') }}</span>
       </div>
     </div>
 

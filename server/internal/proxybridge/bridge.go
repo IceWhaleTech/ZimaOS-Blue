@@ -122,6 +122,12 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	if err != nil {
 		return fmt.Errorf("bridge marshal: %w", err)
 	}
+	// Debug: log marshaled request body (truncated)
+	if len(body) > 500 {
+		slog.Info("[bridge] request body (truncated)", "model", req.Model, "body", string(body[:500]))
+	} else {
+		slog.Info("[bridge] request body", "model", req.Model, "body", string(body))
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
@@ -139,8 +145,10 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		defer pw.Close()
 		b.handler.ServeHTTP(rw, httpReq)
 		if rw.code >= 400 {
+			slog.Error("[bridge] proxy handler returned error", "code", rw.code, "model", req.Model)
 			doneCh <- fmt.Errorf("proxy returned %d", rw.code)
 		} else {
+			slog.Debug("[bridge] proxy handler completed", "code", rw.code, "model", req.Model)
 			doneCh <- nil
 		}
 	}()
@@ -150,11 +158,17 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineSize)
 
 	var scanErr error
+	var chunkCount int
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
+			// Log non-SSE lines — these may contain error messages from proxy handler
+			if line != "" {
+				slog.Warn("[bridge] non-SSE line from proxy", "line", line, "model", req.Model)
+			}
 			continue
 		}
+		chunkCount++
 		payload := strings.TrimPrefix(line, "data: ")
 		chunk, done, parseErr := ParseSSEChunk(payload)
 		if parseErr != nil {
@@ -173,12 +187,18 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	if scanErr == nil {
 		scanErr = scanner.Err()
 	}
+	if chunkCount == 0 {
+		slog.Error("[bridge] stream ended with zero chunks", "model", req.Model, "scan_err", scanErr)
+	}
 
 	// Fix #2: Close pipe reader to unblock handler goroutine, then wait for it
 	pr.Close()
 
 	// Fix #3: Blocking wait for handler goroutine to finish — no race on error channel
 	handlerErr := <-doneCh
+	if handlerErr != nil {
+		slog.Error("[bridge] handler error after stream", "error", handlerErr, "chunks", chunkCount, "model", req.Model)
+	}
 
 	// Prefer handler-level errors (HTTP 4xx/5xx) over scan errors
 	if handlerErr != nil {

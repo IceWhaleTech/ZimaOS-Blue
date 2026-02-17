@@ -29,24 +29,34 @@ func (s *SQLiteStatsStore) initSchema() error {
 			misses INTEGER DEFAULT 0,
 			evictions INTEGER DEFAULT 0,
 			bypasses INTEGER DEFAULT 0,
+			input_tokens_saved INTEGER DEFAULT 0,
+			output_tokens_saved INTEGER DEFAULT 0,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// Migrate: add token columns if missing (existing installs)
+	s.db.Exec(`ALTER TABLE cache_stats ADD COLUMN input_tokens_saved INTEGER DEFAULT 0`)
+	s.db.Exec(`ALTER TABLE cache_stats ADD COLUMN output_tokens_saved INTEGER DEFAULT 0`)
+	return nil
 }
 
 // SaveCacheStats saves cache statistics to the database
 func (s *SQLiteStatsStore) SaveCacheStats(stats *CacheStats) error {
 	_, err := s.db.Exec(`
-		INSERT INTO cache_stats (id, hits, misses, evictions, bypasses, updated_at)
-		VALUES (1, ?, ?, ?, ?, ?)
+		INSERT INTO cache_stats (id, hits, misses, evictions, bypasses, input_tokens_saved, output_tokens_saved, updated_at)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			hits = excluded.hits,
 			misses = excluded.misses,
 			evictions = excluded.evictions,
 			bypasses = excluded.bypasses,
+			input_tokens_saved = excluded.input_tokens_saved,
+			output_tokens_saved = excluded.output_tokens_saved,
 			updated_at = excluded.updated_at
-	`, stats.Hits, stats.Misses, stats.Evictions, stats.Bypasses, stats.UpdatedAt)
+	`, stats.Hits, stats.Misses, stats.Evictions, stats.Bypasses, stats.InputTokensSaved, stats.OutputTokensSaved, stats.UpdatedAt)
 	return err
 }
 
@@ -55,9 +65,9 @@ func (s *SQLiteStatsStore) LoadCacheStats() (*CacheStats, error) {
 	var stats CacheStats
 	var updatedAt string
 	err := s.db.QueryRow(`
-		SELECT hits, misses, evictions, bypasses, updated_at
+		SELECT hits, misses, evictions, bypasses, COALESCE(input_tokens_saved, 0), COALESCE(output_tokens_saved, 0), updated_at
 		FROM cache_stats WHERE id = 1
-	`).Scan(&stats.Hits, &stats.Misses, &stats.Evictions, &stats.Bypasses, &updatedAt)
+	`).Scan(&stats.Hits, &stats.Misses, &stats.Evictions, &stats.Bypasses, &stats.InputTokensSaved, &stats.OutputTokensSaved, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

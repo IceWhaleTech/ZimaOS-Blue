@@ -122,6 +122,13 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 			continue
 		}
 
+		// Skip cloud providers without a usable API key
+		if provider.Location == ProviderLocationCloud {
+			if key, err := r.registry.GetAPIKey(provider.ID); err != nil || key == nil || key.Key == "" {
+				continue
+			}
+		}
+
 		// Filter by routing mode
 		if req.Mode != "" && req.Mode != RoutingModeAuto {
 			if req.Mode == RoutingModeCloud && provider.Location != ProviderLocationCloud {

@@ -1379,9 +1379,7 @@ export default {
   homeAssistant: {
     ...enUS.homeAssistant,
   },
-  tools: {
-    ...enUS.tools,
-  },
+
   skills: {
     ...enUS.skills,
   },
@@ -1470,7 +1468,7 @@ export default {
   retry: 'Opnieuw proberen',
   revoke: 'Intrekken',
   save: 'Opslaan',
-  search: 'Zoeken',
+
   seek: 'Zoeken',
   select: 'Selecteren',
   send: 'Verzenden',
@@ -1504,4 +1502,42 @@ export default {
   twitch: 'Twitch',
   twitter: 'X (Twitter)',
   bluebubbles: 'BlueBubbles',
+  tools: {
+    names: {
+      'Web Search': 'Zoeken op web',
+      'Calculator': 'Rekenmachine',
+      'System Info': 'Systeeminformatie',
+      'Current Time': 'Huidige tijd',
+      'File Read': 'Bestand lezen',
+      'File Write': 'Bestand schrijven',
+      'Memory Search': 'Geheugen zoeken',
+      'Memory Store': 'Geheugen opslaan',
+      'Memory Get': 'Geheugen ophalen',
+      'Memory Stats': 'Geheugenstatistieken',
+    },
+    params: {
+      query: 'Zoekopdracht',
+      region: 'Regio',
+      max_results: 'Max. resultaten',
+      path: 'Pad',
+      content: 'Inhoud',
+      filename: 'Bestandsnaam',
+      expression: 'Expressie',
+      keyword: 'Trefwoord',
+      limit: 'Limiet',
+      offset: 'Offset',
+      id: 'ID',
+    },
+    calling: 'Hulpmiddelen aanroepen',
+    callingProgress: 'Hulpmiddelen aanroepen...',
+    callCount: 'Hulpmiddeloproepen ({count})',
+  },
+  thinking: {
+    title: 'Denkproces',
+    expand: 'Uitvouwen',
+    inProgress: 'Denkt na...',
+  },
+  search: {
+    resultCount: '{count} resultaten',
+  },
 }

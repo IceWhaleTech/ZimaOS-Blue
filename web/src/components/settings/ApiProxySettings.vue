@@ -347,7 +347,7 @@ onUnmounted(stopModelPoll)
             </div>
             <div class="text-center">
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('apiProxy.storageType') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ cacheConfig?.storage_type ?? '-' }}</p>
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t(`apiProxy.storageTypes.${cacheConfig?.storage_type}`) ?? cacheConfig?.storage_type ?? '-' }}</p>
             </div>
           </div>
         </div>

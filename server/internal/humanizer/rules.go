@@ -38,6 +38,11 @@ var (
 	// Typeless card blocks
 	typelessCardRe = regexp.MustCompile("(?s)```typeless\\n?(.*?)```")
 
+	// Function calls XML blocks
+	functionCallsRe = regexp.MustCompile(`(?s)<(?:antml:)?function_calls>(.*?)</(?:antml:)?function_calls>`)
+	invokeRe        = regexp.MustCompile(`(?s)<(?:antml:)?invoke\s+name="([^"]+)">(.*?)</(?:antml:)?invoke>`)
+	paramRe         = regexp.MustCompile(`(?s)<(?:antml:)?parameter\s+name="([^"]+)">(.*?)</(?:antml:)?parameter>`)
+
 	// Italic strip patterns (used in stripItalic)
 	italicStarStripRe  = regexp.MustCompile(`(?:^|\s)\*([^*\n]+?)\*(?:\s|$|[.,!?;:])`)
 	italicUnderStripRe = regexp.MustCompile(`(?:^|\s)_([^_\n]+?)_(?:\s|$|[.,!?;:])`)
@@ -235,4 +240,80 @@ func formatSearchForIM(query string, results []struct {
 		sb.WriteString(fmt.Sprintf("\n%d. %s\n   %s", i+1, r.Title, r.URL))
 	}
 	return sb.String()
+}
+
+// Tool name localization for function_calls blocks.
+var toolNameZh = map[string]string{
+	"Web Search":      "网页搜索",
+	"Calculator":      "计算器",
+	"System Info":     "系统信息",
+	"Current Time":    "当前时间",
+	"File Read":       "读取文件",
+	"File Write":      "写入文件",
+	"Memory Search":   "记忆搜索",
+	"Memory Store":    "存储记忆",
+	"Memory Get":      "获取记忆",
+	"Memory Stats":    "记忆统计",
+}
+
+// Parameter name localization.
+var paramNameZh = map[string]string{
+	"query":       "查询",
+	"region":      "区域",
+	"max_results": "结果条数",
+	"path":        "路径",
+	"content":     "内容",
+	"filename":    "文件名",
+	"expression":  "表达式",
+	"keyword":     "关键词",
+	"limit":       "数量限制",
+}
+
+// Keyword-style params: show value only, no label.
+var keywordParams = map[string]bool{
+	"query": true, "keyword": true, "expression": true,
+}
+
+// stripFunctionCalls converts <function_calls> XML blocks to readable text for IM/Voice.
+func stripFunctionCalls(text string, mode Mode) string {
+	return functionCallsRe.ReplaceAllStringFunc(text, func(match string) string {
+		if mode == ModeVoice {
+			return "(工具调用已省略)"
+		}
+		invocations := invokeRe.FindAllStringSubmatch(match, -1)
+		if len(invocations) == 0 {
+			return ""
+		}
+		var sb strings.Builder
+		for _, inv := range invocations {
+			toolName := inv[1]
+			if zh, ok := toolNameZh[toolName]; ok {
+				toolName = zh
+			}
+			paramsBlock := inv[2]
+			params := paramRe.FindAllStringSubmatch(paramsBlock, -1)
+			var paramParts []string
+			for _, p := range params {
+				pName, pVal := p[1], strings.TrimSpace(p[2])
+				if len(pVal) > 60 {
+					pVal = pVal[:60] + "..."
+				}
+				if keywordParams[pName] {
+					paramParts = append(paramParts, pVal)
+				} else {
+					label := pName
+					if zh, ok := paramNameZh[pName]; ok {
+						label = zh
+					}
+					paramParts = append(paramParts, label+": "+pVal)
+				}
+			}
+			sb.WriteString("🔧 " + toolName)
+			if len(paramParts) > 0 {
+				sb.WriteString("（" + strings.Join(paramParts, "，") + "）")
+			}
+			sb.WriteString("\n")
+		}
+		return strings.TrimRight(sb.String(), "\n")
+	})
 }

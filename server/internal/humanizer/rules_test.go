@@ -200,3 +200,81 @@ func TestStripTypelessCards(t *testing.T) {
 		})
 	}
 }
+
+func TestStripFunctionCalls(t *testing.T) {
+	webSearchCall := `<function_calls>
+<invoke name="Web Search">
+<parameter name="query">browser4 architecture diagram</parameter>
+<parameter name="region">wt-wt</parameter>
+<parameter name="max_results">10</parameter>
+</invoke>
+</function_calls>`
+
+	calcCall := `<function_calls>
+<invoke name="Calculator">
+<parameter name="expression">2+2</parameter>
+</invoke>
+</function_calls>`
+
+	multiCall := `<function_calls>
+<invoke name="Web Search">
+<parameter name="query">golang generics</parameter>
+</invoke>
+<invoke name="Memory Search">
+<parameter name="keyword">golang</parameter>
+<parameter name="limit">5</parameter>
+</invoke>
+</function_calls>`
+
+	tests := []struct {
+		name string
+		in   string
+		mode Mode
+		want string
+	}{
+		{
+			"web search IM",
+			webSearchCall,
+			ModeIM,
+			"🔧 网页搜索（browser4 architecture diagram，区域: wt-wt，结果条数: 10）",
+		},
+		{
+			"web search voice",
+			webSearchCall,
+			ModeVoice,
+			"(工具调用已省略)",
+		},
+		{
+			"calculator IM",
+			calcCall,
+			ModeIM,
+			"🔧 计算器（2+2）",
+		},
+		{
+			"multi tool IM",
+			multiCall,
+			ModeIM,
+			"🔧 网页搜索（golang generics）\n🔧 记忆搜索（golang，数量限制: 5）",
+		},
+		{
+			"no function calls",
+			"plain text",
+			ModeIM,
+			"plain text",
+		},
+		{
+			"mixed content",
+			"before\n" + calcCall + "\nafter",
+			ModeIM,
+			"before\n🔧 计算器（2+2）\nafter",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripFunctionCalls(tt.in, tt.mode)
+			if got != tt.want {
+				t.Errorf("stripFunctionCalls() =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
+	}
+}

@@ -9,10 +9,13 @@ import type {
   TypelessCardTerminal,
   TypelessCardMermaid,
   TypelessCardAccordion,
+  TypelessCardSteps,
+  StepItem,
   GalleryImage,
   ListItem,
   ParsedContent,
 } from '@/types/typeless'
+import { i18n } from '@/i18n'
 import {
   TYPELESS_MARKER_START,
   TYPELESS_MARKER_END,
@@ -347,6 +350,123 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
   return null
 }
 
+// Tool icon mapping (icons don't need i18n)
+const toolIconMap: Record<string, string> = {
+  'Web Search': '🔍',
+  'Calculator': '🧮',
+  'System Info': '💻',
+  'Current Time': '🕐',
+  'File Read': '📄',
+  'File Write': '📝',
+  'Memory Search': '🧠',
+  'Memory Store': '💾',
+  'Memory Get': '📖',
+  'Memory Stats': '📊',
+}
+
+// Parameters to show as keyword-style (just the value, no label)
+const keywordParams = new Set(['query', 'keyword', 'expression'])
+
+// Helper to get i18n translation with fallback
+function t(key: string, fallback: string, named?: Record<string, string | number>): string {
+  const result = named ? i18n.global.t(key, named) : i18n.global.t(key)
+  return result === key ? fallback : result
+}
+
+/**
+ * Extract tool invocations from a <function_calls> block into StepItems.
+ */
+function extractInvocations(innerXml: string): StepItem[] {
+  const steps: StepItem[] = []
+  const invokeRegex = /<(?:antml:)?invoke\s+name="([^"]+)">([\s\S]*?)<\/(?:antml:)?invoke>/g
+  let inv
+  while ((inv = invokeRegex.exec(innerXml)) !== null) {
+    const rawName = inv[1] || 'unknown'
+    const paramsBlock = inv[2] || ''
+    const displayName = t(`tools.names.${rawName}`, rawName)
+    const icon = toolIconMap[rawName] || '🔧'
+    const keywords: string[] = []
+    const tags: string[] = []
+    const paramRegex = /<(?:antml:)?parameter\s+name="([^"]+)">([\s\S]*?)<\/(?:antml:)?parameter>/g
+    let p
+    while ((p = paramRegex.exec(paramsBlock)) !== null) {
+      const paramName = p[1] || ''
+      const val = (p[2] || '').trim()
+      const truncated = val.length > 60 ? val.slice(0, 60) + '...' : val
+      if (keywordParams.has(paramName)) {
+        keywords.push(truncated)
+      } else {
+        const label = t(`tools.params.${paramName}`, paramName)
+        tags.push(`${label}: ${truncated}`)
+      }
+    }
+    const titleSuffix = keywords.length ? `  ${keywords.join(' ')}` : ''
+    steps.push({
+      title: displayName + titleSuffix,
+      description: tags.join('|') || undefined,
+      icon,
+      status: 'completed',
+    })
+  }
+  return steps
+}
+
+/**
+ * Parse complete <function_calls>...</function_calls> blocks into steps cards.
+ */
+function parseFunctionCalls(text: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+  const fcRegex = /<(?:antml:)?function_calls>([\s\S]*?)<\/(?:antml:)?function_calls>/g
+  const reps: { start: number; end: number; placeholder: string }[] = []
+  let m
+  while ((m = fcRegex.exec(text)) !== null) {
+    const steps = extractInvocations(m[1] || '')
+    if (steps.length === 0) continue
+    const card: TypelessCardSteps = {
+      type: 'steps',
+      id: `fc-${cardIndex.value++}`,
+      title: t('tools.callCount', `Tool Calls (${steps.length})`, { count: steps.length }),
+      steps,
+      variant: 'vertical',
+    }
+    cards.push(card)
+    reps.push({ start: m.index, end: m.index + m[0].length, placeholder: `[[TYPELESS_CARD:${card.id}]]` })
+  }
+  for (let i = reps.length - 1; i >= 0; i--) {
+    const r = reps[i]!
+    text = text.slice(0, r.start) + r.placeholder + text.slice(r.end)
+  }
+  return text
+}
+
+/**
+ * Parse incomplete/streaming <function_calls> (no closing tag yet).
+ */
+function parseIncompleteFunctionCalls(text: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+  const incRegex = /<(?:antml:)?function_calls>([\s\S]*)$/
+  const m = incRegex.exec(text)
+  if (!m || !m[1]) return text
+  const steps = extractInvocations(m[1])
+  // Also check for an incomplete <invoke (plain or antml: prefixed) that hasn't closed yet
+  const lastInvokeIdx = Math.max(m[1].lastIndexOf('<invoke'), m[1].lastIndexOf('<antml:invoke'))
+  const partialInvoke = lastInvokeIdx >= 0
+    ? /<(?:antml:)?invoke\s+name="([^"]*)"/.exec(m[1].slice(lastInvokeIdx))
+    : null
+  if (steps.length === 0 && !partialInvoke) return text
+  if (partialInvoke && (steps.length === 0 || steps[steps.length - 1]?.title !== partialInvoke[1])) {
+    steps.push({ title: partialInvoke[1] || 'loading...', icon: '⏳', status: 'current' })
+  }
+  const card: TypelessCardSteps = {
+    type: 'steps',
+    id: `fc-streaming-${cardIndex.value++}`,
+    title: t('tools.callingProgress', 'Calling Tools...'),
+    steps,
+    variant: 'vertical',
+    _streaming: true,
+  }
+  cards.push(card)
+  return text.slice(0, m.index) + `[[TYPELESS_CARD:${card.id}]]`
+}
+
 /**
  * Parse special XML-like tags and convert to cards or remove them
  * Handles: <thinking>...</thinking>, <system_placeholder />, etc.
@@ -357,6 +477,9 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
   // Remove <system_placeholder /> and similar self-closing system tags
   text = text.replace(/<system_placeholder\s*\/>/g, '')
   text = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+
+  // Replace [SILENT_REPLY] with a subtle icon
+  text = text.replace(/\[SILENT_REPLY\]/g, '💤')
 
   // Parse <thinking>...</thinking> tags and convert to collapsible accordion
   const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/g
@@ -369,9 +492,9 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
       const card: TypelessCardAccordion = {
         type: 'accordion',
         id: `thinking-${cardIndex.value++}`,
-        title: '💭 思考过程',
+        title: '💭 ' + t('thinking.title', 'Thinking Process'),
         items: [{
-          title: '展开查看',
+          title: t('thinking.expand', 'Expand'),
           content: thinkingContent,
           defaultOpen: false,
         }],
@@ -395,6 +518,12 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
     }
   }
 
+  // Parse <function_calls>...</function_calls> blocks into steps cards
+  text = parseFunctionCalls(text, cards, cardIndex)
+
+  // Handle incomplete/streaming <function_calls> (no closing tag yet)
+  text = parseIncompleteFunctionCalls(text, cards, cardIndex)
+
   // Handle incomplete/streaming <thinking> tags (no closing tag yet)
   const incompleteThinkingRegex = /<thinking>([\s\S]*)$/
   const incompleteMatch = incompleteThinkingRegex.exec(text)
@@ -404,9 +533,9 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
       const card: TypelessCardAccordion = {
         type: 'accordion',
         id: `thinking-streaming-${cardIndex.value++}`,
-        title: '💭 思考中...',
+        title: '💭 ' + t('thinking.inProgress', 'Thinking...'),
         items: [{
-          title: '展开查看',
+          title: t('thinking.expand', 'Expand'),
           content: thinkingContent,
           defaultOpen: true, // Show open while streaming
         }],

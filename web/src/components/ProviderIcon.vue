@@ -14,11 +14,27 @@ const aliases: Record<string, string> = {
   'zimaos-blue-trial': '__trial__',
 }
 
+// Known provider icon files
+const knownIcons = new Set([
+  'aihubmix', 'anthropic', 'aws', 'azure', 'codex', 'deepseek', 'default',
+  'glm', 'google', 'grok', 'minimax', 'moonshot', 'ngrok', 'ollama',
+  'openai', 'openrouter', 'qwen', 'venice',
+])
+
+// Try to match a known icon from a custom provider ID (e.g. "custom-anthropic-cursor" → "anthropic")
+function resolveIcon(id: string): string {
+  if (knownIcons.has(id)) return id
+  for (const known of knownIcons) {
+    if (id.includes(known)) return known
+  }
+  return 'default'
+}
+
 const iconSrc = computed(() => {
   if (props.customIcon) return props.customIcon
   const id = aliases[props.providerId] || props.providerId
   if (id === '__trial__') return '/logo.svg'
-  return `/icons/providers/${id}.svg`
+  return `/icons/providers/${resolveIcon(id)}.svg`
 })
 
 const sizeClass = computed(() => {

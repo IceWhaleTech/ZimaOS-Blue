@@ -88,15 +88,7 @@ export default {
       'discord-skill': { name: 'Discord', description: 'Discord 서버 작업' },
     },
   },
-  tools: {
-    builtin: {
-      calculator: { name: '계산기', description: '기본 산술 연산(+, -, *, / 및 괄호)을 지원합니다.' },
-      systemInfo: { name: '시스템 정보', description: '시스템 정보(OS, 아키텍처, 호스트명, CPU 수, Go 버전)를 반환합니다.' },
-      currentTime: { name: '현재 시간', description: 'UTC, 현지 시간, Unix 타임스탬프를 반환합니다. 선택적으로 타임존 지정 가능.' },
-      fileRead: { name: '파일 읽기', description: '파일 내용을 읽어 텍스트로 반환합니다.' },
-      fileWrite: { name: '파일 쓰기', description: '파일에 내용을 씁니다. 없으면 생성하고, 있으면 덮어씁니다.' },
-    },
-  },
+
   backup: {
     title: '백업',
     create: '백업 만들기',
@@ -2899,7 +2891,7 @@ export default {
     cache: '캐시',
     pruner: '프루너',
     estimated: '예상 절약',
-    combined: '캐시 + 프루너 합산',
+    combined: '캐시 + 프루너 + 라우팅 합산',
     entries: '항목',
     prunerActive: '활성',
     prunerInactive: '비활성',
@@ -3041,7 +3033,7 @@ export default {
   retry: '다시 시도',
   revoke: '취소',
   save: '저장',
-  search: '검색',
+
   seek: '탐색',
   select: '선택',
   send: '보내기',
@@ -3056,4 +3048,42 @@ export default {
   toggleStreaming: '스트리밍 전환',
   transcript: '트랜스크립트',
   updateField: '필드 업데이트',
+  tools: {
+    names: {
+      'Web Search': '웹 검색',
+      'Calculator': '계산기',
+      'System Info': '시스템 정보',
+      'Current Time': '현재 시간',
+      'File Read': '파일 읽기',
+      'File Write': '파일 쓰기',
+      'Memory Search': '메모리 검색',
+      'Memory Store': '메모리 저장',
+      'Memory Get': '메모리 가져오기',
+      'Memory Stats': '메모리 통계',
+    },
+    params: {
+      query: '쿼리',
+      region: '지역',
+      max_results: '최대 결과',
+      path: '경로',
+      content: '내용',
+      filename: '파일명',
+      expression: '수식',
+      keyword: '키워드',
+      limit: '제한',
+      offset: '오프셋',
+      id: 'ID',
+    },
+    calling: '도구 호출 중',
+    callingProgress: '도구 호출 중...',
+    callCount: '도구 호출 ({count})',
+  },
+  thinking: {
+    title: '사고 과정',
+    expand: '펼치기',
+    inProgress: '생각 중...',
+  },
+  search: {
+    resultCount: '{count}개 결과',
+  },
 }

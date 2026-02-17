@@ -327,6 +327,8 @@ export const useChatStore = defineStore('chat', () => {
         },
         onTrialExhausted: () => {
           trialExhausted.value = true
+          streaming.value = false
+          sending.value = false
           // Remove placeholder messages
           messages.value = messages.value.filter(
             (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
@@ -432,9 +434,16 @@ export const useChatStore = defineStore('chat', () => {
         },
         onError: (err) => {
           error.value = err.message
+          streaming.value = false
         },
         onBlocked: (message, threatLevel) => {
           securityBlocked.value = { message, threatLevel }
+          streaming.value = false
+        },
+        onTrialExhausted: () => {
+          trialExhausted.value = true
+          streaming.value = false
+          sending.value = false
         },
         onComplete: (finalChunk) => {
           streaming.value = false
@@ -541,6 +550,12 @@ export const useChatStore = defineStore('chat', () => {
         },
         onBlocked: (message, threatLevel) => {
           securityBlocked.value = { message, threatLevel }
+          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+        },
+        onTrialExhausted: () => {
+          trialExhausted.value = true
+          streaming.value = false
+          sending.value = false
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
         },
         onComplete: (finalChunk) => {

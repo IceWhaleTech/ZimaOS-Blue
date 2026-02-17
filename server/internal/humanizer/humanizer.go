@@ -16,9 +16,9 @@ const (
 
 // Config holds humanizer configuration.
 type Config struct {
-	Enabled      bool `yaml:"enabled" yaml:"enabled"`
-	IMEnabled    bool `yaml:"im_enabled" yaml:"im_enabled"`
-	VoiceEnabled bool `yaml:"voice_enabled" yaml:"voice_enabled"`
+	Enabled      bool `yaml:"enabled"`
+	IMEnabled    bool `yaml:"im_enabled"`
+	VoiceEnabled bool `yaml:"voice_enabled"`
 }
 
 // DefaultConfig returns the default configuration with all modes enabled.
@@ -38,8 +38,9 @@ func Humanize(text string, mode Mode) string {
 	}
 
 	// Order matters: typeless cards first (before code fences strip their markers),
-	// then code fences, then block-level, then inline, then cleanup.
+	// then function_calls XML, then code fences, then block-level, then inline, then cleanup.
 	text = stripTypelessCards(text, mode)
+	text = stripFunctionCalls(text, mode)
 	text = stripCodeFences(text, mode)
 	text = stripImages(text, mode)
 	text = stripLinks(text, mode)

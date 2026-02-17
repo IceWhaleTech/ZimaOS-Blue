@@ -31,8 +31,8 @@ const lineColors: Record<string, string> = {
 <template>
   <div class="steps-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div v-if="card.title" class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700">
+      <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
     </div>
 
     <!-- Horizontal Steps -->
@@ -87,18 +87,18 @@ const lineColors: Record<string, string> = {
     </div>
 
     <!-- Vertical Steps -->
-    <div v-else class="p-4">
+    <div v-else class="px-3 py-2">
       <div class="relative">
         <template v-for="(step, index) in card.steps" :key="index">
-          <div class="flex gap-4 pb-6 last:pb-0">
+          <div class="flex gap-3 pb-3 last:pb-0">
             <!-- Circle and line -->
             <div class="flex flex-col items-center">
               <div
-                class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium flex-shrink-0"
+                class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
                 :class="statusColors[getStepStatus(step, index, card.currentStep)]"
               >
                 <template v-if="getStepStatus(step, index, card.currentStep) === 'completed'">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
                 </template>
@@ -119,14 +119,20 @@ const lineColors: Record<string, string> = {
             <!-- Content -->
             <div class="flex-1 pt-1">
               <p
-                class="font-medium"
-                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-gray-900 dark:text-white dark:text-white' : 'text-gray-900 dark:text-white'"
+                class="text-sm font-medium"
+                :class="getStepStatus(step, index, card.currentStep) === 'current' ? 'text-gray-900 dark:text-white' : 'text-gray-900 dark:text-white'"
               >
                 {{ step.title }}
               </p>
-              <p v-if="step.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ step.description }}
-              </p>
+              <div v-if="step.description" class="mt-1 flex flex-wrap gap-1">
+                <span
+                  v-for="(tag, ti) in step.description.split('|')"
+                  :key="ti"
+                  class="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-300"
+                >
+                  {{ tag }}
+                </span>
+              </div>
             </div>
           </div>
         </template>

@@ -134,7 +134,8 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 		Stream:      req.Stream,
 	}
 	if req.Stream {
-		br.StreamOptions = &bridgeStreamOpts{IncludeUsage: true}
+		// Note: stream_options is not set — many relay/proxy services
+		// reject unknown fields with 400 "Improperly formed request"
 	}
 	if len(req.Tools) > 0 {
 		br.Tools = make([]bridgeTool, len(req.Tools))
