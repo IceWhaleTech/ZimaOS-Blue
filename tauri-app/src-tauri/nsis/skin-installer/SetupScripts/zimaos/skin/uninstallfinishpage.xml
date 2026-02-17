@@ -4,9 +4,17 @@
   <VerticalLayout >
      <VerticalLayout width="480" height="240" bkimage="file='form\pic.png' corner='5,5,5,5'">
 	</VerticalLayout>
-	<VerticalLayout bkcolor="#FFFFFFFF" height="133" halign="center">
-	<Label name="lblUninstallComplete" padding="0,30,0,0" font="8" width="200" normaltextcolor="#ff666666" text="ZimaOS Blue 已卸载" halign="center" align="center" />
-	<Button name="btnUninstalled" font="6" padding="0,20,0,0" text="完 成"  textcolor="#FFFFFFFF" normalimage="file='public/button/btn_global_green_80x30_normal.png' " hotimage="file='public/button/btn_global_green_80x30_hovered.png'" pushedimage="file='public/button/btn_global_green_80x30_pushed.png'" width="80" height="30"/>
+	<VerticalLayout bkcolor="#FFFFFFFF" height="133">
+	<HorizontalLayout padding="0,30,0,0" height="25">
+	  <Control />
+	  <Label name="lblUninstallComplete" font="8" width="200" normaltextcolor="#ff666666" text="ZimaOS Blue 已卸载" align="center" />
+	  <Control />
+	</HorizontalLayout>
+	<HorizontalLayout padding="0,20,0,0" height="30">
+	  <Control />
+	  <Button name="btnUninstalled" font="6" text="完 成"  textcolor="#FFFFFFFF" normalimage="file='public/button/btn_global_green_80x30_normal.png' " hotimage="file='public/button/btn_global_green_80x30_hovered.png'" pushedimage="file='public/button/btn_global_green_80x30_pushed.png'" width="80" height="30"/>
+	  <Control />
+	</HorizontalLayout>
 	</VerticalLayout>
  </VerticalLayout>
 </Windows>
