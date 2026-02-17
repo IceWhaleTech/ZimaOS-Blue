@@ -84,7 +84,6 @@ jobs:
           rm -f internal/web/dist/stats.html
           find internal/web/dist -name "*.gz" -delete 2>/dev/null || true
           find internal/web/dist -name "*.br" -delete 2>/dev/null || true
-          rm -rf internal/web/dist/samples
 
       # Linux arm64 cross-compile needs aarch64 C toolchain for CGO (sqlite3)
       - name: Install cross-compiler (linux/arm64)

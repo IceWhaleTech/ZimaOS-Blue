@@ -1,14 +1,16 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Windows>
    <VerticalLayout >
-    <VerticalLayout width="480" height="240" bkimage="file='form\pic.png' corner='5,5,5,5'">
+    <VerticalLayout width="480" height="220" bkimage="file='form\pic.png' corner='5,5,5,5'">
 	</VerticalLayout>
-	<VerticalLayout bkcolor="#FFFFFFFF" height="133">
-	<Label font="8" width="400" height="25" padding="30,20,0,0" textcolor="#ff333333" name="lblUninstallConfirm" text="" />
-	<HorizontalLayout padding="30,20,0,0" height="30" >
+	<VerticalLayout bkcolor="#FFFFFFFF" height="180">
+	<Label font="8" width="400" height="25" padding="30,30,0,0" textcolor="#ff333333" name="lblUninstallConfirm" text="" />
+	<HorizontalLayout padding="0,30,0,0" height="30" >
+	  <Control />
 	  <Button name="btnUnInstall" font="6" text=""  textcolor="#FF666666" normalimage="file='public/button/btn_global_white_80x30_normal.png' " hotimage="file='public/button/btn_global_white_80x30_hovered.png'" pushedimage="file='public/button/btn_global_white_80x30_pushed.png'" width="80" height="30"/>
 	  <Control width="10" />
 	  <Button name="btnCancelUninstall" font="6" text=""  textcolor="#FFFFFFFF" normalimage="file='public/button/btn_global_green_80x30_normal.png' " hotimage="file='public/button/btn_global_green_80x30_hovered.png'" pushedimage="file='public/button/btn_global_green_80x30_pushed.png'" width="80" height="30"/>
+	  <Control />
      </HorizontalLayout>
 	</VerticalLayout>
  </VerticalLayout>

@@ -35,7 +35,6 @@ trim-dist:
 	@rm -f internal/web/dist/stats.html.gz
 	@find internal/web/dist -name "*.gz" -delete 2>/dev/null || true
 	@find internal/web/dist -name "*.br" -delete 2>/dev/null || true
-	@rm -rf internal/web/dist/samples
 	@echo "Dist size: $$(du -sh internal/web/dist/ | cut -f1)"
 
 # Pack dist.tar.gz into binary (append + 8-byte LE offset trailer)

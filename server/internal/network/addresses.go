@@ -145,10 +145,16 @@ func (d *AddressDetector) GetAddresses() (*NetworkAddresses, error) {
 				continue
 			}
 
+			// Skip virtual interfaces (Docker, veth, bridge, etc.)
+			ifaceType := detectInterfaceType(iface.Name)
+			if ifaceType == InterfaceTypeVirtual {
+				continue
+			}
+
 			netInterface := NetworkInterface{
 				Name:    iface.Name,
 				Address: fmt.Sprintf("http://%s:%d", ip.String(), port),
-				Type:    detectInterfaceType(iface.Name),
+				Type:    ifaceType,
 				IsUp:    true,
 				IsIPv6:  isIPv6,
 			}

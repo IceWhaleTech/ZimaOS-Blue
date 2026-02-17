@@ -26,6 +26,10 @@ if (Test-Path $embedDir) { Remove-Item -Recurse -Force $embedDir }
 New-Item -ItemType Directory -Path $embedDir -Force | Out-Null
 Copy-Item -Recurse -Force "g:\GitHub\ZimaOS-Blue\web\dist\*" $embedDir
 Get-ChildItem -Recurse -Filter "*.map" $embedDir | Remove-Item -Force
+# Clean up build artifacts
+Remove-Item -Force "$embedDir\stats.html" -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Filter "*.gz" $embedDir | Remove-Item -Force
+Get-ChildItem -Recurse -Filter "*.br" $embedDir | Remove-Item -Force
 Write-Host "[OK] Frontend copied"
 
 # Step 3: Build Go static library (needs MinGW in PATH for CGO)
@@ -41,6 +45,7 @@ $env:CXX = "g++"
 # Build ldflags with trial license (Ed25519-signed, from environment)
 $goLdflags = "-s -w"
 if ($env:ZIMAOS_TRIAL_LICENSE) {
+    Write-Host "[OK] Using trial license from environment variable (will be embedded in binary)"
     $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
 }
 go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/

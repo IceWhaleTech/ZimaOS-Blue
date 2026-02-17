@@ -14,6 +14,7 @@ $env:CXX = "g++"
 # Build ldflags with trial license (Ed25519-signed, from environment)
 $goLdflags = "-s -w"
 if ($env:ZIMAOS_TRIAL_LICENSE) {
+    Write-Host "[OK] Using trial license from environment variable (will be embedded in binary)"
     $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
 }
 go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/

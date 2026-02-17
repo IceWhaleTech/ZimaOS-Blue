@@ -359,6 +359,7 @@ onUnmounted(stopModelPoll)
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.prunerTitle') }}</h3>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.prunerDesc') }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('apiProxy.prunerSavings') }}</p>
           </div>
           <button
             type="button"
@@ -499,9 +500,6 @@ onUnmounted(stopModelPoll)
             <div v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="mt-2 space-y-1">
               <p class="text-xs text-gray-400 dark:text-gray-500">
                 {{ t('apiProxy.modelNotDownloaded') }} &middot; ~607 MB
-              </p>
-              <p class="text-xs text-blue-500 dark:text-blue-400">
-                {{ t('apiProxy.modelSavingsHint') }}
               </p>
             </div>
           </div>

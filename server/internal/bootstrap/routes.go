@@ -171,10 +171,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Preview mode routes (no auth required)
 	previewModeService := preview.NewModeService(s.UserService)
-	previewModeService.SetDataDir(dataDir) // Set data dir for logging
 	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
 	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService)
-	previewHandler.SetDataDir(dataDir)
 	previewHandler.RegisterRoutes(e)
 	logger.Info("Preview mode routes registered")
 
@@ -582,6 +580,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		// Pruner model manager (always available for model download)
 		prunerModelDir := filepath.Join(cfg.DataDir, "pruner-models")
+		prunerCfg.ModelDir = prunerModelDir // Set ModelDir for ONNX backend
 		prunerModelMgr := pruner.NewPrunerModelManager(prunerModelDir)
 
 		// Always register pruner API routes (handler returns disabled status when pruner is off)
