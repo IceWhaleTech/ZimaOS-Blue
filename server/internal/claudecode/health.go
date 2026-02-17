@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CheckResult represents the result of a single health check.
@@ -137,7 +139,7 @@ func (h *HealthChecker) Check(ctx context.Context) HealthStatus {
 		Healthy:   healthy,
 		Message:   message,
 		Checks:    checks,
-		LastCheck: time.Now(),
+		LastCheck: timeutil.NowTime(),
 	}
 
 	// Update cached status

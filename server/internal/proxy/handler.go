@@ -251,7 +251,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return ph.forwardAndCache(r, pr)
 				})
 				if sfErr != nil {
-					http.Error(w, sfErr.Error(), http.StatusBadGateway)
+					http.Error(w, SanitizeError(sfErr), http.StatusBadGateway)
 					return
 				}
 				if sfEntry != nil {
@@ -275,7 +275,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ph.setRouteHeaders(w, pr)
 	route, err := ph.routeRequestWithMode(pr.model, ph.extractRoutingMode(r))
 	if err != nil {
-		http.Error(w, "No available provider: "+err.Error(), http.StatusServiceUnavailable)
+		http.Error(w, SanitizeError(err), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -291,7 +291,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(bytes.NewReader(forwardBody))
 	resp, err := ph.forwardToProvider(r, route)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, SanitizeError(err), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()

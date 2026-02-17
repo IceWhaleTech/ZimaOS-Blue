@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -115,7 +116,7 @@ func (b *SystemPromptBuilder) buildRuntimeInfo() string {
 	lines = append(lines, fmt.Sprintf("- Platform: %s/%s", runtime.GOOS, runtime.GOARCH))
 
 	// Current time
-	now := time.Now()
+	now := timeutil.NowTime()
 	lines = append(lines, fmt.Sprintf("- Current time: %s", now.Format(time.RFC3339)))
 
 	// Timezone
@@ -308,7 +309,7 @@ func (b *SystemPromptBuilder) BuildForHeartbeat(ctx context.Context) string {
 	var parts []string
 
 	// Minimal runtime info
-	now := time.Now()
+	now := timeutil.NowTime()
 	parts = append(parts, fmt.Sprintf("Current time: %s", now.Format(time.RFC3339)))
 
 	// Heartbeat instructions
@@ -340,7 +341,7 @@ type RuntimeInfo struct {
 
 // GetRuntimeInfo returns the current runtime information.
 func (b *SystemPromptBuilder) GetRuntimeInfo() *RuntimeInfo {
-	now := time.Now()
+	now := timeutil.NowTime()
 	zone, _ := now.Zone()
 
 	info := &RuntimeInfo{

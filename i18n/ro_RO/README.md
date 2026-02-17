@@ -126,7 +126,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Prezentare generală a arhitecturii
@@ -145,7 +154,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Fluxul mesajelor pe canale**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Pipeline vocal**
@@ -213,7 +222,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Upgrade canale | 10 canale actualizate din stub-uri | Done |
 | v0.10.25 | CC Cache | Cache pe două niveluri (L1 memorie + L2 disc) | Done |
 | v0.10.26 | Humanizer | Pipeline de umanizare a răspunsurilor | Done |
-| v0.10.27 | Context Pruner | Scorare BM25, segmentare, benchmark-uri | Done |
+| v0.10.27 | Context Pruner | 54% economie de tokeni pe cod (SWE-bench oficial), 46–47% pe documente generale (IR local), scorare BM25, segmentare | Done |
 | v0.10.28 | Memory Service | Căutare progresivă, backend cu scriere duală | Done |
 
 ## Comunitate și suport

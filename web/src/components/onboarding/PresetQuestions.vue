@@ -65,22 +65,18 @@ async function fetchSampleFile(placeholder: string): Promise<{ blob: Blob; previ
 // Convert preset question attachments to FileAttachment format
 async function convertAttachments(presetAttachments?: PresetQuestionAttachment[]): Promise<FileAttachment[]> {
   if (!presetAttachments || presetAttachments.length === 0) {
-    console.log('[PresetQuestions] No attachments to convert')
     return []
   }
 
-  console.log('[PresetQuestions] Converting attachments:', presetAttachments)
   const attachments: FileAttachment[] = []
 
   for (const att of presetAttachments) {
-    console.log('[PresetQuestions] Processing attachment:', att.placeholder, att.name)
     if (!att.placeholder) continue
     // Try to fetch real sample file first
     const sampleFile = await fetchSampleFile(att.placeholder)
 
     if (sampleFile) {
       const file = new File([sampleFile.blob], att.name, { type: att.mime_type })
-      console.log('[PresetQuestions] Created file:', att.name, 'size:', file.size)
 
       attachments.push({
         id: Math.random().toString(36).substring(2, 15),
@@ -95,7 +91,6 @@ async function convertAttachments(presetAttachments?: PresetQuestionAttachment[]
     }
   }
 
-  console.log('[PresetQuestions] Final attachments count:', attachments.length)
   return attachments
 }
 

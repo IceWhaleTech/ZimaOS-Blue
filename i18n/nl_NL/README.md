@@ -59,6 +59,29 @@ Gebouwd voor gedurfde ontwikkelaars die hun **eigen agents willen viben of handm
 
 Ga verder: het biedt native ondersteuning voor **20+ IM-platformen**, **spraakgestuurde** interfaces voor natuurlijke, contextbewuste dialoog, **zero-config modelwisseling** met IDE-scanning, en SOUL-gelaagde persoonlijkheden.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### Snel, Licht
 
 Native gecompileerd in Go — geen interpreter, geen VM, geen overhead. Draait geruisloos op alles, van servers tot je desktopapparaten.
@@ -71,7 +94,7 @@ Native gecompileerd in Go — geen interpreter, geen VM, geen overhead. Draait g
 | `status` piek RSS | **~15 MB** | ~1.52 GB |
 | Runtime-afhankelijkheden | **Geen** | Node.js 18+ |
 
-> Benchmark op macOS arm64, dezelfde host, beste van 3 runs. Feb 2026.
+> Benchmark op macOS arm64 (servermodus, geen desktop-UI), dezelfde host, beste van 3 runs. Feb 2026.
 
 ### Pure Go, Elk Apparaat
 
@@ -92,19 +115,77 @@ Wij geloven dat **next-gen persoonlijk computergebruik** LLM's omarmt — maar *
 - **Local-First, Ultralicht, Cross-Device** – Geen high-end hardware vereist. Draait op alles wat kan rekenen.
 - **Veilig & Auditeerbaar** – Sessie-auditing, sandboxing, permissiecontroles en een ingebouwde API-proxy die fungeert als applicatielaag-firewall — elke byte in/uit is zichtbaar.
 
+![](../../docs/assets/design_principle.png)
+
 We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. Trouw aan de **ontwerpfilosofie van ZimaOS** levert Blue:
 - **Van Nul naar Eén in Één Klik** – Direct uitrollen, geen complexe configuratie.
 - **Snel Prototypen** – Vibe of bouw handmatig scenariospecifieke tools, interacties en app-pakketten.
 - **Wereldwijd Klaar** – **De wereld is groot**, en Engels is niet de standaard. **20+ talen, native**, geen barrières.
 - **Open Model-ecosysteem** – Geen vendor lock-in. Breng je eigen modellen mee.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| Provider | Modellen | Type |
+|----------|----------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi etc. | Lokaal |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (privacy) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | OpenAI-modellen via Azure | Cloud |
+| OpenRouter | 100+ geaggregeerde modellen | Cloud |
+| AIHubMix | Multi-provider aggregator | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| Aangepast | Elke OpenAI / Anthropic / Gemini compatibele API | Cloud / Lokaal |
+
+</details>
+
+### Ondersteunde IDE's
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## Snel Starten
 
 ### Optie 1: Download Desktop-app (macOS & Windows)
 
-Download de native applicatie — geen afhankelijkheden, geen compilatie.
+Download de native applicatie — geen afhankelijkheden, geen compilatie. Ingebouwde proefconfiguratie, direct aan de slag — begin met chatten via een externe verbinding, zonder bot-configuratie. Echt plug-and-play.
 
 - **macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,12 +207,47 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Architectuuroverzicht
 
-![](../../docs/assets/architecture.png)
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
+
+### Pakketoverzicht (`server/internal/`)
+
+| Laag | Pakketten |
+|------|-----------|
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, heartbeat, companion, profiling, leakdetect |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+</details>
 
 ### Gegevensstroom
 
@@ -145,7 +261,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Kanaalberichtstroom**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Spraakpijplijn**
@@ -153,68 +269,52 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-### Pakketoverzicht (`server/internal/`)
-
-| Laag | Pakketten |
-|------|-----------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Provider | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Geheugen | memory, embedding, kvstore |
-| Kanaal | channel, autoreply, i18n |
-| Beveiliging | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Spraak | voice, tts, stt, speech |
-| Observatie | metrics, heartbeat, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integratie | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
-| Planner | scheduler, worker, workerpool, pool |
-| Kern | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Systeem | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-tenant | tenant, user, session, preview |
-
 ## Gebruik
 
 ![](../../docs/assets/handcraft.png)
 
 ## Mijlpalen Tijdlijn
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | Versie | Focus | Kernwaarde | Status |
 |--------|-------|------------|--------|
-| v0.1 | Go Runtime-kern | Stabiele kernel, 24u draaiend | Done |
-| v0.2 | Kernfunctionaliteit | Minimaal bruikbaar, LLM-integratie | Done |
-| v0.3 | NAS-integratie | NAS-native, systemd-ondersteuning | Done |
-| v0.4 | Pluginsysteem | Uitbreidbaar, beveiligingsbasis | Done |
-| v0.5 | Productbasislijn | Productieklaar, documentatie | Done |
-| v0.6 | Berichtkanalen | Multi-kanaal ondersteuning | Done |
-| v0.7 | Beveiliging | OIDC, MFA, audit | Done |
-| v0.8 | Prestaties | Optimalisatie, caching, benchmarks | Done |
-| v0.9 | Ecosysteem | Multi-tenant, browserautomatisering, spraak | Done |
-| v0.10.0 | CLI-bundeling | CC CLI-bundeling, detectie, auto-update | Done |
-| v0.10.1 | Metriekenmonitoring | API-statistieken, tokentracking, TTFT | Done |
-| v0.10.2 | CLI-betrouwbaarheid | Proceslevenscyclus, foutherstel | Done |
-| v0.10.3 | CLI-integratie | Installatiewizard, provider-autodetectie | Done |
-| v0.10.4 | Tauri-verpakking | Desktop-app, systeemvak | Done |
-| v0.10.5 | API Proxy Sidecar | Routeselectie, prompt guard, gebruiksstatistieken | Done |
-| v0.10.6 | Provider Pool | Multi-provider routing, health check, failover | Done |
-| v0.10.7 | Voorbeeldmodus | Ongeauthenticeerde toegang, feature gating | Done |
-| v0.10.8 | Skill Store | Skill store-infrastructuur, kanaalvalidatie | Done |
-| v0.10.9–10 | Gebruikersbeheer | Subgebruikers, paginaniveau-permissies | Done |
-| v0.10.13–14 | Beveiliging & Vaardigheden | Beveiligingspagina, skill store-herontwerp | Done |
-| v0.10.15 | Chatverbeteringen | Chat-UX, berichtpijplijn | Done |
-| v0.10.16 | Spraakmodule | Sherpa TTS/ASR, eSpeak, providerwisseling | Done |
-| v0.10.17 | Externe Toegang | Ngrok, Cloudflare-tunnels, ACME-certificaten | Done |
-| v0.10.18–20 | Prestatiesprint | Opstart-/chatprestaties, contextcache | Done |
-| v0.10.21–22 | Prompt & DingTalk | Systeemprompt, DingTalk-kanaal | Done |
-| v0.10.23 | OTA-update | OTA-updatesysteem | Done |
-| v0.10.24 | Kanaalupgrade | 10 kanalen geüpgraded van stubs | Done |
-| v0.10.25 | CC Cache | Tweelaagsecache (L1 geheugen + L2 schijf) | Done |
-| v0.10.26 | Humanizer | Responshumaniseringspijplijn | Done |
-| v0.10.27 | Context Pruner | BM25-scoring, segmentatie, benchmarks | Done |
-| v0.10.28 | Geheugenservice | Progressief zoeken, dual-write backend | Done |
+| v0.1 | Go Runtime-kern | Stabiele kernel, 24u draaiend | Voltooid |
+| v0.2 | Kernfunctionaliteit | Minimaal bruikbaar, LLM-integratie | Voltooid |
+| v0.3 | NAS-integratie | NAS-native, systemd-ondersteuning | Voltooid |
+| v0.4 | Pluginsysteem | Uitbreidbaar, beveiligingsbasis | Voltooid |
+| v0.5 | Productbasislijn | Productieklaar, documentatie | Voltooid |
+| v0.6 | Berichtkanalen | Multi-kanaal ondersteuning | Voltooid |
+| v0.7 | Beveiliging | OIDC, MFA, audit | Voltooid |
+| v0.8 | Prestaties | Optimalisatie, caching, benchmarks | Voltooid |
+| v0.9 | Ecosysteem | Multi-tenant, browserautomatisering, spraak | Voltooid |
+| v0.10.0 | CLI-bundeling | CC CLI-bundeling, detectie, auto-update | Voltooid |
+| v0.10.1 | Metriekenmonitoring | API-statistieken, tokentracking, TTFT | Voltooid |
+| v0.10.2 | CLI-betrouwbaarheid | Proceslevenscyclus, foutherstel | Voltooid |
+| v0.10.3 | CLI-integratie | Installatiewizard, provider-autodetectie | Voltooid |
+| v0.10.4 | Tauri-verpakking | Desktop-app, systeemvak | Voltooid |
+| v0.10.5 | API Proxy Sidecar | Routeselectie, prompt guard, gebruiksstatistieken | Voltooid |
+| v0.10.6 | Provider Pool | Multi-provider routing, health check, failover | Voltooid |
+| v0.10.7 | Voorbeeldmodus | Ongeauthenticeerde toegang, feature gating | Voltooid |
+| v0.10.8 | Skill Store | Skill store-infrastructuur, kanaalvalidatie | Voltooid |
+| v0.10.9–10 | Gebruikersbeheer | Subgebruikers, paginaniveau-permissies | Voltooid |
+| v0.10.13–14 | Beveiliging & Vaardigheden | Beveiligingspagina, skill store-herontwerp | Voltooid |
+| v0.10.15 | Chatverbeteringen | Chat-UX, berichtpijplijn | Voltooid |
+| v0.10.16 | Spraakmodule | Sherpa TTS/ASR, eSpeak, providerwisseling | Voltooid |
+| v0.10.17 | Externe Toegang | Ngrok, Cloudflare-tunnels, ACME-certificaten | Voltooid |
+| v0.10.18–20 | Prestatiesprint | Opstart-/chatprestaties, contextcache | Voltooid |
+| v0.10.21–22 | Prompt & DingTalk | Systeemprompt, DingTalk-kanaal | Voltooid |
+| v0.10.23 | OTA-update | OTA-updatesysteem | Voltooid |
+| v0.10.24 | Kanaalupgrade | 10 kanalen geüpgraded van stubs | Voltooid |
+| v0.10.25 | CC Cache | Tweelaagsecache (L1 geheugen + L2 schijf) | Voltooid |
+| v0.10.26 | Humanizer | Responshumaniseringspijplijn | Voltooid |
+| v0.10.27 | Context Pruner | 54% tokenbesparing op code (SWE-bench officieel), 46–47% op algemene documenten (lokale IR), BM25-scoring, segmentatie | Voltooid |
+| v0.10.28 | Geheugenservice | Progressief zoeken, dual-write backend | Voltooid |
+
+</details>
 
 ## Community & Ondersteuning
 

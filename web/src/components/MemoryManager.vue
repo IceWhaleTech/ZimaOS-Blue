@@ -725,7 +725,7 @@ onMounted(async () => {
 
     <!-- Namespace Modal -->
     <Teleport to="body">
-      <div v-if="showNamespaceModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showNamespaceModal = false">
+      <div v-if="showNamespaceModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" @click.self="showNamespaceModal = false">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('memoryService.namespace') }}</h3>

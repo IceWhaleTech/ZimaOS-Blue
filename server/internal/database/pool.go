@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/rs/zerolog"
 )
 
@@ -147,7 +148,7 @@ func (p *PoolManager) checkHealth(ctx context.Context) bool {
 	}
 
 	p.stats.HealthChecksPassed++
-	p.stats.LastHealthCheck = time.Now()
+	p.stats.LastHealthCheck = timeutil.NowTime()
 
 	p.logger.Debug().
 		Dur("duration", time.Since(start)).

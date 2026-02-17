@@ -7,6 +7,7 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import { claudeCodeApi } from '@/api/claudecode'
 import type { ClaudeCodeConfigResponse } from '@/api/claudecode'
+import { authFetch } from '@/api/client'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
@@ -17,6 +18,7 @@ import TalkMode from '@/components/chat/TalkMode.vue'
 import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates } from '@/utils/typeless'
 import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
+import { formatTokens } from '@/utils/format'
 
 const { t } = useI18n()
 const chatStore = useChatStore()
@@ -406,7 +408,7 @@ onMounted(async () => {
   componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file'])
 
   // Initialize speech services lazily (TTS/STT)
-  fetch('/api/v1/speech/init', { method: 'POST' }).catch(() => {})
+  authFetch('/api/v1/speech/init', { method: 'POST' }).catch(() => {})
 
   await Promise.all([
     chatStore.fetchConversations(),
@@ -610,7 +612,8 @@ onUnmounted(() => {
             <span
               class="tabular-nums transition-all duration-300 font-medium"
               :class="{ 'token-change-animation': tokenAnimating }"
-            >{{ t('chat.trialQuota.remaining', { tokens: providerPoolStore.trialQuota.tokens_remaining }) }}</span>
+              :title="providerPoolStore.trialQuota.tokens_remaining.toLocaleString() + ' tokens'"
+            >{{ t('chat.trialQuota.remaining', { tokens: formatTokens(providerPoolStore.trialQuota.tokens_remaining) }) }}</span>
           </div>
           <div class="flex items-center gap-2">
             <div class="relative w-20 h-4 bg-gray-300 dark:bg-gray-700 rounded-full overflow-hidden">

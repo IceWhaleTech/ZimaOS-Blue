@@ -59,6 +59,29 @@ Construido para desarrolladores audaces que quieren **crear sus propios agentes 
 
 Lleva las cosas más lejos: ofrece soporte nativo para **más de 20 plataformas de mensajería instantánea**, interfaces **controladas por voz** para diálogos naturales y conscientes del contexto, **cambio de modelo sin configuración** con escaneo de IDE, y personalidades con capas SOUL.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### Rápido y Ligero
 
 Compilado nativamente en Go — sin intérprete, sin VM, sin sobrecarga. Se ejecuta silenciosamente en todo, desde servidores hasta tus dispositivos de escritorio.
@@ -71,7 +94,7 @@ Compilado nativamente en Go — sin intérprete, sin VM, sin sobrecarga. Se ejec
 | `status` RSS pico | **~15 MB** | ~1.52 GB |
 | Dependencias de ejecución | **Ninguna** | Node.js 18+ |
 
-> Pruebas realizadas en macOS arm64, mismo equipo, mejor de 3 ejecuciones. Feb 2026.
+> Pruebas realizadas en macOS arm64 (modo servidor, sin interfaz de escritorio), mismo equipo, mejor de 3 ejecuciones. Feb 2026.
 
 ### Go Puro, Cualquier Dispositivo
 
@@ -92,19 +115,77 @@ Creemos que la **computación personal de próxima generación** abraza los LLMs
 - **Local-First, Ultra Ligero, Multi-Dispositivo** – No requiere hardware de gama alta. Se ejecuta en cualquier cosa que pueda computar.
 - **Seguro y Auditable** – Auditoría de sesiones, sandboxing, controles de permisos y un proxy API integrado que actúa como firewall a nivel de aplicación — cada byte de entrada/salida es visible.
 
+![](../../docs/assets/design_principle.png)
+
 Minimizamos el código repetitivo para que te **concentres en lo que importa**. Fiel a la **filosofía de diseño de ZimaOS**, Blue ofrece:
 - **De Cero a Uno en Un Clic** – Despliega al instante, sin configuración compleja.
 - **Prototipado Rápido** – Crea herramientas, interacciones y paquetes de aplicaciones específicos para cada escenario con vibe coding o a mano.
 - **Listo para el Mundo** – **El mundo es enorme**, y no tiene por qué ser solo en inglés. **Más de 20 idiomas, nativos**, sin barreras.
 - **Ecosistema de Modelos Abierto** – Sin dependencia de proveedores. Trae tus propios modelos.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| Proveedor | Modelos | Tipo |
+|-----------|---------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Nube |
+| Anthropic | Claude 4.5, Claude 4 | Nube |
+| Google | Gemini 2.5, Gemini 2.0 | Nube |
+| Ollama | Llama, Qwen, Gemma, Phi, etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Nube |
+| Grok | Grok-3, Grok-3-mini | Nube |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Nube |
+| GLM | GLM-4, GLM-4-Flash | Nube |
+| Moonshot | Moonshot-v1 | Nube |
+| MiniMax | abab6.5, abab5.5 | Nube |
+| Venice | Llama, Mistral (privacidad primero) | Nube |
+| AWS Bedrock | Claude, Llama, Titan | Nube |
+| Azure | Modelos OpenAI vía Azure | Nube |
+| OpenRouter | 100+ modelos agregados | Nube |
+| AIHubMix | Agregador multi-proveedor | Nube |
+| Codex | OpenAI Codex | Nube |
+| Personalizado | Cualquier API compatible con OpenAI / Anthropic / Gemini | Nube / Local |
+
+</details>
+
+### IDEs Compatibles
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## Inicio Rápido
 
 ### Opción 1: Descargar la Aplicación de Escritorio (macOS y Windows)
 
-Obtén la aplicación nativa — sin dependencias, sin compilación.
+Obtén la aplicación nativa — sin dependencias, sin compilación. Configuración de prueba integrada, lista en segundos — comienza a chatear de inmediato mediante conexión remota, sin configurar ningún bot. Lista para usar.
 
 - **macOS**: [Descargar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [Descargar Instalador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,32 +207,24 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Visión General de la Arquitectura
 
-![](../../docs/assets/architecture.png)
-
-### Flujo de Datos
-
-**Solicitud de Chat (Ruta Crítica del Proxy)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
-
-**Flujo de Mensajes de Canal**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
-
-**Pipeline de Voz**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Arquitectura" />
+</summary>
 
 ### Mapa de Paquetes (`server/internal/`)
 
@@ -174,13 +247,38 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | Sistema | sysinfo, cgroup, iotask, watcher, resources, backup, update |
 | Multi-inquilino | tenant, user, session, preview |
 
+</details>
+
+### Flujo de Datos
+
+**Solicitud de Chat (Ruta Crítica del Proxy)**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**Flujo de Mensajes de Canal**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**Pipeline de Voz**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
 ## Cómo Usar
 
 ![](../../docs/assets/handcraft.png)
 
 ## Cronograma de Hitos
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Cronograma de Hitos" />
+</summary>
 
 | Versión | Enfoque | Valor Clave | Estado |
 |---------|---------|-------------|--------|
@@ -213,8 +311,10 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Mejora de Canales | 10 canales actualizados desde stubs | Done |
 | v0.10.25 | CC Cache | Caché de dos niveles (L1 memoria + L2 disco) | Done |
 | v0.10.26 | Humanizador | Pipeline de humanización de respuestas | Done |
-| v0.10.27 | Podador de Contexto | Puntuación BM25, segmentación, benchmarks | Done |
+| v0.10.27 | Podador de Contexto | 54% ahorro de tokens en código (SWE-bench oficial), 46–47% en documentos generales (IR local), puntuación BM25, segmentación | Done |
 | v0.10.28 | Servicio de Memoria | Búsqueda progresiva, backend de escritura dual | Done |
+
+</details>
 
 ## Comunidad y Soporte
 

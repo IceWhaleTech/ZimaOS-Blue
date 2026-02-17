@@ -65,7 +65,6 @@ function getStatusColor(status: string): string {
 async function fetchSandboxInfo() {
   try {
     const response = await sandboxApi.getInfo()
-    console.log('Sandbox info:', response.data)
     sandboxInfo.value = response.data
   } catch (e) {
     console.error('Failed to fetch sandbox info:', e)

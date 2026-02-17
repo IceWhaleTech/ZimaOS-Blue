@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -24,6 +25,10 @@ type Handler struct {
 	// cache for frequently accessed data (using ecache2 generic cache)
 	statsCache   *cache.GenericCache[string]
 	sessionCache *cache.GenericCache[string]
+
+	// Lazy init support
+	once   sync.Once
+	initFn func() (*Manager, Storage)
 }
 
 // NewHandler creates a new REST API handler.
@@ -40,6 +45,28 @@ func NewHandler(manager *Manager, storage Storage) *Handler {
 			DefaultTTL: 10 * time.Second,
 		}, "companion_sessions"),
 	}
+}
+
+// NewLazyHandler creates a handler that defers service creation to the first API call.
+func NewLazyHandler(initFn func() (*Manager, Storage)) *Handler {
+	return &Handler{initFn: initFn}
+}
+
+// ensureInit initializes the handler lazily if needed.
+func (h *Handler) ensureInit() {
+	h.once.Do(func() {
+		if h.manager == nil && h.initFn != nil {
+			h.manager, h.storage = h.initFn()
+			h.statsCache = cache.NewGenericCacheWithStats(cache.Config{
+				MaxSize:    50,
+				DefaultTTL: 5 * time.Second,
+			}, "companion_stats")
+			h.sessionCache = cache.NewGenericCacheWithStats(cache.Config{
+				MaxSize:    200,
+				DefaultTTL: 10 * time.Second,
+			}, "companion_sessions")
+		}
+	})
 }
 
 // getContextString safely gets a string value from echo context with a default fallback.
@@ -65,6 +92,16 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 
 // registerCompanionRoutes registers companion routes on a group.
 func (h *Handler) registerCompanionRoutes(g *echo.Group) {
+	// Lazy init middleware: initialize manager/storage on first request
+	g.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			h.ensureInit()
+			if h.manager == nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "companion service not available"})
+			}
+			return next(c)
+		}
+	})
 	// Sessions
 	g.GET("/sessions", h.ListSessions)
 	g.GET("/sessions/:id", h.GetSession)

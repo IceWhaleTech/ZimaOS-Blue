@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/rs/zerolog"
 )
 
@@ -30,7 +31,7 @@ type Optimizer struct {
 // cacheEntry represents a cached query result.
 type cacheEntry struct {
 	result    interface{}
-	expiresAt time.Time
+	expiresAt int64 // unix nanos
 	hits      int64
 }
 
@@ -315,7 +316,7 @@ func (o *Optimizer) getFromCache(key string) interface{} {
 	defer o.cacheMu.RUnlock()
 
 	entry, ok := o.cache[key]
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !ok || timeutil.NowNano() > entry.expiresAt {
 		return nil
 	}
 
@@ -335,17 +336,17 @@ func (o *Optimizer) setCache(key string, result interface{}) {
 
 	o.cache[key] = &cacheEntry{
 		result:    result,
-		expiresAt: time.Now().Add(o.config.QueryCacheTTL),
+		expiresAt: timeutil.NowNano() + int64(o.config.QueryCacheTTL),
 	}
 }
 
 // evictOldest removes the oldest cache entry.
 func (o *Optimizer) evictOldest() {
 	var oldestKey string
-	var oldestTime time.Time
+	var oldestTime int64
 
 	for key, entry := range o.cache {
-		if oldestKey == "" || entry.expiresAt.Before(oldestTime) {
+		if oldestKey == "" || entry.expiresAt < oldestTime {
 			oldestKey = key
 			oldestTime = entry.expiresAt
 		}

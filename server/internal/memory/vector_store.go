@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	// Use pure-Go sqlite driver; vec0 extension won't load but falls back gracefully
 	_ "github.com/mattn/go-sqlite3"
@@ -186,8 +187,8 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 		Content:   content,
 		Embedding: emb,
 		Metadata:  metadata,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: timeutil.NowTime(),
+		UpdatedAt: timeutil.NowTime(),
 	}
 
 	// Encrypt content for storage
@@ -262,7 +263,7 @@ func (s *VectorStore) StoreBatch(ctx context.Context, chunks []MemoryChunk) erro
 	}
 	defer stmt.Close()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for i := range chunks {
 		if chunks[i].ID == "" {
 			chunks[i].ID = uuid.New().String()
@@ -687,7 +688,7 @@ func (s *VectorStore) Update(ctx context.Context, id string, content string, emb
 
 	_, err = s.db.ExecContext(ctx,
 		"UPDATE memory_chunks SET content = ?, embedding = ?, metadata = ?, updated_at = ? WHERE id = ?",
-		storeContent, string(embJSON), string(metaJSON), time.Now(), id,
+		storeContent, string(embJSON), string(metaJSON), timeutil.NowTime(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update chunk: %w", err)

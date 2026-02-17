@@ -238,6 +238,105 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Start the Echo server as a sidecar process with CLI arguments
+/// The sidecar is the Go `blue` binary which supports cobra flags natively
+#[allow(dead_code)]
+pub async fn start_sidecar_server_with_args(app: &AppHandle, args: Option<&str>) -> Result<(), String> {
+    info!("Starting Echo server sidecar with args: {:?}", args);
+
+    let mut process_guard = SERVER_PROCESS.lock().await;
+    if process_guard.is_some() {
+        warn!("Server is already running");
+        return Ok(());
+    }
+
+    // Determine port from CLI args or AppState
+    let cli_port = if let Some(state) = app.try_state::<AppState>() {
+        state.cli_args.port
+    } else {
+        None
+    };
+    let default_port = cli_port.unwrap_or(23456u16);
+
+    if check_existing_server(default_port).await {
+        info!("Found existing healthy server on port {}, reusing it", default_port);
+        if let Some(state) = app.try_state::<AppState>() {
+            *state.server_port.lock().unwrap() = default_port;
+            *state.server_running.lock().unwrap() = true;
+        }
+        *START_TIME.lock().await = Some(std::time::Instant::now());
+        return Ok(());
+    }
+
+    if std::net::TcpListener::bind(("127.0.0.1", default_port)).is_err() {
+        warn!("Port {} occupied, killing existing processes", default_port);
+        kill_existing_echo_servers();
+        sleep(Duration::from_millis(100)).await;
+    }
+
+    let port = find_available_port(default_port).await;
+    info!("Using port {}", port);
+
+    if let Some(state) = app.try_state::<AppState>() {
+        *state.server_port.lock().unwrap() = port;
+    }
+
+    let sidecar_path = get_sidecar_path()?;
+    info!("Found sidecar at: {:?}", sidecar_path);
+
+    let mut cmd = Command::new(&sidecar_path);
+    cmd.env("ECHO_SERVER_PORT", port.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    // Pass CLI args as flags to the Go binary (it uses cobra)
+    if let Some(args_str) = args {
+        for part in args_str.split_whitespace() {
+            cmd.arg(part);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = cmd.spawn()
+        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    let pid = child.id();
+    info!("Sidecar process started with PID: {}", pid);
+
+    *process_guard = Some(child);
+    *SERVER_PID.lock().await = Some(pid);
+    drop(process_guard);
+
+    *START_TIME.lock().await = Some(std::time::Instant::now());
+
+    if let Some(state) = app.try_state::<AppState>() {
+        *state.server_running.lock().unwrap() = true;
+    }
+
+    let url = format!("http://localhost:{}/api/v1/health", port);
+    let mut delay_ms = 20u64;
+    let max_delay_ms = 100u64;
+    let max_attempts = 6;
+
+    for i in 0..max_attempts {
+        sleep(Duration::from_millis(delay_ms)).await;
+        if HTTP_CLIENT.get(&url).send().await.is_ok() {
+            info!("Server ready after attempt {}", i + 1);
+            return Ok(());
+        }
+        delay_ms = std::cmp::min(delay_ms * 2, max_delay_ms);
+    }
+
+    warn!("Server may not be fully ready, but process is running");
+    Ok(())
+}
+
 /// Start the server (Tauri command)
 #[tauri::command]
 pub async fn start_server(app: AppHandle) -> Result<ServerStatus, String> {

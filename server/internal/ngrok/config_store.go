@@ -7,7 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ConfigStore provides JSON file-based configuration storage with lazy initialization.
@@ -47,7 +48,7 @@ func (s *ConfigStore) SaveConfig(ctx context.Context, config *RemoteAccessConfig
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	config.UpdatedAt = time.Now()
+	config.UpdatedAt = timeutil.NowTime()
 	if config.CreatedAt.IsZero() {
 		config.CreatedAt = config.UpdatedAt
 	}
@@ -75,7 +76,7 @@ func (s *ConfigStore) EnsureTunnelSubdomain(ctx context.Context) (string, error)
 
 	// Generate new subdomain
 	s.config.TunnelSubdomain = generateTunnelSubdomain()
-	s.config.UpdatedAt = time.Now()
+	s.config.UpdatedAt = timeutil.NowTime()
 
 	// Save to persist the subdomain
 	if err := s.saveLocked(); err != nil {
@@ -159,7 +160,7 @@ func generateTunnelSubdomain() string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		for i := range b {
-			b[i] = byte((int(time.Now().UnixNano()) + i) % 256)
+			b[i] = byte((int(timeutil.NowNano()) + i) % 256)
 		}
 	}
 	for i := range b {

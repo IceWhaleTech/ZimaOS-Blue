@@ -1,4 +1,5 @@
 import { ref, onMounted, onUnmounted } from 'vue'
+import { authFetch } from '@/api/client'
 
 export interface NetworkInterface {
   interface: string
@@ -36,7 +37,7 @@ export function useNetwork() {
     loading.value = true
     error.value = null
     try {
-      const response = await fetch('/api/v1/network/addresses')
+      const response = await authFetch('/api/v1/network/addresses')
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -51,7 +52,7 @@ export function useNetwork() {
 
   async function fetchStatus() {
     try {
-      const response = await fetch('/api/v1/network/status')
+      const response = await authFetch('/api/v1/network/status')
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }

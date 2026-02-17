@@ -407,13 +407,13 @@ func TestDataMasker(t *testing.T) {
 	}
 	dm := NewDataMasker(config)
 
-	t.Run("MaskStub", func(t *testing.T) {
+	t.Run("MaskNoRules", func(t *testing.T) {
 		input := "This contains sensitive@email.com data"
 		output := dm.Mask(input, MaskingBoth)
 
-		// Stub implementation returns input unchanged
+		// No rules configured, so input should be unchanged
 		if output != input {
-			t.Error("stub should return input unchanged")
+			t.Error("should return input unchanged when no rules configured")
 		}
 	})
 
@@ -488,8 +488,8 @@ func TestDataMasker(t *testing.T) {
 
 	t.Run("Stats", func(t *testing.T) {
 		stats := dm.Stats()
-		if stats["status"] != "stub" {
-			t.Error("expected status to be 'stub'")
+		if stats["status"] != "active" {
+			t.Error("expected status to be 'active'")
 		}
 	})
 

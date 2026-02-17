@@ -335,7 +335,7 @@ func (m *Manager) Stop(ctx context.Context) error {
 }
 
 // StartChannel starts a specific channel by name.
-func (m *Manager) StartChannel(ctx context.Context, name string) error {
+func (m *Manager) StartChannel(_ context.Context, name string) error {
 	m.mu.RLock()
 	ch, exists := m.channels[name]
 	m.mu.RUnlock()
@@ -348,7 +348,9 @@ func (m *Manager) StartChannel(ctx context.Context, name string) error {
 		return fmt.Errorf("channel %s is already running", name)
 	}
 
-	if err := m.startChannel(ctx, ch); err != nil {
+	// Use the manager's long-lived context, not the HTTP request context,
+	// so the channel stays alive after the API call returns.
+	if err := m.startChannel(m.ctx, ch); err != nil {
 		return err
 	}
 

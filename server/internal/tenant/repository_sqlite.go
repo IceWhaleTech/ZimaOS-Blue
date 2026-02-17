@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -183,7 +183,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, tenant *Tenant) error {
 		tenant.Status,
 		tenant.Settings,
 		tenant.Limits,
-		time.Now().UTC(),
+		timeutil.NowTime().UTC(),
 		tenant.ID.String(),
 	)
 	if err != nil {
@@ -202,7 +202,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, tenant *Tenant) error {
 func (r *SQLiteRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE tenants SET deleted_at = ?, status = ? WHERE id = ? AND deleted_at IS NULL`
 
-	result, err := r.db.ExecContext(ctx, query, time.Now().UTC(), StatusDeleted, id.String())
+	result, err := r.db.ExecContext(ctx, query, timeutil.NowTime().UTC(), StatusDeleted, id.String())
 	if err != nil {
 		return fmt.Errorf("failed to delete tenant: %w", err)
 	}
@@ -654,7 +654,7 @@ func (r *SQLiteRepository) GetPendingInvitationByEmail(ctx context.Context, tena
 
 	invitation := &TenantInvitation{}
 	var idStr, tenantIDStr, invitedByStr string
-	err := r.db.QueryRowContext(ctx, query, tenantID.String(), email, time.Now().UTC()).Scan(
+	err := r.db.QueryRowContext(ctx, query, tenantID.String(), email, timeutil.NowTime().UTC()).Scan(
 		&idStr,
 		&tenantIDStr,
 		&invitation.Email,
@@ -683,7 +683,7 @@ func (r *SQLiteRepository) GetPendingInvitationByEmail(ctx context.Context, tena
 func (r *SQLiteRepository) AcceptInvitation(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE tenant_invitations SET accepted_at = ? WHERE id = ? AND accepted_at IS NULL`
 
-	result, err := r.db.ExecContext(ctx, query, time.Now().UTC(), id.String())
+	result, err := r.db.ExecContext(ctx, query, timeutil.NowTime().UTC(), id.String())
 	if err != nil {
 		return fmt.Errorf("failed to accept invitation: %w", err)
 	}
@@ -719,7 +719,7 @@ func (r *SQLiteRepository) ListPendingInvitations(ctx context.Context, tenantID 
 		FROM tenant_invitations WHERE tenant_id = ? AND accepted_at IS NULL AND expires_at > ?
 		ORDER BY created_at DESC`
 
-	rows, err := r.db.QueryContext(ctx, query, tenantID.String(), time.Now().UTC())
+	rows, err := r.db.QueryContext(ctx, query, tenantID.String(), timeutil.NowTime().UTC())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list invitations: %w", err)
 	}
@@ -755,7 +755,7 @@ func (r *SQLiteRepository) ListPendingInvitations(ctx context.Context, tenantID 
 func (r *SQLiteRepository) CleanupExpiredInvitations(ctx context.Context) error {
 	query := `DELETE FROM tenant_invitations WHERE expires_at < ? AND accepted_at IS NULL`
 
-	_, err := r.db.ExecContext(ctx, query, time.Now().UTC())
+	_, err := r.db.ExecContext(ctx, query, timeutil.NowTime().UTC())
 	if err != nil {
 		return fmt.Errorf("failed to cleanup invitations: %w", err)
 	}

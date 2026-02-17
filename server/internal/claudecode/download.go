@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DownloadInfo contains information about a CLI download.
@@ -148,7 +150,7 @@ func (m *DownloadManager) Download(ctx context.Context) error {
 	}
 	m.downloading = true
 	ctx, m.cancelFunc = context.WithCancel(ctx)
-	m.startTime = time.Now()
+	m.startTime = timeutil.NowTime()
 	m.mu.Unlock()
 
 	defer func() {

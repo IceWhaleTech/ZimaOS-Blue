@@ -28,6 +28,20 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
+	store, err := openMetricsDB(dbPath)
+	if err != nil {
+		// DB is corrupt or locked — rename and retry with a fresh one
+		rotateCorruptDB(dbPath)
+		store, err = openMetricsDB(dbPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open database after rotation: %w", err)
+		}
+	}
+	return store, nil
+}
+
+// openMetricsDB opens (or creates) the metrics SQLite database.
+func openMetricsDB(dbPath string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -37,8 +51,8 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db.SetMaxOpenConns(2)
 	db.SetMaxIdleConns(1)
 
-	// Set pragmas after opening
-	db.Exec("PRAGMA journal_mode=WAL")
+	// DELETE journal — no -shm/-wal files; metrics are expendable
+	db.Exec("PRAGMA journal_mode=DELETE")
 	db.Exec("PRAGMA busy_timeout=5000")
 	db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
 
@@ -56,6 +70,14 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db.Exec("PRAGMA shrink_memory")
 
 	return store, nil
+}
+
+// rotateCorruptDB renames a corrupt/locked DB (and its WAL/SHM) out of the way.
+func rotateCorruptDB(dbPath string) {
+	suffix := fmt.Sprintf(".bad.%d", time.Now().Unix())
+	os.Rename(dbPath, dbPath+suffix)
+	os.Remove(dbPath + "-wal")
+	os.Remove(dbPath + "-shm")
 }
 
 // initSchema creates the necessary tables.

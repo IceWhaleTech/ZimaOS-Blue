@@ -124,6 +124,8 @@ export const voiceApi = {
   // Streaming TTS via SSE - synthesize text and stream audio chunks
   synthesizeStream: (text: string, format?: string): EventSource => {
     const params = new URLSearchParams({ text, format: format || 'mp3' })
+    const token = localStorage.getItem('token')
+    if (token) params.set('token', token)
     return new EventSource(`/api/v1/voice/synthesize/stream?${params.toString()}`)
   },
 
@@ -526,7 +528,9 @@ class StreamingTTSManager {
     if (this.isStopped) return
 
     try {
-      const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}&format=mp3`)
+      const token = localStorage.getItem('token')
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
+      const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}&format=mp3${tokenParam}`)
       let received = false
 
       es.addEventListener('audio', (e) => {

@@ -3,6 +3,7 @@ package memory
 import (
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -84,7 +85,7 @@ func NewEntryID() string {
 
 // NewMemoryEntry creates a new MemoryEntry with defaults.
 func NewMemoryEntry(namespace, content string) *MemoryEntry {
-	now := time.Now()
+	now := timeutil.NowTime()
 	return &MemoryEntry{
 		ID:          NewEntryID(),
 		Namespace:   namespace,
@@ -114,13 +115,13 @@ func (e *MemoryEntry) IsExpired() bool {
 	if e.ExpiresAt == nil {
 		return false
 	}
-	return time.Now().After(*e.ExpiresAt)
+	return timeutil.NowNano() > e.ExpiresAt.UnixNano()
 }
 
 // NewVersion creates a new version of this entry with updated content.
 // The new entry gets a new ID, incremented version, and parent_id pointing to this entry.
 func (e *MemoryEntry) NewVersion(content string) *MemoryEntry {
-	now := time.Now()
+	now := timeutil.NowTime()
 	return &MemoryEntry{
 		ID:          NewEntryID(),
 		Namespace:   e.Namespace,
@@ -142,7 +143,7 @@ func (e *MemoryEntry) NewVersion(content string) *MemoryEntry {
 
 // SoftDelete marks the entry as deleted.
 func (e *MemoryEntry) SoftDelete() {
-	now := time.Now()
+	now := timeutil.NowTime()
 	e.Status = EntryStatusDeleted
 	e.DeletedAt = &now
 	e.UpdatedAt = now

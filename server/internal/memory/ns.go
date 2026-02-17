@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // NamespaceConfig holds per-namespace settings.
@@ -80,7 +82,7 @@ func (s *NamespaceStore) Create(ctx context.Context, ns *Namespace) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	now := time.Now()
+	now := timeutil.NowTime()
 	ns.CreatedAt = now
 	ns.UpdatedAt = now
 
@@ -170,7 +172,7 @@ func (s *NamespaceStore) UpdateConfig(ctx context.Context, id string, cfg Namesp
 	}
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE namespaces SET config = ?, updated_at = ? WHERE id = ?`,
-		string(cfgJSON), time.Now(), id,
+		string(cfgJSON), timeutil.NowTime(), id,
 	)
 	if err != nil {
 		return err

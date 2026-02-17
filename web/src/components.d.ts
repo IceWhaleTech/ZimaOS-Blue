@@ -48,6 +48,7 @@ declare module 'vue' {
     CardQuote: typeof import('./components/typeless/CardQuote.vue')['default']
     CardRating: typeof import('./components/typeless/CardRating.vue')['default']
     CardResult: typeof import('./components/typeless/CardResult.vue')['default']
+    CardSearch: typeof import('./components/typeless/CardSearch.vue')['default']
     CardSteps: typeof import('./components/typeless/CardSteps.vue')['default']
     CardTable: typeof import('./components/typeless/CardTable.vue')['default']
     CardTerminal: typeof import('./components/typeless/CardTerminal.vue')['default']

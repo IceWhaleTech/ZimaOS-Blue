@@ -11,6 +11,7 @@ let previewModeChecked = false
 let isPreviewMode = false
 let connectionFailed = false
 let previewTokenFetched = false
+let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null = null
 
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
@@ -29,6 +30,18 @@ async function fetchSystemMode(): Promise<Response> {
 async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
   if (previewModeChecked) return { preview: isPreviewMode, connectionError: connectionFailed }
 
+  // Deduplicate concurrent calls — only one inflight request at a time
+  if (pendingCheck) return pendingCheck
+
+  pendingCheck = doCheckPreviewMode()
+  try {
+    return await pendingCheck
+  } finally {
+    pendingCheck = null
+  }
+}
+
+async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
   try {
     const response = await fetchSystemMode()
 
@@ -290,8 +303,13 @@ const router = createRouter({
 // Navigation guard for authentication, preview mode, and permissions
 let isNavigating = false
 router.beforeEach(async (to, from, next) => {
-  // Prevent re-entrant navigation during async checks
+  // Re-entrant navigation (triggered by next() redirects) —
+  // still check preview mode (cached/deduped, no extra requests)
+  // but skip redirect logic to avoid infinite loops.
   if (isNavigating) {
+    // Even in re-entrant calls, ensure preview check has completed
+    // so token is available. checkPreviewMode is deduped and cached.
+    await checkPreviewMode()
     next()
     return
   }

@@ -411,9 +411,9 @@ func TestQuotaMonitor_RecordUsageWithTokens(t *testing.T) {
 func TestQuotaMonitor_LastSync(t *testing.T) {
 	qm := NewQuotaMonitor(nil)
 
-	before := time.Now()
+	before := time.Now().Add(-200 * time.Millisecond)
 	qm.RecordRequest("provider")
-	after := time.Now()
+	after := time.Now().Add(200 * time.Millisecond)
 
 	quota := qm.GetQuota("provider")
 	if quota.LastSync.Before(before) || quota.LastSync.After(after) {

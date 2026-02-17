@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SDKTunnelManager manages ngrok tunnels via ngrok subprocess.
@@ -103,7 +105,7 @@ func (tm *SDKTunnelManager) Start(ctx context.Context, port int, authtoken strin
 	tm.authtoken = authtoken
 	tm.cancelFunc = cancel
 	tm.cmd = cmd
-	tm.startedAt = time.Now()
+	tm.startedAt = timeutil.NowTime()
 	tm.expiresAt = calculateExpiresAt(tm.startedAt)
 	tm.mu.Unlock()
 
@@ -198,7 +200,7 @@ func (tm *SDKTunnelManager) IncrementRenewedCount() {
 func (tm *SDKTunnelManager) ResetExpiry() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	tm.startedAt = time.Now()
+	tm.startedAt = timeutil.NowTime()
 	tm.expiresAt = calculateExpiresAt(tm.startedAt)
 }
 

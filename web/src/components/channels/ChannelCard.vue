@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTauri } from '@/composables/useTauri'
 import PasswordInput from '@/components/ui/PasswordInput.vue'
 
 interface ChannelFieldDef {
@@ -50,6 +51,11 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { openInBrowser } = useTauri()
+
+const openLink = (url: string) => {
+  openInBrowser(url)
+}
 
 // Pre-computed translated values
 const translatedChannel = computed(() => ({
@@ -262,10 +268,9 @@ class="text-sm font-medium" :class="{
         <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
           <a
             v-if="channel.docUrl"
-            :href="channel.docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
             class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            @click.prevent="openLink(channel.docUrl!)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -275,10 +280,9 @@ class="text-sm font-medium" :class="{
           <!-- Feishu Open Bot Chat Link -->
           <a
             v-if="feishuAppId"
-            :href="`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
             class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            @click.prevent="openLink(`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -288,10 +292,9 @@ class="text-sm font-medium" :class="{
           <!-- Telegram Open Bot Chat Link -->
           <a
             v-if="telegramBotUsername"
-            :href="`https://t.me/${telegramBotUsername}`"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
             class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            @click.prevent="openLink(`https://t.me/${telegramBotUsername}`)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -301,10 +304,9 @@ class="text-sm font-medium" :class="{
           <!-- DingTalk Open Bot Chat Link -->
           <a
             v-if="dingtalkRobotCode"
-            :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
             class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            @click.prevent="openLink(`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -314,10 +316,9 @@ class="text-sm font-medium" :class="{
           <!-- WhatsApp Open Chat Link -->
           <a
             v-if="whatsappPhoneNumber"
-            :href="`https://wa.me/${whatsappPhoneNumber}`"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#"
             class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+            @click.prevent="openLink(`https://wa.me/${whatsappPhoneNumber}`)"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -405,10 +406,9 @@ class="text-sm font-medium" :class="{
         </button>
         <a
           v-if="channel.docUrl"
-          :href="channel.docUrl"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          @click.prevent="openLink(channel.docUrl!)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -418,10 +418,9 @@ class="text-sm font-medium" :class="{
         <!-- Feishu Open Bot Chat Link -->
         <a
           v-if="feishuAppId"
-          :href="`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          @click.prevent="openLink(`https://applink.feishu.cn/client/bot/open?appId=${feishuAppId}`)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -431,10 +430,9 @@ class="text-sm font-medium" :class="{
         <!-- Telegram Open Bot Chat Link -->
         <a
           v-if="telegramBotUsername"
-          :href="`https://t.me/${telegramBotUsername}`"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          @click.prevent="openLink(`https://t.me/${telegramBotUsername}`)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -444,10 +442,9 @@ class="text-sm font-medium" :class="{
         <!-- DingTalk Open Bot Chat Link -->
         <a
           v-if="dingtalkRobotCode"
-          :href="`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          @click.prevent="openLink(`dingtalk://dingtalkclient/action/sendRobot?robotCode=${dingtalkRobotCode}`)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -457,10 +454,9 @@ class="text-sm font-medium" :class="{
         <!-- WhatsApp Open Chat Link -->
         <a
           v-if="whatsappPhoneNumber"
-          :href="`https://wa.me/${whatsappPhoneNumber}`"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#"
           class="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-900 dark:text-white dark:text-white hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white hover:underline"
+          @click.prevent="openLink(`https://wa.me/${whatsappPhoneNumber}`)"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />

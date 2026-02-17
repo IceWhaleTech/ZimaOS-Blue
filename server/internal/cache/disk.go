@@ -43,8 +43,8 @@ type diskEntry struct {
 	Key       string
 	Path      string
 	Size      int64
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ExpiresAt int64 // unix nanos, 0 = no expiration
+	CreatedAt int64 // unix nanos
 }
 
 // NewDiskCache creates a new disk cache.
@@ -89,7 +89,7 @@ func (c *DiskCache) Get(ctx context.Context, key string) (interface{}, error) {
 	}
 
 	// Check expiration
-	if !entry.ExpiresAt.IsZero() && timeutil.NowTime().After(entry.ExpiresAt) {
+	if entry.ExpiresAt != 0 && timeutil.NowNano() > entry.ExpiresAt {
 		c.Delete(ctx, key)
 		c.misses.Add(1)
 		return nil, ErrKeyExpired
@@ -114,11 +114,11 @@ func (c *DiskCache) Set(ctx context.Context, key string, value interface{}, ttl 
 	c.sets.Add(1)
 
 	// Calculate expiration
-	var expiresAt time.Time
+	var expiresAt int64
 	if ttl > 0 {
-		expiresAt = timeutil.NowTime().Add(ttl)
+		expiresAt = timeutil.NowNano() + int64(ttl)
 	} else if c.config.DefaultTTL > 0 {
-		expiresAt = timeutil.NowTime().Add(c.config.DefaultTTL)
+		expiresAt = timeutil.NowNano() + int64(c.config.DefaultTTL)
 	}
 
 	// Generate file path
@@ -142,7 +142,7 @@ func (c *DiskCache) Set(ctx context.Context, key string, value interface{}, ttl 
 		Path:      path,
 		Size:      size,
 		ExpiresAt: expiresAt,
-		CreatedAt: timeutil.NowTime(),
+		CreatedAt: timeutil.NowNano(),
 	}
 	c.index[key] = entry
 	c.diskSize += size
@@ -183,7 +183,7 @@ func (c *DiskCache) Exists(ctx context.Context, key string) bool {
 		return false
 	}
 
-	if !entry.ExpiresAt.IsZero() && timeutil.NowTime().After(entry.ExpiresAt) {
+	if entry.ExpiresAt != 0 && timeutil.NowNano() > entry.ExpiresAt {
 		return false
 	}
 
@@ -364,7 +364,7 @@ func (c *DiskCache) loadIndex() error {
 				Key:       path,
 				Path:      path,
 				Size:      info.Size(),
-				CreatedAt: info.ModTime(),
+				CreatedAt: info.ModTime().UnixNano(),
 			}
 			c.index[path] = e
 			c.diskSize += info.Size()
@@ -378,7 +378,7 @@ func (c *DiskCache) loadIndex() error {
 func (c *DiskCache) evictOldest() {
 	var oldest *diskEntry
 	for _, entry := range c.index {
-		if oldest == nil || entry.CreatedAt.Before(oldest.CreatedAt) {
+		if oldest == nil || entry.CreatedAt < oldest.CreatedAt {
 			oldest = entry
 		}
 	}
@@ -415,11 +415,11 @@ func (c *DiskCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := timeutil.NowTime()
+	now := timeutil.NowNano()
 	var toRemove []string
 
 	for key, entry := range c.index {
-		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
+		if entry.ExpiresAt != 0 && now > entry.ExpiresAt {
 			toRemove = append(toRemove, key)
 		}
 	}

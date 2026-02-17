@@ -153,7 +153,7 @@ func newLarkWSClient(appID, appSecret string, logger *zap.Logger, onEvent func(c
 	return &larkWSClient{
 		appID:             appID,
 		appSecret:         appSecret,
-		baseURL:           "https://open.feishu.cn/open-apis",
+		baseURL:           "https://open.feishu.cn",
 		logger:            logger,
 		onEvent:           onEvent,
 		reconnectCount:    -1,
@@ -186,11 +186,19 @@ func (c *larkWSClient) connect(ctx context.Context) error {
 	body, _ := json.Marshal(map[string]string{"AppID": c.appID, "AppSecret": c.appSecret})
 	req, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/callback/ws/endpoint", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("feishu ws endpoint: read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("feishu ws endpoint: HTTP %d: %s", resp.StatusCode, respBody)
+	}
 	var endResp struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
@@ -204,12 +212,14 @@ func (c *larkWSClient) connect(ctx context.Context) error {
 			} `json:"ClientConfig"`
 		} `json:"data"`
 	}
-	json.NewDecoder(resp.Body).Decode(&endResp)
+	if err := json.Unmarshal(respBody, &endResp); err != nil {
+		return fmt.Errorf("feishu ws endpoint: decode: %w (body: %s)", err, respBody)
+	}
 	if endResp.Code != 0 {
 		return fmt.Errorf("feishu ws endpoint: %d %s", endResp.Code, endResp.Msg)
 	}
 	if endResp.Data == nil || endResp.Data.URL == "" {
-		return fmt.Errorf("feishu ws: empty endpoint URL")
+		return fmt.Errorf("feishu ws: empty endpoint URL (response: %s)", respBody)
 	}
 
 	u, _ := url.Parse(endResp.Data.URL)
@@ -262,9 +272,12 @@ func (c *larkWSClient) reconnectLoop(ctx context.Context) error {
 	for i := 0; c.reconnectCount < 0 || i < c.reconnectCount; i++ {
 		c.logger.Info("feishu ws reconnecting", zap.Int("attempt", i+1))
 		if err := c.connect(ctx); err == nil {
+			c.logger.Info("feishu ws reconnected successfully", zap.Int("attempt", i+1))
 			go c.pingLoop(ctx)
 			<-ctx.Done()
 			return ctx.Err()
+		} else {
+			c.logger.Warn("feishu ws reconnect failed", zap.Int("attempt", i+1), zap.Error(err))
 		}
 		select {
 		case <-ctx.Done():

@@ -160,7 +160,8 @@ func TestMemoryRepository_PurgeExpired(t *testing.T) {
 	e2 := NewMemoryEntry("ns1", "permanent")
 	repo.Create(ctx, e2)
 
-	time.Sleep(5 * time.Millisecond)
+	// timeutil cached clock may lag ~100ms behind real time, so sleep longer
+	time.Sleep(200 * time.Millisecond)
 
 	n, err := repo.PurgeExpired(ctx)
 	if err != nil {

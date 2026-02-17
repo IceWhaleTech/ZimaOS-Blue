@@ -91,7 +91,6 @@ async function fetchStats() {
     // Fetch Sandbox stats
     try {
       const response = await sandboxApi.getInfo()
-      console.log('Sandbox info response:', response.data)
       stats.value.sandbox.supported = response.data?.supported ?? false
     } catch (e) {
       console.warn('Failed to fetch sandbox info:', e)

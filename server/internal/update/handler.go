@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
 	"github.com/labstack/echo/v4"
 )
 
@@ -58,6 +59,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/system/update/rollback", h.Rollback)
 	g.GET("/system/update/history", h.History)
 	g.GET("/system/update/ota", h.OTAStatus)
+	g.GET("/system/update/release-notes", h.ReleaseNotes)
 }
 
 // SetOTAChecker attaches the background OTA checker to the handler.
@@ -207,7 +209,7 @@ func (h *Handler) LoadHistory(path string) error {
 }
 
 // OTAStatus returns the latest OTA check result.
-// GET /api/v1/system/update/ota
+// GET /api/v1/system/update/ota?desktop=1
 func (h *Handler) OTAStatus(c echo.Context) error {
 	if h.otaChecker == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
@@ -215,17 +217,59 @@ func (h *Handler) OTAStatus(c echo.Context) error {
 			"update_available": false,
 		})
 	}
-	latest := h.otaChecker.GetLatest()
-	available := h.otaChecker.UpdateAvailable()
+
+	// Desktop clients (Tauri) pass ?desktop=1 to get platform-specific package URL
+	desktop := c.QueryParam("desktop") == "1"
+	var latest *OTAResponse
+	if desktop {
+		// Fetch with -desktop suffix on-demand (not cached by background checker)
+		if resp, err := h.otaChecker.FetchForDesktop(c.Request().Context()); err == nil {
+			latest = resp
+		}
+	} else {
+		latest = h.otaChecker.GetLatest()
+	}
+
+	available := latest != nil && latest.Version != "" && IsNewerVersionString(h.currentVersion, latest.Version)
 	resp := map[string]interface{}{
 		"current_version":  h.currentVersion,
 		"update_available": available,
 	}
 	if latest != nil {
 		resp["latest_version"] = latest.Version
-		resp["download_url"] = latest.DownloadURL
+		resp["download_urls"] = latest.Packages
 		resp["release_note_url"] = latest.ReleaseNoteURL
-		resp["client_download_url"] = latest.ClientDownloadURL
+		if latest.Delay > 0 {
+			resp["delay"] = latest.Delay
+		}
 	}
 	return c.JSON(http.StatusOK, resp)
+}
+
+const defaultReleaseNotes = `### New
+- Please visit [here](https://github.com/IceWhaleTech/ZimaOS-Blue/releases) to find latest notes.
+
+### Tips
+- If you find any software problems, welcome to join the Discord and get support from 43,000 Zima community members
+- [https://zimaboard.com/discord](https://zimaboard.com/discord)`
+
+// ReleaseNotes fetches release notes content via the downloader (GitHub URL expansion + IPv4 fallback).
+// GET /api/v1/system/update/release-notes
+func (h *Handler) ReleaseNotes(c echo.Context) error {
+	url := c.QueryParam("url")
+	if url == "" && h.otaChecker != nil {
+		if latest := h.otaChecker.GetLatest(); latest != nil {
+			url = latest.ReleaseNoteURL
+		}
+	}
+	if url == "" {
+		return c.String(http.StatusOK, defaultReleaseNotes)
+	}
+
+	dl := &downloader.Downloader{URL: url, Timeout: 8 * time.Second}
+	content, _, err := dl.Fetch()
+	if err != nil || content == "" {
+		return c.String(http.StatusOK, defaultReleaseNotes)
+	}
+	return c.String(http.StatusOK, content)
 }

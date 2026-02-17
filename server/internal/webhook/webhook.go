@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"go.uber.org/zap"
 )
 
@@ -143,8 +144,8 @@ func (s *Service) Create(name string, webhookType WebhookType, description strin
 		Secret:      secret,
 		Enabled:     true,
 		Description: description,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   timeutil.NowTime(),
+		UpdatedAt:   timeutil.NowTime(),
 		Metadata:    make(map[string]interface{}),
 	}
 
@@ -197,7 +198,7 @@ func (s *Service) Update(id string, name, description string, enabled bool) erro
 	webhook.Name = name
 	webhook.Description = description
 	webhook.Enabled = enabled
-	webhook.UpdatedAt = time.Now()
+	webhook.UpdatedAt = timeutil.NowTime()
 
 	return nil
 }
@@ -234,7 +235,7 @@ func (s *Service) RegenerateSecret(id string) (string, error) {
 	}
 
 	webhook.Secret = secret
-	webhook.UpdatedAt = time.Now()
+	webhook.UpdatedAt = timeutil.NowTime()
 
 	return secret, nil
 }
@@ -292,7 +293,7 @@ func (s *Service) HandleRequest(w http.ResponseWriter, r *http.Request, webhookI
 		WebhookID:  webhookID,
 		Payload:    body,
 		Headers:    headers,
-		ReceivedAt: time.Now(),
+		ReceivedAt: timeutil.NowTime(),
 		Status:     "received",
 		Metadata:   make(map[string]interface{}),
 	}
@@ -300,7 +301,7 @@ func (s *Service) HandleRequest(w http.ResponseWriter, r *http.Request, webhookI
 	// Store event
 	s.mu.Lock()
 	webhook.UseCount++
-	now := time.Now()
+	now := timeutil.NowTime()
 	webhook.LastUsedAt = &now
 	s.events[webhookID] = append(s.events[webhookID], event)
 
@@ -318,7 +319,7 @@ func (s *Service) HandleRequest(w http.ResponseWriter, r *http.Request, webhookI
 		response, err := handler(ctx, event)
 
 		s.mu.Lock()
-		processedAt := time.Now()
+		processedAt := timeutil.NowTime()
 		event.ProcessedAt = &processedAt
 		if err != nil {
 			event.Status = "failed"

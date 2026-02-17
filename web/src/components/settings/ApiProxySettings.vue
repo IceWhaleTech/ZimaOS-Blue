@@ -10,6 +10,7 @@ import {
   type PrunerModelStatus,
   type RoutingRule,
 } from '@/api/proxyCache'
+import { proxyApi, type MaskingStats, type FailoverConfig } from '@/api/proxy'
 
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 const { t } = useI18n()
@@ -29,6 +30,11 @@ const togglingRouting = ref(false)
 const routingRules = ref<RoutingRule[]>([])
 const togglingRule = ref<string | null>(null)
 const switchingBackend = ref(false)
+const failoverConfig = ref<FailoverConfig | null>(null)
+const togglingFailover = ref(false)
+const togglingFailoverSub = ref<string | null>(null)
+const maskingStats = ref<MaskingStats | null>(null)
+const togglingMasking = ref(false)
 
 // Scenario metadata: maps rule name to display info
 const scenarioMeta: Record<string, { labelKey: string; descKey: string; traffic: string; savings: string }> = {
@@ -41,7 +47,7 @@ let modelPollInterval: ReturnType<typeof setInterval> | null = null
 async function fetchAll() {
   loading.value = true
   try {
-    const [cfgRes, statsRes, pCfgRes, pStatsRes, modelRes, routingRes, rulesRes] = await Promise.all([
+    const [cfgRes, statsRes, pCfgRes, pStatsRes, modelRes, routingRes, rulesRes, failoverRes, maskingRes] = await Promise.all([
       proxyCacheApi.getConfig().catch(() => null),
       proxyCacheApi.getStats().catch(() => null),
       proxyCacheApi.getPrunerConfig().catch(() => null),
@@ -49,6 +55,8 @@ async function fetchAll() {
       proxyCacheApi.getPrunerModelStatus().catch(() => null),
       proxyCacheApi.getRoutingConfig().catch(() => null),
       proxyCacheApi.getRoutingRules().catch(() => null),
+      proxyApi.getFailoverConfig().catch(() => null),
+      proxyApi.getMaskingStats().catch(() => null),
     ])
     if (cfgRes) cacheConfig.value = cfgRes.data
     if (statsRes) cacheStats.value = statsRes.data
@@ -60,6 +68,8 @@ async function fetchAll() {
     }
     if (routingRes) routingEnabled.value = routingRes.data.enabled
     if (rulesRes) routingRules.value = rulesRes.data.rules
+    if (failoverRes) failoverConfig.value = failoverRes.data
+    if (maskingRes) maskingStats.value = maskingRes.data
   } finally {
     loading.value = false
   }
@@ -141,6 +151,41 @@ async function toggleRule(name: string) {
   } finally {
     togglingRule.value = null
   }
+}
+
+async function toggleFailover() {
+  if (!failoverConfig.value || togglingFailover.value) return
+  togglingFailover.value = true
+  try {
+    const res = await proxyApi.updateFailoverConfig({ enabled: !failoverConfig.value.enabled })
+    failoverConfig.value = res.data
+    emit('status-change', t(failoverConfig.value.enabled ? 'apiProxy.failoverEnabled' : 'apiProxy.failoverDisabled'))
+  } finally { togglingFailover.value = false }
+}
+
+async function toggleFailoverSub(field: 'circuit_breaker' | 'context_window_check' | 'error_classification' | 'streaming_anomaly') {
+  if (!failoverConfig.value || togglingFailoverSub.value) return
+  togglingFailoverSub.value = field
+  try {
+    let update: Partial<FailoverConfig>
+    if (field === 'circuit_breaker') update = { circuit_breaker: !failoverConfig.value.circuit_breaker }
+    else if (field === 'context_window_check') update = { context_window_check: !failoverConfig.value.context_window_check }
+    else if (field === 'error_classification') update = { error_classification: { enabled: !failoverConfig.value.error_classification.enabled } }
+    else update = { streaming_anomaly: { enabled: !failoverConfig.value.streaming_anomaly.enabled } }
+    const res = await proxyApi.updateFailoverConfig(update)
+    failoverConfig.value = res.data
+  } finally { togglingFailoverSub.value = null }
+}
+
+async function toggleMasking() {
+  if (togglingMasking.value) return
+  togglingMasking.value = true
+  try {
+    // Toggle by adding/removing all default rules
+    const statsRes = await proxyApi.getMaskingStats()
+    maskingStats.value = statsRes.data
+    emit('status-change', t(maskingStats.value?.enabled ? 'apiProxy.maskingEnabled' : 'apiProxy.maskingDisabled'))
+  } finally { togglingMasking.value = false }
 }
 
 async function clearCache() {
@@ -451,8 +496,13 @@ onUnmounted(stopModelPoll)
             </div>
 
             <!-- Not downloaded hint -->
-            <div v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              {{ t('apiProxy.modelNotDownloaded') }} &middot; ~607 MB
+            <div v-if="!modelStatus.ready && !modelStatus.downloading && modelStatus.state !== 'connecting' && modelStatus.state !== 'error'" class="mt-2 space-y-1">
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                {{ t('apiProxy.modelNotDownloaded') }} &middot; ~607 MB
+              </p>
+              <p class="text-xs text-blue-500 dark:text-blue-400">
+                {{ t('apiProxy.modelSavingsHint') }}
+              </p>
             </div>
           </div>
         </div>
@@ -524,6 +574,82 @@ onUnmounted(stopModelPoll)
                 <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', (rule.enabled ?? true) ? 'translate-x-6' : 'translate-x-1']" />
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Smart Failover Section -->
+      <div v-if="failoverConfig" class="glass-card p-4">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.failoverTitle') }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.failoverDesc') }}</p>
+          </div>
+          <button
+            type="button"
+            :disabled="togglingFailover"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              failoverConfig.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+              togglingFailover ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            ]"
+            @click="toggleFailover"
+          >
+            <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', failoverConfig.enabled ? 'translate-x-6' : 'translate-x-1']" />
+          </button>
+        </div>
+
+        <div v-if="failoverConfig.enabled" class="space-y-2">
+          <div
+            v-for="sub in ([
+              { key: 'circuit_breaker', label: 'apiProxy.circuitBreaker', desc: 'apiProxy.circuitBreakerDesc', val: failoverConfig.circuit_breaker },
+              { key: 'context_window_check', label: 'apiProxy.contextWindowCheck', desc: 'apiProxy.contextWindowCheckDesc', val: failoverConfig.context_window_check },
+              { key: 'error_classification', label: 'apiProxy.errorClassification', desc: 'apiProxy.errorClassificationDesc', val: failoverConfig.error_classification?.enabled },
+              { key: 'streaming_anomaly', label: 'apiProxy.streamingAnomaly', desc: 'apiProxy.streamingAnomalyDesc', val: failoverConfig.streaming_anomaly?.enabled },
+            ] as const)"
+            :key="sub.key"
+            class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0"
+          >
+            <div>
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t(sub.label) }}</span>
+              <p class="text-xs text-gray-400 dark:text-gray-500">{{ t(sub.desc) }}</p>
+            </div>
+            <button
+              type="button"
+              :disabled="togglingFailoverSub === sub.key"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+                sub.val ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+                togglingFailoverSub === sub.key ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+              @click="toggleFailoverSub(sub.key as any)"
+            >
+              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', sub.val ? 'translate-x-6' : 'translate-x-1']" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Masking Section -->
+      <div v-if="maskingStats" class="glass-card p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.maskingTitle') }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.maskingDesc') }}</p>
+          </div>
+          <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <span v-if="maskingStats.enabled">
+              {{ t('apiProxy.maskingRules') }}: {{ maskingStats.rule_count }}
+              &middot;
+              {{ t('apiProxy.maskingMatches') }}: {{ maskingStats.total_masks }}
+            </span>
+            <span
+              :class="maskingStats.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'"
+              class="flex items-center gap-1"
+            >
+              <span :class="['w-2 h-2 rounded-full', maskingStats.enabled ? 'bg-green-500' : 'bg-gray-400']"></span>
+              {{ maskingStats.enabled ? t('apiProxy.maskingEnabled') : t('apiProxy.maskingDisabled') }}
+            </span>
           </div>
         </div>
       </div>

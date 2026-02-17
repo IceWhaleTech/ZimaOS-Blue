@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -230,7 +231,7 @@ func (s *Service) InviteMember(ctx context.Context, tenantID uuid.UUID, req *Inv
 		req.Role,
 		invitedBy,
 		token,
-		time.Now().Add(s.invitationExpiry),
+		timeutil.NowTime().Add(s.invitationExpiry),
 	)
 
 	if err := s.repo.CreateInvitation(ctx, invitation); err != nil {
@@ -251,7 +252,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, token string, userID uui
 		return nil, ErrInvitationAlreadyAccepted
 	}
 
-	if time.Now().After(invitation.ExpiresAt) {
+	if timeutil.NowNano() > invitation.ExpiresAt.UnixNano() {
 		return nil, ErrInvitationExpired
 	}
 

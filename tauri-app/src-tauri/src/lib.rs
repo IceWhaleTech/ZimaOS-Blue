@@ -8,6 +8,7 @@ mod tray;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod blue_ffi;
 
+use clap::Parser;
 use log::{error, info};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
@@ -16,6 +17,31 @@ use tauri::{
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent,
 };
+
+/// ZimaOS Blue - A Local-first Agent Runtime
+#[derive(Parser, Debug, Clone, Default)]
+#[command(name = "blue", version, about = "ZimaOS Blue desktop application")]
+pub struct CliArgs {
+    /// Server listen port
+    #[arg(short, long)]
+    port: Option<u16>,
+
+    /// Config file path
+    #[arg(long)]
+    config: Option<String>,
+
+    /// Data directory path
+    #[arg(long)]
+    data_dir: Option<String>,
+
+    /// Enable dev mode (isolate state under ~/.zimaos-blue-dev)
+    #[arg(long)]
+    dev: bool,
+
+    /// Verbose logging (debug level)
+    #[arg(short, long)]
+    verbose: bool,
+}
 
 /// Flag to track if we're actually quitting (vs just hiding to tray)
 static QUITTING: AtomicBool = AtomicBool::new(false);
@@ -85,6 +111,7 @@ fn graceful_quit(app_handle: &tauri::AppHandle) {
 pub struct AppState {
     pub server_port: std::sync::Mutex<u16>,
     pub server_running: std::sync::Mutex<bool>,
+    pub cli_args: CliArgs,
 }
 
 impl Default for AppState {
@@ -92,6 +119,7 @@ impl Default for AppState {
         Self {
             server_port: std::sync::Mutex::new(23456),
             server_running: std::sync::Mutex::new(false),
+            cli_args: CliArgs::default(),
         }
     }
 }
@@ -148,32 +176,50 @@ async fn start_server_with_args(app: tauri::AppHandle, args: Option<String>) -> 
 /// Start the server using platform-specific approach with optional command-line arguments
 /// - macOS & Windows: Uses CGO library (FFI to Go static library) for faster startup
 async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<String>) -> Result<(), String> {
+    // Merge explicit args with CLI args from AppState
+    let cli_args_str = if let Some(state) = app.try_state::<AppState>() {
+        build_args_string(&state.cli_args, args.as_deref())
+    } else {
+        args.clone()
+    };
+
+    // Determine port: explicit CLI --port > default 23456
+    let port = if let Some(state) = app.try_state::<AppState>() {
+        state.cli_args.port.unwrap_or(23456)
+    } else {
+        23456
+    };
+
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        info!("Starting Blue server via CGO library with args: {:?}", args);
+        info!("Starting Blue server via CGO library with args: {:?}", cli_args_str);
 
-        // Get data directory (~/.zimaos-blue/)
-        let data_dir = dirs::home_dir()
-            .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string());
+        // Get data directory: CLI --data-dir > default
+        let data_dir = if let Some(state) = app.try_state::<AppState>() {
+            state.cli_args.data_dir.clone()
+        } else {
+            None
+        }.unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string())
+                .unwrap_or_else(|| ".zimaos-blue".to_string())
+        });
 
-        // Start server via FFI with args
-        blue_ffi::start_server_with_args(23456, data_dir.as_deref(), args.as_deref())?;
+        blue_ffi::start_server_with_args(port, Some(&data_dir), cli_args_str.as_deref())?;
 
-        // Update app state
         if let Some(state) = app.try_state::<AppState>() {
-            *state.server_port.lock().unwrap() = 23456;
+            *state.server_port.lock().unwrap() = port;
             *state.server_running.lock().unwrap() = true;
         }
 
-        // Wait for server to be ready
-        let url = "http://localhost:23456/api/v1/health";
+        let url = format!("http://localhost:{}/api/v1/health", port);
         let mut delay_ms = 25u64;
         let max_delay_ms = 100u64;
         let max_attempts = 8;
 
         for i in 0..max_attempts {
             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-            if reqwest::get(url).await.is_ok() {
+            if reqwest::get(&url).await.is_ok() {
                 info!("Server ready after attempt {} with args", i + 1);
                 return Ok(());
             }
@@ -186,58 +232,47 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
 
     #[cfg(target_os = "linux")]
     {
-        // Linux: Use sidecar process approach
-        info!("Starting Blue server via sidecar process with args: {:?}", args);
-        server::start_sidecar_server(app).await
+        info!("Starting Blue server via sidecar process with args: {:?}", cli_args_str);
+        server::start_sidecar_server_with_args(app, cli_args_str.as_deref()).await
+    }
+}
+
+/// Build a combined args string from CliArgs and optional extra args
+fn build_args_string(cli: &CliArgs, extra: Option<&str>) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+
+    if let Some(p) = cli.port {
+        parts.push(format!("--port {}", p));
+    }
+    if let Some(ref c) = cli.config {
+        parts.push(format!("--config {}", c));
+    }
+    if let Some(ref d) = cli.data_dir {
+        parts.push(format!("--data-dir {}", d));
+    }
+    if cli.dev {
+        parts.push("--dev".to_string());
+    }
+    if cli.verbose {
+        parts.push("--verbose".to_string());
+    }
+    if let Some(extra) = extra {
+        if !extra.is_empty() {
+            parts.push(extra.to_string());
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" "))
     }
 }
 
 /// Start the server using platform-specific approach
 #[allow(dead_code)]
 async fn start_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        info!("Starting Blue server via CGO library");
-
-        // Get data directory (~/.zimaos-blue/)
-        let data_dir = dirs::home_dir()
-            .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string());
-
-        // Start server via FFI
-        blue_ffi::start_server(23456, data_dir.as_deref())?;
-
-        // Update app state
-        if let Some(state) = app.try_state::<AppState>() {
-            *state.server_port.lock().unwrap() = 23456;
-            *state.server_running.lock().unwrap() = true;
-        }
-
-        // Wait for server to be ready with exponential backoff
-        let url = "http://localhost:23456/api/v1/health";
-        let mut delay_ms = 25u64;
-        let max_delay_ms = 100u64;
-        let max_attempts = 8;
-
-        for i in 0..max_attempts {
-            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-            if reqwest::get(url).await.is_ok() {
-                info!("Server ready after attempt {} (~{}ms total)", i + 1,
-                    (0..=i).map(|j| std::cmp::min(25 * 2u64.pow(j as u32), max_delay_ms)).sum::<u64>());
-                return Ok(());
-            }
-            delay_ms = std::cmp::min(delay_ms * 2, max_delay_ms);
-        }
-
-        info!("Server may not be fully ready, but FFI call succeeded");
-        Ok(())
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux: Use sidecar process approach
-        info!("Starting Blue server via sidecar process");
-        server::start_sidecar_server(app).await
-    }
+    start_server_platform_with_args(app, None).await
 }
 
 /// Stop the server using platform-specific approach
@@ -262,12 +297,15 @@ async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
 
 /// Main application entry point
 pub fn run() {
+    // Parse CLI arguments
+    let cli_args = CliArgs::parse();
+
     // Initialize logger with optimized settings for Windows
     // Use warn level in release builds to reduce startup overhead
     #[cfg(debug_assertions)]
-    let default_level = "info";
+    let default_level = if cli_args.verbose { "debug" } else { "info" };
     #[cfg(not(debug_assertions))]
-    let default_level = "warn";
+    let default_level = if cli_args.verbose { "debug" } else { "warn" };
 
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
         .format_timestamp(None)
@@ -277,12 +315,22 @@ pub fn run() {
         .init();
 
     info!("Starting ZimaOS Blue desktop application");
+    if cli_args.port.is_some() || cli_args.config.is_some() || cli_args.data_dir.is_some() || cli_args.dev || cli_args.verbose {
+        info!("CLI args: {:?}", cli_args);
+    }
 
     #[cfg(target_os = "macos")]
     info!("Platform: macOS (using CGO library approach)");
 
     #[cfg(target_os = "windows")]
     info!("Platform: Windows (using CGO library approach)");
+
+    let default_port = cli_args.port.unwrap_or(23456);
+    let app_state = AppState {
+        server_port: std::sync::Mutex::new(default_port),
+        server_running: std::sync::Mutex::new(false),
+        cli_args,
+    };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -298,7 +346,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState::default())
+        .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             get_server_url,
             is_server_running,
@@ -312,6 +360,14 @@ pub fn run() {
             server::restart_server,
             server::get_server_status,
         ])
+        .on_page_load(|webview, _payload| {
+            // Inject Tauri marker into external pages (Go server at localhost)
+            // so the frontend can detect it's running inside Tauri webview.
+            // Without this, __TAURI_INTERNALS__ is only available on tauri:// URLs.
+            let _ = webview.eval(
+                "if(!window.__TAURI_INTERNALS__){window.__TAURI_INTERNALS__={__desktop:true}}"
+            );
+        })
         .setup(|app| {
             info!("Setting up application");
 

@@ -93,8 +93,6 @@ func (dm *DataMasker) compilePatterns() {
 }
 
 // Mask masks sensitive data based on direction
-// NOTE: This is a stub implementation - returns input unchanged
-// Full implementation planned for future version
 func (dm *DataMasker) Mask(content string, direction MaskingDirection) string {
 	if !dm.config.Enabled {
 		return content
@@ -103,17 +101,29 @@ func (dm *DataMasker) Mask(content string, direction MaskingDirection) string {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
 
-	// TODO: Implement full masking in future version
-	// For now, return content unchanged
-	//
-	// Future implementation will:
-	// 1. Iterate through enabled rules
-	// 2. Check if rule applies to this direction
-	// 3. Apply regex replacement
-	// 4. Track statistics
-	// 5. Call OnMask callback if set
+	result := content
+	for _, rule := range dm.config.Rules {
+		if !rule.Enabled {
+			continue
+		}
+		if rule.Direction != MaskingBoth && rule.Direction != direction {
+			continue
+		}
+		re, ok := dm.compiled[rule.ID]
+		if !ok {
+			continue
+		}
+		replaced := re.ReplaceAllString(result, rule.Replacement)
+		if replaced != result {
+			dm.maskCount[rule.ID]++
+			if dm.config.OnMask != nil {
+				dm.config.OnMask(rule.ID, result, replaced)
+			}
+			result = replaced
+		}
+	}
 
-	return content
+	return result
 }
 
 // MaskRequest masks sensitive data in request
@@ -232,7 +242,7 @@ func (dm *DataMasker) Stats() map[string]interface{} {
 		"rule_count":  len(dm.config.Rules),
 		"total_masks": totalMasks,
 		"mask_counts": dm.maskCount,
-		"status":      "stub", // Indicates this is a stub implementation
+		"status":      "active",
 	}
 }
 

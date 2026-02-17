@@ -31,10 +31,12 @@ export interface OTAStatus {
   current_version: string
   update_available: boolean
   latest_version?: string
-  download_url?: string
+  download_urls?: string[]
   release_note_url?: string
-  client_download_url?: string
+  delay?: number
 }
+
+const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
 
 export const updateApi = {
   check: () => api.get<UpdateInfo>('/system/update/check'),
@@ -43,5 +45,6 @@ export const updateApi = {
   apply: () => api.post<{ status: string }>('/system/update/apply'),
   rollback: () => api.post<{ status: string }>('/system/update/rollback'),
   history: () => api.get<any[]>('/system/update/history'),
-  ota: () => api.get<OTAStatus>('/system/update/ota'),
+  ota: () => api.get<OTAStatus>('/system/update/ota', { params: isTauri ? { desktop: '1' } : undefined }),
+  releaseNotes: (url?: string) => api.get<string>('/system/update/release-notes', { params: url ? { url } : undefined, responseType: 'text' as const }),
 }

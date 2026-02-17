@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CacheKeyStrategy defines how cache keys are generated.
@@ -59,7 +61,7 @@ type CacheEntry struct {
 
 // IsExpired returns true if the entry has expired.
 func (e *CacheEntry) IsExpired() bool {
-	return time.Now().After(e.ExpiresAt)
+	return timeutil.NowNano() > e.ExpiresAt.UnixNano()
 }
 
 // CacheStats contains cache statistics.
@@ -158,7 +160,7 @@ func (c *MemoryCache) Set(key string, result *RunResult) {
 	}
 
 	// Create new entry
-	now := time.Now()
+	now := timeutil.NowTime()
 	entry := &CacheEntry{
 		Key:       key,
 		Result:    result,

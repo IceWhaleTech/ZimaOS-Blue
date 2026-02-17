@@ -534,7 +534,6 @@ function selectTask(task: BrowserTask) {
 
 function selectSession(session: BrowserSession) {
   // Could open a live view of the session
-  console.log('Selected session:', session)
 }
 
 function useTemplate(template: TaskTemplate) {

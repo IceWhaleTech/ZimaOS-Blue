@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MarkdownMemoryStore provides Markdown-based memory storage for agent queries.
@@ -244,7 +246,7 @@ func (s *MarkdownMemoryStore) GetRecentEntries(ctx context.Context, days int) ([
 	dailyDir := filepath.Join(s.baseDir, "daily")
 	var entries []DailyEntry
 
-	cutoff := time.Now().AddDate(0, 0, -days)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -days)
 
 	files, err := os.ReadDir(dailyDir)
 	if err != nil {

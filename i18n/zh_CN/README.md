@@ -1,4 +1,9 @@
-![](../../docs/assets/bannerX.png)
+![](../../docs/assets/banner.png)
+
+<p align="center">
+  面向大胆构建者的<strong>本地优先</strong>智能体运行时<br>
+  开箱即用 · 开源 · 通用 · 双重监督
+</p>
 
 <p align="center">
   <a href="../../README.md">English</a> |
@@ -59,6 +64,29 @@
 
 更进一步：它原生支持 **20+ 即时通讯平台**、**语音驱动**的自然上下文感知对话界面、**零配置模型切换**（支持 IDE 扫描）以及 SOUL 分层人格系统。
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### 快速、轻量
 
 Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务器到桌面设备，静默运行于一切之上。
@@ -71,7 +99,7 @@ Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务
 | `status` 峰值 RSS | **~15 MB** | ~1.52 GB |
 | 运行时依赖 | **无** | Node.js 18+ |
 
-> 基准测试环境：macOS arm64，同一主机，3 次运行取最优。2026 年 2 月。
+> 基准测试环境：macOS arm64（服务器模式，无桌面 UI），同一主机，3 次运行取最优。2026 年 2 月。
 
 ### 纯 Go，任意设备
 
@@ -92,19 +120,77 @@ Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务
 - **本地优先、超轻量、跨设备** – 无需高端硬件。能计算的地方就能运行。
 - **安全可审计** – 会话审计、沙箱隔离、权限控制，以及内置的 API 代理充当应用层防火墙 —— 每一个字节的进出都清晰可见。
 
+![](../../docs/assets/design_principle.png)
+
 我们最大限度减少样板代码，让你**专注于真正重要的事**。秉承 **ZimaOS 的设计哲学**，Blue 提供：
 - **一键从零到一** – 即时部署，无需复杂配置。
 - **快速原型开发** – 随心或精心打造场景化工具、交互和应用包。
 - **全球化就绪** – **世界很大**，不应默认只有英语。**20+ 种语言，原生支持**，零障碍。
 - **开放模型生态** – 无供应商锁定。自带模型即可。
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| 提供商 | 模型 | 类型 |
+|----------|--------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | 云端 |
+| Anthropic | Claude 4.5, Claude 4 | 云端 |
+| Google | Gemini 2.5, Gemini 2.0 | 云端 |
+| Ollama | Llama, Qwen, Gemma, Phi 等 | 本地 |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | 云端 |
+| Grok | Grok-3, Grok-3-mini | 云端 |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | 云端 |
+| GLM | GLM-4, GLM-4-Flash | 云端 |
+| Moonshot | Moonshot-v1 | 云端 |
+| MiniMax | abab6.5, abab5.5 | 云端 |
+| Venice | Llama, Mistral（隐私优先） | 云端 |
+| AWS Bedrock | Claude, Llama, Titan | 云端 |
+| Azure | 通过 Azure 使用 OpenAI 模型 | 云端 |
+| OpenRouter | 100+ 聚合模型 | 云端 |
+| AIHubMix | 多提供商聚合器 | 云端 |
+| Codex | OpenAI Codex | 云端 |
+| 自定义 | 任何 OpenAI / Anthropic / Gemini 兼容 API | 云端 / 本地 |
+
+</details>
+
+### 支持的 IDE
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## 快速开始
 
 ### 方式一：下载桌面应用（macOS 与 Windows）
 
-获取原生应用 —— 无依赖、无需编译。
+获取原生应用 —— 无依赖、无需编译。内置试用配置，秒级上手 —— 通过远程连接即刻开聊，无需配置机器人。真正的开箱即用。
 
 - **macOS**：[下载 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**：[下载安装程序](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,32 +212,24 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## 架构概览
 
-![](../../docs/assets/architecture.png)
-
-### 数据流
-
-**聊天请求（代理热路径）**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
-
-**频道消息流**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
-
-**语音管线**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
 
 ### 包结构图（`server/internal/`）
 
@@ -174,13 +252,38 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
 | Multi-tenant | tenant, user, session, preview |
 
+</details>
+
+### 数据流
+
+**聊天请求（代理热路径）**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**频道消息流**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**语音管线**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
 ## 如何使用
 
 ![](../../docs/assets/handcraft.png)
 
 ## 里程碑时间线
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | 版本 | 重点 | 核心价值 | 状态 |
 |---------|-------|-----------|--------|
@@ -213,8 +316,10 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | 频道升级 | 10 个频道从桩代码升级 | 已完成 |
 | v0.10.25 | CC Cache | 两级缓存（L1 内存 + L2 磁盘） | 已完成 |
 | v0.10.26 | Humanizer | 回复人性化管线 | 已完成 |
-| v0.10.27 | 上下文裁剪器 | BM25 评分、分段、基准测试 | 已完成 |
+| v0.10.27 | 上下文裁剪器 | 代码场景节省 54% token（SWE-bench 官方数据），通用文档节省 46–47%（本地 IR），BM25 评分、分段 | 已完成 |
 | v0.10.28 | 记忆服务 | 渐进式搜索、双写后端 | 已完成 |
+
+</details>
 
 ## 社区与支持
 

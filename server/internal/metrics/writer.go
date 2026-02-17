@@ -138,29 +138,37 @@ func (w *MetricsWriter) loadPersistedData() {
 }
 
 // persistData saves metrics data to SQLite.
+// On write failure, rotates the corrupt DB and recreates a fresh one.
 func (w *MetricsWriter) persistData() {
 	if w.sqliteStore == nil {
 		return
 	}
 
 	ctx := context.Background()
+	var writeErr error
 
 	// Save global token usage
 	usage := w.tokenTracker.GetTokenUsage()
 	if usage != nil {
-		w.sqliteStore.SaveTokenUsage(ctx, usage)
+		if err := w.sqliteStore.SaveTokenUsage(ctx, usage); err != nil {
+			writeErr = err
+		}
 	}
 
 	// Save model token usage
 	modelUsages := w.tokenTracker.GetAllModelUsage()
 	if len(modelUsages) > 0 {
-		w.sqliteStore.SaveModelTokenUsage(ctx, modelUsages)
+		if err := w.sqliteStore.SaveModelTokenUsage(ctx, modelUsages); err != nil {
+			writeErr = err
+		}
 	}
 
 	// Save model stats
 	modelStats := w.GetModelStats()
 	if len(modelStats) > 0 {
-		w.sqliteStore.SaveModelMetrics(ctx, modelStats)
+		if err := w.sqliteStore.SaveModelMetrics(ctx, modelStats); err != nil {
+			writeErr = err
+		}
 	}
 
 	// Save latency samples for percentile calculations
@@ -178,7 +186,14 @@ func (w *MetricsWriter) persistData() {
 				SampleCount: exp.SampleCount,
 			}
 		}
-		w.sqliteStore.SaveLatencySamples(ctx, samples)
+		if err := w.sqliteStore.SaveLatencySamples(ctx, samples); err != nil {
+			writeErr = err
+		}
+	}
+
+	// Self-heal: rotate corrupt DB and recreate
+	if writeErr != nil {
+		w.resetSQLiteStore()
 	}
 }
 
@@ -216,6 +231,20 @@ func (w *MetricsWriter) Stop() {
 	if w.sqliteStore != nil {
 		w.sqliteStore.Close()
 	}
+}
+
+// resetSQLiteStore closes the broken DB, rotates it, and opens a fresh one.
+func (w *MetricsWriter) resetSQLiteStore() {
+	dbPath := w.sqliteStore.dbPath
+	w.sqliteStore.Close()
+	rotateCorruptDB(dbPath)
+	newStore, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		// Give up on persistence — in-memory metrics still work
+		w.sqliteStore = nil
+		return
+	}
+	w.sqliteStore = newStore
 }
 
 // persistenceLoop periodically saves metrics to SQLite.

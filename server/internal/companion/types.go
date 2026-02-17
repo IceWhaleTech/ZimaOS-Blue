@@ -36,6 +36,7 @@ const (
 	EventSandboxExec     SessionEventType = "sandbox_exec"
 	EventError           SessionEventType = "error"
 	EventHeartbeat       SessionEventType = "heartbeat"
+	EventMemorySaved     SessionEventType = "memory_saved"
 )
 
 // SessionStatus represents the status of a session.

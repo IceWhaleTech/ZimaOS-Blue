@@ -160,9 +160,11 @@ export const useAuthStore = defineStore('auth', () => {
     if (!refreshToken.value) return false
 
     try {
-      const response = await authApi.refresh()
+      const response = await authApi.refresh(refreshToken.value)
       token.value = response.data.token
+      refreshToken.value = response.data.refresh_token
       setStorageItem(TOKEN_KEY, response.data.token)
+      setStorageItem(REFRESH_TOKEN_KEY, response.data.refresh_token)
       return true
     } catch {
       clearAuth()

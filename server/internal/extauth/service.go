@@ -11,23 +11,30 @@ import (
 	"time"
 )
 
+// TokenGenerator generates access tokens for authenticated users.
+type TokenGenerator interface {
+	GenerateAccessToken(userID, username, role string) (string, error)
+}
+
 // DefaultService implements the Service interface.
 type DefaultService struct {
 	providers    map[string]*ProviderClient
 	stateStore   StateStore
 	accountStore AccountStore
 	userStore    UserStore
+	tokenGen     TokenGenerator
 	mu           sync.RWMutex
 	stateTTL     time.Duration
 }
 
 // ServiceConfig holds the service configuration.
 type ServiceConfig struct {
-	Providers    []*ProviderConfig
-	StateStore   StateStore
-	AccountStore AccountStore
-	UserStore    UserStore
-	StateTTL     time.Duration
+	Providers      []*ProviderConfig
+	StateStore     StateStore
+	AccountStore   AccountStore
+	UserStore      UserStore
+	TokenGenerator TokenGenerator
+	StateTTL       time.Duration
 }
 
 // NewService creates a new external auth service.
@@ -46,6 +53,7 @@ func NewService(cfg *ServiceConfig) (*DefaultService, error) {
 		stateStore:   cfg.StateStore,
 		accountStore: cfg.AccountStore,
 		userStore:    cfg.UserStore,
+		tokenGen:     cfg.TokenGenerator,
 		stateTTL:     stateTTL,
 	}
 
@@ -303,8 +311,18 @@ func (s *DefaultService) Callback(ctx context.Context, req *CallbackRequest) (*C
 	}
 
 	// Generate access token for the user
-	// This would typically use your JWT service
-	accessToken := "" // TODO: Generate JWT
+	var accessToken string
+	if s.tokenGen != nil {
+		role := "user"
+		if len(user.Roles) > 0 {
+			role = user.Roles[0]
+		}
+		token, err := s.tokenGen.GenerateAccessToken(user.ID, user.Email, role)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate access token: %w", err)
+		}
+		accessToken = token
+	}
 
 	return &CallbackResponse{
 		User:         user,

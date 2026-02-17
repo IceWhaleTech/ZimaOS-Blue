@@ -7,21 +7,23 @@ VERSION?=$(shell cat ../VERSION 2>/dev/null || git describe --tags --always --di
 GIT_COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME?=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Trial provider configuration (injected from environment)
-TRIAL_API_KEY?=$(ZIMAOS_TRIAL_API_KEY)
-TRIAL_BASE_URL?=$(ZIMAOS_TRIAL_BASE_URL)
+# Trial license (Ed25519-signed, injected from environment)
+TRIAL_LICENSE?=$(ZIMAOS_TRIAL_LICENSE)
 
 # Build flags
 # -s: Omit symbol table and debug info
 # -w: Omit DWARF symbol table
-LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$(TRIAL_API_KEY) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$(TRIAL_BASE_URL)"
+LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$(TRIAL_LICENSE)"
 
 # CGO is required for mattn/go-sqlite3
 # Windows users: install MinGW-w64 first (https://winlibs.com or `scoop install mingw`)
 export CGO_ENABLED=1
 
-# Build tags for full build (with whisper/ASR support)
-TAGS_FULL=-tags whisper
+# Build tags
+# fts5: enable SQLite FTS5 full-text search (mattn/go-sqlite3)
+# whisper: enable whisper.cpp ASR support (requires CGo libs)
+TAGS=-tags fts5
+TAGS_FULL=-tags 'fts5 whisper'
 
 # Default target
 all: lint test build
@@ -51,7 +53,7 @@ pack-dist:
 build: trim-dist
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+	go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
 	@$(MAKE) pack-dist
 
 # Build full binary (with whisper/ASR)
@@ -64,7 +66,7 @@ build-full: trim-dist
 # Run tests
 test:
 	@echo "Running tests..."
-	go test -v -race -coverprofile=coverage.out ./...
+	go test $(TAGS) -v -race -coverprofile=coverage.out ./...
 
 # Run tests with coverage report
 test-coverage: test
@@ -107,11 +109,11 @@ mocks:
 build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/blue
-	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/blue
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/blue
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/blue
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/blue
+	GOOS=linux GOARCH=amd64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/blue
+	GOOS=linux GOARCH=arm64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/blue
+	GOOS=darwin GOARCH=amd64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/blue
+	GOOS=darwin GOARCH=arm64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/blue
+	GOOS=windows GOARCH=amd64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/blue
 
 # Docker build
 docker-build:

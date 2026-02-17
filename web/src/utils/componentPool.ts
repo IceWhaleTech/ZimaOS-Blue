@@ -100,6 +100,7 @@ class ComponentPool {
       diff: () => import('@/components/typeless/CardDiff.vue'),
       video: () => import('@/components/typeless/CardVideo.vue'),
       mermaid: () => import('@/components/typeless/CardMermaid.vue'),
+      search: () => import('@/components/typeless/CardSearch.vue'),
     }
 
     const loader = componentMap[cardType]

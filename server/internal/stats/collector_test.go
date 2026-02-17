@@ -8,6 +8,7 @@ import (
 func TestStatisticsCollector_Record(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 
 	event := &APICallEvent{
 		Provider:     "anthropic",
@@ -31,6 +32,7 @@ func TestStatisticsCollector_Record(t *testing.T) {
 func TestStatisticsCollector_RecordDisabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, false)
+	defer collector.Flush()
 
 	event := &APICallEvent{
 		Provider:     "anthropic",
@@ -52,6 +54,7 @@ func TestStatisticsCollector_RecordDisabled(t *testing.T) {
 func TestStatisticsCollector_GetStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	collector.SetSyncPersist(true)
 
 	// Record some events
@@ -112,6 +115,7 @@ func TestStatisticsCollector_GetStats(t *testing.T) {
 func TestStatisticsCollector_GetStatsByPeriod(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 
 	// Record an event
 	event := &APICallEvent{
@@ -121,7 +125,7 @@ func TestStatisticsCollector_GetStatsByPeriod(t *testing.T) {
 		OutputTokens: 200,
 		LatencyMs:    500,
 		Success:      true,
-		Timestamp:    time.Now(),
+		Timestamp:    time.Now().Add(-1 * time.Second),
 	}
 	collector.Record(event)
 
@@ -141,6 +145,7 @@ func TestStatisticsCollector_GetStatsByPeriod(t *testing.T) {
 func TestStatisticsCollector_CalculateCost(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 
 	// Record events with known pricing
 	events := []APICallEvent{
@@ -165,6 +170,7 @@ func TestStatisticsCollector_CalculateCost(t *testing.T) {
 func TestStatisticsCollector_Clear(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	collector.SetSyncPersist(true)
 
 	// Record some events
@@ -195,6 +201,7 @@ func TestStatisticsCollector_Clear(t *testing.T) {
 func TestStatisticsCollector_GetRecentEvents(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	collector.SetSyncPersist(true)
 
 	// Record 10 events
@@ -223,6 +230,7 @@ func TestStatisticsCollector_GetRecentEvents(t *testing.T) {
 func TestStatisticsCollector_LatencyPercentiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	collector.SetSyncPersist(true)
 
 	// Record events with varying latencies
@@ -257,6 +265,7 @@ func TestStatisticsCollector_LatencyPercentiles(t *testing.T) {
 func TestStatisticsCollector_Export(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 
 	collector.Record(&APICallEvent{
 		Provider:     "anthropic",

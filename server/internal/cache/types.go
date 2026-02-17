@@ -55,33 +55,33 @@ type CacheStats struct {
 
 // Entry represents a cache entry.
 type Entry struct {
-	Key       string
-	Value     interface{}
-	Size      int64
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	AccessedAt time.Time
+	Key         string
+	Value       interface{}
+	Size        int64
+	CreatedAt   int64 // unix nanos
+	ExpiresAt   int64 // unix nanos, 0 = no expiration
+	AccessedAt  int64 // unix nanos
 	AccessCount int64
 }
 
 // IsExpired checks if the entry has expired.
 func (e *Entry) IsExpired() bool {
-	if e.ExpiresAt.IsZero() {
+	if e.ExpiresAt == 0 {
 		return false
 	}
-	return timeutil.NowTime().After(e.ExpiresAt)
+	return timeutil.NowNano() > e.ExpiresAt
 }
 
 // TTL returns the remaining time to live.
 func (e *Entry) TTL() time.Duration {
-	if e.ExpiresAt.IsZero() {
+	if e.ExpiresAt == 0 {
 		return -1 // No expiration
 	}
-	ttl := time.Until(e.ExpiresAt)
-	if ttl < 0 {
+	remaining := e.ExpiresAt - timeutil.NowNano()
+	if remaining < 0 {
 		return 0
 	}
-	return ttl
+	return time.Duration(remaining)
 }
 
 // EvictionPolicy defines the cache eviction policy.

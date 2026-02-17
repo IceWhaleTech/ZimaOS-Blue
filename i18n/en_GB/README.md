@@ -126,7 +126,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Architecture Overview
@@ -145,7 +154,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Channel Message Flow**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humaniser (MD→text) → Channel → User
+  → Chat Handler → LLM → Humaniser (MD→text) → Channel → User
 ```
 
 **Voice Pipeline**
@@ -213,7 +222,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Channel Upgrade | 10 channels upgraded from stubs | Done |
 | v0.10.25 | CC Cache | Two-level cache (L1 mem + L2 disk) | Done |
 | v0.10.26 | Humaniser | Response humanisation pipeline | Done |
-| v0.10.27 | Context Pruner | BM25 scoring, segmentation, benchmarks | Done |
+| v0.10.27 | Context Pruner | 54% token savings on code (SWE-bench official), 46–47% on general docs (local IR), BM25 scoring, segmentation | Done |
 | v0.10.28 | Memory Service | Progressive search, dual-write backend | Done |
 
 ## Community & Support

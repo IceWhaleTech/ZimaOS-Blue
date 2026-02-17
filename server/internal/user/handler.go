@@ -54,6 +54,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Public routes
 	g.POST("/auth/login", h.Login)
 	g.POST("/auth/logout", h.Logout)
+	g.POST("/auth/refresh", h.RefreshToken)
 
 	// Protected routes (require authentication)
 	users := g.Group("/users")
@@ -158,6 +159,68 @@ func (h *Handler) Login(c echo.Context) error {
 		TokenType:    "Bearer",
 		ExpiresIn:    int(session.ExpiresAt.Sub(session.CreatedAt).Seconds()),
 		ExpiresAt:    session.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
+		User:         user,
+	})
+}
+
+// RefreshToken handles token refresh.
+func (h *Handler) RefreshToken(c echo.Context) error {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.Bind(&req); err != nil || req.RefreshToken == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "refresh_token is required")
+	}
+
+	// Validate session
+	session, err := h.service.GetSession(c.Request().Context(), req.RefreshToken)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid or expired refresh token")
+	}
+
+	if h.jwtService == nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "jwt service not available")
+	}
+
+	// Revoke old session
+	_ = h.service.RevokeSession(c.Request().Context(), session.ID)
+
+	// Look up user for claims
+	user, err := h.service.GetByID(c.Request().Context(), session.UserID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "user not found")
+	}
+
+	userClaims := &auth.UserClaims{
+		UserID:   user.ID.String(),
+		Username: user.Username,
+		Role:     string(user.Role),
+	}
+
+	accessToken, err := h.jwtService.GenerateAccessToken(userClaims)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate access token")
+	}
+
+	newRefreshToken, err := h.jwtService.GenerateRefreshToken(userClaims)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate refresh token")
+	}
+
+	// Create new session
+	userAgent := c.Request().UserAgent()
+	ipAddress := c.RealIP()
+	newSession, err := h.service.CreateSession(c.Request().Context(), user.ID, newRefreshToken, userAgent, ipAddress)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create session")
+	}
+
+	return c.JSON(http.StatusOK, &LoginResponse{
+		Token:        accessToken,
+		RefreshToken: newRefreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    int(newSession.ExpiresAt.Sub(newSession.CreatedAt).Seconds()),
+		ExpiresAt:    newSession.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
 		User:         user,
 	})
 }

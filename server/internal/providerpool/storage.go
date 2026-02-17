@@ -112,9 +112,13 @@ func (s *FileStorage) SaveProvider(provider *Provider) error {
 	}
 
 	// Extract API keys (since they have json:"-" tag)
-	apiKeys := make([]string, len(provider.APIKeys))
-	for i, key := range provider.APIKeys {
-		apiKeys[i] = key.Key
+	// Never persist trial provider keys — they come from the signed license at build time
+	var apiKeys []string
+	if provider.Type != ProviderTypeTrial {
+		apiKeys = make([]string, len(provider.APIKeys))
+		for i, key := range provider.APIKeys {
+			apiKeys[i] = key.Key
+		}
 	}
 
 	// Store provider with keys separately

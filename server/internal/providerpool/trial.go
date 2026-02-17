@@ -1,18 +1,8 @@
 package providerpool
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -20,17 +10,6 @@ import (
 const (
 	// TrialProviderID is the ID of the trial provider
 	TrialProviderID = "zimaos-blue-trial"
-
-	// TrialTokenLimit is the maximum number of tokens allowed for trial
-	TrialTokenLimit int64 = 10000
-
-	// trialExhaustedMarkerFile is the filename for the trial exhausted marker
-	// This file is stored in a location that is NOT backed up to prevent
-	// users from restoring trial quota via backup restore
-	trialExhaustedMarkerFile = ".trial_exhausted"
-
-	// trialQuotaFile is the filename for persistent quota storage
-	trialQuotaFile = ".trial_quota"
 )
 
 var (
@@ -46,287 +25,173 @@ type TrialQuotaStatus struct {
 	IsExhausted     bool      `json:"is_exhausted"`
 	ExhaustedReason string    `json:"exhausted_reason,omitempty"`
 	LastUpdated     time.Time `json:"last_updated"`
+	ExpiresAt       int64     `json:"expires_at,omitempty"` // license expiry unix timestamp
+	IsExpired       bool      `json:"is_expired,omitempty"`
 }
 
-// TrialQuotaManager manages trial quota tracking
+// TrialQuotaManager manages trial quota tracking with Ed25519 license verification
+// and HMAC-protected state persistence.
 type TrialQuotaManager struct {
-	storage  Storage
 	registry *Registry
+	dataDir  string
 
-	// markerDir is the directory where the exhausted marker is stored
-	// This should be a system directory that is NOT backed up
-	markerDir string
+	// License fields
+	claims     *LicenseClaims
+	licenseSig []byte // used as HMAC key for state file
 
 	mu              sync.RWMutex
 	tokensUsed      int64
+	tokenLimit      int64
 	exhausted       bool
 	exhaustedReason string
 	lastUpdated     time.Time
 }
 
-// NewTrialQuotaManager creates a new trial quota manager
-func NewTrialQuotaManager(storage Storage, registry *Registry) *TrialQuotaManager {
+// NewTrialQuotaManager creates a new trial quota manager.
+// licenseStr is the Ed25519-signed license injected at build time.
+// dataDir is a persistent directory for state storage (not tmpdir).
+func NewTrialQuotaManager(registry *Registry, dataDir string, licenseStr string) *TrialQuotaManager {
 	m := &TrialQuotaManager{
-		storage:  storage,
 		registry: registry,
+		dataDir:  dataDir,
 	}
+
+	if licenseStr == "" {
+		m.exhausted = true
+		m.exhaustedReason = "no_license"
+		return m
+	}
+
+	claims, sig, err := VerifyLicense(licenseStr)
+	if err != nil && !errors.Is(err, ErrLicenseExpired) {
+		fmt.Printf("[TrialQuotaManager] License verification failed: %v\n", err)
+		m.exhausted = true
+		m.exhaustedReason = "invalid_license"
+		return m
+	}
+
+	m.claims = claims
+	m.licenseSig = sig
+	m.tokenLimit = claims.Limit
+
+	// Check time-based expiry
+	if errors.Is(err, ErrLicenseExpired) {
+		m.exhausted = true
+		m.exhaustedReason = "license_expired"
+		fmt.Printf("[TrialQuotaManager] License expired (exp=%d)\n", claims.ExpiresAt)
+		return m
+	}
+
 	m.loadFromStorage()
 	return m
 }
 
-// NewTrialQuotaManagerWithMarkerDir creates a new trial quota manager with a custom marker directory
-func NewTrialQuotaManagerWithMarkerDir(storage Storage, registry *Registry, markerDir string) *TrialQuotaManager {
-	m := &TrialQuotaManager{
-		storage:   storage,
-		registry:  registry,
-		markerDir: markerDir,
-	}
-	m.loadFromStorage()
-	return m
+// Claims returns the verified license claims, or nil if no valid license.
+func (m *TrialQuotaManager) Claims() *LicenseClaims {
+	return m.claims
 }
 
-// getMarkerPath returns the path to the trial exhausted marker file
-func (m *TrialQuotaManager) getMarkerPath() string {
-	if m.markerDir != "" {
-		return filepath.Join(m.markerDir, trialExhaustedMarkerFile)
-	}
-	// Default to system temp directory which is not backed up
-	return filepath.Join(os.TempDir(), "zimaos-blue", trialExhaustedMarkerFile)
-}
-
-// getMachineID returns a unique identifier for this machine
-// This is used to prevent trial quota from being transferred between machines
-func getMachineID() string {
-	// Try to get machine-specific identifiers
-	var parts []string
-
-	// Hostname
-	if hostname, err := os.Hostname(); err == nil {
-		parts = append(parts, hostname)
-	}
-
-	// Home directory (unique per user)
-	if home, err := os.UserHomeDir(); err == nil {
-		parts = append(parts, home)
-	}
-
-	// If we have parts, hash them
-	if len(parts) > 0 {
-		h := sha256.New()
-		for _, p := range parts {
-			h.Write([]byte(p))
+// loadFromStorage loads trial quota from HMAC-protected state file.
+func (m *TrialQuotaManager) loadFromStorage() {
+	// Check version change via IAT marker (works across different HMAC keys)
+	if m.claims != nil {
+		storedIAT := LoadLicenseIAT(m.dataDir)
+		if storedIAT > 0 && storedIAT != m.claims.IssuedAt {
+			// New license version → delete old state and reset
+			DeleteTrialState(m.dataDir)
+			m.mu.Lock()
+			m.tokensUsed = 0
+			m.exhausted = false
+			m.exhaustedReason = ""
+			m.lastUpdated = time.Now()
+			m.mu.Unlock()
+			m.saveState()
+			fmt.Printf("[TrialQuotaManager] New license version detected (old_iat=%d, new_iat=%d), resetting quota\n",
+				storedIAT, m.claims.IssuedAt)
+			return
 		}
-		return hex.EncodeToString(h.Sum(nil))[:16]
 	}
 
-	return "default"
-}
-
-// trialQuotaData is the structure for persistent quota storage
-type trialQuotaData struct {
-	TokensUsed      int64     `json:"tokens_used"`
-	Exhausted       bool      `json:"exhausted"`
-	ExhaustedReason string    `json:"exhausted_reason,omitempty"`
-	LastUpdated     time.Time `json:"last_updated"`
-	MachineID       string    `json:"machine_id"`
-}
-
-// getEncryptionKey derives a 32-byte AES key from machine ID
-func getEncryptionKey() []byte {
-	machineID := getMachineID()
-	// Add a salt to make the key more unique
-	salt := "zimaos-blue-trial-quota-v1"
-	h := sha256.New()
-	h.Write([]byte(machineID))
-	h.Write([]byte(salt))
-	return h.Sum(nil)
-}
-
-// encrypt encrypts data using AES-GCM
-func encrypt(plaintext []byte) (string, error) {
-	key := getEncryptionKey()
-	block, err := aes.NewCipher(key)
+	state, err := LoadTrialState(m.dataDir, m.licenseSig)
 	if err != nil {
-		return "", err
+		if errors.Is(err, ErrStateTampered) {
+			m.mu.Lock()
+			m.exhausted = true
+			m.exhaustedReason = "state_tampered"
+			m.lastUpdated = time.Now()
+			m.mu.Unlock()
+			m.saveState()
+			fmt.Printf("[TrialQuotaManager] State file tampered, treating as exhausted\n")
+			return
+		}
+		fmt.Printf("[TrialQuotaManager] Failed to load state: %v, starting fresh\n", err)
+		m.mu.Lock()
+		m.tokensUsed = 0
+		m.exhausted = false
+		m.lastUpdated = time.Now()
+		m.mu.Unlock()
+		m.saveState()
+		return
 	}
 
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
+	if state == nil {
+		m.mu.Lock()
+		m.tokensUsed = 0
+		m.exhausted = false
+		m.lastUpdated = time.Now()
+		m.mu.Unlock()
+		m.saveState()
+		fmt.Printf("[TrialQuotaManager] Fresh install, starting with zero usage\n")
+		return
 	}
 
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
+	now := time.Now().Unix()
+
+	// Clock-rollback detection: 5-minute tolerance for NTP drift
+	if state.HighWaterMark > 0 && now < state.HighWaterMark-300 {
+		m.mu.Lock()
+		m.exhausted = true
+		m.exhaustedReason = "clock_rollback"
+		m.lastUpdated = time.Now()
+		m.mu.Unlock()
+		m.saveState()
+		fmt.Printf("[TrialQuotaManager] Clock rollback detected (now=%d, hwm=%d), exhausting trial\n", now, state.HighWaterMark)
+		return
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	m.mu.Lock()
+	m.tokensUsed = state.TokensUsed
+	m.exhausted = state.Exhausted
+	m.exhaustedReason = state.ExhaustedReason
+	m.lastUpdated = state.LastUpdated
+	m.mu.Unlock()
+	fmt.Printf("[TrialQuotaManager] Loaded state: tokens=%d, exhausted=%v\n",
+		state.TokensUsed, state.Exhausted)
 }
 
-// decrypt decrypts data using AES-GCM
-func decrypt(encoded string) ([]byte, error) {
-	key := getEncryptionKey()
-	ciphertext, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, err
+func (m *TrialQuotaManager) saveState() {
+	if m.licenseSig == nil {
+		return
 	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
+	now := time.Now().Unix()
+	var licenseIAT int64
+	if m.claims != nil {
+		licenseIAT = m.claims.IssuedAt
 	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(ciphertext) < gcm.NonceSize() {
-		return nil, errors.New("ciphertext too short")
-	}
-
-	nonce, ciphertext := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
-	return gcm.Open(nil, nonce, ciphertext, nil)
-}
-
-// getQuotaFilePath returns the path to the quota storage file
-func (m *TrialQuotaManager) getQuotaFilePath() string {
-	if m.markerDir != "" {
-		return filepath.Join(m.markerDir, trialQuotaFile)
-	}
-	return filepath.Join(os.TempDir(), "zimaos-blue", trialQuotaFile)
-}
-
-// saveQuotaToFile saves the current quota to an encrypted file
-func (m *TrialQuotaManager) saveQuotaToFile() error {
-	data := trialQuotaData{
+	state := &trialState{
 		TokensUsed:      m.tokensUsed,
 		Exhausted:       m.exhausted,
 		ExhaustedReason: m.exhaustedReason,
 		LastUpdated:     m.lastUpdated,
-		MachineID:       getMachineID(),
+		HighWaterMark:   now,
+		LicenseIAT:      licenseIAT,
 	}
-
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
+	if err := SaveTrialState(m.dataDir, m.licenseSig, state); err != nil {
+		fmt.Printf("[TrialQuotaManager] Failed to save state: %v\n", err)
 	}
-
-	encrypted, err := encrypt(jsonData)
-	if err != nil {
-		return err
+	if licenseIAT > 0 {
+		SaveLicenseIAT(m.dataDir, licenseIAT)
 	}
-
-	quotaPath := m.getQuotaFilePath()
-	if err := os.MkdirAll(filepath.Dir(quotaPath), 0700); err != nil {
-		return err
-	}
-
-	return os.WriteFile(quotaPath, []byte(encrypted), 0600)
-}
-
-// loadQuotaFromFile loads quota from the encrypted file
-func (m *TrialQuotaManager) loadQuotaFromFile() (*trialQuotaData, error) {
-	quotaPath := m.getQuotaFilePath()
-	encrypted, err := os.ReadFile(quotaPath)
-	if err != nil {
-		return nil, err
-	}
-
-	decrypted, err := decrypt(string(encrypted))
-	if err != nil {
-		return nil, err
-	}
-
-	var data trialQuotaData
-	if err := json.Unmarshal(decrypted, &data); err != nil {
-		return nil, err
-	}
-
-	// Verify machine ID matches
-	if data.MachineID != getMachineID() {
-		return nil, errors.New("machine ID mismatch")
-	}
-
-	return &data, nil
-}
-
-// checkExhaustedMarker checks if the trial exhausted marker exists
-func (m *TrialQuotaManager) checkExhaustedMarker() bool {
-	markerPath := m.getMarkerPath()
-	data, err := os.ReadFile(markerPath)
-	if err != nil {
-		return false
-	}
-
-	// Verify the marker contains the correct machine ID
-	// This prevents copying the marker file to another machine
-	expectedID := getMachineID()
-	return string(data) == expectedID
-}
-
-// writeExhaustedMarker writes the trial exhausted marker
-func (m *TrialQuotaManager) writeExhaustedMarker() error {
-	markerPath := m.getMarkerPath()
-
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(markerPath), 0700); err != nil {
-		return err
-	}
-
-	// Write machine ID to marker file
-	machineID := getMachineID()
-	return os.WriteFile(markerPath, []byte(machineID), 0600)
-}
-
-// loadFromStorage loads trial quota from storage
-func (m *TrialQuotaManager) loadFromStorage() {
-	// First check if trial is already exhausted via marker file
-	if m.checkExhaustedMarker() {
-		m.mu.Lock()
-		m.exhausted = true
-		m.exhaustedReason = "permanently_exhausted"
-		m.lastUpdated = time.Now()
-		m.mu.Unlock()
-		return
-	}
-
-	// Try to load from encrypted quota file
-	data, err := m.loadQuotaFromFile()
-	if err != nil {
-		// If file doesn't exist, this is a fresh install - start with zero usage
-		if os.IsNotExist(err) {
-			m.mu.Lock()
-			m.tokensUsed = 0
-			m.exhausted = false
-			m.lastUpdated = time.Now()
-			m.mu.Unlock()
-			// Save initial state
-			m.saveQuotaToFile()
-			fmt.Printf("[TrialQuotaManager] Fresh install, starting with zero usage\n")
-			return
-		}
-		// File exists but failed to load (corrupted/tampered) - treat as exhausted
-		m.mu.Lock()
-		m.exhausted = true
-		m.exhaustedReason = "quota_file_invalid"
-		m.lastUpdated = time.Now()
-		m.mu.Unlock()
-		m.writeExhaustedMarker()
-		fmt.Printf("[TrialQuotaManager] Failed to load quota file, treating as exhausted: %v\n", err)
-		return
-	}
-
-	// Successfully loaded from encrypted file
-	m.mu.Lock()
-	m.tokensUsed = data.TokensUsed
-	m.exhausted = data.Exhausted
-	m.exhaustedReason = data.ExhaustedReason
-	m.lastUpdated = data.LastUpdated
-	m.mu.Unlock()
-	fmt.Printf("[TrialQuotaManager] Loaded from encrypted file: tokens=%d, exhausted=%v\n",
-		data.TokensUsed, data.Exhausted)
 }
 
 // CheckQuota checks if trial quota is available
@@ -344,28 +209,24 @@ func (m *TrialQuotaManager) CheckQuota() error {
 func (m *TrialQuotaManager) RecordUsage(inputTokens, outputTokens int64, sessionID string) (exhausted bool, err error) {
 	m.mu.Lock()
 
-	// Update tokens
 	previousUsed := m.tokensUsed
 	m.tokensUsed += inputTokens + outputTokens
 	m.lastUpdated = time.Now()
 
 	fmt.Printf("[TrialQuotaManager] RecordUsage: input=%d, output=%d, previous=%d, new=%d, limit=%d\n",
-		inputTokens, outputTokens, previousUsed, m.tokensUsed, TrialTokenLimit)
+		inputTokens, outputTokens, previousUsed, m.tokensUsed, m.tokenLimit)
 
-	// Check if exhausted
-	if m.tokensUsed >= TrialTokenLimit {
+	if m.tokensUsed >= m.tokenLimit {
 		m.exhausted = true
 		m.exhaustedReason = "token_limit"
-		m.writeExhaustedMarker()
 		fmt.Printf("[TrialQuotaManager] Trial quota EXHAUSTED!\n")
 		m.mu.Unlock()
-		m.saveQuotaToFile()
+		m.saveState()
 		return true, nil
 	}
 
 	m.mu.Unlock()
-	// Save to encrypted file after each usage update
-	m.saveQuotaToFile()
+	m.saveState()
 	return false, nil
 }
 
@@ -374,19 +235,24 @@ func (m *TrialQuotaManager) GetStatus() *TrialQuotaStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	tokensRemaining := TrialTokenLimit - m.tokensUsed
+	tokensRemaining := m.tokenLimit - m.tokensUsed
 	if tokensRemaining < 0 {
 		tokensRemaining = 0
 	}
 
-	return &TrialQuotaStatus{
+	status := &TrialQuotaStatus{
 		TokensUsed:      m.tokensUsed,
 		TokensRemaining: tokensRemaining,
-		TokenLimit:      TrialTokenLimit,
+		TokenLimit:      m.tokenLimit,
 		IsExhausted:     m.exhausted,
 		ExhaustedReason: m.exhaustedReason,
 		LastUpdated:     m.lastUpdated,
 	}
+	if m.claims != nil && m.claims.ExpiresAt > 0 {
+		status.ExpiresAt = m.claims.ExpiresAt
+		status.IsExpired = time.Now().Unix() > m.claims.ExpiresAt
+	}
+	return status
 }
 
 // IsExhausted returns whether the trial quota is exhausted
@@ -401,30 +267,26 @@ func (m *TrialQuotaManager) DeleteTrialProvider() error {
 	if m.registry == nil {
 		return nil
 	}
-
-	// Unregister the trial provider
 	err := m.registry.Unregister(TrialProviderID)
 	if err != nil && err != ErrProviderNotFound {
 		return err
 	}
-
 	return nil
 }
 
 // HandleQuotaExhausted handles the quota exhausted event
-// It deletes the trial provider and returns the appropriate error message
 func (m *TrialQuotaManager) HandleQuotaExhausted() (message string, err error) {
 	status := m.GetStatus()
-
-	// Delete the trial provider
 	if err := m.DeleteTrialProvider(); err != nil {
 		return "", err
 	}
-
-	// Return appropriate message based on exhaustion reason
 	switch status.ExhaustedReason {
 	case "token_limit":
 		return "trial_quota_exhausted_tokens", nil
+	case "license_expired":
+		return "trial_expired_update_available", nil
+	case "clock_rollback":
+		return "trial_clock_tampered", nil
 	default:
 		return "trial_quota_exhausted", nil
 	}
@@ -443,6 +305,5 @@ func (m *TrialQuotaManager) Reset() {
 
 // IsTrialProvider checks if a provider ID is the trial provider
 func IsTrialProvider(providerID string) bool {
-	// Support both old and new trial provider IDs for backwards compatibility
-	return providerID == TrialProviderID || providerID == "zimaos-blue-trial"
+	return providerID == TrialProviderID
 }

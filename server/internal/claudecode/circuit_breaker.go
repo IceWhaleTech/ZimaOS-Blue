@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CircuitState represents the state of a circuit breaker.
@@ -74,7 +76,7 @@ func NewCircuitBreaker(config CircuitBreakerConfig) *CircuitBreaker {
 	return &CircuitBreaker{
 		config:          config,
 		state:           CircuitClosed,
-		lastStateChange: time.Now(),
+		lastStateChange: timeutil.NowTime(),
 	}
 }
 
@@ -142,7 +144,7 @@ func (cb *CircuitBreaker) afterCall(err error) {
 
 // recordFailure records a failed call.
 func (cb *CircuitBreaker) recordFailure() {
-	now := time.Now()
+	now := timeutil.NowTime()
 	cb.lastFailure = &now
 	cb.failureCount++
 
@@ -176,7 +178,7 @@ func (cb *CircuitBreaker) recordSuccess() {
 // transitionTo changes the circuit state.
 func (cb *CircuitBreaker) transitionTo(state CircuitState) {
 	cb.state = state
-	cb.lastStateChange = time.Now()
+	cb.lastStateChange = timeutil.NowTime()
 
 	switch state {
 	case CircuitClosed:
@@ -220,7 +222,7 @@ func (cb *CircuitBreaker) Reset() {
 	cb.failureCount = 0
 	cb.successCount = 0
 	cb.halfOpenCalls = 0
-	cb.lastStateChange = time.Now()
+	cb.lastStateChange = timeutil.NowTime()
 }
 
 // IsOpen returns true if the circuit is open.

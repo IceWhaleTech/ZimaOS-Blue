@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useNotificationStore } from '@/stores/notification'
+import router from '@/router'
 import type {
   CompanionSession,
   SessionEvent,
@@ -477,6 +479,23 @@ export const useCompanionStore = defineStore('companion', () => {
     // Keep only last 100 events
     if (realtimeEvents.value.length > 100) {
       realtimeEvents.value = realtimeEvents.value.slice(0, 100)
+    }
+
+    // Show toast for memory_saved events
+    if (event.event_type === 'memory_saved') {
+      const notificationStore = useNotificationStore()
+      notificationStore.add({
+        type: 'info',
+        title: '已记住新内容',
+        message: event.message?.content?.slice(0, 80) || '已从对话中提取记忆',
+        duration: 5000,
+        action: {
+          label: '管理记忆',
+          handler: () => {
+            router.push('/settings')
+          },
+        },
+      })
     }
 
     // Track event in state machine

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -101,7 +102,7 @@ func (s *UserRoleService) AssignRole(ctx context.Context, req *AssignRoleRequest
 	}
 
 	id := uuid.New().String()
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO user_role_assignments (id, user_id, role_name, assigned_by, assigned_at, expires_at)
@@ -137,7 +138,7 @@ type RevokeRoleRequest struct {
 
 // RevokeRole revokes a role from a user
 func (s *UserRoleService) RevokeRole(ctx context.Context, req *RevokeRoleRequest) error {
-	now := time.Now()
+	now := timeutil.NowTime()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE user_role_assignments
 		SET revoked = 1, revoked_at = ?, revoked_by = ?
@@ -166,7 +167,7 @@ func (s *UserRoleService) GetUserRoles(ctx context.Context, userID string) ([]*U
 		FROM user_role_assignments
 		WHERE user_id = ? AND revoked = 0 AND (expires_at IS NULL OR expires_at > ?)
 		ORDER BY assigned_at DESC
-	`, userID, time.Now())
+	`, userID, timeutil.NowTime())
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +183,7 @@ func (s *UserRoleService) GetRoleUsers(ctx context.Context, roleName string) ([]
 		FROM user_role_assignments
 		WHERE role_name = ? AND revoked = 0 AND (expires_at IS NULL OR expires_at > ?)
 		ORDER BY assigned_at DESC
-	`, roleName, time.Now())
+	`, roleName, timeutil.NowTime())
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +199,7 @@ func (s *UserRoleService) HasRole(ctx context.Context, userID, roleName string) 
 		SELECT COUNT(*) FROM user_role_assignments
 		WHERE user_id = ? AND role_name = ? AND revoked = 0
 		AND (expires_at IS NULL OR expires_at > ?)
-	`, userID, roleName, time.Now()).Scan(&count)
+	`, userID, roleName, timeutil.NowTime()).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -250,7 +251,7 @@ func (s *UserRoleService) CleanupExpiredAssignments(ctx context.Context) (int64,
 		UPDATE user_role_assignments
 		SET revoked = 1, revoked_at = ?
 		WHERE expires_at IS NOT NULL AND expires_at < ? AND revoked = 0
-	`, time.Now(), time.Now())
+	`, timeutil.NowTime(), timeutil.NowTime())
 	if err != nil {
 		return 0, err
 	}
@@ -324,7 +325,7 @@ func (s *UserRoleService) BulkAssignRole(ctx context.Context, userIDs []string, 
 	}
 	defer tx.Rollback()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO user_role_assignments (id, user_id, role_name, assigned_by, assigned_at)
 		VALUES (?, ?, ?, ?, ?)
@@ -359,7 +360,7 @@ func (s *UserRoleService) BulkRevokeRole(ctx context.Context, userIDs []string, 
 	}
 	defer tx.Rollback()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	stmt, err := tx.PrepareContext(ctx, `
 		UPDATE user_role_assignments
 		SET revoked = 1, revoked_at = ?, revoked_by = ?

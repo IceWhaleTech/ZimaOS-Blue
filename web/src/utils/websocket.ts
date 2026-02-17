@@ -248,7 +248,6 @@ export class WebSocketClient {
     const delay = this.config.reconnectInterval * Math.min(this.reconnectAttempts, 5)
 
     this.reconnectTimer = setTimeout(() => {
-      console.log(`Reconnecting... (attempt ${this.reconnectAttempts})`)
       this.connect()
     }, delay)
   }

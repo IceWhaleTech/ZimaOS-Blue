@@ -55,6 +55,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 )
 
 // routesStartTime records when the server started, used for uptime calculation
@@ -527,14 +529,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
 		failoverGroup := protected.Group("/proxy/failover")
 		failoverHandler.RegisterRoutes(failoverGroup)
+	}
 
-		// Proxy cache routes
-		if deps.SharedCache != nil {
-			cacheConfig := proxy.DefaultCacheConfig()
-			cacheHandler := proxy.NewCacheAPIHandler(deps.SharedCache, cacheConfig)
-			cacheGroup := v1.Group("/proxy/cache")
-			cacheHandler.RegisterRoutes(cacheGroup)
-		}
+	// Proxy cache config + handler (hoisted for toggle persistence sharing)
+	cacheConfig := proxy.DefaultCacheConfig()
+	var cacheHandler *proxy.CacheAPIHandler
+	if deps.SharedCache != nil {
+		cacheHandler = proxy.NewCacheAPIHandler(deps.SharedCache, cacheConfig)
+		cacheGroup := v1.Group("/proxy/cache")
+		cacheHandler.RegisterRoutes(cacheGroup)
 	}
 
 	// OpenAI-compatible proxy routes on /v1/*
@@ -610,6 +613,43 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		proxyHandler.SetRoutingEnabled(ruleRoutingCfg.Enabled)
 
+		// Toggle persistence: restore saved states on startup
+		toggleKV, kvErr := kvstore.NewSQLiteStore(filepath.Join(cfg.DataDir, "settings.db"))
+		var toggleStore *proxy.ToggleStore
+		if kvErr != nil {
+			slog.Warn("Failed to create toggle kvstore", "error", kvErr)
+		} else {
+			toggleStore = proxy.NewToggleStore(toggleKV)
+			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil {
+				cacheConfig.Enabled = saved.CacheEnabled
+				if prunerMw != nil {
+					prunerMw.SetEnabled(saved.PrunerEnabled)
+				}
+				proxyHandler.SetRoutingEnabled(saved.RoutingEnabled)
+				slog.Info("Restored feature toggles", "cache", saved.CacheEnabled, "pruner", saved.PrunerEnabled, "routing", saved.RoutingEnabled)
+			}
+			// Wire toggle persistence into cache and pruner handlers
+			getToggleState := func() *proxy.ToggleState {
+				return &proxy.ToggleState{
+					CacheEnabled:   cacheConfig.Enabled,
+					PrunerEnabled:  prunerMw != nil && prunerMw.Enabled(),
+					RoutingEnabled: proxyHandler.IsRoutingEnabled(),
+				}
+			}
+			if cacheHandler != nil {
+				cacheHandler.SetTogglePersistence(toggleStore, getToggleState)
+			}
+			prunerHandler.SetOnToggle(func(enabled bool) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				toggleStore.Save(ctx, getToggleState())
+			})
+		}
+
+		// ProxyBridge: route ChatHandler LLM calls through proxy pipeline
+		bridge := proxybridge.NewBridge(proxyHandler)
+		deps.ChatHandler.SetProxyBridge(bridge)
+
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
@@ -633,6 +673,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 			if req.Enabled != nil {
 				proxyHandler.SetRoutingEnabled(*req.Enabled)
+				if toggleStore != nil {
+					ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+					defer cancel()
+					toggleStore.Save(ctx, &proxy.ToggleState{
+						CacheEnabled:   cacheConfig.Enabled,
+						PrunerEnabled:  prunerMw != nil && prunerMw.Enabled(),
+						RoutingEnabled: *req.Enabled,
+					})
+				}
 			}
 			return c.JSON(200, map[string]interface{}{
 				"success": true,

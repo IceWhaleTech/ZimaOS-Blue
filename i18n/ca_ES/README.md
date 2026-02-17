@@ -126,7 +126,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Visió general de l'arquitectura
@@ -213,7 +222,7 @@ WebSocket àudio → STT (Whisper) → Processament LLM → TTS (eSpeak/Edge) �
 | v0.10.24 | Actualització de canals | 10 canals actualitzats des d'stubs | Done |
 | v0.10.25 | CC Cache | Cache de dos nivells (L1 memòria + L2 disc) | Done |
 | v0.10.26 | Humanitzador | Pipeline d'humanització de respostes | Done |
-| v0.10.27 | Poda de context | Puntuació BM25, segmentació, benchmarks | Done |
+| v0.10.27 | Poda de context | 54% estalvi de tokens en codi (SWE-bench oficial), 46–47% en documents generals (IR local), puntuació BM25, segmentació | Done |
 | v0.10.28 | Servei de memòria | Cerca progressiva, backend d'escriptura dual | Done |
 
 ## Comunitat i suport

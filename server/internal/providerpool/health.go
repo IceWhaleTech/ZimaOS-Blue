@@ -69,7 +69,7 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			lastErr = fmt.Sprintf("request failed: %v", err)
+			lastErr = sanitizeHealthError(err)
 			result.Latency = time.Since(start)
 			continue
 		}
@@ -85,12 +85,28 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 			result.Error = fmt.Sprintf("authentication error: %d", resp.StatusCode)
 			return result
 		}
-		lastErr = fmt.Sprintf("unexpected status: %d from %s", resp.StatusCode, healthURL)
+		lastErr = fmt.Sprintf("unexpected status: %d", resp.StatusCode)
 	}
 
 	result.Healthy = false
 	result.Error = lastErr
 	return result
+}
+
+// sanitizeHealthError converts raw network errors to user-friendly messages.
+func sanitizeHealthError(err error) string {
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "no such host") || strings.Contains(msg, "dial tcp") ||
+		strings.Contains(msg, "connection refused") {
+		return "network connection failed"
+	}
+	if strings.Contains(msg, "x509") || strings.Contains(msg, "certificate") {
+		return "secure connection failed (certificate error)"
+	}
+	if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded") {
+		return "request timed out"
+	}
+	return "connection failed"
 }
 
 // getHealthCheckURLs returns the health check URLs to try for a provider (first match wins)

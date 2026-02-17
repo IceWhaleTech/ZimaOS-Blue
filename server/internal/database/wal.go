@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/rs/zerolog"
 )
 
@@ -285,7 +286,7 @@ func (w *WALManager) recordSuccessCheckpoint(duration time.Duration) {
 	defer w.statsMu.Unlock()
 	w.stats.TotalCheckpoints++
 	w.stats.SuccessCheckpoints++
-	w.stats.LastCheckpoint = time.Now()
+	w.stats.LastCheckpoint = timeutil.NowTime()
 	w.stats.totalDuration += duration
 }
 

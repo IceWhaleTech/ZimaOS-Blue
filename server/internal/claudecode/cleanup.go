@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"go.uber.org/zap"
 )
 
@@ -62,7 +63,7 @@ func (c *ProcessCleaner) Track(pid int, command, sessionId string, timeout time.
 		PID:       pid,
 		Command:   command,
 		SessionId: sessionId,
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 		Timeout:   timeout,
 	}
 }
@@ -95,15 +96,16 @@ func (c *ProcessCleaner) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowNano()
 	for pid, proc := range c.tracked {
 		// Check if process has exceeded its timeout
-		if now.Sub(proc.StartTime) > proc.Timeout {
+		if now > proc.StartTime.Add(proc.Timeout).UnixNano() {
+			elapsed := time.Duration(now - proc.StartTime.UnixNano())
 			c.logger.Warn("Terminating orphaned CLI process",
 				zap.Int("pid", pid),
 				zap.String("command", proc.Command),
 				zap.String("session_id", proc.SessionId),
-				zap.Duration("elapsed", now.Sub(proc.StartTime)),
+				zap.Duration("elapsed", elapsed),
 			)
 
 			if err := c.killProcess(pid); err != nil {

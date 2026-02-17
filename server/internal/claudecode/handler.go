@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 )
 
@@ -226,7 +227,7 @@ func (h *Handler) GetVersion(c echo.Context) error {
 		InstalledVersion: info.InstalledVersion,
 		SystemVersion:    info.SystemVersion,
 		ActiveVersion:    info.ActiveVersion,
-		Mode:             "auto", // TODO: get from config
+		Mode:             string(info.Source),
 		Source:           info.Source,
 		BinaryPath:       info.BinaryPath,
 		Platform:         info.Platform,
@@ -250,7 +251,7 @@ func (h *Handler) CheckForUpdates(c echo.Context) error {
 		})
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	h.lastCheck = &now
 
 	resp := CheckUpdateResponse{

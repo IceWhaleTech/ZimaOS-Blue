@@ -5,10 +5,9 @@ import (
 )
 
 // Build-time variables (injected via -ldflags)
-// Example: go build -ldflags "-X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=sk-xxx"
+// Example: go build -ldflags "-X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=..."
 var (
-	trialAPIKey  string // Injected at build time
-	trialBaseURL string // Injected at build time (optional)
+	trialLicense string // Ed25519-signed license injected at build time
 )
 
 const (
@@ -294,55 +293,58 @@ func BuiltinProviders() []*Provider {
 		},
 	}
 
-	// Only include trial provider if API key was injected at build time
-	if trialAPIKey != "" {
+	// Only include trial provider if a valid signed license was injected at build time
+	if claims := getTrialClaims(); claims != nil {
+		baseURL := claims.URL
+		if baseURL == "" {
+			baseURL = DefaultTrialBaseURL
+		}
+		apiFormat := APIFormatAnthropic
+		if claims.Format != "" {
+			apiFormat = APIFormat(claims.Format)
+		}
 		providers = append(providers, &Provider{
-			ID:          "zimaos-blue-trial",
+			ID:          TrialProviderID,
 			Name:        "ZimaOS Blue Trial",
 			Type:        ProviderTypeTrial,
 			Location:    ProviderLocationCloud,
 			Enabled:     true,
 			Status:      ProviderStatusActive,
-			BaseURL:     getTrialBaseURL(),
+			BaseURL:     baseURL,
 			APIVersion:  "v1",
-			APIFormat:   APIFormatAnthropic,
-			Priority:    100, // Highest priority for trial
-			Icon:        "echo",
-			Description: "Echo Trial Provider - Free trial with limited quota",
+			APIFormat:   apiFormat,
+			Priority:    100,
+			Icon:        "blue",
+			Description: "Blue Trial Provider - Free trial with limited quota",
 			Website:     "https://zimaos.com",
-			APIKeys:     getTrialAPIKeys(),
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			APIKeys: []APIKey{{
+				ID: "trial-key", Key: claims.Key, KeyHash: HashAPIKey(claims.Key),
+				Label: "Trial API Key", Enabled: true, CreatedAt: time.Now(),
+			}},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		})
 	}
 
 	return providers
 }
 
-// getTrialBaseURL returns the trial provider base URL (build-time value or default).
-func getTrialBaseURL() string {
-	if trialBaseURL != "" {
-		return trialBaseURL
-	}
-	return DefaultTrialBaseURL
-}
-
-// getTrialAPIKeys returns the trial API keys from build-time injection.
-// Returns nil if no key was injected.
-func getTrialAPIKeys() []APIKey {
-	if trialAPIKey == "" {
+// getTrialClaims verifies the build-time license and returns claims, or nil if invalid/absent/expired.
+func getTrialClaims() *LicenseClaims {
+	if trialLicense == "" {
 		return nil
 	}
-	return []APIKey{
-		{
-			ID:        "trial-key",
-			Key:       trialAPIKey,
-			KeyHash:   HashAPIKey(trialAPIKey),
-			Label:     "Trial API Key",
-			Enabled:   true,
-			CreatedAt: time.Now(),
-		},
+	claims, _, err := VerifyLicense(trialLicense)
+	if err != nil {
+		// Expired or invalid → don't show trial provider
+		return nil
 	}
+	return claims
+}
+
+// GetTrialLicense returns the raw build-time license string.
+func GetTrialLicense() string {
+	return trialLicense
 }
 
 // BuiltinModels returns known models for built-in providers

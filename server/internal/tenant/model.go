@@ -4,6 +4,7 @@ package tenant
 import (
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -59,7 +60,7 @@ type Tenant struct {
 
 // NewTenant creates a new Tenant with default values.
 func NewTenant(name, slug string, ownerID uuid.UUID) *Tenant {
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	return &Tenant{
 		ID:        uuid.New(),
 		Name:      name,
@@ -99,7 +100,7 @@ func NewTenantMember(tenantID, userID uuid.UUID, role MemberRole, invitedBy *uui
 		TenantID:  tenantID,
 		UserID:    userID,
 		Role:      role,
-		JoinedAt:  time.Now().UTC(),
+		JoinedAt:  timeutil.NowTime().UTC(),
 		InvitedBy: invitedBy,
 	}
 }
@@ -136,7 +137,7 @@ func NewTenantInvitation(tenantID uuid.UUID, email string, role MemberRole, invi
 		Token:     token,
 		InvitedBy: invitedBy,
 		ExpiresAt: expiresAt,
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: timeutil.NowTime().UTC(),
 	}
 }
 
@@ -145,7 +146,7 @@ func (i *TenantInvitation) IsValid() bool {
 	if i.AcceptedAt != nil {
 		return false
 	}
-	return time.Now().Before(i.ExpiresAt)
+	return timeutil.NowNano() < i.ExpiresAt.UnixNano()
 }
 
 // TenantLimits represents resource limits for a tenant.

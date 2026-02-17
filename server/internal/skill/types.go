@@ -4,6 +4,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 // Manifest represents a skill manifest
@@ -87,3 +88,22 @@ type SkillInfo struct {
 	Enabled  bool      `json:"enabled"`
 	Builtin  bool      `json:"builtin"`
 }
+
+// ManifestSkill is a declarative skill created from a manifest JSON.
+// It holds metadata but has no executable logic.
+type ManifestSkill struct {
+	manifest *Manifest
+}
+
+// NewManifestSkill creates a skill from a parsed manifest.
+func NewManifestSkill(m *Manifest) *ManifestSkill {
+	return &ManifestSkill{manifest: m}
+}
+
+func (s *ManifestSkill) Manifest() *Manifest { return s.manifest }
+
+func (s *ManifestSkill) Execute(_ context.Context, _ map[string]any) (*Result, error) {
+	return nil, fmt.Errorf("manifest-only skill %q has no executable logic", s.manifest.ID)
+}
+
+func (s *ManifestSkill) Validate(_ map[string]any) error { return nil }

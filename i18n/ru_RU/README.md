@@ -59,6 +59,29 @@
 
 Идём дальше: нативная поддержка **20+ IM-платформ**, **голосовые** интерфейсы для естественного контекстного диалога, **автоматическое переключение моделей** со сканированием IDE и многоуровневые персональности SOUL.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### Быстрый и лёгкий
 
 Нативная компиляция на Go — без интерпретатора, без виртуальной машины, без накладных расходов. Бесшумно работает на всём: от серверов до настольных устройств.
@@ -71,7 +94,7 @@
 | `status` пиковое RSS | **~15 MB** | ~1.52 GB |
 | Зависимости среды выполнения | **Нет** | Node.js 18+ |
 
-> Тестирование на macOS arm64, один хост, лучший из 3 запусков. Февраль 2026.
+> Тестирование на macOS arm64 (серверный режим, без десктопного UI), один хост, лучший из 3 запусков. Февраль 2026.
 
 ### Чистый Go, любое устройство
 
@@ -92,19 +115,77 @@
 - **Локальный, сверхлёгкий, кроссплатформенный** – Не требует мощного оборудования. Работает на всём, что способно вычислять.
 - **Безопасный и проверяемый** – Аудит сессий, песочница, контроль разрешений и встроенный API-прокси, действующий как межсетевой экран прикладного уровня — каждый байт на входе/выходе виден.
 
+![](../../docs/assets/design_principle.png)
+
 Мы минимизируем шаблонный код, чтобы вы **сосредоточились на главном**. Следуя **философии дизайна ZimaOS**, Blue обеспечивает:
 - **От нуля до результата в один клик** – Мгновенное развёртывание без сложной настройки.
 - **Быстрое прототипирование** – Экспериментируйте или вручную создавайте инструменты, взаимодействия и пакеты приложений для конкретных сценариев.
 - **Готовность к глобальному рынку** – **Мир огромен**, и он не говорит только по-английски. **20+ языков, нативно**, без барьеров.
 - **Открытая экосистема моделей** – Без привязки к поставщику. Используйте свои модели.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| Провайдер | Модели | Тип |
+|-----------|--------|-----|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Облако |
+| Anthropic | Claude 4.5, Claude 4 | Облако |
+| Google | Gemini 2.5, Gemini 2.0 | Облако |
+| Ollama | Llama, Qwen, Gemma, Phi и др. | Локально |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Облако |
+| Grok | Grok-3, Grok-3-mini | Облако |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Облако |
+| GLM | GLM-4, GLM-4-Flash | Облако |
+| Moonshot | Moonshot-v1 | Облако |
+| MiniMax | abab6.5, abab5.5 | Облако |
+| Venice | Llama, Mistral (приватность) | Облако |
+| AWS Bedrock | Claude, Llama, Titan | Облако |
+| Azure | Модели OpenAI через Azure | Облако |
+| OpenRouter | 100+ агрегированных моделей | Облако |
+| AIHubMix | Мульти-провайдер агрегатор | Облако |
+| Codex | OpenAI Codex | Облако |
+| Пользовательский | Любой OpenAI / Anthropic / Gemini совместимый API | Облако / Локально |
+
+</details>
+
+### Поддерживаемые IDE
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## Быстрый старт
 
 ### Вариант 1: Скачать десктопное приложение (macOS и Windows)
 
-Получите нативное приложение — без зависимостей, без компиляции.
+Получите нативное приложение — без зависимостей, без компиляции. Встроенная пробная конфигурация, мгновенный старт — начните общение через удалённое подключение, без настройки бота. Настоящий «из коробки».
 
 - **macOS**: [Скачать DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [Скачать установщик](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,12 +207,47 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Обзор архитектуры
 
-![](../../docs/assets/architecture.png)
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
+
+### Карта пакетов (`server/internal/`)
+
+| Уровень | Пакеты |
+|---------|--------|
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, heartbeat, companion, profiling, leakdetect |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+</details>
 
 ### Поток данных
 
@@ -145,7 +261,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Поток сообщений каналов**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Голосовой конвейер**
@@ -153,68 +269,52 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-### Карта пакетов (`server/internal/`)
-
-| Уровень | Пакеты |
-|---------|--------|
-| Шлюз | bootstrap, server, gateway |
-| Прокси | proxy, connection, streaming, resilience |
-| Провайдер | providerpool, providers, llm |
-| Обрезка контекста | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Агент | context, tools, personality, humanizer |
-| Память | memory, embedding, kvstore |
-| Каналы | channel, autoreply, i18n |
-| Безопасность | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Голос | voice, tts, stt, speech |
-| Наблюдение | metrics, heartbeat, companion, profiling, leakdetect |
-| Плагины | plugin, skill, skillstore |
-| Интеграции | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
-| Планировщик | scheduler, worker, workerpool, pool |
-| Ядро | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Система | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Мультитенантность | tenant, user, session, preview |
-
 ## Как использовать
 
 ![](../../docs/assets/handcraft.png)
 
 ## Хронология вех
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
-| Version | Фокус | Ключевая ценность | Status |
-|---------|-------|--------------------|--------|
-| v0.1 | Ядро среды выполнения Go | Стабильное ядро, работа 24 часа | Done |
-| v0.2 | Базовые возможности | Минимально пригодный, интеграция с LLM | Done |
-| v0.3 | Интеграция с NAS | Нативная поддержка NAS, systemd | Done |
-| v0.4 | Система плагинов | Расширяемость, основы безопасности | Done |
-| v0.5 | Продуктовый базис | Готовность к продакшену, документация | Done |
-| v0.6 | Каналы сообщений | Многоканальная поддержка | Done |
-| v0.7 | Безопасность | OIDC, MFA, аудит | Done |
-| v0.8 | Производительность | Оптимизация, кэширование, бенчмарки | Done |
-| v0.9 | Экосистема | Мультитенантность, автоматизация браузера, голос | Done |
-| v0.10.0 | Интеграция CLI | Интеграция CC CLI, обнаружение, автообновление | Done |
-| v0.10.1 | Мониторинг метрик | Статистика API, отслеживание токенов, TTFT | Done |
-| v0.10.2 | Надёжность CLI | Жизненный цикл процессов, восстановление после ошибок | Done |
-| v0.10.3 | Интеграция CLI | Мастер настройки, автоопределение провайдера | Done |
-| v0.10.4 | Упаковка Tauri | Десктопное приложение, системный трей | Done |
-| v0.10.5 | API Proxy Sidecar | Выбор маршрута, защита промптов, статистика использования | Done |
-| v0.10.6 | Пул провайдеров | Маршрутизация между провайдерами, проверка здоровья, отказоустойчивость | Done |
-| v0.10.7 | Режим предпросмотра | Неаутентифицированный доступ, управление функциями | Done |
-| v0.10.8 | Магазин навыков | Инфраструктура магазина навыков, валидация каналов | Done |
-| v0.10.9–10 | Управление пользователями | Подпользователи, разрешения на уровне страниц | Done |
-| v0.10.13–14 | Безопасность и навыки | Страница безопасности, редизайн магазина навыков | Done |
-| v0.10.15 | Улучшения чата | UX чата, конвейер сообщений | Done |
-| v0.10.16 | Модуль речи | Sherpa TTS/ASR, eSpeak, переключение провайдеров | Done |
-| v0.10.17 | Удалённый доступ | Туннели Ngrok, Cloudflare, сертификаты ACME | Done |
-| v0.10.18–20 | Спринт производительности | Производительность запуска/чата, кэш контекста | Done |
-| v0.10.21–22 | Промпты и DingTalk | Системный промпт, канал DingTalk | Done |
-| v0.10.23 | OTA-обновления | Система OTA-обновлений | Done |
-| v0.10.24 | Обновление каналов | 10 каналов обновлены из заглушек | Done |
-| v0.10.25 | CC Cache | Двухуровневый кэш (L1 память + L2 диск) | Done |
-| v0.10.26 | Гуманизатор | Конвейер гуманизации ответов | Done |
-| v0.10.27 | Обрезка контекста | Оценка BM25, сегментация, бенчмарки | Done |
-| v0.10.28 | Сервис памяти | Прогрессивный поиск, двойная запись | Done |
+| Версия | Фокус | Ключевая ценность | Статус |
+|--------|-------|--------------------|--------|
+| v0.1 | Ядро среды выполнения Go | Стабильное ядро, работа 24 часа | Готово |
+| v0.2 | Базовые возможности | Минимально пригодный, интеграция с LLM | Готово |
+| v0.3 | Интеграция с NAS | Нативная поддержка NAS, systemd | Готово |
+| v0.4 | Система плагинов | Расширяемость, основы безопасности | Готово |
+| v0.5 | Продуктовый базис | Готовность к продакшену, документация | Готово |
+| v0.6 | Каналы сообщений | Многоканальная поддержка | Готово |
+| v0.7 | Безопасность | OIDC, MFA, аудит | Готово |
+| v0.8 | Производительность | Оптимизация, кэширование, бенчмарки | Готово |
+| v0.9 | Экосистема | Мультитенантность, автоматизация браузера, голос | Готово |
+| v0.10.0 | Интеграция CLI | Интеграция CC CLI, обнаружение, автообновление | Готово |
+| v0.10.1 | Мониторинг метрик | Статистика API, отслеживание токенов, TTFT | Готово |
+| v0.10.2 | Надёжность CLI | Жизненный цикл процессов, восстановление после ошибок | Готово |
+| v0.10.3 | Интеграция CLI | Мастер настройки, автоопределение провайдера | Готово |
+| v0.10.4 | Упаковка Tauri | Десктопное приложение, системный трей | Готово |
+| v0.10.5 | API Proxy Sidecar | Выбор маршрута, защита промптов, статистика использования | Готово |
+| v0.10.6 | Пул провайдеров | Маршрутизация между провайдерами, проверка здоровья, отказоустойчивость | Готово |
+| v0.10.7 | Режим предпросмотра | Неаутентифицированный доступ, управление функциями | Готово |
+| v0.10.8 | Магазин навыков | Инфраструктура магазина навыков, валидация каналов | Готово |
+| v0.10.9–10 | Управление пользователями | Подпользователи, разрешения на уровне страниц | Готово |
+| v0.10.13–14 | Безопасность и навыки | Страница безопасности, редизайн магазина навыков | Готово |
+| v0.10.15 | Улучшения чата | UX чата, конвейер сообщений | Готово |
+| v0.10.16 | Модуль речи | Sherpa TTS/ASR, eSpeak, переключение провайдеров | Готово |
+| v0.10.17 | Удалённый доступ | Туннели Ngrok, Cloudflare, сертификаты ACME | Готово |
+| v0.10.18–20 | Спринт производительности | Производительность запуска/чата, кэш контекста | Готово |
+| v0.10.21–22 | Промпты и DingTalk | Системный промпт, канал DingTalk | Готово |
+| v0.10.23 | OTA-обновления | Система OTA-обновлений | Готово |
+| v0.10.24 | Обновление каналов | 10 каналов обновлены из заглушек | Готово |
+| v0.10.25 | CC Cache | Двухуровневый кэш (L1 память + L2 диск) | Готово |
+| v0.10.26 | Гуманизатор | Конвейер гуманизации ответов | Готово |
+| v0.10.27 | Обрезка контекста | 54% экономия токенов на коде (SWE-bench официально), 46–47% на общих документах (локальный IR), оценка BM25, сегментация | Готово |
+| v0.10.28 | Сервис памяти | Прогрессивный поиск, двойная запись | Готово |
+
+</details>
 
 ## Сообщество и поддержка
 

@@ -90,7 +90,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 			UsageTrackingEnabled:     true,
 			UsageRetentionDays:       30,
 		},
-		TrialQuotaManager: NewTrialQuotaManager(storage, registry),
+		TrialQuotaManager: NewTrialQuotaManager(registry, dataPath, GetTrialLicense()),
 	}
 
 	for _, opt := range opts {
@@ -1680,9 +1680,9 @@ func (h *Handler) GetTrialQuota(c echo.Context) error {
 	if h.pool == nil || h.pool.TrialQuotaManager == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"tokens_used":      0,
-			"tokens_remaining": TrialTokenLimit,
-			"token_limit":      TrialTokenLimit,
-			"exhausted":        false,
+			"tokens_remaining": 0,
+			"token_limit":      0,
+			"exhausted":        true,
 		})
 	}
 

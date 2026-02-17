@@ -24,7 +24,9 @@ export interface LoginResponse {
 
 export interface RefreshResponse {
   token: string
+  refresh_token: string
   expires_at: string
+  user: User
 }
 
 export interface ApiKey {
@@ -54,7 +56,8 @@ export const authApi = {
 
   logout: () => api.post<{ success: boolean }>('/auth/logout'),
 
-  refresh: () => api.post<RefreshResponse>('/auth/refresh'),
+  refresh: (refreshToken: string) =>
+    api.post<RefreshResponse>('/auth/refresh', { refresh_token: refreshToken }),
 
   me: () => api.get<User>('/users/me'),
 

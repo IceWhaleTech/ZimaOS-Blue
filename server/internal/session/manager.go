@@ -9,6 +9,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	ctxpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SessionManager manages sessions with isolation and persistence.
@@ -446,7 +447,7 @@ func (m *SessionManager) cleanupLoop() {
 
 // runCleanup archives and deletes old sessions.
 func (m *SessionManager) runCleanup() {
-	now := time.Now()
+	now := timeutil.NowTime()
 	archiveThreshold := now.Add(-m.config.Cleanup.ArchiveAfter)
 	deleteThreshold := now.Add(-m.config.Cleanup.DeleteAfter)
 

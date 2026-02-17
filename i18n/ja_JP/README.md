@@ -1,4 +1,9 @@
-![](../../docs/assets/bannerX.png)
+![](../../docs/assets/banner.png)
+
+<p align="center">
+  大胆なビルダーのための<strong>ローカルファースト</strong>エージェントランタイム<br>
+  すぐに使える · オープンソース · ユニバーサル · デュアル監視
+</p>
 
 <p align="center">
   <a href="../../README.md">English</a> |
@@ -39,8 +44,7 @@
 <p align="center">
   <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
-  <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>&nbsp;&nbsp;
-  <img src="../../docs/assets/wechat.png" height="128"/>
+  <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
 
 ## はじめに
@@ -59,6 +63,29 @@ Clawdbotに触発され、私たちはパーソナルコンピューティング
 
 さらに一歩先へ：**20以上のIMプラットフォーム**のネイティブサポート、自然で文脈を理解した対話のための**音声駆動**インターフェース、IDEスキャンによる**ゼロコンフィグモデル切り替え**、SOULレイヤードパーソナリティを提供します。
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### 高速・軽量
 
 Goでネイティブコンパイル — インタプリタなし、VMなし、オーバーヘッドなし。サーバーからデスクトップデバイスまで、あらゆる環境で静かに動作します。
@@ -71,7 +98,7 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 | `status` ピークRSS | **~15 MB** | ~1.52 GB |
 | ランタイム依存関係 | **なし** | Node.js 18+ |
 
-> macOS arm64、同一ホスト、3回中最速で計測。2026年2月。
+> ベンチマーク環境：macOS arm64（サーバーモード、デスクトップUIなし）、同一ホスト、3回中最速で計測。2026年2月。
 
 ### 純粋なGo、あらゆるデバイス
 
@@ -92,19 +119,77 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 - **ローカルファースト、超軽量、クロスデバイス** – ハイエンドハードウェア不要。計算能力があるものなら何でも動作します。
 - **安全で監査可能** – セッション監査、サンドボックス、権限制御、アプリケーション層ファイアウォールとして機能する組み込みAPIプロキシ — すべての入出力バイトが可視化されます。
 
+![](../../docs/assets/design_principle.png)
+
 ボイラープレートを最小限に抑え、**本当に重要なことに集中**できます。**ZimaOSの設計哲学**に忠実に、Blueは以下を提供します：
 - **ワンクリックでゼロからイチへ** – 複雑な設定なしで即座にデプロイ。
 - **ラピッドプロトタイピング** – シナリオ固有のツール、インタラクション、アプリパッケージをバイブコーディングまたは手作り。
 - **グローバル対応** – **世界は広い**、そして英語がデフォルトではありません。**20以上の言語をネイティブサポート**、障壁なし。
 - **オープンモデルエコシステム** – ベンダーロックインなし。お好みのモデルをお使いください。
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| プロバイダー | モデル | タイプ |
+|----------|--------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | クラウド |
+| Anthropic | Claude 4.5, Claude 4 | クラウド |
+| Google | Gemini 2.5, Gemini 2.0 | クラウド |
+| Ollama | Llama, Qwen, Gemma, Phi 等 | ローカル |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | クラウド |
+| Grok | Grok-3, Grok-3-mini | クラウド |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | クラウド |
+| GLM | GLM-4, GLM-4-Flash | クラウド |
+| Moonshot | Moonshot-v1 | クラウド |
+| MiniMax | abab6.5, abab5.5 | クラウド |
+| Venice | Llama, Mistral（プライバシー優先） | クラウド |
+| AWS Bedrock | Claude, Llama, Titan | クラウド |
+| Azure | Azure経由のOpenAIモデル | クラウド |
+| OpenRouter | 100+ 集約モデル | クラウド |
+| AIHubMix | マルチプロバイダーアグリゲーター | クラウド |
+| Codex | OpenAI Codex | クラウド |
+| カスタム | 任意のOpenAI / Anthropic / Gemini互換API | クラウド / ローカル |
+
+</details>
+
+### サポートされるIDE
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## クイックスタート
 
 ### オプション1：デスクトップアプリをダウンロード（macOS & Windows）
 
-ネイティブアプリケーションを入手 — 依存関係なし、コンパイル不要。
+ネイティブアプリケーションを入手 — 依存関係なし、コンパイル不要。内蔵トライアル設定で数秒でオンボーディング — リモート接続で即座にチャット開始、ボット設定不要。真のすぐ使える体験。
 
 - **macOS**: [DMGをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [インストーラーをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,32 +211,24 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## アーキテクチャ概要
 
-![](../../docs/assets/architecture.png)
-
-### データフロー
-
-**チャットリクエスト（プロキシホットパス）**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
-
-**チャネルメッセージフロー**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
-
-**音声パイプライン**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
 
 ### パッケージマップ (`server/internal/`)
 
@@ -174,13 +251,38 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | システム | sysinfo, cgroup, iotask, watcher, resources, backup, update |
 | マルチテナント | tenant, user, session, preview |
 
+</details>
+
+### データフロー
+
+**チャットリクエスト（プロキシホットパス）**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**チャネルメッセージフロー**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**音声パイプライン**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
 ## 使い方
 
 ![](../../docs/assets/handcraft.png)
 
 ## マイルストーンタイムライン
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | バージョン | フォーカス | 主な価値 | ステータス |
 |---------|-------|-----------|--------|
@@ -213,8 +315,10 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | チャネルアップグレード | 10チャネルをスタブからアップグレード | Done |
 | v0.10.25 | CCキャッシュ | 2層キャッシュ（L1メモリ + L2ディスク） | Done |
 | v0.10.26 | ヒューマナイザー | レスポンスヒューマナイゼーションパイプライン | Done |
-| v0.10.27 | コンテキストプルーナー | BM25スコアリング、セグメンテーション、ベンチマーク | Done |
+| v0.10.27 | コンテキストプルーナー | コードで54%トークン削減（SWE-bench公式）、一般文書で46–47%（ローカルIR）、BM25スコアリング、セグメンテーション | Done |
 | v0.10.28 | メモリサービス | プログレッシブ検索、デュアルライトバックエンド | Done |
+
+</details>
 
 ## コミュニティ & サポート
 

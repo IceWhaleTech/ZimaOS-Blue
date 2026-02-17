@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -9,8 +10,11 @@ import (
 
 // CacheAPIHandler provides HTTP handlers for cache management
 type CacheAPIHandler struct {
-	cache  *CCCache
-	config *CacheConfig
+	mu          sync.Mutex // protects config mutations
+	cache       *CCCache
+	config      *CacheConfig
+	toggleStore *ToggleStore
+	getState    func() *ToggleState // callback to collect current toggle state
 }
 
 // NewCacheAPIHandler creates a new cache API handler
@@ -19,6 +23,12 @@ func NewCacheAPIHandler(cache *CCCache, config *CacheConfig) *CacheAPIHandler {
 		cache:  cache,
 		config: config,
 	}
+}
+
+// SetTogglePersistence wires toggle persistence into the cache handler.
+func (h *CacheAPIHandler) SetTogglePersistence(store *ToggleStore, getState func() *ToggleState) {
+	h.toggleStore = store
+	h.getState = getState
 }
 
 // RegisterRoutes registers cache API routes
@@ -82,7 +92,8 @@ func (h *CacheAPIHandler) UpdateConfig(c echo.Context) error {
 		})
 	}
 
-	// Apply updates
+	// Apply updates under lock to prevent data races with hot-path reads
+	h.mu.Lock()
 	if update.Enabled != nil {
 		h.config.Enabled = *update.Enabled
 	}
@@ -97,6 +108,12 @@ func (h *CacheAPIHandler) UpdateConfig(c echo.Context) error {
 	}
 	if update.SkipStreaming != nil {
 		h.config.SkipStreaming = *update.SkipStreaming
+	}
+	h.mu.Unlock()
+
+	// Persist toggle state using request context
+	if update.Enabled != nil && h.toggleStore != nil && h.getState != nil {
+		h.toggleStore.Save(c.Request().Context(), h.getState())
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

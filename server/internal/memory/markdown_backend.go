@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // PureMarkdownBackend implements MemoryBackend using only Markdown files.
@@ -46,8 +48,8 @@ func (b *PureMarkdownBackend) Name() string {
 
 // Remember stores a memory as a Markdown file.
 func (b *PureMarkdownBackend) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
-	id := fmt.Sprintf("%d", time.Now().UnixNano())
-	now := time.Now()
+	id := fmt.Sprintf("%d", timeutil.NowNano())
+	now := timeutil.NowTime()
 
 	// Build Markdown content
 	var sb strings.Builder
@@ -154,7 +156,7 @@ func (b *PureMarkdownBackend) Get(ctx context.Context, id string) (*MemoryChunk,
 // Prune removes old daily logs.
 func (b *PureMarkdownBackend) Prune(ctx context.Context) (int, error) {
 	// Keep last 30 days by default
-	cutoff := time.Now().AddDate(0, 0, -30)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -30)
 	dailyDir := filepath.Join(b.baseDir, "daily")
 	deleted := 0
 

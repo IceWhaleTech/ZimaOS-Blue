@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MemoryRepository provides CRUD, search, versioning, and purge for MemoryEntry.
@@ -161,7 +162,7 @@ func (r *MemoryRepository) Delete(ctx context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE memory_entries SET status = 'deleted', deleted_at = ?, updated_at = ?
 		WHERE id = ? AND status != 'deleted'`, now, now, id)
@@ -281,7 +282,7 @@ func (r *MemoryRepository) PurgeExpired(ctx context.Context) (int, error) {
 	res, err := r.db.ExecContext(ctx, `
 		DELETE FROM memory_entries
 		WHERE expires_at IS NOT NULL AND expires_at < ? AND status != 'deleted'`,
-		time.Now())
+		timeutil.NowTime())
 	if err != nil {
 		return 0, err
 	}
@@ -363,6 +364,6 @@ func (r *MemoryRepository) UpdateContentRaw(ctx context.Context, id, content str
 
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE memory_entries SET content = ?, updated_at = ? WHERE id = ?`,
-		content, time.Now(), id)
+		content, timeutil.NowTime(), id)
 	return err
 }

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const (
@@ -379,9 +381,16 @@ func (p *ClaudeProvider) processSSELineCallback(ctx context.Context, line string
 				OutputTokens int `json:"output_tokens"`
 			} `json:"usage"`
 		} `json:"message"`
+		ContentBlock struct {
+			Type  string                 `json:"type"`
+			ID    string                 `json:"id"`
+			Name  string                 `json:"name"`
+			Input map[string]interface{} `json:"input"`
+		} `json:"content_block"`
 		Delta struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type         string `json:"type"`
+			Text         string `json:"text"`
+			PartialJSON  string `json:"partial_json"`
 		} `json:"delta"`
 		Usage struct {
 			InputTokens  int `json:"input_tokens"`
@@ -400,10 +409,36 @@ func (p *ClaudeProvider) processSSELineCallback(ctx context.Context, line string
 			*inputTokens = event.Message.Usage.InputTokens
 		}
 
+	case "content_block_start":
+		// Handle tool_use blocks — emit as ToolCall when block starts
+		if event.ContentBlock.Type == "tool_use" {
+			inputJSON, _ := json.Marshal(event.ContentBlock.Input)
+			if err := callback(StreamChunk{
+				ToolCalls: []ToolCall{{
+					ID:        event.ContentBlock.ID,
+					Name:      event.ContentBlock.Name,
+					Arguments: string(inputJSON),
+				}},
+				Done: false,
+			}); err != nil {
+				return true, err
+			}
+		}
+
 	case "content_block_delta":
 		if event.Delta.Text != "" {
 			// Split text into small chunks for typewriter effect
 			if err := p.sendTextChunksCallback(ctx, event.Delta.Text, callback); err != nil {
+				return true, err
+			}
+		}
+		// Accumulate partial JSON for tool_use input
+		if event.Delta.Type == "input_json_delta" && event.Delta.PartialJSON != "" {
+			// Tool input arrives incrementally — emit as partial tool call update
+			if err := callback(StreamChunk{
+				ToolCalls: []ToolCall{{Arguments: event.Delta.PartialJSON}},
+				Done:      false,
+			}); err != nil {
 				return true, err
 			}
 		}
@@ -502,9 +537,16 @@ func (p *ClaudeProvider) processSSELine(ctx context.Context, ch chan<- StreamChu
 				OutputTokens int `json:"output_tokens"`
 			} `json:"usage"`
 		} `json:"message"`
+		ContentBlock struct {
+			Type  string                 `json:"type"`
+			ID    string                 `json:"id"`
+			Name  string                 `json:"name"`
+			Input map[string]interface{} `json:"input"`
+		} `json:"content_block"`
 		Delta struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type        string `json:"type"`
+			Text        string `json:"text"`
+			PartialJSON string `json:"partial_json"`
 		} `json:"delta"`
 		Usage struct {
 			InputTokens  int `json:"input_tokens"`
@@ -523,10 +565,37 @@ func (p *ClaudeProvider) processSSELine(ctx context.Context, ch chan<- StreamChu
 			*inputTokens = event.Message.Usage.InputTokens
 		}
 
+	case "content_block_start":
+		if event.ContentBlock.Type == "tool_use" {
+			inputJSON, _ := json.Marshal(event.ContentBlock.Input)
+			select {
+			case <-ctx.Done():
+				return true
+			case ch <- StreamChunk{
+				ToolCalls: []ToolCall{{
+					ID:        event.ContentBlock.ID,
+					Name:      event.ContentBlock.Name,
+					Arguments: string(inputJSON),
+				}},
+				Done: false,
+			}:
+			}
+		}
+
 	case "content_block_delta":
 		if event.Delta.Text != "" {
 			// Send text in small chunks for typewriter effect
 			p.sendTextChunks(ctx, ch, event.Delta.Text)
+		}
+		if event.Delta.Type == "input_json_delta" && event.Delta.PartialJSON != "" {
+			select {
+			case <-ctx.Done():
+				return true
+			case ch <- StreamChunk{
+				ToolCalls: []ToolCall{{Arguments: event.Delta.PartialJSON}},
+				Done:      false,
+			}:
+			}
 		}
 
 	case "message_delta":
@@ -569,7 +638,7 @@ func (p *ClaudeProvider) sendTextChunks(ctx context.Context, ch chan<- StreamChu
 		}:
 		}
 		// Small delay for single character chunks (15-25ms)
-		delay := time.Duration(15+time.Now().UnixNano()%10) * time.Millisecond
+		delay := time.Duration(15+timeutil.NowNano()%10) * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return
@@ -583,7 +652,7 @@ func (p *ClaudeProvider) sendTextChunks(ctx context.Context, ch chan<- StreamChu
 
 	for pos < len(runes) {
 		// Random chunk size between 3-6 characters
-		chunkSize := 3 + int(time.Now().UnixNano()%4)
+		chunkSize := 3 + int(timeutil.NowNano()%4)
 		if pos+chunkSize > len(runes) {
 			chunkSize = len(runes) - pos
 		}
@@ -602,7 +671,7 @@ func (p *ClaudeProvider) sendTextChunks(ctx context.Context, ch chan<- StreamChu
 
 		// Add small delay between chunks for typewriter effect (10-30ms)
 		if pos < len(runes) {
-			delay := time.Duration(10+time.Now().UnixNano()%20) * time.Millisecond
+			delay := time.Duration(10+timeutil.NowNano()%20) * time.Millisecond
 			select {
 			case <-ctx.Done():
 				return
@@ -624,7 +693,7 @@ func (p *ClaudeProvider) sendTextChunksCallback(ctx context.Context, text string
 			return err
 		}
 		// Small delay for single character chunks (15-25ms)
-		delay := time.Duration(15+time.Now().UnixNano()%10) * time.Millisecond
+		delay := time.Duration(15+timeutil.NowNano()%10) * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -638,7 +707,7 @@ func (p *ClaudeProvider) sendTextChunksCallback(ctx context.Context, text string
 
 	for pos < len(runes) {
 		// Random chunk size between 3-6 characters
-		chunkSize := 3 + int(time.Now().UnixNano()%4)
+		chunkSize := 3 + int(timeutil.NowNano()%4)
 		if pos+chunkSize > len(runes) {
 			chunkSize = len(runes) - pos
 		}
@@ -655,7 +724,7 @@ func (p *ClaudeProvider) sendTextChunksCallback(ctx context.Context, text string
 
 		// Add small delay between chunks for typewriter effect (10-30ms)
 		if pos < len(runes) {
-			delay := time.Duration(10+time.Now().UnixNano()%20) * time.Millisecond
+			delay := time.Duration(10+timeutil.NowNano()%20) * time.Millisecond
 			select {
 			case <-ctx.Done():
 				return ctx.Err()

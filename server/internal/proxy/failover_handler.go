@@ -107,6 +107,15 @@ func (h *FailoverAPIHandler) UpdateConfig(c echo.Context) error {
 		if updates.StreamingAnomaly.RecoveryStrategy != "" {
 			h.config.StreamingAnomaly.RecoveryStrategy = updates.StreamingAnomaly.RecoveryStrategy
 		}
+
+		// Update smart selection config
+		h.config.ContextWindowCheck = updates.ContextWindowCheck
+		if updates.QuotaCooldown > 0 {
+			h.config.QuotaCooldown = updates.QuotaCooldown
+		}
+		if len(updates.ContextWindowOverride) > 0 {
+			h.config.ContextWindowOverride = updates.ContextWindowOverride
+		}
 	}
 
 	return c.JSON(http.StatusOK, h.config)

@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
 )
 
 // Channel implements the channel.Channel interface for Feishu/Lark.
@@ -252,7 +253,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 				if c.sessionManager != nil && sessionID != "" {
 					c.sessionManager.EmitError(sessionID, userID, err.Error())
 				}
-				c.SendText(c.ctx, chatID, "处理消息时发生错误，请稍后重试。")
+				c.SendText(c.ctx, chatID, fmt.Sprintf("处理消息时发生错误: %v", err))
 				return
 			}
 			if response == "" {
@@ -287,6 +288,8 @@ func (c *Channel) onBotP2pChatEntered(ctx context.Context, eventData json.RawMes
 }
 
 func (c *Channel) SendText(ctx context.Context, chatID string, text string) error {
+	// Humanize: strip markdown formatting for IM readability
+	text = humanizer.Humanize(text, humanizer.ModeIM)
 	content, _ := json.Marshal(map[string]string{"text": text})
 	receiveIDType := "chat_id"
 	if strings.HasPrefix(chatID, "ou_") {

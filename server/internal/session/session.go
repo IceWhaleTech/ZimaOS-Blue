@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SessionID uniquely identifies a session.
@@ -99,7 +100,7 @@ type Session struct {
 
 // NewSession creates a new session.
 func NewSession(id SessionID, maxTokens int) *Session {
-	now := time.Now()
+	now := timeutil.NowTime()
 	return &Session{
 		ID:           id,
 		Context:      context.NewConversationContext(maxTokens),
@@ -119,8 +120,8 @@ func (s *Session) AddMessage(msg context.Message) {
 	s.Context.AddMessage(msg)
 	s.Metadata.MessageCount++
 	s.Metadata.TokenCount = s.Context.TotalTokens()
-	s.LastActiveAt = time.Now()
-	s.UpdatedAt = time.Now()
+	s.LastActiveAt = timeutil.NowTime()
+	s.UpdatedAt = timeutil.NowTime()
 	s.State = SessionStateActive
 }
 
@@ -136,7 +137,7 @@ func (s *Session) SetSystemPrompt(prompt string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Context.SetSystemPrompt(prompt)
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowTime()
 }
 
 // Clear clears all messages but keeps the system prompt.
@@ -146,7 +147,7 @@ func (s *Session) Clear() {
 	s.Context.ClearKeepSystem()
 	s.Metadata.MessageCount = 0
 	s.Metadata.TokenCount = s.Context.TotalTokens()
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowTime()
 }
 
 // SetState sets the session state.
@@ -154,7 +155,7 @@ func (s *Session) SetState(state SessionState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.State = state
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowTime()
 }
 
 // GetState returns the session state.
@@ -201,7 +202,7 @@ func (s *Session) SetSummary(summary string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Metadata.Summary = summary
-	now := time.Now()
+	now := timeutil.NowTime()
 	s.CompactedAt = &now
 	s.Metadata.CompactionCount++
 	s.UpdatedAt = now
@@ -219,7 +220,7 @@ func (s *Session) SetTitle(title string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Metadata.Title = title
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowTime()
 }
 
 // GetTitle returns the session title.
@@ -239,7 +240,7 @@ func (s *Session) AddTag(tag string) {
 		}
 	}
 	s.Metadata.Tags = append(s.Metadata.Tags, tag)
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowTime()
 }
 
 // RemoveTag removes a tag from the session.
@@ -249,7 +250,7 @@ func (s *Session) RemoveTag(tag string) {
 	for i, t := range s.Metadata.Tags {
 		if t == tag {
 			s.Metadata.Tags = append(s.Metadata.Tags[:i], s.Metadata.Tags[i+1:]...)
-			s.UpdatedAt = time.Now()
+			s.UpdatedAt = timeutil.NowTime()
 			return
 		}
 	}
@@ -272,7 +273,7 @@ func (s *Session) SetCustomData(key, value string) {
 		s.Metadata.CustomData = make(map[string]string)
 	}
 	s.Metadata.CustomData[key] = value
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowTime()
 }
 
 // GetCustomData returns custom data.

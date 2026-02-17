@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/tidwall/gjson"
 )
 
@@ -162,7 +163,7 @@ func (rb *RingBuffer) parseLogLine(data []byte) *LogEntry {
 		return nil
 	}
 
-	entry := &LogEntry{Timestamp: time.Now()}
+	entry := &LogEntry{Timestamp: timeutil.NowTime()}
 
 	entry.Level = gjson.Get(s, "level").Str
 	if msg := gjson.Get(s, "message"); msg.Exists() {

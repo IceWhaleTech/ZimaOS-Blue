@@ -6,6 +6,7 @@ import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
 import IDEDiscovery from '@/components/IDEDiscovery.vue'
 import type { Provider, Model } from '@/api/providerPool'
+import { formatTokens } from '@/utils/format'
 
 const { t } = useI18n()
 const store = useProviderPoolStore()
@@ -731,12 +732,12 @@ onMounted(() => {
               {{ t('providerPool.trialQuota.title') }}
             </h4>
             <p class="text-xs" :class="store.trialQuota.exhausted ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
-              {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: store.trialQuota.tokens_remaining }) }}
+              {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: formatTokens(store.trialQuota.tokens_remaining) }) }}
             </p>
           </div>
         </div>
         <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
-          <div>{{ t('providerPool.trialQuota.tokensRemaining', { remaining: store.trialQuota.tokens_remaining, limit: store.trialQuota.token_limit }) }}</div>
+          <div :title="store.trialQuota.tokens_remaining.toLocaleString() + ' / ' + store.trialQuota.token_limit.toLocaleString()">{{ t('providerPool.trialQuota.tokensRemaining', { remaining: formatTokens(store.trialQuota.tokens_remaining), limit: formatTokens(store.trialQuota.token_limit) }) }}</div>
           <div class="mt-1 w-24 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all"
@@ -1068,7 +1069,7 @@ onMounted(() => {
             <h3 class="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">{{ t('providerPool.trial.name') }}</h3>
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-700 dark:text-gray-400">{{ t('providerPool.trial.tokensUsed', { remaining: store.trialQuota.token_limit - store.trialQuota.tokens_used, total: store.trialQuota.token_limit }) }}</span>
+                <span class="text-gray-700 dark:text-gray-400" :title="(store.trialQuota.token_limit - store.trialQuota.tokens_used).toLocaleString() + ' / ' + store.trialQuota.token_limit.toLocaleString()">{{ t('providerPool.trial.tokensUsed', { remaining: formatTokens(store.trialQuota.token_limit - store.trialQuota.tokens_used), total: formatTokens(store.trialQuota.token_limit) }) }}</span>
                 <div class="relative w-24 h-4 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
                   <div
                     class="h-full bg-gray-400 dark:bg-gray-500 transition-all"

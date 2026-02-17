@@ -33,6 +33,7 @@ export type TypelessCardType =
   | 'terminal'
   | 'video'
   | 'mermaid'
+  | 'search'
 
 export interface TypelessCardBase {
   type: TypelessCardType
@@ -495,6 +496,22 @@ export interface TypelessCardMermaid extends TypelessCardBase {
   theme?: 'default' | 'dark' | 'forest' | 'neutral' // Mermaid theme
 }
 
+// Search Card - Display web search results
+export interface SearchResultItem {
+  title: string
+  url: string
+  description?: string
+  source?: string
+}
+
+export interface TypelessCardSearch extends TypelessCardBase {
+  type: 'search'
+  query: string
+  results: SearchResultItem[]
+  totalCount?: number
+  provider?: string
+}
+
 // Union type for all card types
 export type TypelessCard =
   | TypelessCardInfo
@@ -527,6 +544,7 @@ export type TypelessCard =
   | TypelessCardTerminal
   | TypelessCardVideo
   | TypelessCardMermaid
+  | TypelessCardSearch
 
 // Card parsing result
 export interface ParsedContent {

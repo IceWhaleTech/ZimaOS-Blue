@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -156,7 +158,7 @@ func (h *AntigravityHandler) fetchQuota(ctx context.Context, accessToken string)
 
 	return &QuotaData{
 		Models:           models,
-		LastUpdated:      time.Now().Unix(),
+		LastUpdated:      timeutil.Now(),
 		SubscriptionTier: subscriptionTier,
 	}, nil
 }

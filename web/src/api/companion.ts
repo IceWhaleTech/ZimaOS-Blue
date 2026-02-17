@@ -17,6 +17,7 @@ export type SessionEventType =
   | 'security_threat'
   | 'sandbox_exec'
   | 'error'
+  | 'memory_saved'
   | 'custom'
 
 export interface SessionMetadata {

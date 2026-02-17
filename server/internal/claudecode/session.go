@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -90,7 +91,7 @@ func (s *InMemorySessionStore) Create(ctx context.Context, session *CliSession) 
 		session.ID = uuid.New().String()
 	}
 	if session.CreatedAt.IsZero() {
-		session.CreatedAt = time.Now()
+		session.CreatedAt = timeutil.NowTime()
 	}
 	if session.LastUsedAt.IsZero() {
 		session.LastUsedAt = session.CreatedAt
@@ -124,7 +125,7 @@ func (s *InMemorySessionStore) Update(ctx context.Context, session *CliSession) 
 		return ErrSessionNotFound{SessionId: session.ID}
 	}
 
-	session.LastUsedAt = time.Now()
+	session.LastUsedAt = timeutil.NowTime()
 	s.sessions[session.ID] = session
 	return nil
 }
@@ -189,7 +190,7 @@ func (s *InMemorySessionStore) CleanupExpired(ctx context.Context, ttl time.Dura
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	cutoff := time.Now().Add(-ttl)
+	cutoff := timeutil.NowTime().Add(-ttl)
 	count := 0
 
 	for id, session := range s.sessions {
@@ -266,8 +267,8 @@ func (m *SessionManager) GetOrCreate(ctx context.Context, id string, defaults *C
 	// Create new session
 	session := &CliSession{
 		ID:           uuid.New().String(),
-		CreatedAt:    time.Now(),
-		LastUsedAt:   time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		LastUsedAt:   timeutil.NowTime(),
 		MessageCount: 0,
 	}
 
@@ -304,7 +305,7 @@ func (m *SessionManager) Touch(ctx context.Context, id string) error {
 		return err
 	}
 
-	session.LastUsedAt = time.Now()
+	session.LastUsedAt = timeutil.NowTime()
 	session.MessageCount++
 
 	return m.store.Update(ctx, session)

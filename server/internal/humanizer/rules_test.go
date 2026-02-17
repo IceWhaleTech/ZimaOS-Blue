@@ -150,3 +150,53 @@ func TestStripHTMLTags(t *testing.T) {
 		}
 	}
 }
+
+func TestStripTypelessCards(t *testing.T) {
+	searchCard := "```typeless\n{\"type\":\"search\",\"query\":\"golang generics\",\"results\":[{\"title\":\"Go Generics Tutorial\",\"url\":\"https://go.dev/doc/tutorial/generics\"},{\"title\":\"Generics in Go\",\"url\":\"https://example.com/go-generics\",\"description\":\"A deep dive\"}],\"total_count\":2}\n```"
+
+	tests := []struct {
+		name string
+		in   string
+		mode Mode
+		want string
+	}{
+		{
+			"search card IM",
+			searchCard,
+			ModeIM,
+			"🔍 搜索「golang generics」找到 2 条结果：\n\n1. Go Generics Tutorial\n   https://go.dev/doc/tutorial/generics\n2. Generics in Go\n   https://example.com/go-generics",
+		},
+		{
+			"search card voice",
+			searchCard,
+			ModeVoice,
+			"(搜索结果已省略)",
+		},
+		{
+			"unknown card type passthrough",
+			"```typeless\n{\"type\":\"info\",\"content\":\"hello\"}\n```",
+			ModeIM,
+			"```typeless\n{\"type\":\"info\",\"content\":\"hello\"}\n```",
+		},
+		{
+			"invalid JSON passthrough",
+			"```typeless\nnot json\n```",
+			ModeIM,
+			"```typeless\nnot json\n```",
+		},
+		{
+			"no typeless blocks",
+			"plain text",
+			ModeIM,
+			"plain text",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripTypelessCards(tt.in, tt.mode)
+			if got != tt.want {
+				t.Errorf("stripTypelessCards() =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
+	}
+}

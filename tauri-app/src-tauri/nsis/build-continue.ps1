@@ -11,13 +11,10 @@ if (!(Test-Path "$tauriDir\lib")) { New-Item -ItemType Directory "$tauriDir\lib"
 $env:CGO_ENABLED = "1"
 $env:CC = "gcc"
 $env:CXX = "g++"
-# Build ldflags with trial provider config (from environment)
+# Build ldflags with trial license (Ed25519-signed, from environment)
 $goLdflags = "-s -w"
-if ($env:ZIMAOS_TRIAL_API_KEY) {
-    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=$($env:ZIMAOS_TRIAL_API_KEY)"
-}
-if ($env:ZIMAOS_TRIAL_BASE_URL) {
-    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=$($env:ZIMAOS_TRIAL_BASE_URL)"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
 }
 go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed" }

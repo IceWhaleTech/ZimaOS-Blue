@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ErrNgrokNotInstalled is returned when ngrok is not installed.
@@ -146,7 +148,7 @@ func (tm *TunnelManager) Start(ctx context.Context, port int, authtoken string) 
 	tm.authtoken = authtoken
 	tm.cmd = cmd
 	tm.cancelFunc = cancel
-	tm.startedAt = time.Now()
+	tm.startedAt = timeutil.NowTime()
 	tm.expiresAt = calculateExpiresAt(tm.startedAt)
 	tm.mu.Unlock()
 
@@ -342,7 +344,7 @@ func (tm *TunnelManager) IncrementRenewedCount() {
 func (tm *TunnelManager) ResetExpiry() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	tm.startedAt = time.Now()
+	tm.startedAt = timeutil.NowTime()
 	tm.expiresAt = calculateExpiresAt(tm.startedAt)
 }
 

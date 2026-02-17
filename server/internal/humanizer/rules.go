@@ -1,6 +1,8 @@
 package humanizer
 
 import (
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -32,6 +34,9 @@ var (
 	// Whitespace cleanup
 	multiBlankLineRe = regexp.MustCompile(`\n{3,}`)
 	trailingSpaceRe  = regexp.MustCompile(`(?m)[ \t]+$`)
+
+	// Typeless card blocks
+	typelessCardRe = regexp.MustCompile("(?s)```typeless\\n?(.*?)```")
 
 	// Italic strip patterns (used in stripItalic)
 	italicStarStripRe  = regexp.MustCompile(`(?:^|\s)\*([^*\n]+?)\*(?:\s|$|[.,!?;:])`)
@@ -172,4 +177,62 @@ func normalizeWhitespace(text string) string {
 	// Trim leading/trailing
 	text = strings.TrimSpace(text)
 	return text
+}
+
+// stripTypelessCards converts typeless card JSON blocks to readable text.
+// Must run before stripCodeFences so the ```typeless blocks don't get generic-stripped.
+func stripTypelessCards(text string, mode Mode) string {
+	return typelessCardRe.ReplaceAllStringFunc(text, func(match string) string {
+		// Extract JSON content between markers
+		sub := typelessCardRe.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		jsonStr := strings.TrimSpace(sub[1])
+
+		var card struct {
+			Type    string `json:"type"`
+			Query   string `json:"query"`
+			Results []struct {
+				Title       string `json:"title"`
+				URL         string `json:"url"`
+				Description string `json:"description"`
+			} `json:"results"`
+			TotalCount int `json:"total_count"`
+		}
+		if err := json.Unmarshal([]byte(jsonStr), &card); err != nil {
+			return match // Not valid JSON, leave for stripCodeFences
+		}
+
+		switch card.Type {
+		case "search":
+			if mode == ModeVoice {
+				return "(搜索结果已省略)"
+			}
+			return formatSearchForIM(card.Query, card.Results, card.TotalCount)
+		default:
+			return match // Unknown card type, leave for stripCodeFences
+		}
+	})
+}
+
+// formatSearchForIM formats search results as readable IM text.
+func formatSearchForIM(query string, results []struct {
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+}, totalCount int) string {
+	count := totalCount
+	if count == 0 {
+		count = len(results)
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🔍 搜索「%s」找到 %d 条结果：\n", query, count))
+	for i, r := range results {
+		if i >= 5 {
+			break
+		}
+		sb.WriteString(fmt.Sprintf("\n%d. %s\n   %s", i+1, r.Title, r.URL))
+	}
+	return sb.String()
 }

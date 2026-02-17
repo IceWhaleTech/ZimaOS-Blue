@@ -1,4 +1,9 @@
-![](../../docs/assets/bannerX.png)
+![](../../docs/assets/banner.png)
+
+<p align="center">
+  ധീരമായ ബിൽഡർമാർക്കുള്ള <strong>ലോക്കൽ-ഫസ്റ്റ്</strong> ഏജന്റ് റൺടൈം<br>
+  ഉടനടി ഉപയോഗം · ഓപ്പൺ സോഴ്സ് · സാർവത്രികം · ഇരട്ട മേൽനോട്ടം
+</p>
 
 <p align="center">
   <a href="../../README.md">English</a> |
@@ -126,7 +131,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## ആർക്കിടെക്ചർ അവലോകനം
@@ -145,7 +159,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **ചാനൽ മെസേജ് ഫ്ലോ**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **വോയ്‌സ് പൈപ്പ്‌ലൈൻ**
@@ -213,7 +227,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | ചാനൽ അപ്‌ഗ്രേഡ് | 10 ചാനലുകൾ സ്റ്റബുകളിൽ നിന്ന് അപ്‌ഗ്രേഡ് ചെയ്തു | Done |
 | v0.10.25 | CC കാഷ് | രണ്ട്-ലേയർ കാഷ് (L1 മെമ്മറി + L2 ഡിസ്‌ക്) | Done |
 | v0.10.26 | ഹ്യൂമനൈസർ | റെസ്‌പോൺസ് ഹ്യൂമനൈസേഷൻ പൈപ്പ്‌ലൈൻ | Done |
-| v0.10.27 | കോൺടെക്സ്റ്റ് പ്രൂണർ | BM25 സ്‌കോറിംഗ്, സെഗ്മെന്റേഷൻ, ബെഞ്ച്‌മാർക്കുകൾ | Done |
+| v0.10.27 | കോൺടെക്സ്റ്റ് പ്രൂണർ | കോഡിൽ 54% ടോക്കൺ ലാഭം (SWE-bench ഔദ്യോഗികം), സാധാരണ ഡോക്കുമെന്റുകളിൽ 46–47% (ലോക്കൽ IR), BM25 സ്‌കോറിംഗ്, സെഗ്മെന്റേഷൻ | Done |
 | v0.10.28 | മെമ്മറി സർവീസ് | പ്രോഗ്രസീവ് സെർച്ച്, ഡ്യുവൽ-റൈറ്റ് ബാക്കെൻഡ് | Done |
 
 ## കമ്മ്യൂണിറ്റിയും സപ്പോർട്ടും

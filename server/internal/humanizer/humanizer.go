@@ -37,8 +37,9 @@ func Humanize(text string, mode Mode) string {
 		return ""
 	}
 
-	// Order matters: code fences first (before inline rules touch their content),
-	// then block-level, then inline, then cleanup.
+	// Order matters: typeless cards first (before code fences strip their markers),
+	// then code fences, then block-level, then inline, then cleanup.
+	text = stripTypelessCards(text, mode)
 	text = stripCodeFences(text, mode)
 	text = stripImages(text, mode)
 	text = stripLinks(text, mode)

@@ -74,13 +74,14 @@ type ChatResponse struct {
 
 // StreamChunk represents a chunk of a streaming response.
 type StreamChunk struct {
-	ID       string `json:"id"`
-	Model    string `json:"model"`
-	Provider string `json:"provider,omitempty"`
-	Delta    string `json:"delta"`
-	Done     bool   `json:"done"`
-	Usage    *Usage `json:"usage,omitempty"`
-	Error    string `json:"error,omitempty"`
+	ID        string     `json:"id"`
+	Model     string     `json:"model"`
+	Provider  string     `json:"provider,omitempty"`
+	Delta     string     `json:"delta"`
+	Done      bool       `json:"done"`
+	Usage     *Usage     `json:"usage,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
 // StreamCallback is a function that receives stream chunks.

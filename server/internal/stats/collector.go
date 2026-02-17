@@ -8,6 +8,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // APICallEvent represents a single API call event.
@@ -173,7 +175,7 @@ func (c *StatisticsCollector) Record(event *APICallEvent) error {
 
 	// Set timestamp if not set
 	if event.Timestamp.IsZero() {
-		event.Timestamp = time.Now()
+		event.Timestamp = timeutil.NowTime()
 	}
 
 	// Calculate total tokens
@@ -206,7 +208,7 @@ func (c *StatisticsCollector) GetStats(period string) (*UsageStats, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var start time.Time
 
 	switch period {
@@ -449,7 +451,7 @@ func splitLines(s string) []string {
 
 // generateEventID generates a unique event ID.
 func generateEventID() string {
-	return time.Now().Format("20060102150405.000000")
+	return timeutil.NowTime().Format("20060102150405.000000")
 }
 
 // SetPricing sets custom pricing for a model.

@@ -126,7 +126,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Επισκόπηση Αρχιτεκτονικής
@@ -145,7 +154,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Ροή Μηνυμάτων Καναλιού**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Αγωγός Φωνής**
@@ -213,7 +222,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Αναβάθμιση Καναλιών | 10 κανάλια αναβαθμίστηκαν από stubs | Done |
 | v0.10.25 | CC Cache | Διπλού επιπέδου cache (L1 μνήμη + L2 δίσκος) | Done |
 | v0.10.26 | Humanizer | Αγωγός εξανθρωπισμού απαντήσεων | Done |
-| v0.10.27 | Context Pruner | Βαθμολόγηση BM25, τμηματοποίηση, benchmarks | Done |
+| v0.10.27 | Context Pruner | 54% εξοικονόμηση tokens σε κώδικα (SWE-bench επίσημο), 46–47% σε γενικά έγγραφα (τοπικό IR), βαθμολόγηση BM25, τμηματοποίηση | Done |
 | v0.10.28 | Memory Service | Προοδευτική αναζήτηση, backend διπλής εγγραφής | Done |
 
 ## Κοινότητα & Υποστήριξη

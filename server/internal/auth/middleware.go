@@ -89,6 +89,14 @@ func (m *AuthMiddleware) OptionalAuthenticate() echo.MiddlewareFunc {
 func (m *AuthMiddleware) authenticateJWT(c echo.Context) (*UserClaims, bool) {
 	authHeader := c.Request().Header.Get("Authorization")
 	if authHeader == "" {
+		// Fallback: check query param for SSE/EventSource (no custom headers)
+		if qToken := c.QueryParam("token"); qToken != "" {
+			claims, err := m.jwtService.ValidateToken(qToken)
+			if err != nil {
+				return nil, false
+			}
+			return &claims.UserClaims, true
+		}
 		return nil, false
 	}
 

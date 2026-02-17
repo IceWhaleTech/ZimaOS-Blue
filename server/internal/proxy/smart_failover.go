@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -251,15 +252,22 @@ func (sfh *SmartFailoverHandler) selectAlternativeProvider(
 		}
 
 		// For context errors, check if provider supports larger context
-		if classification.Type == ErrorTypeContextTooLong {
-			// TODO: Check provider's max context window
-			// For now, just try the next provider
+		if classification.Type == ErrorTypeContextTooLong && sfh.config.ContextWindowCheck {
+			maxCtx := estimateMaxContext(p.Config.Name)
+			if override, ok := sfh.config.ContextWindowOverride[p.Config.Name]; ok {
+				maxCtx = override
+			}
+			if classification.SuggestedContextWindow > 0 && maxCtx < classification.SuggestedContextWindow {
+				continue
+			}
 			return p
 		}
 
-		// For quota errors, prefer providers that might have remaining quota
-		if classification.Type == ErrorTypeQuotaExceeded {
-			// TODO: Check provider's quota status
+		// For quota errors, prefer providers that haven't errored recently
+		if classification.Type == ErrorTypeQuotaExceeded && sfh.config.QuotaCooldown > 0 {
+			if p.LastError != nil && time.Since(p.LastCheck) < sfh.config.QuotaCooldown {
+				continue
+			}
 			return p
 		}
 
@@ -381,4 +389,25 @@ func (sfh *SmartFailoverHandler) GetMetrics() *FailoverMetrics {
 // GetClassifier returns the error classifier
 func (sfh *SmartFailoverHandler) GetClassifier() *APIErrorClassifier {
 	return sfh.classifier
+}
+
+// estimateMaxContext returns estimated max context tokens for a provider by name.
+func estimateMaxContext(providerName string) int {
+	name := strings.ToLower(providerName)
+	switch {
+	case strings.Contains(name, "claude"):
+		return 200000
+	case strings.Contains(name, "gpt-4o"), strings.Contains(name, "gpt-4-turbo"):
+		return 128000
+	case strings.Contains(name, "gpt-4"):
+		return 8192
+	case strings.Contains(name, "gpt-3.5"):
+		return 16385
+	case strings.Contains(name, "deepseek"):
+		return 64000
+	case strings.Contains(name, "qwen"):
+		return 32768
+	default:
+		return 8192
+	}
 }

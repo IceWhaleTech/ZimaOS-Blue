@@ -126,7 +126,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Forbhreathnú Ailtireachta
@@ -145,7 +154,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Sreabhadh Teachtaireachtaí Cainéil**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Píblíne Gutha**
@@ -213,7 +222,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Uasghrádú Cainéil | 10 gcainéal uasghrádaithe ó stuib | Déanta |
 | v0.10.25 | CC Cache | Taisce dhá leibhéal (L1 cuimhne + L2 diosca) | Déanta |
 | v0.10.26 | Humanizer | Píblíne daonnaithe freagraí | Déanta |
-| v0.10.27 | Context Pruner | Scóráil BM25, deighilt, tagarmharcanna | Déanta |
+| v0.10.27 | Context Pruner | 54% coigilt comharthaí ar chód (SWE-bench oifigiúil), 46–47% ar dhoiciméid ghinearálta (IR áitiúil), scóráil BM25, deighilt | Déanta |
 | v0.10.28 | Seirbhís Cuimhne | Cuardach forásach, cúl-taobh dé-scríofa | Déanta |
 
 ## Pobal & Tacaíocht

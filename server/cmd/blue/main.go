@@ -309,7 +309,7 @@ func runServer() {
 	// - cc-cli-local: Local mode (force local CC CLI)
 	var ccCliAutoKey, ccCliCloudKey, ccCliLocalKey string
 
-	if os.Getenv("ZIMAOS_TRIAL_API_KEY") != "" {
+	if providerpool.GetTrialLicense() != "" {
 		// Helper function to create or recreate an API key
 		createOrRecreateKey := func(name string, scopes []string) string {
 			keyInfo, err := apiKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
@@ -378,7 +378,6 @@ func runServer() {
 		mfaHandler         *mfa.Handler
 		sandboxManager     *sandbox.Manager
 		sandboxHandler     *sandbox.Handler
-		cronService        *cron.Service
 		cronHandler        *cron.Handler
 		haService          *homeassistant.HAService
 		haHandler          *homeassistant.Handler
@@ -386,14 +385,10 @@ func runServer() {
 		sttService         stt.Service
 		ttsService         tts.Service
 		voiceHandler       *voice.Handler
-		workflowRepo       *workflow.Repository
 		workflowHandler    *workflow.Handler
 		formfillerStore    *formfiller.Store
 		formfillerHandler  *formfiller.Handler
-		companionStorage   *companion.JSONLStorage
 		companionHandler   *companion.Handler
-		companionWSHandler *companion.WebSocketHandler
-		companionManager   *companion.Manager
 		ngrokTunnelMgr     *ngrok.SDKTunnelManager
 		ngrokConfigStore   *ngrok.ConfigStore
 	)
@@ -470,21 +465,20 @@ func runServer() {
 		logger.Info().Msg("Security handler initialized")
 	})
 
-	initPool.Go(func() {
-		// Workflow repository (depends on db)
-		var err error
-		workflowRepo, err = workflow.NewRepository(db)
+	// Workflow service — lazy init on first API call (avoids cron goroutine + DB queries at startup)
+	workflowHandler = workflow.NewLazyHandler(func() *workflow.WorkflowService {
+		repo, err := workflow.NewRepository(db)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize workflow repository, workflow features will be disabled")
-			return
+			logger.Warn().Err(err).Msg("Failed to initialize workflow repository")
+			return nil
 		}
-		workflowService, err := workflow.NewService(nil, workflowRepo)
+		svc, err := workflow.NewService(nil, repo)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize workflow service, workflow features will be disabled")
-			return
+			logger.Warn().Err(err).Msg("Failed to initialize workflow service")
+			return nil
 		}
-		workflowHandler = workflow.NewHandler(workflowService)
-		logger.Info().Msg("Workflow handler initialized")
+		logger.Info().Msg("Workflow service initialized lazily")
+		return svc
 	})
 
 	// Async initialization for MFA handler
@@ -505,16 +499,16 @@ func runServer() {
 		}
 	}
 
-	// Async initialization for Cron service
-	initPool.Go(func() {
-		cronService = cron.NewService(cron.DefaultConfig(), zapLogger)
-		cronService.RegisterBuiltinHandlers()
-		cronHandler = cron.NewHandler(cronService, zapLogger)
-		if err := cronService.Start(); err != nil {
+	// Cron service — lazy init on first API call (avoids robfig/cron goroutine at startup)
+	cronHandler = cron.NewLazyHandler(func() *cron.Service {
+		svc := cron.NewService(cron.DefaultConfig(), zapLogger)
+		svc.RegisterBuiltinHandlers()
+		if err := svc.Start(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to start cron service")
 		}
-		logger.Info().Msg("Cron service initialized")
-	})
+		return svc
+	}, zapLogger)
+	logger.Info().Msg("Cron service configured for lazy initialization")
 
 	initPool.Go(func() {
 		haService = homeassistant.NewHAService()
@@ -539,30 +533,27 @@ func runServer() {
 	})
 
 	if cfg.Companion.Enabled {
-		initPool.Go(func() {
-			// Companion service (Blue Companion - real-time AI Agent monitoring)
+		// Companion service — lazy init on first API call
+		companionHandler = companion.NewLazyHandler(func() (*companion.Manager, companion.Storage) {
 			companionConfig := companion.DefaultConfig()
 			companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
-			var err error
-			companionStorage, err = companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+			storage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
 			if err != nil {
-				logger.Warn().Err(err).Msg("Failed to initialize companion storage, companion features will be disabled")
-				return
+				logger.Warn().Err(err).Msg("Failed to initialize companion storage")
+				return nil, nil
 			}
-			companionStreamer := companion.NewEventStreamer(companionConfig)
-			if err := companionStreamer.Start(lm.Context()); err != nil {
+			streamer := companion.NewEventStreamer(companionConfig)
+			if err := streamer.Start(lm.Context()); err != nil {
 				logger.Warn().Err(err).Msg("Failed to start companion streamer")
 			}
-			companionManager = companion.NewManager(companionStorage, companionStreamer, companionConfig)
-			companionHandler = companion.NewHandler(companionManager, companionStorage)
-			companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
-			logger.Info().Msg("Companion handler initialized")
-
-			// Register shutdown hook for companion streamer
+			mgr := companion.NewManager(storage, streamer, companionConfig)
 			lm.RegisterShutdownHook(func(ctx context.Context) error {
-				return companionStreamer.Stop()
+				return streamer.Stop()
 			})
+			logger.Info().Msg("Companion service initialized lazily")
+			return mgr, storage
 		})
+		logger.Info().Msg("Companion service configured for lazy initialization")
 	} else {
 		logger.Info().Msg("Companion service disabled by config")
 	}
@@ -622,7 +613,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, companionManager, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -685,7 +676,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, companionManager *companion.Manager, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -740,7 +731,28 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			h.SetService(memoryService)
 			h.SetUnifiedService(unifiedService)
 
-			memoryDir := filepath.Join(dataDir, "memory")
+			// Initialize markdown backend inside lazy init (must happen after SetUnifiedService)
+			memoryDir := cfg.Memory.MarkdownDir
+			if memoryDir == "" {
+				memoryDir = filepath.Join(dataDir, "memory")
+			}
+			if mdBackend, mdErr := memory.NewPureMarkdownBackend(memoryDir); mdErr != nil {
+				logger.Warn("Failed to initialize markdown backend", zap.Error(mdErr))
+			} else {
+				unifiedService.SetMarkdownBackend(mdBackend)
+			}
+
+			// Set backend mode from config
+			backendMode := "markdown"
+			if cfg.Memory.Backend != "" {
+				backendMode = cfg.Memory.Backend
+			}
+			if setErr := unifiedService.SetBackend(backendMode); setErr != nil {
+				logger.Warn("Failed to set memory backend mode", zap.String("mode", backendMode), zap.Error(setErr))
+			} else {
+				logger.Info("Memory backend configured", zap.String("mode", backendMode))
+			}
+
 			layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 				BaseDir:            memoryDir,
 				DailyRetentionDays: 30,
@@ -749,9 +761,20 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 				logger.Warn("Failed to initialize layered memory service", zap.Error(err))
 			} else {
 				h.SetLayeredService(layeredService)
+				chatHandler.SetLayeredMemory(layeredService)
 			}
 			toolsAdapter := memory.NewToolsAdapter(unifiedService)
 			tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
+
+			// Initialize progressive searcher
+			if localSvc := unifiedService.GetLocalBackend(); localSvc != nil {
+				ps := memory.NewProgressiveSearcher(localSvc.GetSearcher())
+				h.SetProgressiveSearcher(ps)
+				psTool := memory.NewMemoryProgressiveSearchTool(ps)
+				tools.SetProgressiveSearchTool(psTool)
+				logger.Info("Progressive search enabled")
+			}
+
 			logger.Info("Vector memory store initialized lazily")
 			return nil
 		})
@@ -861,7 +884,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		VoiceWSHandler:     voiceWSHandler,
 		FormfillerHandler:  formfillerHandler,
 		CompanionHandler:   companionHandler,
-		CompanionWSHandler: companionWSHandler,
 		ProviderPool:       providerPool,
 		APIKeyService:      apiKeyService,
 		SpeechHandler:      speechHandler,
@@ -879,9 +901,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register companion and channel routes (after bootstrap)
 	if companionHandler != nil {
 		companionHandler.RegisterRoutes(e)
-	}
-	if companionWSHandler != nil {
-		companionWSHandler.RegisterRoutes(e)
 	}
 
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)

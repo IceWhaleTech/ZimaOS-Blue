@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MemoryLayer represents a layer type in the dual-layer architecture.
@@ -75,7 +77,7 @@ func NewLayeredMemoryService(baseService *UnifiedMemoryService, config LayeredMe
 
 // getTodayLogPath returns the path to today's daily log file.
 func (s *LayeredMemoryService) getTodayLogPath() string {
-	today := time.Now().Format("2006-01-02")
+	today := timeutil.NowTime().Format("2006-01-02")
 	return filepath.Join(s.dailyLogPath, today+".md")
 }
 
@@ -97,14 +99,14 @@ func (s *LayeredMemoryService) AppendToDaily(ctx context.Context, content string
 	info, _ := f.Stat()
 	if info.Size() == 0 {
 		// Write header for new daily log
-		header := fmt.Sprintf("# Daily Log - %s\n\n", time.Now().Format("2006-01-02"))
+		header := fmt.Sprintf("# Daily Log - %s\n\n", timeutil.NowTime().Format("2006-01-02"))
 		if _, err := f.WriteString(header); err != nil {
 			return fmt.Errorf("failed to write header: %w", err)
 		}
 	}
 
 	// Format entry
-	timestamp := time.Now().Format("15:04:05")
+	timestamp := timeutil.NowTime().Format("15:04:05")
 	entry := fmt.Sprintf("## %s\n\n", timestamp)
 	if len(tags) > 0 {
 		entry += "**Tags:** "
@@ -126,7 +128,7 @@ func (s *LayeredMemoryService) AppendToDaily(ctx context.Context, content string
 	if s.baseService != nil {
 		metadata := map[string]string{
 			"layer": string(LayerDaily),
-			"date":  time.Now().Format("2006-01-02"),
+			"date":  timeutil.NowTime().Format("2006-01-02"),
 		}
 		for i, tag := range tags {
 			metadata[fmt.Sprintf("tag_%d", i)] = tag
@@ -161,7 +163,7 @@ func (s *LayeredMemoryService) PromoteToLongTerm(ctx context.Context, content st
 
 	// Format entry
 	entry := fmt.Sprintf("## %s\n\n", category)
-	entry += fmt.Sprintf("*Added: %s*\n\n", time.Now().Format("2006-01-02 15:04"))
+	entry += fmt.Sprintf("*Added: %s*\n\n", timeutil.NowTime().Format("2006-01-02 15:04"))
 	entry += content + "\n\n---\n\n"
 
 	if _, err := f.WriteString(entry); err != nil {
@@ -242,7 +244,7 @@ func (s *LayeredMemoryService) PruneDailyLogs(ctx context.Context) (int, error) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	cutoff := time.Now().AddDate(0, 0, -s.config.DailyRetentionDays)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -s.config.DailyRetentionDays)
 	deleted := 0
 
 	entries, err := os.ReadDir(s.dailyLogPath)
@@ -281,6 +283,14 @@ func (s *LayeredMemoryService) GetConfig() LayeredMemoryConfig {
 	return s.config
 }
 
+// Recall searches relevant memories via the base service.
+func (s *LayeredMemoryService) Recall(ctx context.Context, query string, limit int) ([]HybridSearchResult, error) {
+	if s.baseService == nil {
+		return nil, nil
+	}
+	return s.baseService.Recall(ctx, query, limit)
+}
+
 // MemoryExtractor extracts important memories from daily logs to long-term memory.
 type MemoryExtractor struct {
 	layeredMemory *LayeredMemoryService
@@ -315,7 +325,7 @@ func (e *MemoryExtractor) ExtractFromDailyLogs(ctx context.Context, daysOld int)
 		return 0, fmt.Errorf("failed to list daily logs: %w", err)
 	}
 
-	cutoff := time.Now().AddDate(0, 0, -daysOld)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -daysOld)
 	promoted := 0
 
 	for _, dateStr := range dates {

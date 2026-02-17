@@ -1,4 +1,9 @@
-![](../../docs/assets/bannerX.png)
+![](../../docs/assets/banner.png)
+
+<p align="center">
+  대담한 빌더를 위한 <strong>로컬 우선</strong> 에이전트 런타임<br>
+  즉시 사용 · 오픈소스 · 범용 · 이중 감독
+</p>
 
 <p align="center">
   <a href="../../README.md">English</a> |
@@ -59,6 +64,29 @@ Clawdbot에서 영감을 받아, 우리는 개인 컴퓨팅의 **미래**가 엣
 
 한 걸음 더 나아갑니다: **20개 이상의 IM 플랫폼** 네이티브 지원, 자연스럽고 맥락을 인식하는 대화를 위한 **음성 기반** 인터페이스, IDE 스캔을 통한 **설정 없는 모델 전환**, 그리고 SOUL 레이어 퍼스널리티를 제공합니다.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### 빠르고 가벼움
 
 Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드 없음. 서버부터 데스크톱 기기까지 조용히 실행됩니다.
@@ -71,7 +99,7 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 | `status` 최대 RSS | **~15 MB** | ~1.52 GB |
 | 런타임 의존성 | **없음** | Node.js 18+ |
 
-> macOS arm64에서 벤치마크, 동일 호스트, 3회 최고 기록. 2026년 2월.
+> 벤치마크 환경: macOS arm64 (서버 모드, 데스크톱 UI 없음), 동일 호스트, 3회 최고 기록. 2026년 2월.
 
 ### 순수 Go, 모든 기기
 
@@ -92,19 +120,77 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 - **로컬 우선, 초경량, 크로스 디바이스** – 고사양 하드웨어 불필요. 연산이 가능한 모든 기기에서 실행.
 - **안전하고 감사 가능** – 세션 감사, 샌드박싱, 권한 제어, 애플리케이션 레이어 방화벽 역할을 하는 내장 API 프록시 — 모든 입출력 바이트가 가시적.
 
+![](../../docs/assets/design_principle.png)
+
 보일러플레이트를 최소화하여 **중요한 것에 집중**할 수 있습니다. **ZimaOS의 설계 철학**에 충실하게, Blue는 다음을 제공합니다:
 - **원클릭으로 제로에서 원까지** – 복잡한 설정 없이 즉시 배포.
 - **빠른 프로토타이핑** – 시나리오별 도구, 상호작용, 앱 패키지를 바이브 코딩하거나 직접 제작.
 - **글로벌 대응** – **세상은 넓고**, 영어가 기본이 아닙니다. **20개 이상의 언어, 네이티브 지원**, 장벽 없음.
 - **개방형 모델 생태계** – 벤더 종속 없음. 자신의 모델을 가져오세요.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| 프로바이더 | 모델 | 유형 |
+|----------|--------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | 클라우드 |
+| Anthropic | Claude 4.5, Claude 4 | 클라우드 |
+| Google | Gemini 2.5, Gemini 2.0 | 클라우드 |
+| Ollama | Llama, Qwen, Gemma, Phi 등 | 로컬 |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | 클라우드 |
+| Grok | Grok-3, Grok-3-mini | 클라우드 |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | 클라우드 |
+| GLM | GLM-4, GLM-4-Flash | 클라우드 |
+| Moonshot | Moonshot-v1 | 클라우드 |
+| MiniMax | abab6.5, abab5.5 | 클라우드 |
+| Venice | Llama, Mistral (프라이버시 우선) | 클라우드 |
+| AWS Bedrock | Claude, Llama, Titan | 클라우드 |
+| Azure | Azure를 통한 OpenAI 모델 | 클라우드 |
+| OpenRouter | 100+ 통합 모델 | 클라우드 |
+| AIHubMix | 멀티 프로바이더 애그리게이터 | 클라우드 |
+| Codex | OpenAI Codex | 클라우드 |
+| 커스텀 | 모든 OpenAI / Anthropic / Gemini 호환 API | 클라우드 / 로컬 |
+
+</details>
+
+### 지원되는 IDE
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## 빠른 시작
 
 ### 옵션 1: 데스크톱 앱 다운로드 (macOS & Windows)
 
-네이티브 애플리케이션 — 의존성 없음, 컴파일 불필요.
+네이티브 애플리케이션 — 의존성 없음, 컴파일 불필요. 체험 설정이 내장되어 있어 즉시 시작 가능 — 원격 연결로 바로 대화를 시작하세요, 봇 설정 불필요. 진정한 즉시 사용.
 
 - **macOS**: [DMG 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [설치 프로그램 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,32 +212,24 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## 아키텍처 개요
 
-![](../../docs/assets/architecture.png)
-
-### 데이터 흐름
-
-**채팅 요청 (프록시 핫 패스)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
-
-**채널 메시지 흐름**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
-
-**음성 파이프라인**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
 
 ### 패키지 맵 (`server/internal/`)
 
@@ -174,13 +252,38 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | 시스템 | sysinfo, cgroup, iotask, watcher, resources, backup, update |
 | 멀티테넌트 | tenant, user, session, preview |
 
+</details>
+
+### 데이터 흐름
+
+**채팅 요청 (프록시 핫 패스)**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**채널 메시지 흐름**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**음성 파이프라인**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
 ## 사용 방법
 
 ![](../../docs/assets/handcraft.png)
 
 ## 마일스톤 타임라인
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | 버전 | 초점 | 핵심 가치 | 상태 |
 |---------|-------|-----------|--------|
@@ -213,8 +316,10 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | 채널 업그레이드 | 스텁에서 10개 채널 업그레이드 | Done |
 | v0.10.25 | CC 캐시 | 2단계 캐시 (L1 메모리 + L2 디스크) | Done |
 | v0.10.26 | 휴머나이저 | 응답 인간화 파이프라인 | Done |
-| v0.10.27 | 컨텍스트 프루너 | BM25 스코어링, 세그멘테이션, 벤치마크 | Done |
+| v0.10.27 | 컨텍스트 프루너 | 코드 54% 토큰 절감 (SWE-bench 공식), 일반 문서 46–47% (로컬 IR), BM25 스코어링, 세그멘테이션 | Done |
 | v0.10.28 | 메모리 서비스 | 점진적 검색, 이중 쓰기 백엔드 | Done |
+
+</details>
 
 ## 커뮤니티 & 지원
 

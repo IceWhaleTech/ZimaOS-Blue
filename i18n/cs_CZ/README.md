@@ -59,6 +59,29 @@ Vytvořený pro odvážné vývojáře, kteří chtějí **tvořit vlastní agen
 
 Jdeme ještě dál: nativní podpora **20+ IM platforem**, **hlasové** rozhraní pro přirozený, kontextově uvědomělý dialog, **přepínání modelů bez konfigurace** se skenováním IDE a SOUL-vrstvené osobnosti.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### Rychlý, lehký
 
 Nativně kompilovaný v Go — žádný interpret, žádný VM, žádná režie. Tiše běží na všem od serverů po vaše stolní zařízení.
@@ -71,7 +94,7 @@ Nativně kompilovaný v Go — žádný interpret, žádný VM, žádná režie.
 | `status` špičková RSS | **~15 MB** | ~1,52 GB |
 | Runtime závislosti | **Žádné** | Node.js 18+ |
 
-> Měřeno na macOS arm64, stejný stroj, nejlepší ze 3 běhů. Únor 2026.
+> Měřeno na macOS arm64 (serverový režim, bez desktopového UI), stejný stroj, nejlepší ze 3 běhů. Únor 2026.
 
 ### Čisté Go, jakékoli zařízení
 
@@ -92,19 +115,77 @@ Věříme, že **osobní počítače nové generace** přijmou LLM — ale **kon
 - **Lokálně orientovaný, ultralehký, multiplatformní** – Nevyžaduje výkonný hardware. Běží na čemkoli, co umí počítat.
 - **Bezpečný a auditovatelný** – Audit relací, sandboxing, řízení oprávnění a vestavěný API proxy fungující jako aplikační firewall — každý bajt dovnitř i ven je viditelný.
 
+![](../../docs/assets/design_principle.png)
+
 Minimalizujeme šablonový kód, abyste se **soustředili na to, co je důležité**. Věrni **designové filozofii ZimaOS**, Blue přináší:
 - **Od nuly k jedničce jedním kliknutím** – Okamžité nasazení, žádná složitá konfigurace.
 - **Rychlé prototypování** – Tvořte intuitivně nebo ručně nástroje, interakce a balíčky aplikací pro konkrétní scénáře.
 - **Připravený pro celý svět** – **Svět je obrovský** a nepoužívá výchozí angličtinu. **20+ jazyků, nativně**, bez bariér.
 - **Otevřený ekosystém modelů** – Žádné vendor lock-in. Přineste si vlastní modely.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| Poskytovatel | Modely | Typ |
+|--------------|--------|-----|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi aj. | Lokální |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (zaměření na soukromí) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Modely OpenAI přes Azure | Cloud |
+| OpenRouter | 100+ agregovaných modelů | Cloud |
+| AIHubMix | Multi-provider agregátor | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| Vlastní | Jakékoli API kompatibilní s OpenAI / Anthropic / Gemini | Cloud / Lokální |
+
+</details>
+
+### Podporovaná IDE
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## Rychlý start
 
 ### Možnost 1: Stáhnout desktopovou aplikaci (macOS a Windows)
 
-Získejte nativní aplikaci — žádné závislosti, žádná kompilace.
+Získejte nativní aplikaci — žádné závislosti, žádná kompilace. Vestavěná zkušební konfigurace, připravená za sekundy — připojte se vzdáleně a začněte chatovat okamžitě, bez nastavování bota. Skutečný start na první pokus.
 
 - **macOS**: [Stáhnout DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [Stáhnout instalátor](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,32 +207,24 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Přehled architektury
 
-![](../../docs/assets/architecture.png)
-
-### Tok dat
-
-**Chatovací požadavek (horká cesta proxy)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
-
-**Tok zpráv kanálem**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
-
-**Hlasový pipeline**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
 
 ### Mapa balíčků (`server/internal/`)
 
@@ -174,13 +247,38 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
 | Multi-tenant | tenant, user, session, preview |
 
+</details>
+
+### Tok dat
+
+**Chatovací požadavek (horká cesta proxy)**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**Tok zpráv kanálem**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**Hlasový pipeline**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
 ## Jak používat
 
 ![](../../docs/assets/handcraft.png)
 
 ## Časová osa milníků
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | Version | Zaměření | Klíčová hodnota | Status |
 |---------|----------|-----------------|--------|
@@ -213,8 +311,10 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Upgrade kanálů | 10 kanálů upgradováno ze stubů | Done |
 | v0.10.25 | CC Cache | Dvouúrovňová cache (L1 paměť + L2 disk) | Done |
 | v0.10.26 | Humanizer | Pipeline humanizace odpovědí | Done |
-| v0.10.27 | Context Pruner | BM25 skórování, segmentace, benchmarky | Done |
+| v0.10.27 | Context Pruner | 54% úspora tokenů na kódu (SWE-bench oficiálně), 46–47% na obecných dokumentech (lokální IR), BM25 skórování, segmentace | Done |
 | v0.10.28 | Memory Service | Progresivní vyhledávání, dual-write backend | Done |
+
+</details>
 
 ## Komunita a podpora
 

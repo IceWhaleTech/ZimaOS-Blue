@@ -44,6 +44,7 @@ func TestStatsHandler_GetStats_Disabled(t *testing.T) {
 func TestStatsHandler_GetStats_Enabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	consentManager := stats.NewConsentManager(tmpDir, collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)
@@ -89,6 +90,7 @@ func TestStatsHandler_GetStats_Enabled(t *testing.T) {
 func TestStatsHandler_GetRecentEvents(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	consentManager := stats.NewConsentManager(tmpDir, collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)
@@ -134,6 +136,7 @@ func TestStatsHandler_GetRecentEvents(t *testing.T) {
 func TestStatsHandler_ClearStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	collector.SetSyncPersist(true)
 	consentManager := stats.NewConsentManager(tmpDir, collector)
 	// Set consent to enable collection (ConsentManager disables by default)
@@ -229,6 +232,7 @@ func TestStatsHandler_SetConsentStatus(t *testing.T) {
 func TestStatsHandler_RevokeConsent(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	consentManager := stats.NewConsentManager(tmpDir, collector)
 	handler := NewStatsHandler(collector, consentManager)
 
@@ -302,6 +306,7 @@ func TestStatsHandler_GetConsentInfo(t *testing.T) {
 func TestStatsHandler_ExportStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
 	consentManager := stats.NewConsentManager(tmpDir, collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)

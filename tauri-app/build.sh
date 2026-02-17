@@ -22,17 +22,13 @@ VERSION=$(cat "$PROJECT_ROOT/VERSION" 2>/dev/null || git -C "$PROJECT_ROOT" desc
 GIT_COMMIT=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Trial provider configuration (from environment variables)
-TRIAL_API_KEY="${ZIMAOS_TRIAL_API_KEY:-}"
-TRIAL_BASE_URL="${ZIMAOS_TRIAL_BASE_URL:-}"
+# Trial license (Ed25519-signed, from environment)
+TRIAL_LICENSE="${ZIMAOS_TRIAL_LICENSE:-}"
 
 # Go ldflags — must match server/Makefile
 GO_LDFLAGS="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT} -X main.buildTime=${BUILD_TIME}"
-if [ -n "$TRIAL_API_KEY" ]; then
-    GO_LDFLAGS="$GO_LDFLAGS -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=${TRIAL_API_KEY}"
-fi
-if [ -n "$TRIAL_BASE_URL" ]; then
-    GO_LDFLAGS="$GO_LDFLAGS -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=${TRIAL_BASE_URL}"
+if [ -n "$TRIAL_LICENSE" ]; then
+    GO_LDFLAGS="$GO_LDFLAGS -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=${TRIAL_LICENSE}"
 fi
 
 echo "=========================================="

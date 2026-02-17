@@ -354,7 +354,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 ### Channel Message Flow
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 ### Voice Pipeline

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -188,8 +189,31 @@ func (s *Store) CreateConversation(ctx context.Context, title string) (*Conversa
 	conv := &Conversation{
 		ID:        uuid.New().String(),
 		Title:     title,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: timeutil.NowTime(),
+		UpdatedAt: timeutil.NowTime(),
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		"INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+		conv.ID, conv.Title, conv.CreatedAt, conv.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conversation: %w", err)
+	}
+
+	return conv, nil
+}
+
+// CreateConversationWithID creates a conversation with a specific ID (for IM channels).
+func (s *Store) CreateConversationWithID(ctx context.Context, id, title string) (*Conversation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	conv := &Conversation{
+		ID:        id,
+		Title:     title,
+		CreatedAt: timeutil.NowTime(),
+		UpdatedAt: timeutil.NowTime(),
 	}
 
 	_, err := s.db.ExecContext(ctx,
@@ -264,7 +288,7 @@ func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string) e
 
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
-		title, time.Now(), id,
+		title, timeutil.NowTime(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update conversation title: %w", err)
@@ -302,7 +326,7 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 
 	msg.ID = uuid.New().String()
 	msg.ConversationID = conversationID
-	msg.CreatedAt = time.Now()
+	msg.CreatedAt = timeutil.NowTime()
 
 	var toolCallsJSON []byte
 	if len(msg.ToolCalls) > 0 {
@@ -340,7 +364,7 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 	}
 
 	// Update conversation's updated_at
-	s.db.ExecContext(ctx, "UPDATE conversations SET updated_at = ? WHERE id = ?", time.Now(), conversationID)
+	s.db.ExecContext(ctx, "UPDATE conversations SET updated_at = ? WHERE id = ?", timeutil.NowTime(), conversationID)
 
 	return &msg, nil
 }

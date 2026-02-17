@@ -631,8 +631,8 @@ func (h *ServiceHandler) installLaunchdService() (string, error) {
 	label := h.getLaunchdLabel()
 	installDir := filepath.Dir(h.execPath)
 	configPath := filepath.Join(installDir, "config", "config.yaml")
-	logPath := filepath.Join(installDir, "logs", "echo.log")
-	errLogPath := filepath.Join(installDir, "logs", "echo-error.log")
+	logPath := filepath.Join(installDir, "logs", "blue.log")
+	errLogPath := filepath.Join(installDir, "logs", "blue-error.log")
 
 	// Create logs directory
 	os.MkdirAll(filepath.Join(installDir, "logs"), 0755)

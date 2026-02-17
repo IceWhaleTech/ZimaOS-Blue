@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -97,15 +98,47 @@ func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 	goPort := int(port)
 	goDataDir := getDataDir()
 	goArgs := C.GoString(args)
+	cfgFile := ""
 
-	// Set environment variables for config
-	if goPort > 0 {
-		os.Setenv("BLUE_SERVER_PORT", fmt.Sprintf("%d", goPort))
+	// Parse args string: --port N, --config PATH, --data-dir PATH, --dev, --verbose
+	if goArgs != "" {
+		fields := strings.Fields(goArgs)
+		for i := 0; i < len(fields); i++ {
+			switch fields[i] {
+			case "--port", "-p":
+				if i+1 < len(fields) {
+					i++
+					os.Setenv("BLUE_SERVER_PORT", fields[i])
+					var p int
+					if _, err := fmt.Sscanf(fields[i], "%d", &p); err == nil && p > 0 {
+						goPort = p
+					}
+				}
+			case "--config":
+				if i+1 < len(fields) {
+					i++
+					cfgFile = fields[i]
+				}
+			case "--data-dir":
+				if i+1 < len(fields) {
+					i++
+					goDataDir = fields[i]
+				}
+			case "--dev":
+				os.Setenv("BLUE_DEV", "1")
+				if goDataDir == getDataDir() {
+					home, _ := os.UserHomeDir()
+					goDataDir = filepath.Join(home, ".zimaos-blue-dev")
+				}
+			case "--verbose", "-v":
+				os.Setenv("BLUE_LOG_LEVEL", "debug")
+			}
+		}
 	}
 
-	// Parse and apply command-line arguments
-	if goArgs != "" {
-		os.Setenv("BLUE_ARGS", goArgs)
+	// Set port env for config.Load
+	if goPort > 0 {
+		os.Setenv("BLUE_SERVER_PORT", fmt.Sprintf("%d", goPort))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -114,7 +147,7 @@ func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 
 	go func() {
 		defer close(serverDone)
-		if err := runServer(ctx, goPort, goDataDir); err != nil {
+		if err := runServer(ctx, goPort, goDataDir, cfgFile); err != nil {
 			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 		}
 	}()
@@ -146,7 +179,7 @@ func BlueServerStart(port C.int, dataDir *C.char) C.int {
 
 	go func() {
 		defer close(serverDone)
-		if err := runServer(ctx, goPort, goDataDir); err != nil {
+		if err := runServer(ctx, goPort, goDataDir, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 		}
 	}()
@@ -199,16 +232,16 @@ func BlueServerFreeString(s *C.char) {
 	C.free(unsafe.Pointer(s))
 }
 
-func runServer(ctx context.Context, port int, dataDir string) error {
+func runServer(ctx context.Context, port int, dataDir string, cfgFile string) error {
 	// Load configuration
-	cfg, err := config.Load("")
+	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Initialize HotReloader for config changes
 	var hotReloader *config.HotReloader
-	hotReloader, _ = config.NewHotReloader("", cfg, &config.HotReloadConfig{
+	hotReloader, _ = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
 		Enabled:             true,
 		WatchInterval:       5 * time.Second,
 		ValidateBeforeApply: true,

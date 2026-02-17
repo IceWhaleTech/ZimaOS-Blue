@@ -13,31 +13,53 @@ type Version struct {
 	Minor      int
 	Patch      int
 	Prerelease string // alpha, beta, rc
-	PreNum     int    // alpha.1 -> 1
+	PreNum     int    // alpha1 -> 1, or bare revision like 0.4.2-1 -> 1
 }
 
-var versionRegex = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)(?:\.(\d+))?)?$`)
+var tagsRE = regexp.MustCompile(`^([a-zA-Z]+)?(\d+)?$`)
 
-// ParseVersion parses a semantic version string
+// ParseVersion parses a version string.
+// Supports: 1.2.3, v1.2.3, 0.4.2-alpha1, 0.4.2-beta.1, 0.4.2-rc1, 0.4.2-1
 func ParseVersion(s string) (*Version, error) {
-	matches := versionRegex.FindStringSubmatch(strings.ToLower(s))
-	if matches == nil {
+	s = strings.TrimPrefix(strings.ToLower(s), "v")
+	parts := strings.SplitN(s, ".", 3)
+	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid version format: %s", s)
 	}
 
-	major, _ := strconv.Atoi(matches[1])
-	minor, _ := strconv.Atoi(matches[2])
-	patch, _ := strconv.Atoi(matches[3])
-
-	v := &Version{
-		Major:      major,
-		Minor:      minor,
-		Patch:      patch,
-		Prerelease: matches[4],
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid major version: %s", s)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid minor version: %s", s)
 	}
 
-	if matches[5] != "" {
-		v.PreNum, _ = strconv.Atoi(matches[5])
+	v := &Version{Major: major, Minor: minor}
+
+	// parts[2] may be "3", "3-alpha1", "3-beta.1", "3-1"
+	tagParts := strings.SplitN(parts[2], "-", 2)
+	patch, err := strconv.Atoi(tagParts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid patch version: %s", s)
+	}
+	v.Patch = patch
+
+	if len(tagParts) > 1 {
+		seqs := tagsRE.FindStringSubmatch(tagParts[1])
+		switch len(seqs) {
+		case 2:
+			// either pure tag "alpha" or pure number "1"
+			if seqs[1] != "" {
+				v.Prerelease = seqs[1]
+			} else {
+				v.PreNum, _ = strconv.Atoi(seqs[0])
+			}
+		case 3:
+			v.Prerelease = seqs[1]
+			v.PreNum, _ = strconv.Atoi(seqs[2])
+		}
 	}
 
 	return v, nil
@@ -49,8 +71,10 @@ func (v *Version) String() string {
 	if v.Prerelease != "" {
 		s += fmt.Sprintf("-%s", v.Prerelease)
 		if v.PreNum > 0 {
-			s += fmt.Sprintf(".%d", v.PreNum)
+			s += fmt.Sprintf("%d", v.PreNum)
 		}
+	} else if v.PreNum > 0 {
+		s += fmt.Sprintf("-%d", v.PreNum)
 	}
 	return s
 }
@@ -105,10 +129,35 @@ func compareInt(a, b int) int {
 
 func comparePrerelease(a, b string) int {
 	order := map[string]int{"alpha": 1, "beta": 2, "rc": 3}
-	return compareInt(order[a], order[b])
+	oa, aKnown := order[a]
+	ob, bKnown := order[b]
+	if aKnown && bKnown {
+		return compareInt(oa, ob)
+	}
+	// Unknown tags are considered higher than known tags
+	if !aKnown && bKnown {
+		return 1
+	}
+	if aKnown && !bKnown {
+		return -1
+	}
+	return strings.Compare(a, b)
 }
 
 // IsNewerThan returns true if v is newer than other
 func (v *Version) IsNewerThan(other *Version) bool {
 	return v.Compare(other) > 0
+}
+
+// IsNewerVersionString compares two version strings, returns true if target > current.
+func IsNewerVersionString(current, target string) bool {
+	cv, err := ParseVersion(current)
+	if err != nil {
+		return false
+	}
+	tv, err := ParseVersion(target)
+	if err != nil {
+		return false
+	}
+	return tv.IsNewerThan(cv)
 }

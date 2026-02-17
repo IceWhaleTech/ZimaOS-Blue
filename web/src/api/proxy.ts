@@ -156,6 +156,16 @@ export interface MaskingStats {
   status: string
 }
 
+export interface FailoverConfig {
+  enabled: boolean
+  max_retries: number
+  circuit_breaker: boolean
+  context_window_check: boolean
+  quota_cooldown: number
+  error_classification: { enabled: boolean }
+  streaming_anomaly: { enabled: boolean }
+}
+
 // API functions
 export const proxyApi = {
   // Sessions
@@ -231,6 +241,11 @@ export const proxyApi = {
 
   removeMaskingRule: (id: string) =>
     apiClient.delete<{ message: string }>(`/api/v1/proxy/masking/rules?id=${encodeURIComponent(id)}`),
+
+  // Failover
+  getFailoverConfig: () => apiClient.get<FailoverConfig>('/api/v1/proxy/failover/config'),
+  updateFailoverConfig: (config: Partial<FailoverConfig>) =>
+    apiClient.put<FailoverConfig>('/api/v1/proxy/failover/config', config),
 
   // Security Alerts (aggregated from guard stats)
   getSecurityAlerts: async (): Promise<{ data: SecurityAlert[] }> => {

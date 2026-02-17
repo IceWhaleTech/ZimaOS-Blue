@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -363,7 +364,7 @@ func (s *SQLiteSessionStore) Archive(id SessionID) error {
 	_, err := s.db.Exec(
 		"UPDATE sessions SET state = ?, updated_at = ? WHERE id = ?",
 		int(SessionStateArchived),
-		time.Now(),
+		timeutil.NowTime(),
 		id.String(),
 	)
 	if err != nil {

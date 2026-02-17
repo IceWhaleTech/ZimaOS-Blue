@@ -100,8 +100,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "1"
-          ZIMAOS_TRIAL_API_KEY: ${{ secrets.ZIMAOS_TRIAL_API_KEY }}
-          ZIMAOS_TRIAL_BASE_URL: ${{ secrets.ZIMAOS_TRIAL_BASE_URL }}
+          ZIMAOS_TRIAL_LICENSE: ${{ secrets.ZIMAOS_TRIAL_LICENSE }}
         run: |
           # Cross-compile CC for linux/arm64
           if [[ "${{ matrix.cross }}" == "true" ]]; then
@@ -116,8 +115,7 @@ jobs:
           LDFLAGS="${LDFLAGS} -X main.version=${VERSION}"
           LDFLAGS="${LDFLAGS} -X main.gitCommit=${GIT_COMMIT}"
           LDFLAGS="${LDFLAGS} -X main.buildTime=${BUILD_TIME}"
-          LDFLAGS="${LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialAPIKey=${ZIMAOS_TRIAL_API_KEY}"
-          LDFLAGS="${LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialBaseURL=${ZIMAOS_TRIAL_BASE_URL}"
+          LDFLAGS="${LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=${ZIMAOS_TRIAL_LICENSE}"
 
           EXT=""
           if [[ "${GOOS}" == "windows" ]]; then EXT=".exe"; fi

@@ -13,10 +13,9 @@ import (
 
 func TestOTAChecker_FetchOTA(t *testing.T) {
 	resp := OTAResponse{
-		Version:           "0.0.4",
-		DownloadURL:       "https://example.com/blue.tar.gz",
-		ReleaseNoteURL:    "https://example.com/notes.md",
-		ClientDownloadURL: "https://example.com/blue.dmg",
+		Version:        "0.0.4",
+		Packages:       []string{"https://example.com/blue.tar.gz", "https://mirror.example.com/blue.tar.gz"},
+		ReleaseNoteURL: "https://example.com/ZimaOS-Blue/notes.md",
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,8 +39,8 @@ func TestOTAChecker_FetchOTA(t *testing.T) {
 	if got.Version != "0.0.4" {
 		t.Errorf("version = %q, want 0.0.4", got.Version)
 	}
-	if got.ClientDownloadURL != resp.ClientDownloadURL {
-		t.Errorf("client_download_url = %q, want %q", got.ClientDownloadURL, resp.ClientDownloadURL)
+	if len(got.Packages) != len(resp.Packages) || got.Packages[0] != resp.Packages[0] {
+		t.Errorf("packages = %v, want %v", got.Packages, resp.Packages)
 	}
 }
 
@@ -49,7 +48,7 @@ func TestOTAChecker_HostHeader(t *testing.T) {
 	var gotHost string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHost = r.Host
-		json.NewEncoder(w).Encode(OTAResponse{Version: "1.0.0"})
+		json.NewEncoder(w).Encode(OTAResponse{Version: "0.1.0", ReleaseNoteURL: "https://example.com/blue/notes.md"})
 	}))
 	defer srv.Close()
 
@@ -106,7 +105,7 @@ func TestOTAChecker_CachePersistence(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write cached result
-	resp := OTAResponse{Version: "1.2.3", DownloadURL: "https://example.com/dl"}
+	resp := OTAResponse{Version: "0.2.3", Packages: []string{"https://example.com/dl"}, ReleaseNoteURL: "https://example.com/blue/notes.md"}
 	data, _ := json.Marshal(resp)
 	_ = os.WriteFile(filepath.Join(dir, otaResultFile), data, 0644)
 
@@ -117,8 +116,8 @@ func TestOTAChecker_CachePersistence(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected cached result")
 	}
-	if got.Version != "1.2.3" {
-		t.Errorf("cached version = %q, want 1.2.3", got.Version)
+	if got.Version != "0.2.3" {
+		t.Errorf("cached version = %q, want 0.2.3", got.Version)
 	}
 }
 

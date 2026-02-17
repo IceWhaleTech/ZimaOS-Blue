@@ -1,4 +1,5 @@
 import api from './index'
+import { authFetch } from './client'
 
 // ASR Model types
 export interface ASRModel {
@@ -155,7 +156,7 @@ export const speechApi = {
       formData.append('language', language)
     }
 
-    const response = await fetch('/api/v1/speech/transcribe', {
+    const response = await authFetch('/api/v1/speech/transcribe', {
       method: 'POST',
       body: formData,
     })
@@ -190,7 +191,7 @@ export const speechApi = {
 
   // TTS synthesis
   synthesize: async (text: string): Promise<{ audio: string; content_type: string }> => {
-    const response = await fetch('/api/v1/voice/synthesize', {
+    const response = await authFetch('/api/v1/voice/synthesize', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ConsentStatus represents the user's consent status for statistics collection.
@@ -70,7 +72,7 @@ func (m *ConsentManager) SetConsent(consented bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	if consented {
 		m.status.Consented = true

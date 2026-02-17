@@ -24,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
@@ -302,6 +303,7 @@ type ChatHandler struct {
 	providers         *llm.ProviderRegistry
 	providerPool      *providerpool.Pool
 	toolRegistry      *tools.Registry
+	toolExecutor      *tools.Executor
 	streamController  *claudecode.StreamController
 	compactionConfig  claudecode.CompactionConfig
 	claudeCodeHandler *claudecode.Handler
@@ -317,6 +319,9 @@ type ChatHandler struct {
 
 	// STT service for audio transcription
 	sttService stt.Service
+
+	// Memory service for auto-extraction after conversations
+	layeredMemory *memory.LayeredMemoryService
 
 	// Performance optimization: async event queue
 	eventQueue chan func()
@@ -337,6 +342,9 @@ type ChatHandler struct {
 	// Performance optimization: Concurrency optimizer
 	concurrencyOpt *ConcurrencyOptimizer
 	fastPathCache  *FastPathCache
+
+	// Proxy bridge: routes LLM calls through proxy pipeline (cache/pruner/routing)
+	proxyBridge *proxybridge.Bridge
 }
 
 // MetricsRecorder is an interface for recording API call metrics.
@@ -352,6 +360,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		store:            store,
 		providers:        providers,
 		toolRegistry:     toolRegistry,
+		toolExecutor:     tools.NewExecutor(toolRegistry),
 		streamController: claudecode.NewStreamController(),
 		compactionConfig: claudecode.DefaultCompactionConfig(),
 		convToSession:    make(map[string]string),
@@ -416,6 +425,11 @@ func (h *ChatHandler) SetSTTService(service stt.Service) {
 	h.sttService = service
 }
 
+// SetLayeredMemory sets the layered memory service for auto-extraction.
+func (h *ChatHandler) SetLayeredMemory(svc *memory.LayeredMemoryService) {
+	h.layeredMemory = svc
+}
+
 // SetCompanionManager sets the companion manager for session tracking.
 func (h *ChatHandler) SetCompanionManager(manager *companion.Manager) {
 	h.companionManager = manager
@@ -434,6 +448,11 @@ func (h *ChatHandler) SetProviderPool(pool *providerpool.Pool) {
 // SetCache sets the response cache for caching non-streaming responses.
 func (h *ChatHandler) SetCache(cache *proxy.CCCache) {
 	h.cache = cache
+}
+
+// SetProxyBridge sets the proxy bridge for routing LLM calls through the proxy pipeline.
+func (h *ChatHandler) SetProxyBridge(bridge *proxybridge.Bridge) {
+	h.proxyBridge = bridge
 }
 
 // getCompanionSessionID returns the companion session ID for a conversation.
@@ -485,6 +504,14 @@ func isTextFile(filename, mimeType string) bool {
 	return false
 }
 
+// channelConversationID builds a stable conversation ID for IM channels.
+func channelConversationID(channelName, chatID string) string {
+	if chatID != "" {
+		return "ch:" + channelName + ":" + chatID
+	}
+	return "ch:" + channelName
+}
+
 // ProcessChannelMessage processes a message from a channel (e.g., Feishu) and returns AI response.
 func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Message) (string, error) {
 	logger.Info().
@@ -501,6 +528,31 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		return "", fmt.Errorf("empty message content")
 	}
 
+	// Build a stable conversation ID from channel + chat so we can persist history
+	convID := channelConversationID(msg.ChannelName, msg.ChatID)
+
+	// Ensure conversation exists in store (create if first message)
+	if h.store != nil {
+		if _, err := h.store.GetConversation(ctx, convID); err != nil {
+			title := fmt.Sprintf("%s chat", msg.ChannelName)
+			if msg.Username != "" {
+				title = fmt.Sprintf("%s - %s", msg.ChannelName, msg.Username)
+			}
+			_, _ = h.store.CreateConversationWithID(ctx, convID, title)
+		}
+	}
+
+	// Persist user message
+	if h.store != nil {
+		_, err := h.store.AddMessage(ctx, convID, memory.Message{
+			Role:    "user",
+			Content: msg.Content,
+		})
+		if err != nil {
+			logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to persist IM user message")
+		}
+	}
+
 	// Use provider pool with system prompt
 	var messages []llm.Message
 
@@ -515,14 +567,32 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 	}
 
-	// Add user message with attachments support
-	userMsg := llm.Message{
-		Role:    "user",
-		Content: msg.Content,
+	// Load conversation history for context continuity
+	if h.store != nil {
+		history, err := h.store.GetMessages(ctx, convID, 30, 0)
+		if err == nil && len(history) > 0 {
+			for _, m := range history {
+				messages = append(messages, llm.Message{
+					Role:    llm.Role(m.Role),
+					Content: m.Content,
+				})
+			}
+			logger.Debug().
+				Str("conv_id", convID).
+				Int("history_count", len(history)).
+				Msg("loaded IM conversation history")
+		}
 	}
+
+	// Build multimodal user message if attachments present (replaces text-only version from history)
+	var userMsg *llm.Message
 
 	// Convert channel attachments to LLM content parts for multimodal support
 	if len(msg.Attachments) > 0 {
+		userMsgBase := llm.Message{
+			Role:    "user",
+			Content: msg.Content,
+		}
 		var contentParts []llm.ContentPart
 		var transcribedTexts []string
 
@@ -613,12 +683,49 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 
 		if len(contentParts) > 0 {
-			userMsg.ContentParts = contentParts
-			userMsg.Content = "" // Clear content when using content parts
+			userMsgBase.ContentParts = contentParts
+			userMsgBase.Content = "" // Clear content when using content parts
+			// Attachments (images etc.) are not in history, so append as extra message
+			userMsg = &userMsgBase
 		}
 	}
 
-	messages = append(messages, userMsg)
+	// If history was loaded, the current user message is already the last entry.
+	// Only append explicitly if we have multimodal content (attachments) that
+	// replaces the text-only version, or if there was no history.
+	if userMsg != nil {
+		// Replace the last message (text-only from history) with multimodal version
+		if len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+			messages[len(messages)-1] = *userMsg
+		} else {
+			messages = append(messages, *userMsg)
+		}
+	}
+
+	// Apply context compaction if conversation is getting long
+	if len(messages) > 10 {
+		if compactProvider, _, _, compactErr := h.getDefaultProvider(); compactErr == nil {
+			compacted, summary, _ := h.compactMessages(ctx, messages, compactProvider)
+			if summary != "" {
+				summaryMsg := llm.Message{
+					Role:    llm.RoleSystem,
+					Content: "Previous conversation summary: " + summary,
+				}
+				compacted = append([]llm.Message{summaryMsg}, compacted...)
+			}
+			messages = compacted
+			logger.Debug().
+				Int("before", len(messages)).
+				Int("after", len(compacted)).
+				Bool("has_summary", summary != "").
+				Msg("compacted IM conversation context")
+		}
+	}
+
+	// Recall relevant memories for IM context
+	if memoryCtx := h.recallMemories(ctx, msg.Content); memoryCtx != "" {
+		messages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, messages...)
+	}
 
 	var responseContent string
 
@@ -717,19 +824,47 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				Messages: messages,
 			}
 
+			// Add tool definitions
+			imToolDefs := h.toolRegistry.Definitions()
+			if len(imToolDefs) > 0 {
+				req.Tools = make([]llm.Tool, len(imToolDefs))
+				for i, def := range imToolDefs {
+					req.Tools[i] = llm.Tool{
+						Name:        def.Name,
+						Description: def.Description,
+						Parameters:  def.Parameters,
+					}
+				}
+			}
+
 			logger.Debug().
 				Str("model", req.Model).
 				Int("messages", len(req.Messages)).
 				Msg("sending chat request to LLM")
 
-			resp, err := provider.Chat(ctx, req)
-			if err != nil {
-				logger.Error().
-					Err(err).
-					Str("provider_id", result.Provider.ID).
-					Str("model", req.Model).
-					Msg("LLM chat request failed")
-				return err
+			// Tool execution loop for IM
+			var resp *llm.ChatResponse
+			for imRound := 0; imRound < maxToolRounds; imRound++ {
+				if h.proxyBridge != nil {
+					resp, err = h.proxyBridge.Chat(ctx, req)
+				} else {
+					resp, err = provider.Chat(ctx, req)
+				}
+				if err != nil {
+					logger.Error().
+						Err(err).
+						Str("provider_id", result.Provider.ID).
+						Str("model", req.Model).
+						Msg("LLM chat request failed")
+					return err
+				}
+				if len(resp.Message.ToolCalls) == 0 {
+					break
+				}
+				logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
+				toolResults := h.executeToolCalls(ctx, resp.Message.ToolCalls)
+				req.Messages = append(req.Messages, resp.Message)
+				req.Messages = append(req.Messages, toolResults...)
 			}
 
 			if resp.Message.Content == "" {
@@ -762,12 +897,13 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			return "", fmt.Errorf("AI returned empty response")
 		}
 
+		h.persistChannelResponse(ctx, convID, responseContent)
 		return responseContent, nil
 	}
 
 	// Fallback: use getDefaultProvider without failover
 	logger.Debug().Msg("using fallback provider (no provider pool)")
-	provider, providerName, model, err := h.getDefaultProvider()
+	fbProvider, providerName, model, err := h.getDefaultProvider()
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to get default provider")
 		return "", fmt.Errorf("no AI provider available: %w", err)
@@ -792,15 +928,39 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		Messages: messages,
 	}
 
+	// Add tool definitions to fallback path
+	fbToolDefs := h.toolRegistry.Definitions()
+	if len(fbToolDefs) > 0 {
+		req.Tools = make([]llm.Tool, len(fbToolDefs))
+		for i, def := range fbToolDefs {
+			req.Tools[i] = llm.Tool{
+				Name:        def.Name,
+				Description: def.Description,
+				Parameters:  def.Parameters,
+			}
+		}
+	}
+
 	logger.Debug().
 		Str("provider", providerName).
 		Str("model", model).
 		Msg("sending chat request via fallback provider")
 
-	resp, err := provider.Chat(ctx, req)
-	if err != nil {
-		logger.Error().Err(err).Str("provider", providerName).Msg("fallback LLM chat failed")
-		return "", fmt.Errorf("AI chat failed (%s): %w", providerName, err)
+	// Tool execution loop for fallback path
+	var resp *llm.ChatResponse
+	for fbRound := 0; fbRound < maxToolRounds; fbRound++ {
+		resp, err = fbProvider.Chat(ctx, req)
+		if err != nil {
+			logger.Error().Err(err).Str("provider", providerName).Msg("fallback LLM chat failed")
+			return "", fmt.Errorf("AI chat failed (%s): %w", providerName, err)
+		}
+		if len(resp.Message.ToolCalls) == 0 {
+			break
+		}
+		logger.Info().Int("round", fbRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im-fallback] executing tool calls")
+		toolResults := h.executeToolCalls(ctx, resp.Message.ToolCalls)
+		req.Messages = append(req.Messages, resp.Message)
+		req.Messages = append(req.Messages, toolResults...)
 	}
 
 	if resp.Message.Content == "" {
@@ -808,7 +968,215 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		return "", fmt.Errorf("AI returned empty response")
 	}
 
+	h.persistChannelResponse(ctx, convID, resp.Message.Content)
 	return resp.Message.Content, nil
+}
+
+// persistChannelResponse saves the assistant response and invalidates cache for IM conversations.
+func (h *ChatHandler) persistChannelResponse(ctx context.Context, convID, content string) {
+	if h.store == nil {
+		return
+	}
+	_, err := h.store.AddMessage(ctx, convID, memory.Message{
+		Role:    "assistant",
+		Content: content,
+	})
+	if err != nil {
+		logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to persist IM assistant message")
+	}
+	h.conversationCache.Invalidate(convID)
+
+	// Async memory extraction from IM conversations
+	if h.layeredMemory != nil {
+		h.queueEvent(func() {
+			h.extractMemory(convID, "im")
+		})
+	}
+}
+
+// recallMemories searches for relevant memories and returns a system message to prepend.
+// Returns empty string if no relevant memories found.
+func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string) string {
+	if h.layeredMemory == nil || userMessage == "" {
+		return ""
+	}
+	results, err := h.layeredMemory.Recall(ctx, userMessage, 5)
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Relevant memories about the user:\n")
+	for _, r := range results {
+		if r.CombinedScore < 0.3 || r.Chunk.Content == "" {
+			continue
+		}
+		sb.WriteString("- ")
+		sb.WriteString(r.Chunk.Content)
+		sb.WriteString("\n")
+	}
+	if sb.Len() < 40 { // Only header, no useful memories
+		return ""
+	}
+	return sb.String()
+}
+
+// maxToolRounds limits the number of tool call round-trips to prevent infinite loops.
+const maxToolRounds = 5
+
+// executeToolCalls executes tool calls and returns tool result messages.
+// Each result is returned as an llm.Message with Role=tool and the JSON result as content.
+// For known tool types (e.g. Web Search), the result is also wrapped as a typeless card.
+func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall) []llm.Message {
+	var results []llm.Message
+	for _, tc := range toolCalls {
+		result, err := h.toolExecutor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
+		var content string
+		if err != nil {
+			content = fmt.Sprintf(`{"error":"%s"}`, err.Error())
+		} else {
+			switch v := result.(type) {
+			case string:
+				content = v
+			default:
+				b, _ := json.Marshal(v)
+				content = string(b)
+			}
+		}
+		results = append(results, llm.Message{
+			Role:       llm.RoleTool,
+			Content:    content,
+			ToolCallID: tc.ID,
+		})
+	}
+	return results
+}
+
+// formatToolResultsAsTypeless converts tool results into typeless card blocks
+// that can be appended to the assistant's text content for frontend rendering.
+func formatToolResultsAsTypeless(toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	var sb strings.Builder
+	for i, tc := range toolCalls {
+		if i >= len(toolResults) {
+			break
+		}
+		content := toolResults[i].Content
+		// For Web Search, wrap the raw JSON result in a typeless search card
+		if tc.Name == "Web Search" {
+			// The result is already a WebSearchResponse JSON — wrap as typeless card
+			var resp struct {
+				Query      string `json:"query"`
+				Results    []json.RawMessage `json:"results"`
+				TotalCount int    `json:"total_count"`
+			}
+			if json.Unmarshal([]byte(content), &resp) == nil && len(resp.Results) > 0 {
+				sb.WriteString("\n\n```typeless\n")
+				// Build search card JSON
+				card := map[string]interface{}{
+					"type":        "search",
+					"query":       resp.Query,
+					"total_count": resp.TotalCount,
+				}
+				// Parse results array
+				var results []interface{}
+				for _, r := range resp.Results {
+					var item interface{}
+					json.Unmarshal(r, &item)
+					results = append(results, item)
+				}
+				card["results"] = results
+				cardJSON, _ := json.Marshal(card)
+				sb.Write(cardJSON)
+				sb.WriteString("\n```")
+			}
+		}
+	}
+	return sb.String()
+}
+
+// extractMemory extracts important information from conversation messages and saves to daily log.
+// source is "im" or "web" for tagging. Returns true if memory was saved.
+func (h *ChatHandler) extractMemory(convID, source string) bool {
+	if h.store == nil || h.layeredMemory == nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Load recent messages — only need 2+ (one user + one assistant)
+	messages, err := h.store.GetMessages(ctx, convID, 20, 0)
+	if err != nil || len(messages) < 2 {
+		return false
+	}
+
+	// Build conversation text
+	var sb strings.Builder
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%s: %s\n\n", msg.Role, msg.Content))
+	}
+
+	// Use LLM to extract structured facts
+	provider, _, _, err := h.getDefaultProvider()
+	if err != nil {
+		return false
+	}
+
+	req := llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: `You are a memory extraction assistant. Extract important facts from this conversation as short, structured bullet points.
+Focus on: user preferences, personal info, decisions, key facts, action items, technical choices.
+Each bullet should be a standalone fact (e.g. "- User prefers Go for backend development").
+If nothing worth remembering, respond with exactly "NO_MEMORY_NEEDED".
+Respond in the same language as the conversation.`},
+			{Role: llm.RoleUser, Content: sb.String()},
+		},
+		MaxTokens:   300,
+		Temperature: 0.3,
+	}
+	var resp *llm.ChatResponse
+	if h.proxyBridge != nil {
+		resp, err = h.proxyBridge.Chat(ctx, req)
+	} else {
+		resp, err = provider.Chat(ctx, req)
+	}
+	if err != nil || resp.Message.Content == "" || strings.TrimSpace(resp.Message.Content) == "NO_MEMORY_NEEDED" {
+		return false
+	}
+
+	tags := []string{"auto-" + source, "conv:" + convID}
+	if err := h.layeredMemory.AppendToDaily(ctx, resp.Message.Content, tags); err != nil {
+		logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to save memory")
+		return false
+	}
+
+	logger.Info().Str("conv_id", convID).Str("source", source).Msg("extracted memory from conversation")
+
+	// Emit memory_saved companion event
+	if h.companionManager != nil {
+		sessionID := h.getCompanionSessionID(convID)
+		if sessionID != "" {
+			memoryContent := resp.Message.Content // capture before closure
+			h.queueEvent(func() {
+				h.companionManager.EmitEvent(context.Background(), &companion.SessionEvent{
+					SessionID: sessionID,
+					Timestamp: time.Now(),
+					EventType: companion.EventMemorySaved,
+					Message: &companion.MessageEvent{
+						Direction:   "system",
+						Content:     memoryContent,
+						ContentType: "memory",
+						Length:      len(memoryContent),
+					},
+					Status: "success",
+				})
+			})
+		}
+	}
+
+	return true
 }
 
 // CreateConversationRequest represents a request to create a conversation.
@@ -1008,7 +1376,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
 			})
 		}
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
+		return echo.NewHTTPError(http.StatusServiceUnavailable, proxy.SanitizeError(err))
 	}
 
 	// Use model from request if specified
@@ -1066,6 +1434,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		compactedMessages = append([]llm.Message{summaryMsg}, compactedMessages...)
 	}
 
+	// Recall relevant memories and inject as system context (SendMessage)
+	if memoryCtx := h.recallMemories(c.Request().Context(), req.Message); memoryCtx != "" {
+		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
+	}
+
 	// Build chat request
 	chatReq := llm.ChatRequest{
 		Model:       model,
@@ -1087,10 +1460,50 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 	}
 
-	// Call LLM and record metrics
+	// Call LLM with tool execution loop
 	startTime := time.Now()
-	resp, err := provider.Chat(c.Request().Context(), chatReq)
+	var resp *llm.ChatResponse
+	for round := 0; round < maxToolRounds; round++ {
+		if h.proxyBridge != nil {
+			resp, err = h.proxyBridge.Chat(c.Request().Context(), chatReq)
+		} else {
+			resp, err = provider.Chat(c.Request().Context(), chatReq)
+		}
+		if err != nil || resp == nil {
+			break
+		}
+		// No tool calls — done
+		if len(resp.Message.ToolCalls) == 0 {
+			break
+		}
+		// Execute tool calls and feed results back
+		logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
+		toolResults := h.executeToolCalls(c.Request().Context(), resp.Message.ToolCalls)
+		// Append assistant message (with tool_calls) + tool results to conversation
+		chatReq.Messages = append(chatReq.Messages, resp.Message)
+		chatReq.Messages = append(chatReq.Messages, toolResults...)
+	}
 	latencyMs := float64(time.Since(startTime).Milliseconds())
+
+	// Append typeless cards for tool results to content
+	if resp != nil && len(resp.Message.ToolCalls) == 0 {
+		// Check if previous rounds had tool calls by looking at messages
+		for i := len(chatReq.Messages) - 1; i >= 0; i-- {
+			msg := chatReq.Messages[i]
+			if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+				// Find corresponding tool results
+				var toolResults []llm.Message
+				for j := i + 1; j < len(chatReq.Messages) && chatReq.Messages[j].Role == llm.RoleTool; j++ {
+					toolResults = append(toolResults, chatReq.Messages[j])
+				}
+				cards := formatToolResultsAsTypeless(msg.ToolCalls, toolResults)
+				if cards != "" {
+					resp.Message.Content += cards
+				}
+				break
+			}
+		}
+	}
 
 	// Use actual model from response if available
 	if resp != nil && resp.Model != "" {
@@ -1135,8 +1548,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	if err != nil {
 		// Emit error event to companion (async)
-		h.emitErrorEventAsync(sessionID, err.Error())
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get response from LLM")
+		h.emitErrorEventAsync(sessionID, proxy.SanitizeError(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, proxy.SanitizeError(err))
 	}
 
 	// Get provider name for display
@@ -1166,6 +1579,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Invalidate cache after storing new message
 	h.conversationCache.Invalidate(convID)
+
+	// Async memory extraction for web chat
+	if h.layeredMemory != nil {
+		h.queueEvent(func() {
+			h.extractMemory(convID, "web")
+		})
+	}
 
 	return c.JSON(http.StatusOK, SendMessageResponse{
 		ID:       assistantMsg.ID,
@@ -1328,7 +1748,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
 			})
 		}
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "no available providers: "+err.Error())
+		return echo.NewHTTPError(http.StatusServiceUnavailable, proxy.SanitizeError(err))
 	}
 
 	// Use model from request if specified
@@ -1435,6 +1855,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		compactedMessages = append([]llm.Message{summaryMsg}, compactedMessages...)
 	}
 
+	// Recall relevant memories and inject as system context (StreamMessage)
+	if memoryCtx := h.recallMemories(c.Request().Context(), req.Message); memoryCtx != "" {
+		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
+	}
+
 	// Build chat request
 	chatReq := llm.ChatRequest{
 		Model:       model,
@@ -1442,6 +1867,19 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 		Stream:      true,
+	}
+
+	// Add tool definitions to streaming request
+	toolDefs := h.toolRegistry.Definitions()
+	if len(toolDefs) > 0 {
+		chatReq.Tools = make([]llm.Tool, len(toolDefs))
+		for i, def := range toolDefs {
+			chatReq.Tools[i] = llm.Tool{
+				Name:        def.Name,
+				Description: def.Description,
+				Parameters:  def.Parameters,
+			}
+		}
 	}
 	logger.Debug().Str("model", chatReq.Model).Int("messages", len(chatReq.Messages)).Bool("stream", chatReq.Stream).Msg("[chat] request")
 
@@ -1483,9 +1921,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Pre-allocate buffer for SSE writes to reduce allocations
 	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
 
+	// Tool execution loop for streaming — collect tool calls, execute, re-stream
+	var streamToolCalls []llm.ToolCall
+
+	for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
+	streamToolCalls = streamToolCalls[:0]
+
 	// Use callback-based streaming to avoid channel issues
-	logger.Debug().Str("stream_id", streamID).Str("provider_type", fmt.Sprintf("%T", provider)).Msg("[chat] starting stream")
-	err = provider.ChatStreamCallback(ctx, chatReq, func(chunk llm.StreamChunk) error {
+	logger.Debug().Str("stream_id", streamID).Str("provider_type", fmt.Sprintf("%T", provider)).Int("tool_round", toolRound).Msg("[chat] starting stream")
+	streamCb := func(chunk llm.StreamChunk) error {
 		// Track first chunk time for TTFT calculation
 		if firstChunkTime.IsZero() && chunk.Delta != "" {
 			firstChunkTime = time.Now()
@@ -1497,6 +1941,19 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		if chunk.Provider != "" && actualProvider == "" {
 			actualProvider = chunk.Provider
+		}
+
+		// Collect tool calls from stream chunks (merge partial arguments)
+		if len(chunk.ToolCalls) > 0 {
+			for _, tc := range chunk.ToolCalls {
+				if tc.ID != "" && tc.Name != "" {
+					// New tool call — append
+					streamToolCalls = append(streamToolCalls, tc)
+				} else if len(streamToolCalls) > 0 && tc.Arguments != "" {
+					// Partial argument delta — append to last tool call
+					streamToolCalls[len(streamToolCalls)-1].Arguments += tc.Arguments
+				}
+			}
 		}
 
 		// Check for error in chunk
@@ -1658,6 +2115,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// Invalidate cache after storing new message
 			h.conversationCache.Invalidate(convID)
 
+			// Async memory extraction for web chat streaming
+			if h.layeredMemory != nil {
+				capturedConvID := convID
+				h.queueEvent(func() {
+					h.extractMemory(capturedConvID, "web")
+				})
+			}
+
 			// Generate title for new conversations
 			// Pass AI response to check for markdown heading as title
 			go h.generateConversationTitle(convID, req.Message, fullContent, "en")
@@ -1694,7 +2159,70 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 
 		return nil
-	})
+	}
+	if h.proxyBridge != nil {
+		err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+	} else {
+		err = provider.ChatStreamCallback(ctx, chatReq, streamCb)
+	}
+
+	// If stream had tool calls, execute them and loop back
+	if err == nil && len(streamToolCalls) > 0 {
+		logger.Info().Int("round", toolRound).Int("tool_calls", len(streamToolCalls)).Msg("[chat] stream: executing tool calls")
+		// Send tool execution status to client
+		toolStatusData, _ := json.Marshal(map[string]interface{}{
+			"tool_executing": true,
+			"tool_calls":     len(streamToolCalls),
+			"stream_id":      streamID,
+		})
+		c.Response().Write([]byte("data: " + string(toolStatusData) + "\n\n"))
+		flusher.Flush()
+
+		// Execute tools
+		toolResults := h.executeToolCalls(ctx, streamToolCalls)
+
+		// Build assistant message with tool calls for context
+		assistantMsg := llm.Message{
+			Role:      llm.RoleAssistant,
+			Content:   fullContent,
+			ToolCalls: streamToolCalls,
+		}
+		chatReq.Messages = append(chatReq.Messages, assistantMsg)
+		chatReq.Messages = append(chatReq.Messages, toolResults...)
+
+		// Reset content for next round (LLM will generate new response)
+		fullContent = ""
+		continue
+	}
+	break
+	} // end tool loop
+
+	// After tool loop: append typeless cards for the last tool round's results
+	if len(streamToolCalls) == 0 {
+		// Check if previous rounds had tool calls
+		for i := len(chatReq.Messages) - 1; i >= 0; i-- {
+			msg := chatReq.Messages[i]
+			if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+				var toolResults []llm.Message
+				for j := i + 1; j < len(chatReq.Messages) && chatReq.Messages[j].Role == llm.RoleTool; j++ {
+					toolResults = append(toolResults, chatReq.Messages[j])
+				}
+				cards := formatToolResultsAsTypeless(msg.ToolCalls, toolResults)
+				if cards != "" {
+					fullContent += cards
+					// Stream the typeless card to client
+					cardData, _ := json.Marshal(map[string]interface{}{
+						"delta":     cards,
+						"done":      false,
+						"stream_id": streamID,
+					})
+					c.Response().Write([]byte("data: " + string(cardData) + "\n\n"))
+					flusher.Flush()
+				}
+				break
+			}
+		}
+	}
 
 	// Handle stream completion or error
 	if err != nil {
@@ -1778,21 +2306,20 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse,
 	}
 
 	// Try to use LLM to generate a concise title
-	// TODO: Re-enable LLM title generation after fixing CC CLI issues
-	// title := h.generateTitleWithLLM(userMessage, targetLang)
-	// if title == "" {
-	// Fallback: use truncated user message
-	title := userMessage
-	maxLen := 50
-	runes := []rune(title)
-	if len(runes) > maxLen {
-		if idx := findRuneBoundary(title, maxLen); idx > 0 {
-			title = title[:idx] + "..."
-		} else {
-			title = string(runes[:maxLen]) + "..."
+	title := h.generateTitleWithLLM(userMessage, targetLang)
+	if title == "" {
+		// Fallback: use truncated user message
+		title = userMessage
+		maxLen := 50
+		runes := []rune(title)
+		if len(runes) > maxLen {
+			if idx := findRuneBoundary(title, maxLen); idx > 0 {
+				title = title[:idx] + "..."
+			} else {
+				title = string(runes[:maxLen]) + "..."
+			}
 		}
 	}
-	// }
 	// Remove newlines and sanitize
 	title = sanitizeTitle(title)
 
@@ -1861,7 +2388,15 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 		MaxTokens:   50,
 	}
 
-	resp, err := provider.Chat(ctx, req)
+	var (
+		resp *llm.ChatResponse
+		err  error
+	)
+	if h.proxyBridge != nil {
+		resp, err = h.proxyBridge.Chat(ctx, req)
+	} else {
+		resp, err = provider.Chat(ctx, req)
+	}
 	if err != nil {
 		return ""
 	}
@@ -2178,7 +2713,7 @@ func (h *ChatHandler) emitLLMRequestEvent(ctx context.Context, sessionID, provid
 
 	if err != nil {
 		llmEvent.Status = "error"
-		llmEvent.Error = err.Error()
+		llmEvent.Error = proxy.SanitizeError(err)
 	}
 
 	event := &companion.SessionEvent{
@@ -2274,7 +2809,7 @@ func (h *ChatHandler) emitToolCallEvent(ctx context.Context, sessionID, toolName
 		Status:    status,
 	}
 	if err != nil {
-		event.Error = err.Error()
+		event.Error = proxy.SanitizeError(err)
 	}
 	_ = h.companionManager.EmitEvent(ctx, event)
 }
@@ -2308,7 +2843,7 @@ func (h *ChatHandler) emitSandboxExecEvent(ctx context.Context, sessionID, comma
 		Status:    status,
 	}
 	if err != nil {
-		event.Error = err.Error()
+		event.Error = proxy.SanitizeError(err)
 	}
 	_ = h.companionManager.EmitEvent(ctx, event)
 }

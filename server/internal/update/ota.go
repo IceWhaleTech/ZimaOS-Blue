@@ -28,12 +28,12 @@ const (
 	otaResultFile    = "ota_latest.json"
 )
 
-// OTAResponse is the JSON response from the OTA server.
+// OTAResponse is the JSON response from the OTA server (BlueReleaseInfo).
 type OTAResponse struct {
-	Version           string `json:"version"`
-	DownloadURL       string `json:"download_url"`
-	ReleaseNoteURL    string `json:"release_note_url"`
-	ClientDownloadURL string `json:"client_download_url"`
+	Version        string   `json:"version"`
+	Packages       []string `json:"packages"`
+	ReleaseNoteURL string   `json:"release_note_url"`
+	Delay          int      `json:"delay,omitempty"` // cooldown seconds before allowing update
 }
 
 // OTAChecker performs periodic update checks against the OTA server.
@@ -88,7 +88,7 @@ func (o *OTAChecker) GetLatest() *OTAResponse {
 func (o *OTAChecker) UpdateAvailable() bool {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	return o.latest != nil && o.latest.Version != "" && o.latest.Version != o.currentVersion
+	return o.latest != nil && o.latest.Version != "" && IsNewerVersionString(o.currentVersion, o.latest.Version)
 }
 
 func (o *OTAChecker) checkIfDue(ctx context.Context) {
@@ -101,7 +101,7 @@ func (o *OTAChecker) checkIfDue(ctx context.Context) {
 		}
 	}
 
-	resp, err := o.fetchOTA(ctx)
+	resp, err := o.fetchOTADefault(ctx)
 	if err != nil {
 		log.Printf("[ota] check failed: %v", err)
 		return
@@ -129,18 +129,32 @@ func (o *OTAChecker) loadCached() {
 		return
 	}
 	var resp OTAResponse
-	if json.Unmarshal(data, &resp) == nil {
+	if json.Unmarshal(data, &resp) == nil && isBlueOTAResponse(&resp) {
 		o.mu.Lock()
 		o.latest = &resp
 		o.mu.Unlock()
 	}
 }
 
-func (o *OTAChecker) fetchOTA(ctx context.Context) (*OTAResponse, error) {
+// FetchForDesktop performs an OTA check with the -desktop OS suffix.
+func (o *OTAChecker) FetchForDesktop(ctx context.Context) (*OTAResponse, error) {
+	return o.fetchOTA(ctx, true)
+}
+
+func (o *OTAChecker) fetchOTADefault(ctx context.Context) (*OTAResponse, error) {
+	return o.fetchOTA(ctx, false)
+}
+
+func (o *OTAChecker) fetchOTA(ctx context.Context, desktop bool) (*OTAResponse, error) {
 	osParam := runtime.GOOS + "-" + runtime.GOARCH
+	if desktop {
+		osParam += "-desktop"
+	}
 
 	query := fmt.Sprintf("/blue?os=%s&ver=%s&lang=%s&mid=%s",
 		osParam, o.currentVersion, o.lang, getMachineID())
+
+	log.Printf("[ota] fetching OTA: %s", query)
 
 	type endpoint struct {
 		url        string
@@ -195,7 +209,31 @@ func (o *OTAChecker) doRequest(ctx context.Context, url, hostHeader string) (*OT
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("parse OTA response: %w", err)
 	}
+
+	// Validate response belongs to ZimaOS-Blue, not ZimaOS.
+	// Fallback OTA servers may return wrong product data.
+	if !isBlueOTAResponse(&result) {
+		return nil, fmt.Errorf("OTA response is not for ZimaOS-Blue (got version %s from %s)", result.Version, url)
+	}
+
 	return &result, nil
+}
+
+// isBlueOTAResponse checks that the OTA response is for ZimaOS-Blue.
+// ZimaOS versions are 1.x+, Blue versions are 0.x. Also check URLs for "Blue"/"blue".
+func isBlueOTAResponse(r *OTAResponse) bool {
+	if r == nil || r.Version == "" {
+		return false
+	}
+	// ZimaOS mainline versions start at 1.x; Blue is 0.x
+	if !strings.HasPrefix(r.Version, "0.") {
+		return false
+	}
+	// Double-check: release note URL should reference Blue, not ZimaOS mainline
+	if r.ReleaseNoteURL != "" && !strings.Contains(strings.ToLower(r.ReleaseNoteURL), "blue") {
+		return false
+	}
+	return true
 }
 
 func getMachineID() string {

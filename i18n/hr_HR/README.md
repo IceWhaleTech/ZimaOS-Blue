@@ -126,7 +126,16 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Pregled arhitekture
@@ -145,7 +154,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Tok poruka kanala**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Glasovni cjevovod**
@@ -213,7 +222,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Nadogradnja kanala | 10 kanala nadograđeno iz stubova | Done |
 | v0.10.25 | CC Cache | Dvoslojna predmemorija (L1 memorija + L2 disk) | Done |
 | v0.10.26 | Humanizer | Cjevovod humanizacije odgovora | Done |
-| v0.10.27 | Context Pruner | BM25 bodovanje, segmentacija, mjerila | Done |
+| v0.10.27 | Context Pruner | 54% ušteda tokena na kodu (SWE-bench službeno), 46–47% na općim dokumentima (lokalni IR), BM25 bodovanje, segmentacija | Done |
 | v0.10.28 | Memory Service | Progresivno pretraživanje, dual-write backend | Done |
 
 ## Zajednica i podrška

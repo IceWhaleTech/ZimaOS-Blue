@@ -349,7 +349,6 @@ func (h *SkillHandler) DisableSkill(c echo.Context) error {
 }
 
 // UploadSkill handles skill package upload
-// TODO: Full implementation requires skill package format specification
 func (h *SkillHandler) UploadSkill(c echo.Context) error {
 	// Get uploaded file
 	file, err := c.FormFile("file")
@@ -404,15 +403,18 @@ func (h *SkillHandler) UploadSkill(c echo.Context) error {
 		})
 	}
 
-	// For now, return not implemented as skills require executable code
-	// Full implementation would need to:
-	// 1. Extract skill package (zip/tar)
-	// 2. Validate skill structure
-	// 3. Copy to skills directory
-	// 4. Load and register the skill
-	return c.JSON(http.StatusNotImplemented, map[string]interface{}{
-		"success": false,
-		"message": "skill upload not yet implemented - use install from URL instead",
+	// Register as a manifest-only skill
+	s := skill.NewManifestSkill(&manifest)
+	if err := h.registry.Register(s, false); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "failed to register skill: " + err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "skill uploaded and registered",
 		"skill": map[string]string{
 			"id":      manifest.ID,
 			"name":    manifest.Name,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -84,7 +85,7 @@ type Entry struct {
 func NewEntry(action Action, status Status) *Entry {
 	return &Entry{
 		ID:        uuid.New(),
-		Timestamp: time.Now().UTC(),
+		Timestamp: timeutil.NowTime().UTC(),
 		Action:    action,
 		Status:    status,
 	}

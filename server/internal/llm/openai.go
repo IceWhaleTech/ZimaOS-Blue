@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const (
@@ -504,7 +506,8 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 				Model   string `json:"model"`
 				Choices []struct {
 					Delta struct {
-						Content string `json:"content"`
+						Content   string           `json:"content"`
+						ToolCalls []openAIToolCall  `json:"tool_calls,omitempty"`
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
@@ -547,7 +550,25 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 				}
 			}
 
-			if chunk.Choices[0].FinishReason == "stop" {
+			// Forward tool calls from stream delta
+			if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+				var tcs []ToolCall
+				for _, tc := range chunk.Choices[0].Delta.ToolCalls {
+					tcs = append(tcs, ToolCall{
+						ID:        tc.ID,
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					})
+				}
+				if err := callback(StreamChunk{
+					ToolCalls: tcs,
+					Done:      false,
+				}); err != nil {
+					return err
+				}
+			}
+
+			if chunk.Choices[0].FinishReason == "stop" || chunk.Choices[0].FinishReason == "tool_calls" {
 				return callback(StreamChunk{
 					ID:    messageID,
 					Model: actualModel,
@@ -627,7 +648,8 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 				Model   string `json:"model"`
 				Choices []struct {
 					Delta struct {
-						Content string `json:"content"`
+						Content   string           `json:"content"`
+						ToolCalls []openAIToolCall  `json:"tool_calls,omitempty"`
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
@@ -673,7 +695,27 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 				}
 			}
 
-			if chunk.Choices[0].FinishReason == "stop" {
+			// Forward tool calls from stream delta
+			if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+				var tcs []ToolCall
+				for _, tc := range chunk.Choices[0].Delta.ToolCalls {
+					tcs = append(tcs, ToolCall{
+						ID:        tc.ID,
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					})
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- StreamChunk{
+					ToolCalls: tcs,
+					Done:      false,
+				}:
+				}
+			}
+
+			if chunk.Choices[0].FinishReason == "stop" || chunk.Choices[0].FinishReason == "tool_calls" {
 				select {
 				case <-ctx.Done():
 					return
@@ -710,7 +752,7 @@ func (p *OpenAIProvider) sendOpenAITextChunks(ctx context.Context, ch chan<- Str
 		}:
 		}
 		// Small delay for single character chunks (15-25ms)
-		delay := time.Duration(15+time.Now().UnixNano()%10) * time.Millisecond
+		delay := time.Duration(15+timeutil.NowNano()%10) * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return
@@ -724,7 +766,7 @@ func (p *OpenAIProvider) sendOpenAITextChunks(ctx context.Context, ch chan<- Str
 
 	for pos < len(runes) {
 		// Random chunk size between 3-6 characters
-		chunkSize := 3 + int(time.Now().UnixNano()%4)
+		chunkSize := 3 + int(timeutil.NowNano()%4)
 		if pos+chunkSize > len(runes) {
 			chunkSize = len(runes) - pos
 		}
@@ -743,7 +785,7 @@ func (p *OpenAIProvider) sendOpenAITextChunks(ctx context.Context, ch chan<- Str
 
 		// Add small delay between chunks for typewriter effect (10-30ms)
 		if pos < len(runes) {
-			delay := time.Duration(10+time.Now().UnixNano()%20) * time.Millisecond
+			delay := time.Duration(10+timeutil.NowNano()%20) * time.Millisecond
 			select {
 			case <-ctx.Done():
 				return

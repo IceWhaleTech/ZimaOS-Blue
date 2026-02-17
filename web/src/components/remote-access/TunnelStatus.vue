@@ -16,7 +16,6 @@ const emit = defineEmits<{
 }>()
 
 function handleDisconnect() {
-  console.log('TunnelStatus: handleDisconnect called')
   emit('disconnect')
 }
 

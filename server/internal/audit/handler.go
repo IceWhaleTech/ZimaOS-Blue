@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -195,7 +196,7 @@ func (h *Handler) Export(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to query audit logs")
 	}
 
-	filename := fmt.Sprintf("audit_logs_%s.%s", time.Now().Format("20060102_150405"), format)
+	filename := fmt.Sprintf("audit_logs_%s.%s", timeutil.NowTime().Format("20060102_150405"), format)
 
 	switch format {
 	case "json":
@@ -273,7 +274,7 @@ func (h *Handler) Stats(c echo.Context) error {
 		startTime = &t
 	} else {
 		// Default to last 24 hours
-		t := time.Now().Add(-24 * time.Hour)
+		t := timeutil.NowTime().Add(-24 * time.Hour)
 		startTime = &t
 	}
 

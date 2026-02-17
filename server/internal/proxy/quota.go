@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // QuotaInfo represents quota information for a provider/account
@@ -104,7 +106,7 @@ func (qm *QuotaMonitor) RecordUsage(provider string, resp *http.Response, tokens
 	if qm.config.TrackTokens && tokensUsed > 0 {
 		quota.UsedQuota += tokensUsed
 	}
-	quota.LastSync = time.Now()
+	quota.LastSync = timeutil.NowTime()
 
 	// Parse rate limit headers if present
 	qm.parseRateLimitHeaders(quota, resp)
@@ -134,7 +136,7 @@ func (qm *QuotaMonitor) RecordRequest(provider string) {
 	}
 
 	quota.UsedQuota++
-	quota.LastSync = time.Now()
+	quota.LastSync = timeutil.NowTime()
 }
 
 // RecordError records an error response
@@ -157,7 +159,7 @@ func (qm *QuotaMonitor) RecordError(provider string, statusCode int) {
 		qm.quotas[key] = quota
 	}
 
-	quota.LastSync = time.Now()
+	quota.LastSync = timeutil.NowTime()
 
 	// Detect rate limiting (429) or ban (403)
 	if statusCode == 429 {

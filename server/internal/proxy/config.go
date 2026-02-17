@@ -60,6 +60,9 @@ type FailoverConfig struct {
 	// Smart failover settings
 	ErrorClassification   ErrorClassificationConfig `json:"error_classification" yaml:"error_classification"`
 	StreamingAnomaly      StreamingAnomalyConfig    `json:"streaming_anomaly" yaml:"streaming_anomaly"`
+	ContextWindowCheck    bool                      `json:"context_window_check" yaml:"context_window_check"`       // Skip providers with insufficient context window
+	QuotaCooldown         time.Duration             `json:"quota_cooldown" yaml:"quota_cooldown"`                   // Skip recently-errored providers for quota errors (0 = disabled)
+	ContextWindowOverride map[string]int            `json:"context_window_override" yaml:"context_window_override"` // Provider name -> max context tokens override
 }
 
 // ErrorClassificationConfig configuration for error classification

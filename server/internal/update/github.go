@@ -94,8 +94,54 @@ func (c *GitHubClient) listFromGitHub(ctx context.Context) ([]*Version, error) {
 }
 
 func (c *GitHubClient) listFromCDN(ctx context.Context) ([]*Version, error) {
-	// CDN fallback - simplified implementation
-	return nil, fmt.Errorf("CDN fallback not implemented")
+	// jsdelivr API: list files in the release-note directory
+	apiURL := "https://data.jsdelivr.com/v1/packages/gh/IceWhaleTech/ZimaOS-Blue@main?structure=flat"
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jsdelivr API returned %d", resp.StatusCode)
+	}
+
+	var pkg struct {
+		Files []struct {
+			Name string `json:"name"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var versions []*Version
+	for _, f := range pkg.Files {
+		// Files look like "/release-note/1.5.3/CHANGELOG.md"
+		if !strings.HasPrefix(f.Name, "/release-note/") {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimPrefix(f.Name, "/release-note/"), "/", 2)
+		if len(parts) == 0 || seen[parts[0]] {
+			continue
+		}
+		seen[parts[0]] = true
+		if v, err := ParseVersion(parts[0]); err == nil {
+			versions = append(versions, v)
+		}
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i].Compare(versions[j]) > 0
+	})
+
+	return versions, nil
 }
 
 // GetLatestVersion returns the latest version for a given channel

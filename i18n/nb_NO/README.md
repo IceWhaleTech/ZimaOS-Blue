@@ -59,6 +59,29 @@ Bygget for modige utviklere som ønsker å **vibe eller håndlage sine egne agen
 
 Ta det videre: innebygd støtte for **20+ IM-plattformer**, **stemmedrevne** grensesnitt for naturlig, kontekstbevisst dialog, **nullkonfigurasjon modellbytte** med IDE-skanning, og SOUL-lagdelte personligheter.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### Rask og lett
 
 Kompilert direkte i Go — ingen tolk, ingen VM, ingen overhead. Kjører stille på alt fra servere til stasjonære enheter.
@@ -71,7 +94,7 @@ Kompilert direkte i Go — ingen tolk, ingen VM, ingen overhead. Kjører stille 
 | `status` topp-RSS | **~15 MB** | ~1.52 GB |
 | Kjøretidsavhengigheter | **Ingen** | Node.js 18+ |
 
-> Benchmarket på macOS arm64, samme vert, beste av 3 kjøringer. Feb 2026.
+> Benchmarket på macOS arm64 (servermodus, uten skrivebords-UI), samme vert, beste av 3 kjøringer. Feb 2026.
 
 ### Ren Go, alle enheter
 
@@ -92,19 +115,77 @@ Vi tror at **neste generasjons personlig databehandling** omfavner LLM-er — me
 - **Lokalt-først, ultralettevekt, på tvers av enheter** – Ingen kraftig maskinvare nødvendig. Kjører på alt som kan beregne.
 - **Sikkert og reviderbart** – Sesjonsrevisjon, sandkassing, tillatelseskontroller og en innebygd API-proxy som fungerer som en applikasjonslagsbrannmur — hver byte inn/ut er synlig.
 
+![](../../docs/assets/design_principle.png)
+
 Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro mot **ZimaOS sin designfilosofi** leverer Blue:
 - **Fra null til én med ett klikk** – Distribuer umiddelbart, ingen kompleks konfigurasjon.
 - **Rask prototyping** – Vibe eller håndlag scenariospesifikke verktøy, interaksjoner og app-pakker.
 - **Globalt klar** – **Verden er stor**, og den snakker ikke engelsk som standard. **20+ språk, innebygd**, ingen barrierer.
 - **Åpent modell-økosystem** – Ingen leverandørlåsing. Ta med dine egne modeller.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| Leverandør | Modeller | Type |
+|------------|----------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Sky |
+| Anthropic | Claude 4.5, Claude 4 | Sky |
+| Google | Gemini 2.5, Gemini 2.0 | Sky |
+| Ollama | Llama, Qwen, Gemma, Phi m.fl. | Lokal |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Sky |
+| Grok | Grok-3, Grok-3-mini | Sky |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Sky |
+| GLM | GLM-4, GLM-4-Flash | Sky |
+| Moonshot | Moonshot-v1 | Sky |
+| MiniMax | abab6.5, abab5.5 | Sky |
+| Venice | Llama, Mistral (personvernfokus) | Sky |
+| AWS Bedrock | Claude, Llama, Titan | Sky |
+| Azure | OpenAI-modeller via Azure | Sky |
+| OpenRouter | 100+ aggregerte modeller | Sky |
+| AIHubMix | Flerleverandøraggregator | Sky |
+| Codex | OpenAI Codex | Sky |
+| Egendefinert | Alle OpenAI / Anthropic / Gemini-kompatible API-er | Sky / Lokal |
+
+</details>
+
+### Støttede IDE-er
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## Hurtigstart
 
 ### Alternativ 1: Last ned skrivebordsappen (macOS og Windows)
 
-Hent den native applikasjonen — ingen avhengigheter, ingen kompilering.
+Hent den native applikasjonen — ingen avhengigheter, ingen kompilering. Innebygd prøvekonfigurasjon, klar på sekunder — koble til eksternt og begynn å chatte umiddelbart, uten å konfigurere en bot. Ekte oppstart fra start.
 
 - **macOS**: [Last ned DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [Last ned installasjonsprogram](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,32 +207,24 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Arkitekturoversikt
 
-![](../../docs/assets/architecture.png)
-
-### Dataflyt
-
-**Chat-forespørsel (Proxy Hot Path)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
-
-**Kanalmeldingsflyt**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
-
-**Talepipeline**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
 
 ### Pakkeoversikt (`server/internal/`)
 
@@ -174,13 +247,38 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
 | Flerleietaker | tenant, user, session, preview |
 
+</details>
+
+### Dataflyt
+
+**Chat-forespørsel (Proxy Hot Path)**
+```
+Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
+  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
+  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
+```
+
+**Kanalmeldingsflyt**
+```
+Telegram/Discord/... → Channel Manager → AutoReply check
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+```
+
+**Talepipeline**
+```
+WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
+```
+
 ## Slik bruker du det
 
 ![](../../docs/assets/handcraft.png)
 
 ## Milepælstidslinje
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | Versjon | Fokus | Nøkkelverdi | Status |
 |---------|-------|-------------|--------|
@@ -213,8 +311,10 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 | v0.10.24 | Kanaloppgradering | 10 kanaler oppgradert fra stubber | Done |
 | v0.10.25 | CC Cache | Tonivåbuffer (L1 minne + L2 disk) | Done |
 | v0.10.26 | Humanizer | Responshumaniseringspipeline | Done |
-| v0.10.27 | Context Pruner | BM25-scoring, segmentering, benchmarks | Done |
+| v0.10.27 | Context Pruner | 54% tokenbesparelse på kode (SWE-bench offisielt), 46–47% på generelle dokumenter (lokal IR), BM25-scoring, segmentering | Done |
 | v0.10.28 | Memory Service | Progressivt søk, dual-write-backend | Done |
+
+</details>
 
 ## Fellesskap og støtte
 

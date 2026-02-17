@@ -311,10 +311,27 @@ func (h *ProviderSettingsHandler) TestProviderConnection(c echo.Context) error {
 		}
 	}
 
-	// TODO: Actually test the connection by making a simple API call
+	// Test the connection by listing models
+	provider := h.registry.Get(name)
+	if provider == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "providerNotAvailable",
+		})
+	}
+
+	models := provider.Models()
+	if len(models) == 0 {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    false,
+			"messageKey": "noModelsAvailable",
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success":    true,
 		"messageKey": "testSuccess",
+		"models":     models,
 	})
 }
 

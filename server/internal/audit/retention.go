@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // RetentionConfig holds configuration for audit log retention.
@@ -83,7 +85,7 @@ func (m *RetentionManager) run() {
 // cleanup removes old audit logs.
 func (m *RetentionManager) cleanup() {
 	ctx := context.Background()
-	cutoff := time.Now().AddDate(0, 0, -m.config.RetentionDays)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -m.config.RetentionDays)
 
 	for {
 		deleted, err := m.deleteBatch(ctx, cutoff)
@@ -177,7 +179,7 @@ func (m *RetentionManager) GetRetentionStats(ctx context.Context) (*RetentionSta
 	}
 
 	// Get count of entries to be deleted
-	cutoff := time.Now().AddDate(0, 0, -m.config.RetentionDays)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -m.config.RetentionDays)
 	err = m.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_logs WHERE timestamp < ?", cutoff).Scan(&stats.ExpiredCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expired count: %w", err)

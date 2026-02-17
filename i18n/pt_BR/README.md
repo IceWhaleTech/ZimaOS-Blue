@@ -59,6 +59,29 @@ Feito para desenvolvedores ousados que querem **criar seus próprios agentes por
 
 Indo além: oferece suporte nativo a **mais de 20 plataformas de mensagens**, interfaces **orientadas por voz** para diálogos naturais e contextuais, **troca de modelos sem configuração** com varredura de IDE, e personalidades em camadas SOUL.
 
+<p align="center">
+  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+</p>
+
 ### Rápido e Leve
 
 Compilado nativamente em Go — sem interpretador, sem VM, sem overhead. Roda silenciosamente em tudo, de servidores aos seus dispositivos desktop.
@@ -71,7 +94,7 @@ Compilado nativamente em Go — sem interpretador, sem VM, sem overhead. Roda si
 | `status` pico de RSS | **~15 MB** | ~1.52 GB |
 | Dependências de runtime | **Nenhuma** | Node.js 18+ |
 
-> Benchmark realizado em macOS arm64, mesmo host, melhor de 3 execuções. Fev 2026.
+> Benchmark realizado em macOS arm64 (modo servidor, sem UI desktop), mesmo host, melhor de 3 execuções. Fev 2026.
 
 ### Go Puro, Qualquer Dispositivo
 
@@ -92,19 +115,77 @@ Acreditamos que a **próxima geração de computação pessoal** abraça os LLMs
 - **Local-First, Ultra-Leve, Multi-Dispositivo** – Não requer hardware de ponta. Roda em qualquer coisa que compute.
 - **Seguro e Auditável** – Auditoria de sessão, sandboxing, controles de permissão e um proxy de API integrado que atua como firewall de camada de aplicação — cada byte de entrada/saída é visível.
 
+![](../../docs/assets/design_principle.png)
+
 Minimizamos o boilerplate para que você **foque no que importa**. Fiel à **filosofia de design do ZimaOS**, o Blue oferece:
 - **Do Zero ao Um em Um Clique** – Implante instantaneamente, sem configuração complexa.
 - **Prototipagem Rápida** – Crie ferramentas, interações e pacotes de aplicativos por vibe ou artesanalmente.
 - **Pronto para o Mundo** – **O mundo é enorme**, e ele não fala só inglês. **Mais de 20 idiomas, nativos**, sem barreiras.
 - **Ecossistema Aberto de Modelos** – Sem vendor lock-in. Traga seus próprios modelos.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+</p>
+</summary>
+
+| Provedor | Modelos | Tipo |
+|----------|---------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Nuvem |
+| Anthropic | Claude 4.5, Claude 4 | Nuvem |
+| Google | Gemini 2.5, Gemini 2.0 | Nuvem |
+| Ollama | Llama, Qwen, Gemma, Phi etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Nuvem |
+| Grok | Grok-3, Grok-3-mini | Nuvem |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Nuvem |
+| GLM | GLM-4, GLM-4-Flash | Nuvem |
+| Moonshot | Moonshot-v1 | Nuvem |
+| MiniMax | abab6.5, abab5.5 | Nuvem |
+| Venice | Llama, Mistral (privacidade) | Nuvem |
+| AWS Bedrock | Claude, Llama, Titan | Nuvem |
+| Azure | Modelos OpenAI via Azure | Nuvem |
+| OpenRouter | 100+ modelos agregados | Nuvem |
+| AIHubMix | Agregador multi-provedor | Nuvem |
+| Codex | OpenAI Codex | Nuvem |
+| Personalizado | Qualquer API compatível com OpenAI / Anthropic / Gemini | Nuvem / Local |
+
+</details>
+
+### IDEs Suportadas
+
+<p align="center">
+  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
+  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+</p>
 
 ## Início Rápido
 
 ### Opção 1: Baixar o App Desktop (macOS e Windows)
 
-Obtenha o aplicativo nativo — sem dependências, sem compilação.
+Obtenha o aplicativo nativo — sem dependências, sem compilação. Configuração de teste integrada, início instantâneo — comece a conversar via conexão remota, sem configurar bot. Verdadeiro pronto para usar.
 
 - **macOS**: [Baixar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**: [Baixar Instalador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
@@ -126,12 +207,47 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-./dev.sh
+```
+
+**macOS / Linux**
+```bash
+sh dev.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\dev.bat
 ```
 
 ## Visão Geral da Arquitetura
 
-![](../../docs/assets/architecture.png)
+<details>
+<summary>
+<img src="../../docs/assets/architecture.png" alt="Architecture" />
+</summary>
+
+### Mapa de Pacotes (`server/internal/`)
+
+| Camada | Pacotes |
+|--------|---------|
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, heartbeat, companion, profiling, leakdetect |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+</details>
 
 ### Fluxo de Dados
 
@@ -145,7 +261,7 @@ Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (option
 **Fluxo de Mensagens do Canal**
 ```
 Telegram/Discord/... → Channel Manager → AutoReply check
-  → (no match) → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
+  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
 ```
 
 **Pipeline de Voz**
@@ -153,68 +269,52 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
-### Mapa de Pacotes (`server/internal/`)
-
-| Camada | Pacotes |
-|--------|---------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Provedor | providerpool, providers, llm |
-| Podador | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agente | context, tools, personality, humanizer |
-| Memória | memory, embedding, kvstore |
-| Canal | channel, autoreply, i18n |
-| Segurança | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Voz | voice, tts, stt, speech |
-| Observabilidade | metrics, heartbeat, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integração | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
-| Agendador | scheduler, worker, workerpool, pool |
-| Núcleo | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Sistema | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-tenant | tenant, user, session, preview |
-
 ## Como Usar
 
 ![](../../docs/assets/handcraft.png)
 
 ## Cronograma de Marcos
 
-![](../../docs/assets/timeline.png)
+<details>
+<summary>
+<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</summary>
 
 | Versão | Foco | Valor Principal | Status |
 |--------|------|-----------------|--------|
-| v0.1 | Núcleo do Runtime Go | Kernel estável, execução 24h | Done |
-| v0.2 | Capacidades Essenciais | Mínimo utilizável, integração com LLM | Done |
-| v0.3 | Integração com NAS | NAS nativo, suporte a systemd | Done |
-| v0.4 | Sistema de Plugins | Extensível, fundamentos de segurança | Done |
-| v0.5 | Linha de Base do Produto | Pronto para produção, documentação | Done |
-| v0.6 | Canais de Mensagem | Suporte multi-canal | Done |
-| v0.7 | Segurança | OIDC, MFA, auditoria | Done |
-| v0.8 | Performance | Otimização, cache, benchmarks | Done |
-| v0.9 | Ecossistema | Multi-tenant, automação de navegador, voz | Done |
-| v0.10.0 | Empacotamento CLI | Empacotamento CC CLI, detecção, auto-atualização | Done |
-| v0.10.1 | Monitoramento de Métricas | Estatísticas de API, rastreamento de tokens, TTFT | Done |
-| v0.10.2 | Confiabilidade CLI | Ciclo de vida de processos, recuperação de erros | Done |
-| v0.10.3 | Integração CLI | Assistente de configuração, auto-detecção de provedor | Done |
-| v0.10.4 | Empacotamento Tauri | App desktop, bandeja do sistema | Done |
-| v0.10.5 | Proxy de API Sidecar | Seleção de rota, proteção de prompt, estatísticas de uso | Done |
-| v0.10.6 | Pool de Provedores | Roteamento multi-provedor, health check, failover | Done |
-| v0.10.7 | Modo Preview | Acesso não autenticado, controle de funcionalidades | Done |
-| v0.10.8 | Loja de Skills | Infraestrutura da loja de skills, validação de canais | Done |
-| v0.10.9–10 | Gestão de Usuários | Sub-usuários, permissões por página | Done |
-| v0.10.13–14 | Segurança e Skills | Página de segurança, redesign da loja de skills | Done |
-| v0.10.15 | Melhorias no Chat | UX do chat, pipeline de mensagens | Done |
-| v0.10.16 | Módulo de Fala | Sherpa TTS/ASR, eSpeak, troca de provedor | Done |
-| v0.10.17 | Acesso Remoto | Túneis Ngrok, Cloudflare, certificados ACME | Done |
-| v0.10.18–20 | Sprint de Performance | Performance de inicialização/chat, cache de contexto | Done |
-| v0.10.21–22 | Prompt e DingTalk | Prompt do sistema, canal DingTalk | Done |
-| v0.10.23 | Atualização OTA | Sistema de atualização OTA | Done |
-| v0.10.24 | Upgrade de Canais | 10 canais atualizados de stubs | Done |
-| v0.10.25 | CC Cache | Cache de dois níveis (L1 memória + L2 disco) | Done |
-| v0.10.26 | Humanizer | Pipeline de humanização de respostas | Done |
-| v0.10.27 | Context Pruner | Pontuação BM25, segmentação, benchmarks | Done |
-| v0.10.28 | Serviço de Memória | Busca progressiva, backend de escrita dupla | Done |
+| v0.1 | Núcleo do Runtime Go | Kernel estável, execução 24h | Concluído |
+| v0.2 | Capacidades Essenciais | Mínimo utilizável, integração com LLM | Concluído |
+| v0.3 | Integração com NAS | NAS nativo, suporte a systemd | Concluído |
+| v0.4 | Sistema de Plugins | Extensível, fundamentos de segurança | Concluído |
+| v0.5 | Linha de Base do Produto | Pronto para produção, documentação | Concluído |
+| v0.6 | Canais de Mensagem | Suporte multi-canal | Concluído |
+| v0.7 | Segurança | OIDC, MFA, auditoria | Concluído |
+| v0.8 | Performance | Otimização, cache, benchmarks | Concluído |
+| v0.9 | Ecossistema | Multi-tenant, automação de navegador, voz | Concluído |
+| v0.10.0 | Empacotamento CLI | Empacotamento CC CLI, detecção, auto-atualização | Concluído |
+| v0.10.1 | Monitoramento de Métricas | Estatísticas de API, rastreamento de tokens, TTFT | Concluído |
+| v0.10.2 | Confiabilidade CLI | Ciclo de vida de processos, recuperação de erros | Concluído |
+| v0.10.3 | Integração CLI | Assistente de configuração, auto-detecção de provedor | Concluído |
+| v0.10.4 | Empacotamento Tauri | App desktop, bandeja do sistema | Concluído |
+| v0.10.5 | Proxy de API Sidecar | Seleção de rota, proteção de prompt, estatísticas de uso | Concluído |
+| v0.10.6 | Pool de Provedores | Roteamento multi-provedor, health check, failover | Concluído |
+| v0.10.7 | Modo Preview | Acesso não autenticado, controle de funcionalidades | Concluído |
+| v0.10.8 | Loja de Skills | Infraestrutura da loja de skills, validação de canais | Concluído |
+| v0.10.9–10 | Gestão de Usuários | Sub-usuários, permissões por página | Concluído |
+| v0.10.13–14 | Segurança e Skills | Página de segurança, redesign da loja de skills | Concluído |
+| v0.10.15 | Melhorias no Chat | UX do chat, pipeline de mensagens | Concluído |
+| v0.10.16 | Módulo de Fala | Sherpa TTS/ASR, eSpeak, troca de provedor | Concluído |
+| v0.10.17 | Acesso Remoto | Túneis Ngrok, Cloudflare, certificados ACME | Concluído |
+| v0.10.18–20 | Sprint de Performance | Performance de inicialização/chat, cache de contexto | Concluído |
+| v0.10.21–22 | Prompt e DingTalk | Prompt do sistema, canal DingTalk | Concluído |
+| v0.10.23 | Atualização OTA | Sistema de atualização OTA | Concluído |
+| v0.10.24 | Upgrade de Canais | 10 canais atualizados de stubs | Concluído |
+| v0.10.25 | CC Cache | Cache de dois níveis (L1 memória + L2 disco) | Concluído |
+| v0.10.26 | Humanizer | Pipeline de humanização de respostas | Concluído |
+| v0.10.27 | Context Pruner | 54% economia de tokens em código (SWE-bench oficial), 46–47% em documentos gerais (IR local), pontuação BM25, segmentação | Concluído |
+| v0.10.28 | Serviço de Memória | Busca progressiva, backend de escrita dupla | Concluído |
+
+</details>
 
 ## Comunidade e Suporte
 
