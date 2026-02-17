@@ -1263,6 +1263,8 @@ func (h *ChatHandler) DeleteConversation(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete conversation")
 	}
 
+	h.conversationCache.Invalidate(id)
+
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -1380,6 +1382,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
 	}
+
+	// Invalidate cache after storing user message so history fetch below is fresh
+	h.conversationCache.Invalidate(convID)
 
 	// Emit message event to companion (async)
 	sessionID := h.getCompanionSessionID(convID)
@@ -1773,6 +1778,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message: "+err.Error())
 	}
 
+	// Invalidate cache after storing user message so history fetch below is fresh
+	h.conversationCache.Invalidate(convID)
+
 	// Emit message event to companion (async)
 	sessionID := h.getCompanionSessionID(convID)
 	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
@@ -1914,9 +1922,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Tool execution loop for streaming — collect tool calls, execute, re-stream
 	var streamToolCalls []llm.ToolCall
+	var streamErrorHandled bool // true when chunk.Error already sent done+stored
+	var streamCompleted bool    // true when chunk.Done fired for final round (persistence deferred)
+	var finalLatencyMs, finalTTFTMs, finalTPS float64
 
 	for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
 	streamToolCalls = streamToolCalls[:0]
+	streamErrorHandled = false
 
 	// Use callback-based streaming to avoid channel issues
 	logger.Debug().Str("stream_id", streamID).Str("provider_type", fmt.Sprintf("%T", provider)).Int("tool_round", toolRound).Msg("[chat] starting stream")
@@ -1963,11 +1975,17 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			jsonData, _ := json.Marshal(data)
 			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
 			flusher.Flush()
-			// Store error message
-			h.store.AddMessage(context.Background(), convID, memory.Message{
-				Role:    "assistant",
-				Content: chunk.Error,
-			})
+			// Persist partial content if any was streamed before the error
+			if fullContent != "" {
+				h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:     "assistant",
+					Content:  fullContent,
+					Provider: providerName,
+					Model:    model,
+				})
+			}
+			h.conversationCache.Invalidate(convID)
+			streamErrorHandled = true
 			return fmt.Errorf("stream error: %s", chunk.Error)
 		}
 
@@ -2093,53 +2111,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			c.Response().Write([]byte("data: " + string(finalJSON) + "\n\n"))
 			flusher.Flush()
 
-			// Store the complete message with stats
-			h.store.AddMessage(context.Background(), convID, memory.Message{
-				Role:     "assistant",
-				Content:  fullContent,
-				Provider: providerName,
-				Model:    model,
-				Stats: &memory.MessageStats{
-					InputTokens:     totalInputTokens,
-					OutputTokens:    totalOutputTokens,
-					TotalTokens:     totalInputTokens + totalOutputTokens,
-					LatencyMs:       int64(latencyMs),
-					TTFTMs:          int64(ttftMs),
-					TokensPerSecond: tokensPerSecond,
-				},
-			})
-
-			// Invalidate cache after storing new message
-			h.conversationCache.Invalidate(convID)
-
-			// Async memory extraction for web chat streaming
-			if h.layeredMemory != nil {
-				capturedConvID := convID
-				h.queueEvent(func() {
-					h.extractMemory(capturedConvID, "web")
-				})
-			}
-
-			// Generate title for new conversations
-			// Pass AI response to check for markdown heading as title
-			go h.generateConversationTitle(convID, req.Message, fullContent, "en")
-
-			// Emit LLM request event to companion for streaming
-			if h.companionManager != nil {
-				sessionID := h.getCompanionSessionID(convID)
-				if sessionID != "" {
-					llmResp := &llm.ChatResponse{
-						Usage: llm.Usage{
-							PromptTokens:     totalInputTokens,
-							CompletionTokens: totalOutputTokens,
-							TotalTokens:      totalInputTokens + totalOutputTokens,
-						},
-					}
-					h.emitLLMRequestEventAsync(sessionID, providerName, model, llmResp, nil, time.Duration(latencyMs)*time.Millisecond)
-					// Emit message sent event for the AI response (async)
-					h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
-				}
-			}
+			// Defer persistence until after typeless cards are appended (outside callback)
+			streamCompleted = true
+			finalLatencyMs = latencyMs
+			finalTTFTMs = ttftMs
+			finalTPS = tokensPerSecond
 
 			// Log completion metrics
 			logger.Info().
@@ -2248,12 +2224,25 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			flusher.Flush()
 			return nil
 		}
-		// Other error — send error to client via SSE so frontend doesn't get NO_STREAM_DATA
+		// Other error — chunk.Error callback may have already sent done+stored
+		if streamErrorHandled {
+			return nil
+		}
 		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
 		errMsg := "An error occurred while streaming the response"
 		if h.metricsRecorder != nil {
 			latencyMs := float64(time.Since(startTime).Milliseconds())
 			h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "error")
+		}
+		// Persist partial content so the user doesn't lose what was already streamed
+		if fullContent != "" {
+			h.store.AddMessage(context.Background(), convID, memory.Message{
+				Role:     "assistant",
+				Content:  fullContent,
+				Provider: providerName,
+				Model:    model,
+			})
+			h.conversationCache.Invalidate(convID)
 		}
 		errData, _ := json.Marshal(map[string]interface{}{
 			"error":   errMsg,
@@ -2263,6 +2252,54 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		c.Response().Write([]byte("data: " + string(errData) + "\n\n"))
 		flusher.Flush()
 		return nil
+	}
+
+	// Persist assistant message AFTER typeless cards are appended to fullContent
+	if streamCompleted && fullContent != "" {
+		if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
+			Role:     "assistant",
+			Content:  fullContent,
+			Provider: providerName,
+			Model:    model,
+			Stats: &memory.MessageStats{
+				InputTokens:     totalInputTokens,
+				OutputTokens:    totalOutputTokens,
+				TotalTokens:     totalInputTokens + totalOutputTokens,
+				LatencyMs:       int64(finalLatencyMs),
+				TTFTMs:          int64(finalTTFTMs),
+				TokensPerSecond: finalTPS,
+			},
+		}); addErr != nil {
+			logger.Error().Err(addErr).Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
+		}
+		h.conversationCache.Invalidate(convID)
+
+		// Async memory extraction for web chat streaming
+		if h.layeredMemory != nil {
+			capturedConvID := convID
+			h.queueEvent(func() {
+				h.extractMemory(capturedConvID, "web")
+			})
+		}
+
+		// Generate title for new conversations
+		go h.generateConversationTitle(convID, req.Message, fullContent, "en")
+
+		// Emit LLM request event to companion for streaming
+		if h.companionManager != nil {
+			sessionID := h.getCompanionSessionID(convID)
+			if sessionID != "" {
+				llmResp := &llm.ChatResponse{
+					Usage: llm.Usage{
+						PromptTokens:     totalInputTokens,
+						CompletionTokens: totalOutputTokens,
+						TotalTokens:      totalInputTokens + totalOutputTokens,
+					},
+				}
+				h.emitLLMRequestEventAsync(sessionID, providerName, model, llmResp, nil, time.Duration(finalLatencyMs)*time.Millisecond)
+				h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
+			}
+		}
 	}
 
 	// Send final DONE marker
