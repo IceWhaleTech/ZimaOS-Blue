@@ -1950,7 +1950,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if len(chunk.ToolCalls) > 0 {
 			for _, tc := range chunk.ToolCalls {
 				if tc.ID != "" && tc.Name != "" {
-					// New tool call — append
+					// New tool call — strip bogus initial arguments from some providers
+					if tc.Arguments == "null" || tc.Arguments == "undefined" {
+						tc.Arguments = ""
+					}
 					streamToolCalls = append(streamToolCalls, tc)
 				} else if len(streamToolCalls) > 0 && tc.Arguments != "" {
 					// Partial argument delta — append to last tool call

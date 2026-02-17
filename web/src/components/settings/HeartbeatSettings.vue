@@ -33,7 +33,10 @@ const indicatorClass = computed(() => {
 const statusLabel = computed(() => {
   const evt = status.value?.last_event
   if (!evt) return t('heartbeat.neverRun')
-  return evt.status
+  const key = `heartbeat.status.${evt.status}`
+  const translated = t(key)
+  // Fallback to raw status if no translation exists
+  return translated === key ? evt.status : translated
 })
 
 async function fetchStatus() {
@@ -178,8 +181,8 @@ onMounted(() => {
           <span>{{ formatTime(status.last_event.timestamp) }}</span>
         </div>
         <div v-if="status.last_event.reason" class="flex justify-between">
-          <span>{{ t('heartbeat.reason') }}</span>
-          <span class="text-gray-500">{{ status.last_event.reason }}</span>
+          <span>{{ t('heartbeat.reasonLabel') }}</span>
+          <span class="text-gray-500">{{ t(`heartbeat.reason.${status.last_event.reason}`, status.last_event.reason) }}</span>
         </div>
         <div v-if="status.last_event.duration_ms" class="flex justify-between">
           <span>{{ t('heartbeat.duration') }}</span>

@@ -316,6 +316,16 @@ router.beforeEach(async (to, from, next) => {
 
   isNavigating = true
   try {
+    // Extract access_token from URL query (e.g. QR code deep link)
+    const urlToken = to.query.access_token as string | undefined
+    if (urlToken) {
+      localStorage.setItem('token', urlToken)
+      // Strip token from URL and continue to the clean path
+      const { access_token: _, ...cleanQuery } = to.query
+      next({ path: to.path, query: cleanQuery, replace: true })
+      return
+    }
+
     const token = localStorage.getItem('token')
     const isAuthenticated = !!token
     const requiresAuth = to.meta.requiresAuth

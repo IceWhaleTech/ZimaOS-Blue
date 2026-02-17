@@ -77,10 +77,22 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 	// If file doesn't exist, proceed — the LLM prompt says "if it exists".
 
 	// Call LLM
-	provider := deps.LLMRegistry.Get(cfg.LLMProvider)
+	if deps.LLMRegistry == nil {
+		emit("failed", "no-llm-registry")
+		deps.Logger.Error("heartbeat: LLM registry not available")
+		return RunResult{Status: "failed", Reason: "no-llm-registry"}
+	}
+	providerName := cfg.LLMProvider
+	if providerName == "" {
+		// Fallback: pick first available provider
+		if names := deps.LLMRegistry.List(); len(names) > 0 {
+			providerName = names[0]
+		}
+	}
+	provider := deps.LLMRegistry.Get(providerName)
 	if provider == nil {
 		emit("failed", "provider-not-found")
-		deps.Logger.Error("heartbeat: LLM provider not found", zap.String("provider", cfg.LLMProvider))
+		deps.Logger.Error("heartbeat: LLM provider not found", zap.String("provider", providerName))
 		return RunResult{Status: "failed", Reason: "provider-not-found"}
 	}
 

@@ -4,8 +4,10 @@ import { useI18n } from 'vue-i18n'
 import type { TunnelStatus as TunnelStatusType } from '@/api/remote-access'
 import { getRemoteAccessDiagnostics, getRemoteAccessLogs, getRemoteAccessQRCode, type RemoteAccessLog } from '@/api/remote-access'
 import { getTunnelProviderIcon } from '@/utils/channelIcons'
+import { useTauri } from '@/composables/useTauri'
 
 const { t } = useI18n()
+const { openInBrowser } = useTauri()
 
 const props = defineProps<{
   status: TunnelStatusType
@@ -91,7 +93,7 @@ function copyTunnelPassword() {
 
 function openUrl() {
   if (props.status.url) {
-    window.open(props.status.url, '_blank')
+    openInBrowser(props.status.url)
   }
 }
 

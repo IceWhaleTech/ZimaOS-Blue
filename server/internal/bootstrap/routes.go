@@ -456,8 +456,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			hbCfg.WorkspaceDir = dataDir
 		}
 		hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
-			Config: hbCfg,
-			Logger: logger,
+			Config:      hbCfg,
+			LLMRegistry: s.LLMRegistry,
+			Logger:      logger,
 		})
 		go hbRunner.Run(deps.Ctx)
 		hbHandler := heartbeat.NewHandler(hbRunner)
@@ -720,6 +721,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Ngrok remote access routes
 	if deps.NgrokTunnelMgr != nil && deps.NgrokConfigStore != nil {
 		remoteAccessHandler := networkapi.NewSDKRemoteAccessHandler(deps.NgrokTunnelMgr, deps.NgrokConfigStore, cfg.Port)
+		remoteAccessHandler.SetJWTService(s.JWTService)
 		remoteAccessHandler.RegisterRoutes(e)
 		tunnelHandler := networkapi.NewTunnelHandler(deps.NgrokConfigStore, cfg.Port)
 		tunnelHandler.RegisterRoutes(e)

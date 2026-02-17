@@ -45,6 +45,15 @@ const isCompact = ref(false)
 const showMobileMenu = ref(false)
 const mobileMenuRef = ref<HTMLDivElement | null>(null)
 
+// Voice mode state (compact: replace textarea with voice button)
+const voiceMode = ref(false)
+const isTouchDevice = ref(false)
+const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+
+// Transcription popup state
+const showTranscriptionPopup = ref(false)
+const transcribedText = ref('')
+
 // Image preview state
 const showImagePreview = ref(false)
 const previewImageSrc = ref('')
@@ -335,14 +344,19 @@ async function startRecording() {
       const lang = localeStore.currentLocale.split('-')[0]
       const response = await voiceApi.transcribe(wavBlob, 'wav', lang)
       if (response.data.text) {
-        // Append transcribed text to message
-        if (message.value.trim()) {
-          message.value += ' ' + response.data.text
+        // In compact voice mode, show transcription popup for editing
+        if (isCompact.value && voiceMode.value) {
+          transcribedText.value = response.data.text
+          showTranscriptionPopup.value = true
         } else {
-          message.value = response.data.text
+          // Desktop: append to message directly
+          if (message.value.trim()) {
+            message.value += ' ' + response.data.text
+          } else {
+            message.value = response.data.text
+          }
+          handleInput()
         }
-        // Trigger input resize
-        handleInput()
       }
     } catch (error) {
       console.error('Transcription error:', error)
@@ -384,10 +398,68 @@ function toggleRecording() {
   }
 }
 
+// Voice mode toggle (compact only)
+function toggleVoiceMode() {
+  voiceMode.value = !voiceMode.value
+}
+
+// Touch handlers for long-press recording (mobile)
+function handleVoiceTouchStart() {
+  if (!isTouchDevice.value || props.disabled || props.streaming || isTranscribing.value) return
+  longPressTimer.value = setTimeout(() => {
+    startRecording()
+  }, 150)
+}
+
+function handleVoiceTouchEnd() {
+  if (!isTouchDevice.value) return
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  if (isRecording.value) {
+    stopRecording()
+  }
+}
+
+function handleVoiceTouchCancel() {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  if (isRecording.value) {
+    stopRecording()
+  }
+}
+
+// Click handler for PC voice recording (non-touch)
+function handleVoiceClick() {
+  if (isTouchDevice.value) return
+  toggleRecording()
+}
+
+// Transcription popup handlers
+function confirmTranscription() {
+  if (transcribedText.value.trim()) {
+    emit('send', transcribedText.value.trim(), [...attachments.value])
+    attachments.value = []
+  }
+  showTranscriptionPopup.value = false
+  transcribedText.value = ''
+}
+
+function cancelTranscription() {
+  showTranscriptionPopup.value = false
+  transcribedText.value = ''
+}
+
 // Cleanup on unmount
 onUnmounted(() => {
   if (recorder.value) {
     recorder.value.stop()
+  }
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
   }
   window.removeEventListener('resize', checkMobile)
   document.removeEventListener('click', handleClickOutside)
@@ -436,6 +508,7 @@ function handleMobileTalkMode() {
 
 onMounted(() => {
   checkMobile()
+  isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0
   window.addEventListener('resize', checkMobile)
   document.addEventListener('click', handleClickOutside)
 })
@@ -776,7 +849,56 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
         </svg>
       </button>
 
-      <div class="flex-1 relative">
+      <!-- Compact: Voice/Keyboard toggle button -->
+      <button
+        v-if="isCompact"
+        :disabled="disabled || streaming"
+        class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        :title="voiceMode ? t('chat.switchToKeyboard') : t('chat.switchToVoice')"
+        @click="toggleVoiceMode"
+      >
+        <!-- Keyboard icon when in voice mode -->
+        <svg v-if="voiceMode" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h.01M15 9h.01M9 13h.01M15 13h.01M12 9h.01M12 13h.01" />
+        </svg>
+        <!-- Mic icon when in keyboard mode -->
+        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+        </svg>
+      </button>
+
+      <!-- Compact voice mode: hold-to-speak / click-to-record button (replaces textarea) -->
+      <div v-if="isCompact && voiceMode" class="flex-1 relative">
+        <button
+          :disabled="disabled || streaming || isTranscribing"
+          class="w-full h-10 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="isRecording
+            ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
+            : isTranscribing
+              ? 'glass-card text-gray-500 dark:text-slate-300'
+              : 'glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 active:bg-gray-200 dark:active:bg-white/20'"
+          @touchstart.prevent="handleVoiceTouchStart"
+          @touchend.prevent="handleVoiceTouchEnd"
+          @touchcancel="handleVoiceTouchCancel"
+          @click="handleVoiceClick"
+        >
+          <svg v-if="isTranscribing" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+          </svg>
+          <span class="text-sm">
+            <template v-if="isTranscribing">{{ t('chat.voiceTranscribing') }}</template>
+            <template v-else-if="isRecording">{{ isTouchDevice ? t('chat.releaseToSend') : t('chat.stopRecording') }}</template>
+            <template v-else>{{ isTouchDevice ? t('chat.holdToSpeak') : t('chat.clickToRecord') }}</template>
+          </span>
+        </button>
+      </div>
+
+      <!-- Normal textarea (hidden in compact voice mode) -->
+      <div v-else class="flex-1 relative">
         <textarea
           ref="textareaRef"
           v-model="message"
@@ -853,12 +975,59 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
 
     <!-- Recording indicator -->
     <div
-      v-if="isRecording"
+      v-if="isRecording && !(isCompact && voiceMode)"
       class="text-xs text-red-400 mt-2 text-center flex items-center justify-center gap-2"
     >
       <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
       <span>{{ t('chat.recording') }}</span>
     </div>
+
+    <!-- Transcription popup (compact voice mode) -->
+    <Transition
+      enter-active-class="transition ease-out duration-200"
+      enter-from-class="opacity-0 translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition ease-in duration-150"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 translate-y-2"
+    >
+      <div
+        v-if="showTranscriptionPopup"
+        class="mt-3 glass-card rounded-xl p-3 border border-white/10"
+      >
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium text-gray-700 dark:text-slate-200">{{ t('chat.transcription.title') }}</span>
+          <button
+            class="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            @click="cancelTranscription"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <textarea
+          v-model="transcribedText"
+          class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 resize-none text-sm rounded-lg"
+          rows="3"
+          @keydown.enter.ctrl.prevent="confirmTranscription"
+          @keydown.enter.meta.prevent="confirmTranscription"
+          @keydown.esc="cancelTranscription"
+        />
+        <div class="flex justify-end mt-2">
+          <button
+            :disabled="!transcribedText.trim()"
+            class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm flex items-center gap-1.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
+            @click="confirmTranscription"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            {{ t('chat.send') }}
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     </div>
   </div>

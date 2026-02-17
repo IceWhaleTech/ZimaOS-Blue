@@ -9,6 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 )
 
@@ -17,6 +18,7 @@ type SDKRemoteAccessHandler struct {
 	tunnelManager  *ngrok.SDKTunnelManager
 	configProvider ngrok.ConfigProvider
 	serverPort     int
+	jwtService     *auth.JWTService
 }
 
 // NewSDKRemoteAccessHandler creates a new SDK-based remote access handler.
@@ -26,6 +28,11 @@ func NewSDKRemoteAccessHandler(tm *ngrok.SDKTunnelManager, configProvider ngrok.
 		configProvider: configProvider,
 		serverPort:     serverPort,
 	}
+}
+
+// SetJWTService sets the JWT service for generating access tokens in QR codes.
+func (h *SDKRemoteAccessHandler) SetJWTService(jwt *auth.JWTService) {
+	h.jwtService = jwt
 }
 
 // RegisterRoutes registers remote access routes.
@@ -105,17 +112,28 @@ func (h *SDKRemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
 	})
 }
 
-// GetQRCode generates a QR code for the tunnel URL.
+// GetQRCode generates a QR code for the tunnel URL with embedded auth token.
 func (h *SDKRemoteAccessHandler) GetQRCode(c echo.Context) error {
-	url := h.tunnelManager.GetURL()
-	if url == "" {
+	tunnelURL := h.tunnelManager.GetURL()
+	if tunnelURL == "" {
 		return c.JSON(http.StatusNotFound, map[string]interface{}{
 			"success": false,
 			"error":   "No active tunnel",
 		})
 	}
 
-	qrcode, err := ngrok.GenerateQRCode(url, 200)
+	// Build QR URL: tunnel + /chat + token (if JWT service available)
+	qrURL := tunnelURL + "/chat"
+	if h.jwtService != nil {
+		if userClaims := auth.GetUserFromContext(c); userClaims != nil {
+			token, err := h.jwtService.GenerateAccessToken(userClaims)
+			if err == nil {
+				qrURL += "?access_token=" + token
+			}
+		}
+	}
+
+	qrcode, err := ngrok.GenerateQRCode(qrURL, 200)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -125,7 +143,7 @@ func (h *SDKRemoteAccessHandler) GetQRCode(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
-		"url":     url,
+		"url":     tunnelURL,
 		"qrcode":  qrcode,
 	})
 }

@@ -388,7 +388,6 @@ func runServer() {
 		workflowHandler    *workflow.Handler
 		formfillerStore    *formfiller.Store
 		formfillerHandler  *formfiller.Handler
-		companionHandler   *companion.Handler
 		ngrokTunnelMgr     *ngrok.SDKTunnelManager
 		ngrokConfigStore   *ngrok.ConfigStore
 	)
@@ -532,28 +531,31 @@ func runServer() {
 		logger.Info().Msg("Form filler handler initialized")
 	})
 
+	var companionHandler   *companion.Handler
+	var companionWSHandler *companion.WebSocketHandler
+
 	if cfg.Companion.Enabled {
-		// Companion service — lazy init on first API call
-		companionHandler = companion.NewLazyHandler(func() (*companion.Manager, companion.Storage) {
-			companionConfig := companion.DefaultConfig()
-			companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
-			storage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
-			if err != nil {
-				logger.Warn().Err(err).Msg("Failed to initialize companion storage")
-				return nil, nil
-			}
-			streamer := companion.NewEventStreamer(companionConfig)
-			if err := streamer.Start(lm.Context()); err != nil {
+		// Companion service — eager init so chat handler can emit events immediately
+		companionConfig := companion.DefaultConfig()
+		companionConfig.Storage.BasePath = filepath.Join(dataDir, "companion")
+		companionStorage, err := companion.NewJSONLStorage(companionConfig.Storage.BasePath)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize companion storage")
+		}
+		if companionStorage != nil {
+			companionStreamer := companion.NewEventStreamer(companionConfig)
+			if err := companionStreamer.Start(lm.Context()); err != nil {
 				logger.Warn().Err(err).Msg("Failed to start companion streamer")
 			}
-			mgr := companion.NewManager(storage, streamer, companionConfig)
+			companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
+			companionHandler = companion.NewHandler(companionManager, companionStorage)
+			companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
+			chatHandler.SetCompanionManager(companionManager)
 			lm.RegisterShutdownHook(func(ctx context.Context) error {
-				return streamer.Stop()
+				return companionStreamer.Stop()
 			})
-			logger.Info().Msg("Companion service initialized lazily")
-			return mgr, storage
-		})
-		logger.Info().Msg("Companion service configured for lazy initialization")
+			logger.Info().Msg("Companion service initialized")
+		}
 	} else {
 		logger.Info().Msg("Companion service disabled by config")
 	}
@@ -613,7 +615,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -676,7 +678,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -884,6 +886,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		VoiceWSHandler:     voiceWSHandler,
 		FormfillerHandler:  formfillerHandler,
 		CompanionHandler:   companionHandler,
+		CompanionWSHandler: companionWSHandler,
 		ProviderPool:       providerPool,
 		APIKeyService:      apiKeyService,
 		SpeechHandler:      speechHandler,
@@ -897,11 +900,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
-
-	// Register companion and channel routes (after bootstrap)
-	if companionHandler != nil {
-		companionHandler.RegisterRoutes(e)
-	}
 
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)

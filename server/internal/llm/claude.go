@@ -506,12 +506,16 @@ func (p *ClaudeProvider) processSSELineCallback(ctx context.Context, line string
 	case "content_block_start":
 		// Handle tool_use blocks — emit as ToolCall when block starts
 		if event.ContentBlock.Type == "tool_use" {
-			inputJSON, _ := json.Marshal(event.ContentBlock.Input)
+			var args string
+			if event.ContentBlock.Input != nil {
+				inputJSON, _ := json.Marshal(event.ContentBlock.Input)
+				args = string(inputJSON)
+			}
 			if err := callback(StreamChunk{
 				ToolCalls: []ToolCall{{
 					ID:        event.ContentBlock.ID,
 					Name:      event.ContentBlock.Name,
-					Arguments: string(inputJSON),
+					Arguments: args,
 				}},
 				Done: false,
 			}); err != nil {
@@ -661,7 +665,11 @@ func (p *ClaudeProvider) processSSELine(ctx context.Context, ch chan<- StreamChu
 
 	case "content_block_start":
 		if event.ContentBlock.Type == "tool_use" {
-			inputJSON, _ := json.Marshal(event.ContentBlock.Input)
+			var args string
+			if event.ContentBlock.Input != nil {
+				inputJSON, _ := json.Marshal(event.ContentBlock.Input)
+				args = string(inputJSON)
+			}
 			select {
 			case <-ctx.Done():
 				return true
@@ -669,7 +677,7 @@ func (p *ClaudeProvider) processSSELine(ctx context.Context, ch chan<- StreamChu
 				ToolCalls: []ToolCall{{
 					ID:        event.ContentBlock.ID,
 					Name:      event.ContentBlock.Name,
-					Arguments: string(inputJSON),
+					Arguments: args,
 				}},
 				Done: false,
 			}:

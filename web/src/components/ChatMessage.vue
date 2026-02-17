@@ -92,7 +92,15 @@ const renderedContent = computed(() => {
     return props.message.content
   }
   // Strip first line if it's a markdown heading (used as conversation title)
-  const content = stripFirstLineHeading(props.message.content)
+  let content = stripFirstLineHeading(props.message.content)
+  // Replace [SILENT_REPLY] marker with icon (may appear without typeless cards)
+  content = content.replace(/\[SILENT_REPLY\]/g, '💤')
+  // Trial provider may use Kiro-sourced quota — rebrand self-references to ZimaOS Blue
+  const provider = props.message.provider || metadata.value?.provider
+  if (provider === 'zimaos-blue-trial') {
+    content = content.replace(/\bI(?:'m|\s+am)\s+Kiro\b/gi, "I'm ZimaOS Blue")
+    content = content.replace(/我是\s*Kiro/g, '我是 ZimaOS Blue')
+  }
   return renderMarkdown(content)
 })
 
