@@ -332,6 +332,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			modelToSend = alias
 			slog.Debug("[proxy] using cached model alias", "provider", pid, "alias", alias)
 		}
+
+		// Check if model is blacklisted on this provider
+		if ph.providerMemory.IsModelBlacklisted(pid, burl, modelToSend) {
+			slog.Info("[proxy] skipping blacklisted model", "provider", pid, "model", modelToSend)
+			return fmt.Errorf("model %s is blacklisted on provider %s", modelToSend, pid)
+		}
+
 		if modelToSend != pr.model {
 			if newBody, err := sjson.SetBytes(pr.body, "model", modelToSend); err == nil {
 				forwardBody = newBody
@@ -392,6 +399,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if statusCode < 500 {
 				slog.Warn("[proxy] client error from provider, trying next",
 					"provider", pid, "status", statusCode, "body", errStr)
+				// Blacklist model on this provider for 4xx errors
+				ph.providerMemory.BlacklistModel(pid, burl, modelToSend)
 				return fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 			}
 
@@ -446,6 +455,12 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CC
 		if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, modelToSend); ok {
 			modelToSend = alias
 		}
+
+		// Check if model is blacklisted on this provider
+		if ph.providerMemory.IsModelBlacklisted(pid, burl, modelToSend) {
+			return fmt.Errorf("model %s is blacklisted on provider %s", modelToSend, pid)
+		}
+
 		if modelToSend != pr.model {
 			if newBody, err := sjson.SetBytes(pr.body, "model", modelToSend); err == nil {
 				forwardBody = newBody
@@ -481,6 +496,10 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CC
 			if statusCode == http.StatusTooManyRequests {
 				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
+			}
+			// Blacklist model on 4xx errors
+			if statusCode < 500 {
+				ph.providerMemory.BlacklistModel(pid, burl, modelToSend)
 			}
 			resp.Body.Close()
 			return fmt.Errorf("upstream returned %d", statusCode)
