@@ -130,7 +130,7 @@ export function clearAllState(): void {
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/home',
+    redirect: '/chat',
   },
   {
     path: '/login',
@@ -178,6 +178,24 @@ const routes: RouteRecordRaw[] = [
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/ProfileView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/my/usage',
+    name: 'MyUsage',
+    component: () => import('@/views/MyUsageView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/my/providers',
+    name: 'MyProviders',
+    component: () => import('@/views/MyProvidersView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/my/skills',
+    name: 'MySkills',
+    component: () => import('@/views/MySkillsView.vue'),
     meta: { requiresAuth: true },
   },
   {

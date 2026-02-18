@@ -132,7 +132,10 @@ func (h *Handler) GetEntities(c echo.Context) error {
 // GetEntity returns a single entity.
 func (h *Handler) GetEntity(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"entity":    nil,
+		})
 	}
 
 	entityID := c.Param("id")
@@ -157,7 +160,10 @@ type controlEntityRequest struct {
 // ControlEntity controls an entity.
 func (h *Handler) ControlEntity(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"message":   "not connected to Home Assistant",
+		})
 	}
 
 	entityID := c.Param("id")
@@ -188,7 +194,10 @@ func (h *Handler) ControlEntity(c echo.Context) error {
 // GetScenes returns all scenes.
 func (h *Handler) GetScenes(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"scenes":    []interface{}{},
+		})
 	}
 
 	scenes, err := h.service.GetScenes(c.Request().Context())
@@ -202,7 +211,10 @@ func (h *Handler) GetScenes(c echo.Context) error {
 // ActivateScene activates a scene.
 func (h *Handler) ActivateScene(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"message":   "not connected to Home Assistant",
+		})
 	}
 
 	sceneID := c.Param("id")
@@ -223,7 +235,10 @@ func (h *Handler) ActivateScene(c echo.Context) error {
 // GetAutomations returns all automations.
 func (h *Handler) GetAutomations(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected":   false,
+			"automations": []interface{}{},
+		})
 	}
 
 	automations, err := h.service.GetAutomations(c.Request().Context())
@@ -237,7 +252,10 @@ func (h *Handler) GetAutomations(c echo.Context) error {
 // TriggerAutomation triggers an automation.
 func (h *Handler) TriggerAutomation(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"message":   "not connected to Home Assistant",
+		})
 	}
 
 	automationID := c.Param("id")
@@ -263,7 +281,10 @@ type toggleAutomationRequest struct {
 // ToggleAutomation enables or disables an automation.
 func (h *Handler) ToggleAutomation(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"message":   "not connected to Home Assistant",
+		})
 	}
 
 	automationID := c.Param("id")
@@ -299,7 +320,10 @@ type commandRequest struct {
 // ProcessCommand processes a natural language command.
 func (h *Handler) ProcessCommand(c echo.Context) error {
 	if !h.service.IsConnected() {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "not connected to Home Assistant")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected": false,
+			"message":   "not connected to Home Assistant",
+		})
 	}
 
 	var req commandRequest

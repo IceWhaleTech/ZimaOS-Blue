@@ -48,7 +48,7 @@ Spreagtha ag Clawdbot, creidimid go mbeidh **todhchaí** na ríomhaireachta pear
 
 Is é **ZimaOS Blue ár bhfreagra** — **am rite gníomhaire agus uirlisí foinse oscailte, in-iniúchta agus réidh le haghaidh táirgthe** a ligeann duit gníomhairí príobháideacha, féin-óstáilte a sheoladh gan aon fhrithchuimilt.
 
-Tógtha d'fhorbróirí dána ar mhaith leo **a gcuid gníomhairí féin a chruthú nó a cheardú**, tá Blue **innealtóirithe le haghaidh feidhmíochta**: scríofa i **Go**, le lorg cuimhne chomh híseal le 10 MB. Ritheann sé ar **aon x86, Raspberry Pi, Windows, macOS** — áit ar bith a nascann tú cumhacht.
+Tógtha d'fhorbróirí dána ar mhaith leo **a gcuid gníomhairí féin a chruthú nó a cheardú**, tá Blue **innealtóirithe le haghaidh feidhmíochta**: scríofa i **Go**, le lorg cuimhne chomh híseal le 10 MB. Ritheann sé ar **aon x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — áit ar bith a nascann tú cumhacht.
 
 ![](../../docs/assets/features.png)
 
@@ -57,6 +57,10 @@ Tógtha d'fhorbróirí dána ar mhaith leo **a gcuid gníomhairí féin a chruth
 ### Dearadh Áitiúil-ar-Dtús & Rochtain Uathoibríoch ar Shamhlacha
 
 Téigh níos faide: soláthraíonn sé tacaíocht dhúchasach do **20+ ardán IM**, comhéadain **tiomáinte ag guth** le haghaidh comhrá nádúrtha, comhthéacs-fheasach, **athrú samhla gan aon chumraíocht** le scanadh IDE, agus pearsantachtaí SOUL-sraitheacha.
+
+<p align="center">
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+</p>
 
 ### Tapa, Éadrom
 
@@ -74,7 +78,7 @@ Tiomsaithe go dúchasach i Go — gan ateangaire, gan VM, gan forchostais. Rithe
 
 ### Go Glan, Aon Ghléas
 
-100% Go, dénártha statach. **Tras-tiomsaíonn sé go 5 sprioc** as an mbosca (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Gan am rite Node, gan Python, gan coimeádáin ag teastáil. Cuir ar NAS é, ar Raspberry Pi, ar sheanlíontóir x86, nó ar Mac — ritheann sé díreach. **Ansin cuir do UI, loighic, agus scileanna gníomhaire féin air** — bonn cód amháin, gach ardán.
+100% Go, dénártha statach. **Tras-tiomsaíonn sé go 5 sprioc** as an mbosca (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Gan am rite Node, gan Python, gan coimeádáin ag teastáil. Cuir ar NAS é, ar ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ar sheanlíontóir x86, nó ar ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — ritheann sé díreach. **Ansin cuir do UI, loighic, agus scileanna gníomhaire féin air** — bonn cód amháin, gach ardán.
 
 ### Slándáil & Rialachas
 
@@ -91,31 +95,67 @@ Creidimid go nglacann **ríomhaireacht phearsanta na chéad ghlúine eile** le L
 - **Áitiúil-ar-Dtús, Ultra-Éadrom, Tras-Ghléas** – Níl crua-earraí ardleibhéil ag teastáil. Ritheann sé ar aon rud is féidir ríomhaireacht a dhéanamh.
 - **Slán & In-iniúchta** – Iniúchadh seisiúin, gaineamhbhoscú, rialtáin ceadanna, agus seachfhreastalaí API ionsuite a fheidhmíonn mar bhalla dóiteáin ciseal feidhmchláir — tá gach beart isteach/amach le feiceáil.
 
-Laghdaímid an cód réamhdhéanta ionas go **ndíríonn tú ar an méid is tábhachtaí**. Ag fanacht dílis d'**fhealsúnacht deartha ZimaOS**, soláthraíonn Blue:
+![](../../docs/assets/design_principle.png)
+
+Laghdaímid an cód réamhdhéanta ionas go **ndíríonn tú ar an méid is tábhachtaí**. Ag fanacht dílis d'<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **fhealsúnacht deartha ZimaOS**, soláthraíonn Blue:
 - **Ó Nialas go hAon le Clic Amháin** – Imscaradh láithreach, gan cumraíocht chasta.
 - **Fréamhshamhlú Tapa** – Cruthaigh nó ceardaigh uirlisí, idirghníomhaíochtaí, agus pacáistí feidhmchlár atá sainiúil do chásanna.
 - **Réidh don Domhan** – **Tá an domhan mór**, agus ní Béarla an réamhshocrú. **20+ teanga, dúchasach**, gan bacainní.
 - **Éiceachóras Samhlacha Oscailte** – Gan glasáil díoltóra. Tabhair do shamhlacha féin leat.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Soláthróir | Samhlacha | Cineál |
+|------------|-----------|--------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Néal |
+| Anthropic | Claude 4.5, Claude 4 | Néal |
+| Google | Gemini 2.5, Gemini 2.0 | Néal |
+| Ollama | Llama, Qwen, Gemma, Phi, srl. | Áitiúil |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Néal |
+| Grok | Grok-3, Grok-3-mini | Néal |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Néal |
+| GLM | GLM-4, GLM-4-Flash | Néal |
+| Moonshot | Moonshot-v1 | Néal |
+| MiniMax | abab6.5, abab5.5 | Néal |
+| Venice | Llama, Mistral (príobháideacht ar dtús) | Néal |
+| AWS Bedrock | Claude, Llama, Titan | Néal |
+| Azure | Samhlacha OpenAI trí Azure | Néal |
+| OpenRouter | 100+ samhail comhiomlánaithe | Néal |
+| AIHubMix | Comhiomlánóir ilsoláthróra | Néal |
+| Codex | OpenAI Codex | Néal |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Néal |
+| Saincheaptha | Aon API comhoiriúnach le OpenAI / Anthropic / Gemini | Néal / Áitiúil |
+
+</details>
+
+### IDEanna Tacaithe
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Tús Tapa
 
-### Rogha 1: Íoslódáil an Aip Deisce (macOS & Windows)
+### Rogha 1: Íoslódáil an Aip Deisce
 
 Faigh an feidhmchlár dúchasach — gan spleáchais, gan tiomsú.
 
-- **macOS**: [Íoslódáil DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Íoslódáil Suiteálaí](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Íoslódáil DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Íoslódáil Suiteálaí](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Rogha 2: Script Suiteála
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -127,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Forbhreathnú Ailtireachta
 

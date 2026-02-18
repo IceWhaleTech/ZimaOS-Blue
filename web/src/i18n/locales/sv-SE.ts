@@ -1064,7 +1064,7 @@ export default {
     benefit3: 'Säker beständig datalagring',
     upgradeFailed: 'Kunde inte skapa administratörskonto',
     passwordCheck: {
-      length: 'Minst 8 tecken',
+      length: 'Minst {n} tecken',
       uppercase: 'En versal',
       lowercase: 'En gemen',
       number: 'En siffra',

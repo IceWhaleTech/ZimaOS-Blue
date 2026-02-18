@@ -48,7 +48,7 @@ Inspirirani Clawdbotom, vjerujemo da će **budućnost** osobnog računarstva bit
 
 **ZimaOS Blue je naš odgovor** — potpuno **otvorenog koda, provjerljivo i spremno za produkciju okruženje za pokretanje agenata i skup alata** koji vam omogućuje isporuku privatnih, samostalno hostanih agenata bez ikakvih prepreka.
 
-Izgrađen za odvažne programere koji žele **kreativno ili ručno izraditi vlastite agente**, Blue je **projektiran za performanse**: napisan u **Go** jeziku, s potrošnjom memorije od samo 10 MB. Radi na **bilo kojem x86 sustavu, Raspberry Pi-ju, Windowsu, macOS-u** — svugdje gdje ima struje.
+Izgrađen za odvažne programere koji žele **kreativno ili ručno izraditi vlastite agente**, Blue je **projektiran za performanse**: napisan u **Go** jeziku, s potrošnjom memorije od samo 10 MB. Radi na **bilo kojem x86 sustavu, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-ju, Windowsu, macOS-u** — svugdje gdje ima struje.
 
 ![](../../docs/assets/features.png)
 
@@ -57,6 +57,10 @@ Izgrađen za odvažne programere koji žele **kreativno ili ručno izraditi vlas
 ### Lokalno orijentirani dizajn i automatski pristup modelima
 
 Idemo dalje: nativna podrška za **20+ IM platformi**, **glasovno upravljana** sučelja za prirodan, kontekstualno svjestan dijalog, **prebacivanje modela bez konfiguracije** s IDE skeniranjem i SOUL-slojevite osobnosti.
+
+<p align="center">
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+</p>
 
 ### Brzo i lagano
 
@@ -74,7 +78,7 @@ Nativno kompilirano u Go — bez interpretera, bez VM-a, bez opterećenja. Tiho 
 
 ### Čisti Go, bilo koji uređaj
 
-100% Go, statička binarna datoteka. **Križna kompilacija za 5 ciljnih platformi** odmah dostupna (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node okruženja, bez Pythona, bez kontejnera. Stavite ga na NAS, Raspberry Pi, stari x86 usmjerivač ili Mac — jednostavno radi. **Zatim dodajte vlastito korisničko sučelje, logiku i vještine agenata** — jedna baza koda, svaka platforma.
+100% Go, statička binarna datoteka. **Križna kompilacija za 5 ciljnih platformi** odmah dostupna (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node okruženja, bez Pythona, bez kontejnera. Stavite ga na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, stari x86 usmjerivač ili ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — jednostavno radi. **Zatim dodajte vlastito korisničko sučelje, logiku i vještine agenata** — jedna baza koda, svaka platforma.
 
 ### Sigurnost i upravljanje
 
@@ -91,31 +95,67 @@ Vjerujemo da **osobno računarstvo sljedeće generacije** prihvaća LLM-ove — 
 - **Lokalno orijentirano, ultra lagano, višeuređajno** – Nije potreban vrhunski hardver. Radi na svemu što može računati.
 - **Sigurno i provjerljivo** – Revizija sesija, sandboxing, kontrole dozvola i ugrađeni API proxy koji djeluje kao vatrozid aplikacijskog sloja — svaki bajt ulaza/izlaza je vidljiv.
 
-Smanjujemo predloške koda kako biste se **usredotočili na ono što je važno**. Vjerni **dizajnerskoj filozofiji ZimaOS-a**, Blue pruža:
+![](../../docs/assets/design_principle.png)
+
+Smanjujemo predloške koda kako biste se **usredotočili na ono što je važno**. Vjerni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **dizajnerskoj filozofiji ZimaOS-a**, Blue pruža:
 - **Od nule do jedan jednim klikom** – Trenutačna implementacija, bez složene konfiguracije.
 - **Brzo prototipiranje** – Kreativno ili ručno izradite alate, interakcije i pakete aplikacija specifične za scenarij.
 - **Globalno spremno** – **Svijet je velik** i ne govori zadano engleski. **20+ jezika, nativno**, bez prepreka.
 - **Otvoreni ekosustav modela** – Bez vezanosti za dobavljača. Donesite vlastite modele.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Pružatelj | Modeli | Vrsta |
+|-----------|--------|-------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi itd. | Lokalno |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (privatnost na prvom mjestu) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | OpenAI modeli putem Azurea | Cloud |
+| OpenRouter | 100+ agregiranih modela | Cloud |
+| AIHubMix | Multi-provider agregator | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Prilagođeno | Bilo koji API kompatibilan s OpenAI / Anthropic / Gemini | Cloud / Lokalno |
+
+</details>
+
+### Podržana IDE okruženja
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Brzi početak
 
-### Opcija 1: Preuzimanje desktop aplikacije (macOS i Windows)
+### Opcija 1: Preuzimanje desktop aplikacije
 
 Preuzmite nativnu aplikaciju — bez ovisnosti, bez kompiliranja.
 
-- **macOS**: [Preuzmi DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Preuzmi instalacijski program](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Preuzmi DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Preuzmi instalacijski program](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Opcija 2: Instalacijska skripta
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -127,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Pregled arhitekture
 

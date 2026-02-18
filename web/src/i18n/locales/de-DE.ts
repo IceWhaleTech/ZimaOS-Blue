@@ -1894,7 +1894,7 @@ export default {
     benefit3: 'Sichere dauerhafte Datenspeicherung',
     upgradeFailed: 'Admin-Konto konnte nicht erstellt werden',
     passwordCheck: {
-      length: 'Mindestens 8 Zeichen',
+      length: 'Mindestens {n} Zeichen',
       uppercase: 'Ein Großbuchstabe',
       lowercase: 'Ein Kleinbuchstabe',
       number: 'Eine Zahl',

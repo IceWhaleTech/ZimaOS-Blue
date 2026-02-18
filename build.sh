@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ZimaOS-Blue Development Script
-# Usage: ./dev.sh [command]
+# Usage: ./build.sh [command]
 # Commands: start (default), server, web, build, clean, prd
 
 set -e

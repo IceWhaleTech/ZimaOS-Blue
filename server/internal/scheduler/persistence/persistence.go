@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -34,6 +35,80 @@ type TaskRecord struct {
 	Dependencies []string          `json:"dependencies,omitempty"`
 	HandlerName  string            `json:"handler_name"`
 	HandlerData  []byte            `json:"handler_data,omitempty"`
+}
+
+// taskRow represents a task row for zorm scanning.
+type taskRow struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Priority     int     `json:"priority"`
+	Status       string  `json:"status"`
+	ScheduledAt  string  `json:"scheduled_at"`
+	StartedAt    *string `json:"started_at"`
+	CompletedAt  *string `json:"completed_at"`
+	Error        string  `json:"error"`
+	Metadata     string  `json:"metadata"`
+	RetryCount   int     `json:"retry_count"`
+	MaxRetries   int     `json:"max_retries"`
+	Timeout      int64   `json:"timeout_ns"`
+	Dependencies string  `json:"dependencies"`
+	HandlerName  string  `json:"handler_name"`
+	HandlerData  []byte  `json:"handler_data"`
+}
+
+// parseTaskTime parses time strings in multiple formats.
+func parseTaskTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
+	}
+	return t
+}
+
+// rowToTask converts a taskRow to a TaskRecord.
+func rowToTask(row taskRow) (*TaskRecord, error) {
+	task := &TaskRecord{
+		ID:          row.ID,
+		Name:        row.Name,
+		Priority:    row.Priority,
+		Status:      row.Status,
+		ScheduledAt: parseTaskTime(row.ScheduledAt),
+		Error:       row.Error,
+		RetryCount:  row.RetryCount,
+		MaxRetries:  row.MaxRetries,
+		Timeout:     row.Timeout,
+		HandlerName: row.HandlerName,
+		HandlerData: row.HandlerData,
+	}
+
+	if row.StartedAt != nil {
+		t := parseTaskTime(*row.StartedAt)
+		if !t.IsZero() {
+			task.StartedAt = &t
+		}
+	}
+	if row.CompletedAt != nil {
+		t := parseTaskTime(*row.CompletedAt)
+		if !t.IsZero() {
+			task.CompletedAt = &t
+		}
+	}
+
+	if row.Metadata != "" {
+		if err := json.Unmarshal([]byte(row.Metadata), &task.Metadata); err != nil {
+			return nil, err
+		}
+	}
+	if row.Dependencies != "" {
+		if err := json.Unmarshal([]byte(row.Dependencies), &task.Dependencies); err != nil {
+			return nil, err
+		}
+	}
+
+	return task, nil
 }
 
 // Config holds persistence configuration.
@@ -101,6 +176,10 @@ func NewStore(config Config) (*Store, error) {
 	return store, nil
 }
 
+func (s *Store) table() *z.ZormTable {
+	return z.Table(s.db, "tasks")
+}
+
 // migrate creates the necessary tables.
 func (s *Store) migrate() error {
 	schema := `
@@ -158,34 +237,31 @@ func (s *Store) Save(task *TaskRecord) error {
 		return err
 	}
 
-	query := `
-	INSERT INTO tasks (
-		id, name, priority, status, scheduled_at, started_at, completed_at,
-		error, metadata, retry_count, max_retries, timeout_ns, dependencies,
-		handler_name, handler_data
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		name = excluded.name,
-		priority = excluded.priority,
-		status = excluded.status,
-		scheduled_at = excluded.scheduled_at,
-		started_at = excluded.started_at,
-		completed_at = excluded.completed_at,
-		error = excluded.error,
-		metadata = excluded.metadata,
-		retry_count = excluded.retry_count,
-		max_retries = excluded.max_retries,
-		timeout_ns = excluded.timeout_ns,
-		dependencies = excluded.dependencies,
-		handler_name = excluded.handler_name,
-		handler_data = excluded.handler_data
-	`
+	data := map[string]interface{}{
+		"id":           task.ID,
+		"name":         task.Name,
+		"priority":     task.Priority,
+		"status":       task.Status,
+		"scheduled_at": task.ScheduledAt,
+		"started_at":   task.StartedAt,
+		"completed_at": task.CompletedAt,
+		"error":        task.Error,
+		"metadata":     string(metadataJSON),
+		"retry_count":  task.RetryCount,
+		"max_retries":  task.MaxRetries,
+		"timeout_ns":   task.Timeout,
+		"dependencies": string(depsJSON),
+		"handler_name": task.HandlerName,
+		"handler_data": task.HandlerData,
+	}
 
-	_, err = s.db.Exec(query,
-		task.ID, task.Name, task.Priority, task.Status, task.ScheduledAt,
-		task.StartedAt, task.CompletedAt, task.Error, string(metadataJSON),
-		task.RetryCount, task.MaxRetries, task.Timeout, string(depsJSON),
-		task.HandlerName, task.HandlerData,
+	_, err = s.table().Insert(data,
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{"name", "priority", "status", "scheduled_at", "started_at", "completed_at",
+				"error", "metadata", "retry_count", "max_retries", "timeout_ns", "dependencies",
+				"handler_name", "handler_data"},
+		),
 	)
 
 	return err
@@ -200,51 +276,20 @@ func (s *Store) Get(id string) (*TaskRecord, error) {
 		return nil, ErrStoreClosed
 	}
 
-	query := `
-	SELECT id, name, priority, status, scheduled_at, started_at, completed_at,
-		error, metadata, retry_count, max_retries, timeout_ns, dependencies,
-		handler_name, handler_data
-	FROM tasks WHERE id = ?
-	`
-
-	var task TaskRecord
-	var metadataJSON, depsJSON string
-	var startedAt, completedAt sql.NullTime
-
-	err := s.db.QueryRow(query, id).Scan(
-		&task.ID, &task.Name, &task.Priority, &task.Status, &task.ScheduledAt,
-		&startedAt, &completedAt, &task.Error, &metadataJSON,
-		&task.RetryCount, &task.MaxRetries, &task.Timeout, &depsJSON,
-		&task.HandlerName, &task.HandlerData,
+	var rows []taskRow
+	_, err := s.table().Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
 	)
-
-	if err == sql.ErrNoRows {
-		return nil, ErrTaskNotFound
-	}
 	if err != nil {
 		return nil, err
 	}
 
-	if startedAt.Valid {
-		task.StartedAt = &startedAt.Time
-	}
-	if completedAt.Valid {
-		task.CompletedAt = &completedAt.Time
+	if len(rows) == 0 {
+		return nil, ErrTaskNotFound
 	}
 
-	if metadataJSON != "" {
-		if err := json.Unmarshal([]byte(metadataJSON), &task.Metadata); err != nil {
-			return nil, err
-		}
-	}
-
-	if depsJSON != "" {
-		if err := json.Unmarshal([]byte(depsJSON), &task.Dependencies); err != nil {
-			return nil, err
-		}
-	}
-
-	return &task, nil
+	return rowToTask(rows[0])
 }
 
 // Delete removes a task from the store.
@@ -256,17 +301,12 @@ func (s *Store) Delete(id string) error {
 		return ErrStoreClosed
 	}
 
-	result, err := s.db.Exec("DELETE FROM tasks WHERE id = ?", id)
+	n, err := s.table().Delete(z.Where(z.Eq("id", id)))
 	if err != nil {
 		return err
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
+	if n == 0 {
 		return ErrTaskNotFound
 	}
 
@@ -282,93 +322,51 @@ func (s *Store) List(filter TaskFilter) ([]*TaskRecord, error) {
 		return nil, ErrStoreClosed
 	}
 
-	query := `
-	SELECT id, name, priority, status, scheduled_at, started_at, completed_at,
-		error, metadata, retry_count, max_retries, timeout_ns, dependencies,
-		handler_name, handler_data
-	FROM tasks
-	WHERE 1=1
-	`
-
-	args := []interface{}{}
+	var conds []interface{}
 
 	if filter.Status != "" {
-		query += " AND status = ?"
-		args = append(args, filter.Status)
+		conds = append(conds, z.Eq("status", filter.Status))
 	}
-
 	if filter.HandlerName != "" {
-		query += " AND handler_name = ?"
-		args = append(args, filter.HandlerName)
+		conds = append(conds, z.Eq("handler_name", filter.HandlerName))
 	}
-
 	if !filter.Since.IsZero() {
-		query += " AND scheduled_at >= ?"
-		args = append(args, filter.Since)
+		conds = append(conds, z.Gte("scheduled_at", filter.Since))
 	}
-
 	if !filter.Until.IsZero() {
-		query += " AND scheduled_at <= ?"
-		args = append(args, filter.Until)
+		conds = append(conds, z.Lte("scheduled_at", filter.Until))
 	}
 
-	query += " ORDER BY priority DESC, scheduled_at ASC"
-
+	opts := []z.ZormItem{z.OrderBy("priority DESC", "scheduled_at ASC")}
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
 	if filter.Limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, filter.Limit)
+		if filter.Offset > 0 {
+			opts = append(opts, z.Limit(filter.Limit, filter.Offset))
+		} else {
+			opts = append(opts, z.Limit(filter.Limit))
+		}
+	} else if filter.Offset > 0 {
+		opts = append(opts, z.Limit(-1, filter.Offset))
 	}
 
-	if filter.Offset > 0 {
-		query += " OFFSET ?"
-		args = append(args, filter.Offset)
-	}
-
-	rows, err := s.db.Query(query, args...)
+	var rows []taskRow
+	_, err := s.table().Select(&rows, opts...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var tasks []*TaskRecord
-	for rows.Next() {
-		var task TaskRecord
-		var metadataJSON, depsJSON string
-		var startedAt, completedAt sql.NullTime
-
-		err := rows.Scan(
-			&task.ID, &task.Name, &task.Priority, &task.Status, &task.ScheduledAt,
-			&startedAt, &completedAt, &task.Error, &metadataJSON,
-			&task.RetryCount, &task.MaxRetries, &task.Timeout, &depsJSON,
-			&task.HandlerName, &task.HandlerData,
-		)
+	tasks := make([]*TaskRecord, 0, len(rows))
+	for _, row := range rows {
+		task, err := rowToTask(row)
 		if err != nil {
 			return nil, err
 		}
-
-		if startedAt.Valid {
-			task.StartedAt = &startedAt.Time
-		}
-		if completedAt.Valid {
-			task.CompletedAt = &completedAt.Time
-		}
-
-		if metadataJSON != "" {
-			if err := json.Unmarshal([]byte(metadataJSON), &task.Metadata); err != nil {
-				return nil, err
-			}
-		}
-
-		if depsJSON != "" {
-			if err := json.Unmarshal([]byte(depsJSON), &task.Dependencies); err != nil {
-				return nil, err
-			}
-		}
-
-		tasks = append(tasks, &task)
+		tasks = append(tasks, task)
 	}
 
-	return tasks, rows.Err()
+	return tasks, nil
 }
 
 // TaskFilter defines criteria for listing tasks.
@@ -400,32 +398,35 @@ func (s *Store) UpdateStatus(id, status string, err error) error {
 		errStr = err.Error()
 	}
 
-	var query string
-	var args []interface{}
+	now := time.Now()
+	var data map[string]interface{}
 
 	switch status {
 	case "running":
-		query = "UPDATE tasks SET status = ?, started_at = ?, error = ? WHERE id = ?"
-		args = []interface{}{status, time.Now(), errStr, id}
+		data = map[string]interface{}{
+			"status":     status,
+			"started_at": now,
+			"error":      errStr,
+		}
 	case "completed", "failed", "cancelled":
-		query = "UPDATE tasks SET status = ?, completed_at = ?, error = ? WHERE id = ?"
-		args = []interface{}{status, time.Now(), errStr, id}
+		data = map[string]interface{}{
+			"status":       status,
+			"completed_at": now,
+			"error":        errStr,
+		}
 	default:
-		query = "UPDATE tasks SET status = ?, error = ? WHERE id = ?"
-		args = []interface{}{status, errStr, id}
+		data = map[string]interface{}{
+			"status": status,
+			"error":  errStr,
+		}
 	}
 
-	result, execErr := s.db.Exec(query, args...)
+	n, execErr := s.table().Update(data, z.Where(z.Eq("id", id)))
 	if execErr != nil {
 		return execErr
 	}
 
-	rows, execErr := result.RowsAffected()
-	if execErr != nil {
-		return execErr
-	}
-
-	if rows == 0 {
+	if n == 0 {
 		return ErrTaskNotFound
 	}
 
@@ -472,15 +473,13 @@ func (s *Store) Cleanup() (int64, error) {
 
 	cutoff := time.Now().AddDate(0, 0, -s.config.RetentionDays)
 
-	result, err := s.db.Exec(
-		"DELETE FROM tasks WHERE status IN ('completed', 'failed', 'cancelled') AND completed_at < ?",
-		cutoff,
+	n, err := s.table().Delete(
+		z.Where(
+			z.In("status", "completed", "failed", "cancelled"),
+			z.Lt("completed_at", cutoff),
+		),
 	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
+	return int64(n), err
 }
 
 // Stats returns store statistics.

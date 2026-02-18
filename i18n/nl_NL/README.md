@@ -48,7 +48,7 @@ Geïnspireerd door Clawdbot geloven wij dat de **toekomst** van persoonlijk comp
 
 **ZimaOS Blue is ons antwoord** — een volledig **open-source, auditeerbare en productieklare agent-runtime en toolkit** waarmee je privé, zelf-gehoste agents kunt uitrollen zonder enige frictie.
 
-Gebouwd voor gedurfde ontwikkelaars die hun **eigen agents willen viben of handmatig bouwen**, is Blue **ontworpen voor prestaties**: geschreven in **Go**, met een geheugengebruik van slechts 10 MB. Het draait op **elke x86, Raspberry Pi, Windows, macOS** — overal waar je stroom hebt.
+Gebouwd voor gedurfde ontwikkelaars die hun **eigen agents willen viben of handmatig bouwen**, is Blue **ontworpen voor prestaties**: geschreven in **Go**, met een geheugengebruik van slechts 10 MB. Het draait op **elke x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — overal waar je stroom hebt.
 
 ![](../../docs/assets/features.png)
 
@@ -59,26 +59,7 @@ Gebouwd voor gedurfde ontwikkelaars die hun **eigen agents willen viben of handm
 Ga verder: het biedt native ondersteuning voor **20+ IM-platformen**, **spraakgestuurde** interfaces voor natuurlijke, contextbewuste dialoog, **zero-config modelwisseling** met IDE-scanning, en SOUL-gelaagde persoonlijkheden.
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Snel, Licht
@@ -97,7 +78,7 @@ Native gecompileerd in Go — geen interpreter, geen VM, geen overhead. Draait g
 
 ### Pure Go, Elk Apparaat
 
-100% Go, statisch binair bestand. **Cross-compileert naar 5 doelplatformen** out of the box (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Geen Node-runtime, geen Python, geen containers nodig. Zet het op een NAS, een Raspberry Pi, een oude x86-router of een Mac — het werkt gewoon. **Bouw er vervolgens je eigen UI, logica en agent-vaardigheden bovenop** — één codebase, elk platform.
+100% Go, statisch binair bestand. **Cross-compileert naar 5 doelplatformen** out of the box (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Geen Node-runtime, geen Python, geen containers nodig. Zet het op een NAS, een ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, een oude x86-router of een ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — het werkt gewoon. **Bouw er vervolgens je eigen UI, logica en agent-vaardigheden bovenop** — één codebase, elk platform.
 
 ### Beveiliging & Governance
 
@@ -116,7 +97,7 @@ Wij geloven dat **next-gen persoonlijk computergebruik** LLM's omarmt — maar *
 
 ![](../../docs/assets/design_principle.png)
 
-We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. Trouw aan de **ontwerpfilosofie van ZimaOS** levert Blue:
+We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. Trouw aan de <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ontwerpfilosofie van ZimaOS** levert Blue:
 - **Van Nul naar Eén in Één Klik** – Direct uitrollen, geen complexe configuratie.
 - **Snel Prototypen** – Vibe of bouw handmatig scenariospecifieke tools, interacties en app-pakketten.
 - **Wereldwijd Klaar** – **De wereld is groot**, en Engels is niet de standaard. **20+ talen, native**, geen barrières.
@@ -125,23 +106,7 @@ We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. T
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -163,6 +128,7 @@ We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. T
 | OpenRouter | 100+ geaggregeerde modellen | Cloud |
 | AIHubMix | Multi-provider aggregator | Cloud |
 | Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
 | Aangepast | Elke OpenAI / Anthropic / Gemini compatibele API | Cloud / Lokaal |
 
 </details>
@@ -170,33 +136,26 @@ We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. T
 ### Ondersteunde IDE's
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## Snel Starten
 
-### Optie 1: Download Desktop-app (macOS & Windows)
+### Optie 1: Download Desktop-app
 
 Download de native applicatie — geen afhankelijkheden, geen compilatie. Ingebouwde proefconfiguratie, direct aan de slag — begin met chatten via een externe verbinding, zonder bot-configuratie. Echt plug-and-play.
 
-- **macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Optie 2: Installatiescript
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -208,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Opmerking:** Windows-builds vereisen [MinGW-w64](https://www.mingw-w64.org/) (gcc) en [CMake](https://cmake.org/) voor native C-afhankelijkheden (espeak-ng, whisper.cpp, opus). Zorg ervoor dat `gcc` en `cmake` in uw `PATH` staan.
 
 ## Architectuuroverzicht
 

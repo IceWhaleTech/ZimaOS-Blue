@@ -1064,7 +1064,7 @@ export default {
     benefit3: 'Bezpieczne trwałe przechowywanie danych',
     upgradeFailed: 'Nie udało się utworzyć konta administratora',
     passwordCheck: {
-      length: 'Co najmniej 8 znaków',
+      length: 'Co najmniej {n} znaków',
       uppercase: 'Jedna wielka litera',
       lowercase: 'Jedna mała litera',
       number: 'Jedna cyfra',

@@ -54,7 +54,7 @@
 
 **ZimaOS Blue 是我們的答案** — 一個完全**開源、可審計、生產就緒的代理執行環境與工具包**，讓你零摩擦地部署私有、自託管的代理。
 
-專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、Raspberry Pi、Windows、macOS** 上運行 — 只要有電源就能啟動。
+專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS** 上運行 — 只要有電源就能啟動。
 
 ![](../../docs/assets/features.png)
 
@@ -65,26 +65,7 @@
 更進一步：原生支援 **20+ 即時通訊平台**、**語音驅動**介面實現自然的上下文感知對話、搭配 IDE 掃描的**零配置模型切換**，以及 SOUL 分層人格系統。
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### 快速、輕量
@@ -103,7 +84,7 @@
 
 ### 純 Go，任何裝置
 
-100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、Raspberry Pi、舊的 x86 路由器或 Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
+100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、舊的 x86 路由器或 Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
 
 ### 安全與治理
 
@@ -122,7 +103,7 @@
 
 ![](../../docs/assets/design_principle.png)
 
-我們最小化樣板程式碼，讓你**專注於真正重要的事**。秉持 **ZimaOS 的設計哲學**，Blue 提供：
+我們最小化樣板程式碼，讓你**專注於真正重要的事**。秉持 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS 的設計哲學**，Blue 提供：
 - **一鍵從零到一** – 即時部署，無需複雜配置。
 - **快速原型開發** – 自由創造或精心打造場景專屬的工具、互動和應用套件。
 - **全球就緒** – **世界很大**，不以英語為預設。**20+ 種語言，原生支援**，無障礙。
@@ -131,23 +112,7 @@
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -169,6 +134,7 @@
 | OpenRouter | 100+ 聚合模型 | 雲端 |
 | AIHubMix | 多供應商聚合器 | 雲端 |
 | Codex | OpenAI Codex | 雲端 |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | 雲端 |
 | 自訂 | 任何 OpenAI / Anthropic / Gemini 相容 API | 雲端 / 本地 |
 
 </details>
@@ -176,33 +142,26 @@
 ### 支援的 IDE
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## 快速開始
 
-### 選項 1：下載桌面應用程式（macOS 與 Windows）
+### 選項 1：下載桌面應用程式
 
 取得原生應用程式 — 無需依賴、無需編譯。內建試用配置，秒級上手 — 透過遠端連線即刻開聊，無需配置機器人。真正的開箱即用。
 
-- **macOS**：[下載 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下載 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - **Windows**：[下載安裝程式](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 選項 2：安裝腳本
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -214,15 +173,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **注意：** Windows 建置需要 [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 來編譯原生 C 相依套件（espeak-ng、whisper.cpp、opus）。請確保 `gcc` 和 `cmake` 已加入 `PATH` 環境變數中。
 
 ## 架構概覽
 

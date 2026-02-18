@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreviewStore } from '@/stores/preview'
 import { useAuthStore } from '@/stores/auth'
+import { authApi, type PasswordPolicy } from '@/api/auth'
 
 const emit = defineEmits<{
   close: []
@@ -21,6 +22,24 @@ const showPassword = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+// Password policy from backend
+const policy = ref<PasswordPolicy>({
+  min_length: 8,
+  require_uppercase: true,
+  require_lowercase: true,
+  require_number: true,
+  require_special: true,
+})
+
+onMounted(async () => {
+  try {
+    const res = await authApi.getPasswordPolicy()
+    policy.value = res.data
+  } catch {
+    // fallback to defaults
+  }
+})
+
 // Validation
 const isValid = computed(() => {
   return (
@@ -37,12 +56,13 @@ const passwordMismatch = computed(() => {
 // Password strength indicators
 const passwordChecks = computed(() => {
   const pwd = password.value
+  const p = policy.value
   return {
-    length: pwd.length >= 8,
-    uppercase: /[A-Z]/.test(pwd),
-    lowercase: /[a-z]/.test(pwd),
-    number: /[0-9]/.test(pwd),
-    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(pwd),
+    length: pwd.length >= p.min_length,
+    uppercase: !p.require_uppercase || /[A-Z]/.test(pwd),
+    lowercase: !p.require_lowercase || /[a-z]/.test(pwd),
+    number: !p.require_number || /[0-9]/.test(pwd),
+    special: !p.require_special || /[^\p{L}\p{N}\s]/u.test(pwd),
   }
 })
 
@@ -203,7 +223,7 @@ async function handleSubmit() {
                     {{ passwordChecks.length ? '✓' : '○' }}
                   </span>
                   <span :class="passwordChecks.length ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-                    {{ t('preview.passwordCheck.length') }}
+                    {{ t('preview.passwordCheck.length', { n: policy.min_length }) }}
                   </span>
                 </div>
                 <div class="flex items-center gap-1.5">

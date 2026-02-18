@@ -829,7 +829,7 @@ export default {
     benefit3: 'Biztonságos tartós adattárolás',
     upgradeFailed: 'A rendszergazdai fiók létrehozása sikertelen',
     passwordCheck: {
-      length: 'Legalább 8 karakter',
+      length: 'Legalább {n} karakter',
       uppercase: 'Egy nagybetű',
       lowercase: 'Egy kisbetű',
       number: 'Egy szám',

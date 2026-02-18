@@ -48,7 +48,7 @@ Inspirados por Clawdbot, creemos que el **futuro** de la computación personal s
 
 **ZimaOS Blue es nuestra respuesta** — un **entorno de ejecución y kit de herramientas para agentes completamente de código abierto, auditable y listo para producción** que te permite desplegar agentes privados y autoalojados sin fricción alguna.
 
-Construido para desarrolladores audaces que quieren **crear sus propios agentes con vibe coding o a mano**, Blue está **diseñado para el rendimiento**: escrito en **Go**, con un consumo de memoria tan bajo como 10 MB. Se ejecuta en **cualquier x86, Raspberry Pi, Windows, macOS** — donde sea que conectes la corriente.
+Construido para desarrolladores audaces que quieren **crear sus propios agentes con vibe coding o a mano**, Blue está **diseñado para el rendimiento**: escrito en **Go**, con un consumo de memoria tan bajo como 10 MB. Se ejecuta en **cualquier x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — donde sea que conectes la corriente.
 
 ![](../../docs/assets/features.png)
 
@@ -59,26 +59,7 @@ Construido para desarrolladores audaces que quieren **crear sus propios agentes 
 Lleva las cosas más lejos: ofrece soporte nativo para **más de 20 plataformas de mensajería instantánea**, interfaces **controladas por voz** para diálogos naturales y conscientes del contexto, **cambio de modelo sin configuración** con escaneo de IDE, y personalidades con capas SOUL.
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rápido y Ligero
@@ -97,7 +78,7 @@ Compilado nativamente en Go — sin intérprete, sin VM, sin sobrecarga. Se ejec
 
 ### Go Puro, Cualquier Dispositivo
 
-100% Go, binario estático. **Compila cruzadamente para 5 objetivos** de forma nativa (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Sin runtime de Node, sin Python, sin contenedores necesarios. Colócalo en un NAS, una Raspberry Pi, un viejo router x86 o un Mac — simplemente funciona. **Luego añade tu propia interfaz, lógica y habilidades de agente** — un solo código base, todas las plataformas.
+100% Go, binario estático. **Compila cruzadamente para 5 objetivos** de forma nativa (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Sin runtime de Node, sin Python, sin contenedores necesarios. Colócalo en un NAS, una ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un viejo router x86 o un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — simplemente funciona. **Luego añade tu propia interfaz, lógica y habilidades de agente** — un solo código base, todas las plataformas.
 
 ### Seguridad y Gobernanza
 
@@ -116,7 +97,7 @@ Creemos que la **computación personal de próxima generación** abraza los LLMs
 
 ![](../../docs/assets/design_principle.png)
 
-Minimizamos el código repetitivo para que te **concentres en lo que importa**. Fiel a la **filosofía de diseño de ZimaOS**, Blue ofrece:
+Minimizamos el código repetitivo para que te **concentres en lo que importa**. Fiel a la <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filosofía de diseño de ZimaOS**, Blue ofrece:
 - **De Cero a Uno en Un Clic** – Despliega al instante, sin configuración compleja.
 - **Prototipado Rápido** – Crea herramientas, interacciones y paquetes de aplicaciones específicos para cada escenario con vibe coding o a mano.
 - **Listo para el Mundo** – **El mundo es enorme**, y no tiene por qué ser solo en inglés. **Más de 20 idiomas, nativos**, sin barreras.
@@ -125,23 +106,7 @@ Minimizamos el código repetitivo para que te **concentres en lo que importa**. 
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -163,6 +128,7 @@ Minimizamos el código repetitivo para que te **concentres en lo que importa**. 
 | OpenRouter | 100+ modelos agregados | Nube |
 | AIHubMix | Agregador multi-proveedor | Nube |
 | Codex | OpenAI Codex | Nube |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Nube |
 | Personalizado | Cualquier API compatible con OpenAI / Anthropic / Gemini | Nube / Local |
 
 </details>
@@ -170,33 +136,26 @@ Minimizamos el código repetitivo para que te **concentres en lo que importa**. 
 ### IDEs Compatibles
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## Inicio Rápido
 
-### Opción 1: Descargar la Aplicación de Escritorio (macOS y Windows)
+### Opción 1: Descargar la Aplicación de Escritorio
 
 Obtén la aplicación nativa — sin dependencias, sin compilación. Configuración de prueba integrada, lista en segundos — comienza a chatear de inmediato mediante conexión remota, sin configurar ningún bot. Lista para usar.
 
-- **macOS**: [Descargar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Descargar Instalador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Descargar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Descargar Instalador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Opción 2: Script de Instalación
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -208,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Visión General de la Arquitectura
 

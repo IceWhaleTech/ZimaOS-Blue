@@ -983,7 +983,7 @@ export default {
     benefit3: 'Zabezpečené trvalé uložení dat',
     upgradeFailed: 'Nepodařilo se vytvořit účet správce',
     passwordCheck: {
-      length: 'Alespoň 8 znaků',
+      length: 'Alespoň {n} znaků',
       uppercase: 'Jedno velké písmeno',
       lowercase: 'Jedno malé písmeno',
       number: 'Jedna číslice',

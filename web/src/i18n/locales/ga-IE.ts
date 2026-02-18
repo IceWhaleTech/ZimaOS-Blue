@@ -829,7 +829,7 @@ export default {
     benefit3: 'Stóráil shlán buan sonraí',
     upgradeFailed: 'Theip ar chuntas riarthóra a chruthú',
     passwordCheck: {
-      length: 'Ar a laghad 8 carachtar',
+      length: 'Ar a laghad {n} carachtar',
       uppercase: 'Litir cháipitil amháin',
       lowercase: 'Litir bheag amháin',
       number: 'Uimhir amháin',

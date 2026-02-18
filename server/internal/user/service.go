@@ -71,6 +71,11 @@ func NewService(repo Repository, hasher *password.Hasher, policy *password.Polic
 	}
 }
 
+// GetPasswordPolicy returns the password policy configuration.
+func (s *Service) GetPasswordPolicy() *password.PolicyConfig {
+	return s.passwordPolicy.Config()
+}
+
 // Create creates a new user.
 func (s *Service) Create(ctx context.Context, req *CreateUserRequest) (*User, error) {
 	// Validate password

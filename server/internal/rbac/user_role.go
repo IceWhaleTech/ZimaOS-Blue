@@ -6,29 +6,30 @@ import (
 	"errors"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrRoleNotFound       = errors.New("role not found")
-	ErrAssignmentNotFound = errors.New("assignment not found")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrRoleNotFound        = errors.New("role not found")
+	ErrAssignmentNotFound  = errors.New("assignment not found")
 	ErrDuplicateAssignment = errors.New("user already has this role")
 )
 
 // UserRoleAssignment represents a user-role assignment
 type UserRoleAssignment struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	RoleName  string    `json:"role_name"`
-	AssignedBy string   `json:"assigned_by,omitempty"`
-	AssignedAt time.Time `json:"assigned_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	Revoked   bool       `json:"revoked"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
-	RevokedBy *string    `json:"revoked_by,omitempty"`
+	ID         string     `json:"id"`
+	UserID     string     `json:"user_id"`
+	RoleName   string     `json:"role_name"`
+	AssignedBy string     `json:"assigned_by,omitempty"`
+	AssignedAt time.Time  `json:"assigned_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	Revoked    bool       `json:"revoked"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	RevokedBy  *string    `json:"revoked_by,omitempty"`
 }
 
 // UserRoleService handles user-role assignments
@@ -86,6 +87,10 @@ func (s *UserRoleService) Close() error {
 	return s.db.Close()
 }
 
+func (s *UserRoleService) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "user_role_assignments")
+}
+
 // AssignRoleRequest represents a request to assign a role to a user
 type AssignRoleRequest struct {
 	UserID     string
@@ -96,7 +101,6 @@ type AssignRoleRequest struct {
 
 // AssignRole assigns a role to a user
 func (s *UserRoleService) AssignRole(ctx context.Context, req *AssignRoleRequest) (*UserRoleAssignment, error) {
-	// Verify role exists
 	if s.rbac.GetRole(req.RoleName) == nil {
 		return nil, ErrRoleNotFound
 	}
@@ -104,17 +108,20 @@ func (s *UserRoleService) AssignRole(ctx context.Context, req *AssignRoleRequest
 	id := uuid.New().String()
 	now := timeutil.NowTime()
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO user_role_assignments (id, user_id, role_name, assigned_by, assigned_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, role_name) DO UPDATE SET
-			revoked = 0,
-			revoked_at = NULL,
-			revoked_by = NULL,
-			assigned_by = excluded.assigned_by,
-			assigned_at = excluded.assigned_at,
-			expires_at = excluded.expires_at
-	`, id, req.UserID, req.RoleName, req.AssignedBy, now, req.ExpiresAt)
+	_, err := s.table(ctx).Insert(
+		map[string]interface{}{
+			"id":          id,
+			"user_id":     req.UserID,
+			"role_name":   req.RoleName,
+			"assigned_by": req.AssignedBy,
+			"assigned_at": now,
+			"expires_at":  req.ExpiresAt,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"user_id", "role_name"},
+			[]string{"revoked", "revoked_at", "revoked_by", "assigned_by", "assigned_at", "expires_at"},
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -139,67 +146,132 @@ type RevokeRoleRequest struct {
 // RevokeRole revokes a role from a user
 func (s *UserRoleService) RevokeRole(ctx context.Context, req *RevokeRoleRequest) error {
 	now := timeutil.NowTime()
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE user_role_assignments
-		SET revoked = 1, revoked_at = ?, revoked_by = ?
-		WHERE user_id = ? AND role_name = ? AND revoked = 0
-	`, now, req.RevokedBy, req.UserID, req.RoleName)
+	n, err := s.table(ctx).Update(
+		map[string]interface{}{
+			"revoked":    1,
+			"revoked_at": now,
+			"revoked_by": req.RevokedBy,
+		},
+		z.Where(
+			z.Eq("user_id", req.UserID),
+			z.Eq("role_name", req.RoleName),
+			z.Eq("revoked", 0),
+		),
+	)
 	if err != nil {
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
+	if n == 0 {
 		return ErrAssignmentNotFound
 	}
-
 	return nil
+}
+
+// assignmentRow is used for scanning assignment rows from zorm
+type assignmentRow struct {
+	ID         string  `json:"id"`
+	UserID     string  `json:"user_id"`
+	RoleName   string  `json:"role_name"`
+	AssignedBy *string `json:"assigned_by"`
+	AssignedAt string  `json:"assigned_at"`
+	ExpiresAt  *string `json:"expires_at"`
+	Revoked    int     `json:"revoked"`
+	RevokedAt  *string `json:"revoked_at"`
+	RevokedBy  *string `json:"revoked_by"`
+}
+
+func rowToAssignment(row assignmentRow) *UserRoleAssignment {
+	a := &UserRoleAssignment{
+		ID:       row.ID,
+		UserID:   row.UserID,
+		RoleName: row.RoleName,
+		Revoked:  row.Revoked == 1,
+	}
+	if row.AssignedBy != nil {
+		a.AssignedBy = *row.AssignedBy
+	}
+	a.AssignedAt, _ = time.Parse(time.RFC3339, row.AssignedAt)
+	if a.AssignedAt.IsZero() {
+		a.AssignedAt, _ = time.Parse("2006-01-02 15:04:05", row.AssignedAt)
+	}
+	if row.ExpiresAt != nil {
+		t, _ := time.Parse(time.RFC3339, *row.ExpiresAt)
+		if t.IsZero() {
+			t, _ = time.Parse("2006-01-02 15:04:05", *row.ExpiresAt)
+		}
+		if !t.IsZero() {
+			a.ExpiresAt = &t
+		}
+	}
+	if row.RevokedAt != nil {
+		t, _ := time.Parse(time.RFC3339, *row.RevokedAt)
+		if t.IsZero() {
+			t, _ = time.Parse("2006-01-02 15:04:05", *row.RevokedAt)
+		}
+		if !t.IsZero() {
+			a.RevokedAt = &t
+		}
+	}
+	a.RevokedBy = row.RevokedBy
+	return a
 }
 
 // GetUserRoles returns all active roles for a user
 func (s *UserRoleService) GetUserRoles(ctx context.Context, userID string) ([]*UserRoleAssignment, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, role_name, assigned_by, assigned_at, expires_at, revoked, revoked_at, revoked_by
-		FROM user_role_assignments
-		WHERE user_id = ? AND revoked = 0 AND (expires_at IS NULL OR expires_at > ?)
-		ORDER BY assigned_at DESC
-	`, userID, timeutil.NowTime())
+	var rows []assignmentRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Where(
+			z.Eq("user_id", userID),
+			z.Eq("revoked", 0),
+			z.Or(z.IsNull("expires_at"), z.Gt("expires_at", timeutil.NowTime())),
+		),
+		z.OrderBy("assigned_at DESC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	return s.scanAssignments(rows)
+	assignments := make([]*UserRoleAssignment, len(rows))
+	for i, row := range rows {
+		assignments[i] = rowToAssignment(row)
+	}
+	return assignments, nil
 }
 
 // GetRoleUsers returns all users with a specific role
 func (s *UserRoleService) GetRoleUsers(ctx context.Context, roleName string) ([]*UserRoleAssignment, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, role_name, assigned_by, assigned_at, expires_at, revoked, revoked_at, revoked_by
-		FROM user_role_assignments
-		WHERE role_name = ? AND revoked = 0 AND (expires_at IS NULL OR expires_at > ?)
-		ORDER BY assigned_at DESC
-	`, roleName, timeutil.NowTime())
+	var rows []assignmentRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Where(
+			z.Eq("role_name", roleName),
+			z.Eq("revoked", 0),
+			z.Or(z.IsNull("expires_at"), z.Gt("expires_at", timeutil.NowTime())),
+		),
+		z.OrderBy("assigned_at DESC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	return s.scanAssignments(rows)
+	assignments := make([]*UserRoleAssignment, len(rows))
+	for i, row := range rows {
+		assignments[i] = rowToAssignment(row)
+	}
+	return assignments, nil
 }
 
 // HasRole checks if a user has a specific role
 func (s *UserRoleService) HasRole(ctx context.Context, userID, roleName string) (bool, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM user_role_assignments
-		WHERE user_id = ? AND role_name = ? AND revoked = 0
-		AND (expires_at IS NULL OR expires_at > ?)
-	`, userID, roleName, timeutil.NowTime()).Scan(&count)
+	var count int64
+	_, err := s.table(ctx).Select(&count,
+		z.Fields("count(1)"),
+		z.Where(
+			z.Eq("user_id", userID),
+			z.Eq("role_name", roleName),
+			z.Eq("revoked", 0),
+			z.Or(z.IsNull("expires_at"), z.Gt("expires_at", timeutil.NowTime())),
+		),
+	)
 	if err != nil {
 		return false, err
 	}
@@ -247,74 +319,41 @@ func (s *UserRoleService) GetUserPermissions(ctx context.Context, userID string)
 
 // CleanupExpiredAssignments removes expired role assignments
 func (s *UserRoleService) CleanupExpiredAssignments(ctx context.Context) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE user_role_assignments
-		SET revoked = 1, revoked_at = ?
-		WHERE expires_at IS NOT NULL AND expires_at < ? AND revoked = 0
-	`, timeutil.NowTime(), timeutil.NowTime())
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
+	now := timeutil.NowTime()
+	n, err := s.table(ctx).Update(
+		map[string]interface{}{
+			"revoked":    1,
+			"revoked_at": now,
+		},
+		z.Where(
+			z.IsNotNull("expires_at"),
+			z.Lt("expires_at", now),
+			z.Eq("revoked", 0),
+		),
+	)
+	return int64(n), err
 }
 
 // GetAssignmentHistory returns the assignment history for a user
 func (s *UserRoleService) GetAssignmentHistory(ctx context.Context, userID string) ([]*UserRoleAssignment, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, role_name, assigned_by, assigned_at, expires_at, revoked, revoked_at, revoked_by
-		FROM user_role_assignments
-		WHERE user_id = ?
-		ORDER BY assigned_at DESC
-	`, userID)
+	var rows []assignmentRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Where(z.Eq("user_id", userID)),
+		z.OrderBy("assigned_at DESC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	return s.scanAssignments(rows)
-}
-
-// scanAssignments scans rows into UserRoleAssignment slice
-func (s *UserRoleService) scanAssignments(rows *sql.Rows) ([]*UserRoleAssignment, error) {
-	var assignments []*UserRoleAssignment
-	for rows.Next() {
-		var a UserRoleAssignment
-		var assignedBy, revokedBy sql.NullString
-		var expiresAt, revokedAt sql.NullTime
-		var revoked int
-
-		err := rows.Scan(
-			&a.ID, &a.UserID, &a.RoleName, &assignedBy, &a.AssignedAt,
-			&expiresAt, &revoked, &revokedAt, &revokedBy,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if assignedBy.Valid {
-			a.AssignedBy = assignedBy.String
-		}
-		if expiresAt.Valid {
-			a.ExpiresAt = &expiresAt.Time
-		}
-		a.Revoked = revoked == 1
-		if revokedAt.Valid {
-			a.RevokedAt = &revokedAt.Time
-		}
-		if revokedBy.Valid {
-			a.RevokedBy = &revokedBy.String
-		}
-
-		assignments = append(assignments, &a)
+	assignments := make([]*UserRoleAssignment, len(rows))
+	for i, row := range rows {
+		assignments[i] = rowToAssignment(row)
 	}
-
-	return assignments, rows.Err()
+	return assignments, nil
 }
 
 // BulkAssignRole assigns a role to multiple users
 func (s *UserRoleService) BulkAssignRole(ctx context.Context, userIDs []string, roleName, assignedBy string) error {
-	// Verify role exists
 	if s.rbac.GetRole(roleName) == nil {
 		return ErrRoleNotFound
 	}
@@ -325,25 +364,23 @@ func (s *UserRoleService) BulkAssignRole(ctx context.Context, userIDs []string, 
 	}
 	defer tx.Rollback()
 
+	t := z.TableContext(ctx, tx, "user_role_assignments")
 	now := timeutil.NowTime()
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO user_role_assignments (id, user_id, role_name, assigned_by, assigned_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, role_name) DO UPDATE SET
-			revoked = 0,
-			revoked_at = NULL,
-			revoked_by = NULL,
-			assigned_by = excluded.assigned_by,
-			assigned_at = excluded.assigned_at
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
 
 	for _, userID := range userIDs {
-		id := uuid.New().String()
-		_, err := stmt.ExecContext(ctx, id, userID, roleName, assignedBy, now)
+		_, err := t.Insert(
+			map[string]interface{}{
+				"id":          uuid.New().String(),
+				"user_id":     userID,
+				"role_name":   roleName,
+				"assigned_by": assignedBy,
+				"assigned_at": now,
+			},
+			z.OnConflictDoUpdateSet(
+				[]string{"user_id", "role_name"},
+				[]string{"revoked", "revoked_at", "revoked_by", "assigned_by", "assigned_at"},
+			),
+		)
 		if err != nil {
 			return err
 		}
@@ -360,19 +397,22 @@ func (s *UserRoleService) BulkRevokeRole(ctx context.Context, userIDs []string, 
 	}
 	defer tx.Rollback()
 
+	t := z.TableContext(ctx, tx, "user_role_assignments")
 	now := timeutil.NowTime()
-	stmt, err := tx.PrepareContext(ctx, `
-		UPDATE user_role_assignments
-		SET revoked = 1, revoked_at = ?, revoked_by = ?
-		WHERE user_id = ? AND role_name = ? AND revoked = 0
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
 
 	for _, userID := range userIDs {
-		_, err := stmt.ExecContext(ctx, now, revokedBy, userID, roleName)
+		_, err := t.Update(
+			map[string]interface{}{
+				"revoked":    1,
+				"revoked_at": now,
+				"revoked_by": revokedBy,
+			},
+			z.Where(
+				z.Eq("user_id", userID),
+				z.Eq("role_name", roleName),
+				z.Eq("revoked", 0),
+			),
+		)
 		if err != nil {
 			return err
 		}

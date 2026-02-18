@@ -2277,7 +2277,7 @@ export default {
     benefit3: '安全持久化資料儲存',
     upgradeFailed: '建立管理員帳戶失敗',
     passwordCheck: {
-      length: '至少 8 個字元',
+      length: '至少 {n} 個字元',
       uppercase: '一個大寫字母',
       lowercase: '一個小寫字母',
       number: '一個數字',

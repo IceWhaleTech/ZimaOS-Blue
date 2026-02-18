@@ -986,7 +986,7 @@ export default {
     benefit3: 'Sikker vedvarende datalagring',
     upgradeFailed: 'Kunne ikke oprette administratorkonto',
     passwordCheck: {
-      length: 'Mindst 8 tegn',
+      length: 'Mindst {n} tegn',
       uppercase: 'Et stort bogstav',
       lowercase: 'Et lille bogstav',
       number: 'Et tal',

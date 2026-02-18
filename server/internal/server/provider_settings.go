@@ -282,6 +282,13 @@ func (h *ProviderSettingsHandler) updateProviderInRegistry(name string, config P
 		}
 		provider := llm.NewQwenProvider(config.APIKey, baseURL)
 		h.registry.Update(provider)
+	case "siliconflow":
+		baseURL := config.BaseURL
+		if baseURL == "" {
+			baseURL = "https://api.siliconflow.cn/v1"
+		}
+		provider := llm.NewSiliconFlowProvider(config.APIKey, baseURL)
+		h.registry.Update(provider)
 	}
 }
 

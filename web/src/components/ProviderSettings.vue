@@ -54,6 +54,11 @@ const providerMeta: Record<string, { requiresApiKey: boolean; defaultUrl: string
     defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode',
     description: 'providerSettings.qwenDesc',
   },
+  siliconflow: {
+    requiresApiKey: true,
+    defaultUrl: 'https://api.siliconflow.cn/v1',
+    description: 'providerSettings.siliconflowDesc',
+  },
 }
 
 // Computed

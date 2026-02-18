@@ -7,12 +7,14 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // Store provides skill storage and search operations.
 type Store struct {
-	db    *sql.DB
-	zorm  *ZormStore
+	db   *sql.DB
+	zorm *ZormStore
 }
 
 // NewStore creates a new skill store.
@@ -28,9 +30,7 @@ func NewStore(db *sql.DB) (*Store, error) {
 }
 
 // initSchema creates the necessary tables and indexes.
-// Core tables are required; FTS5 is best-effort (some SQLite builds lack it).
 func (s *Store) initSchema() error {
-	// Step 1: Core tables (must succeed)
 	coreSchema := `
 	CREATE TABLE IF NOT EXISTS skills (
 		id TEXT PRIMARY KEY,
@@ -87,10 +87,8 @@ func (s *Store) initSchema() error {
 		return fmt.Errorf("core tables: %w", err)
 	}
 
-	// Migration: add readme_hash column if not exists
 	_, _ = s.db.Exec("ALTER TABLE skills ADD COLUMN readme_hash TEXT")
 
-	// Step 2: FTS5 (best-effort — search degrades gracefully without it)
 	ftsStatements := []string{
 		`CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
 			id, name, summary, description, author, category, tags, readme,
@@ -113,7 +111,6 @@ func (s *Store) initSchema() error {
 	}
 	for _, stmt := range ftsStatements {
 		if _, err := s.db.Exec(stmt); err != nil {
-			// FTS5 failure is non-fatal — log and continue
 			fmt.Printf("[skillstore] FTS5 setup warning: %v\n", err)
 			break
 		}
@@ -122,48 +119,42 @@ func (s *Store) initSchema() error {
 	return nil
 }
 
+func (s *Store) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "skills")
+}
+
+func (s *Store) syncTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "skill_sync_status")
+}
+
+func skillToMap(skill *Skill) map[string]interface{} {
+	return map[string]interface{}{
+		"id": skill.ID, "name": skill.Name, "version": skill.Version,
+		"summary": skill.Summary, "description": skill.Description,
+		"author": skill.Author, "category": skill.Category, "tags": skill.Tags,
+		"source_id": skill.SourceID, "source_name": skill.SourceName,
+		"homepage": skill.Homepage, "download_url": skill.DownloadURL,
+		"stars": skill.Stars, "downloads": skill.Downloads,
+		"reviews": skill.Reviews, "rating": skill.Rating,
+		"versions": skill.Versions, "changelog": skill.Changelog,
+		"readme": skill.Readme, "dedup_key": skill.DedupKey,
+		"installed": skill.Installed, "enabled": skill.Enabled,
+		"created_at": skill.CreatedAt, "updated_at": skill.UpdatedAt,
+		"synced_at": skill.SyncedAt, "search_content": buildSearchContent(skill),
+	}
+}
+
+var upsertUpdateFields = []string{
+	"name", "version", "summary", "description", "author", "category", "tags",
+	"source_name", "homepage", "download_url", "stars", "downloads",
+	"reviews", "rating", "versions", "changelog", "readme", "dedup_key",
+	"updated_at", "synced_at", "search_content",
+}
+
 // UpsertSkill inserts or updates a skill.
 func (s *Store) UpsertSkill(ctx context.Context, skill *Skill) error {
-	query := `
-	INSERT INTO skills (
-		id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, readme, dedup_key,
-		installed, enabled, created_at, updated_at, synced_at, search_content
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		name = excluded.name,
-		version = excluded.version,
-		summary = excluded.summary,
-		description = excluded.description,
-		author = excluded.author,
-		category = excluded.category,
-		tags = excluded.tags,
-		source_name = excluded.source_name,
-		homepage = excluded.homepage,
-		download_url = excluded.download_url,
-		stars = excluded.stars,
-		downloads = excluded.downloads,
-		reviews = excluded.reviews,
-		rating = excluded.rating,
-		versions = excluded.versions,
-		changelog = excluded.changelog,
-		readme = excluded.readme,
-		dedup_key = excluded.dedup_key,
-		updated_at = excluded.updated_at,
-		synced_at = excluded.synced_at,
-		search_content = excluded.search_content
-	`
-
-	// Build search content for full-text search
-	searchContent := buildSearchContent(skill)
-
-	_, err := s.db.ExecContext(ctx, query,
-		skill.ID, skill.Name, skill.Version, skill.Summary, skill.Description,
-		skill.Author, skill.Category, skill.Tags, skill.SourceID, skill.SourceName,
-		skill.Homepage, skill.DownloadURL, skill.Stars, skill.Downloads,
-		skill.Reviews, skill.Rating, skill.Versions, skill.Changelog, skill.Readme, skill.DedupKey,
-		skill.Installed, skill.Enabled, skill.CreatedAt, skill.UpdatedAt, skill.SyncedAt, searchContent,
+	_, err := s.table(ctx).Insert(skillToMap(skill),
+		z.OnConflictDoUpdateSet([]string{"id"}, upsertUpdateFields),
 	)
 	return err
 }
@@ -176,90 +167,101 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, skills []*Skill) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, `
-	INSERT INTO skills (
-		id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, readme, dedup_key,
-		installed, enabled, created_at, updated_at, synced_at, search_content
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		name = excluded.name,
-		version = excluded.version,
-		summary = excluded.summary,
-		description = excluded.description,
-		author = excluded.author,
-		category = excluded.category,
-		tags = excluded.tags,
-		source_name = excluded.source_name,
-		homepage = excluded.homepage,
-		download_url = excluded.download_url,
-		stars = excluded.stars,
-		downloads = excluded.downloads,
-		reviews = excluded.reviews,
-		rating = excluded.rating,
-		versions = excluded.versions,
-		changelog = excluded.changelog,
-		readme = excluded.readme,
-		dedup_key = excluded.dedup_key,
-		updated_at = excluded.updated_at,
-		synced_at = excluded.synced_at,
-		search_content = excluded.search_content
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
+	t := z.TableContext(ctx, tx, "skills")
 	for _, skill := range skills {
-		searchContent := buildSearchContent(skill)
-		_, err := stmt.ExecContext(ctx,
-			skill.ID, skill.Name, skill.Version, skill.Summary, skill.Description,
-			skill.Author, skill.Category, skill.Tags, skill.SourceID, skill.SourceName,
-			skill.Homepage, skill.DownloadURL, skill.Stars, skill.Downloads,
-			skill.Reviews, skill.Rating, skill.Versions, skill.Changelog, skill.Readme, skill.DedupKey,
-			skill.Installed, skill.Enabled, skill.CreatedAt, skill.UpdatedAt, skill.SyncedAt, searchContent,
+		_, err := t.Insert(skillToMap(skill),
+			z.OnConflictDoUpdateSet([]string{"id"}, upsertUpdateFields),
 		)
 		if err != nil {
 			return err
 		}
 	}
-
 	return tx.Commit()
+}
+
+// skillRow is the intermediate struct for zorm scanning.
+type skillRow struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Version     string  `json:"version"`
+	Summary     string  `json:"summary"`
+	Description string  `json:"description"`
+	Author      string  `json:"author"`
+	Category    string  `json:"category"`
+	Tags        string  `json:"tags"`
+	SourceID    string  `json:"source_id"`
+	SourceName  string  `json:"source_name"`
+	Homepage    string  `json:"homepage"`
+	DownloadURL string  `json:"download_url"`
+	Stars       int     `json:"stars"`
+	Downloads   int     `json:"downloads"`
+	Reviews     int     `json:"reviews"`
+	Rating      float64 `json:"rating"`
+	Versions    int     `json:"versions"`
+	Changelog   string  `json:"changelog"`
+	Readme      *string `json:"readme"`
+	DedupKey    *string `json:"dedup_key"`
+	Installed   bool    `json:"installed"`
+	Enabled     bool    `json:"enabled"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+	SyncedAt    string  `json:"synced_at"`
+}
+
+var skillFields = z.Fields(
+	"id", "name", "version", "summary", "description", "author", "category", "tags",
+	"source_id", "source_name", "homepage", "download_url", "stars", "downloads",
+	"reviews", "rating", "versions", "changelog", "readme", "dedup_key",
+	"installed", "enabled", "created_at", "updated_at", "synced_at",
+)
+
+func parseSkillTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
+	}
+	return t
+}
+
+func rowToSkill(r skillRow) *Skill {
+	sk := &Skill{
+		ID: r.ID, Name: r.Name, Version: r.Version, Summary: r.Summary,
+		Description: r.Description, Author: r.Author, Category: r.Category, Tags: r.Tags,
+		SourceID: r.SourceID, SourceName: r.SourceName, Homepage: r.Homepage,
+		DownloadURL: r.DownloadURL, Stars: r.Stars, Downloads: r.Downloads,
+		Reviews: r.Reviews, Rating: r.Rating, Versions: r.Versions, Changelog: r.Changelog,
+		Installed: r.Installed, Enabled: r.Enabled,
+		CreatedAt: parseSkillTime(r.CreatedAt), UpdatedAt: parseSkillTime(r.UpdatedAt), SyncedAt: parseSkillTime(r.SyncedAt),
+	}
+	if r.Readme != nil {
+		sk.Readme = *r.Readme
+	}
+	if r.DedupKey != nil {
+		sk.DedupKey = *r.DedupKey
+	}
+	return sk
 }
 
 // GetSkill retrieves a skill by ID.
 func (s *Store) GetSkill(ctx context.Context, id string) (*Skill, error) {
-	query := `
-	SELECT id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, readme, dedup_key,
-		installed, enabled, created_at, updated_at, synced_at
-	FROM skills WHERE id = ?
-	`
-
-	skill := &Skill{}
-	var readme, dedupKey sql.NullString
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
-		&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
-		&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-		&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &readme, &dedupKey,
-		&skill.Installed, &skill.Enabled, &skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
+	var rows []skillRow
+	_, err := s.table(ctx).Select(&rows, skillFields,
+		z.Where(z.Eq("id", id)), z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
 		return nil, nil
 	}
-	if readme.Valid {
-		skill.Readme = readme.String
-	}
-	if dedupKey.Valid {
-		skill.DedupKey = dedupKey.String
-	}
-	return skill, err
+	return rowToSkill(rows[0]), nil
 }
 
 // Search performs a full-text search on skills with relevance scoring.
+// Uses raw SQL because FTS5 JOINs and BM25 scoring don't map to zorm's query builder.
 func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse, error) {
 	if opts.Page < 1 {
 		opts.Page = 1
@@ -273,21 +275,14 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	var orderBy string
 	hasQuery := opts.Query != ""
 
-	// Build base query
 	baseQuery := `FROM skills s`
 	scoreSelect := "0.0 as score"
 
-	// Full-text search with relevance scoring
 	if hasQuery {
-		// Use FTS5 for full-text search with BM25 relevance scoring
-		baseQuery = `FROM skills s
-			INNER JOIN skills_fts fts ON s.rowid = fts.rowid`
+		baseQuery = `FROM skills s INNER JOIN skills_fts fts ON s.rowid = fts.rowid`
 		conditions = append(conditions, "skills_fts MATCH ?")
-		// Escape special FTS5 characters and add prefix matching
 		searchQuery := escapeFTS5Query(opts.Query)
 		args = append(args, searchQuery)
-		// BM25 returns negative values (more negative = more relevant), so we negate it
-		// Also add boost for exact name matches and prefix matches
 		scoreSelect = `(
 			-bm25(skills_fts, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 1.0) +
 			CASE WHEN LOWER(s.name) = LOWER(?) THEN 100.0 ELSE 0.0 END +
@@ -298,9 +293,7 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		) as score`
 	}
 
-	// Filter by categories
 	if len(opts.Categories) > 0 {
-		// Support multi-category matching (category field is comma-separated)
 		catConditions := make([]string, len(opts.Categories))
 		for i, cat := range opts.Categories {
 			catConditions[i] = "(s.category = ? OR s.category LIKE ? OR s.category LIKE ? OR s.category LIKE ?)"
@@ -309,7 +302,6 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		conditions = append(conditions, "("+strings.Join(catConditions, " OR ")+")")
 	}
 
-	// Filter by sources
 	if len(opts.Sources) > 0 {
 		placeholders := make([]string, len(opts.Sources))
 		for i, src := range opts.Sources {
@@ -319,19 +311,16 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		conditions = append(conditions, fmt.Sprintf("s.source_id IN (%s)", strings.Join(placeholders, ",")))
 	}
 
-	// Filter by minimum stars
 	if opts.MinStars > 0 {
 		conditions = append(conditions, "s.stars >= ?")
 		args = append(args, opts.MinStars)
 	}
 
-	// Build WHERE clause
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	// Build ORDER BY clause
 	switch opts.SortBy {
 	case "stars":
 		orderBy = "s.stars"
@@ -341,12 +330,6 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		orderBy = "s.updated_at"
 	case "name":
 		orderBy = "s.name"
-	case "relevance":
-		if hasQuery {
-			orderBy = "score"
-		} else {
-			orderBy = "s.downloads"
-		}
 	default:
 		if hasQuery {
 			orderBy = "score"
@@ -354,57 +337,38 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 			orderBy = "s.downloads"
 		}
 	}
-
 	if opts.SortOrder == "asc" {
 		orderBy += " ASC"
 	} else {
 		orderBy += " DESC"
 	}
 
-	// Count total results (without score calculation for efficiency)
 	countQuery := "SELECT COUNT(*) " + baseQuery + whereClause
-	countArgs := args
 	var total int64
-	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, err
 	}
 
-	// Calculate pagination
 	offset := (opts.Page - 1) * opts.PageSize
 	totalPages := int((total + int64(opts.PageSize) - 1) / int64(opts.PageSize))
 
-	// Build select query with score
 	var selectQuery string
 	var selectArgs []interface{}
 
 	if hasQuery {
-		// Add query parameters for score calculation (exact match, prefix match for name and id)
 		selectArgs = append(selectArgs, opts.Query, opts.Query, opts.Query, opts.Query)
 		selectArgs = append(selectArgs, args...)
-		selectQuery = fmt.Sprintf(`
-			SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
-				s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
-				s.reviews, s.rating, s.versions, s.changelog, s.installed, s.enabled,
-				s.created_at, s.updated_at, s.synced_at,
-				%s
-			%s %s
-			ORDER BY %s
-			LIMIT ? OFFSET ?
-		`, scoreSelect, baseQuery, whereClause, orderBy)
 	} else {
 		selectArgs = args
-		selectQuery = fmt.Sprintf(`
-			SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
-				s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
-				s.reviews, s.rating, s.versions, s.changelog, s.installed, s.enabled,
-				s.created_at, s.updated_at, s.synced_at,
-				%s
-			%s %s
-			ORDER BY %s
-			LIMIT ? OFFSET ?
-		`, scoreSelect, baseQuery, whereClause, orderBy)
 	}
 
+	selectQuery = fmt.Sprintf(`
+		SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
+			s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
+			s.reviews, s.rating, s.versions, s.changelog, s.installed, s.enabled,
+			s.created_at, s.updated_at, s.synced_at, %s
+		%s %s ORDER BY %s LIMIT ? OFFSET ?
+	`, scoreSelect, baseQuery, whereClause, orderBy)
 	selectArgs = append(selectArgs, opts.PageSize, offset)
 
 	rows, err := s.db.QueryContext(ctx, selectQuery, selectArgs...)
@@ -430,7 +394,6 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 		results = append(results, SearchResult{Skill: skill, Score: score})
 	}
 
-	// Determine next cursor and has_more
 	var nextCursor string
 	hasMore := false
 	if len(results) > 0 {
@@ -441,13 +404,9 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	}
 
 	return &SearchResponse{
-		Skills:     results,
-		Total:      total,
-		Page:       opts.Page,
-		PageSize:   opts.PageSize,
-		TotalPages: totalPages,
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
+		Skills: results, Total: total, Page: opts.Page,
+		PageSize: opts.PageSize, TotalPages: totalPages,
+		NextCursor: nextCursor, HasMore: hasMore,
 	}, nil
 }
 
@@ -460,67 +419,46 @@ func (s *Store) ListBySource(ctx context.Context, sourceID string, page, pageSiz
 		pageSize = 24
 	}
 
-	// Count total
 	var total int64
-	countQuery := "SELECT COUNT(*) FROM skills WHERE source_id = ?"
-	if err := s.db.QueryRowContext(ctx, countQuery, sourceID).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	// Fetch results
-	offset := (page - 1) * pageSize
-	query := `
-	SELECT id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, installed, enabled,
-		created_at, updated_at, synced_at
-	FROM skills WHERE source_id = ?
-	ORDER BY downloads DESC
-	LIMIT ? OFFSET ?
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, sourceID, pageSize, offset)
+	_, err := s.table(ctx).Select(&total,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("source_id", sourceID)),
+	)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
-	var skills []*Skill
-	for rows.Next() {
-		skill := &Skill{}
-		err := rows.Scan(
-			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
-			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
-			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
-			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
-		)
-		if err != nil {
-			return nil, 0, err
-		}
-		skills = append(skills, skill)
+	offset := (page - 1) * pageSize
+	var rows []skillRow
+	_, err = s.table(ctx).Select(&rows, skillFields,
+		z.Where(z.Eq("source_id", sourceID)),
+		z.OrderBy("downloads DESC"),
+		z.Limit(pageSize, offset),
+	)
+	if err != nil {
+		return nil, 0, err
 	}
 
+	skills := make([]*Skill, len(rows))
+	for i, r := range rows {
+		skills[i] = rowToSkill(r)
+	}
 	return skills, total, nil
 }
 
-// GetCategories returns all unique categories (parsed from comma-separated field).
+// GetCategories returns all unique categories.
 func (s *Store) GetCategories(ctx context.Context) ([]string, error) {
-	query := "SELECT category FROM skills WHERE category != ''"
-	rows, err := s.db.QueryContext(ctx, query)
+	var cats []string
+	_, err := s.table(ctx).Select(&cats,
+		z.Fields("category"),
+		z.Where(z.Neq("category", "")),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	// Use map to deduplicate categories
 	categorySet := make(map[string]struct{})
-	for rows.Next() {
-		var cat string
-		if err := rows.Scan(&cat); err != nil {
-			return nil, err
-		}
-		// Split comma-separated categories
+	for _, cat := range cats {
 		for _, c := range strings.Split(cat, ",") {
 			trimmed := strings.TrimSpace(c)
 			if trimmed != "" {
@@ -529,12 +467,10 @@ func (s *Store) GetCategories(ctx context.Context) ([]string, error) {
 		}
 	}
 
-	// Convert to sorted slice
 	categories := make([]string, 0, len(categorySet))
 	for cat := range categorySet {
 		categories = append(categories, cat)
 	}
-	// Sort alphabetically
 	sort.Strings(categories)
 	return categories, nil
 }
@@ -543,14 +479,14 @@ func (s *Store) GetCategories(ctx context.Context) ([]string, error) {
 func (s *Store) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	// Total skills
 	var total int64
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM skills").Scan(&total); err != nil {
+	_, err := s.table(ctx).Select(&total, z.Fields("count(1)"))
+	if err != nil {
 		return nil, err
 	}
 	stats["total_skills"] = total
 
-	// Skills by source
+	// by_source uses GROUP BY which zorm doesn't support well — keep raw SQL
 	rows, err := s.db.QueryContext(ctx, "SELECT source_id, COUNT(*) FROM skills GROUP BY source_id")
 	if err != nil {
 		return nil, err
@@ -568,9 +504,12 @@ func (s *Store) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	}
 	stats["by_source"] = bySource
 
-	// Installed count
 	var installed int64
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM skills WHERE installed = 1").Scan(&installed); err != nil {
+	_, err = s.table(ctx).Select(&installed,
+		z.Fields("count(1)"),
+		z.Where(z.Eq("installed", 1)),
+	)
+	if err != nil {
 		return nil, err
 	}
 	stats["installed"] = installed
@@ -580,75 +519,102 @@ func (s *Store) GetStats(ctx context.Context) (map[string]interface{}, error) {
 
 // UpdateSyncStatus updates the sync status for a source.
 func (s *Store) UpdateSyncStatus(ctx context.Context, status *SyncStatus) error {
-	query := `
-	INSERT INTO skill_sync_status (source_id, last_sync_at, skill_count, sync_duration_ms, status, error_message, next_sync_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(source_id) DO UPDATE SET
-		last_sync_at = excluded.last_sync_at,
-		skill_count = excluded.skill_count,
-		sync_duration_ms = excluded.sync_duration_ms,
-		status = excluded.status,
-		error_message = excluded.error_message,
-		next_sync_at = excluded.next_sync_at
-	`
-	_, err := s.db.ExecContext(ctx, query,
-		status.SourceID, status.LastSyncAt, status.SkillCount,
-		status.SyncDuration, status.Status, status.ErrorMessage, status.NextSyncAt,
+	_, err := s.syncTable(ctx).Insert(
+		map[string]interface{}{
+			"source_id":        status.SourceID,
+			"last_sync_at":     status.LastSyncAt,
+			"skill_count":      status.SkillCount,
+			"sync_duration_ms": status.SyncDuration,
+			"status":           status.Status,
+			"error_message":    status.ErrorMessage,
+			"next_sync_at":     status.NextSyncAt,
+		},
+		z.OnConflictDoUpdateSet(
+			[]string{"source_id"},
+			[]string{"last_sync_at", "skill_count", "sync_duration_ms", "status", "error_message", "next_sync_at"},
+		),
 	)
 	return err
 }
 
+// syncStatusRow for zorm scanning.
+type syncStatusRow struct {
+	ID           int64   `json:"id"`
+	SourceID     string  `json:"source_id"`
+	LastSyncAt   *string `json:"last_sync_at"`
+	SkillCount   int     `json:"skill_count"`
+	SyncDuration int64   `json:"sync_duration_ms"`
+	Status       string  `json:"status"`
+	ErrorMessage *string `json:"error_message"`
+	NextSyncAt   *string `json:"next_sync_at"`
+}
+
 // GetSyncStatus retrieves the sync status for a source.
 func (s *Store) GetSyncStatus(ctx context.Context, sourceID string) (*SyncStatus, error) {
-	query := `
-	SELECT id, source_id, last_sync_at, skill_count, sync_duration_ms, status, error_message, next_sync_at
-	FROM skill_sync_status WHERE source_id = ?
-	`
-	status := &SyncStatus{}
-	err := s.db.QueryRowContext(ctx, query, sourceID).Scan(
-		&status.ID, &status.SourceID, &status.LastSyncAt, &status.SkillCount,
-		&status.SyncDuration, &status.Status, &status.ErrorMessage, &status.NextSyncAt,
+	var rows []syncStatusRow
+	_, err := s.syncTable(ctx).Select(&rows,
+		z.Where(z.Eq("source_id", sourceID)),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
 		return nil, nil
 	}
-	return status, err
+	r := rows[0]
+	st := &SyncStatus{
+		ID: r.ID, SourceID: r.SourceID, SkillCount: r.SkillCount,
+		SyncDuration: r.SyncDuration, Status: r.Status,
+	}
+	if r.LastSyncAt != nil {
+		st.LastSyncAt = parseSkillTime(*r.LastSyncAt)
+	}
+	if r.ErrorMessage != nil {
+		st.ErrorMessage = *r.ErrorMessage
+	}
+	if r.NextSyncAt != nil {
+		st.NextSyncAt = parseSkillTime(*r.NextSyncAt)
+	}
+	return st, nil
 }
 
 // SetInstalled marks a skill as installed or not.
 func (s *Store) SetInstalled(ctx context.Context, id string, installed bool) error {
-	query := "UPDATE skills SET installed = ?, updated_at = ? WHERE id = ?"
-	_, err := s.db.ExecContext(ctx, query, installed, time.Now(), id)
+	_, err := s.table(ctx).Update(
+		map[string]interface{}{"installed": installed, "updated_at": time.Now()},
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // SetEnabled marks a skill as enabled or not.
 func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
-	query := "UPDATE skills SET enabled = ?, updated_at = ? WHERE id = ?"
-	_, err := s.db.ExecContext(ctx, query, enabled, time.Now(), id)
+	_, err := s.table(ctx).Update(
+		map[string]interface{}{"enabled": enabled, "updated_at": time.Now()},
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // UpdateReadme updates the readme content for a skill.
 func (s *Store) UpdateReadme(ctx context.Context, id string, readme string) error {
-	query := "UPDATE skills SET readme = ?, updated_at = ? WHERE id = ?"
-	_, err := s.db.ExecContext(ctx, query, readme, time.Now(), id)
+	_, err := s.table(ctx).Update(
+		map[string]interface{}{"readme": readme, "updated_at": time.Now()},
+		z.Where(z.Eq("id", id)),
+	)
 	return err
 }
 
 // UpdateReadmeBatch updates readme content for multiple skills using zorm.
-// Only updates records where the readme hash has changed.
 func (s *Store) UpdateReadmeBatch(ctx context.Context, updates []readmeUpdate) error {
 	return s.zorm.UpdateReadmeBatchZorm(ctx, updates)
 }
 
 // DeleteBySource deletes all skills from a source.
 func (s *Store) DeleteBySource(ctx context.Context, sourceID string) (int64, error) {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM skills WHERE source_id = ?", sourceID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	n, err := s.table(ctx).Delete(z.Where(z.Eq("source_id", sourceID)))
+	return int64(n), err
 }
 
 // GetPopular returns the most popular skills by downloads.
@@ -656,39 +622,22 @@ func (s *Store) GetPopular(ctx context.Context, limit int) ([]*Skill, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
-
-	query := `
-	SELECT id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, installed, enabled,
-		created_at, updated_at, synced_at
-	FROM skills
-	ORDER BY downloads DESC
-	LIMIT ?
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, limit)
+	var rows []skillRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("id", "name", "version", "summary", "description", "author", "category", "tags",
+			"source_id", "source_name", "homepage", "download_url", "stars", "downloads",
+			"reviews", "rating", "versions", "changelog", "installed", "enabled",
+			"created_at", "updated_at", "synced_at"),
+		z.OrderBy("downloads DESC"),
+		z.Limit(limit),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var skills []*Skill
-	for rows.Next() {
-		skill := &Skill{}
-		err := rows.Scan(
-			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
-			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
-			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
-			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		skills = append(skills, skill)
+	skills := make([]*Skill, len(rows))
+	for i, r := range rows {
+		skills[i] = rowToSkill(r)
 	}
-
 	return skills, nil
 }
 
@@ -697,115 +646,58 @@ func (s *Store) GetRecent(ctx context.Context, limit int) ([]*Skill, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
-
-	query := `
-	SELECT id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, installed, enabled,
-		created_at, updated_at, synced_at
-	FROM skills
-	ORDER BY updated_at DESC
-	LIMIT ?
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, limit)
+	var rows []skillRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("id", "name", "version", "summary", "description", "author", "category", "tags",
+			"source_id", "source_name", "homepage", "download_url", "stars", "downloads",
+			"reviews", "rating", "versions", "changelog", "installed", "enabled",
+			"created_at", "updated_at", "synced_at"),
+		z.OrderBy("updated_at DESC"),
+		z.Limit(limit),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var skills []*Skill
-	for rows.Next() {
-		skill := &Skill{}
-		err := rows.Scan(
-			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
-			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
-			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &skill.Installed, &skill.Enabled,
-			&skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		skills = append(skills, skill)
+	skills := make([]*Skill, len(rows))
+	for i, r := range rows {
+		skills[i] = rowToSkill(r)
 	}
-
 	return skills, nil
 }
 
 // buildSearchContent creates searchable content from a skill.
 func buildSearchContent(skill *Skill) string {
-	parts := []string{
-		skill.ID,
-		skill.Name,
-		skill.Summary,
-		skill.Description,
-		skill.Author,
-		skill.Category,
-		skill.Tags,
-	}
+	parts := []string{skill.ID, skill.Name, skill.Summary, skill.Description, skill.Author, skill.Category, skill.Tags}
 	return strings.Join(parts, " ")
 }
 
-// GetInstalledSkills retrieves all installed skills from the database
+// GetInstalledSkills retrieves all installed skills from the database.
 func (s *Store) GetInstalledSkills(ctx context.Context) ([]*Skill, error) {
-	query := `
-	SELECT id, name, version, summary, description, author, category, tags,
-		source_id, source_name, homepage, download_url, stars, downloads,
-		reviews, rating, versions, changelog, readme, dedup_key,
-		installed, enabled, created_at, updated_at, synced_at
-	FROM skills WHERE installed = 1
-	ORDER BY name ASC
-	`
-
-	rows, err := s.db.QueryContext(ctx, query)
+	var rows []skillRow
+	_, err := s.table(ctx).Select(&rows, skillFields,
+		z.Where(z.Eq("installed", 1)),
+		z.OrderBy("name ASC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var skills []*Skill
-	for rows.Next() {
-		skill := &Skill{}
-		var readme, dedupKey sql.NullString
-		err := rows.Scan(
-			&skill.ID, &skill.Name, &skill.Version, &skill.Summary, &skill.Description,
-			&skill.Author, &skill.Category, &skill.Tags, &skill.SourceID, &skill.SourceName,
-			&skill.Homepage, &skill.DownloadURL, &skill.Stars, &skill.Downloads,
-			&skill.Reviews, &skill.Rating, &skill.Versions, &skill.Changelog, &readme, &dedupKey,
-			&skill.Installed, &skill.Enabled, &skill.CreatedAt, &skill.UpdatedAt, &skill.SyncedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if readme.Valid {
-			skill.Readme = readme.String
-		}
-		if dedupKey.Valid {
-			skill.DedupKey = dedupKey.String
-		}
-		skills = append(skills, skill)
+	skills := make([]*Skill, len(rows))
+	for i, r := range rows {
+		skills[i] = rowToSkill(r)
 	}
-
-	return skills, rows.Err()
+	return skills, nil
 }
 
 // escapeFTS5Query escapes special characters for FTS5 queries.
 func escapeFTS5Query(query string) string {
-	// Remove special FTS5 operators and add prefix matching
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return ""
 	}
-
-	// Split into words and add prefix matching
 	words := strings.Fields(query)
 	for i, word := range words {
-		// Escape quotes
 		word = strings.ReplaceAll(word, "\"", "\"\"")
-		// Add prefix matching for partial word search
 		words[i] = "\"" + word + "\"*"
 	}
-
 	return strings.Join(words, " OR ")
 }

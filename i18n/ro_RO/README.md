@@ -48,7 +48,7 @@ Inspirați de Clawdbot, credem că **viitorul** informaticii personale va fi **m
 
 **ZimaOS Blue este răspunsul nostru** — un **runtime și set de instrumente pentru agenți, complet open-source, auditabil și pregătit pentru producție**, care vă permite să implementați agenți privați, auto-găzduiți, fără nicio fricțiune.
 
-Construit pentru dezvoltatori curajoși care doresc să-și **creeze propriii agenți liber sau manual**, Blue este **proiectat pentru performanță**: scris în **Go**, cu un consum de memorie de doar 10 MB. Rulează pe **orice x86, Raspberry Pi, Windows, macOS** — oriunde conectați la priză.
+Construit pentru dezvoltatori curajoși care doresc să-și **creeze propriii agenți liber sau manual**, Blue este **proiectat pentru performanță**: scris în **Go**, cu un consum de memorie de doar 10 MB. Rulează pe **orice x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — oriunde conectați la priză.
 
 ![](../../docs/assets/features.png)
 
@@ -57,6 +57,10 @@ Construit pentru dezvoltatori curajoși care doresc să-și **creeze propriii ag
 ### Design cu prioritate locală și acces automat la modele
 
 Mergem mai departe: suport nativ pentru **peste 20 de platforme IM**, interfețe **controlate vocal** pentru dialog natural și conștient de context, **comutare automată a modelelor** cu scanare IDE și personalități bazate pe SOUL.
+
+<p align="center">
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+</p>
 
 ### Rapid și ușor
 
@@ -74,7 +78,7 @@ Compilat nativ în Go — fără interpretor, fără VM, fără overhead. Ruleaz
 
 ### Go pur, orice dispozitiv
 
-100% Go, binar static. **Compilare încrucișată pentru 5 ținte** din start (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Fără runtime Node, fără Python, fără containere necesare. Puneți-l pe un NAS, un Raspberry Pi, un router x86 vechi sau un Mac — pur și simplu funcționează. **Apoi adăugați propria interfață, logică și abilități de agent** — o singură bază de cod, orice platformă.
+100% Go, binar static. **Compilare încrucișată pentru 5 ținte** din start (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Fără runtime Node, fără Python, fără containere necesare. Puneți-l pe un NAS, un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un router x86 vechi sau un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — pur și simplu funcționează. **Apoi adăugați propria interfață, logică și abilități de agent** — o singură bază de cod, orice platformă.
 
 ### Securitate și guvernanță
 
@@ -91,31 +95,67 @@ Credem că **informatica personală de nouă generație** îmbrățișează LLM-
 - **Prioritate locală, ultra-ușor, multi-dispozitiv** – Nu necesită hardware de ultimă generație. Rulează pe orice poate calcula.
 - **Securizat și auditabil** – Auditarea sesiunilor, sandboxing, controlul permisiunilor și un proxy API integrat care acționează ca un firewall la nivel de aplicație — fiecare octet de intrare/ieșire este vizibil.
 
-Minimizăm codul repetitiv pentru ca dvs. să vă **concentrați pe ceea ce contează**. Fideli **filozofiei de design a ZimaOS**, Blue oferă:
+![](../../docs/assets/design_principle.png)
+
+Minimizăm codul repetitiv pentru ca dvs. să vă **concentrați pe ceea ce contează**. Fideli <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filozofiei de design a ZimaOS**, Blue oferă:
 - **De la zero la unu cu un singur clic** – Implementare instantanee, fără configurare complexă.
 - **Prototipare rapidă** – Creați liber sau manual instrumente, interacțiuni și pachete de aplicații specifice scenariului.
 - **Pregătit global** – **Lumea este mare** și nu vorbește implicit engleză. **Peste 20 de limbi, nativ**, fără bariere.
 - **Ecosistem deschis de modele** – Fără dependență de furnizor. Aduceți propriile modele.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Furnizor | Modele | Tip |
+|----------|--------|-----|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (confidențialitate prioritară) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Modele OpenAI prin Azure | Cloud |
+| OpenRouter | 100+ modele agregate | Cloud |
+| AIHubMix | Agregator multi-furnizor | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Personalizat | Orice API compatibil OpenAI / Anthropic / Gemini | Cloud / Local |
+
+</details>
+
+### IDE-uri suportate
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Pornire rapidă
 
-### Opțiunea 1: Descărcați aplicația desktop (macOS și Windows)
+### Opțiunea 1: Descărcați aplicația desktop
 
 Obțineți aplicația nativă — fără dependențe, fără compilare.
 
-- **macOS**: [Descărcați DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Descărcați programul de instalare](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Descărcați DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Descărcați programul de instalare](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Opțiunea 2: Script de instalare
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -127,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Notă:** Compilările Windows necesită [MinGW-w64](https://www.mingw-w64.org/) (gcc) și [CMake](https://cmake.org/) pentru dependențe native C (espeak-ng, whisper.cpp, opus). Asigurați-vă că `gcc` și `cmake` sunt în `PATH`.
 
 ## Prezentare generală a arhitecturii
 

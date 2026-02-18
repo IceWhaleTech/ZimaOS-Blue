@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
+
+	z "github.com/IceWhaleTech/zorm"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
@@ -18,6 +21,128 @@ type SQLiteRepository struct {
 // NewSQLiteRepository creates a new SQLiteRepository.
 func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	return &SQLiteRepository{db: db}
+}
+
+// Table helpers
+
+func (r *SQLiteRepository) tenants(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "tenants")
+}
+
+func (r *SQLiteRepository) members(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "tenant_members")
+}
+
+func (r *SQLiteRepository) invitations(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "tenant_invitations")
+}
+
+// Row structs for zorm scanning
+
+type tenantRow struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Slug        string  `json:"slug"`
+	Description *string `json:"description"`
+	Status      string  `json:"status"`
+	Settings    *string `json:"settings"`
+	Limits      *string `json:"limits"`
+	OwnerID     string  `json:"owner_id"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+	DeletedAt   *string `json:"deleted_at"`
+}
+
+type memberRow struct {
+	ID        string  `json:"id"`
+	TenantID  string  `json:"tenant_id"`
+	UserID    string  `json:"user_id"`
+	Role      string  `json:"role"`
+	JoinedAt  string  `json:"joined_at"`
+	InvitedBy *string `json:"invited_by"`
+}
+
+type invitationRow struct {
+	ID         string  `json:"id"`
+	TenantID   string  `json:"tenant_id"`
+	Email      string  `json:"email"`
+	Role       string  `json:"role"`
+	Token      string  `json:"token"`
+	InvitedBy  string  `json:"invited_by"`
+	ExpiresAt  string  `json:"expires_at"`
+	AcceptedAt *string `json:"accepted_at"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+// Converter functions
+
+func parseTimeStr(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
+	}
+	return t
+}
+
+func parseTimePtrStr(s *string) *time.Time {
+	if s == nil {
+		return nil
+	}
+	t := parseTimeStr(*s)
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+func rowToTenant(row tenantRow) *Tenant {
+	t := &Tenant{
+		Name:        row.Name,
+		Slug:        row.Slug,
+		Description: row.Description,
+		Status:      Status(row.Status),
+		Settings:    row.Settings,
+		Limits:      row.Limits,
+		CreatedAt:   parseTimeStr(row.CreatedAt),
+		UpdatedAt:   parseTimeStr(row.UpdatedAt),
+		DeletedAt:   parseTimePtrStr(row.DeletedAt),
+	}
+	t.ID, _ = uuid.Parse(row.ID)
+	t.OwnerID, _ = uuid.Parse(row.OwnerID)
+	return t
+}
+
+func rowToMember(row memberRow) *TenantMember {
+	m := &TenantMember{
+		Role:     MemberRole(row.Role),
+		JoinedAt: parseTimeStr(row.JoinedAt),
+	}
+	m.ID, _ = uuid.Parse(row.ID)
+	m.TenantID, _ = uuid.Parse(row.TenantID)
+	m.UserID, _ = uuid.Parse(row.UserID)
+	if row.InvitedBy != nil {
+		invitedBy, _ := uuid.Parse(*row.InvitedBy)
+		m.InvitedBy = &invitedBy
+	}
+	return m
+}
+
+func rowToInvitation(row invitationRow) *TenantInvitation {
+	inv := &TenantInvitation{
+		Email:      row.Email,
+		Role:       MemberRole(row.Role),
+		Token:      row.Token,
+		ExpiresAt:  parseTimeStr(row.ExpiresAt),
+		AcceptedAt: parseTimePtrStr(row.AcceptedAt),
+		CreatedAt:  parseTimeStr(row.CreatedAt),
+	}
+	inv.ID, _ = uuid.Parse(row.ID)
+	inv.TenantID, _ = uuid.Parse(row.TenantID)
+	inv.InvitedBy, _ = uuid.Parse(row.InvitedBy)
+	return inv
 }
 
 // InitSchema creates the necessary tables.
@@ -81,137 +206,96 @@ func (r *SQLiteRepository) InitSchema(ctx context.Context) error {
 
 // Create creates a new tenant.
 func (r *SQLiteRepository) Create(ctx context.Context, tenant *Tenant) error {
-	query := `INSERT INTO tenants (id, name, slug, description, status, settings, limits, owner_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query,
-		tenant.ID.String(),
-		tenant.Name,
-		tenant.Slug,
-		tenant.Description,
-		tenant.Status,
-		tenant.Settings,
-		tenant.Limits,
-		tenant.OwnerID.String(),
-		tenant.CreatedAt,
-		tenant.UpdatedAt,
-	)
+	_, err := r.tenants(ctx).Insert(map[string]interface{}{
+		"id":          tenant.ID.String(),
+		"name":        tenant.Name,
+		"slug":        tenant.Slug,
+		"description": tenant.Description,
+		"status":      tenant.Status,
+		"settings":    tenant.Settings,
+		"limits":      tenant.Limits,
+		"owner_id":    tenant.OwnerID.String(),
+		"created_at":  tenant.CreatedAt,
+		"updated_at":  tenant.UpdatedAt,
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return ErrSlugExists
 		}
 		return fmt.Errorf("failed to create tenant: %w", err)
 	}
-
 	return nil
 }
 
 // GetByID retrieves a tenant by ID.
 func (r *SQLiteRepository) GetByID(ctx context.Context, id uuid.UUID) (*Tenant, error) {
-	query := `SELECT id, name, slug, description, status, settings, limits, owner_id, created_at, updated_at, deleted_at
-		FROM tenants WHERE id = ? AND deleted_at IS NULL`
-
-	tenant := &Tenant{}
-	var idStr, ownerIDStr string
-	err := r.db.QueryRowContext(ctx, query, id.String()).Scan(
-		&idStr,
-		&tenant.Name,
-		&tenant.Slug,
-		&tenant.Description,
-		&tenant.Status,
-		&tenant.Settings,
-		&tenant.Limits,
-		&ownerIDStr,
-		&tenant.CreatedAt,
-		&tenant.UpdatedAt,
-		&tenant.DeletedAt,
+	var rows []tenantRow
+	_, err := r.tenants(ctx).Select(&rows,
+		z.Where(z.Eq("id", id.String()), z.IsNull("deleted_at")),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, ErrTenantNotFound
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tenant: %w", err)
 	}
-
-	tenant.ID, _ = uuid.Parse(idStr)
-	tenant.OwnerID, _ = uuid.Parse(ownerIDStr)
-
-	return tenant, nil
+	if len(rows) == 0 {
+		return nil, ErrTenantNotFound
+	}
+	return rowToTenant(rows[0]), nil
 }
 
 // GetBySlug retrieves a tenant by slug.
 func (r *SQLiteRepository) GetBySlug(ctx context.Context, slug string) (*Tenant, error) {
-	query := `SELECT id, name, slug, description, status, settings, limits, owner_id, created_at, updated_at, deleted_at
-		FROM tenants WHERE slug = ? AND deleted_at IS NULL`
-
-	tenant := &Tenant{}
-	var idStr, ownerIDStr string
-	err := r.db.QueryRowContext(ctx, query, slug).Scan(
-		&idStr,
-		&tenant.Name,
-		&tenant.Slug,
-		&tenant.Description,
-		&tenant.Status,
-		&tenant.Settings,
-		&tenant.Limits,
-		&ownerIDStr,
-		&tenant.CreatedAt,
-		&tenant.UpdatedAt,
-		&tenant.DeletedAt,
+	var rows []tenantRow
+	_, err := r.tenants(ctx).Select(&rows,
+		z.Where(z.Eq("slug", slug), z.IsNull("deleted_at")),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, ErrTenantNotFound
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tenant: %w", err)
 	}
-
-	tenant.ID, _ = uuid.Parse(idStr)
-	tenant.OwnerID, _ = uuid.Parse(ownerIDStr)
-
-	return tenant, nil
+	if len(rows) == 0 {
+		return nil, ErrTenantNotFound
+	}
+	return rowToTenant(rows[0]), nil
 }
 
 // Update updates a tenant.
 func (r *SQLiteRepository) Update(ctx context.Context, tenant *Tenant) error {
-	query := `UPDATE tenants SET name = ?, description = ?, status = ?, settings = ?, limits = ?, updated_at = ?
-		WHERE id = ? AND deleted_at IS NULL`
-
-	result, err := r.db.ExecContext(ctx, query,
-		tenant.Name,
-		tenant.Description,
-		tenant.Status,
-		tenant.Settings,
-		tenant.Limits,
-		timeutil.NowTime().UTC(),
-		tenant.ID.String(),
+	n, err := r.tenants(ctx).Update(
+		map[string]interface{}{
+			"name":        tenant.Name,
+			"description": tenant.Description,
+			"status":      tenant.Status,
+			"settings":    tenant.Settings,
+			"limits":      tenant.Limits,
+			"updated_at":  timeutil.NowTime().UTC(),
+		},
+		z.Where(z.Eq("id", tenant.ID.String()), z.IsNull("deleted_at")),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update tenant: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if n == 0 {
 		return ErrTenantNotFound
 	}
-
 	return nil
 }
 
 // Delete soft-deletes a tenant.
 func (r *SQLiteRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE tenants SET deleted_at = ?, status = ? WHERE id = ? AND deleted_at IS NULL`
-
-	result, err := r.db.ExecContext(ctx, query, timeutil.NowTime().UTC(), StatusDeleted, id.String())
+	n, err := r.tenants(ctx).Update(
+		map[string]interface{}{
+			"deleted_at": timeutil.NowTime().UTC(),
+			"status":     StatusDeleted,
+		},
+		z.Where(z.Eq("id", id.String()), z.IsNull("deleted_at")),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to delete tenant: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if n == 0 {
 		return ErrTenantNotFound
 	}
-
 	return nil
 }
 
@@ -275,26 +359,26 @@ func (r *SQLiteRepository) List(ctx context.Context, query *ListTenantsQuery) (*
 
 	tenants := make([]*Tenant, 0)
 	for rows.Next() {
-		tenant := &Tenant{}
+		t := &Tenant{}
 		var idStr, ownerIDStr string
 		if err := rows.Scan(
 			&idStr,
-			&tenant.Name,
-			&tenant.Slug,
-			&tenant.Description,
-			&tenant.Status,
-			&tenant.Settings,
-			&tenant.Limits,
+			&t.Name,
+			&t.Slug,
+			&t.Description,
+			&t.Status,
+			&t.Settings,
+			&t.Limits,
 			&ownerIDStr,
-			&tenant.CreatedAt,
-			&tenant.UpdatedAt,
-			&tenant.DeletedAt,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+			&t.DeletedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan tenant: %w", err)
 		}
-		tenant.ID, _ = uuid.Parse(idStr)
-		tenant.OwnerID, _ = uuid.Parse(ownerIDStr)
-		tenants = append(tenants, tenant)
+		t.ID, _ = uuid.Parse(idStr)
+		t.OwnerID, _ = uuid.Parse(ownerIDStr)
+		tenants = append(tenants, t)
 	}
 
 	totalPages := int(total) / query.PageSize
@@ -337,26 +421,26 @@ func (r *SQLiteRepository) GetUserTenants(ctx context.Context, userID uuid.UUID)
 
 	tenants := make([]*Tenant, 0)
 	for rows.Next() {
-		tenant := &Tenant{}
+		t := &Tenant{}
 		var idStr, ownerIDStr string
 		if err := rows.Scan(
 			&idStr,
-			&tenant.Name,
-			&tenant.Slug,
-			&tenant.Description,
-			&tenant.Status,
-			&tenant.Settings,
-			&tenant.Limits,
+			&t.Name,
+			&t.Slug,
+			&t.Description,
+			&t.Status,
+			&t.Settings,
+			&t.Limits,
 			&ownerIDStr,
-			&tenant.CreatedAt,
-			&tenant.UpdatedAt,
-			&tenant.DeletedAt,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+			&t.DeletedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan tenant: %w", err)
 		}
-		tenant.ID, _ = uuid.Parse(idStr)
-		tenant.OwnerID, _ = uuid.Parse(ownerIDStr)
-		tenants = append(tenants, tenant)
+		t.ID, _ = uuid.Parse(idStr)
+		t.OwnerID, _ = uuid.Parse(ownerIDStr)
+		tenants = append(tenants, t)
 	}
 
 	return tenants, nil
@@ -364,98 +448,71 @@ func (r *SQLiteRepository) GetUserTenants(ctx context.Context, userID uuid.UUID)
 
 // AddMember adds a member to a tenant.
 func (r *SQLiteRepository) AddMember(ctx context.Context, member *TenantMember) error {
-	query := `INSERT INTO tenant_members (id, tenant_id, user_id, role, joined_at, invited_by)
-		VALUES (?, ?, ?, ?, ?, ?)`
-
 	var invitedBy *string
 	if member.InvitedBy != nil {
 		s := member.InvitedBy.String()
 		invitedBy = &s
 	}
 
-	_, err := r.db.ExecContext(ctx, query,
-		member.ID.String(),
-		member.TenantID.String(),
-		member.UserID.String(),
-		member.Role,
-		member.JoinedAt,
-		invitedBy,
-	)
+	_, err := r.members(ctx).Insert(map[string]interface{}{
+		"id":         member.ID.String(),
+		"tenant_id":  member.TenantID.String(),
+		"user_id":    member.UserID.String(),
+		"role":       member.Role,
+		"joined_at":  member.JoinedAt,
+		"invited_by": invitedBy,
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return ErrMemberExists
 		}
 		return fmt.Errorf("failed to add member: %w", err)
 	}
-
 	return nil
 }
 
 // GetMember retrieves a member by tenant and user ID.
 func (r *SQLiteRepository) GetMember(ctx context.Context, tenantID, userID uuid.UUID) (*TenantMember, error) {
-	query := `SELECT id, tenant_id, user_id, role, joined_at, invited_by
-		FROM tenant_members WHERE tenant_id = ? AND user_id = ?`
-
-	member := &TenantMember{}
-	var idStr, tenantIDStr, userIDStr string
-	var invitedByStr *string
-	err := r.db.QueryRowContext(ctx, query, tenantID.String(), userID.String()).Scan(
-		&idStr,
-		&tenantIDStr,
-		&userIDStr,
-		&member.Role,
-		&member.JoinedAt,
-		&invitedByStr,
+	var rows []memberRow
+	_, err := r.members(ctx).Select(&rows,
+		z.Where(z.Eq("tenant_id", tenantID.String()), z.Eq("user_id", userID.String())),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, ErrMemberNotFound
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get member: %w", err)
 	}
-
-	member.ID, _ = uuid.Parse(idStr)
-	member.TenantID, _ = uuid.Parse(tenantIDStr)
-	member.UserID, _ = uuid.Parse(userIDStr)
-	if invitedByStr != nil {
-		invitedBy, _ := uuid.Parse(*invitedByStr)
-		member.InvitedBy = &invitedBy
+	if len(rows) == 0 {
+		return nil, ErrMemberNotFound
 	}
-
-	return member, nil
+	return rowToMember(rows[0]), nil
 }
 
 // UpdateMember updates a member's role.
 func (r *SQLiteRepository) UpdateMember(ctx context.Context, member *TenantMember) error {
-	query := `UPDATE tenant_members SET role = ? WHERE tenant_id = ? AND user_id = ?`
-
-	result, err := r.db.ExecContext(ctx, query, member.Role, member.TenantID.String(), member.UserID.String())
+	n, err := r.members(ctx).Update(
+		map[string]interface{}{"role": member.Role},
+		z.Where(z.Eq("tenant_id", member.TenantID.String()), z.Eq("user_id", member.UserID.String())),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to update member: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if n == 0 {
 		return ErrMemberNotFound
 	}
-
 	return nil
 }
 
 // RemoveMember removes a member from a tenant.
 func (r *SQLiteRepository) RemoveMember(ctx context.Context, tenantID, userID uuid.UUID) error {
-	query := `DELETE FROM tenant_members WHERE tenant_id = ? AND user_id = ?`
-
-	result, err := r.db.ExecContext(ctx, query, tenantID.String(), userID.String())
+	n, err := r.members(ctx).Delete(
+		z.Where(z.Eq("tenant_id", tenantID.String()), z.Eq("user_id", userID.String())),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if n == 0 {
 		return ErrMemberNotFound
 	}
-
 	return nil
 }
 
@@ -563,202 +620,136 @@ func (r *SQLiteRepository) IsMember(ctx context.Context, tenantID, userID uuid.U
 
 // CreateInvitation creates a new invitation.
 func (r *SQLiteRepository) CreateInvitation(ctx context.Context, invitation *TenantInvitation) error {
-	query := `INSERT INTO tenant_invitations (id, tenant_id, email, role, token, invited_by, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query,
-		invitation.ID.String(),
-		invitation.TenantID.String(),
-		invitation.Email,
-		invitation.Role,
-		invitation.Token,
-		invitation.InvitedBy.String(),
-		invitation.ExpiresAt,
-		invitation.CreatedAt,
-	)
+	_, err := r.invitations(ctx).Insert(map[string]interface{}{
+		"id":         invitation.ID.String(),
+		"tenant_id":  invitation.TenantID.String(),
+		"email":      invitation.Email,
+		"role":       invitation.Role,
+		"token":      invitation.Token,
+		"invited_by": invitation.InvitedBy.String(),
+		"expires_at": invitation.ExpiresAt,
+		"created_at": invitation.CreatedAt,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create invitation: %w", err)
 	}
-
 	return nil
 }
 
 // GetInvitationByID retrieves an invitation by ID.
 func (r *SQLiteRepository) GetInvitationByID(ctx context.Context, id uuid.UUID) (*TenantInvitation, error) {
-	query := `SELECT id, tenant_id, email, role, token, invited_by, expires_at, accepted_at, created_at
-		FROM tenant_invitations WHERE id = ?`
-
-	invitation := &TenantInvitation{}
-	var idStr, tenantIDStr, invitedByStr string
-	err := r.db.QueryRowContext(ctx, query, id.String()).Scan(
-		&idStr,
-		&tenantIDStr,
-		&invitation.Email,
-		&invitation.Role,
-		&invitation.Token,
-		&invitedByStr,
-		&invitation.ExpiresAt,
-		&invitation.AcceptedAt,
-		&invitation.CreatedAt,
+	var rows []invitationRow
+	_, err := r.invitations(ctx).Select(&rows,
+		z.Where(z.Eq("id", id.String())),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, ErrInvitationNotFound
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get invitation: %w", err)
 	}
-
-	invitation.ID, _ = uuid.Parse(idStr)
-	invitation.TenantID, _ = uuid.Parse(tenantIDStr)
-	invitation.InvitedBy, _ = uuid.Parse(invitedByStr)
-
-	return invitation, nil
+	if len(rows) == 0 {
+		return nil, ErrInvitationNotFound
+	}
+	return rowToInvitation(rows[0]), nil
 }
 
 // GetInvitationByToken retrieves an invitation by token.
 func (r *SQLiteRepository) GetInvitationByToken(ctx context.Context, token string) (*TenantInvitation, error) {
-	query := `SELECT id, tenant_id, email, role, token, invited_by, expires_at, accepted_at, created_at
-		FROM tenant_invitations WHERE token = ?`
-
-	invitation := &TenantInvitation{}
-	var idStr, tenantIDStr, invitedByStr string
-	err := r.db.QueryRowContext(ctx, query, token).Scan(
-		&idStr,
-		&tenantIDStr,
-		&invitation.Email,
-		&invitation.Role,
-		&invitation.Token,
-		&invitedByStr,
-		&invitation.ExpiresAt,
-		&invitation.AcceptedAt,
-		&invitation.CreatedAt,
+	var rows []invitationRow
+	_, err := r.invitations(ctx).Select(&rows,
+		z.Where(z.Eq("token", token)),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, ErrInvitationNotFound
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get invitation: %w", err)
 	}
-
-	invitation.ID, _ = uuid.Parse(idStr)
-	invitation.TenantID, _ = uuid.Parse(tenantIDStr)
-	invitation.InvitedBy, _ = uuid.Parse(invitedByStr)
-
-	return invitation, nil
+	if len(rows) == 0 {
+		return nil, ErrInvitationNotFound
+	}
+	return rowToInvitation(rows[0]), nil
 }
 
 // GetPendingInvitationByEmail retrieves a pending invitation by email for a tenant.
 func (r *SQLiteRepository) GetPendingInvitationByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*TenantInvitation, error) {
-	query := `SELECT id, tenant_id, email, role, token, invited_by, expires_at, accepted_at, created_at
-		FROM tenant_invitations WHERE tenant_id = ? AND email = ? AND accepted_at IS NULL AND expires_at > ?`
-
-	invitation := &TenantInvitation{}
-	var idStr, tenantIDStr, invitedByStr string
-	err := r.db.QueryRowContext(ctx, query, tenantID.String(), email, timeutil.NowTime().UTC()).Scan(
-		&idStr,
-		&tenantIDStr,
-		&invitation.Email,
-		&invitation.Role,
-		&invitation.Token,
-		&invitedByStr,
-		&invitation.ExpiresAt,
-		&invitation.AcceptedAt,
-		&invitation.CreatedAt,
+	var rows []invitationRow
+	_, err := r.invitations(ctx).Select(&rows,
+		z.Where(
+			z.Eq("tenant_id", tenantID.String()),
+			z.Eq("email", email),
+			z.IsNull("accepted_at"),
+			z.Gt("expires_at", timeutil.NowTime().UTC()),
+		),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, ErrInvitationNotFound
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get invitation: %w", err)
 	}
-
-	invitation.ID, _ = uuid.Parse(idStr)
-	invitation.TenantID, _ = uuid.Parse(tenantIDStr)
-	invitation.InvitedBy, _ = uuid.Parse(invitedByStr)
-
-	return invitation, nil
+	if len(rows) == 0 {
+		return nil, ErrInvitationNotFound
+	}
+	return rowToInvitation(rows[0]), nil
 }
 
 // AcceptInvitation marks an invitation as accepted.
 func (r *SQLiteRepository) AcceptInvitation(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE tenant_invitations SET accepted_at = ? WHERE id = ? AND accepted_at IS NULL`
-
-	result, err := r.db.ExecContext(ctx, query, timeutil.NowTime().UTC(), id.String())
+	n, err := r.invitations(ctx).Update(
+		map[string]interface{}{"accepted_at": timeutil.NowTime().UTC()},
+		z.Where(z.Eq("id", id.String()), z.IsNull("accepted_at")),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to accept invitation: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if n == 0 {
 		return ErrInvitationNotFound
 	}
-
 	return nil
 }
 
 // DeleteInvitation deletes an invitation.
 func (r *SQLiteRepository) DeleteInvitation(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM tenant_invitations WHERE id = ?`
-
-	result, err := r.db.ExecContext(ctx, query, id.String())
+	n, err := r.invitations(ctx).Delete(
+		z.Where(z.Eq("id", id.String())),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to delete invitation: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if n == 0 {
 		return ErrInvitationNotFound
 	}
-
 	return nil
 }
 
 // ListPendingInvitations retrieves pending invitations for a tenant.
 func (r *SQLiteRepository) ListPendingInvitations(ctx context.Context, tenantID uuid.UUID) ([]*TenantInvitation, error) {
-	query := `SELECT id, tenant_id, email, role, token, invited_by, expires_at, accepted_at, created_at
-		FROM tenant_invitations WHERE tenant_id = ? AND accepted_at IS NULL AND expires_at > ?
-		ORDER BY created_at DESC`
-
-	rows, err := r.db.QueryContext(ctx, query, tenantID.String(), timeutil.NowTime().UTC())
+	var rows []invitationRow
+	_, err := r.invitations(ctx).Select(&rows,
+		z.Where(
+			z.Eq("tenant_id", tenantID.String()),
+			z.IsNull("accepted_at"),
+			z.Gt("expires_at", timeutil.NowTime().UTC()),
+		),
+		z.OrderBy("created_at DESC"),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list invitations: %w", err)
 	}
-	defer rows.Close()
 
-	invitations := make([]*TenantInvitation, 0)
-	for rows.Next() {
-		invitation := &TenantInvitation{}
-		var idStr, tenantIDStr, invitedByStr string
-		if err := rows.Scan(
-			&idStr,
-			&tenantIDStr,
-			&invitation.Email,
-			&invitation.Role,
-			&invitation.Token,
-			&invitedByStr,
-			&invitation.ExpiresAt,
-			&invitation.AcceptedAt,
-			&invitation.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan invitation: %w", err)
-		}
-		invitation.ID, _ = uuid.Parse(idStr)
-		invitation.TenantID, _ = uuid.Parse(tenantIDStr)
-		invitation.InvitedBy, _ = uuid.Parse(invitedByStr)
-		invitations = append(invitations, invitation)
+	invs := make([]*TenantInvitation, len(rows))
+	for i, row := range rows {
+		invs[i] = rowToInvitation(row)
 	}
-
-	return invitations, nil
+	return invs, nil
 }
 
 // CleanupExpiredInvitations removes expired invitations.
 func (r *SQLiteRepository) CleanupExpiredInvitations(ctx context.Context) error {
-	query := `DELETE FROM tenant_invitations WHERE expires_at < ? AND accepted_at IS NULL`
-
-	_, err := r.db.ExecContext(ctx, query, timeutil.NowTime().UTC())
+	_, err := r.invitations(ctx).Delete(
+		z.Where(
+			z.Lt("expires_at", timeutil.NowTime().UTC()),
+			z.IsNull("accepted_at"),
+		),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup invitations: %w", err)
 	}
-
 	return nil
 }

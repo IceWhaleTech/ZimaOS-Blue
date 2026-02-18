@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 )
 
@@ -169,6 +170,24 @@ func (h *Handler) GetUserTokenUsageByID(c echo.Context) error {
 	usage := h.writer.GetUserTokenUsage(userID)
 	if usage == nil {
 		return echo.NewHTTPError(http.StatusNotFound, "user not found")
+	}
+
+	return c.JSON(http.StatusOK, usage)
+}
+
+// GetMyUsage handles GET /api/v1/my/usage — returns current user's token usage.
+func (h *Handler) GetMyUsage(c echo.Context) error {
+	claims := auth.GetUserFromContext(c)
+	if claims == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+
+	usage := h.writer.GetUserTokenUsage(claims.UserID)
+	if usage == nil {
+		// Return empty usage instead of 404
+		return c.JSON(http.StatusOK, &UserTokenUsage{
+			UserID: claims.UserID,
+		})
 	}
 
 	return c.JSON(http.StatusOK, usage)

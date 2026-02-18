@@ -319,10 +319,12 @@ function getScopeLabel(scope: string): string {
               :class="
                 authStore.user.role === 'admin'
                   ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
-                  : 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white'
+                  : authStore.user.role === 'guest'
+                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-400'
+                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400'
               "
             >
-              {{ authStore.user.role }}
+              {{ $t(`users.role${authStore.user.role.charAt(0).toUpperCase()}${authStore.user.role.slice(1)}`) }}
             </span>
           </div>
 

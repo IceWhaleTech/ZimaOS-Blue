@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	_ "github.com/mattn/go-sqlite3"
@@ -29,21 +30,21 @@ type SQLiteSessionStore struct {
 	maxTokens int
 }
 
-// sessionRow represents a session row in the database.
-type sessionRow struct {
-	ID           string
-	AgentID      string
-	ChannelID    string
-	PeerID       string
-	ThreadID     sql.NullString
-	State        int
-	Metadata     string
-	Messages     string
-	SystemPrompt sql.NullString
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	LastActiveAt time.Time
-	CompactedAt  sql.NullTime
+// persistenceRow represents a session row for zorm scanning.
+type persistenceRow struct {
+	ID           string  `json:"id"`
+	AgentID      string  `json:"agent_id"`
+	ChannelID    string  `json:"channel_id"`
+	PeerID       string  `json:"peer_id"`
+	ThreadID     *string `json:"thread_id"`
+	State        int     `json:"state"`
+	Metadata     string  `json:"metadata"`
+	Messages     string  `json:"messages"`
+	SystemPrompt *string `json:"system_prompt"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+	LastActiveAt string  `json:"last_active_at"`
+	CompactedAt  *string `json:"compacted_at"`
 }
 
 // messagesData represents serialized messages.
@@ -97,11 +98,9 @@ func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, e
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Connection pool limits
 	db.SetMaxOpenConns(2)
 	db.SetMaxIdleConns(1)
 
-	// Enable WAL mode and foreign keys
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
@@ -114,17 +113,16 @@ func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, e
 		db.Close()
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
-
-	// Create schema
 	if _, err := db.Exec(sessionSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	return &SQLiteSessionStore{
-		db:        db,
-		maxTokens: maxTokens,
-	}, nil
+	return &SQLiteSessionStore{db: db, maxTokens: maxTokens}, nil
+}
+
+func (s *SQLiteSessionStore) table() *z.ZormTable {
+	return z.Table(s.db, "sessions")
 }
 
 // Save saves a session to the database.
@@ -132,13 +130,11 @@ func (s *SQLiteSessionStore) Save(session *Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Serialize metadata
 	metadataJSON, err := json.Marshal(session.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to serialize metadata: %w", err)
 	}
 
-	// Serialize messages
 	messages := session.GetMessages()
 	msgData := messagesData{Messages: make([]messageData, 0, len(messages))}
 	var systemPrompt string
@@ -155,9 +151,7 @@ func (s *SQLiteSessionStore) Save(session *Session) error {
 		}
 		for _, tc := range msg.ToolCalls {
 			md.ToolCalls = append(md.ToolCalls, toolCall{
-				ID:        tc.ID,
-				Name:      tc.Name,
-				Arguments: tc.Arguments,
+				ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments,
 			})
 		}
 		msgData.Messages = append(msgData.Messages, md)
@@ -168,57 +162,56 @@ func (s *SQLiteSessionStore) Save(session *Session) error {
 		return fmt.Errorf("failed to serialize messages: %w", err)
 	}
 
-	// Upsert session
-	query := `
-		INSERT INTO sessions (
-			id, agent_id, channel_id, peer_id, thread_id, state, metadata, messages, system_prompt,
-			created_at, updated_at, last_active_at, compacted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			state = excluded.state,
-			metadata = excluded.metadata,
-			messages = excluded.messages,
-			system_prompt = excluded.system_prompt,
-			updated_at = excluded.updated_at,
-			last_active_at = excluded.last_active_at,
-			compacted_at = excluded.compacted_at
-	`
-
-	var threadID sql.NullString
+	var threadID *string
 	if session.ID.ThreadID != "" {
-		threadID = sql.NullString{String: session.ID.ThreadID, Valid: true}
+		threadID = &session.ID.ThreadID
 	}
-
-	var compactedAt sql.NullTime
+	var compactedAt *time.Time
 	if session.CompactedAt != nil {
-		compactedAt = sql.NullTime{Time: *session.CompactedAt, Valid: true}
+		compactedAt = session.CompactedAt
 	}
-
-	var systemPromptNull sql.NullString
+	var systemPromptPtr *string
 	if systemPrompt != "" {
-		systemPromptNull = sql.NullString{String: systemPrompt, Valid: true}
+		systemPromptPtr = &systemPrompt
 	}
 
-	_, err = s.db.Exec(query,
-		session.ID.String(),
-		session.ID.AgentID,
-		session.ID.ChannelID,
-		session.ID.PeerID,
-		threadID,
-		int(session.State),
-		string(metadataJSON),
-		string(messagesJSON),
-		systemPromptNull,
-		session.CreatedAt,
-		session.UpdatedAt,
-		session.LastActiveAt,
-		compactedAt,
+	data := map[string]interface{}{
+		"id":             session.ID.String(),
+		"agent_id":       session.ID.AgentID,
+		"channel_id":     session.ID.ChannelID,
+		"peer_id":        session.ID.PeerID,
+		"thread_id":      threadID,
+		"state":          int(session.State),
+		"metadata":       string(metadataJSON),
+		"messages":       string(messagesJSON),
+		"system_prompt":  systemPromptPtr,
+		"created_at":     session.CreatedAt,
+		"updated_at":     session.UpdatedAt,
+		"last_active_at": session.LastActiveAt,
+		"compacted_at":   compactedAt,
+	}
+
+	_, err = s.table().Insert(data,
+		z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{"state", "metadata", "messages", "system_prompt", "updated_at", "last_active_at", "compacted_at"},
+		),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save session: %w", err)
 	}
-
 	return nil
+}
+
+func parseSessionTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
+	}
+	return t
 }
 
 // Load loads a session from the database.
@@ -226,36 +219,19 @@ func (s *SQLiteSessionStore) Load(id SessionID) (*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	query := `
-		SELECT id, agent_id, channel_id, peer_id, thread_id, state, metadata, messages, system_prompt,
-			   created_at, updated_at, last_active_at, compacted_at
-		FROM sessions WHERE id = ?
-	`
-
-	var row sessionRow
-	err := s.db.QueryRow(query, id.String()).Scan(
-		&row.ID,
-		&row.AgentID,
-		&row.ChannelID,
-		&row.PeerID,
-		&row.ThreadID,
-		&row.State,
-		&row.Metadata,
-		&row.Messages,
-		&row.SystemPrompt,
-		&row.CreatedAt,
-		&row.UpdatedAt,
-		&row.LastActiveAt,
-		&row.CompactedAt,
+	var rows []persistenceRow
+	_, err := s.table().Select(&rows,
+		z.Where(z.Eq("id", id.String())),
+		z.Limit(1),
 	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to load session: %w", err)
 	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
 
-	return s.rowToSession(row)
+	return s.rowToSession(rows[0])
 }
 
 // Delete deletes a session from the database.
@@ -263,7 +239,7 @@ func (s *SQLiteSessionStore) Delete(id SessionID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.Exec("DELETE FROM sessions WHERE id = ?", id.String())
+	_, err := s.table().Delete(z.Where(z.Eq("id", id.String())))
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
@@ -275,84 +251,54 @@ func (s *SQLiteSessionStore) List(filter SessionFilter) ([]*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	query := `
-		SELECT id, agent_id, channel_id, peer_id, thread_id, state, metadata, messages, system_prompt,
-			   created_at, updated_at, last_active_at, compacted_at
-		FROM sessions WHERE 1=1
-	`
-	args := make([]interface{}, 0)
-
+	conds := make([]interface{}, 0)
 	if filter.AgentID != "" {
-		query += " AND agent_id = ?"
-		args = append(args, filter.AgentID)
+		conds = append(conds, z.Eq("agent_id", filter.AgentID))
 	}
 	if filter.ChannelID != "" {
-		query += " AND channel_id = ?"
-		args = append(args, filter.ChannelID)
+		conds = append(conds, z.Eq("channel_id", filter.ChannelID))
 	}
 	if filter.PeerID != "" {
-		query += " AND peer_id = ?"
-		args = append(args, filter.PeerID)
+		conds = append(conds, z.Eq("peer_id", filter.PeerID))
 	}
 	if filter.State != nil {
-		query += " AND state = ?"
-		args = append(args, int(*filter.State))
+		conds = append(conds, z.Eq("state", int(*filter.State)))
 	}
 	if filter.CreatedAfter != nil {
-		query += " AND created_at > ?"
-		args = append(args, *filter.CreatedAfter)
+		conds = append(conds, z.Gt("created_at", *filter.CreatedAfter))
 	}
 	if filter.CreatedBefore != nil {
-		query += " AND created_at < ?"
-		args = append(args, *filter.CreatedBefore)
+		conds = append(conds, z.Lt("created_at", *filter.CreatedBefore))
 	}
 
-	query += " ORDER BY last_active_at DESC"
-
+	opts := []z.ZormItem{z.OrderBy("last_active_at DESC")}
+	if len(conds) > 0 {
+		opts = append([]z.ZormItem{z.Where(conds...)}, opts...)
+	}
 	if filter.Limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, filter.Limit)
-	}
-	if filter.Offset > 0 {
-		query += " OFFSET ?"
-		args = append(args, filter.Offset)
+		if filter.Offset > 0 {
+			opts = append(opts, z.Limit(filter.Limit, filter.Offset))
+		} else {
+			opts = append(opts, z.Limit(filter.Limit))
+		}
+	} else if filter.Offset > 0 {
+		opts = append(opts, z.Limit(-1, filter.Offset))
 	}
 
-	rows, err := s.db.Query(query, args...)
+	var rows []persistenceRow
+	_, err := s.table().Select(&rows, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
-	defer rows.Close()
 
-	sessions := make([]*Session, 0)
-	for rows.Next() {
-		var row sessionRow
-		err := rows.Scan(
-			&row.ID,
-			&row.AgentID,
-			&row.ChannelID,
-			&row.PeerID,
-			&row.ThreadID,
-			&row.State,
-			&row.Metadata,
-			&row.Messages,
-			&row.SystemPrompt,
-			&row.CreatedAt,
-			&row.UpdatedAt,
-			&row.LastActiveAt,
-			&row.CompactedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan session: %w", err)
-		}
-
+	sessions := make([]*Session, 0, len(rows))
+	for _, row := range rows {
 		session, err := s.rowToSession(row)
 		if err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, session)
 	}
-
 	return sessions, nil
 }
 
@@ -361,11 +307,12 @@ func (s *SQLiteSessionStore) Archive(id SessionID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.db.Exec(
-		"UPDATE sessions SET state = ?, updated_at = ? WHERE id = ?",
-		int(SessionStateArchived),
-		timeutil.NowTime(),
-		id.String(),
+	_, err := s.table().Update(
+		map[string]interface{}{
+			"state":      int(SessionStateArchived),
+			"updated_at": timeutil.NowTime(),
+		},
+		z.Where(z.Eq("id", id.String())),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to archive session: %w", err)
@@ -378,45 +325,43 @@ func (s *SQLiteSessionStore) Close() error {
 	return s.db.Close()
 }
 
-// rowToSession converts a database row to a Session.
-func (s *SQLiteSessionStore) rowToSession(row sessionRow) (*Session, error) {
-	// Parse session ID
+// rowToSession converts a persistenceRow to a Session.
+func (s *SQLiteSessionStore) rowToSession(row persistenceRow) (*Session, error) {
 	id := SessionID{
 		AgentID:   row.AgentID,
 		ChannelID: row.ChannelID,
 		PeerID:    row.PeerID,
 	}
-	if row.ThreadID.Valid {
-		id.ThreadID = row.ThreadID.String
+	if row.ThreadID != nil {
+		id.ThreadID = *row.ThreadID
 	}
 
-	// Create session
 	session := &Session{
 		ID:           id,
 		Context:      context.NewConversationContext(s.maxTokens),
 		State:        SessionState(row.State),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		LastActiveAt: row.LastActiveAt,
+		CreatedAt:    parseSessionTime(row.CreatedAt),
+		UpdatedAt:    parseSessionTime(row.UpdatedAt),
+		LastActiveAt: parseSessionTime(row.LastActiveAt),
 	}
 
-	if row.CompactedAt.Valid {
-		session.CompactedAt = &row.CompactedAt.Time
+	if row.CompactedAt != nil {
+		t := parseSessionTime(*row.CompactedAt)
+		if !t.IsZero() {
+			session.CompactedAt = &t
+		}
 	}
 
-	// Parse metadata
 	if row.Metadata != "" {
 		if err := json.Unmarshal([]byte(row.Metadata), &session.Metadata); err != nil {
 			return nil, fmt.Errorf("failed to parse metadata: %w", err)
 		}
 	}
 
-	// Set system prompt
-	if row.SystemPrompt.Valid && row.SystemPrompt.String != "" {
-		session.Context.SetSystemPrompt(row.SystemPrompt.String)
+	if row.SystemPrompt != nil && *row.SystemPrompt != "" {
+		session.Context.SetSystemPrompt(*row.SystemPrompt)
 	}
 
-	// Parse and add messages
 	if row.Messages != "" {
 		var msgData messagesData
 		if err := json.Unmarshal([]byte(row.Messages), &msgData); err != nil {
@@ -431,9 +376,7 @@ func (s *SQLiteSessionStore) rowToSession(row sessionRow) (*Session, error) {
 			}
 			for _, tc := range md.ToolCalls {
 				msg.ToolCalls = append(msg.ToolCalls, context.ToolCall{
-					ID:        tc.ID,
-					Name:      tc.Name,
-					Arguments: tc.Arguments,
+					ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments,
 				})
 			}
 			session.Context.AddMessage(msg)
@@ -458,7 +401,6 @@ func NewInMemorySessionStore(maxTokens int) *InMemorySessionStore {
 	}
 }
 
-// Save saves a session.
 func (s *InMemorySessionStore) Save(session *Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -466,7 +408,6 @@ func (s *InMemorySessionStore) Save(session *Session) error {
 	return nil
 }
 
-// Load loads a session.
 func (s *InMemorySessionStore) Load(id SessionID) (*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -477,7 +418,6 @@ func (s *InMemorySessionStore) Load(id SessionID) (*Session, error) {
 	return session, nil
 }
 
-// Delete deletes a session.
 func (s *InMemorySessionStore) Delete(id SessionID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -485,7 +425,6 @@ func (s *InMemorySessionStore) Delete(id SessionID) error {
 	return nil
 }
 
-// List lists sessions.
 func (s *InMemorySessionStore) List(filter SessionFilter) ([]*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -507,7 +446,6 @@ func (s *InMemorySessionStore) List(filter SessionFilter) ([]*Session, error) {
 		result = append(result, session)
 	}
 
-	// Apply limit and offset
 	if filter.Offset > 0 && filter.Offset < len(result) {
 		result = result[filter.Offset:]
 	}
@@ -518,7 +456,6 @@ func (s *InMemorySessionStore) List(filter SessionFilter) ([]*Session, error) {
 	return result, nil
 }
 
-// Archive archives a session.
 func (s *InMemorySessionStore) Archive(id SessionID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -528,7 +465,6 @@ func (s *InMemorySessionStore) Archive(id SessionID) error {
 	return nil
 }
 
-// Close closes the store.
 func (s *InMemorySessionStore) Close() error {
 	return nil
 }

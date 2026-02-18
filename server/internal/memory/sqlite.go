@@ -36,6 +36,7 @@ type MessageStats struct {
 type Conversation struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
+	UserID    string    `json:"user_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -163,12 +164,16 @@ func (s *Store) migrate() error {
 		"ALTER TABLE messages ADD COLUMN model TEXT",
 		"ALTER TABLE messages ADD COLUMN stats TEXT",
 		"ALTER TABLE messages ADD COLUMN attachments TEXT",
+		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
 	}
 
 	for _, migration := range migrations {
 		// Ignore errors for columns that already exist
 		s.db.Exec(migration)
 	}
+
+	// Create index for user_id filtering (ignore if exists)
+	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)")
 
 	return nil
 }
@@ -182,7 +187,7 @@ func (s *Store) Close() error {
 }
 
 // CreateConversation creates a new conversation.
-func (s *Store) CreateConversation(ctx context.Context, title string) (*Conversation, error) {
+func (s *Store) CreateConversation(ctx context.Context, title string, userID ...string) (*Conversation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -192,10 +197,13 @@ func (s *Store) CreateConversation(ctx context.Context, title string) (*Conversa
 		CreatedAt: timeutil.NowTime(),
 		UpdatedAt: timeutil.NowTime(),
 	}
+	if len(userID) > 0 {
+		conv.UserID = userID[0]
+	}
 
 	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-		conv.ID, conv.Title, conv.CreatedAt, conv.UpdatedAt,
+		"INSERT INTO conversations (id, title, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		conv.ID, conv.Title, conv.UserID, conv.CreatedAt, conv.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create conversation: %w", err)
@@ -231,9 +239,9 @@ func (s *Store) CreateConversationWithID(ctx context.Context, id, title string) 
 func (s *Store) GetConversation(ctx context.Context, id string) (*Conversation, error) {
 	conv := &Conversation{}
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
+		"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE id = ?",
 		id,
-	).Scan(&conv.ID, &conv.Title, &conv.CreatedAt, &conv.UpdatedAt)
+	).Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.CreatedAt, &conv.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -245,12 +253,22 @@ func (s *Store) GetConversation(ctx context.Context, id string) (*Conversation, 
 	return conv, nil
 }
 
-// ListConversations lists conversations with pagination.
-func (s *Store) ListConversations(ctx context.Context, limit, offset int) ([]Conversation, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-		limit, offset,
-	)
+// ListConversations lists conversations with pagination, optionally filtered by userID.
+func (s *Store) ListConversations(ctx context.Context, limit, offset int, userID ...string) ([]Conversation, error) {
+	var rows *sql.Rows
+	var err error
+
+	if len(userID) > 0 && userID[0] != "" {
+		rows, err = s.db.QueryContext(ctx,
+			"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+			userID[0], limit, offset,
+		)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			"SELECT id, title, user_id, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+			limit, offset,
+		)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to list conversations: %w", err)
 	}
@@ -259,7 +277,7 @@ func (s *Store) ListConversations(ctx context.Context, limit, offset int) ([]Con
 	var convs []Conversation
 	for rows.Next() {
 		var conv Conversation
-		if err := rows.Scan(&conv.ID, &conv.Title, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan conversation: %w", err)
 		}
 		convs = append(convs, conv)
@@ -296,12 +314,22 @@ func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string) e
 	return nil
 }
 
-// SearchConversations searches conversations by title.
-func (s *Store) SearchConversations(ctx context.Context, query string, limit int) ([]Conversation, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, title, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?",
-		"%"+query+"%", limit,
-	)
+// SearchConversations searches conversations by title, optionally filtered by userID.
+func (s *Store) SearchConversations(ctx context.Context, query string, limit int, userID ...string) ([]Conversation, error) {
+	var rows *sql.Rows
+	var err error
+
+	if len(userID) > 0 && userID[0] != "" {
+		rows, err = s.db.QueryContext(ctx,
+			"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE user_id = ? AND title LIKE ? ORDER BY updated_at DESC LIMIT ?",
+			userID[0], "%"+query+"%", limit,
+		)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?",
+			"%"+query+"%", limit,
+		)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to search conversations: %w", err)
 	}
@@ -310,7 +338,7 @@ func (s *Store) SearchConversations(ctx context.Context, query string, limit int
 	var convs []Conversation
 	for rows.Next() {
 		var conv Conversation
-		if err := rows.Scan(&conv.ID, &conv.Title, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan conversation: %w", err)
 		}
 		convs = append(convs, conv)

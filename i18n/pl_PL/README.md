@@ -48,7 +48,7 @@ Zainspirowani przez Clawdbot, wierzymy, że **przyszłość** komputerów osobis
 
 **ZimaOS Blue to nasza odpowiedź** — w pełni **otwartoźródłowe, audytowalne i gotowe produkcyjnie środowisko uruchomieniowe agentów oraz zestaw narzędzi**, który pozwala wdrażać prywatnych, samodzielnie hostowanych agentów bez żadnych przeszkód.
 
-Stworzony dla odważnych programistów, którzy chcą **tworzyć własnych agentów w dowolny sposób**, Blue jest **zoptymalizowany pod kątem wydajności**: napisany w **Go**, ze zużyciem pamięci już od 10 MB. Działa na **dowolnym x86, Raspberry Pi, Windows, macOS** — wszędzie, gdzie podłączysz zasilanie.
+Stworzony dla odważnych programistów, którzy chcą **tworzyć własnych agentów w dowolny sposób**, Blue jest **zoptymalizowany pod kątem wydajności**: napisany w **Go**, ze zużyciem pamięci już od 10 MB. Działa na **dowolnym x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — wszędzie, gdzie podłączysz zasilanie.
 
 ![](../../docs/assets/features.png)
 
@@ -59,26 +59,7 @@ Stworzony dla odważnych programistów, którzy chcą **tworzyć własnych agent
 Idąc dalej: oferuje natywne wsparcie dla **ponad 20 platform komunikacyjnych**, interfejsy **sterowane głosem** do naturalnego, kontekstowego dialogu, **automatyczne przełączanie modeli** ze skanowaniem IDE oraz wielowarstwowe osobowości SOUL.
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Szybki, lekki
@@ -97,7 +78,7 @@ Kompilowany natywnie w Go — bez interpretera, bez maszyny wirtualnej, bez narz
 
 ### Czysty Go, dowolne urządzenie
 
-100% Go, statyczny plik binarny. **Kompilacja krzyżowa na 5 platform** od razu (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node, bez Pythona, bez kontenerów. Wrzuć go na NAS, Raspberry Pi, stary router x86 lub Maca — po prostu działa. **Następnie dodaj własny interfejs, logikę i umiejętności agenta** — jeden kod źródłowy, każda platforma.
+100% Go, statyczny plik binarny. **Kompilacja krzyżowa na 5 platform** od razu (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node, bez Pythona, bez kontenerów. Wrzuć go na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, stary router x86 lub Maca — po prostu działa. **Następnie dodaj własny interfejs, logikę i umiejętności agenta** — jeden kod źródłowy, każda platforma.
 
 ### Bezpieczeństwo i zarządzanie
 
@@ -116,7 +97,7 @@ Wierzymy, że **komputery osobiste nowej generacji** obejmują LLM — ale **kon
 
 ![](../../docs/assets/design_principle.png)
 
-Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni **filozofii projektowej ZimaOS**, Blue zapewnia:
+Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filozofii projektowej ZimaOS**, Blue zapewnia:
 - **Od zera do jedynki jednym kliknięciem** – Natychmiastowe wdrożenie, bez skomplikowanej konfiguracji.
 - **Szybkie prototypowanie** – Twórz narzędzia, interakcje i pakiety aplikacji dopasowane do scenariuszy.
 - **Gotowy na cały świat** – **Świat jest ogromny** i nie domyślnie angielski. **Ponad 20 języków, natywnie**, bez barier.
@@ -125,23 +106,7 @@ Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni 
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -163,6 +128,7 @@ Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni 
 | OpenRouter | 100+ zagregowanych modeli | Chmura |
 | AIHubMix | Agregator wielu dostawców | Chmura |
 | Codex | OpenAI Codex | Chmura |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Chmura |
 | Własny | Dowolne API kompatybilne z OpenAI / Anthropic / Gemini | Chmura / Lokalny |
 
 </details>
@@ -170,14 +136,7 @@ Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni 
 ### Obsługiwane IDE
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## Szybki start
@@ -186,17 +145,17 @@ Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni 
 
 Pobierz natywną aplikację — bez zależności, bez kompilacji. Wbudowana konfiguracja próbna, gotowa w sekundy — połącz się zdalnie i zacznij rozmawiać natychmiast, bez konfigurowania bota. Prawdziwe uruchomienie od razu.
 
-- **macOS**: [Pobierz DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Pobierz instalator](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Pobierz DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Pobierz instalator](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Opcja 2: Skrypt instalacyjny
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -208,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Uwaga:** Kompilacja w systemie Windows wymaga [MinGW-w64](https://www.mingw-w64.org/) (gcc) i [CMake](https://cmake.org/) dla natywnych zależności C (espeak-ng, whisper.cpp, opus). Upewnij się, że `gcc` i `cmake` są w `PATH`.
 
 ## Przegląd architektury
 

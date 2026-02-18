@@ -48,7 +48,7 @@ Inspirats per Clawdbot, creiem que el **futur** de la informàtica personal ser�
 
 **ZimaOS Blue és la nostra resposta** — un **entorn d'execució i conjunt d'eines per a agents totalment obert, auditable i preparat per a producció** que us permet desplegar agents privats i autoallotjats sense cap fricció.
 
-Dissenyat per a desenvolupadors audaços que volen **crear els seus propis agents amb inspiració o a mà**, Blue està **optimitzat per al rendiment**: escrit en **Go**, amb un consum de memòria tan baix com 10 MB. Funciona en **qualsevol x86, Raspberry Pi, Windows, macOS** — allà on hi hagi corrent.
+Dissenyat per a desenvolupadors audaços que volen **crear els seus propis agents amb inspiració o a mà**, Blue està **optimitzat per al rendiment**: escrit en **Go**, amb un consum de memòria tan baix com 10 MB. Funciona en **qualsevol x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — allà on hi hagi corrent.
 
 ![](../../docs/assets/features.png)
 
@@ -57,6 +57,10 @@ Dissenyat per a desenvolupadors audaços que volen **crear els seus propis agent
 ### Disseny local-first i accés automàtic a models
 
 Aneu més enllà: ofereix suport natiu per a **més de 20 plataformes de missatgeria instantània**, interfícies **controlades per veu** per a diàlegs naturals i contextuals, **canvi de model sense configuració** amb escaneig d'IDE, i personalitats amb capes SOUL.
+
+<p align="center">
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+</p>
 
 ### Ràpid i lleuger
 
@@ -74,7 +78,7 @@ Compilat nativament en Go — sense intèrpret, sense VM, sense sobrecàrrega. F
 
 ### Go pur, qualsevol dispositiu
 
-100% Go, binari estàtic. **Compilació creuada per a 5 objectius** de sèrie (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Sense runtime de Node, sense Python, sense contenidors. Poseu-lo en un NAS, una Raspberry Pi, un router x86 antic o un Mac — simplement funciona. **Després afegiu la vostra pròpia interfície, lògica i habilitats d'agent** — un sol codi, totes les plataformes.
+100% Go, binari estàtic. **Compilació creuada per a 5 objectius** de sèrie (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Sense runtime de Node, sense Python, sense contenidors. Poseu-lo en un NAS, una ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un router x86 antic o un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — simplement funciona. **Després afegiu la vostra pròpia interfície, lògica i habilitats d'agent** — un sol codi, totes les plataformes.
 
 ### Seguretat i governança
 
@@ -91,31 +95,67 @@ Creiem que la **informàtica personal de nova generació** abraça els LLM — p
 - **Local-first, ultralleuger, multidispositiu** – No cal maquinari d'alta gamma. Funciona en qualsevol cosa que pugui computar.
 - **Segur i auditable** – Auditoria de sessions, sandboxing, controls de permisos i un proxy API integrat que actua com a tallafocs de capa d'aplicació — cada byte d'entrada/sortida és visible.
 
-Minimitzem el codi repetitiu perquè us **concentreu en el que importa**. Fidels a la **filosofia de disseny de ZimaOS**, Blue ofereix:
+![](../../docs/assets/design_principle.png)
+
+Minimitzem el codi repetitiu perquè us **concentreu en el que importa**. Fidels a la <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filosofia de disseny de ZimaOS**, Blue ofereix:
 - **De zero a u amb un sol clic** – Desplegament instantani, sense configuració complexa.
 - **Prototipatge ràpid** – Creeu eines, interaccions i paquets d'aplicacions específics per a cada escenari.
 - **Preparat per al món** – **El món és gran**, i no parla anglès per defecte. **Més de 20 idiomes, natius**, sense barreres.
 - **Ecosistema de models obert** – Sense dependència de proveïdor. Porteu els vostres propis models.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Proveïdor | Models | Tipus |
+|-----------|--------|-------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi, etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (privadesa primer) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Models OpenAI via Azure | Cloud |
+| OpenRouter | 100+ models agregats | Cloud |
+| AIHubMix | Agregador multi-proveïdor | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Personalitzat | Qualsevol API compatible amb OpenAI / Anthropic / Gemini | Cloud / Local |
+
+</details>
+
+### IDE compatibles
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Inici ràpid
 
-### Opció 1: Descarregar l'aplicació d'escriptori (macOS i Windows)
+### Opció 1: Descarregar l'aplicació d'escriptori
 
 Obteniu l'aplicació nativa — sense dependències, sense compilació.
 
-- **macOS**: [Descarregar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Descarregar instal·lador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Descarregar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Descarregar instal·lador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Opció 2: Script d'instal·lació
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -127,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Visió general de l'arquitectura
 

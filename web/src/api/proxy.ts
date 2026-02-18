@@ -171,54 +171,54 @@ export const proxyApi = {
   // Sessions
   getSessions: (activeOnly = false) =>
     apiClient.get<{ sessions: Session[]; stats: SessionStats }>(
-      `/api/v1/proxy/sessions${activeOnly ? '?active=true' : ''}`
+      `/proxy/sessions${activeOnly ? '?active=true' : ''}`
     ),
 
-  getSession: (id: string) => apiClient.get<Session>(`/api/v1/proxy/sessions/${id}`),
+  getSession: (id: string) => apiClient.get<Session>(`/proxy/sessions/${id}`),
 
   // Metrics
-  getMetrics: () => apiClient.get<MetricsSummary>('/api/v1/proxy/metrics'),
+  getMetrics: () => apiClient.get<MetricsSummary>('/proxy/metrics'),
 
   getProviderMetrics: (provider?: string) =>
     apiClient.get<{ providers: Record<string, ProviderMetrics> }>(
-      `/api/v1/proxy/metrics/providers${provider ? `?provider=${provider}` : ''}`
+      `/proxy/metrics/providers${provider ? `?provider=${provider}` : ''}`
     ),
 
-  getLatencyStats: () => apiClient.get<LatencyStats>('/api/v1/proxy/metrics/latency'),
+  getLatencyStats: () => apiClient.get<LatencyStats>('/proxy/metrics/latency'),
 
   getTimeSeries: (start?: string, end?: string) => {
     const params = new URLSearchParams()
     if (start) params.set('start', start)
     if (end) params.set('end', end)
-    return apiClient.get(`/api/v1/proxy/metrics/timeseries?${params.toString()}`)
+    return apiClient.get(`/proxy/metrics/timeseries?${params.toString()}`)
   },
 
   // Guard
-  getGuardStats: () => apiClient.get<GuardStats>('/api/v1/proxy/guard/stats'),
+  getGuardStats: () => apiClient.get<GuardStats>('/proxy/guard/stats'),
 
-  getGuardRules: () => apiClient.get<{ rules: GuardRule[] }>('/api/v1/proxy/guard/rules'),
+  getGuardRules: () => apiClient.get<{ rules: GuardRule[] }>('/proxy/guard/rules'),
 
   addGuardRule: (rule: Omit<GuardRule, 'id'>) =>
-    apiClient.post<{ message: string; rule: GuardRule }>('/api/v1/proxy/guard/rules', rule),
+    apiClient.post<{ message: string; rule: GuardRule }>('/proxy/guard/rules', rule),
 
   // Auth
-  getAuthStats: () => apiClient.get<AuthStats>('/api/v1/proxy/auth/stats'),
+  getAuthStats: () => apiClient.get<AuthStats>('/proxy/auth/stats'),
 
-  getAPIKeys: () => apiClient.get<{ keys: APIKey[] }>('/api/v1/proxy/auth/keys'),
+  getAPIKeys: () => apiClient.get<{ keys: APIKey[] }>('/proxy/auth/keys'),
 
   addAPIKey: (key: string) =>
-    apiClient.post<{ message: string }>('/api/v1/proxy/auth/keys', { key }),
+    apiClient.post<{ message: string }>('/proxy/auth/keys', { key }),
 
   removeAPIKey: (key: string) =>
-    apiClient.delete<{ message: string }>(`/api/v1/proxy/auth/keys?key=${encodeURIComponent(key)}`),
+    apiClient.delete<{ message: string }>(`/proxy/auth/keys?key=${encodeURIComponent(key)}`),
 
   // Models
-  getModels: () => apiClient.get('/api/v1/proxy/models'),
+  getModels: () => apiClient.get('/proxy/models'),
 
-  getModelFeatures: (model: string) => apiClient.get(`/api/v1/proxy/models?model=${model}`),
+  getModelFeatures: (model: string) => apiClient.get(`/proxy/models?model=${model}`),
 
   // Mock
-  getMockEndpoints: () => apiClient.get('/api/v1/proxy/mock'),
+  getMockEndpoints: () => apiClient.get('/proxy/mock'),
 
   addMockEndpoint: (endpoint: {
     path: string
@@ -226,26 +226,26 @@ export const proxyApi = {
     response: unknown
     status_code?: number
     enabled?: boolean
-  }) => apiClient.post('/api/v1/proxy/mock', endpoint),
+  }) => apiClient.post('/proxy/mock', endpoint),
 
   // Config
-  reloadConfig: () => apiClient.post<{ message: string; reloaded_at: string }>('/api/v1/proxy/config/reload', {}),
+  reloadConfig: () => apiClient.post<{ message: string; reloaded_at: string }>('/proxy/config/reload', {}),
 
   // Data Masking (reserved for future implementation)
-  getMaskingStats: () => apiClient.get<MaskingStats>('/api/v1/proxy/masking/stats'),
+  getMaskingStats: () => apiClient.get<MaskingStats>('/proxy/masking/stats'),
 
-  getMaskingRules: () => apiClient.get<{ rules: MaskingRule[]; default_rules: MaskingRule[] }>('/api/v1/proxy/masking/rules'),
+  getMaskingRules: () => apiClient.get<{ rules: MaskingRule[]; default_rules: MaskingRule[] }>('/proxy/masking/rules'),
 
   addMaskingRule: (rule: Omit<MaskingRule, 'id'>) =>
-    apiClient.post<{ message: string; rule: MaskingRule }>('/api/v1/proxy/masking/rules', rule),
+    apiClient.post<{ message: string; rule: MaskingRule }>('/proxy/masking/rules', rule),
 
   removeMaskingRule: (id: string) =>
-    apiClient.delete<{ message: string }>(`/api/v1/proxy/masking/rules?id=${encodeURIComponent(id)}`),
+    apiClient.delete<{ message: string }>(`/proxy/masking/rules?id=${encodeURIComponent(id)}`),
 
   // Failover
-  getFailoverConfig: () => apiClient.get<FailoverConfig>('/api/v1/proxy/failover/config'),
+  getFailoverConfig: () => apiClient.get<FailoverConfig>('/proxy/failover/config'),
   updateFailoverConfig: (config: Partial<FailoverConfig>) =>
-    apiClient.put<FailoverConfig>('/api/v1/proxy/failover/config', config),
+    apiClient.put<FailoverConfig>('/proxy/failover/config', config),
 
   // Security Alerts (aggregated from guard stats)
   getSecurityAlerts: async (): Promise<{ data: SecurityAlert[] }> => {

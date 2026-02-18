@@ -55,6 +55,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/auth/login", h.Login)
 	g.POST("/auth/logout", h.Logout)
 	g.POST("/auth/refresh", h.RefreshToken)
+	g.GET("/auth/password-policy", h.GetPasswordPolicy)
 
 	// Protected routes (require authentication)
 	users := g.Group("/users")
@@ -89,6 +90,19 @@ type LoginResponse struct {
 	User         *User  `json:"user"`
 	MFARequired  bool   `json:"mfa_required,omitempty"`
 	MFAToken     string `json:"mfa_token,omitempty"`
+}
+
+// GetPasswordPolicy returns the password policy configuration.
+// GET /api/v1/auth/password-policy
+func (h *Handler) GetPasswordPolicy(c echo.Context) error {
+	cfg := h.service.GetPasswordPolicy()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"min_length":        cfg.MinLength,
+		"require_uppercase": cfg.RequireUppercase,
+		"require_lowercase": cfg.RequireLowercase,
+		"require_number":    cfg.RequireNumber,
+		"require_special":   cfg.RequireSpecial,
+	})
 }
 
 // Login handles user login.

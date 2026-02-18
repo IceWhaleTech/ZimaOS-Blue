@@ -53,7 +53,7 @@ Clawdbotに触発され、私たちはパーソナルコンピューティング
 
 **ZimaOS Blueはその答えです** — 完全に**オープンソースで、監査可能、かつ本番環境対応のエージェントランタイムおよびツールキット**であり、プライベートなセルフホスト型エージェントをゼロフリクションで提供できます。
 
-大胆な開発者が**自分だけのエージェントをバイブコーディングまたは手作り**するために構築されたBlueは、**パフォーマンスを追求した設計**です：**Go**で記述され、メモリフットプリントはわずか10 MB。**あらゆるx86、Raspberry Pi、Windows、macOS**で動作します — 電源さえあればどこでも。
+大胆な開発者が**自分だけのエージェントをバイブコーディングまたは手作り**するために構築されたBlueは、**パフォーマンスを追求した設計**です：**Go**で記述され、メモリフットプリントはわずか10 MB。**あらゆるx86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS**で動作します — 電源さえあればどこでも。
 
 ![](../../docs/assets/features.png)
 
@@ -64,26 +64,7 @@ Clawdbotに触発され、私たちはパーソナルコンピューティング
 さらに一歩先へ：**20以上のIMプラットフォーム**のネイティブサポート、自然で文脈を理解した対話のための**音声駆動**インターフェース、IDEスキャンによる**ゼロコンフィグモデル切り替え**、SOULレイヤードパーソナリティを提供します。
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### 高速・軽量
@@ -102,7 +83,7 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 
 ### 純粋なGo、あらゆるデバイス
 
-100% Go、静的バイナリ。**5つのターゲットにクロスコンパイル**可能（![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。Nodeランタイム不要、Python不要、コンテナ不要。NAS、Raspberry Pi、古いx86ルーター、Macに置くだけ — そのまま動きます。**その上に独自のUI、ロジック、エージェントスキルを重ねましょう** — 1つのコードベースで、すべてのプラットフォームに対応。
+100% Go、静的バイナリ。**5つのターゲットにクロスコンパイル**可能（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。Nodeランタイム不要、Python不要、コンテナ不要。NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、古いx86ルーター、Macに置くだけ — そのまま動きます。**その上に独自のUI、ロジック、エージェントスキルを重ねましょう** — 1つのコードベースで、すべてのプラットフォームに対応。
 
 ### セキュリティとガバナンス
 
@@ -121,7 +102,7 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 
 ![](../../docs/assets/design_principle.png)
 
-ボイラープレートを最小限に抑え、**本当に重要なことに集中**できます。**ZimaOSの設計哲学**に忠実に、Blueは以下を提供します：
+ボイラープレートを最小限に抑え、**本当に重要なことに集中**できます。<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOSの設計哲学**に忠実に、Blueは以下を提供します：
 - **ワンクリックでゼロからイチへ** – 複雑な設定なしで即座にデプロイ。
 - **ラピッドプロトタイピング** – シナリオ固有のツール、インタラクション、アプリパッケージをバイブコーディングまたは手作り。
 - **グローバル対応** – **世界は広い**、そして英語がデフォルトではありません。**20以上の言語をネイティブサポート**、障壁なし。
@@ -130,23 +111,7 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -168,6 +133,7 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 | OpenRouter | 100+ 集約モデル | クラウド |
 | AIHubMix | マルチプロバイダーアグリゲーター | クラウド |
 | Codex | OpenAI Codex | クラウド |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | クラウド |
 | カスタム | 任意のOpenAI / Anthropic / Gemini互換API | クラウド / ローカル |
 
 </details>
@@ -175,33 +141,26 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 ### サポートされるIDE
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## クイックスタート
 
-### オプション1：デスクトップアプリをダウンロード（macOS & Windows）
+### オプション1：デスクトップアプリをダウンロード
 
 ネイティブアプリケーションを入手 — 依存関係なし、コンパイル不要。内蔵トライアル設定で数秒でオンボーディング — リモート接続で即座にチャット開始、ボット設定不要。真のすぐ使える体験。
 
-- **macOS**: [DMGをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [インストーラーをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [DMGをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [インストーラーをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### オプション2：インストールスクリプト
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -213,15 +172,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **注意:** Windowsでのビルドには、ネイティブC依存関係（espeak-ng、whisper.cpp、opus）のために[MinGW-w64](https://www.mingw-w64.org/)（gcc）と[CMake](https://cmake.org/)が必要です。`gcc`と`cmake`が`PATH`に含まれていることを確認してください。
 
 ## アーキテクチャ概要
 

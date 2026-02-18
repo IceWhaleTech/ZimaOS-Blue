@@ -48,7 +48,7 @@ Inspirert av Clawdbot tror vi at **fremtiden** for personlig databehandling vil 
 
 **ZimaOS Blue er vårt svar** — en fullstendig **åpen kildekode, reviderbar og produksjonsklar agent-kjøretid og verktøysett** som lar deg levere private, selvhostede agenter uten friksjon.
 
-Bygget for modige utviklere som ønsker å **vibe eller håndlage sine egne agenter**. Blue er **konstruert for ytelse**: skrevet i **Go**, med et minneavtrykk helt ned til 10 MB. Den kjører på **alle x86-systemer, Raspberry Pi, Windows, macOS** — overalt hvor du kobler til strøm.
+Bygget for modige utviklere som ønsker å **vibe eller håndlage sine egne agenter**. Blue er **konstruert for ytelse**: skrevet i **Go**, med et minneavtrykk helt ned til 10 MB. Den kjører på **alle x86-systemer, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — overalt hvor du kobler til strøm.
 
 ![](../../docs/assets/features.png)
 
@@ -59,26 +59,7 @@ Bygget for modige utviklere som ønsker å **vibe eller håndlage sine egne agen
 Ta det videre: innebygd støtte for **20+ IM-plattformer**, **stemmedrevne** grensesnitt for naturlig, kontekstbevisst dialog, **nullkonfigurasjon modellbytte** med IDE-skanning, og SOUL-lagdelte personligheter.
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rask og lett
@@ -97,7 +78,7 @@ Kompilert direkte i Go — ingen tolk, ingen VM, ingen overhead. Kjører stille 
 
 ### Ren Go, alle enheter
 
-100 % Go, statisk binærfil. **Krysskompilerer til 5 mål** rett ut av boksen (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Ingen Node-kjøretid, ingen Python, ingen containere nødvendig. Slipp den på en NAS, en Raspberry Pi, en gammel x86-ruter eller en Mac — den bare kjører. **Legg deretter på din egen UI, logikk og agent-ferdigheter** — én kodebase, alle plattformer.
+100 % Go, statisk binærfil. **Krysskompilerer til 5 mål** rett ut av boksen (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Ingen Node-kjøretid, ingen Python, ingen containere nødvendig. Slipp den på en NAS, en ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, en gammel x86-ruter eller en ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — den bare kjører. **Legg deretter på din egen UI, logikk og agent-ferdigheter** — én kodebase, alle plattformer.
 
 ### Sikkerhet og styring
 
@@ -116,7 +97,7 @@ Vi tror at **neste generasjons personlig databehandling** omfavner LLM-er — me
 
 ![](../../docs/assets/design_principle.png)
 
-Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro mot **ZimaOS sin designfilosofi** leverer Blue:
+Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro mot <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS sin designfilosofi** leverer Blue:
 - **Fra null til én med ett klikk** – Distribuer umiddelbart, ingen kompleks konfigurasjon.
 - **Rask prototyping** – Vibe eller håndlag scenariospesifikke verktøy, interaksjoner og app-pakker.
 - **Globalt klar** – **Verden er stor**, og den snakker ikke engelsk som standard. **20+ språk, innebygd**, ingen barrierer.
@@ -125,23 +106,7 @@ Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -163,6 +128,7 @@ Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro
 | OpenRouter | 100+ aggregerte modeller | Sky |
 | AIHubMix | Flerleverandøraggregator | Sky |
 | Codex | OpenAI Codex | Sky |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Sky |
 | Egendefinert | Alle OpenAI / Anthropic / Gemini-kompatible API-er | Sky / Lokal |
 
 </details>
@@ -170,14 +136,7 @@ Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro
 ### Støttede IDE-er
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## Hurtigstart
@@ -186,17 +145,17 @@ Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro
 
 Hent den native applikasjonen — ingen avhengigheter, ingen kompilering. Innebygd prøvekonfigurasjon, klar på sekunder — koble til eksternt og begynn å chatte umiddelbart, uten å konfigurere en bot. Ekte oppstart fra start.
 
-- **macOS**: [Last ned DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Last ned installasjonsprogram](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Last ned DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Last ned installasjonsprogram](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Alternativ 2: Installasjonsskript
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -208,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Merk:** Windows-bygg krever [MinGW-w64](https://www.mingw-w64.org/) (gcc) og [CMake](https://cmake.org/) for native C-avhengigheter (espeak-ng, whisper.cpp, opus). Sørg for at `gcc` og `cmake` er i `PATH`.
 
 ## Arkitekturoversikt
 

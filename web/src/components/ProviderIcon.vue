@@ -18,7 +18,7 @@ const aliases: Record<string, string> = {
 const knownIcons = new Set([
   'aihubmix', 'anthropic', 'aws', 'azure', 'codex', 'deepseek', 'default',
   'glm', 'google', 'grok', 'minimax', 'moonshot', 'ngrok', 'ollama',
-  'openai', 'openrouter', 'qwen', 'venice',
+  'openai', 'openrouter', 'qwen', 'siliconflow', 'venice',
 ])
 
 // Try to match a known icon from a custom provider ID (e.g. "custom-anthropic-cursor" → "anthropic")

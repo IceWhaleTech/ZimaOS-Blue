@@ -48,7 +48,7 @@ Inšpirovaní projektom Clawdbot veríme, že **budúcnosť** osobného počíta
 
 **ZimaOS Blue je naša odpoveď** — plne **open-source, auditovateľné a produkčne pripravené agentové prostredie a sada nástrojov**, ktoré vám umožnia nasadiť súkromných, vlastne hostovaných agentov bez akéhokoľvek trenia.
 
-Vytvorený pre odvážnych vývojárov, ktorí chcú **tvoriť vlastných agentov kreatívne alebo ručne**. Blue je **navrhnutý pre výkon**: napísaný v **Go**, s pamäťovou náročnosťou len 10 MB. Beží na **akomkoľvek x86, Raspberry Pi, Windows, macOS** — kdekoľvek, kde zapojíte napájanie.
+Vytvorený pre odvážnych vývojárov, ktorí chcú **tvoriť vlastných agentov kreatívne alebo ručne**. Blue je **navrhnutý pre výkon**: napísaný v **Go**, s pamäťovou náročnosťou len 10 MB. Beží na **akomkoľvek x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — kdekoľvek, kde zapojíte napájanie.
 
 ![](../../docs/assets/features.png)
 
@@ -59,26 +59,7 @@ Vytvorený pre odvážnych vývojárov, ktorí chcú **tvoriť vlastných agento
 Ideme ešte ďalej: natívna podpora pre **20+ IM platforiem**, **hlasovo ovládané** rozhrania pre prirodzený, kontextovo uvedomelý dialóg, **bezúdržbové prepínanie modelov** s IDE skenovaním a SOUL-vrstvené osobnosti.
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rýchly a ľahký
@@ -97,7 +78,7 @@ Natívne kompilovaný v Go — žiadny interpreter, žiadny VM, žiadna réžia.
 
 ### Čisté Go, akékoľvek zariadenie
 
-100% Go, statický binárny súbor. **Krížová kompilácia pre 5 cieľov** priamo z krabice (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Žiadny Node runtime, žiadny Python, žiadne kontajnery. Položte ho na NAS, Raspberry Pi, starý x86 router alebo Mac — jednoducho beží. **Potom pridajte vlastné UI, logiku a agentové zručnosti** — jeden kód, každá platforma.
+100% Go, statický binárny súbor. **Krížová kompilácia pre 5 cieľov** priamo z krabice (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Žiadny Node runtime, žiadny Python, žiadne kontajnery. Položte ho na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, starý x86 router alebo ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — jednoducho beží. **Potom pridajte vlastné UI, logiku a agentové zručnosti** — jeden kód, každá platforma.
 
 ### Bezpečnosť a správa
 
@@ -116,7 +97,7 @@ Veríme, že **osobné počítačové systémy novej generácie** prijímajú LL
 
 ![](../../docs/assets/design_principle.png)
 
-Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôležité**. Verní **dizajnovej filozofii ZimaOS**, Blue prináša:
+Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôležité**. Verní <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **dizajnovej filozofii ZimaOS**, Blue prináša:
 - **Od nuly k jednej jedným kliknutím** – Okamžité nasadenie, žiadna zložitá konfigurácia.
 - **Rýchle prototypovanie** – Tvorte kreatívne alebo ručne scenárovo špecifické nástroje, interakcie a balíčky aplikácií.
 - **Globálne pripravený** – **Svet je veľký** a nehovorí predvolene anglicky. **20+ jazykov, natívne**, žiadne bariéry.
@@ -125,23 +106,7 @@ Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôlež
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -163,6 +128,7 @@ Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôlež
 | OpenRouter | 100+ agregovaných modelov | Cloud |
 | AIHubMix | Multi-provider agregátor | Cloud |
 | Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
 | Vlastný | Akékoľvek API kompatibilné s OpenAI / Anthropic / Gemini | Cloud / Lokálny |
 
 </details>
@@ -170,33 +136,26 @@ Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôlež
 ### Podporované IDE
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## Rýchly štart
 
-### Možnosť 1: Stiahnuť desktopovú aplikáciu (macOS & Windows)
+### Možnosť 1: Stiahnuť desktopovú aplikáciu
 
 Získajte natívnu aplikáciu — žiadne závislosti, žiadna kompilácia. Vstavaná skúšobná konfigurácia, pripravená za sekundy — pripojte sa vzdialene a začnite chatovať okamžite, bez nastavovania bota. Skutočný štart na prvý pokus.
 
-- **macOS**: [Stiahnuť DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Stiahnuť inštalátor](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Stiahnuť DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Stiahnuť inštalátor](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Možnosť 2: Inštalačný skript
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -208,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Poznámka:** Windows zostavenia vyžadujú [MinGW-w64](https://www.mingw-w64.org/) (gcc) a [CMake](https://cmake.org/) pre natívne C závislosti (espeak-ng, whisper.cpp, opus). Uistite sa, že `gcc` a `cmake` sú v `PATH`.
 
 ## Prehľad architektúry
 

@@ -1713,7 +1713,7 @@ export default {
     benefit3: 'Archiviazione dati persistente e sicura',
     upgradeFailed: 'Creazione account amministratore non riuscita',
     passwordCheck: {
-      length: 'Almeno 8 caratteri',
+      length: 'Almeno {n} caratteri',
       uppercase: 'Una lettera maiuscola',
       lowercase: 'Una lettera minuscola',
       number: 'Un numero',

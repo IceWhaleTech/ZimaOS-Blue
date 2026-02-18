@@ -50,6 +50,14 @@ export interface CreateApiKeyResponse {
   key: string // Full key, only shown once
 }
 
+export interface PasswordPolicy {
+  min_length: number
+  require_uppercase: boolean
+  require_lowercase: boolean
+  require_number: boolean
+  require_special: boolean
+}
+
 // Auth API
 export const authApi = {
   login: (data: LoginRequest) => api.post<LoginResponse>('/auth/login', data),
@@ -63,6 +71,8 @@ export const authApi = {
 
   updateProfile: (data: { email?: string; password?: string }) =>
     api.put<User>('/users/me', data),
+
+  getPasswordPolicy: () => api.get<PasswordPolicy>('/auth/password-policy'),
 }
 
 // API Keys API

@@ -53,7 +53,7 @@ Clawdbot에서 영감을 받아, 우리는 개인 컴퓨팅의 **미래**가 엣
 
 **ZimaOS Blue는 우리의 해답입니다** — 완전히 **오픈소스이며, 감사 가능하고, 프로덕션에 바로 사용할 수 있는 에이전트 런타임 및 툴킷**으로, 프라이빗하고 셀프 호스팅되는 에이전트를 마찰 없이 배포할 수 있게 해줍니다.
 
-자신만의 에이전트를 **바이브 코딩하거나 직접 만들고 싶은** 대담한 개발자를 위해 만들어진 Blue는 **성능에 최적화**되어 있습니다: **Go**로 작성되었으며, 메모리 사용량은 최소 10 MB입니다. **모든 x86, Raspberry Pi, Windows, macOS** — 전원만 연결하면 어디서든 실행됩니다.
+자신만의 에이전트를 **바이브 코딩하거나 직접 만들고 싶은** 대담한 개발자를 위해 만들어진 Blue는 **성능에 최적화**되어 있습니다: **Go**로 작성되었으며, 메모리 사용량은 최소 10 MB입니다. **모든 x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — 전원만 연결하면 어디서든 실행됩니다.
 
 ![](../../docs/assets/features.png)
 
@@ -64,26 +64,7 @@ Clawdbot에서 영감을 받아, 우리는 개인 컴퓨팅의 **미래**가 엣
 한 걸음 더 나아갑니다: **20개 이상의 IM 플랫폼** 네이티브 지원, 자연스럽고 맥락을 인식하는 대화를 위한 **음성 기반** 인터페이스, IDE 스캔을 통한 **설정 없는 모델 전환**, 그리고 SOUL 레이어 퍼스널리티를 제공합니다.
 
 <p align="center">
-  <img src="../../web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### 빠르고 가벼움
@@ -102,7 +83,7 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 
 ### 순수 Go, 모든 기기
 
-100% Go, 정적 바이너리. **5개 타겟으로 크로스 컴파일** 기본 지원 (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Node 런타임 불필요, Python 불필요, 컨테이너 불필요. NAS, Raspberry Pi, 오래된 x86 라우터, 또는 Mac에 놓기만 하면 바로 실행됩니다. **그 위에 자신만의 UI, 로직, 에이전트 스킬을 쌓으세요** — 하나의 코드베이스, 모든 플랫폼.
+100% Go, 정적 바이너리. **5개 타겟으로 크로스 컴파일** 기본 지원 (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Node 런타임 불필요, Python 불필요, 컨테이너 불필요. NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, 오래된 x86 라우터, 또는 Mac에 놓기만 하면 바로 실행됩니다. **그 위에 자신만의 UI, 로직, 에이전트 스킬을 쌓으세요** — 하나의 코드베이스, 모든 플랫폼.
 
 ### 보안 & 거버넌스
 
@@ -121,7 +102,7 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 
 ![](../../docs/assets/design_principle.png)
 
-보일러플레이트를 최소화하여 **중요한 것에 집중**할 수 있습니다. **ZimaOS의 설계 철학**에 충실하게, Blue는 다음을 제공합니다:
+보일러플레이트를 최소화하여 **중요한 것에 집중**할 수 있습니다. <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS의 설계 철학**에 충실하게, Blue는 다음을 제공합니다:
 - **원클릭으로 제로에서 원까지** – 복잡한 설정 없이 즉시 배포.
 - **빠른 프로토타이핑** – 시나리오별 도구, 상호작용, 앱 패키지를 바이브 코딩하거나 직접 제작.
 - **글로벌 대응** – **세상은 넓고**, 영어가 기본이 아닙니다. **20개 이상의 언어, 네이티브 지원**, 장벽 없음.
@@ -130,23 +111,7 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 <details>
 <summary>
 <p align="center">
-  <img src="../../web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -168,6 +133,7 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 | OpenRouter | 100+ 통합 모델 | 클라우드 |
 | AIHubMix | 멀티 프로바이더 애그리게이터 | 클라우드 |
 | Codex | OpenAI Codex | 클라우드 |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | 클라우드 |
 | 커스텀 | 모든 OpenAI / Anthropic / Gemini 호환 API | 클라우드 / 로컬 |
 
 </details>
@@ -175,33 +141,26 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 ### 지원되는 IDE
 
 <p align="center">
-  <img src="../../web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="../../web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## 빠른 시작
 
-### 옵션 1: 데스크톱 앱 다운로드 (macOS & Windows)
+### 옵션 1: 데스크톱 앱 다운로드
 
 네이티브 애플리케이션 — 의존성 없음, 컴파일 불필요. 체험 설정이 내장되어 있어 즉시 시작 가능 — 원격 연결로 바로 대화를 시작하세요, 봇 설정 불필요. 진정한 즉시 사용.
 
-- **macOS**: [DMG 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [설치 프로그램 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [DMG 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [설치 프로그램 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 옵션 2: 설치 스크립트
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -213,15 +172,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **참고:** Windows 빌드에는 네이티브 C 종속성(espeak-ng, whisper.cpp, opus)을 위해 [MinGW-w64](https://www.mingw-w64.org/)(gcc)와 [CMake](https://cmake.org/)가 필요합니다. `gcc`와 `cmake`가 `PATH`에 포함되어 있는지 확인하세요.
 
 ## 아키텍처 개요
 

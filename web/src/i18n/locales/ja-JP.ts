@@ -3115,7 +3115,7 @@ export default {
     benefit3: '安全な永続データストレージ',
     upgradeFailed: '管理者アカウントの作成に失敗しました',
     passwordCheck: {
-      length: '少なくとも 8 文字',
+      length: '少なくとも {n} 文字',
       uppercase: '大文字 1 つ',
       lowercase: '小文字 1 つ',
       number: '数字 1 つ',
@@ -3271,7 +3271,7 @@ export default {
     },
     passwordStrength: 'パスワード強度',
     passwordChecks: {
-      length: '8 文字以上',
+      length: '{n} 文字以上',
       uppercase: '大文字を 1 つ以上',
       lowercase: '小文字を 1 つ以上',
       number: '数字を 1 つ以上',

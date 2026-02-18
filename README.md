@@ -49,7 +49,7 @@ Inspired by Clawdbot, we believe the **future** of personal computing will be **
 
 **ZimaOS Blue is our answer** — a fully **open‑source, auditable, and production‑ready agent runtime and toolkit** that lets you ship private, self‑hosted agents with zero friction.
 
-Built for bold developers who want to **vibe or handcraft their own agents**, Blue is **engineered for performance**: written in **Go**, with a memory footprint as low as 10 MB. It runs on **any x86, Raspberry Pi, Windows, macOS** — anywhere you plug in power.
+Built for bold developers who want to **vibe or handcraft their own agents**, Blue is **engineered for performance**: written in **Go**, with a memory footprint as low as 10 MB. It runs on **any x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — anywhere you plug in power.
 
 ![](./docs/assets/features.png)
 
@@ -60,28 +60,8 @@ Built for bold developers who want to **vibe or handcraft their own agents**, Bl
 Take it further: it delivers native support for **20+ IM platforms**, **voice‑driven** interfaces for natural, context‑aware dialogue, **zero‑config model switching** with IDE scanning, and SOUL‑layered personalities.
 
 <p align="center">
-  <img src="./web/public/icons/channels/telegram.svg" alt="Telegram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/discord.svg" alt="Discord" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/slack.svg" alt="Slack" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/wechat.svg" alt="WeChat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/whatsapp.svg" alt="WhatsApp" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/dingtalk.svg" alt="DingTalk" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/feishu.svg" alt="Feishu" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/teams.svg" alt="Teams" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/messenger.svg" alt="Messenger" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/signal.svg" alt="Signal" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/matrix.svg" alt="Matrix" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/mattermost.svg" alt="Mattermost" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/qq.svg" alt="QQ" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/instagram.svg" alt="Instagram" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/twitter.svg" alt="Twitter/X" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/googlechat.svg" alt="Google Chat" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/viber.svg" alt="Viber" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/channels/imessage.svg" alt="iMessage" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/tunnel/cloudflare.svg" alt="Cloudflare" width="36" height="36" />&nbsp;&nbsp;
-  <img src="./web/public/icons/tunnel/ngrok.svg" alt="Ngrok" width="36" height="36" />
+  <img src="./docs/assets/channels.png" alt="Supported Channels" />
 </p>
-
 ### Fast, Light
 
 Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on everything from servers to your desktop devices.
@@ -98,7 +78,7 @@ Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on
 
 ### Pure Go, Any Device
 
-100% Go, static binary. **Cross-compiles to 5 targets** out of the box (![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). No Node runtime, no Python, no containers required. Drop it on a NAS, a Raspberry Pi, an old x86 router, or a Mac — it just runs. **Then layer on your own UI, logic, and agent skills** — one codebase, every platform.
+100% Go, static binary. **Cross-compiles to 5 targets** out of the box (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). No Node runtime, no Python, no containers required. Drop it on a NAS, a ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, an old x86 router, or a ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — it just runs. **Then layer on your own UI, logic, and agent skills** — one codebase, every platform.
 
 ### Security & Governance
 
@@ -117,7 +97,7 @@ We believe **next‑gen personal computing** embraces LLMs — but **controllabl
 
 ![](./docs/assets/design_principle.png)
 
-We minimize boilerplate so you **focus on what matters**. Staying true to **ZimaOS's design philosophy**, Blue delivers:
+We minimize boilerplate so you **focus on what matters**. Staying true to <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS's design philosophy**, Blue delivers:
 - **Zero‑to‑One in One Click** – Deploy instantly, no complex config.
 - **Rapid Prototyping** – Vibe or handcraft scenario‑specific tools, interactions, and app packages.
 - **Global‑Ready** – **The world is huge**, and it doesn't default to English. **20+ languages, native**, no barriers.
@@ -126,23 +106,7 @@ We minimize boilerplate so you **focus on what matters**. Staying true to **Zima
 <details>
 <summary>
 <p align="center">
-  <img src="./web/public/icons/providers/openai.svg" alt="OpenAI" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/anthropic.svg" alt="Anthropic" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/google.svg" alt="Google" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/ollama.svg" alt="Ollama" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/deepseek.svg" alt="DeepSeek" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/grok.svg" alt="Grok" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/qwen.svg" alt="Qwen" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/glm.svg" alt="GLM" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/moonshot.svg" alt="Moonshot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/minimax.svg" alt="MiniMax" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/venice.svg" alt="Venice" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/aws.svg" alt="AWS Bedrock" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/azure.svg" alt="Azure" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/openrouter.svg" alt="OpenRouter" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/aihubmix.svg" alt="AIHubMix" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/codex.svg" alt="Codex" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/providers/default.svg" alt="Custom" width="40" height="40" />
+  <img src="./docs/assets/providers.png" alt="Supported Providers" />
 </p>
 </summary>
 
@@ -164,6 +128,7 @@ We minimize boilerplate so you **focus on what matters**. Staying true to **Zima
 | OpenRouter | 100+ models aggregated | Cloud |
 | AIHubMix | Multi-provider aggregator | Cloud |
 | Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
 | Custom | Any OpenAI / Anthropic / Gemini compatible API | Cloud / Local |
 
 </details>
@@ -171,33 +136,26 @@ We minimize boilerplate so you **focus on what matters**. Staying true to **Zima
 ### Supported IDEs
 
 <p align="center">
-  <img src="./web/public/icons/ide/cursor.svg" alt="Cursor" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/windsurf.svg" alt="Windsurf" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/claude.svg" alt="Claude Code" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/copilot.svg" alt="GitHub Copilot" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/kiro.svg" alt="Kiro" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/trae.svg" alt="Trae" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/qoder.svg" alt="Qoder" width="40" height="40" />&nbsp;&nbsp;
-  <img src="./web/public/icons/ide/antigravity.svg" alt="Antigravity" width="40" height="40" />
+  <img src="./docs/assets/ides.png" alt="Supported IDEs" />
 </p>
 
 ## Quick Start
 
-### Option 1: Download Desktop App (macOS & Windows)
+### Option 1: Download Desktop App
 
 Get the native application — no dependencies, no compilation. Built-in trial configuration with onboarding in seconds — start chatting instantly via remote connection, no bot setup required. True out-of-the-box experience.
 
-- **macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Option 2: Install Script
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
 irm https://ota.zimaos.com/blue/windows | iex
 ```
@@ -209,15 +167,17 @@ git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
 ```
 
-**macOS / Linux**
+![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
-sh dev.sh
+sh build.sh
 ```
 
-**Windows (PowerShell)**
+**![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows (PowerShell)**
 ```powershell
-.\dev.bat
+.\build.bat
 ```
+
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Architecture Overview
 

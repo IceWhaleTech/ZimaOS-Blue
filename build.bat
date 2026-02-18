@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: ZimaOS-Blue Development Script
-:: Usage: dev.bat [command]
+:: Usage: build.bat [command]
 :: Commands: start (default), server, web, build, clean, prd
 
 set "PROJECT_ROOT=%~dp0"
@@ -133,7 +133,7 @@ exit /b 0
 :run
 goto :%COMMAND% 2>nul || (
     echo Unknown command: %COMMAND%
-    echo Usage: dev.bat [start^|server^|web^|build^|clean^|prd]
+    echo Usage: build.bat [start^|server^|web^|build^|clean^|prd]
     exit /b 1
 )
 

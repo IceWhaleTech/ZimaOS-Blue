@@ -829,7 +829,7 @@ export default {
     benefit3: 'Zabezpečené trvalé uloženie údajov',
     upgradeFailed: 'Nepodarilo sa vytvoriť účet správcu',
     passwordCheck: {
-      length: 'Aspoň 8 znakov',
+      length: 'Aspoň {n} znakov',
       uppercase: 'Jedno veľké písmeno',
       lowercase: 'Jedno malé písmeno',
       number: 'Jedna číslica',

@@ -451,6 +451,26 @@ func (h *ChatHandler) getUserID(c echo.Context) string {
 	return ""
 }
 
+// checkConversationOwnership verifies the caller owns the conversation (or is admin).
+// Returns the conversation if authorized, or an HTTP error.
+func (h *ChatHandler) checkConversationOwnership(c echo.Context, id string) (*memory.Conversation, error) {
+	conv, err := h.store.GetConversation(c.Request().Context(), id)
+	if err != nil {
+		if err == memory.ErrNotFound {
+			return nil, echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+		}
+		return nil, echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
+	}
+
+	claims := auth.GetUserFromContext(c)
+	// Allow if: admin, owner, or conversation has no owner (legacy data)
+	if claims != nil && claims.Role != "admin" && conv.UserID != "" && conv.UserID != claims.UserID {
+		return nil, echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+	}
+
+	return conv, nil
+}
+
 // GetProviderRegistry returns the provider registry.
 func (h *ChatHandler) GetProviderRegistry() *llm.ProviderRegistry {
 	return h.providers
@@ -1183,7 +1203,7 @@ func (h *ChatHandler) CreateConversation(c echo.Context) error {
 		req.Title = "New Conversation"
 	}
 
-	conv, err := h.store.CreateConversation(c.Request().Context(), req.Title)
+	conv, err := h.store.CreateConversation(c.Request().Context(), req.Title, h.getUserID(c))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create conversation")
 	}
@@ -1218,14 +1238,15 @@ func (h *ChatHandler) ListConversations(c echo.Context) error {
 	query := c.QueryParam("q")
 	var convs []memory.Conversation
 	var err error
+	userID := h.getUserID(c)
 
 	if query != "" {
 		// Search conversations by title
-		convs, err = h.store.SearchConversations(c.Request().Context(), query, limit)
+		convs, err = h.store.SearchConversations(c.Request().Context(), query, limit, userID)
 	} else {
 		// List all conversations with pagination
 		offset, _ := strconv.Atoi(c.QueryParam("offset"))
-		convs, err = h.store.ListConversations(c.Request().Context(), limit, offset)
+		convs, err = h.store.ListConversations(c.Request().Context(), limit, offset, userID)
 	}
 
 	if err != nil {
@@ -1243,12 +1264,9 @@ func (h *ChatHandler) ListConversations(c echo.Context) error {
 func (h *ChatHandler) GetConversation(c echo.Context) error {
 	id := c.Param("id")
 
-	conv, err := h.store.GetConversation(c.Request().Context(), id)
+	conv, err := h.checkConversationOwnership(c, id)
 	if err != nil {
-		if err == memory.ErrNotFound {
-			return echo.NewHTTPError(http.StatusNotFound, "conversation not found")
-		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
+		return err
 	}
 
 	return c.JSON(http.StatusOK, conv)
@@ -1257,6 +1275,10 @@ func (h *ChatHandler) GetConversation(c echo.Context) error {
 // DeleteConversation deletes a conversation.
 func (h *ChatHandler) DeleteConversation(c echo.Context) error {
 	id := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, id); err != nil {
+		return err
+	}
 
 	err := h.store.DeleteConversation(c.Request().Context(), id)
 	if err != nil {
@@ -1271,6 +1293,10 @@ func (h *ChatHandler) DeleteConversation(c echo.Context) error {
 // GetMessages retrieves messages for a conversation.
 func (h *ChatHandler) GetMessages(c echo.Context) error {
 	id := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, id); err != nil {
+		return err
+	}
 
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	if limit <= 0 {
@@ -1322,6 +1348,10 @@ type SendMessageResponse struct {
 // SendMessage sends a message and gets a response from the LLM.
 func (h *ChatHandler) SendMessage(c echo.Context) error {
 	convID := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
 
 	var req SendMessageRequest
 	if err := c.Bind(&req); err != nil {
@@ -1654,6 +1684,10 @@ type DeleteMessagesRequest struct {
 func (h *ChatHandler) DeleteMessages(c echo.Context) error {
 	convID := c.Param("id")
 
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
+
 	var req DeleteMessagesRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
@@ -1699,6 +1733,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	convID := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
 
 	var req SendMessageRequest
 	if err := c.Bind(&req); err != nil {

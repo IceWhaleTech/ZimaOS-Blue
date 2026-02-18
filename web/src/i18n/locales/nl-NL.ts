@@ -1064,7 +1064,7 @@ export default {
     benefit3: 'Veilige permanente gegevensopslag',
     upgradeFailed: 'Beheerdersaccount aanmaken mislukt',
     passwordCheck: {
-      length: 'Minimaal 8 tekens',
+      length: 'Minimaal {n} tekens',
       uppercase: 'Één hoofdletter',
       lowercase: 'Één kleine letter',
       number: 'Één cijfer',

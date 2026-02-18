@@ -1894,7 +1894,7 @@ export default {
     benefit3: 'Almacenamiento de datos persistente y seguro',
     upgradeFailed: 'Error al crear la cuenta de administrador',
     passwordCheck: {
-      length: 'Al menos 8 caracteres',
+      length: 'Al menos {n} caracteres',
       uppercase: 'Una letra mayúscula',
       lowercase: 'Una letra minúscula',
       number: 'Un número',

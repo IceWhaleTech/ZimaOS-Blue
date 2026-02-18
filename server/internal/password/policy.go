@@ -45,7 +45,7 @@ type PolicyConfig struct {
 // DefaultPolicyConfig returns the recommended password policy configuration.
 func DefaultPolicyConfig() *PolicyConfig {
 	return &PolicyConfig{
-		MinLength:            12,
+		MinLength:            8,
 		RequireUppercase:     true,
 		RequireLowercase:     true,
 		RequireNumber:        true,
@@ -67,6 +67,11 @@ func NewPolicy(config *PolicyConfig) *Policy {
 		config = DefaultPolicyConfig()
 	}
 	return &Policy{config: config}
+}
+
+// Config returns the policy configuration.
+func (p *Policy) Config() *PolicyConfig {
+	return p.config
 }
 
 // Validate checks if the password meets all policy requirements.

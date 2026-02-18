@@ -1062,7 +1062,7 @@ export default {
     benefit3: 'Emmagatzematge de dades persistent i segur',
     upgradeFailed: 'Error en crear el compte d\'administrador',
     passwordCheck: {
-      length: 'Almenys 8 caràcters',
+      length: 'Almenys {n} caràcters',
       uppercase: 'Una lletra majúscula',
       lowercase: 'Una lletra minúscula',
       number: 'Un número',

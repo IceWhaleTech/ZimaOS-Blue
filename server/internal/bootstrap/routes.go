@@ -894,6 +894,34 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	providerSettingsGroup := protected.Group("/providers/settings")
 	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
 
+	// User-level routes (protected) — /api/v1/my/*
+	myGroup := protected.Group("/my")
+
+	// Per-user provider config
+	userProviderHandler, err := server.NewUserProviderHandler(deps.DB, s.LLMRegistry)
+	if err != nil {
+		logger.Warn("Failed to initialize user provider handler", zap.Error(err))
+	} else {
+		userProviderHandler.RegisterRoutes(myGroup.Group("/providers"))
+		logger.Info("User provider routes registered")
+	}
+
+	// Per-user skill config
+	userSkillHandler, err := server.NewUserSkillHandler(deps.DB, skillStoreDb)
+	if err != nil {
+		logger.Warn("Failed to initialize user skill handler", zap.Error(err))
+	} else {
+		userSkillHandler.RegisterRoutes(myGroup.Group("/skills"))
+		logger.Info("User skill routes registered")
+	}
+
+	// Per-user usage metrics
+	if deps.MetricsWriter != nil {
+		detailedMetricsHandler := metrics.NewHandler(deps.MetricsWriter)
+		myGroup.GET("/usage", detailedMetricsHandler.GetMyUsage)
+		logger.Info("User usage route registered")
+	}
+
 	// Static routes (must be last)
 	web.RegisterStaticRoutes(e)
 

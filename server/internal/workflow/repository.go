@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 )
 
@@ -19,303 +19,199 @@ type Repository struct {
 // NewRepository creates a new workflow repository.
 func NewRepository(db *sql.DB) (*Repository, error) {
 	r := &Repository{db: db}
-
 	if err := r.migrate(); err != nil {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
-
 	return r, nil
 }
 
-// migrate creates the necessary database tables.
 func (r *Repository) migrate() error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS workflows (
-			id TEXT PRIMARY KEY,
-			tenant_id TEXT NOT NULL,
-			name TEXT NOT NULL,
-			description TEXT,
-			status TEXT NOT NULL DEFAULT 'draft',
-			nodes TEXT NOT NULL,
-			connections TEXT NOT NULL,
-			variables TEXT,
-			settings TEXT,
-			tags TEXT,
-			version INTEGER NOT NULL DEFAULT 1,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			created_by TEXT,
-			updated_by TEXT
+			id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
+			description TEXT, status TEXT NOT NULL DEFAULT 'draft',
+			nodes TEXT NOT NULL, connections TEXT NOT NULL, variables TEXT,
+			settings TEXT, tags TEXT, version INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
+			created_by TEXT, updated_by TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_workflows_tenant_id ON workflows(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_workflows_status ON workflows(status)`,
-
 		`CREATE TABLE IF NOT EXISTS workflow_executions (
-			id TEXT PRIMARY KEY,
-			workflow_id TEXT NOT NULL,
-			workflow_name TEXT NOT NULL,
-			tenant_id TEXT NOT NULL,
-			status TEXT NOT NULL,
-			trigger_type TEXT NOT NULL,
-			trigger_data TEXT,
-			variables TEXT,
-			node_results TEXT,
-			error TEXT,
-			started_at DATETIME NOT NULL,
-			completed_at DATETIME,
-			duration INTEGER,
+			id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, workflow_name TEXT NOT NULL,
+			tenant_id TEXT NOT NULL, status TEXT NOT NULL, trigger_type TEXT NOT NULL,
+			trigger_data TEXT, variables TEXT, node_results TEXT, error TEXT,
+			started_at DATETIME NOT NULL, completed_at DATETIME, duration INTEGER,
 			FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_executions_workflow_id ON workflow_executions(workflow_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_executions_tenant_id ON workflow_executions(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_executions_status ON workflow_executions(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_executions_started_at ON workflow_executions(started_at)`,
-
 		`CREATE TABLE IF NOT EXISTS workflow_execution_logs (
-			id TEXT PRIMARY KEY,
-			execution_id TEXT NOT NULL,
-			node_id TEXT,
-			level TEXT NOT NULL,
-			message TEXT NOT NULL,
-			data TEXT,
-			timestamp DATETIME NOT NULL,
+			id TEXT PRIMARY KEY, execution_id TEXT NOT NULL, node_id TEXT,
+			level TEXT NOT NULL, message TEXT NOT NULL, data TEXT, timestamp DATETIME NOT NULL,
 			FOREIGN KEY (execution_id) REFERENCES workflow_executions(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_execution_logs_execution_id ON workflow_execution_logs(execution_id)`,
-
 		`CREATE TABLE IF NOT EXISTS workflow_webhooks (
-			id TEXT PRIMARY KEY,
-			workflow_id TEXT NOT NULL UNIQUE,
-			path TEXT NOT NULL UNIQUE,
-			method TEXT NOT NULL DEFAULT 'POST',
-			auth_type TEXT,
-			auth_config TEXT,
+			id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL UNIQUE, path TEXT NOT NULL UNIQUE,
+			method TEXT NOT NULL DEFAULT 'POST', auth_type TEXT, auth_config TEXT,
 			created_at DATETIME NOT NULL,
 			FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_webhooks_path ON workflow_webhooks(path)`,
 	}
-
 	for _, query := range queries {
 		if _, err := r.db.Exec(query); err != nil {
 			return fmt.Errorf("failed to execute migration: %w", err)
 		}
 	}
-
 	return nil
 }
 
-// CreateWorkflow creates a new workflow.
+func (r *Repository) wfTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "workflows")
+}
+func (r *Repository) execTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "workflow_executions")
+}
+func (r *Repository) logTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "workflow_execution_logs")
+}
+func (r *Repository) webhookTable(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, r.db, "workflow_webhooks")
+}
+
+func marshalJSON(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// workflowRow for zorm scanning
+type workflowRow struct {
+	ID          string `json:"id"`
+	TenantID    string `json:"tenant_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	Nodes       string `json:"nodes"`
+	Connections string `json:"connections"`
+	Variables   string `json:"variables"`
+	Settings    string `json:"settings"`
+	Tags        string `json:"tags"`
+	Version     int    `json:"version"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	CreatedBy   string `json:"created_by"`
+	UpdatedBy   string `json:"updated_by"`
+}
+
+func parseWfTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	return t
+}
+
+func rowToWorkflow(r workflowRow) *Workflow {
+	wf := &Workflow{
+		ID: r.ID, TenantID: r.TenantID, Name: r.Name, Description: r.Description,
+		Status: WorkflowStatus(r.Status), Version: r.Version,
+		CreatedAt: parseWfTime(r.CreatedAt), UpdatedAt: parseWfTime(r.UpdatedAt),
+		CreatedBy: r.CreatedBy, UpdatedBy: r.UpdatedBy,
+	}
+	json.Unmarshal([]byte(r.Nodes), &wf.Nodes)
+	json.Unmarshal([]byte(r.Connections), &wf.Connections)
+	json.Unmarshal([]byte(r.Variables), &wf.Variables)
+	json.Unmarshal([]byte(r.Settings), &wf.Settings)
+	json.Unmarshal([]byte(r.Tags), &wf.Tags)
+	return wf
+}
+
 func (r *Repository) CreateWorkflow(ctx context.Context, workflow *Workflow) error {
 	if workflow.ID == "" {
 		workflow.ID = uuid.New().String()
 	}
-
 	now := time.Now()
 	workflow.CreatedAt = now
 	workflow.UpdatedAt = now
 	workflow.Version = 1
 
-	nodesJSON, err := json.Marshal(workflow.Nodes)
-	if err != nil {
-		return fmt.Errorf("failed to marshal nodes: %w", err)
-	}
-
-	connectionsJSON, err := json.Marshal(workflow.Connections)
-	if err != nil {
-		return fmt.Errorf("failed to marshal connections: %w", err)
-	}
-
-	variablesJSON, err := json.Marshal(workflow.Variables)
-	if err != nil {
-		return fmt.Errorf("failed to marshal variables: %w", err)
-	}
-
-	settingsJSON, err := json.Marshal(workflow.Settings)
-	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %w", err)
-	}
-
-	tagsJSON, err := json.Marshal(workflow.Tags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
-	}
-
-	query := `INSERT INTO workflows (
-		id, tenant_id, name, description, status, nodes, connections,
-		variables, settings, tags, version, created_at, updated_at, created_by, updated_by
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-	_, err = r.db.ExecContext(ctx, query,
-		workflow.ID, workflow.TenantID, workflow.Name, workflow.Description,
-		workflow.Status, nodesJSON, connectionsJSON, variablesJSON, settingsJSON,
-		tagsJSON, workflow.Version, workflow.CreatedAt, workflow.UpdatedAt,
-		workflow.CreatedBy, workflow.UpdatedBy,
-	)
-
+	_, err := r.wfTable(ctx).Insert(map[string]interface{}{
+		"id": workflow.ID, "tenant_id": workflow.TenantID, "name": workflow.Name,
+		"description": workflow.Description, "status": workflow.Status,
+		"nodes": marshalJSON(workflow.Nodes), "connections": marshalJSON(workflow.Connections),
+		"variables": marshalJSON(workflow.Variables), "settings": marshalJSON(workflow.Settings),
+		"tags": marshalJSON(workflow.Tags), "version": workflow.Version,
+		"created_at": workflow.CreatedAt, "updated_at": workflow.UpdatedAt,
+		"created_by": workflow.CreatedBy, "updated_by": workflow.UpdatedBy,
+	})
 	return err
 }
 
-// GetWorkflow retrieves a workflow by ID.
 func (r *Repository) GetWorkflow(ctx context.Context, id string) (*Workflow, error) {
-	query := `SELECT id, tenant_id, name, description, status, nodes, connections,
-		variables, settings, tags, version, created_at, updated_at, created_by, updated_by
-		FROM workflows WHERE id = ?`
-
-	var workflow Workflow
-	var nodesJSON, connectionsJSON, variablesJSON, settingsJSON, tagsJSON []byte
-
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&workflow.ID, &workflow.TenantID, &workflow.Name, &workflow.Description,
-		&workflow.Status, &nodesJSON, &connectionsJSON, &variablesJSON, &settingsJSON,
-		&tagsJSON, &workflow.Version, &workflow.CreatedAt, &workflow.UpdatedAt,
-		&workflow.CreatedBy, &workflow.UpdatedBy,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, ErrWorkflowNotFound
-	}
+	var rows []workflowRow
+	_, err := r.wfTable(ctx).Select(&rows, z.Where(z.Eq("id", id)), z.Limit(1))
 	if err != nil {
 		return nil, err
 	}
-
-	if err := json.Unmarshal(nodesJSON, &workflow.Nodes); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+	if len(rows) == 0 {
+		return nil, ErrWorkflowNotFound
 	}
-
-	if err := json.Unmarshal(connectionsJSON, &workflow.Connections); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal connections: %w", err)
-	}
-
-	if len(variablesJSON) > 0 {
-		if err := json.Unmarshal(variablesJSON, &workflow.Variables); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal variables: %w", err)
-		}
-	}
-
-	if len(settingsJSON) > 0 {
-		if err := json.Unmarshal(settingsJSON, &workflow.Settings); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal settings: %w", err)
-		}
-	}
-
-	if len(tagsJSON) > 0 {
-		if err := json.Unmarshal(tagsJSON, &workflow.Tags); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
-		}
-	}
-
-	return &workflow, nil
+	return rowToWorkflow(rows[0]), nil
 }
 
-// UpdateWorkflow updates an existing workflow.
 func (r *Repository) UpdateWorkflow(ctx context.Context, workflow *Workflow) error {
 	workflow.UpdatedAt = time.Now()
 	workflow.Version++
-
-	nodesJSON, err := json.Marshal(workflow.Nodes)
-	if err != nil {
-		return fmt.Errorf("failed to marshal nodes: %w", err)
-	}
-
-	connectionsJSON, err := json.Marshal(workflow.Connections)
-	if err != nil {
-		return fmt.Errorf("failed to marshal connections: %w", err)
-	}
-
-	variablesJSON, err := json.Marshal(workflow.Variables)
-	if err != nil {
-		return fmt.Errorf("failed to marshal variables: %w", err)
-	}
-
-	settingsJSON, err := json.Marshal(workflow.Settings)
-	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %w", err)
-	}
-
-	tagsJSON, err := json.Marshal(workflow.Tags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
-	}
-
-	query := `UPDATE workflows SET
-		name = ?, description = ?, status = ?, nodes = ?, connections = ?,
-		variables = ?, settings = ?, tags = ?, version = ?, updated_at = ?, updated_by = ?
-		WHERE id = ?`
-
-	result, err := r.db.ExecContext(ctx, query,
-		workflow.Name, workflow.Description, workflow.Status, nodesJSON, connectionsJSON,
-		variablesJSON, settingsJSON, tagsJSON, workflow.Version, workflow.UpdatedAt,
-		workflow.UpdatedBy, workflow.ID,
-	)
+	n, err := r.wfTable(ctx).Update(map[string]interface{}{
+		"name": workflow.Name, "description": workflow.Description, "status": workflow.Status,
+		"nodes": marshalJSON(workflow.Nodes), "connections": marshalJSON(workflow.Connections),
+		"variables": marshalJSON(workflow.Variables), "settings": marshalJSON(workflow.Settings),
+		"tags": marshalJSON(workflow.Tags), "version": workflow.Version,
+		"updated_at": workflow.UpdatedAt, "updated_by": workflow.UpdatedBy,
+	}, z.Where(z.Eq("id", workflow.ID)))
 	if err != nil {
 		return err
 	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
+	if n == 0 {
 		return ErrWorkflowNotFound
 	}
-
 	return nil
 }
 
-// DeleteWorkflow deletes a workflow.
 func (r *Repository) DeleteWorkflow(ctx context.Context, id string) error {
-	result, err := r.db.ExecContext(ctx, "DELETE FROM workflows WHERE id = ?", id)
+	n, err := r.wfTable(ctx).Delete(z.Where(z.Eq("id", id)))
 	if err != nil {
 		return err
 	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
+	if n == 0 {
 		return ErrWorkflowNotFound
 	}
-
 	return nil
 }
 
-// ListWorkflows lists workflows with pagination and filtering.
 func (r *Repository) ListWorkflows(ctx context.Context, tenantID string, opts *ListOptions) ([]*Workflow, int, error) {
 	if opts == nil {
 		opts = &ListOptions{Limit: 20}
 	}
 
-	// Build query
-	var conditions []string
-	var args []interface{}
-
-	conditions = append(conditions, "tenant_id = ?")
-	args = append(args, tenantID)
-
+	conds := []interface{}{z.Eq("tenant_id", tenantID)}
 	if status, ok := opts.Filters["status"]; ok {
-		conditions = append(conditions, "status = ?")
-		args = append(args, status)
+		conds = append(conds, z.Eq("status", status))
 	}
-
 	if name, ok := opts.Filters["name"]; ok {
-		conditions = append(conditions, "name LIKE ?")
-		args = append(args, "%"+name+"%")
+		conds = append(conds, z.Like("name", "%"+name+"%"))
 	}
 
-	whereClause := strings.Join(conditions, " AND ")
-
-	// Count total
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM workflows WHERE %s", whereClause)
-	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	var total int64
+	_, err := r.wfTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(conds...))
+	if err != nil {
 		return nil, 0, err
 	}
 
-	// Build order clause
 	orderClause := "created_at DESC"
 	if opts.Sort != "" {
 		order := "ASC"
@@ -325,293 +221,224 @@ func (r *Repository) ListWorkflows(ctx context.Context, tenantID string, opts *L
 		orderClause = fmt.Sprintf("%s %s", opts.Sort, order)
 	}
 
-	// Query workflows
-	query := fmt.Sprintf(`SELECT id, tenant_id, name, description, status, nodes, connections,
-		variables, settings, tags, version, created_at, updated_at, created_by, updated_by
-		FROM workflows WHERE %s ORDER BY %s LIMIT ? OFFSET ?`,
-		whereClause, orderClause)
-
-	args = append(args, opts.Limit, opts.Offset)
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	var rows []workflowRow
+	_, err = r.wfTable(ctx).Select(&rows, z.Where(conds...), z.OrderBy(orderClause), z.Limit(opts.Limit, opts.Offset))
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
-	var workflows []*Workflow
-	for rows.Next() {
-		var workflow Workflow
-		var nodesJSON, connectionsJSON, variablesJSON, settingsJSON, tagsJSON []byte
-
-		err := rows.Scan(
-			&workflow.ID, &workflow.TenantID, &workflow.Name, &workflow.Description,
-			&workflow.Status, &nodesJSON, &connectionsJSON, &variablesJSON, &settingsJSON,
-			&tagsJSON, &workflow.Version, &workflow.CreatedAt, &workflow.UpdatedAt,
-			&workflow.CreatedBy, &workflow.UpdatedBy,
-		)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		json.Unmarshal(nodesJSON, &workflow.Nodes)
-		json.Unmarshal(connectionsJSON, &workflow.Connections)
-		json.Unmarshal(variablesJSON, &workflow.Variables)
-		json.Unmarshal(settingsJSON, &workflow.Settings)
-		json.Unmarshal(tagsJSON, &workflow.Tags)
-
-		workflows = append(workflows, &workflow)
+	workflows := make([]*Workflow, len(rows))
+	for i, row := range rows {
+		workflows[i] = rowToWorkflow(row)
 	}
-
-	return workflows, total, nil
+	return workflows, int(total), nil
 }
 
-// SaveExecution saves a workflow execution.
+// execRow for zorm scanning
+type execRow struct {
+	ID           string  `json:"id"`
+	WorkflowID   string  `json:"workflow_id"`
+	WorkflowName string  `json:"workflow_name"`
+	TenantID     string  `json:"tenant_id"`
+	Status       string  `json:"status"`
+	TriggerType  string  `json:"trigger_type"`
+	TriggerData  string  `json:"trigger_data"`
+	Variables    string  `json:"variables"`
+	NodeResults  string  `json:"node_results"`
+	Error        string  `json:"error"`
+	StartedAt    string  `json:"started_at"`
+	CompletedAt  *string `json:"completed_at"`
+	Duration     *int64  `json:"duration"`
+}
+
+func rowToExecution(r execRow) *Execution {
+	e := &Execution{
+		ID: r.ID, WorkflowID: r.WorkflowID, WorkflowName: r.WorkflowName,
+		TenantID: r.TenantID, Status: ExecutionStatus(r.Status),
+		TriggerType: TriggerType(r.TriggerType), Error: r.Error,
+		StartedAt: parseWfTime(r.StartedAt),
+	}
+	if r.CompletedAt != nil {
+		t := parseWfTime(*r.CompletedAt)
+		if !t.IsZero() {
+			e.CompletedAt = &t
+		}
+	}
+	if r.Duration != nil {
+		e.Duration = *r.Duration
+	}
+	json.Unmarshal([]byte(r.TriggerData), &e.TriggerData)
+	json.Unmarshal([]byte(r.Variables), &e.Variables)
+	json.Unmarshal([]byte(r.NodeResults), &e.NodeResults)
+	return e
+}
+
 func (r *Repository) SaveExecution(ctx context.Context, execution *Execution) error {
-	triggerDataJSON, _ := json.Marshal(execution.TriggerData)
-	variablesJSON, _ := json.Marshal(execution.Variables)
-	nodeResultsJSON, _ := json.Marshal(execution.NodeResults)
-
-	query := `INSERT OR REPLACE INTO workflow_executions (
-		id, workflow_id, workflow_name, tenant_id, status, trigger_type,
-		trigger_data, variables, node_results, error, started_at, completed_at, duration
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query,
-		execution.ID, execution.WorkflowID, execution.WorkflowName, execution.TenantID,
-		execution.Status, execution.TriggerType, triggerDataJSON, variablesJSON,
-		nodeResultsJSON, execution.Error, execution.StartedAt, execution.CompletedAt,
-		execution.Duration,
-	)
-
+	_, err := r.execTable(ctx).ReplaceInto(map[string]interface{}{
+		"id": execution.ID, "workflow_id": execution.WorkflowID,
+		"workflow_name": execution.WorkflowName, "tenant_id": execution.TenantID,
+		"status": execution.Status, "trigger_type": execution.TriggerType,
+		"trigger_data": marshalJSON(execution.TriggerData), "variables": marshalJSON(execution.Variables),
+		"node_results": marshalJSON(execution.NodeResults), "error": execution.Error,
+		"started_at": execution.StartedAt, "completed_at": execution.CompletedAt,
+		"duration": execution.Duration,
+	})
 	return err
 }
 
-// GetExecution retrieves an execution by ID.
 func (r *Repository) GetExecution(ctx context.Context, id string) (*Execution, error) {
-	query := `SELECT id, workflow_id, workflow_name, tenant_id, status, trigger_type,
-		trigger_data, variables, node_results, error, started_at, completed_at, duration
-		FROM workflow_executions WHERE id = ?`
-
-	var execution Execution
-	var triggerDataJSON, variablesJSON, nodeResultsJSON []byte
-
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&execution.ID, &execution.WorkflowID, &execution.WorkflowName, &execution.TenantID,
-		&execution.Status, &execution.TriggerType, &triggerDataJSON, &variablesJSON,
-		&nodeResultsJSON, &execution.Error, &execution.StartedAt, &execution.CompletedAt,
-		&execution.Duration,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, ErrExecutionNotFound
-	}
+	var rows []execRow
+	_, err := r.execTable(ctx).Select(&rows, z.Where(z.Eq("id", id)), z.Limit(1))
 	if err != nil {
 		return nil, err
 	}
-
-	json.Unmarshal(triggerDataJSON, &execution.TriggerData)
-	json.Unmarshal(variablesJSON, &execution.Variables)
-	json.Unmarshal(nodeResultsJSON, &execution.NodeResults)
-
-	return &execution, nil
+	if len(rows) == 0 {
+		return nil, ErrExecutionNotFound
+	}
+	return rowToExecution(rows[0]), nil
 }
 
-// ListExecutions lists executions for a workflow.
 func (r *Repository) ListExecutions(ctx context.Context, workflowID string, opts *ListOptions) ([]*Execution, int, error) {
 	if opts == nil {
 		opts = &ListOptions{Limit: 20}
 	}
-
-	// Count total
-	var total int
-	countQuery := "SELECT COUNT(*) FROM workflow_executions WHERE workflow_id = ?"
-	if err := r.db.QueryRowContext(ctx, countQuery, workflowID).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	// Query executions
-	query := `SELECT id, workflow_id, workflow_name, tenant_id, status, trigger_type,
-		trigger_data, variables, node_results, error, started_at, completed_at, duration
-		FROM workflow_executions WHERE workflow_id = ?
-		ORDER BY started_at DESC LIMIT ? OFFSET ?`
-
-	rows, err := r.db.QueryContext(ctx, query, workflowID, opts.Limit, opts.Offset)
+	var total int64
+	_, err := r.execTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(z.Eq("workflow_id", workflowID)))
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
-	var executions []*Execution
-	for rows.Next() {
-		var execution Execution
-		var triggerDataJSON, variablesJSON, nodeResultsJSON []byte
-
-		err := rows.Scan(
-			&execution.ID, &execution.WorkflowID, &execution.WorkflowName, &execution.TenantID,
-			&execution.Status, &execution.TriggerType, &triggerDataJSON, &variablesJSON,
-			&nodeResultsJSON, &execution.Error, &execution.StartedAt, &execution.CompletedAt,
-			&execution.Duration,
-		)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		json.Unmarshal(triggerDataJSON, &execution.TriggerData)
-		json.Unmarshal(variablesJSON, &execution.Variables)
-		json.Unmarshal(nodeResultsJSON, &execution.NodeResults)
-
-		executions = append(executions, &execution)
+	var rows []execRow
+	_, err = r.execTable(ctx).Select(&rows,
+		z.Where(z.Eq("workflow_id", workflowID)),
+		z.OrderBy("started_at DESC"), z.Limit(opts.Limit, opts.Offset),
+	)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return executions, total, nil
+	executions := make([]*Execution, len(rows))
+	for i, row := range rows {
+		executions[i] = rowToExecution(row)
+	}
+	return executions, int(total), nil
 }
 
-// SaveExecutionLog saves an execution log entry.
+// logRow for zorm scanning
+type logRow struct {
+	ID          string `json:"id"`
+	ExecutionID string `json:"execution_id"`
+	NodeID      string `json:"node_id"`
+	Level       string `json:"level"`
+	Message     string `json:"message"`
+	Data        string `json:"data"`
+	Timestamp   string `json:"timestamp"`
+}
+
 func (r *Repository) SaveExecutionLog(ctx context.Context, log *ExecutionLog) error {
 	if log.ID == "" {
 		log.ID = uuid.New().String()
 	}
-
-	query := `INSERT INTO workflow_execution_logs (
-		id, execution_id, node_id, level, message, data, timestamp
-	) VALUES (?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query,
-		log.ID, log.ExecutionID, log.NodeID, log.Level, log.Message, log.Data, log.Timestamp,
-	)
-
+	_, err := r.logTable(ctx).Insert(map[string]interface{}{
+		"id": log.ID, "execution_id": log.ExecutionID, "node_id": log.NodeID,
+		"level": log.Level, "message": log.Message, "data": log.Data, "timestamp": log.Timestamp,
+	})
 	return err
 }
 
-// GetExecutionLogs retrieves logs for an execution.
 func (r *Repository) GetExecutionLogs(ctx context.Context, executionID string, opts *ListOptions) ([]*ExecutionLog, int, error) {
 	if opts == nil {
 		opts = &ListOptions{Limit: 100}
 	}
-
-	// Count total
-	var total int
-	countQuery := "SELECT COUNT(*) FROM workflow_execution_logs WHERE execution_id = ?"
-	if err := r.db.QueryRowContext(ctx, countQuery, executionID).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	// Query logs
-	query := `SELECT id, execution_id, node_id, level, message, data, timestamp
-		FROM workflow_execution_logs WHERE execution_id = ?
-		ORDER BY timestamp ASC LIMIT ? OFFSET ?`
-
-	rows, err := r.db.QueryContext(ctx, query, executionID, opts.Limit, opts.Offset)
+	var total int64
+	_, err := r.logTable(ctx).Select(&total, z.Fields("count(1)"), z.Where(z.Eq("execution_id", executionID)))
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
-	var logs []*ExecutionLog
-	for rows.Next() {
-		var log ExecutionLog
-		err := rows.Scan(
-			&log.ID, &log.ExecutionID, &log.NodeID, &log.Level, &log.Message, &log.Data, &log.Timestamp,
-		)
-		if err != nil {
-			return nil, 0, err
-		}
-		logs = append(logs, &log)
+	var rows []logRow
+	_, err = r.logTable(ctx).Select(&rows,
+		z.Where(z.Eq("execution_id", executionID)),
+		z.OrderBy("timestamp ASC"), z.Limit(opts.Limit, opts.Offset),
+	)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return logs, total, nil
+	logs := make([]*ExecutionLog, len(rows))
+	for i, row := range rows {
+		logs[i] = &ExecutionLog{
+			ID: row.ID, ExecutionID: row.ExecutionID, NodeID: row.NodeID,
+			Level: row.Level, Message: row.Message, Data: row.Data,
+			Timestamp: parseWfTime(row.Timestamp),
+		}
+	}
+	return logs, int(total), nil
 }
 
-// SaveWebhook saves a webhook configuration.
 func (r *Repository) SaveWebhook(ctx context.Context, workflowID, path, method, authType string, authConfig map[string]string) error {
-	authConfigJSON, _ := json.Marshal(authConfig)
-
-	query := `INSERT OR REPLACE INTO workflow_webhooks (
-		id, workflow_id, path, method, auth_type, auth_config, created_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query,
-		uuid.New().String(), workflowID, path, method, authType, authConfigJSON, time.Now(),
-	)
-
+	_, err := r.webhookTable(ctx).ReplaceInto(map[string]interface{}{
+		"id": uuid.New().String(), "workflow_id": workflowID, "path": path,
+		"method": method, "auth_type": authType, "auth_config": marshalJSON(authConfig),
+		"created_at": time.Now(),
+	})
 	return err
 }
 
-// GetWebhookByPath retrieves a webhook by path.
 func (r *Repository) GetWebhookByPath(ctx context.Context, path string) (string, error) {
-	var workflowID string
-	query := "SELECT workflow_id FROM workflow_webhooks WHERE path = ?"
-
-	err := r.db.QueryRowContext(ctx, query, path).Scan(&workflowID)
-	if err == sql.ErrNoRows {
+	var ids []string
+	_, err := r.webhookTable(ctx).Select(&ids, z.Fields("workflow_id"), z.Where(z.Eq("path", path)), z.Limit(1))
+	if err != nil {
+		return "", err
+	}
+	if len(ids) == 0 {
 		return "", ErrWorkflowNotFound
 	}
-
-	return workflowID, err
+	return ids[0], nil
 }
 
-// DeleteWebhook deletes a webhook.
 func (r *Repository) DeleteWebhook(ctx context.Context, workflowID string) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM workflow_webhooks WHERE workflow_id = ?", workflowID)
+	_, err := r.webhookTable(ctx).Delete(z.Where(z.Eq("workflow_id", workflowID)))
 	return err
 }
 
-// GetStats returns workflow statistics for a tenant.
 func (r *Repository) GetStats(ctx context.Context, tenantID string) (*Stats, error) {
 	stats := &Stats{}
+	var v int64
 
-	// Total workflows
-	r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM workflows WHERE tenant_id = ?", tenantID,
-	).Scan(&stats.TotalWorkflows)
+	r.wfTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID)))
+	stats.TotalWorkflows = int(v)
 
-	// Active workflows
-	r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM workflows WHERE tenant_id = ? AND status = 'active'", tenantID,
-	).Scan(&stats.ActiveWorkflows)
+	v = 0
+	r.wfTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "active")))
+	stats.ActiveWorkflows = int(v)
 
-	// Total executions
-	r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM workflow_executions WHERE tenant_id = ?", tenantID,
-	).Scan(&stats.TotalExecutions)
+	v = 0
+	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID)))
+	stats.TotalExecutions = int(v)
 
-	// Running executions
-	r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM workflow_executions WHERE tenant_id = ? AND status = 'running'", tenantID,
-	).Scan(&stats.RunningExecutions)
+	v = 0
+	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "running")))
+	stats.RunningExecutions = int(v)
 
-	// Successful executions
-	r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM workflow_executions WHERE tenant_id = ? AND status = 'completed'", tenantID,
-	).Scan(&stats.SuccessfulExecutions)
+	v = 0
+	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "completed")))
+	stats.SuccessfulExecutions = int(v)
 
-	// Failed executions
-	r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM workflow_executions WHERE tenant_id = ? AND status = 'failed'", tenantID,
-	).Scan(&stats.FailedExecutions)
+	v = 0
+	r.execTable(ctx).Select(&v, z.Fields("count(1)"), z.Where(z.Eq("tenant_id", tenantID), z.Eq("status", "failed")))
+	stats.FailedExecutions = int(v)
 
 	return stats, nil
 }
 
-// CleanupOldExecutions removes old execution data.
 func (r *Repository) CleanupOldExecutions(ctx context.Context, retentionDays int) (int64, error) {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 
-	// Delete old logs first
+	// Delete old logs first (subquery not supported in zorm Delete, use raw)
 	r.db.ExecContext(ctx,
 		`DELETE FROM workflow_execution_logs WHERE execution_id IN (
 			SELECT id FROM workflow_executions WHERE completed_at < ?
-		)`, cutoff,
-	)
+		)`, cutoff)
 
-	// Delete old executions
-	result, err := r.db.ExecContext(ctx,
-		"DELETE FROM workflow_executions WHERE completed_at < ?", cutoff,
-	)
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
+	n, err := r.execTable(ctx).Delete(z.Where(z.Lt("completed_at", cutoff)))
+	return int64(n), err
 }

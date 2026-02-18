@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usersApi, permissionsApi, PagePermissions, type User, type PermissionInfo } from '@/api/users'
+import { authApi, type PasswordPolicy } from '@/api/auth'
 
 const props = defineProps<{
   user: User
@@ -29,15 +30,25 @@ const confirmPassword = ref('')
 const showPassword = ref(false)
 const passwordResetLoading = ref(false)
 
+// Password policy from backend
+const policy = ref<PasswordPolicy>({
+  min_length: 8,
+  require_uppercase: true,
+  require_lowercase: true,
+  require_number: true,
+  require_special: true,
+})
+
 // Password strength indicators
 const passwordChecks = computed(() => {
   const pwd = newPassword.value
+  const p = policy.value
   return {
-    length: pwd.length >= 8,
-    uppercase: /[A-Z]/.test(pwd),
-    lowercase: /[a-z]/.test(pwd),
-    number: /[0-9]/.test(pwd),
-    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(pwd),
+    length: pwd.length >= p.min_length,
+    uppercase: !p.require_uppercase || /[A-Z]/.test(pwd),
+    lowercase: !p.require_lowercase || /[a-z]/.test(pwd),
+    number: !p.require_number || /[0-9]/.test(pwd),
+    special: !p.require_special || /[^\p{L}\p{N}\s]/u.test(pwd),
   }
 })
 
@@ -133,6 +144,7 @@ async function handlePasswordReset() {
 
 onMounted(() => {
   loadPermissions()
+  authApi.getPasswordPolicy().then(res => { policy.value = res.data }).catch(() => {})
 })
 </script>
 
@@ -229,8 +241,8 @@ onMounted(() => {
                     class="w-4 h-4 text-gray-900 dark:text-gray-300 border-gray-300 rounded focus:ring-gray-400"
                   />
                   <div>
-                    <span class="text-sm text-gray-900 dark:text-white">{{ perm.name }}</span>
-                    <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{ perm.description }}</span>
+                    <span class="text-sm text-gray-900 dark:text-white">{{ t(`users.pagePermissions.${perm.key}`, perm.name) }}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{ t(`users.pagePermissionDesc.${perm.key}`, perm.description) }}</span>
                   </div>
                 </label>
               </div>
@@ -283,7 +295,7 @@ onMounted(() => {
                       />
                     </div>
                     <div class="grid grid-cols-2 gap-1 text-xs">
-                      <span :class="passwordChecks.length ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.length ? '✓' : '○' }} 8+ chars</span>
+                      <span :class="passwordChecks.length ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.length ? '✓' : '○' }} {{ policy.min_length }}+ chars</span>
                       <span :class="passwordChecks.uppercase ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.uppercase ? '✓' : '○' }} Uppercase</span>
                       <span :class="passwordChecks.lowercase ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.lowercase ? '✓' : '○' }} Lowercase</span>
                       <span :class="passwordChecks.number ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.number ? '✓' : '○' }} Number</span>

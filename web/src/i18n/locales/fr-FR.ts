@@ -1897,7 +1897,7 @@ export default {
     benefit3: 'Stockage de données persistant et sécurisé',
     upgradeFailed: 'Échec de la création du compte administrateur',
     passwordCheck: {
-      length: 'Au moins 8 caractères',
+      length: 'Au moins {n} caractères',
       uppercase: 'Une lettre majuscule',
       lowercase: 'Une lettre minuscule',
       number: 'Un chiffre',

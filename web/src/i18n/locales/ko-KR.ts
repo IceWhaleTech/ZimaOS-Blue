@@ -2312,7 +2312,7 @@ export default {
     benefit3: '안전한 영구 데이터 저장',
     upgradeFailed: '관리자 계정 생성에 실패했습니다',
     passwordCheck: {
-      length: '최소 8자',
+      length: '최소 {n}자',
       uppercase: '대문자 1개',
       lowercase: '소문자 1개',
       number: '숫자 1개',

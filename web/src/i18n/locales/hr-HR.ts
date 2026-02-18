@@ -1249,7 +1249,7 @@ export default {
     benefit3: 'Sigurno trajno pohranjivanje podataka',
     upgradeFailed: 'Nije moguće stvoriti administratorski račun',
     passwordCheck: {
-      length: 'Najmanje 8 znakova',
+      length: 'Najmanje {n} znakova',
       uppercase: 'Jedno veliko slovo',
       lowercase: 'Jedno malo slovo',
       number: 'Jedna znamenka',

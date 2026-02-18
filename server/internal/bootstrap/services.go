@@ -147,6 +147,7 @@ func registerLLMProviders(registry *llm.ProviderRegistry, cfg *config.Config) {
 	registry.Register(llm.NewCustomProvider(os.Getenv("CUSTOM_API_KEY"), os.Getenv("CUSTOM_API_URL")))
 	registry.Register(llm.NewGrokProvider(os.Getenv("GROK_API_KEY"), ""))
 	registry.Register(llm.NewQwenProvider(os.Getenv("QWEN_API_KEY"), ""))
+	registry.Register(llm.NewSiliconFlowProvider(os.Getenv("SILICONFLOW_API_KEY"), ""))
 }
 
 // Close closes all services
@@ -199,6 +200,8 @@ func LoadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderReg
 			llmProvider = llm.NewVeniceProvider(apiKey, baseURL)
 		case "bedrock":
 			llmProvider = llm.NewBedrockProvider(apiKey, baseURL)
+		case "siliconflow":
+			llmProvider = llm.NewSiliconFlowProvider(apiKey, baseURL)
 		case "glm":
 			llmProvider = llm.NewGLMProvider(apiKey, baseURL)
 		}

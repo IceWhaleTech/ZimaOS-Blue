@@ -63,7 +63,7 @@ Rust 侧绑定见 `src-tauri/src/echo_ffi.rs`。
 
 ```bash
 # 从项目根目录构建第三方库 + Go 静态库
-./dev.sh build
+./build.sh build
 
 # 或手动构建
 cd server
@@ -139,8 +139,8 @@ tauri-app/
 ```
 
 支持的平台：
-- **macOS**: arm64 (Apple Silicon) + x64 (Intel)
-- **Windows**: x64
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: arm64 (Apple Silicon) + x64 (Intel)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: x64
 - **Linux**: x64 (AppImage, deb)
 
 ## 配置
@@ -162,7 +162,7 @@ tauri-app/
 
 ```bash
 # 确保先构建 Go 静态库
-./dev.sh build
+./build.sh build
 # 检查文件是否存在
 ls -la tauri-app/src-tauri/lib/libblue.a
 ```
@@ -176,7 +176,7 @@ ls third_party/opus-src/build/libopus.a
 ls third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a
 
 # 如果缺失，重新构建
-./dev.sh build
+./build.sh build
 ```
 
 ### 窗口不显示

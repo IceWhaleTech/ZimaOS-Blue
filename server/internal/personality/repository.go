@@ -3,6 +3,9 @@ package personality
 import (
 	"database/sql"
 	"fmt"
+	"time"
+
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // Repository handles personality data persistence
@@ -15,28 +18,74 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+func (r *Repository) personalities() *z.ZormTable { return z.Table(r.db, "personalities") }
+func (r *Repository) traits() *z.ZormTable        { return z.Table(r.db, "personality_traits") }
+
+type personalityRow struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	SystemPrompt string `json:"system_prompt"`
+	IsActive     bool   `json:"is_active"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
+type traitRow struct {
+	PersonalityID string  `json:"personality_id"`
+	Key           string  `json:"key"`
+	Value         string  `json:"value"`
+	Weight        float64 `json:"weight"`
+}
+
+func parsePersonalityTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
+	}
+	return t
+}
+
+func rowToPersonality(row personalityRow) *Personality {
+	return &Personality{
+		ID:           row.ID,
+		Name:         row.Name,
+		Description:  row.Description,
+		SystemPrompt: row.SystemPrompt,
+		IsActive:     row.IsActive,
+		CreatedAt:    parsePersonalityTime(row.CreatedAt),
+		UpdatedAt:    parsePersonalityTime(row.UpdatedAt),
+	}
+}
+
 // Create saves a personality to database
 func (r *Repository) Create(p *Personality) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
 
-	_, err := r.db.Exec(
-		`INSERT INTO personalities (id, name, description, system_prompt, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		p.ID, p.Name, p.Description, p.SystemPrompt, p.CreatedAt, p.UpdatedAt,
-	)
+	_, err := r.personalities().Insert(map[string]interface{}{
+		"id":            p.ID,
+		"name":          p.Name,
+		"description":   p.Description,
+		"system_prompt": p.SystemPrompt,
+		"created_at":    p.CreatedAt,
+		"updated_at":    p.UpdatedAt,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create personality: %w", err)
 	}
 
-	// Save traits
 	for _, trait := range p.Traits {
-		_, err := r.db.Exec(
-			`INSERT INTO personality_traits (personality_id, key, value, weight)
-			 VALUES (?, ?, ?, ?)`,
-			p.ID, trait.Key, trait.Value, trait.Weight,
-		)
+		_, err := r.traits().Insert(map[string]interface{}{
+			"personality_id": p.ID,
+			"key":            trait.Key,
+			"value":          trait.Value,
+			"weight":         trait.Weight,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to save trait: %w", err)
 		}
@@ -47,33 +96,31 @@ func (r *Repository) Create(p *Personality) error {
 
 // GetByID retrieves a personality by ID
 func (r *Repository) GetByID(id string) (*Personality, error) {
-	p := &Personality{}
-	err := r.db.QueryRow(
-		`SELECT id, name, description, system_prompt, is_active, created_at, updated_at
-		 FROM personalities WHERE id = ?`,
-		id,
-	).Scan(&p.ID, &p.Name, &p.Description, &p.SystemPrompt, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
-
+	var rows []personalityRow
+	_, err := r.personalities().Select(&rows,
+		z.Where(z.Eq("id", id)),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("personality not found: %w", err)
 	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("personality not found: %s", id)
+	}
 
-	// Load traits
-	rows, err := r.db.Query(
-		`SELECT key, value, weight FROM personality_traits WHERE personality_id = ?`,
-		id,
+	p := rowToPersonality(rows[0])
+
+	var traitRows []traitRow
+	_, err = r.traits().Select(&traitRows,
+		z.Where(z.Eq("personality_id", id)),
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var trait PersonalityTrait
-		if err := rows.Scan(&trait.Key, &trait.Value, &trait.Weight); err != nil {
-			return nil, err
-		}
-		p.Traits = append(p.Traits, trait)
+	for _, tr := range traitRows {
+		p.Traits = append(p.Traits, PersonalityTrait{
+			Key: tr.Key, Value: tr.Value, Weight: tr.Weight,
+		})
 	}
 
 	return p, nil
@@ -81,32 +128,31 @@ func (r *Repository) GetByID(id string) (*Personality, error) {
 
 // GetActive retrieves the active personality
 func (r *Repository) GetActive() (*Personality, error) {
-	p := &Personality{}
-	err := r.db.QueryRow(
-		`SELECT id, name, description, system_prompt, is_active, created_at, updated_at
-		 FROM personalities WHERE is_active = 1 LIMIT 1`,
-	).Scan(&p.ID, &p.Name, &p.Description, &p.SystemPrompt, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
-
+	var rows []personalityRow
+	_, err := r.personalities().Select(&rows,
+		z.Where(z.Eq("is_active", 1)),
+		z.Limit(1),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("no active personality: %w", err)
 	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no active personality")
+	}
 
-	// Load traits
-	rows, err := r.db.Query(
-		`SELECT key, value, weight FROM personality_traits WHERE personality_id = ?`,
-		p.ID,
+	p := rowToPersonality(rows[0])
+
+	var traitRows []traitRow
+	_, err = r.traits().Select(&traitRows,
+		z.Where(z.Eq("personality_id", p.ID)),
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var trait PersonalityTrait
-		if err := rows.Scan(&trait.Key, &trait.Value, &trait.Weight); err != nil {
-			return nil, err
-		}
-		p.Traits = append(p.Traits, trait)
+	for _, tr := range traitRows {
+		p.Traits = append(p.Traits, PersonalityTrait{
+			Key: tr.Key, Value: tr.Value, Weight: tr.Weight,
+		})
 	}
 
 	return p, nil
@@ -115,34 +161,34 @@ func (r *Repository) GetActive() (*Personality, error) {
 // Activate sets a personality as active
 func (r *Repository) Activate(id string) error {
 	// Deactivate all others
-	_, err := r.db.Exec(`UPDATE personalities SET is_active = 0`)
+	_, err := r.personalities().Update(map[string]interface{}{
+		"is_active": 0,
+	})
 	if err != nil {
 		return err
 	}
 
 	// Activate this one
-	_, err = r.db.Exec(`UPDATE personalities SET is_active = 1 WHERE id = ?`, id)
+	_, err = r.personalities().Update(map[string]interface{}{
+		"is_active": 1,
+	}, z.Where(z.Eq("id", id)))
 	return err
 }
 
 // List retrieves all personalities
 func (r *Repository) List() ([]*Personality, error) {
-	rows, err := r.db.Query(
-		`SELECT id, name, description, system_prompt, created_at, updated_at
-		 FROM personalities ORDER BY created_at DESC`,
+	var rows []personalityRow
+	_, err := r.personalities().Select(&rows,
+		z.Fields("id", "name", "description", "system_prompt", "created_at", "updated_at"),
+		z.OrderBy("created_at DESC"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var personalities []*Personality
-	for rows.Next() {
-		p := &Personality{}
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.SystemPrompt, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
-		}
-		personalities = append(personalities, p)
+	personalities := make([]*Personality, 0, len(rows))
+	for _, row := range rows {
+		personalities = append(personalities, rowToPersonality(row))
 	}
 
 	return personalities, nil
@@ -154,16 +200,17 @@ func (r *Repository) Update(p *Personality) error {
 		return err
 	}
 
-	_, err := r.db.Exec(
-		`UPDATE personalities SET name=?, description=?, system_prompt=?, updated_at=?
-		 WHERE id=?`,
-		p.Name, p.Description, p.SystemPrompt, p.UpdatedAt, p.ID,
-	)
+	_, err := r.personalities().Update(map[string]interface{}{
+		"name":          p.Name,
+		"description":   p.Description,
+		"system_prompt": p.SystemPrompt,
+		"updated_at":    p.UpdatedAt,
+	}, z.Where(z.Eq("id", p.ID)))
 	return err
 }
 
 // Delete deletes a personality
 func (r *Repository) Delete(id string) error {
-	_, err := r.db.Exec(`DELETE FROM personalities WHERE id=?`, id)
+	_, err := r.personalities().Delete(z.Where(z.Eq("id", id)))
 	return err
 }

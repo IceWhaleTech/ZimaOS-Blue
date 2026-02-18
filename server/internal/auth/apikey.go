@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -25,20 +26,20 @@ var (
 
 // APIKeyInfo represents the information about an API key
 type APIKeyInfo struct {
-	ID           string     `json:"id"`
-	UserID       string     `json:"user_id"`
-	Name         string     `json:"name"`
-	Prefix       string     `json:"prefix"`
-	Key          string     `json:"key,omitempty"` // Only populated on creation
-	Scopes       []string   `json:"scopes"`
-	CreatedAt    time.Time  `json:"created_at"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
-	LastUsed     *time.Time `json:"last_used,omitempty"`
-	Revoked      bool       `json:"revoked"`
-	RotatedFrom  *string    `json:"rotated_from,omitempty"`  // ID of the key this was rotated from
-	RotatedTo    *string    `json:"rotated_to,omitempty"`    // ID of the key this was rotated to
-	RotatedAt    *time.Time `json:"rotated_at,omitempty"`    // When the rotation occurred
-	GracePeriod  *time.Time `json:"grace_period,omitempty"`  // When the old key will be invalidated
+	ID          string     `json:"id"`
+	UserID      string     `json:"user_id"`
+	Name        string     `json:"name"`
+	Prefix      string     `json:"prefix"`
+	Key         string     `json:"key,omitempty"`
+	Scopes      []string   `json:"scopes"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	LastUsed    *time.Time `json:"last_used,omitempty"`
+	Revoked     bool       `json:"revoked"`
+	RotatedFrom *string    `json:"rotated_from,omitempty"`
+	RotatedTo   *string    `json:"rotated_to,omitempty"`
+	RotatedAt   *time.Time `json:"rotated_at,omitempty"`
+	GracePeriod *time.Time `json:"grace_period,omitempty"`
 }
 
 // HasScope checks if the API key has the specified scope
@@ -47,7 +48,6 @@ func (k *APIKeyInfo) HasScope(scope string) bool {
 		if s == "*" || s == scope {
 			return true
 		}
-		// Check prefix match (e.g., "read:*" matches "read:users")
 		if strings.HasSuffix(s, ":*") {
 			prefix := strings.TrimSuffix(s, "*")
 			if strings.HasPrefix(scope, prefix) {
@@ -70,7 +70,7 @@ type CreateKeyRequest struct {
 type APIKeyService struct {
 	db        *sql.DB
 	encryptor *Encryptor
-	ownsDB    bool // true if this service opened the DB and should close it
+	ownsDB    bool
 }
 
 // APIKeyServiceOption is a functional option for APIKeyService.
@@ -93,8 +93,6 @@ func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyServic
 	db.SetMaxIdleConns(1)
 
 	svc := &APIKeyService{db: db, ownsDB: true}
-
-	// Apply options
 	for _, opt := range opts {
 		opt(svc)
 	}
@@ -108,10 +106,8 @@ func NewAPIKeyService(dbPath string, opts ...APIKeyServiceOption) (*APIKeyServic
 }
 
 // NewAPIKeyServiceWithDB creates an API key service using an existing shared database connection.
-// The caller is responsible for managing the DB lifecycle (pragmas, connection pool, close).
 func NewAPIKeyServiceWithDB(db *sql.DB, opts ...APIKeyServiceOption) (*APIKeyService, error) {
 	svc := &APIKeyService{db: db, ownsDB: false}
-
 	for _, opt := range opts {
 		opt(svc)
 	}
@@ -123,28 +119,21 @@ func NewAPIKeyServiceWithDB(db *sql.DB, opts ...APIKeyServiceOption) (*APIKeySer
 	return svc, nil
 }
 
-// initDB initializes pragmas and schema for a standalone database.
 func (s *APIKeyService) initDB() error {
-	// Enable WAL mode for better concurrency
 	_, err := s.db.Exec(`PRAGMA journal_mode=WAL`)
 	if err != nil {
 		return err
 	}
-
-	// Reduce page cache for lower idle memory (~512KB)
 	s.db.Exec(`PRAGMA cache_size=-500`)
 
 	if err := s.initSchema(); err != nil {
 		return err
 	}
 
-	// Release unused memory after schema init
 	s.db.Exec(`PRAGMA shrink_memory`)
-
 	return nil
 }
 
-// initSchema creates tables and runs migrations. Safe to call on a shared DB.
 func (s *APIKeyService) initSchema() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS api_keys (
@@ -171,7 +160,6 @@ func (s *APIKeyService) initSchema() error {
 		return err
 	}
 
-	// Add new columns if they don't exist (for migration)
 	s.db.Exec(`ALTER TABLE api_keys ADD COLUMN rotated_from TEXT`)
 	s.db.Exec(`ALTER TABLE api_keys ADD COLUMN rotated_to TEXT`)
 	s.db.Exec(`ALTER TABLE api_keys ADD COLUMN rotated_at DATETIME`)
@@ -189,6 +177,70 @@ func (s *APIKeyService) Close() error {
 	return nil
 }
 
+func (s *APIKeyService) table(ctx context.Context) *z.ZormTable {
+	return z.TableContext(ctx, s.db, "api_keys")
+}
+
+// apiKeyRow is used for scanning from zorm
+type apiKeyRow struct {
+	ID           string  `json:"id"`
+	UserID       string  `json:"user_id"`
+	Name         string  `json:"name"`
+	Prefix       string  `json:"prefix"`
+	Scopes       string  `json:"scopes"`
+	CreatedAt    string  `json:"created_at"`
+	ExpiresAt    *string `json:"expires_at"`
+	LastUsed     *string `json:"last_used"`
+	Revoked      int     `json:"revoked"`
+	RotatedFrom  *string `json:"rotated_from"`
+	RotatedTo    *string `json:"rotated_to"`
+	RotatedAt    *string `json:"rotated_at"`
+	GracePeriod  *string `json:"grace_period"`
+	EncryptedKey *string `json:"encrypted_key"`
+	KeyHash      *string `json:"key_hash"`
+}
+
+func parseTime(s string) time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
+	}
+	return t
+}
+
+func parseTimePtr(s *string) *time.Time {
+	if s == nil {
+		return nil
+	}
+	t := parseTime(*s)
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+func rowToAPIKeyInfo(row apiKeyRow) *APIKeyInfo {
+	info := &APIKeyInfo{
+		ID:          row.ID,
+		UserID:      row.UserID,
+		Name:        row.Name,
+		Prefix:      row.Prefix,
+		Scopes:      strings.Split(row.Scopes, ","),
+		CreatedAt:   parseTime(row.CreatedAt),
+		ExpiresAt:   parseTimePtr(row.ExpiresAt),
+		LastUsed:    parseTimePtr(row.LastUsed),
+		Revoked:     row.Revoked == 1,
+		RotatedFrom: row.RotatedFrom,
+		RotatedTo:   row.RotatedTo,
+		RotatedAt:   parseTimePtr(row.RotatedAt),
+		GracePeriod: parseTimePtr(row.GracePeriod),
+	}
+	return info
+}
+
 // CreateKey creates a new API key
 func (s *APIKeyService) CreateKey(ctx context.Context, req *CreateKeyRequest) (*APIKeyInfo, error) {
 	id := uuid.New().String()
@@ -204,7 +256,6 @@ func (s *APIKeyService) CreateKey(ctx context.Context, req *CreateKeyRequest) (*
 	scopes := strings.Join(req.Scopes, ",")
 	now := time.Now()
 
-	// Encrypt the key if encryptor is configured
 	var encryptedKey *string
 	if s.encryptor != nil {
 		encrypted, err := s.encryptor.EncryptString(key)
@@ -214,10 +265,17 @@ func (s *APIKeyService) CreateKey(ctx context.Context, req *CreateKeyRequest) (*
 		encryptedKey = &encrypted
 	}
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO api_keys (id, user_id, name, prefix, key_hash, encrypted_key, scopes, created_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, req.UserID, req.Name, prefix, keyHash, encryptedKey, scopes, now, expiresAt)
+	_, err := s.table(ctx).Insert(map[string]interface{}{
+		"id":            id,
+		"user_id":       req.UserID,
+		"name":          req.Name,
+		"prefix":        prefix,
+		"key_hash":      keyHash,
+		"encrypted_key": encryptedKey,
+		"scopes":        scopes,
+		"created_at":    now,
+		"expires_at":    expiresAt,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +285,7 @@ func (s *APIKeyService) CreateKey(ctx context.Context, req *CreateKeyRequest) (*
 		UserID:    req.UserID,
 		Name:      req.Name,
 		Prefix:    prefix,
-		Key:       key, // Only returned on creation
+		Key:       key,
 		Scopes:    req.Scopes,
 		CreatedAt: now,
 		ExpiresAt: expiresAt,
@@ -238,121 +296,81 @@ func (s *APIKeyService) CreateKey(ctx context.Context, req *CreateKeyRequest) (*
 func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKeyInfo, error) {
 	keyHash := hashKey(key)
 
-	var info APIKeyInfo
-	var scopesStr string
-	var expiresAt, lastUsed sql.NullTime
-	var revoked int
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, user_id, name, prefix, scopes, created_at, expires_at, last_used, revoked
-		FROM api_keys WHERE key_hash = ?
-	`, keyHash).Scan(
-		&info.ID, &info.UserID, &info.Name, &info.Prefix,
-		&scopesStr, &info.CreatedAt, &expiresAt, &lastUsed, &revoked,
+	var rows []apiKeyRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked"),
+		z.Where(z.Eq("key_hash", keyHash)),
+		z.Limit(1),
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrAPIKeyNotFound
-		}
 		return nil, err
 	}
+	if len(rows) == 0 {
+		return nil, ErrAPIKeyNotFound
+	}
 
-	if revoked == 1 {
+	info := rowToAPIKeyInfo(rows[0])
+
+	if info.Revoked {
 		return nil, ErrAPIKeyRevoked
 	}
 
-	if expiresAt.Valid {
-		info.ExpiresAt = &expiresAt.Time
-		if expiresAt.Time.Before(time.Now()) {
-			return nil, ErrAPIKeyExpired
-		}
+	if info.ExpiresAt != nil && info.ExpiresAt.Before(time.Now()) {
+		return nil, ErrAPIKeyExpired
 	}
-
-	if lastUsed.Valid {
-		info.LastUsed = &lastUsed.Time
-	}
-
-	info.Scopes = strings.Split(scopesStr, ",")
-	info.Revoked = revoked == 1
 
 	// Update last used time asynchronously
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used = ? WHERE id = ?`, time.Now(), info.ID)
+		s.table(bgCtx).Update(
+			map[string]interface{}{"last_used": time.Now()},
+			z.Where(z.Eq("id", info.ID)),
+		)
 	}()
 
-	return &info, nil
+	return info, nil
 }
 
 // ListKeys lists all API keys for a user
 func (s *APIKeyService) ListKeys(ctx context.Context, userID string) ([]*APIKeyInfo, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, name, prefix, scopes, created_at, expires_at, last_used, revoked
-		FROM api_keys WHERE user_id = ? AND revoked = 0
-		ORDER BY created_at DESC
-	`, userID)
+	var rows []apiKeyRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked"),
+		z.Where(z.Eq("user_id", userID), z.Eq("revoked", 0)),
+		z.OrderBy("created_at DESC"),
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var keys []*APIKeyInfo
-	for rows.Next() {
-		var info APIKeyInfo
-		var scopesStr string
-		var expiresAt, lastUsed sql.NullTime
-		var revoked int
-
-		err := rows.Scan(
-			&info.ID, &info.UserID, &info.Name, &info.Prefix,
-			&scopesStr, &info.CreatedAt, &expiresAt, &lastUsed, &revoked,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if expiresAt.Valid {
-			info.ExpiresAt = &expiresAt.Time
-		}
-		if lastUsed.Valid {
-			info.LastUsed = &lastUsed.Time
-		}
-
-		info.Scopes = strings.Split(scopesStr, ",")
-		info.Revoked = revoked == 1
-		keys = append(keys, &info)
+	keys := make([]*APIKeyInfo, len(rows))
+	for i, row := range rows {
+		keys[i] = rowToAPIKeyInfo(row)
 	}
-
-	return keys, rows.Err()
+	return keys, nil
 }
 
 // RevokeKey revokes an API key
 func (s *APIKeyService) RevokeKey(ctx context.Context, id, userID string) error {
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE api_keys SET revoked = 1 WHERE id = ? AND user_id = ?
-	`, id, userID)
+	n, err := s.table(ctx).Update(
+		map[string]interface{}{"revoked": 1},
+		z.Where(z.Eq("id", id), z.Eq("user_id", userID)),
+	)
 	if err != nil {
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
+	if n == 0 {
 		return ErrUnauthorized
 	}
-
 	return nil
 }
 
 // RotateKeyRequest represents a request to rotate an API key
 type RotateKeyRequest struct {
-	KeyID       string        // ID of the key to rotate
-	UserID      string        // User ID for authorization
-	GracePeriod time.Duration // How long the old key remains valid (default: 24h)
+	KeyID       string
+	UserID      string
+	GracePeriod time.Duration
 }
 
 // RotateKeyResult contains the result of a key rotation
@@ -361,61 +379,44 @@ type RotateKeyResult struct {
 	NewKey *APIKeyInfo `json:"new_key"`
 }
 
-// RotateKey rotates an API key, creating a new key and optionally keeping the old one valid for a grace period
+// RotateKey rotates an API key
 func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*RotateKeyResult, error) {
-	// Get the existing key
-	var oldInfo APIKeyInfo
-	var scopesStr string
-	var expiresAt, lastUsed sql.NullTime
-	var rotatedToID sql.NullString
-	var revoked int
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, user_id, name, prefix, scopes, created_at, expires_at, last_used, revoked, rotated_to
-		FROM api_keys WHERE id = ? AND user_id = ?
-	`, req.KeyID, req.UserID).Scan(
-		&oldInfo.ID, &oldInfo.UserID, &oldInfo.Name, &oldInfo.Prefix,
-		&scopesStr, &oldInfo.CreatedAt, &expiresAt, &lastUsed, &revoked, &rotatedToID,
+	var rows []apiKeyRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked", "rotated_to"),
+		z.Where(z.Eq("id", req.KeyID), z.Eq("user_id", req.UserID)),
+		z.Limit(1),
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrAPIKeyNotFound
-		}
 		return nil, err
 	}
-
-	if revoked == 1 {
-		return nil, ErrAPIKeyRevoked
+	if len(rows) == 0 {
+		return nil, ErrAPIKeyNotFound
 	}
 
-	// Check if already rotated
-	if rotatedToID.Valid {
+	oldRow := rows[0]
+	if oldRow.Revoked == 1 {
+		return nil, ErrAPIKeyRevoked
+	}
+	if oldRow.RotatedTo != nil {
 		return nil, ErrRotationPending
 	}
 
-	oldInfo.Scopes = strings.Split(scopesStr, ",")
-	if expiresAt.Valid {
-		oldInfo.ExpiresAt = &expiresAt.Time
-	}
-	if lastUsed.Valid {
-		oldInfo.LastUsed = &lastUsed.Time
-	}
+	oldInfo := rowToAPIKeyInfo(oldRow)
 
-	// Set default grace period
 	gracePeriod := req.GracePeriod
 	if gracePeriod == 0 {
 		gracePeriod = 24 * time.Hour
 	}
 
-	// Create new key
 	newID := uuid.New().String()
 	newKey := generateAPIKey()
 	newPrefix := newKey[:8]
 	newKeyHash := hashKey(newKey)
 	now := time.Now()
 	graceEnd := now.Add(gracePeriod)
+	scopesStr := strings.Join(oldInfo.Scopes, ",")
 
-	// Encrypt the new key if encryptor is configured
 	var encryptedKey *string
 	if s.encryptor != nil {
 		encrypted, err := s.encryptor.EncryptString(newKey)
@@ -425,26 +426,38 @@ func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*
 		encryptedKey = &encrypted
 	}
 
-	// Start transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	// Insert new key
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO api_keys (id, user_id, name, prefix, key_hash, encrypted_key, scopes, created_at, expires_at, rotated_from)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, newID, oldInfo.UserID, oldInfo.Name, newPrefix, newKeyHash, encryptedKey, scopesStr, now, oldInfo.ExpiresAt, oldInfo.ID)
+	t := z.TableContext(ctx, tx, "api_keys")
+
+	_, err = t.Insert(map[string]interface{}{
+		"id":            newID,
+		"user_id":       oldInfo.UserID,
+		"name":          oldInfo.Name,
+		"prefix":        newPrefix,
+		"key_hash":      newKeyHash,
+		"encrypted_key": encryptedKey,
+		"scopes":        scopesStr,
+		"created_at":    now,
+		"expires_at":    oldInfo.ExpiresAt,
+		"rotated_from":  oldInfo.ID,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Update old key with rotation info
-	_, err = tx.ExecContext(ctx, `
-		UPDATE api_keys SET rotated_to = ?, rotated_at = ?, grace_period = ? WHERE id = ?
-	`, newID, now, graceEnd, oldInfo.ID)
+	_, err = t.Update(
+		map[string]interface{}{
+			"rotated_to":   newID,
+			"rotated_at":   now,
+			"grace_period": graceEnd,
+		},
+		z.Where(z.Eq("id", oldInfo.ID)),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -453,143 +466,104 @@ func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*
 		return nil, err
 	}
 
-	// Update old key info
 	oldInfo.RotatedTo = &newID
 	rotatedAt := now
 	oldInfo.RotatedAt = &rotatedAt
 	oldInfo.GracePeriod = &graceEnd
 
-	// Create new key info
 	newInfo := &APIKeyInfo{
 		ID:          newID,
 		UserID:      oldInfo.UserID,
 		Name:        oldInfo.Name,
 		Prefix:      newPrefix,
-		Key:         newKey, // Only returned on creation
+		Key:         newKey,
 		Scopes:      oldInfo.Scopes,
 		CreatedAt:   now,
 		ExpiresAt:   oldInfo.ExpiresAt,
 		RotatedFrom: &oldInfo.ID,
 	}
 
-	return &RotateKeyResult{
-		OldKey: &oldInfo,
-		NewKey: newInfo,
-	}, nil
+	return &RotateKeyResult{OldKey: oldInfo, NewKey: newInfo}, nil
 }
 
 // CompleteRotation completes a rotation by revoking the old key
 func (s *APIKeyService) CompleteRotation(ctx context.Context, oldKeyID, userID string) error {
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE api_keys SET revoked = 1
-		WHERE id = ? AND user_id = ? AND rotated_to IS NOT NULL
-	`, oldKeyID, userID)
+	n, err := s.table(ctx).Update(
+		map[string]interface{}{"revoked": 1},
+		z.Where(
+			z.Eq("id", oldKeyID),
+			z.Eq("user_id", userID),
+			z.IsNotNull("rotated_to"),
+		),
+	)
 	if err != nil {
 		return err
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
+	if n == 0 {
 		return ErrUnauthorized
 	}
-
 	return nil
 }
 
 // CleanupExpiredRotations revokes old keys that have passed their grace period
 func (s *APIKeyService) CleanupExpiredRotations(ctx context.Context) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE api_keys SET revoked = 1
-		WHERE rotated_to IS NOT NULL
-		AND grace_period IS NOT NULL
-		AND grace_period < ?
-		AND revoked = 0
-	`, time.Now())
-	if err != nil {
-		return 0, err
-	}
-
-	return result.RowsAffected()
+	n, err := s.table(ctx).Update(
+		map[string]interface{}{"revoked": 1},
+		z.Where(
+			z.IsNotNull("rotated_to"),
+			z.IsNotNull("grace_period"),
+			z.Lt("grace_period", time.Now()),
+			z.Eq("revoked", 0),
+		),
+	)
+	return int64(n), err
 }
 
 // GetRotationHistory returns the rotation history for a key
 func (s *APIKeyService) GetRotationHistory(ctx context.Context, keyID, userID string) ([]*APIKeyInfo, error) {
-	// Find the root key (the original key in the rotation chain)
+	// Find the root key
 	rootID := keyID
 	for {
-		var rotatedFrom sql.NullString
-		err := s.db.QueryRowContext(ctx, `
-			SELECT rotated_from FROM api_keys WHERE id = ? AND user_id = ?
-		`, rootID, userID).Scan(&rotatedFrom)
+		var rows []apiKeyRow
+		_, err := s.table(ctx).Select(&rows,
+			z.Fields("rotated_from"),
+			z.Where(z.Eq("id", rootID), z.Eq("user_id", userID)),
+			z.Limit(1),
+		)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, ErrAPIKeyNotFound
-			}
 			return nil, err
 		}
-		if !rotatedFrom.Valid {
+		if len(rows) == 0 {
+			return nil, ErrAPIKeyNotFound
+		}
+		if rows[0].RotatedFrom == nil {
 			break
 		}
-		rootID = rotatedFrom.String
+		rootID = *rows[0].RotatedFrom
 	}
 
-	// Now traverse forward to get all keys in the chain
+	// Traverse forward
 	var history []*APIKeyInfo
 	currentID := rootID
 
 	for currentID != "" {
-		var info APIKeyInfo
-		var scopesStr string
-		var expiresAt, lastUsed, rotatedAt, gracePeriod sql.NullTime
-		var rotatedFrom, rotatedTo sql.NullString
-		var revoked int
-
-		err := s.db.QueryRowContext(ctx, `
-			SELECT id, user_id, name, prefix, scopes, created_at, expires_at, last_used, revoked,
-			       rotated_from, rotated_to, rotated_at, grace_period
-			FROM api_keys WHERE id = ? AND user_id = ?
-		`, currentID, userID).Scan(
-			&info.ID, &info.UserID, &info.Name, &info.Prefix,
-			&scopesStr, &info.CreatedAt, &expiresAt, &lastUsed, &revoked,
-			&rotatedFrom, &rotatedTo, &rotatedAt, &gracePeriod,
+		var rows []apiKeyRow
+		_, err := s.table(ctx).Select(&rows,
+			z.Where(z.Eq("id", currentID), z.Eq("user_id", userID)),
+			z.Limit(1),
 		)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				break
-			}
 			return nil, err
 		}
-
-		info.Scopes = strings.Split(scopesStr, ",")
-		info.Revoked = revoked == 1
-
-		if expiresAt.Valid {
-			info.ExpiresAt = &expiresAt.Time
-		}
-		if lastUsed.Valid {
-			info.LastUsed = &lastUsed.Time
-		}
-		if rotatedFrom.Valid {
-			info.RotatedFrom = &rotatedFrom.String
-		}
-		if rotatedTo.Valid {
-			info.RotatedTo = &rotatedTo.String
-		}
-		if rotatedAt.Valid {
-			info.RotatedAt = &rotatedAt.Time
-		}
-		if gracePeriod.Valid {
-			info.GracePeriod = &gracePeriod.Time
+		if len(rows) == 0 {
+			break
 		}
 
-		history = append(history, &info)
+		info := rowToAPIKeyInfo(rows[0])
+		history = append(history, info)
 
-		if rotatedTo.Valid {
-			currentID = rotatedTo.String
+		if info.RotatedTo != nil {
+			currentID = *info.RotatedTo
 		} else {
 			break
 		}
@@ -599,35 +573,33 @@ func (s *APIKeyService) GetRotationHistory(ctx context.Context, keyID, userID st
 }
 
 // GetDecryptedKey retrieves and decrypts an API key by its ID.
-// This is useful for scenarios where the original key needs to be recovered.
-// Returns an error if encryption is not configured or the key is not found.
 func (s *APIKeyService) GetDecryptedKey(ctx context.Context, keyID, userID string) (string, error) {
 	if s.encryptor == nil {
 		return "", ErrKeyNotConfigured
 	}
 
-	var encryptedKey sql.NullString
-	var revoked int
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT encrypted_key, revoked FROM api_keys WHERE id = ? AND user_id = ?
-	`, keyID, userID).Scan(&encryptedKey, &revoked)
+	var rows []apiKeyRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("encrypted_key", "revoked"),
+		z.Where(z.Eq("id", keyID), z.Eq("user_id", userID)),
+		z.Limit(1),
+	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrAPIKeyNotFound
-		}
 		return "", err
 	}
+	if len(rows) == 0 {
+		return "", ErrAPIKeyNotFound
+	}
 
-	if revoked == 1 {
+	if rows[0].Revoked == 1 {
 		return "", ErrAPIKeyRevoked
 	}
 
-	if !encryptedKey.Valid || encryptedKey.String == "" {
+	if rows[0].EncryptedKey == nil || *rows[0].EncryptedKey == "" {
 		return "", errors.New("key was not stored encrypted")
 	}
 
-	decrypted, err := s.encryptor.DecryptString(encryptedKey.String)
+	decrypted, err := s.encryptor.DecryptString(*rows[0].EncryptedKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt key: %w", err)
 	}
@@ -636,54 +608,50 @@ func (s *APIKeyService) GetDecryptedKey(ctx context.Context, keyID, userID strin
 }
 
 // ReEncryptAllKeys re-encrypts all API keys with a new encryptor.
-// This is useful when rotating the master encryption key.
 func (s *APIKeyService) ReEncryptAllKeys(ctx context.Context, oldEnc, newEnc *Encryptor) (int64, error) {
 	if oldEnc == nil || newEnc == nil {
 		return 0, ErrKeyNotConfigured
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, encrypted_key FROM api_keys WHERE encrypted_key IS NOT NULL AND revoked = 0
-	`)
+	var rows []apiKeyRow
+	_, err := s.table(ctx).Select(&rows,
+		z.Fields("id", "encrypted_key"),
+		z.Where(z.IsNotNull("encrypted_key"), z.Eq("revoked", 0)),
+	)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
 
 	var count int64
-	for rows.Next() {
-		var id, encryptedKey string
-		if err := rows.Scan(&id, &encryptedKey); err != nil {
-			return count, err
+	for _, row := range rows {
+		if row.EncryptedKey == nil {
+			continue
 		}
 
-		// Decrypt with old key
-		decrypted, err := oldEnc.DecryptString(encryptedKey)
+		decrypted, err := oldEnc.DecryptString(*row.EncryptedKey)
 		if err != nil {
-			return count, fmt.Errorf("failed to decrypt key %s: %w", id, err)
+			return count, fmt.Errorf("failed to decrypt key %s: %w", row.ID, err)
 		}
 
-		// Re-encrypt with new key
 		newEncrypted, err := newEnc.EncryptString(decrypted)
 		if err != nil {
-			return count, fmt.Errorf("failed to re-encrypt key %s: %w", id, err)
+			return count, fmt.Errorf("failed to re-encrypt key %s: %w", row.ID, err)
 		}
 
-		// Update in database
-		_, err = s.db.ExecContext(ctx, `
-			UPDATE api_keys SET encrypted_key = ? WHERE id = ?
-		`, newEncrypted, id)
+		_, err = s.table(ctx).Update(
+			map[string]interface{}{"encrypted_key": newEncrypted},
+			z.Where(z.Eq("id", row.ID)),
+		)
 		if err != nil {
-			return count, fmt.Errorf("failed to update key %s: %w", id, err)
+			return count, fmt.Errorf("failed to update key %s: %w", row.ID, err)
 		}
 
 		count++
 	}
 
-	return count, rows.Err()
+	return count, nil
 }
 
-// generateAPIKey generates a random API key
 func generateAPIKey() string {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -692,7 +660,6 @@ func generateAPIKey() string {
 	return "ek_" + hex.EncodeToString(bytes)
 }
 
-// hashKey hashes an API key using SHA-256
 func hashKey(key string) string {
 	hash := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(hash[:])

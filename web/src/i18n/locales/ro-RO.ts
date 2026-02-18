@@ -829,7 +829,7 @@ export default {
     benefit3: 'Stocare persistentă și sigură a datelor',
     upgradeFailed: 'Crearea contului administrator a eșuat',
     passwordCheck: {
-      length: 'Cel puțin 8 caractere',
+      length: 'Cel puțin {n} caractere',
       uppercase: 'O literă mare',
       lowercase: 'O literă mică',
       number: 'O cifră',

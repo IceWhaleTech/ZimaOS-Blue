@@ -8,8 +8,8 @@ import (
 func TestDefaultPolicyConfig(t *testing.T) {
 	config := DefaultPolicyConfig()
 
-	if config.MinLength != 12 {
-		t.Errorf("expected MinLength to be 12, got %d", config.MinLength)
+	if config.MinLength != 8 {
+		t.Errorf("expected MinLength to be 8, got %d", config.MinLength)
 	}
 	if !config.RequireUppercase {
 		t.Error("expected RequireUppercase to be true")
@@ -74,7 +74,7 @@ func TestPolicy_Validate(t *testing.T) {
 		{
 			name:     "common password base",
 			password: "password",
-			wantErrs: 5, // too short + no uppercase + no number + no special + common
+			wantErrs: 4, // no uppercase + no number + no special + common
 		},
 	}
 
