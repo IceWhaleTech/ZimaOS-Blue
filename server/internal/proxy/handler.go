@@ -322,99 +322,16 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("provider %s is throttled", pid)
 		}
 
-		// Model alias: use remembered alias if available
-		forwardBody := pr.body
-		modelToSend := pr.model
-		if result.Model != nil && pr.model != result.Model.ID {
-			modelToSend = result.Model.ID
-		}
-		if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, modelToSend); ok {
-			modelToSend = alias
-			slog.Debug("[proxy] using cached model alias", "provider", pid, "alias", alias)
+		// Try all Format × Model combinations on this provider
+		resp, format, _, tryErr := ph.tryOnProvider(r, result, pr)
+		if tryErr != nil {
+			return tryErr
 		}
 
-		// Check if model is blacklisted on this provider
-		if ph.providerMemory.IsModelBlacklisted(pid, burl, modelToSend) {
-			slog.Info("[proxy] skipping blacklisted model", "provider", pid, "model", modelToSend)
-			return fmt.Errorf("model %s is blacklisted on provider %s", modelToSend, pid)
-		}
-
-		if modelToSend != pr.model {
-			if newBody, err := sjson.SetBytes(pr.body, "model", modelToSend); err == nil {
-				forwardBody = newBody
-			}
-		}
-
-		// Format memory: override APIFormat if we remember what works
-		effectiveFormat := result.Provider.APIFormat
-		if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
-			effectiveFormat = providerpool.APIFormat(remembered)
-			slog.Debug("[proxy] using cached format", "provider", pid, "format", remembered)
-		}
-
-		// Build request with effective format
-		buildReq := func() (*http.Request, error) {
-			return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, effectiveFormat)
-		}
-
-		resp, probeErr := ph.authProber.ProbeAndForward(
-			result.Provider,
-			result.APIKey,
-			buildReq,
-			func(req *http.Request) (*http.Response, error) {
-				if result.Provider.SkipTLSVerify {
-					return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
-				}
-				return ph.connPool.GetClient(result.Provider.Name).Do(req)
-			},
-		)
-		if probeErr != nil {
-			return probeErr
-		}
-
-		// Track upstream format for response conversion
-		if effectiveFormat == providerpool.APIFormatAnthropic {
+		if format == providerpool.APIFormatAnthropic {
 			pr.upstreamFormat = ProviderTypeAnthropic
 		}
 		finalResp = resp
-
-		// Handle error responses
-		if finalResp.StatusCode >= 400 {
-			statusCode := finalResp.StatusCode
-			errBody, _ := readBody(finalResp.Body)
-			finalResp.Body.Close()
-			finalResp = nil
-			errStr := string(errBody)
-			if len(errStr) > 256 {
-				errStr = errStr[:256]
-			}
-
-			// 429: remember throttle
-			if statusCode == http.StatusTooManyRequests {
-				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
-				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
-			}
-
-			// 4xx: model not available on this provider, try next
-			if statusCode < 500 {
-				slog.Warn("[proxy] client error from provider, trying next",
-					"provider", pid, "status", statusCode, "body", errStr)
-				// Blacklist model on this provider for 4xx errors
-				ph.providerMemory.BlacklistModel(pid, burl, modelToSend)
-				return fmt.Errorf("provider returned %d: %s", statusCode, errStr)
-			}
-
-			// 5xx: server error, return immediately
-			slog.Warn("[proxy] upstream server error",
-				"provider", pid, "status", statusCode, "body", errStr)
-			return fmt.Errorf("upstream returned %d: %s", statusCode, errStr)
-		}
-
-		// Success: remember what worked
-		ph.providerMemory.RememberFormat(pid, burl, string(effectiveFormat))
-		if modelToSend != pr.model {
-			ph.providerMemory.RememberModelAlias(pid, burl, pr.model, modelToSend)
-		}
 		return nil
 	})
 
@@ -446,71 +363,12 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CC
 			return fmt.Errorf("provider %s is throttled", pid)
 		}
 
-		// Model alias
-		forwardBody := pr.body
-		modelToSend := pr.model
-		if result.Model != nil && pr.model != result.Model.ID {
-			modelToSend = result.Model.ID
-		}
-		if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, modelToSend); ok {
-			modelToSend = alias
-		}
-
-		// Check if model is blacklisted on this provider
-		if ph.providerMemory.IsModelBlacklisted(pid, burl, modelToSend) {
-			return fmt.Errorf("model %s is blacklisted on provider %s", modelToSend, pid)
-		}
-
-		if modelToSend != pr.model {
-			if newBody, err := sjson.SetBytes(pr.body, "model", modelToSend); err == nil {
-				forwardBody = newBody
-			}
-		}
-
-		// Format memory
-		effectiveFormat := result.Provider.APIFormat
-		if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
-			effectiveFormat = providerpool.APIFormat(remembered)
-		}
-
-		resp, probeErr := ph.authProber.ProbeAndForward(
-			result.Provider,
-			result.APIKey,
-			func() (*http.Request, error) {
-				return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, effectiveFormat)
-			},
-			func(req *http.Request) (*http.Response, error) {
-				if result.Provider.SkipTLSVerify {
-					return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
-				}
-				return ph.connPool.GetClient(result.Provider.Name).Do(req)
-			},
-		)
-		if probeErr != nil {
-			return probeErr
-		}
-
-		// Non-2xx triggers provider failover
-		if resp.StatusCode >= 400 {
-			statusCode := resp.StatusCode
-			if statusCode == http.StatusTooManyRequests {
-				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
-				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
-			}
-			// Blacklist model on 4xx errors
-			if statusCode < 500 {
-				ph.providerMemory.BlacklistModel(pid, burl, modelToSend)
-			}
-			resp.Body.Close()
-			return fmt.Errorf("upstream returned %d", statusCode)
+		// Try all Format × Model combinations on this provider
+		resp, effectiveFormat, _, tryErr := ph.tryOnProvider(r, result, pr)
+		if tryErr != nil {
+			return tryErr
 		}
 		defer resp.Body.Close()
-
-		// Remember what worked
-		ph.providerMemory.RememberFormat(pid, burl, string(effectiveFormat))
-		if modelToSend != pr.model {
-			ph.providerMemory.RememberModelAlias(pid, burl, pr.model, modelToSend)
-		}
 
 		// Guard: if upstream unexpectedly returns SSE, don't buffer/cache it
 		if isStreamingResponse(resp) {
@@ -670,6 +528,175 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 		resp.Body.Close()
 	}
 	return nil
+}
+
+// allFormatsForProvider returns format candidates to try for a provider.
+// Remembered format first, then provider default, then remaining formats.
+func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, providerDefault providerpool.APIFormat) []providerpool.APIFormat {
+	allFormats := []providerpool.APIFormat{
+		providerpool.APIFormatOpenAI,
+		providerpool.APIFormatAnthropic,
+	}
+
+	var result []providerpool.APIFormat
+	seen := make(map[providerpool.APIFormat]bool)
+
+	// 1. Remembered format (highest priority)
+	if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
+		f := providerpool.APIFormat(remembered)
+		result = append(result, f)
+		seen[f] = true
+	}
+
+	// 2. Provider default
+	if !seen[providerDefault] {
+		result = append(result, providerDefault)
+		seen[providerDefault] = true
+	}
+
+	// 3. Remaining formats
+	for _, f := range allFormats {
+		if !seen[f] {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+// allModelsForProvider returns model candidates to try for a provider.
+// Remembered alias first, then original model, then ModelAliases.
+func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string) []string {
+	var result []string
+	seen := make(map[string]bool)
+
+	// 1. Remembered alias (highest priority)
+	if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, originalModel); ok {
+		if !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
+			result = append(result, alias)
+			seen[alias] = true
+		}
+	}
+
+	// 2. Routed model (from provider pool)
+	if routedModel != "" && !seen[routedModel] {
+		if !ph.providerMemory.IsModelBlacklisted(pid, burl, routedModel) {
+			result = append(result, routedModel)
+			seen[routedModel] = true
+		}
+	}
+
+	// 3. Original model
+	if !seen[originalModel] {
+		if !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel) {
+			result = append(result, originalModel)
+			seen[originalModel] = true
+		}
+	}
+
+	// 4. ModelAliases
+	if aliases, ok := ModelAliases[originalModel]; ok {
+		for _, alias := range aliases {
+			if !seen[alias] && !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
+				result = append(result, alias)
+				seen[alias] = true
+			}
+		}
+	}
+
+	return result
+}
+
+// tryOnProvider tries all Format × Model combinations on a single provider.
+// Returns (response, format used, model used, error).
+func (ph *ProxyHandler) tryOnProvider(
+	r *http.Request,
+	result *providerpool.RouteResult,
+	pr *parsedRequest,
+) (*http.Response, providerpool.APIFormat, string, error) {
+	pid := result.Provider.ID
+	burl := result.Provider.BaseURL
+
+	routedModel := ""
+	if result.Model != nil && result.Model.ID != pr.model {
+		routedModel = result.Model.ID
+	}
+
+	formats := ph.allFormatsForProvider(pid, burl, result.Provider.APIFormat)
+	models := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
+
+	if len(models) == 0 {
+		return nil, "", "", fmt.Errorf("all models blacklisted on provider %s", pid)
+	}
+
+	var lastErr error
+	for _, format := range formats {
+		for _, model := range models {
+			// Build body with this model
+			forwardBody := pr.body
+			if model != pr.model {
+				if newBody, err := sjson.SetBytes(pr.body, "model", model); err == nil {
+					forwardBody = newBody
+				}
+			}
+
+			slog.Info("[proxy] trying", "provider", pid, "format", format, "model", model)
+
+			resp, probeErr := ph.authProber.ProbeAndForward(
+				result.Provider,
+				result.APIKey,
+				func() (*http.Request, error) {
+					return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, format)
+				},
+				func(req *http.Request) (*http.Response, error) {
+					if result.Provider.SkipTLSVerify {
+						return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+					}
+					return ph.connPool.GetClient(result.Provider.Name).Do(req)
+				},
+			)
+			if probeErr != nil {
+				lastErr = probeErr
+				continue
+			}
+
+			if resp.StatusCode < 400 {
+				// Success — remember what worked
+				ph.providerMemory.RememberFormat(pid, burl, string(format))
+				if model != pr.model {
+					ph.providerMemory.RememberModelAlias(pid, burl, pr.model, model)
+				}
+				return resp, format, model, nil
+			}
+
+			// Handle error
+			statusCode := resp.StatusCode
+			errBody, _ := readBody(resp.Body)
+			resp.Body.Close()
+			errStr := string(errBody)
+			if len(errStr) > 256 {
+				errStr = errStr[:256]
+			}
+
+			if statusCode == http.StatusTooManyRequests {
+				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
+				return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
+			}
+
+			if statusCode >= 500 {
+				// 5xx: server error, skip entire provider
+				slog.Warn("[proxy] upstream 5xx", "provider", pid, "status", statusCode)
+				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
+			}
+
+			// 4xx: blacklist this model on this provider, try next model/format
+			slog.Warn("[proxy] 4xx, trying next combination",
+				"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+			ph.providerMemory.BlacklistModel(pid, burl, model)
+			lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+		}
+	}
+	return nil, "", "", lastErr
 }
 
 // parseRetryAfter parses the Retry-After header value into a duration.
