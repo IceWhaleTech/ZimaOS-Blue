@@ -311,15 +311,6 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Mode:    providerpool.RoutingMode(routingMode),
 	}
 
-	// Log available models for this request
-	if candidates, err := ph.providerPool.Router.FindCandidates(pr.model); err == nil && len(candidates) > 0 {
-		modelList := make([]string, len(candidates))
-		for i, c := range candidates {
-			modelList[i] = c.Model
-		}
-		slog.Info("[proxy] model candidates", "requested", pr.model, "candidates", modelList)
-	}
-
 	var finalResp *http.Response
 	err := ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, func(result *providerpool.RouteResult) error {
 		pid := result.Provider.ID
