@@ -53,7 +53,7 @@ Clawdbotに触発され、私たちはパーソナルコンピューティング
 
 **ZimaOS Blueはその答えです** — 完全に**オープンソースで、監査可能、かつ本番環境対応のエージェントランタイムおよびツールキット**であり、プライベートなセルフホスト型エージェントをゼロフリクションで提供できます。
 
-大胆な開発者が**自分だけのエージェントをバイブコーディングまたは手作り**するために構築されたBlueは、**パフォーマンスを追求した設計**です：**Go**で記述され、メモリフットプリントはわずか10 MB。**あらゆるx86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS**で動作します — 電源さえあればどこでも。
+大胆な開発者が**自分だけのエージェントをバイブコーディングまたは手作り**するために構築されたBlueは、**パフォーマンスを追求した設計**です：**Go**で記述され、メモリフットプリントはわずか10 MB。**あらゆるx86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS**で動作します — 電源さえあればどこでも。
 
 ![](../../docs/assets/features.png)
 

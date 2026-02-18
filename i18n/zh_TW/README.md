@@ -54,7 +54,7 @@
 
 **ZimaOS Blue 是我們的答案** — 一個完全**開源、可審計、生產就緒的代理執行環境與工具包**，讓你零摩擦地部署私有、自託管的代理。
 
-專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS** 上運行 — 只要有電源就能啟動。
+專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** 上運行 — 只要有電源就能啟動。
 
 ![](../../docs/assets/features.png)
 
@@ -84,7 +84,7 @@
 
 ### 純 Go，任何裝置
 
-100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、舊的 x86 路由器或 Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
+100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、舊的 x86 路由器或 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
 
 ### 安全與治理
 
@@ -152,7 +152,7 @@
 取得原生應用程式 — 無需依賴、無需編譯。內建試用配置，秒級上手 — 透過遠端連線即刻開聊，無需配置機器人。真正的開箱即用。
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下載 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**：[下載安裝程式](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**：[下載安裝程式](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 選項 2：安裝腳本
 

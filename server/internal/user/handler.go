@@ -130,7 +130,9 @@ func (h *Handler) Login(c echo.Context) error {
 				User:        user,
 			})
 		default:
-			return echo.NewHTTPError(http.StatusInternalServerError, "authentication failed")
+			// Log the actual error for debugging
+			c.Logger().Errorf("authentication error for user %s: %v", req.Username, err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "authentication service temporarily unavailable")
 		}
 	}
 
@@ -146,11 +148,13 @@ func (h *Handler) Login(c echo.Context) error {
 
 		accessToken, err = h.jwtService.GenerateAccessToken(userClaims)
 		if err != nil {
+			c.Logger().Errorf("failed to generate access token for user %s: %v", user.Username, err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate access token")
 		}
 
 		refreshToken, err = h.jwtService.GenerateRefreshToken(userClaims)
 		if err != nil {
+			c.Logger().Errorf("failed to generate refresh token for user %s: %v", user.Username, err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate refresh token")
 		}
 	} else {
@@ -164,6 +168,7 @@ func (h *Handler) Login(c echo.Context) error {
 	ipAddress := c.RealIP()
 	session, err := h.service.CreateSession(c.Request().Context(), user.ID, refreshToken, userAgent, ipAddress)
 	if err != nil {
+		c.Logger().Errorf("failed to create session for user %s: %v", user.Username, err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create session")
 	}
 

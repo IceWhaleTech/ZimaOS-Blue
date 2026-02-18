@@ -91,10 +91,20 @@ export const useAuthStore = defineStore('auth', () => {
 
       return true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Login failed'
-      if ((e as { response?: { data?: { error?: string } } }).response?.data?.error) {
-        error.value = (e as { response: { data: { error: string } } }).response.data.error
+      // Import getErrorMessage at the top if not already imported
+      const axiosError = e as { response?: { data?: { error?: string; message?: string }; status?: number } }
+
+      // Extract error message from response
+      if (axiosError.response?.data?.message) {
+        error.value = axiosError.response.data.message
+      } else if (axiosError.response?.data?.error) {
+        error.value = axiosError.response.data.error
+      } else if (e instanceof Error) {
+        error.value = e.message
+      } else {
+        error.value = 'Login failed'
       }
+
       return false
     } finally {
       loading.value = false

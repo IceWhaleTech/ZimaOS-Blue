@@ -54,7 +54,7 @@
 
 **ZimaOS Blue 是我们的答案** —— 一个完全**开源、可审计、生产就绪的智能体运行时与工具集**，让你零摩擦地交付私有、自托管的智能体。
 
-为那些想要**随心构建或精心打造自己智能体**的大胆开发者而生，Blue **为性能而设计**：使用 **Go** 编写，内存占用低至 10 MB。它可以运行在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS** —— 只要有电的地方。
+为那些想要**随心构建或精心打造自己智能体**的大胆开发者而生，Blue **为性能而设计**：使用 **Go** 编写，内存占用低至 10 MB。它可以运行在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** —— 只要有电的地方。
 
 ![](../../docs/assets/features.png)
 
@@ -84,7 +84,7 @@ Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务
 
 ### 纯 Go，任意设备
 
-100% Go，静态二进制。**开箱即可交叉编译至 5 个目标平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。无需 Node 运行时、无需 Python、无需容器。把它放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、旧 x86 路由器或 Mac 上 —— 直接运行。**然后叠加你自己的 UI、逻辑和智能体技能** —— 一套代码，全平台通用。
+100% Go，静态二进制。**开箱即可交叉编译至 5 个目标平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。无需 Node 运行时、无需 Python、无需容器。把它放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、旧 x86 路由器或 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac 上 —— 直接运行。**然后叠加你自己的 UI、逻辑和智能体技能** —— 一套代码，全平台通用。
 
 ### 安全与治理
 
@@ -152,7 +152,7 @@ Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务
 获取原生应用 —— 无依赖、无需编译。内置试用配置，秒级上手 —— 通过远程连接即刻开聊，无需配置机器人。真正的开箱即用。
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下载 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- **Windows**：[下载安装程序](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**：[下载安装程序](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 方式二：安装脚本
 
