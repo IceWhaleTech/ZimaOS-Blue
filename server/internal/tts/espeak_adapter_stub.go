@@ -17,6 +17,7 @@ func NewEspeakNGAdapter(_ string) *EspeakNGAdapter {
 
 func (a *EspeakNGAdapter) Name() string        { return "eSpeak-NG (disabled)" }
 func (a *EspeakNGAdapter) Type() ProviderType  { return ProviderEspeakNG }
+func (a *EspeakNGAdapter) Available() bool     { return false }
 
 func (a *EspeakNGAdapter) Synthesize(_ context.Context, _ *SynthesizeRequest) (*SynthesizeResponse, error) {
 	return nil, fmt.Errorf("espeak-ng not available: build with -tags espeak")

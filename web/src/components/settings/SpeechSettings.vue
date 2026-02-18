@@ -111,7 +111,6 @@ const allPacksDownloaded = computed(() => {
 
 async function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
-  // Call API to switch provider and enable
   try {
     await speechApi.switchTTSProvider(selectedProvider.value)
     await fetchStatus()
@@ -544,6 +543,18 @@ class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
               </span>
             </div>
+          </label>
+          <label
+class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
+            :class="selectedProvider === 'macos-native' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            <input v-model="selectedProvider" type="radio" value="macos-native" class="sr-only" @change="saveProvider" />
+            <div class="flex-1">
+              <span class="text-sm font-medium text-gray-900 dark:text-white">macOS Native</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.macosNativeDesc') }}</p>
+            </div>
+            <span v-if="selectedProvider === 'macos-native'" class="text-gray-900 dark:text-white">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            </span>
           </label>
         </div>
       </div>

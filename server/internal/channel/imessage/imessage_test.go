@@ -112,10 +112,10 @@ func TestNormalizePhoneNumber(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"+1 (555) 123-4567", "15551234567"},
-		{"555-123-4567", "5551234567"},
+		{"+1 (555) 123-4567", "15551807"},
+		{"555-123-4567", "5551807"},
 		{"+86 138 0000 0000", "8613800000000"},
-		{"1234567890", "1234567890"},
+		{"1807890", "1807890"},
 	}
 
 	for _, tt := range tests {
@@ -153,7 +153,7 @@ func TestIsSenderAllowed(t *testing.T) {
 	cfg := DefaultConfig()
 	ch := New(cfg, logger)
 
-	if !ch.isSenderAllowed("+1234567890") {
+	if !ch.isSenderAllowed("+1807890") {
 		t.Error("isSenderAllowed() = false with no restrictions, want true")
 	}
 
@@ -161,7 +161,7 @@ func TestIsSenderAllowed(t *testing.T) {
 	cfg.AllowedNumbers = []string{"+1 (555) 123-4567"}
 	ch = New(cfg, logger)
 
-	if !ch.isSenderAllowed("+15551234567") {
+	if !ch.isSenderAllowed("+15551807") {
 		t.Error("isSenderAllowed() = false for allowed number, want true")
 	}
 

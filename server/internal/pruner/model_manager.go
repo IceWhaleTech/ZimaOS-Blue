@@ -2,15 +2,11 @@ package pruner
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
-	"time"
-)
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
+)
 
 // PrunerModelInfo describes a downloadable pruner model file.
 type PrunerModelInfo struct {
@@ -19,14 +15,6 @@ type PrunerModelInfo struct {
 	Mirrors  []string `json:"-"` // fallback URLs (hf-mirror, modelscope, etc.)
 	Size     string   `json:"size"`
 }
-
-// Download states
-const (
-	StateIdle        = ""
-	StateConnecting  = "connecting"
-	StateDownloading = "downloading"
-	StateError       = "error"
-)
 
 // prunerModelFiles lists all files needed for the ONNX pruner.
 var prunerModelFiles = []PrunerModelInfo{
@@ -76,20 +64,18 @@ type PrunerFileStatus struct {
 	Size       string `json:"size"`
 }
 
-// PrunerModelManager manages pruner model downloads.
+// PrunerModelManager manages pruner model downloads via the unified downloader.
 type PrunerModelManager struct {
-	modelDir    string
-	downloading bool
-	state       string
-	lastError   string
-	progress    *ModelDownloadProgress
-	cancelFunc  context.CancelFunc
-	mu          sync.Mutex
+	modelDir   string
+	downloader *downloader.ModelDownloader
 }
 
 // NewPrunerModelManager creates a new model manager.
 func NewPrunerModelManager(modelDir string) *PrunerModelManager {
-	return &PrunerModelManager{modelDir: modelDir}
+	return &PrunerModelManager{
+		modelDir:   modelDir,
+		downloader: downloader.NewModelDownloader(modelDir),
+	}
 }
 
 // ModelDir returns the model directory path.
@@ -108,9 +94,6 @@ func (m *PrunerModelManager) IsReady() bool {
 
 // GetStatus returns the current model status.
 func (m *PrunerModelManager) GetStatus() PrunerModelStatus {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	files := make([]PrunerFileStatus, len(prunerModelFiles))
 	allReady := true
 	for i, f := range prunerModelFiles {
@@ -127,205 +110,53 @@ func (m *PrunerModelManager) GetStatus() PrunerModelStatus {
 		}
 	}
 
+	state, lastError := m.downloader.GetState()
+	downloading := m.downloader.IsDownloading()
+
+	var progress *ModelDownloadProgress
+	if p := m.downloader.GetProgress(); p != nil {
+		progress = &ModelDownloadProgress{
+			File:       p.File,
+			FileIndex:  p.FileIndex,
+			TotalFiles: p.TotalFiles,
+			Downloaded: p.Downloaded,
+			Total:      p.Total,
+			Percentage: p.Percentage,
+			SpeedHuman: p.SpeedHuman,
+			ETA:        p.ETA,
+		}
+	}
+
 	return PrunerModelStatus{
 		Ready:       allReady,
-		Downloading: m.downloading,
-		State:       m.state,
-		Error:       m.lastError,
-		Progress:    m.progress,
+		Downloading: downloading,
+		State:       state,
+		Error:       lastError,
+		Progress:    progress,
 		Files:       files,
 	}
 }
 
-// Download starts downloading all model files in sequence.
-func (m *PrunerModelManager) Download(ctx context.Context) error {
-	m.mu.Lock()
-	if m.downloading {
-		m.mu.Unlock()
-		return fmt.Errorf("download already in progress")
-	}
-	m.downloading = true
-	m.state = StateConnecting
-	m.lastError = ""
-	m.progress = &ModelDownloadProgress{TotalFiles: len(prunerModelFiles)}
-	ctx, m.cancelFunc = context.WithCancel(ctx)
-	m.mu.Unlock()
-
-	defer func() {
-		m.mu.Lock()
-		m.downloading = false
-		if m.state != StateError {
-			m.state = StateIdle
-		}
-		m.cancelFunc = nil
-		m.mu.Unlock()
-	}()
-
-	if err := os.MkdirAll(m.modelDir, 0755); err != nil {
-		m.mu.Lock()
-		m.state = StateError
-		m.lastError = err.Error()
-		m.mu.Unlock()
-		return err
-	}
-
+// toDownloaderFiles converts pruner model files to unified downloader format.
+func toDownloaderFiles() []downloader.ModelFile {
+	files := make([]downloader.ModelFile, len(prunerModelFiles))
 	for i, f := range prunerModelFiles {
-		destPath := filepath.Join(m.modelDir, f.Filename)
-		// Skip already downloaded files
-		if _, err := os.Stat(destPath); err == nil {
-			continue
-		}
-
-		m.mu.Lock()
-		m.state = StateConnecting
-		m.progress.File = f.Filename
-		m.progress.FileIndex = i
-		m.progress.Downloaded = 0
-		m.progress.Total = 0
-		m.progress.Percentage = 0
-		m.progress.SpeedHuman = ""
-		m.progress.ETA = ""
-		m.mu.Unlock()
-
-		if err := m.downloadWithFallback(ctx, f.URL, f.Mirrors, destPath); err != nil {
-			m.mu.Lock()
-			m.state = StateError
-			m.lastError = fmt.Sprintf("%s: %v", f.Filename, err)
-			m.mu.Unlock()
-			return fmt.Errorf("download %s: %w", f.Filename, err)
+		files[i] = downloader.ModelFile{
+			Filename: f.Filename,
+			URL:      f.URL,
+			Mirrors:  f.Mirrors,
+			Size:     f.Size,
 		}
 	}
-	return nil
+	return files
 }
 
-func (m *PrunerModelManager) downloadWithFallback(ctx context.Context, primaryURL string, mirrors []string, destPath string) error {
-	urls := append([]string{primaryURL}, mirrors...)
-	var lastErr error
-	for _, u := range urls {
-		if err := m.downloadFile(ctx, u, destPath); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-	}
-	return lastErr
-}
-
-func (m *PrunerModelManager) downloadFile(ctx context.Context, url, destPath string) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %s", resp.Status)
-	}
-
-	// Transition from connecting to downloading
-	m.mu.Lock()
-	m.state = StateDownloading
-	m.mu.Unlock()
-
-	out, err := os.Create(destPath + ".tmp")
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	m.mu.Lock()
-	m.progress.Total = resp.ContentLength
-	m.mu.Unlock()
-
-	startTime := time.Now()
-	buf := make([]byte, 32*1024)
-	var downloaded int64
-
-	for {
-		select {
-		case <-ctx.Done():
-			os.Remove(destPath + ".tmp")
-			return ctx.Err()
-		default:
-		}
-
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			out.Write(buf[:n])
-			downloaded += int64(n)
-
-			m.mu.Lock()
-			m.progress.Downloaded = downloaded
-			if m.progress.Total > 0 {
-				m.progress.Percentage = float64(downloaded) / float64(m.progress.Total) * 100
-			}
-			elapsed := time.Since(startTime).Seconds()
-			if elapsed > 0 {
-				speed := float64(downloaded) / elapsed
-				m.progress.SpeedHuman = formatDownloadSpeed(speed)
-				if speed > 0 && m.progress.Total > 0 {
-					remaining := float64(m.progress.Total-downloaded) / speed
-					m.progress.ETA = formatDownloadDuration(remaining)
-				}
-			}
-			m.mu.Unlock()
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			os.Remove(destPath + ".tmp")
-			return err
-		}
-	}
-
-	// Close file before rename (Windows requirement)
-	if err := out.Close(); err != nil {
-		os.Remove(destPath + ".tmp")
-		return fmt.Errorf("close file: %w", err)
-	}
-
-	// Remove existing file if present
-	if _, err := os.Stat(destPath); err == nil {
-		if err := os.Remove(destPath); err != nil {
-			os.Remove(destPath + ".tmp")
-			return fmt.Errorf("remove existing file: %w", err)
-		}
-	}
-
-	// Rename temp file to final name
-	if err := os.Rename(destPath+".tmp", destPath); err != nil {
-		os.Remove(destPath + ".tmp")
-		return fmt.Errorf("rename file: %w", err)
-	}
-
-	return nil
+// Download starts downloading all model files via the unified downloader.
+func (m *PrunerModelManager) Download(ctx context.Context) error {
+	return m.downloader.Download(ctx, toDownloaderFiles())
 }
 
 // CancelDownload cancels the current download.
 func (m *PrunerModelManager) CancelDownload() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.cancelFunc != nil {
-		m.cancelFunc()
-	}
-}
-
-func formatDownloadSpeed(bytesPerSec float64) string {
-	if bytesPerSec >= 1024*1024 {
-		return fmt.Sprintf("%.1f MB/s", bytesPerSec/1024/1024)
-	}
-	return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024)
-}
-
-func formatDownloadDuration(seconds float64) string {
-	if seconds < 60 {
-		return fmt.Sprintf("%ds", int(seconds))
-	}
-	return fmt.Sprintf("%dm%ds", int(seconds)/60, int(seconds)%60)
+	_ = m.downloader.Cancel()
 }

@@ -47,7 +47,7 @@ func TestMattermostValidator_ValidCredentials(t *testing.T) {
 		}
 
 		response := map[string]interface{}{
-			"id":         "bot123456",
+			"id":         "bot180",
 			"username":   "testbot",
 			"email":      "bot@example.com",
 			"nickname":   "Test Bot",
@@ -71,8 +71,8 @@ func TestMattermostValidator_ValidCredentials(t *testing.T) {
 	if result.MessageKey != "testSuccess" {
 		t.Errorf("expected MessageKey 'testSuccess', got '%s'", result.MessageKey)
 	}
-	if result.Data["bot_id"] != "bot123456" {
-		t.Errorf("expected bot_id 'bot123456', got '%v'", result.Data["bot_id"])
+	if result.Data["bot_id"] != "bot180" {
+		t.Errorf("expected bot_id 'bot180', got '%v'", result.Data["bot_id"])
 	}
 	if result.Data["bot_username"] != "testbot" {
 		t.Errorf("expected bot_username 'testbot', got '%v'", result.Data["bot_username"])

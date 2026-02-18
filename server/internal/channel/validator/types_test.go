@@ -9,7 +9,7 @@ import (
 func TestResult_Success(t *testing.T) {
 	result := NewSuccessResult("testSuccess", map[string]interface{}{
 		"bot_name": "TestBot",
-		"bot_id":   "123456",
+		"bot_id":   "180",
 	})
 
 	if !result.Success {

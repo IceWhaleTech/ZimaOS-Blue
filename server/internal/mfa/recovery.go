@@ -173,7 +173,7 @@ func generateRandomCode(length int) (string, error) {
 	}
 
 	// Convert to alphanumeric characters (0-9, A-Z)
-	const charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const charset = "0180789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	code := make([]byte, length)
 	for i, b := range bytes {
 		code[i] = charset[int(b)%len(charset)]

@@ -249,6 +249,7 @@ export default {
     threatLevel: 'Niveau de menace',
     dismissWarning: 'Ignorer',
     trialExhausted: "Le quota d'essai est épuisé. Veuillez configurer votre propre fournisseur IA pour continuer.",
+    trialServiceBusy: "Le service d'essai est actuellement surchargé en raison d'une forte demande. Veuillez réessayer dans un instant. Si cela persiste, visitez notre communauté pour obtenir de l'aide.",
     configureProvider: 'Configurer le fournisseur',
     // Claude Code CLI
     poweredByClaudeCode: 'Propulsé par {name}',

@@ -24,7 +24,7 @@ func TestWeChatValidator_MissingCorpID(t *testing.T) {
 
 func TestWeChatValidator_MissingSecret(t *testing.T) {
 	v := NewValidator()
-	result := v.Validate(context.Background(), map[string]string{"corp_id": "ww123456"})
+	result := v.Validate(context.Background(), map[string]string{"corp_id": "ww180"})
 
 	if result.Success {
 		t.Error("expected failure for missing secret")
@@ -45,7 +45,7 @@ func TestWeChatValidator_ValidCredentials(t *testing.T) {
 		corpID := r.URL.Query().Get("corpid")
 		secret := r.URL.Query().Get("corpsecret")
 
-		if corpID != "ww123456" {
+		if corpID != "ww180" {
 			t.Errorf("unexpected corpid: got %s", corpID)
 		}
 		if secret != "secret789" {
@@ -64,7 +64,7 @@ func TestWeChatValidator_ValidCredentials(t *testing.T) {
 
 	v := NewValidatorWithOptions(10*time.Second, server.URL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 
@@ -74,8 +74,8 @@ func TestWeChatValidator_ValidCredentials(t *testing.T) {
 	if result.MessageKey != "testSuccess" {
 		t.Errorf("expected MessageKey 'testSuccess', got '%s'", result.MessageKey)
 	}
-	if result.Data["corp_id"] != "ww123456" {
-		t.Errorf("expected corp_id 'ww123456', got '%v'", result.Data["corp_id"])
+	if result.Data["corp_id"] != "ww180" {
+		t.Errorf("expected corp_id 'ww180', got '%v'", result.Data["corp_id"])
 	}
 	if result.Data["token_expire"] != 7200 {
 		t.Errorf("expected token_expire 7200, got '%v'", result.Data["token_expire"])
@@ -97,7 +97,7 @@ func TestWeChatValidator_InvalidSecret(t *testing.T) {
 
 	v := NewValidatorWithOptions(10*time.Second, server.URL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "invalid_secret",
 	})
 
@@ -145,7 +145,7 @@ func TestWeChatValidator_NoPermission(t *testing.T) {
 
 	v := NewValidatorWithOptions(10*time.Second, server.URL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 
@@ -169,7 +169,7 @@ func TestWeChatValidator_AgentNotEnabled(t *testing.T) {
 
 	v := NewValidatorWithOptions(10*time.Second, server.URL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 
@@ -193,7 +193,7 @@ func TestWeChatValidator_OtherError(t *testing.T) {
 
 	v := NewValidatorWithOptions(10*time.Second, server.URL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 
@@ -218,7 +218,7 @@ func TestWeChatValidator_Timeout(t *testing.T) {
 	defer cancel()
 
 	result := v.Validate(ctx, map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 
@@ -235,7 +235,7 @@ func TestWeChatValidator_InvalidJSON(t *testing.T) {
 
 	v := NewValidatorWithOptions(10*time.Second, server.URL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 
@@ -254,7 +254,7 @@ func TestWeChatValidator_NetworkError(t *testing.T) {
 
 	v := NewValidatorWithOptions(1*time.Second, serverURL)
 	result := v.Validate(context.Background(), map[string]string{
-		"corp_id": "ww123456",
+		"corp_id": "ww180",
 		"secret":  "secret789",
 	})
 

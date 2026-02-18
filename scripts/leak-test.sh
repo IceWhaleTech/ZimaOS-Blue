@@ -7,7 +7,7 @@
 set -e
 
 # Configuration
-SERVICE_URL="${SERVICE_URL:-http://localhost:23456}"
+SERVICE_URL="${SERVICE_URL:-http://localhost}"
 PPROF_URL="${SERVICE_URL}/debug/pprof"
 OUTPUT_DIR="${OUTPUT_DIR:-./leak-test-results}"
 SAMPLE_INTERVAL="${SAMPLE_INTERVAL:-60}"  # seconds

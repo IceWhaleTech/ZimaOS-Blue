@@ -47,7 +47,7 @@ func TestDiscordValidator_ValidToken(t *testing.T) {
 		}
 
 		response := map[string]interface{}{
-			"id":            "123456789012345678",
+			"id":            "180789018078",
 			"username":      "TestBot",
 			"discriminator": "0",
 			"global_name":   "Test Bot",
@@ -69,8 +69,8 @@ func TestDiscordValidator_ValidToken(t *testing.T) {
 	if result.Data["bot_name"] != "TestBot" {
 		t.Errorf("expected bot_name 'TestBot', got '%v'", result.Data["bot_name"])
 	}
-	if result.Data["bot_id"] != "123456789012345678" {
-		t.Errorf("expected bot_id '123456789012345678', got '%v'", result.Data["bot_id"])
+	if result.Data["bot_id"] != "180789018078" {
+		t.Errorf("expected bot_id '180789018078', got '%v'", result.Data["bot_id"])
 	}
 	if result.Data["is_bot"] != true {
 		t.Errorf("expected is_bot true, got '%v'", result.Data["is_bot"])

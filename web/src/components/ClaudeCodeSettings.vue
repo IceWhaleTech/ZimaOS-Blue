@@ -385,7 +385,7 @@ function formatDate(dateStr?: string) {
 </script>
 
 <template>
-  <section class="mb-6 sm:mb-8">
+  <section class="mb-6 sm:mb-8" id="claude-code-settings">
     <!-- Header with Toggle -->
     <div class="glass-card">
       <div class="flex items-center justify-between p-4 cursor-pointer" @click="isExpanded = !isExpanded">
@@ -714,16 +714,12 @@ function formatDate(dateStr?: string) {
             <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('claudecode.version') }}</p>
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-gray-900 dark:text-white font-mono">{{ versionInfo.active_version || '-' }}</span>
-              <a
+              <span
                 v-if="hasUpdate && latestVersionDisplay"
-                href="https://docs.anthropic.com/en/docs/claude-code"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-gray-900 dark:text-white hover:text-gray-900 dark:text-white dark:text-white dark:hover:text-gray-900 dark:text-white text-sm font-mono transition-colors"
-                :title="t('claudecode.viewDocs')"
+                class="text-gray-900 dark:text-white text-sm font-mono"
               >
                 ({{ latestVersionDisplay }} {{ t('claudecode.available') }})
-              </a>
+              </span>
             </div>
           </div>
 

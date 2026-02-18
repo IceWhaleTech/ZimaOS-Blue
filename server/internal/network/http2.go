@@ -193,7 +193,7 @@ type KeepAliveConfig struct {
 // DefaultServerConfig returns default server configuration.
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Address:           ":23456",
+		Address:           ":80",
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,

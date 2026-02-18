@@ -143,7 +143,7 @@ echo ========================================
 echo   ZimaOS-Blue Development Environment
 echo ========================================
 echo.
-echo   Backend:  http://localhost:23456
+echo   Backend:  http://localhost
 echo   Frontend: http://localhost:3000 (background)
 echo.
 echo   Press Ctrl+C to stop backend server
@@ -288,7 +288,7 @@ del "%TEMP%\zimaos-dist.tar.gz"
 echo [OK] Server built: server\bin\blue.exe
 
 :: Run the built binary
-echo [INFO] Starting server (production mode, http://localhost:23456)...
+echo [INFO] Starting server (production mode, http://localhost)...
 bin\blue.exe
 goto :eof
 

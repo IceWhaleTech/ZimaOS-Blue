@@ -95,7 +95,7 @@ User Install:    DMG extracts to uncompressed .app → Fast startup
 │  │                  Blue Server (Sidecar Process)           │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │   │
 │  │  │ HTTP Server │  │ WebSocket   │  │ Claude Code CLI │   │   │
-│  │  │ :23456       │  │ Server      │  │ (Bundled)       │   │   │
+│  │  │ :80       │  │ Server      │  │ (Bundled)       │   │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘   │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                  │
@@ -123,7 +123,7 @@ User Install:    DMG extracts to uncompressed .app → Fast startup
 │  │              Blue Server (Linked Go Library)              │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │   │
 │  │  │ HTTP Server │  │ WebSocket   │  │ Claude Code CLI │   │   │
-│  │  │ :23456       │  │ Server      │  │ (Bundled)       │   │   │
+│  │  │ :80       │  │ Server      │  │ (Bundled)       │   │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘   │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                  │
@@ -136,9 +136,9 @@ User Install:    DMG extracts to uncompressed .app → Fast startup
 
 The application will automatically detect available network interfaces and provide accessible URLs:
 
-1. **Local address**: `http://localhost:23456`
-2. **LAN address**: `http://192.168.x.x:23456` (auto-detected)
-3. **Hostname**: `http://hostname.local:23456` (mDNS/Bonjour)
+1. **Local address**: `http://localhost`
+2. **LAN address**: `http://192.168.x.x:80` (auto-detected)
+3. **Hostname**: `http://hostname.local:80` (mDNS/Bonjour)
 
 ### UI Components
 
@@ -150,7 +150,7 @@ The application will automatically detect available network interfaces and provi
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────────┐│
-│  │ 🌐 Network Access: http://192.168.1.100:23456    [📋 Copy]   ││
+│  │ 🌐 Network Access: http://192.168.1.100    [📋 Copy]   ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                                                                  │
 │  ... (rest of the UI)                                           │
@@ -170,12 +170,12 @@ The application will automatically detect available network interfaces and provi
 │  │                                                              ││
 │  │  Local Network:                                              ││
 │  │  ┌─────────────────────────────────────────────────────────┐││
-│  │  │ http://192.168.1.100:23456                    [📋 Copy]  │││
+│  │  │ http://192.168.1.100                    [📋 Copy]  │││
 │  │  └─────────────────────────────────────────────────────────┘││
 │  │                                                              ││
 │  │  Hostname:                                                   ││
 │  │  ┌─────────────────────────────────────────────────────────┐││
-│  │  │ http://my-mac.local:23456                     [📋 Copy]  │││
+│  │  │ http://my-mac.local                     [📋 Copy]  │││
 │  │  └─────────────────────────────────────────────────────────┘││
 │  │                                                              ││
 │  │  ⓘ Make sure devices are on the same network               ││
@@ -205,22 +205,22 @@ The application will automatically detect available network interfaces and provi
 **GET /api/v1/network/addresses**
 ```json
 {
-  "local": "http://localhost:23456",
+  "local": "http://localhost",
   "lan": [
     {
       "interface": "en0",
-      "address": "http://192.168.1.100:23456",
+      "address": "http://192.168.1.100",
       "type": "wifi"
     },
     {
       "interface": "en1",
-      "address": "http://192.168.1.101:23456",
+      "address": "http://192.168.1.101",
       "type": "ethernet"
     }
   ],
-  "hostname": "http://my-mac.local:23456",
-  "port": 23456,
-  "preferred": "http://192.168.1.100:23456"
+  "hostname": "http://my-mac.local",
+  "port": 80,
+  "preferred": "http://192.168.1.100"
 }
 ```
 

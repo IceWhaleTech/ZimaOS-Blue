@@ -510,7 +510,7 @@ onUnmounted(() => {
           <!-- Enable Claude Code CLI prompt -->
           <router-link
             v-else
-            to="/settings?tab=claudecode"
+            to="/settings?tab=llm#claude-code-settings"
             class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
             :title="t('chat.enableClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
@@ -739,7 +739,7 @@ onUnmounted(() => {
               <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span class="break-all">{{ chatStore.streamError === 'NO_STREAM_DATA' ? t('chat.noStreamData') : chatStore.streamError }}</span>
+              <span class="break-all">{{ chatStore.streamError === 'NO_STREAM_DATA' ? t('chat.noStreamData') : chatStore.streamError === 'trial_service_busy' ? t('chat.trialServiceBusy') : chatStore.streamError }}</span>
               <button
                 class="ml-2 text-gray-400 hover:text-gray-300 cursor-pointer"
                 @click="chatStore.clearStreamError"
@@ -951,7 +951,7 @@ onUnmounted(() => {
         v-if="chatStore.error"
         class="px-3 sm:px-4 py-3 bg-red-500/10 border-t border-red-500/30 text-red-400 text-xs sm:text-sm flex items-center justify-between gap-2"
       >
-        <span class="truncate">{{ chatStore.error }}</span>
+        <span class="truncate">{{ chatStore.error === 'trial_service_busy' ? t('chat.trialServiceBusy') : chatStore.error }}</span>
         <button
           class="text-red-400 hover:text-red-300 flex-shrink-0 px-3 py-1 rounded hover:bg-red-500/10 transition-colors cursor-pointer"
           @click="chatStore.clearError"

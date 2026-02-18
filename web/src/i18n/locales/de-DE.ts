@@ -250,6 +250,7 @@ export default {
     threatLevel: 'Bedrohungsstufe',
     dismissWarning: 'Verwerfen',
     trialExhausted: 'Testkontingent aufgebraucht. Bitte konfigurieren Sie Ihren eigenen KI-Anbieter, um fortzufahren.',
+    trialServiceBusy: 'Der Testdienst ist derzeit aufgrund hoher Nachfrage ausgelastet. Bitte versuchen Sie es in einem Moment erneut. Wenn dies weiterhin auftritt, besuchen Sie unsere Community für Hilfe.',
     configureProvider: 'Anbieter konfigurieren',
     // Claude Code CLI
     poweredByClaudeCode: 'Angetrieben von {name}',

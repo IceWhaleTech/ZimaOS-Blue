@@ -138,6 +138,9 @@ func (s *FileStorage) LoadProvider(id string) (*Provider, error) {
 
 	storage, err := s.loadProvidersInternal()
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrProviderNotFound
+		}
 		return nil, err
 	}
 

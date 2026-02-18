@@ -238,6 +238,7 @@ export default {
     threatLevel: 'Livello di minaccia',
     dismissWarning: 'Ignora',
     trialExhausted: 'La quota di prova è esaurita. Configura il tuo provider AI per continuare.',
+    trialServiceBusy: 'Il servizio di prova è attualmente occupato a causa dell\'elevata domanda. Riprova tra un momento. Se il problema persiste, visita la nostra community per assistenza.',
     configureProvider: 'Configura provider',
     // Claude Code CLI
     poweredByClaudeCode: 'Alimentato da {name}',

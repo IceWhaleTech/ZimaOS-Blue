@@ -24,7 +24,7 @@ describe('Clipboard Parser', () => {
     })
 
     it('should handle URLs with ports', () => {
-      expect(getUrlProbability('http://localhost:23456')).toBeGreaterThan(0.5)
+      expect(getUrlProbability('http://localhost')).toBeGreaterThan(0.5)
       expect(getUrlProbability('https://api.example.com:443/v1')).toBeGreaterThanOrEqual(0.7)
     })
 
@@ -46,11 +46,11 @@ describe('Clipboard Parser', () => {
     })
 
     it('should return high probability for Slack tokens', () => {
-      expect(getTokenProbability('xoxb-123456789012-1234567890123-abcdefghijklmnopqrstuvwx')).toBeGreaterThan(0.7)
+      expect(getTokenProbability('xoxb-180789012-1807890123-abcdefghijklmnopqrstuvwx')).toBeGreaterThan(0.7)
     })
 
     it('should return moderate probability for long alphanumeric strings', () => {
-      expect(getTokenProbability('abcdef1234567890abcdef1234567890')).toBeGreaterThan(0.4)
+      expect(getTokenProbability('abcdef1807890abcdef1807890')).toBeGreaterThan(0.4)
     })
 
     it('should return high probability for hex strings (MD5/SHA)', () => {
@@ -99,10 +99,10 @@ https://test.claude-api-dummy.com/`
       it('should handle extra whitespace and newlines', () => {
         const data = `  https://api.example.com/v1
 
-  sk-testkey123456789012345  `
+  sk-testkey180789012345  `
         const result = parseClipboardData(data)
         expect(result['url']).toBe('https://api.example.com/v1')
-        expect(result['api_key']).toBe('sk-testkey123456789012345')
+        expect(result['api_key']).toBe('sk-testkey180789012345')
       })
     })
 
@@ -234,9 +234,9 @@ url: 'https://api.example.com'`
       })
 
       it('should handle colons in URL values', () => {
-        const data = `endpoint: https://api.example.com:23456/v1`
+        const data = `endpoint: https://api.example.com:80/v1`
         const result = parseClipboardData(data)
-        expect(result['endpoint']).toBe('https://api.example.com:23456/v1')
+        expect(result['endpoint']).toBe('https://api.example.com:80/v1')
       })
     })
 

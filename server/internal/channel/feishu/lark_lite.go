@@ -75,16 +75,20 @@ type larkAPIResp struct {
 	Data json.RawMessage `json:"data"`
 }
 
-func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, msgType, content string) error {
+func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, msgType, content, replyToID string) error {
 	token, err := c.getToken(ctx)
 	if err != nil {
 		return err
 	}
-	body, _ := json.Marshal(map[string]string{
+	payload := map[string]string{
 		"receive_id": receiveID,
 		"msg_type":   msgType,
 		"content":    content,
-	})
+	}
+	if replyToID != "" {
+		payload["reply_in_thread"] = replyToID
+	}
+	body, _ := json.Marshal(payload)
 	u := fmt.Sprintf("%s/im/v1/messages?receive_id_type=%s", c.baseURL, receiveIDType)
 	req, _ := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")

@@ -1401,6 +1401,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'A próbaverzió kvótája kimerült. Konfiguráljon saját AI-szolgáltatót a folytatáshoz.',
+    trialServiceBusy: 'A próbaszolgáltatás jelenleg túlterhelt a nagy kereslet miatt. Kérjük, próbálja újra egy pillanat múlva. Ha ez továbbra is fennáll, látogasson el közösségünkbe segítségért.',
     configureProvider: 'Szolgáltató konfigurálása',
     trialQuota: {
       exhausted: 'Próbaverzió kvótája kimerült',

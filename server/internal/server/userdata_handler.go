@@ -26,6 +26,7 @@ type UserDataExport struct {
 	DataType    string                 `json:"data_type"` // "json" or "encrypted"
 	Settings    *UserSettings          `json:"settings,omitempty"`
 	ChatHistory *ChatHistoryExport     `json:"chat_history,omitempty"`
+	Memory      *MemoryExport          `json:"memory,omitempty"`
 	Checksum    string                 `json:"checksum,omitempty"`
 }
 
@@ -65,6 +66,19 @@ type MessageExport struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// MemoryExport represents exported memory data
+type MemoryExport struct {
+	DailyLogs    []DailyLogExport `json:"daily_logs"`
+	LongTermMD   string           `json:"long_term_md"`
+	TotalEntries int              `json:"total_entries"`
+}
+
+// DailyLogExport represents a single daily log
+type DailyLogExport struct {
+	Date    string `json:"date"`
+	Content string `json:"content"`
+}
+
 // ExportRequest represents the export request body
 type ExportRequest struct {
 	Password string `json:"password"`
@@ -90,7 +104,8 @@ type EncryptedExport struct {
 
 // UserDataHandler handles user data export/import operations
 type UserDataHandler struct {
-	memoryStore *memory.Store
+	memoryStore   *memory.Store
+	layeredMemory *memory.LayeredMemoryService
 }
 
 // NewUserDataHandler creates a new user data handler
@@ -98,6 +113,11 @@ func NewUserDataHandler(memoryStore *memory.Store) *UserDataHandler {
 	return &UserDataHandler{
 		memoryStore: memoryStore,
 	}
+}
+
+// SetLayeredMemory sets the layered memory service
+func (h *UserDataHandler) SetLayeredMemory(svc *memory.LayeredMemoryService) {
+	h.layeredMemory = svc
 }
 
 // RegisterRoutes registers the user data routes
@@ -137,6 +157,17 @@ func (h *UserDataHandler) Export(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to export chat history: %v", err)})
 	}
 	export.ChatHistory = chatHistory
+
+	// Export memory data
+	if h.layeredMemory != nil {
+		memoryData, err := h.exportMemory(c.Request().Context())
+		if err != nil {
+			// Log error but don't fail the export
+			fmt.Printf("Warning: Failed to export memory: %v\n", err)
+		} else {
+			export.Memory = memoryData
+		}
+	}
 
 	// Calculate checksum
 	dataBytes, err := json.Marshal(export)
@@ -284,12 +315,49 @@ func (h *UserDataHandler) exportChatHistory(ctx context.Context) (*ChatHistoryEx
 	return chatHistory, nil
 }
 
+func (h *UserDataHandler) exportMemory(ctx context.Context) (*MemoryExport, error) {
+	if h.layeredMemory == nil {
+		return nil, nil
+	}
+
+	memoryExport := &MemoryExport{
+		DailyLogs: make([]DailyLogExport, 0),
+	}
+
+	// Export daily logs
+	dates, err := h.layeredMemory.ListDailyLogs(ctx)
+	if err == nil {
+		for _, date := range dates {
+			content, err := h.layeredMemory.GetDailyLog(ctx, date)
+			if err == nil {
+				memoryExport.DailyLogs = append(memoryExport.DailyLogs, DailyLogExport{
+					Date:    date,
+					Content: content,
+				})
+				memoryExport.TotalEntries++
+			}
+		}
+	}
+
+	// Export long-term memory
+	longTerm, err := h.layeredMemory.GetLongTermMemory(ctx)
+	if err == nil {
+		memoryExport.LongTermMD = longTerm
+		if longTerm != "" {
+			memoryExport.TotalEntries++
+		}
+	}
+
+	return memoryExport, nil
+}
+
 func (h *UserDataHandler) importData(c echo.Context, export *UserDataExport) error {
 	ctx := c.Request().Context()
 	imported := struct {
 		Conversations int `json:"conversations"`
 		Messages      int `json:"messages"`
 		Settings      bool `json:"settings"`
+		MemoryLogs    int `json:"memory_logs"`
 	}{}
 
 	// Import chat history
@@ -315,6 +383,27 @@ func (h *UserDataHandler) importData(c echo.Context, export *UserDataExport) err
 				imported.Messages++
 			}
 			imported.Conversations++
+		}
+	}
+
+	// Import memory data
+	if export.Memory != nil && h.layeredMemory != nil {
+		// Import daily logs
+		for _, dailyLog := range export.Memory.DailyLogs {
+			// Append to daily log (will create if doesn't exist)
+			err := h.layeredMemory.AppendToDaily(ctx, dailyLog.Content, []string{"imported"})
+			if err == nil {
+				imported.MemoryLogs++
+			}
+		}
+
+		// Import long-term memory
+		if export.Memory.LongTermMD != "" {
+			// Promote to long-term memory
+			err := h.layeredMemory.PromoteToLongTerm(ctx, export.Memory.LongTermMD, "Imported")
+			if err == nil {
+				imported.MemoryLogs++
+			}
 		}
 	}
 
@@ -351,6 +440,15 @@ func (h *UserDataHandler) buildPreview(export *UserDataExport) map[string]interf
 		preview["chat_preview"] = map[string]interface{}{
 			"conversations": len(export.ChatHistory.Conversations),
 			"messages":      export.ChatHistory.TotalMessages,
+		}
+	}
+
+	if export.Memory != nil {
+		preview["has_memory"] = true
+		preview["memory_preview"] = map[string]interface{}{
+			"daily_logs":    len(export.Memory.DailyLogs),
+			"has_long_term": export.Memory.LongTermMD != "",
+			"total_entries": export.Memory.TotalEntries,
 		}
 	}
 

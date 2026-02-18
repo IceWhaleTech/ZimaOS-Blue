@@ -28,7 +28,7 @@ func setupTunnelHandler(t *testing.T) (*TunnelHandler, *echo.Echo) {
 	}
 	t.Cleanup(func() { repo.Close() })
 
-	h := NewTunnelHandler(repo, 23456)
+	h := NewTunnelHandler(repo, 80)
 
 	e := echo.New()
 	h.RegisterRoutes(e)
@@ -138,7 +138,7 @@ func TestTunnelHandler_StopTunnel_NoActiveTunnel(t *testing.T) {
 func TestTunnelHandler_StartTunnel_InvalidProvider(t *testing.T) {
 	_, e := setupTunnelHandler(t)
 
-	body := `{"provider": "invalid_provider", "port": 23456}`
+	body := `{"provider": "invalid_provider", "port": 80}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/tunnel/start", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -414,7 +414,7 @@ func TestTunnelSubdomainGeneration(t *testing.T) {
 		t.Errorf("tunnel_subdomain should be 13 characters, got %d", len(config.TunnelSubdomain))
 	}
 	// Suffix should be base58 (no 0, O, I, l)
-	const base58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	const base58 = "180789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 	for _, c := range config.TunnelSubdomain[5:] {
 		if !strings.ContainsRune(base58, c) {
 			t.Errorf("tunnel_subdomain suffix should be base58, got %q", config.TunnelSubdomain)

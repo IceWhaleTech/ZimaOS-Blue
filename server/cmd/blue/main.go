@@ -41,6 +41,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
@@ -657,13 +658,29 @@ func runServer() {
 	server.SetReady(false)
 
 	if err := lm.Shutdown(shutdownCtx); err != nil {
-		logger.Error().Err(err).Msg("Shutdown error")
-		os.Exit(1)
+		logger.Error().Err(err).Msg("Shutdown error - some services may not have stopped cleanly")
+		// Don't use os.Exit here - let deferred cleanup run
 	}
 
 	// Wait for worker pool
 	if err := pool.Wait(); err != nil {
 		logger.Warn().Err(err).Msg("Worker pool error during shutdown")
+	}
+
+	// Clean up cron service if it was initialized
+	if cronHandler != nil {
+		if svc := cronHandler.GetService(); svc != nil {
+			svc.Stop(shutdownCtx)
+			logger.Info().Msg("Cron service stopped")
+		}
+	}
+
+	// Clean up STT service (important for CGO resources like Whisper)
+	if sttService != nil {
+		if wp := sttService.GetWhisperProvider(); wp != nil {
+			wp.Close()
+			logger.Info().Msg("STT Whisper provider cleaned up")
+		}
 	}
 
 	// Clean up TTS service (important for CGO resources like eSpeak-NG)
@@ -689,6 +706,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Initialize speech handler
+	speechKV, _ := kvstore.NewSQLiteStoreWithDB(db)
 	speechService := speech.NewService(&speech.Config{
 		TTS: speech.TTSConfig{Provider: "edge", Model: ""},
 		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper", EditBeforeSend: true},
@@ -698,7 +716,21 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			speechService.SetTTSProvider(provider)
 		}
 	}
-	speechHandler := speech.NewHandler(speechService)
+	speechHandler := speech.NewHandler(speechService, speechKV)
+
+	// Restore persisted TTS provider from kvstore
+	if ttsService != nil {
+		if saved := speechHandler.GetPersistedTTSProvider(); saved != "" {
+			if err := ttsService.SetDefaultProvider(tts.ProviderType(saved)); err != nil {
+				logger.Warn("Failed to restore persisted TTS provider", zap.String("provider", saved), zap.Error(err))
+			} else {
+				if p := ttsService.GetProvider(tts.ProviderType(saved)); p != nil {
+					speechService.SetTTSProvider(p)
+				}
+				logger.Info("Restored persisted TTS provider", zap.String("provider", saved))
+			}
+		}
+	}
 	if sttService != nil {
 		if wp := sttService.GetWhisperProvider(); wp != nil {
 			speechService.SetASRProvider(wp)

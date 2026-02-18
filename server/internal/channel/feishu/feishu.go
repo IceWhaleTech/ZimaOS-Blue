@@ -14,6 +14,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 // Channel implements the channel.Channel interface for Feishu/Lark.
@@ -151,6 +152,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 			ChatType    string `json:"chat_type"`
 			MessageType string `json:"message_type"`
 			Content     string `json:"content"`
+			ParentID    string `json:"parent_id"`
 		} `json:"message"`
 		Sender struct {
 			SenderID struct {
@@ -226,6 +228,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 		ID: messageID, ChannelName: "feishu", ChatID: chatID, UserID: userID,
 		Type: c.convertMessageType(msgType), Content: content, Timestamp: time.Now(),
 		IsGroup:  msg.ChatType == "group",
+		ReplyToID: msg.ParentID,
 		Metadata: map[string]interface{}{"msg_type": msgType, "language": "zh-CN"},
 	}
 	if attachment != nil {
@@ -253,13 +256,24 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 				if c.sessionManager != nil && sessionID != "" {
 					c.sessionManager.EmitError(sessionID, userID, err.Error())
 				}
-				c.SendText(c.ctx, chatID, fmt.Sprintf("处理消息时发生错误: %v", err))
+				// Extract language from message metadata for i18n
+				lang := i18n.DefaultLanguage
+				if channelMsg.Metadata != nil {
+					if langStr, ok := channelMsg.Metadata["language"].(string); ok {
+						lang = i18n.ParseLanguage(langStr)
+					}
+				}
+				// Send user-friendly error message
+				errMsg := i18n.T(lang, i18n.MsgProcessingError, err)
+				if sendErr := c.SendText(c.ctx, chatID, errMsg, ""); sendErr != nil {
+					c.logger.Error("failed to send error message to user", zap.Error(sendErr), zap.String("original_error", err.Error()))
+				}
 				return
 			}
 			if response == "" {
 				return
 			}
-			if err := c.SendText(c.ctx, chatID, response); err != nil {
+			if err := c.SendText(c.ctx, chatID, response, ""); err != nil {
 				c.logger.Error("failed to send response", zap.Error(err))
 			} else if c.sessionManager != nil && sessionID != "" {
 				c.sessionManager.EmitMessageSent(sessionID, userID, response)
@@ -287,7 +301,7 @@ func (c *Channel) onBotP2pChatEntered(ctx context.Context, eventData json.RawMes
 	}
 }
 
-func (c *Channel) SendText(ctx context.Context, chatID string, text string) error {
+func (c *Channel) SendText(ctx context.Context, chatID string, text string, replyToID string) error {
 	// Humanize: strip markdown formatting for IM readability
 	text = humanizer.Humanize(text, humanizer.ModeIM)
 	content, _ := json.Marshal(map[string]string{"text": text})
@@ -297,7 +311,7 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string) erro
 	} else if strings.HasPrefix(chatID, "on_") {
 		receiveIDType = "union_id"
 	}
-	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "text", string(content)); err != nil {
+	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "text", string(content), replyToID); err != nil {
 		return err
 	}
 	c.msgsSent.Add(1)
@@ -309,7 +323,7 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string) erro
 }
 
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	return c.SendText(ctx, msg.ChatID, msg.Content)
+	return c.SendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
 }
 
 func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) error {
@@ -319,7 +333,7 @@ func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) 
 	} else if strings.HasPrefix(chatID, "on_") {
 		receiveIDType = "union_id"
 	}
-	return c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON)
+	return c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, "")
 }
 
 func (c *Channel) Stop(ctx context.Context) error {
@@ -434,7 +448,7 @@ func (c *Channel) processCommand(ctx context.Context, content string, chatID str
 			response = "处理命令时发生错误，请稍后重试。"
 		}
 		if response != "" {
-			c.SendText(ctx, chatID, response)
+			c.SendText(ctx, chatID, response, "")
 		}
 	}()
 	return true
@@ -460,7 +474,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 		case chunk, ok := <-content:
 			if !ok {
 				if fullContent.Len() > 0 {
-					return c.SendText(ctx, chatID, fullContent.String())
+					return c.SendText(ctx, chatID, fullContent.String(), "")
 				}
 				return nil
 			}

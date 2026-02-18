@@ -1155,6 +1155,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Limit próbny został wyczerpany. Skonfiguruj własnego dostawcę AI, aby kontynuować.',
+    trialServiceBusy: 'Usługa próbna jest obecnie przeciążona z powodu dużego zapotrzebowania. Spróbuj ponownie za chwilę. Jeśli problem się powtarza, odwiedź naszą społeczność po pomoc.',
     configureProvider: 'Skonfiguruj dostawcę',
     trialQuota: {
       exhausted: 'Limit próbny wyczerpany',

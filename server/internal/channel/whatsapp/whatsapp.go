@@ -162,7 +162,7 @@ func (c *Channel) runClient() {
 
 // handleIncomingMessage processes an incoming WhatsApp message.
 func (c *Channel) handleIncomingMessage(senderJID, chatJID, messageID, content string, timestamp time.Time, isGroup bool, groupName string) {
-	// Extract phone number from JID (format: 1234567890@s.whatsapp.net)
+	// Extract phone number from JID (format: 1807890@s.whatsapp.net)
 	sender := extractPhoneFromJID(senderJID)
 	chatID := extractPhoneFromJID(chatJID)
 
@@ -364,7 +364,7 @@ func (c *Channel) setError(err string) {
 }
 
 // extractPhoneFromJID extracts the phone number from a WhatsApp JID.
-// JID format: 1234567890@s.whatsapp.net or 1234567890-1234567890@g.us (group)
+// JID format: 1807890@s.whatsapp.net or 1807890-1807890@g.us (group)
 func extractPhoneFromJID(jid string) string {
 	// Remove the domain part
 	parts := strings.Split(jid, "@")

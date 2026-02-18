@@ -135,9 +135,9 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let default_port = 23456u16;
+    let default_port = 80u16;
 
-    // Check if there's an existing healthy server on port 23456
+    // Check if there's an existing healthy server on port 80
     if check_existing_server(default_port).await {
         info!(
             "Found existing healthy Echo server on port {}, reusing it",
@@ -156,7 +156,7 @@ pub async fn start_sidecar_server(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    // Check if port 23456 is occupied but server is not healthy (zombie process)
+    // Check if port 80 is occupied but server is not healthy (zombie process)
     if std::net::TcpListener::bind(("127.0.0.1", default_port)).is_err() {
         warn!(
             "Port {} is occupied but server is not healthy, killing existing processes",
@@ -256,7 +256,7 @@ pub async fn start_sidecar_server_with_args(app: &AppHandle, args: Option<&str>)
     } else {
         None
     };
-    let default_port = cli_port.unwrap_or(23456u16);
+    let default_port = cli_port.unwrap_or(80u16);
 
     if check_existing_server(default_port).await {
         info!("Found existing healthy server on port {}, reusing it", default_port);
@@ -390,7 +390,7 @@ pub async fn get_server_status(app: AppHandle) -> Result<ServerStatus, String> {
     let port = if let Some(state) = app.try_state::<AppState>() {
         *state.server_port.lock().unwrap()
     } else {
-        23456
+        80
     };
 
     let uptime = if let Some(start) = *START_TIME.lock().await {

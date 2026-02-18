@@ -43,6 +43,9 @@ extern "C" {
 
     /// Free a string returned by the Go library
     fn BlueServerFreeString(s: *mut c_char);
+
+    /// Force cleanup of all CGO resources
+    fn BlueServerCleanup();
 }
 
 #[cfg(target_os = "windows")]
@@ -75,6 +78,9 @@ extern "C" {
 
     /// Free a string returned by the Go library
     fn BlueServerFreeString(s: *mut c_char);
+
+    /// Force cleanup of all CGO resources
+    fn BlueServerCleanup();
 }
 
 /// Track if we've started the server (to prevent double-start)
@@ -216,6 +222,13 @@ pub fn get_version() -> String {
         BlueServerFreeString(version_ptr);
         version
     }
+}
+
+/// Force cleanup of all CGO resources
+/// This should be called before process termination to ensure proper cleanup
+pub fn cleanup() {
+    info!("Forcing cleanup of CGO resources");
+    unsafe { BlueServerCleanup() };
 }
 
 #[cfg(test)]

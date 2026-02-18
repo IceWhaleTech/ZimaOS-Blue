@@ -198,35 +198,12 @@ func TestModelManagerDoubleDownload(t *testing.T) {
 	}
 }
 
-func TestFormatDownloadSpeed(t *testing.T) {
-	tests := []struct {
-		bps    float64
-		expect string
-	}{
-		{500 * 1024, "500.0 KB/s"},
-		{2.5 * 1024 * 1024, "2.5 MB/s"},
-	}
-	for _, tt := range tests {
-		got := formatDownloadSpeed(tt.bps)
-		if got != tt.expect {
-			t.Errorf("formatDownloadSpeed(%f) = %q, want %q", tt.bps, got, tt.expect)
-		}
-	}
-}
+func TestModelManagerProgress(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewPrunerModelManager(dir)
 
-func TestFormatDownloadDuration(t *testing.T) {
-	tests := []struct {
-		secs   float64
-		expect string
-	}{
-		{30, "30s"},
-		{90, "1m30s"},
-		{3661, "61m1s"},
-	}
-	for _, tt := range tests {
-		got := formatDownloadDuration(tt.secs)
-		if got != tt.expect {
-			t.Errorf("formatDownloadDuration(%f) = %q, want %q", tt.secs, got, tt.expect)
-		}
+	status := mgr.GetStatus()
+	if status.Progress != nil {
+		t.Error("progress should be nil when not downloading")
 	}
 }

@@ -49,7 +49,7 @@ func (h *Handler) GetMyPermissions(c echo.Context) error {
 		return c.JSON(http.StatusOK, &PermissionsResponse{
 			UserID:      uuid.Nil,
 			Role:        claims.Role,
-			Permissions: DefaultUserPermissions(),
+			Permissions: AllPagePermissions(),
 		})
 	}
 

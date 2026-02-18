@@ -97,7 +97,7 @@ func generateID() string {
 
 // randomString generates a random string of given length
 func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0180789"
 	b := make([]byte, length)
 	for i := range b {
 		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]

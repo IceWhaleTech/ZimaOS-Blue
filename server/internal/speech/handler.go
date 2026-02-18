@@ -8,27 +8,48 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 )
+
+// kvKeyTTSProvider is the kvstore key for the persisted TTS provider.
+const kvKeyTTSProvider = "speech.tts.provider"
 
 // Handler handles unified speech HTTP requests.
 type Handler struct {
 	service        Service
 	espeakManager  *EspeakManager
+	kv             kvstore.Store
 }
 
 // NewHandler creates a new speech handler.
-func NewHandler(svc Service) *Handler {
+func NewHandler(svc Service, kv kvstore.Store) *Handler {
 	return &Handler{
 		service:       svc,
 		espeakManager: NewEspeakManager("./data"),
+		kv:            kv,
 	}
 }
 
 // GetEspeakManager returns the EspeakManager instance.
 func (h *Handler) GetEspeakManager() *EspeakManager {
 	return h.espeakManager
+}
+
+// GetPersistedTTSProvider returns the persisted TTS provider from kvstore, or empty string if not set.
+func (h *Handler) GetPersistedTTSProvider() string {
+	if h.kv == nil {
+		return ""
+	}
+	val, err := h.kv.Get(context.Background(), kvKeyTTSProvider)
+	if err != nil {
+		return ""
+	}
+	if s, ok := val.(string); ok {
+		return s
+	}
+	return ""
 }
 
 // RegisterRoutes registers unified speech management routes.
@@ -74,6 +95,18 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// eSpeak-NG library management
 	espeak.GET("/library/status", h.GetEspeakLibraryStatus)
 	espeak.POST("/library/download", h.DownloadEspeakLibrary)
+
+	// Vocoder management
+	vocoder := g.Group("/vocoder")
+	vocoder.GET("/status", h.GetVocoderStatus)
+	vocoder.POST("/download", h.DownloadVocoder)
+	vocoder.POST("/download/cancel", h.CancelVocoderDownload)
+
+	// Kokoro model management
+	kokoro := g.Group("/kokoro")
+	kokoro.GET("/status", h.GetKokoroStatus)
+	kokoro.POST("/download", h.DownloadKokoro)
+	kokoro.POST("/download/cancel", h.CancelKokoroDownload)
 }
 
 // GetStatus returns the unified speech status.
@@ -496,6 +529,11 @@ func (h *Handler) SwitchTTSProvider(c echo.Context) error {
 		h.service.SetTTSProvider(provider)
 	}
 
+	// Persist to kvstore
+	if h.kv != nil {
+		_ = h.kv.Set(context.Background(), kvKeyTTSProvider, req.Provider, 0)
+	}
+
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":   "switched",
 		"message":  "Switched to provider: " + req.Provider,
@@ -647,5 +685,65 @@ func (h *Handler) DownloadEspeakLibrary(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":  "downloaded",
 		"message": "eSpeak-NG library downloaded successfully",
+	})
+}
+
+// GetVocoderStatus returns the vocoder model status.
+func (h *Handler) GetVocoderStatus(c echo.Context) error {
+	status := h.service.GetTTSService().GetVocoderStatus()
+	return c.JSON(http.StatusOK, status)
+}
+
+// DownloadVocoder starts downloading the vocoder model.
+func (h *Handler) DownloadVocoder(c echo.Context) error {
+	ctx := c.Request().Context()
+	if err := h.service.GetTTSService().DownloadVocoderModel(ctx); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloading",
+		"message": "vocoder model download started",
+	})
+}
+
+// CancelVocoderDownload cancels the vocoder download.
+func (h *Handler) CancelVocoderDownload(c echo.Context) error {
+	h.service.GetTTSService().CancelVocoderDownload()
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "cancelled",
+		"message": "vocoder download cancelled",
+	})
+}
+
+// GetKokoroStatus returns the Kokoro model status.
+func (h *Handler) GetKokoroStatus(c echo.Context) error {
+	status := h.service.GetTTSService().GetKokoroStatus()
+	return c.JSON(http.StatusOK, status)
+}
+
+// DownloadKokoro starts downloading the Kokoro model.
+func (h *Handler) DownloadKokoro(c echo.Context) error {
+	ctx := c.Request().Context()
+	if err := h.service.GetTTSService().DownloadKokoroModel(ctx); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "downloading",
+		"message": "Kokoro model download started",
+	})
+}
+
+// CancelKokoroDownload cancels the Kokoro download.
+func (h *Handler) CancelKokoroDownload(c echo.Context) error {
+	h.service.GetTTSService().CancelKokoroDownload()
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "cancelled",
+		"message": "Kokoro download cancelled",
 	})
 }

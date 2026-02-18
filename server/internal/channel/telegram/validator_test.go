@@ -45,7 +45,7 @@ func TestValidator_ValidToken(t *testing.T) {
 		response := map[string]interface{}{
 			"ok": true,
 			"result": map[string]interface{}{
-				"id":         123456789,
+				"id":         180789,
 				"is_bot":     true,
 				"first_name": "TestBot",
 				"username":   "test_bot",
@@ -74,8 +74,8 @@ func TestValidator_ValidToken(t *testing.T) {
 	}
 	// Check bot_id is correct (JSON numbers are float64)
 	if botID, ok := result.Data["bot_id"].(int64); ok {
-		if botID != 123456789 {
-			t.Errorf("expected bot_id 123456789, got %v", botID)
+		if botID != 180789 {
+			t.Errorf("expected bot_id 180789, got %v", botID)
 		}
 	}
 }

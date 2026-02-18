@@ -1346,6 +1346,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Prøvekvoten er oppbrukt. Vennligst konfigurer din egen AI-leverandør for å fortsette.',
+    trialServiceBusy: 'Prøvetjenesten er for øyeblikket opptatt på grunn av høy etterspørsel. Vennligst prøv igjen om et øyeblikk. Hvis dette fortsetter, besøk fellesskapet vårt for hjelp.',
     configureProvider: 'Konfigurer leverandør',
     trialQuota: {
       exhausted: 'Prøvekvote oppbrukt',

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/labstack/echo/v4"
 )
 
@@ -17,16 +18,18 @@ type Handler struct {
 	upgradeService   *UpgradeService
 	questionsService *QuestionsService
 	jwtService       *auth.JWTService
+	userService      *user.Service
 	dataDir          string
 }
 
 // NewHandler creates a new preview Handler.
-func NewHandler(modeService *ModeService, upgradeService *UpgradeService, jwtService *auth.JWTService) *Handler {
+func NewHandler(modeService *ModeService, upgradeService *UpgradeService, jwtService *auth.JWTService, userService *user.Service) *Handler {
 	return &Handler{
 		modeService:      modeService,
 		upgradeService:   upgradeService,
 		questionsService: NewQuestionsService(),
 		jwtService:       jwtService,
+		userService:      userService,
 		dataDir:          "./data",
 	}
 }
@@ -179,6 +182,17 @@ func (h *Handler) GetPreviewToken(c echo.Context) error {
 
 	if !isPreview {
 		return echo.NewHTTPError(http.StatusForbidden, "preview token only available in preview mode")
+	}
+
+	// Security check: ensure no real users exist
+	if h.userService != nil {
+		adminExists, err := h.userService.AdminExists(c.Request().Context())
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to check admin status")
+		}
+		if adminExists {
+			return echo.NewHTTPError(http.StatusForbidden, "preview token not available after user creation")
+		}
 	}
 
 	// Generate a temporary token for the preview user

@@ -55,7 +55,7 @@ export function getTunnelProviders() {
 export function startRemoteAccess(provider?: string, port?: number, authtoken?: string, cloudflareToken?: string, ngrokDomain?: string) {
   return api.post<{ success: boolean; message: string; tunnel?: TunnelStatus; provider?: string }>('/tunnel/start', {
     provider: provider || 'auto',
-    port: port || 23456,
+    port: port || 80,
     ngrok_authtoken: authtoken,
     ngrok_domain: ngrokDomain,
     cloudflare_token: cloudflareToken

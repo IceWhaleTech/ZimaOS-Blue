@@ -101,7 +101,7 @@ import "golang.ngrok.com/ngrok"
 
 listener, err := ngrok.Listen(ctx,
     config.HTTPEndpoint(
-        config.WithForwardsTo("localhost:23456"),
+        config.WithForwardsTo("localhost"),
     ),
     ngrok.WithAuthtoken(authtoken),
 )
@@ -192,7 +192,7 @@ oleutil.CreateObject("HNetCfg.FWRule")
     },
     "hints": [
       "Windows Firewall exception not found. Run as administrator.",
-      "Check if port 23456 is available."
+      "Check if port 80 is available."
     ]
   }
 }
@@ -225,7 +225,7 @@ oleutil.CreateObject("HNetCfg.FWRule")
 **Description**: Start, stop, and monitor ngrok tunnels using the SDK.
 
 **Requirements**:
-- Start tunnel with configurable port (default: 23456)
+- Start tunnel with configurable port (default: 80)
 - Support optional ngrok authtoken for paid features
 - Display tunnel URL with copy button
 - Show connection status (connecting/connected/disconnected)
@@ -378,7 +378,7 @@ type RemoteAccessConfig struct {
 
 #### Scenario 2: Port Already in Use
 - **Detection**: SDK returns port conflict error
-- **User Message**: "Port 23456 is already in use. Please stop other services or configure a different port."
+- **User Message**: "Port 80 is already in use. Please stop other services or configure a different port."
 - **Action**: Allow port configuration in settings
 
 #### Scenario 3: Network Error

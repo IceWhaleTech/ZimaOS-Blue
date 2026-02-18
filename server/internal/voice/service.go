@@ -5,10 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
@@ -22,8 +25,9 @@ type service struct {
 	sessions   map[string]*Session
 	mu         sync.RWMutex
 	// TTS cache
-	ttsCache map[string]*ttsCacheEntry
+	ttsCache   map[string]*ttsCacheEntry
 	ttsCacheMu sync.RWMutex
+	ttsSF      singleflight.Group
 }
 
 // ttsCacheEntry represents a cached TTS result
@@ -154,75 +158,160 @@ func (s *service) Transcribe(ctx context.Context, req *TranscribeRequest, audio 
 	}, nil
 }
 
-// Synthesize synthesizes text to speech.
-// Provider, voice, and speed are determined internally based on text content.
-func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byte, string, error) {
-	if req.Text == "" {
-		return nil, "", fmt.Errorf("text is required")
-	}
+// maxChunkLen is the threshold (in runes) above which text is split into chunks.
+const maxChunkLen = 200
 
-	if s.ttsService == nil {
-		return nil, "", fmt.Errorf("TTS service not configured")
-	}
+// synthesizeChunk synthesizes a single text chunk via singleflight (dedup identical requests).
+func (s *service) synthesizeChunk(ctx context.Context, text string, format tts.AudioFormat, speed, pitch, volume float32) ([]byte, string, error) {
+	provider := string(s.ttsService.GetDefaultProvider())
+	key := fmt.Sprintf("%s:%s:%s:%.2f:%.2f:%.2f", provider, text, format, speed, pitch, volume)
 
-	// Clean text for TTS using humanizer (strips markdown, emojis, etc.)
-	cleanText := humanizer.Humanize(req.Text, humanizer.ModeVoice)
-	if cleanText == "" {
-		return nil, "", fmt.Errorf("text contains only formatting or emojis")
-	}
-
-	// Get TTS config (speed, pitch, volume)
-	speed, pitch, volume := s.ttsService.GetConfig()
-
-	// Determine format
-	format := tts.AudioFormat(req.Format)
-	if format == "" {
-		format = tts.FormatMP3
-	}
-
-	// Generate cache key including config settings (use clean text)
-	cacheKey := fmt.Sprintf("%s:%s:%.2f:%.2f:%.2f", cleanText, format, speed, pitch, volume)
-
-	// Check cache
+	// Check cache first
 	s.ttsCacheMu.RLock()
-	if entry, exists := s.ttsCache[cacheKey]; exists {
+	if entry, exists := s.ttsCache[key]; exists {
 		s.ttsCacheMu.RUnlock()
 		return entry.audio, entry.contentType, nil
 	}
 	s.ttsCacheMu.RUnlock()
 
-	// Create TTS request with config settings (use clean text)
-	ttsReq := &tts.SynthesizeRequest{
-		Text:   cleanText,
-		Format: format,
-		Speed:  speed,
-		Pitch:  pitch,
-		Volume: volume,
+	// Singleflight dedup: identical chunks only synthesize once
+	type sfResult struct {
+		audio       []byte
+		contentType string
 	}
-
-	// Use default provider (Edge TTS with language detection)
-	result, err := s.ttsService.Synthesize(ctx, ttsReq)
+	v, err, _ := s.ttsSF.Do(key, func() (interface{}, error) {
+		result, err := s.ttsService.Synthesize(ctx, &tts.SynthesizeRequest{
+			Text: text, Format: format, Speed: speed, Pitch: pitch, Volume: volume,
+		})
+		if err != nil {
+			return nil, err
+		}
+		defer result.Audio.Close()
+		data, err := io.ReadAll(result.Audio)
+		if err != nil {
+			return nil, err
+		}
+		// Cache
+		s.ttsCacheMu.Lock()
+		s.ttsCache[key] = &ttsCacheEntry{audio: data, contentType: result.ContentType, createdAt: time.Now()}
+		s.ttsCacheMu.Unlock()
+		return &sfResult{audio: data, contentType: result.ContentType}, nil
+	})
 	if err != nil {
-		return nil, "", fmt.Errorf("synthesis failed: %w", err)
+		return nil, "", err
 	}
-	defer result.Audio.Close()
+	r := v.(*sfResult)
+	return r.audio, r.contentType, nil
+}
 
-	// Read audio data
-	audioData, err := io.ReadAll(result.Audio)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to read audio: %w", err)
+// Synthesize synthesizes text to speech.
+// Long text is split into sentence chunks and synthesized concurrently via singleflight.
+func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byte, string, error) {
+	if req.Text == "" {
+		return nil, "", fmt.Errorf("text is required")
+	}
+	if s.ttsService == nil {
+		return nil, "", fmt.Errorf("TTS service not configured")
 	}
 
-	// Cache the result
-	s.ttsCacheMu.Lock()
-	s.ttsCache[cacheKey] = &ttsCacheEntry{
-		audio:       audioData,
-		contentType: result.ContentType,
-		createdAt:   time.Now(),
+	cleanText := humanizer.Humanize(req.Text, humanizer.ModeVoice)
+	if cleanText == "" {
+		return nil, "", fmt.Errorf("text contains only formatting or emojis")
 	}
-	s.ttsCacheMu.Unlock()
 
-	return audioData, result.ContentType, nil
+	speed, pitch, volume := s.ttsService.GetConfig()
+	format := tts.AudioFormat(req.Format)
+	if format == "" {
+		format = tts.FormatMP3
+	}
+
+	chunks := splitTextForTTS(cleanText, maxChunkLen)
+
+	// Single chunk: no concurrency needed
+	if len(chunks) == 1 {
+		return s.synthesizeChunk(ctx, chunks[0], format, speed, pitch, volume)
+	}
+
+	// Multiple chunks: synthesize concurrently via singleflight
+	type indexedResult struct {
+		idx         int
+		audio       []byte
+		contentType string
+		err         error
+	}
+	ch := make(chan indexedResult, len(chunks))
+	for i, chunk := range chunks {
+		go func(idx int, text string) {
+			audio, ct, err := s.synthesizeChunk(ctx, text, format, speed, pitch, volume)
+			ch <- indexedResult{idx: idx, audio: audio, contentType: ct, err: err}
+		}(i, chunk)
+	}
+
+	// Collect in order
+	ordered := make([]indexedResult, len(chunks))
+	for range chunks {
+		r := <-ch
+		if r.err != nil {
+			return nil, "", fmt.Errorf("synthesis failed: %w", r.err)
+		}
+		ordered[r.idx] = r
+	}
+
+	var buf bytes.Buffer
+	var contentType string
+	for _, r := range ordered {
+		buf.Write(r.audio)
+		if contentType == "" {
+			contentType = r.contentType
+		}
+	}
+	return buf.Bytes(), contentType, nil
+}
+
+// splitTextForTTS splits text into sentence-level chunks.
+func splitTextForTTS(text string, maxRunes int) []string {
+	if utf8.RuneCountInString(text) <= maxRunes {
+		return []string{text}
+	}
+
+	var chunks []string
+	var current strings.Builder
+	currentLen := 0
+
+	for _, r := range text {
+		current.WriteRune(r)
+		currentLen++
+
+		isSentenceEnd := r == '.' || r == '!' || r == '?' ||
+			r == '。' || r == '！' || r == '？' || r == '；' ||
+			r == '\n'
+
+		if isSentenceEnd && currentLen > 0 {
+			if s := strings.TrimSpace(current.String()); s != "" {
+				chunks = append(chunks, s)
+			}
+			current.Reset()
+			currentLen = 0
+		} else if currentLen >= maxRunes {
+			s := current.String()
+			cutIdx := strings.LastIndexAny(s, ",;，、 ")
+			if cutIdx > len(s)/2 {
+				chunks = append(chunks, strings.TrimSpace(s[:cutIdx+1]))
+				remainder := s[cutIdx+1:]
+				current.Reset()
+				current.WriteString(remainder)
+				currentLen = utf8.RuneCountInString(remainder)
+			} else {
+				chunks = append(chunks, strings.TrimSpace(s))
+				current.Reset()
+				currentLen = 0
+			}
+		}
+	}
+	if s := strings.TrimSpace(current.String()); s != "" {
+		chunks = append(chunks, s)
+	}
+	return chunks
 }
 
 // ProcessVoiceInput processes voice input and returns a response.

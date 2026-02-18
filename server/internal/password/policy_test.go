@@ -285,7 +285,7 @@ func TestIsCommonPassword(t *testing.T) {
 		{"password", true},
 		{"PASSWORD", true},
 		{"Password", true},
-		{"123456", true},
+		{"180", true},
 		{"qwerty", true},
 		{"uniquepassword", false},
 		{"", false},

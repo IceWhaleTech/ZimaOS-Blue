@@ -18,7 +18,7 @@ func getUptime() int64 {
 		return 0
 	}
 
-	// Parse "{ sec = 1234567890, usec = 0 }" format
+	// Parse "{ sec = 1807890, usec = 0 }" format
 	outputStr := string(output)
 	if idx := strings.Index(outputStr, "sec = "); idx != -1 {
 		start := idx + 6

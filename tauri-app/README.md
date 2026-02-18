@@ -16,7 +16,7 @@ Tauri v2 桌面应用，通过 FFI 直接链接 Go 静态库（libblue.a），�
 │                  │ FFI (C ABI)          │
 │  ┌───────────────▼───────────────────┐  │
 │  │     libblue.a (Go c-archive)      │  │
-│  │  - HTTP API 服务 (:23456)          │  │
+│  │  - HTTP API 服务 (:80)          │  │
 │  │  - LLM 代理 / 会话管理             │  │
 │  │  - STT (Whisper) / TTS (eSpeak)   │  │
 │  │  - 安全 / 插件 / 工作流            │  │
@@ -155,8 +155,8 @@ tauri-app/
 ### 服务未启动
 
 1. 检查日志：应用启动时会输出到 stderr
-2. 检查端口：`lsof -i :23456`
-3. 手动测试：`curl http://localhost:23456/api/v1/health`
+2. 检查端口：`lsof -i :80`
+3. 手动测试：`curl http://localhost/api/v1/health`
 
 ### 构建失败：libblue.a 找不到
 

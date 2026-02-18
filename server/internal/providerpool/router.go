@@ -181,7 +181,6 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 				Provider: provider,
 				Model:    model,
 			})
-			break
 		}
 	}
 
@@ -252,6 +251,10 @@ func (r *Router) sortByStrategy(candidates []*RouteCandidate, strategy RoutingSt
 // sortByPriority sorts by provider priority (higher first)
 func (r *Router) sortByPriority(candidates []*RouteCandidate) {
 	sort.Slice(candidates, func(i, j int) bool {
+		// Same provider: keep together (maintain order)
+		if candidates[i].Provider.ID == candidates[j].Provider.ID {
+			return false
+		}
 		// Higher priority first
 		if candidates[i].Provider.Priority != candidates[j].Provider.Priority {
 			return candidates[i].Provider.Priority > candidates[j].Provider.Priority

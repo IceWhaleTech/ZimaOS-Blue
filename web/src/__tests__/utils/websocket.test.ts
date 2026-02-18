@@ -66,7 +66,7 @@ describe('WebSocketClient', () => {
   it('should connect to WebSocket server', async () => {
     const onStatusChange = vi.fn()
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
       onStatusChange,
     })
 
@@ -85,7 +85,7 @@ describe('WebSocketClient', () => {
   it('should disconnect from WebSocket server', async () => {
     const onStatusChange = vi.fn()
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
       onStatusChange,
     })
 
@@ -103,7 +103,7 @@ describe('WebSocketClient', () => {
 
   it('should send messages when connected', async () => {
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
     })
 
     client.connect()
@@ -119,7 +119,7 @@ describe('WebSocketClient', () => {
 
   it('should queue messages when not connected', () => {
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
       reconnect: true,
     })
 
@@ -132,7 +132,7 @@ describe('WebSocketClient', () => {
   it('should handle message events', async () => {
     const handler = vi.fn()
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
     })
 
     client.on('test-event', handler)
@@ -157,7 +157,7 @@ describe('WebSocketClient', () => {
   it('should unsubscribe from message events', async () => {
     const handler = vi.fn()
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
     })
 
     const unsubscribe = client.on('test-event', handler)
@@ -183,7 +183,7 @@ describe('WebSocketClient', () => {
   it('should handle wildcard message handlers', async () => {
     const handler = vi.fn()
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
     })
 
     client.on('*', handler)
@@ -206,7 +206,7 @@ describe('WebSocketClient', () => {
 
   it('should return correct connection status', () => {
     const client = new WebSocketClient({
-      url: 'ws://localhost:23456',
+      url: 'ws://localhost',
     })
 
     expect(client.connectionStatus).toBe('disconnected')

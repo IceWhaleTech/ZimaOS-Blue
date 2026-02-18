@@ -105,10 +105,10 @@ start_server() {
         warn "Air not installed, running without hot reload"
         warn "Run 'go install github.com/air-verse/air@latest' to enable hot reload"
         # Build first
-        go build -o blue ./cmd/blue
+        go build -tags 'fts5 espeak' -o blue ./cmd/blue
         success "Server built successfully"
 
-        info "Starting server on http://localhost:23456"
+        info "Starting server on http://localhost"
         ./blue
     fi
 }
@@ -138,7 +138,7 @@ start_all() {
     echo -e "${CYAN}  ZimaOS-Blue Development Environment${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo ""
-    echo -e "  Backend:  ${YELLOW}http://localhost:23456${NC}"
+    echo -e "  Backend:  ${YELLOW}http://localhost${NC}"
     echo -e "  Frontend: ${YELLOW}http://localhost:3000${NC} (background)"
     echo ""
     if command_exists air; then
@@ -165,7 +165,7 @@ start_all() {
     if command_exists air; then
         air
     else
-        go build -tags dev -o blue ./cmd/blue
+        go build -tags 'fts5 espeak dev' -o blue ./cmd/blue
         ./blue
     fi
 }
@@ -249,7 +249,7 @@ build_all() {
     # Build server
     info "Building Go server..."
     cd "$PROJECT_ROOT/server"
-    go build -ldflags="-s -w" -o blue ./cmd/blue
+    go build -tags 'fts5 espeak' -ldflags="-s -w" -o blue ./cmd/blue
     success "Server built: server/echo"
 
     # Build web
@@ -292,7 +292,7 @@ prd_run() {
     success "Server built: server/bin/blue"
 
     # Run the built binary
-    info "Starting server (production mode, http://localhost:23456)..."
+    info "Starting server (production mode, http://localhost)..."
     ./bin/blue
 }
 

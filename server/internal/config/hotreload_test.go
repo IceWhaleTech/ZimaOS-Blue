@@ -10,7 +10,7 @@ import (
 
 func TestNewHotReloader(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -50,7 +50,7 @@ func TestNewHotReloader(t *testing.T) {
 
 func TestHotReloaderConfig(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -67,7 +67,7 @@ func TestHotReloaderConfig(t *testing.T) {
 
 func TestHotReloaderStats(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -93,7 +93,7 @@ func TestHotReloaderStats(t *testing.T) {
 
 func TestHotReloaderOnReload(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -139,7 +139,7 @@ func TestHotReloaderValidation(t *testing.T) {
 		{
 			name: "valid config",
 			config: &Config{
-				Server: ServerConfig{Port: 23456},
+				Server: ServerConfig{Port: 80},
 				Worker: WorkerConfig{PoolSize: 10},
 			},
 			wantErr: false,
@@ -163,7 +163,7 @@ func TestHotReloaderValidation(t *testing.T) {
 		{
 			name: "invalid pool size",
 			config: &Config{
-				Server: ServerConfig{Port: 23456},
+				Server: ServerConfig{Port: 80},
 				Worker: WorkerConfig{PoolSize: 0},
 			},
 			wantErr: true,
@@ -173,7 +173,7 @@ func TestHotReloaderValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hr, _ := NewHotReloader("", &Config{
-				Server: ServerConfig{Port: 23456},
+				Server: ServerConfig{Port: 80},
 				Worker: WorkerConfig{PoolSize: 10},
 			}, nil)
 
@@ -187,7 +187,7 @@ func TestHotReloaderValidation(t *testing.T) {
 
 func TestHotReloaderStartStop(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -196,7 +196,7 @@ func TestHotReloaderStartStop(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	if err := os.WriteFile(configPath, []byte(`
 server:
-  port: 23456
+  port: 80
 worker:
   pool_size: 10
 `), 0644); err != nil {
@@ -225,7 +225,7 @@ worker:
 
 func TestHotReloaderDisabled(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -249,7 +249,7 @@ func TestHotReloaderDisabled(t *testing.T) {
 
 func TestHotReloaderConcurrentReload(t *testing.T) {
 	cfg := &Config{
-		Server: ServerConfig{Port: 23456},
+		Server: ServerConfig{Port: 80},
 		Worker: WorkerConfig{PoolSize: 10},
 	}
 
@@ -277,7 +277,7 @@ func TestHotReloaderFileChange(t *testing.T) {
 	initialContent := `
 server:
   host: "0.0.0.0"
-  port: 23456
+  port: 80
   read_timeout: "30s"
   write_timeout: "30s"
   idle_timeout: "120s"

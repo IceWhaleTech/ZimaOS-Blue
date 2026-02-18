@@ -17,7 +17,7 @@ func TestNew(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -38,7 +38,7 @@ func TestChannel_Info(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -63,7 +63,7 @@ func TestChannel_IsConnected(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -78,7 +78,7 @@ func TestChannel_Messages(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -94,7 +94,7 @@ func TestChannel_Stop_NotStarted(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -118,7 +118,7 @@ func TestChannel_Start_Success(t *testing.T) {
 				"error":   0,
 				"message": "Success",
 				"data": map[string]interface{}{
-					"oa_id":       "123456789",
+					"oa_id":       "180789",
 					"name":        "Test OA",
 					"is_verified": true,
 				},
@@ -133,7 +133,7 @@ func TestChannel_Start_Success(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -169,7 +169,7 @@ func TestChannel_Start_AuthFailure(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "invalid-token",
 	}
 
@@ -192,7 +192,7 @@ func TestChannel_Send_NotInitialized(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 
@@ -215,7 +215,7 @@ func TestChannel_SendStreaming_NotInitialized(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := channel.ZaloConfig{
 		Enabled:     true,
-		OAID:        "123456789",
+		OAID:        "180789",
 		AccessToken: "test-access-token",
 	}
 

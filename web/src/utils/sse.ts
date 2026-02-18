@@ -68,6 +68,18 @@ export class SSEClient {
             // Fall through to generic error
           }
         }
+        // Handle trial service busy (503 with trial_error flag)
+        if (response.status === 503) {
+          try {
+            const data = await response.json()
+            if (data.trial_error) {
+              options.onError?.(new Error(data.message || 'trial_service_busy'))
+              return
+            }
+          } catch {
+            // Fall through to generic error
+          }
+        }
         // Handle authentication error (401) or other errors with message
         try {
           const data = await response.json()

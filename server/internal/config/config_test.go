@@ -17,8 +17,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Server.Host != "0.0.0.0" {
 		t.Errorf("Server.Host = %v, want %v", cfg.Server.Host, "0.0.0.0")
 	}
-	if cfg.Server.Port != 23456 {
-		t.Errorf("Server.Port = %v, want %v", cfg.Server.Port, 23456)
+	if cfg.Server.Port != 80 {
+		t.Errorf("Server.Port = %v, want %v", cfg.Server.Port, 80)
 	}
 	if cfg.Server.ReadTimeout != 30*time.Second {
 		t.Errorf("Server.ReadTimeout = %v, want %v", cfg.Server.ReadTimeout, 30*time.Second)

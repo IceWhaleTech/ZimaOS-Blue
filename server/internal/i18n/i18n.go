@@ -30,6 +30,8 @@ const (
 	MsgInvalidRequest      = "error.invalid_request"
 	MsgUnauthorized        = "error.unauthorized"
 	MsgInternalError       = "error.internal"
+	MsgNoProviderAvailable = "error.no_provider_available"
+	MsgProvidersInCooldown = "error.providers_in_cooldown"
 )
 
 var (
@@ -43,6 +45,8 @@ var (
 			MsgInvalidRequest:      "Invalid request. Please check your input and try again.",
 			MsgUnauthorized:        "You are not authorized to perform this action.",
 			MsgInternalError:       "An internal error occurred. Please try again later.",
+			MsgNoProviderAvailable: "No AI service provider is available. Please check the configuration or contact the administrator.",
+			MsgProvidersInCooldown: "No AI service provider is currently available (%d providers are in cooldown). Please try again later.",
 		},
 		LangZhCN: {
 			MsgProcessingError:     "抱歉，处理您的消息时发生错误：%v",
@@ -53,6 +57,8 @@ var (
 			MsgInvalidRequest:      "无效的请求，请检查您的输入后重试。",
 			MsgUnauthorized:        "您没有权限执行此操作。",
 			MsgInternalError:       "发生内部错误，请稍后重试。",
+			MsgNoProviderAvailable: "没有可用的AI服务提供商，请检查配置或联系管理员。",
+			MsgProvidersInCooldown: "暂时没有可用的AI服务提供商（有 %d 个提供商正在冷却中），请稍后重试。",
 		},
 	}
 	mu sync.RWMutex

@@ -249,6 +249,7 @@ export default {
     threatLevel: 'Nivel de amenaza',
     dismissWarning: 'Descartar',
     trialExhausted: 'La cuota de prueba se ha agotado. Configure su propio proveedor de IA para continuar.',
+    trialServiceBusy: 'El servicio de prueba está actualmente ocupado debido a la alta demanda. Inténtelo de nuevo en un momento. Si esto continúa, visite nuestra comunidad para obtener ayuda.',
     configureProvider: 'Configurar proveedor',
     // Claude Code CLI
     poweredByClaudeCode: 'Impulsado por {name}',

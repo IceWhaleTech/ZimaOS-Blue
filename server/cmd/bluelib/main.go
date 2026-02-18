@@ -11,10 +11,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -76,14 +78,75 @@ func getDataDir() string {
 	return filepath.Join(home, ".zimaos-blue")
 }
 
+// registerCleanup registers a cleanup function to be called on shutdown
+func registerCleanup(fn func() error) {
+	cleanupMu.Lock()
+	defer cleanupMu.Unlock()
+	cleanupFuncs = append(cleanupFuncs, fn)
+}
+
+// performCleanup executes all registered cleanup functions
+func performCleanup() {
+	cleanupMu.Lock()
+	defer cleanupMu.Unlock()
+
+	for i := len(cleanupFuncs) - 1; i >= 0; i-- {
+		if err := cleanupFuncs[i](); err != nil {
+			fmt.Fprintf(os.Stderr, "Cleanup error: %v\n", err)
+		}
+	}
+	cleanupFuncs = nil
+}
+
+// setupSignalHandler sets up signal handling for graceful shutdown
+func setupSignalHandler() {
+	signalListener.Do(func() {
+		signalChan = make(chan os.Signal, 1)
+		signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
+		go func() {
+			sig := <-signalChan
+			fmt.Fprintf(os.Stderr, "Received signal %v, initiating graceful shutdown...\n", sig)
+
+			// Trigger server stop via BlueServerStop
+			serverMu.Lock()
+			if isRunning && serverCancel != nil {
+				serverCancel()
+				serverMu.Unlock()
+
+				// Wait for server to stop with timeout
+				select {
+				case <-serverDone:
+					fmt.Fprintf(os.Stderr, "Server stopped gracefully\n")
+				case <-time.After(10 * time.Second):
+					fmt.Fprintf(os.Stderr, "Server shutdown timeout - forcing cleanup\n")
+				}
+
+				// Perform cleanup
+				performCleanup()
+			} else {
+				serverMu.Unlock()
+			}
+
+			// For CGO library, we need to exit the process
+			// But we've already done cleanup above
+			os.Exit(0)
+		}()
+	})
+}
+
 // Global state for the server
 var (
-	serverMu     sync.Mutex
-	serverCancel context.CancelFunc
-	serverDone   chan struct{}
-	isRunning    bool
-	echoServer   *echo.Echo
-	httpServer   *http.Server
+	serverMu       sync.Mutex
+	serverCancel   context.CancelFunc
+	serverDone     chan struct{}
+	isRunning      bool
+	echoServer     *echo.Echo
+	httpServer     *http.Server
+	cleanupFuncs   []func() error
+	cleanupMu      sync.Mutex
+	signalChan     chan os.Signal
+	signalListener *sync.Once = &sync.Once{}
 )
 
 //export BlueServerStartWithArgs
@@ -94,6 +157,9 @@ func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 	if isRunning {
 		return 1 // Already running
 	}
+
+	// Setup signal handler for graceful shutdown
+	setupSignalHandler()
 
 	goPort := int(port)
 	goDataDir := getDataDir()
@@ -165,6 +231,9 @@ func BlueServerStart(port C.int, dataDir *C.char) C.int {
 		return 1 // Already running
 	}
 
+	// Setup signal handler for graceful shutdown
+	setupSignalHandler()
+
 	goPort := int(port)
 	goDataDir := getDataDir()
 
@@ -208,6 +277,9 @@ func BlueServerStop() C.int {
 		return 2 // Timeout
 	}
 
+	// Perform cleanup of CGO resources
+	performCleanup()
+
 	isRunning = false
 	return 0
 }
@@ -230,6 +302,11 @@ func BlueServerGetVersion() *C.char {
 //export BlueServerFreeString
 func BlueServerFreeString(s *C.char) {
 	C.free(unsafe.Pointer(s))
+}
+
+//export BlueServerCleanup
+func BlueServerCleanup() {
+	performCleanup()
 }
 
 func runServer(ctx context.Context, port int, dataDir string, cfgFile string) error {
@@ -293,11 +370,22 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to initialize services: %w", err)
 	}
 	defer services.Close()
+	// Register cleanup for services
+	registerCleanup(func() error {
+		services.Close()
+		return nil
+	})
 
 	// Initialize metrics
 	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir)
 	defer metricsCollector.Stop()
 	defer metricsWriter.Stop()
+	// Register cleanup for metrics
+	registerCleanup(func() error {
+		metricsCollector.Stop()
+		metricsWriter.Stop()
+		return nil
+	})
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
@@ -360,6 +448,11 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	cronService.RegisterBuiltinHandlers()
 	cronHandler := cron.NewHandler(cronService, zapLogger)
 	cronService.Start()
+	// Register cleanup for cron service
+	registerCleanup(func() error {
+		cronService.Stop(context.Background())
+		return nil
+	})
 
 	// Initialize Home Assistant handler
 	haService := homeassistant.NewHAService()
@@ -393,6 +486,13 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	whisperASRProvider := stt.NewWhisperProvider(&stt.WhisperConfig{
 		ModelPath: filepath.Join(dataDir, "whisper-models"),
 	})
+	// Register cleanup for Whisper provider
+	if whisperASRProvider != nil {
+		registerCleanup(func() error {
+			whisperASRProvider.Close()
+			return nil
+		})
+	}
 
 	// Create STT service from whisper provider
 	var sttService stt.Service
@@ -415,7 +515,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if whisperASRProvider != nil {
 		speechService.SetASRProvider(whisperASRProvider)
 	}
-	speechHandler := speech.NewHandler(speechService)
+	speechHandler := speech.NewHandler(speechService, nil)
 
 	// Initialize companion handler
 	companionConfig := companion.DefaultConfig()
@@ -430,6 +530,11 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		companionHandler = companion.NewHandler(companionManager, companionStorage)
 		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
 		chatHandler.SetCompanionManager(companionManager)
+		// Register cleanup for companion streamer
+		registerCleanup(func() error {
+			companionStreamer.Stop()
+			return nil
+		})
 	}
 
 	// Initialize provider pool

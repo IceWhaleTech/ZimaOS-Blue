@@ -11,7 +11,7 @@ import (
 
 func TestNetworkHandler_GetAddresses(t *testing.T) {
 	e := echo.New()
-	handler := NewNetworkHandler(23456)
+	handler := NewNetworkHandler(80)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/network/addresses", nil)
 	rec := httptest.NewRecorder()
@@ -50,7 +50,7 @@ func TestNetworkHandler_GetAddresses(t *testing.T) {
 
 func TestNetworkHandler_GetStatus(t *testing.T) {
 	e := echo.New()
-	handler := NewNetworkHandler(23456)
+	handler := NewNetworkHandler(80)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/network/status", nil)
 	rec := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestNetworkHandler_GetStatus(t *testing.T) {
 
 func TestNetworkHandler_GetPreferred(t *testing.T) {
 	e := echo.New()
-	handler := NewNetworkHandler(23456)
+	handler := NewNetworkHandler(80)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/network/preferred", nil)
 	rec := httptest.NewRecorder()
@@ -121,7 +121,7 @@ func TestNetworkHandler_GetPreferred(t *testing.T) {
 
 func TestNetworkHandler_RegisterRoutes(t *testing.T) {
 	e := echo.New()
-	handler := NewNetworkHandler(23456)
+	handler := NewNetworkHandler(80)
 
 	handler.RegisterRoutes(e)
 

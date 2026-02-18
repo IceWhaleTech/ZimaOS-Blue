@@ -1077,6 +1077,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Prøvekvoten er opbrugt. Konfigurer venligst din egen AI-udbyder for at fortsætte.',
+    trialServiceBusy: 'Prøvetjenesten er i øjeblikket optaget på grund af høj efterspørgsel. Prøv venligst igen om et øjeblik. Hvis dette fortsætter, besøg vores fællesskab for hjælp.',
     configureProvider: 'Konfigurer udbyder',
     trialQuota: {
       exhausted: 'Prøvekvote opbrugt',

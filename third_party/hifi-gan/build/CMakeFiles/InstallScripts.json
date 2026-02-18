@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/orca/Documents/GitHub/ZimaOS-Blue/third_party/hifi-gan/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

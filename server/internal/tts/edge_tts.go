@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/difyz9/edge-tts-go/pkg/communicate"
 )
@@ -91,47 +93,58 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequest
 		pitch = fmt.Sprintf("%+.0fHz", req.Pitch*10)
 	}
 
-	// Create edge-tts communicate instance
-	comm, err := communicate.NewCommunicate(
-		req.Text,
-		voice,
-		rate,   // rate
-		volume, // volume
-		pitch,  // pitch
-		"",     // proxy
-		10,     // connectTimeout
-		60,     // receiveTimeout
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create edge-tts communicate: %w", err)
-	}
+	const maxRetries = 3
+	var lastErr error
 
-	// Create temp file for output
-	tmpFile, err := os.CreateTemp("", "edge-tts-*.mp3")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	tmpFile.Close()
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(attempt) * 500 * time.Millisecond
+			log.Printf("[edge-tts] retry %d/%d after %v (prev error: %v)", attempt, maxRetries-1, delay, lastErr)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
 
-	// Save audio to temp file
-	if err := comm.Save(ctx, tmpPath, ""); err != nil {
+		comm, err := communicate.NewCommunicate(
+			req.Text, voice, rate, volume, pitch,
+			"",  // proxy
+			10,  // connectTimeout
+			60,  // receiveTimeout
+		)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create edge-tts communicate: %w", err)
+			continue
+		}
+
+		tmpFile, err := os.CreateTemp("", "edge-tts-*.mp3")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tmpPath := tmpFile.Name()
+		tmpFile.Close()
+
+		if err := comm.Save(ctx, tmpPath, ""); err != nil {
+			os.Remove(tmpPath)
+			lastErr = fmt.Errorf("edge-tts synthesis failed: %w", err)
+			continue
+		}
+
+		audioData, err := os.ReadFile(tmpPath)
 		os.Remove(tmpPath)
-		return nil, fmt.Errorf("edge-tts synthesis failed: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read audio file: %w", err)
+		}
+
+		return &SynthesizeResponse{
+			Audio:       io.NopCloser(bytes.NewReader(audioData)),
+			ContentType: "audio/mpeg",
+			Format:      FormatMP3,
+		}, nil
 	}
 
-	// Read the audio data
-	audioData, err := os.ReadFile(tmpPath)
-	os.Remove(tmpPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read audio file: %w", err)
-	}
-
-	return &SynthesizeResponse{
-		Audio:       io.NopCloser(bytes.NewReader(audioData)),
-		ContentType: "audio/mpeg",
-		Format:      FormatMP3,
-	}, nil
+	return nil, lastErr
 }
 
 // SynthesizeStream synthesizes text with streaming audio output.

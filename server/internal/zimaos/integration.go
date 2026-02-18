@@ -62,7 +62,7 @@ type FileInfo struct {
 // NewIntegration creates a new ZimaOS integration.
 func NewIntegration(cfg Config) *Integration {
 	if cfg.APIEndpoint == "" {
-		cfg.APIEndpoint = "http://localhost:80"
+		cfg.APIEndpoint = "http://localhost"
 	}
 	if cfg.DataPath == "" {
 		cfg.DataPath = "/DATA/AppData/zimaos-blue"

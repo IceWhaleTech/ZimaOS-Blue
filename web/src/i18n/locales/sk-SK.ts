@@ -920,6 +920,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Skúšobná kvóta bola vyčerpaná. Prosím, nakonfigurujte svojho vlastného poskytovateľa AI, aby ste mohli pokračovať.',
+    trialServiceBusy: 'Skúšobná služba je momentálne preťažená kvôli vysokému dopytu. Skúste to prosím o chvíľu znova. Ak problém pretrváva, navštívte našu komunitu pre pomoc.',
     configureProvider: 'Konfigurovať poskytovateľa',
     trialQuota: {
       exhausted: 'Skúšobná kvóta vyčerpaná',

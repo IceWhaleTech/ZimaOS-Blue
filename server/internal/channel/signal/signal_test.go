@@ -11,7 +11,7 @@ import (
 func TestNew(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()
-	cfg.PhoneNumber = "+1234567890"
+	cfg.PhoneNumber = "+1807890"
 
 	ch := New(cfg, logger)
 
@@ -52,7 +52,7 @@ func TestChannel_Info(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()
 	cfg.Enabled = true
-	cfg.PhoneNumber = "+1234567890"
+	cfg.PhoneNumber = "+1807890"
 
 	ch := New(cfg, logger)
 	info := ch.Info()
@@ -69,8 +69,8 @@ func TestChannel_Info(t *testing.T) {
 		t.Error("Info().Enabled should be true")
 	}
 
-	if info.Metadata["phone_number"] != "+1234567890" {
-		t.Errorf("Info().Metadata[phone_number] = %v, want +1234567890", info.Metadata["phone_number"])
+	if info.Metadata["phone_number"] != "+1807890" {
+		t.Errorf("Info().Metadata[phone_number] = %v, want +1807890", info.Metadata["phone_number"])
 	}
 }
 
@@ -109,25 +109,25 @@ func TestChannel_isSenderAllowed(t *testing.T) {
 		{
 			name:           "no restrictions allows all",
 			allowedNumbers: []string{},
-			sender:         "+1234567890",
+			sender:         "+1807890",
 			want:           true,
 		},
 		{
 			name:           "allowed number",
-			allowedNumbers: []string{"+1234567890"},
-			sender:         "+1234567890",
+			allowedNumbers: []string{"+1807890"},
+			sender:         "+1807890",
 			want:           true,
 		},
 		{
 			name:           "allowed number with different format",
 			allowedNumbers: []string{"+1 234 567 890"},
-			sender:         "+1234567890",
+			sender:         "+1807890",
 			want:           true,
 		},
 		{
 			name:           "not allowed number",
 			allowedNumbers: []string{"+1111111111"},
-			sender:         "+1234567890",
+			sender:         "+1807890",
 			want:           false,
 		},
 	}
@@ -151,10 +151,10 @@ func TestNormalizePhoneNumber(t *testing.T) {
 		phone string
 		want  string
 	}{
-		{"+1 234 567 890", "+1234567890"},
-		{"(123) 456-7890", "1234567890"}, // Removes spaces, dashes, and parentheses
-		{"+1-234-567-890", "+1234567890"},
-		{"+1234567890", "+1234567890"},
+		{"+1 234 567 890", "+1807890"},
+		{"(123) 456-7890", "1807890"}, // Removes spaces, dashes, and parentheses
+		{"+1-234-567-890", "+1807890"},
+		{"+1807890", "+1807890"},
 	}
 
 	for _, tt := range tests {
@@ -199,12 +199,12 @@ func TestChannel_GetConfigPath(t *testing.T) {
 func TestSignalMessage_Parsing(t *testing.T) {
 	// Test that the SignalMessage struct can be used
 	msg := SignalMessage{}
-	msg.Envelope.Source = "+1234567890"
-	msg.Envelope.SourceNumber = "+1234567890"
+	msg.Envelope.Source = "+1807890"
+	msg.Envelope.SourceNumber = "+1807890"
 	msg.Envelope.Timestamp = time.Now().UnixMilli()
 
-	if msg.Envelope.Source != "+1234567890" {
-		t.Errorf("Source = %s, want +1234567890", msg.Envelope.Source)
+	if msg.Envelope.Source != "+1807890" {
+		t.Errorf("Source = %s, want +1807890", msg.Envelope.Source)
 	}
 }
 

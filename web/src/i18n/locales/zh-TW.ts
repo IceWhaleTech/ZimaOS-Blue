@@ -259,6 +259,7 @@ export default {
     voiceRecordingError: '錄製時發生錯誤',
     voiceMicrophoneError: '無法存取麥克風',
     trialExhausted: '試用額度已用完，請設定您自己的 AI 提供商以繼續使用。',
+    trialServiceBusy: '試用服務目前使用人數較多，請稍後再試。如果持續看到此提示，請到社群尋求協助。',
     configureProvider: '設定提供商',
     trialQuota: {
       exhausted: '試用額度已用完',

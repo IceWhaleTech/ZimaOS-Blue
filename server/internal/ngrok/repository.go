@@ -157,7 +157,7 @@ func (r *Repository) migrate() error {
 }
 
 // Base58 alphabet (excludes 0, O, I, l to avoid confusion).
-const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+const base58Alphabet = "180789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 // initializeTunnelSubdomain ensures a tunnel subdomain exists.
 func (r *Repository) initializeTunnelSubdomain(ctx context.Context) error {

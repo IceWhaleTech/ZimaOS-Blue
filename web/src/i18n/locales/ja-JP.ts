@@ -387,6 +387,7 @@ export default {
     threatLevel: '脅威レベル',
     dismissWarning: '無視',
     trialExhausted: '試用枠を使い切りました。続けるには、ご自身の AI プロバイダーを設定してください。',
+    trialServiceBusy: '試用サービスは現在利用者が多く混雑しています。しばらくしてからもう一度お試しください。この表示が続く場合は、コミュニティでサポートを受けてください。',
     configureProvider: 'プロバイダーを設定',
     // Claude Code CLI
     poweredByClaudeCode: '{name} によって提供',

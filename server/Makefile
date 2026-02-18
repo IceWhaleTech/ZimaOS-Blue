@@ -22,8 +22,8 @@ export CGO_ENABLED=1
 # Build tags
 # fts5: enable SQLite FTS5 full-text search (mattn/go-sqlite3)
 # whisper: enable whisper.cpp ASR support (requires CGo libs)
-TAGS=-tags fts5
-TAGS_FULL=-tags 'fts5 whisper'
+TAGS=-tags 'fts5 espeak'
+TAGS_FULL=-tags 'fts5 espeak whisper'
 
 # Default target
 all: lint test build

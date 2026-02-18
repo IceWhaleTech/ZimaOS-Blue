@@ -144,12 +144,23 @@ func (h *WebSocketHandler) readPump(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-// Close closes all WebSocket connections.
+// Close closes all WebSocket connections gracefully.
+// It sends a close message to clients before closing the connection,
+// allowing them to reconnect automatically.
 func (h *WebSocketHandler) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	// Send close message to all clients before closing
+	// Use CloseGoingAway (1001) to indicate server restart/shutdown
+	closeMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "Server is shutting down. Please reconnect in a moment.")
+
 	for conn, cancel := range h.conns {
+		// Send close message with a short deadline
+		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		conn.WriteMessage(websocket.CloseMessage, closeMsg)
+
+		// Cancel context and close connection
 		cancel()
 		conn.Close()
 	}

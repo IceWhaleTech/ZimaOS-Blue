@@ -51,9 +51,9 @@ func TestSlackValidator_ValidToken(t *testing.T) {
 			"url":     "https://testworkspace.slack.com/",
 			"team":    "Test Workspace",
 			"user":    "testbot",
-			"team_id": "T12345678",
-			"user_id": "U12345678",
-			"bot_id":  "B12345678",
+			"team_id": "T18078",
+			"user_id": "U18078",
+			"bot_id":  "B18078",
 		}
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -74,8 +74,8 @@ func TestSlackValidator_ValidToken(t *testing.T) {
 	if result.Data["bot_name"] != "testbot" {
 		t.Errorf("expected bot_name 'testbot', got '%v'", result.Data["bot_name"])
 	}
-	if result.Data["team_id"] != "T12345678" {
-		t.Errorf("expected team_id 'T12345678', got '%v'", result.Data["team_id"])
+	if result.Data["team_id"] != "T18078" {
+		t.Errorf("expected team_id 'T18078', got '%v'", result.Data["team_id"])
 	}
 }
 
@@ -222,9 +222,9 @@ func TestSlackValidator_WithAppToken(t *testing.T) {
 			"url":     "https://testworkspace.slack.com/",
 			"team":    "Test Workspace",
 			"user":    "testbot",
-			"team_id": "T12345678",
-			"user_id": "U12345678",
-			"bot_id":  "B12345678",
+			"team_id": "T18078",
+			"user_id": "U18078",
+			"bot_id":  "B18078",
 		}
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -251,9 +251,9 @@ func TestSlackValidator_EnterpriseInstall(t *testing.T) {
 			"url":                   "https://enterprise.slack.com/",
 			"team":                  "Enterprise Workspace",
 			"user":                  "enterprisebot",
-			"team_id":               "E12345678",
-			"user_id":               "U12345678",
-			"bot_id":                "B12345678",
+			"team_id":               "E18078",
+			"user_id":               "U18078",
+			"bot_id":                "B18078",
 			"is_enterprise_install": true,
 		}
 		json.NewEncoder(w).Encode(response)

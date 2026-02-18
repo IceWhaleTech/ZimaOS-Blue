@@ -38,7 +38,7 @@ func TestZaloValidator_ValidCredentials(t *testing.T) {
 			"error":   0,
 			"message": "Success",
 			"data": map[string]interface{}{
-				"oa_id":        "123456789",
+				"oa_id":        "180789",
 				"name":         "Test OA",
 				"description":  "Test Official Account",
 				"is_verified":  true,
@@ -61,8 +61,8 @@ func TestZaloValidator_ValidCredentials(t *testing.T) {
 	if result.MessageKey != "testSuccess" {
 		t.Errorf("expected MessageKey 'testSuccess', got '%s'", result.MessageKey)
 	}
-	if result.Data["oa_id"] != "123456789" {
-		t.Errorf("expected oa_id '123456789', got '%v'", result.Data["oa_id"])
+	if result.Data["oa_id"] != "180789" {
+		t.Errorf("expected oa_id '180789', got '%v'", result.Data["oa_id"])
 	}
 	if result.Data["oa_name"] != "Test OA" {
 		t.Errorf("expected oa_name 'Test OA', got '%v'", result.Data["oa_name"])

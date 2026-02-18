@@ -21,7 +21,7 @@ func TestOllamaDetector_Detect(t *testing.T) {
 				"models": []map[string]interface{}{
 					{
 						"name":   "llama3.2",
-						"size":   1234567890,
+						"size":   1807890,
 						"digest": "abc123",
 					},
 					{

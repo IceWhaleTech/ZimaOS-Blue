@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "23456:23456"
+      - "80:80"
 
     volumes:
       - blue-data:/app/data
@@ -36,7 +36,7 @@ services:
 
     # Health check
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:23456/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -21,6 +21,8 @@ var (
 	ErrTextTooLong = errors.New("text too long")
 	// ErrVoiceNotFound is returned when the voice is not found.
 	ErrVoiceNotFound = errors.New("voice not found")
+	// ErrNoProviderConfigured is returned when no provider is configured.
+	ErrNoProviderConfigured = errors.New("no TTS provider configured, please configure one in settings")
 )
 
 // ProviderType represents the type of TTS provider.
@@ -41,6 +43,8 @@ const (
 	ProviderEspeakNG ProviderType = "espeak-ng"
 	// ProviderEdge is Microsoft Edge TTS.
 	ProviderEdge ProviderType = "edge-tts"
+	// ProviderMacOSNative is macOS native TTS using AVSpeechSynthesizer.
+	ProviderMacOSNative ProviderType = "macos-native"
 )
 
 // AudioFormat represents the output audio format.
@@ -75,6 +79,10 @@ type Voice struct {
 	Description string `json:"description,omitempty"`
 	// PreviewURL is a URL to preview the voice.
 	PreviewURL string `json:"preview_url,omitempty"`
+	// Provider is the TTS provider name (e.g., "Kokoro", "eSpeak-NG (Robotic)").
+	Provider string `json:"provider,omitempty"`
+	// Quality indicates voice quality level (e.g., "high", "medium", "low").
+	Quality string `json:"quality,omitempty"`
 }
 
 // SynthesizeRequest represents a synthesis request.
@@ -166,6 +174,18 @@ type Service interface {
 	GetConfig() (speed, pitch, volume float32)
 	// SetConfig sets the TTS configuration (speed, pitch, volume).
 	SetConfig(speed, pitch, volume float32)
+	// GetVocoderStatus returns vocoder model status.
+	GetVocoderStatus() map[string]interface{}
+	// DownloadVocoderModel starts downloading the vocoder model.
+	DownloadVocoderModel(ctx context.Context) error
+	// CancelVocoderDownload cancels the vocoder download.
+	CancelVocoderDownload()
+	// GetKokoroStatus returns Kokoro model status.
+	GetKokoroStatus() map[string]interface{}
+	// DownloadKokoroModel starts downloading the Kokoro model.
+	DownloadKokoroModel(ctx context.Context) error
+	// CancelKokoroDownload cancels the Kokoro download.
+	CancelKokoroDownload()
 	// Close cleans up all provider resources.
 	Close()
 }

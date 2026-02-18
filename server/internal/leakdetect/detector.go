@@ -396,7 +396,7 @@ func getConnectionCount() int {
 	count := 0
 
 	// Check common ports
-	ports := []int{80, 443, 23456, 3000, 5432, 3306, 6379}
+	ports := []int{80, 443, 80, 3000, 5432, 3306, 6379}
 	for _, port := range ports {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 10*time.Millisecond)
 		if err == nil {

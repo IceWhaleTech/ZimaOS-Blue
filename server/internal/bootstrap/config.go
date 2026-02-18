@@ -14,7 +14,7 @@ type ServerConfig struct {
 // DefaultConfig returns default server configuration
 func DefaultConfig() *ServerConfig {
 	return &ServerConfig{
-		Port:      23456,
+		Port:      80,
 		DataDir:   "./data",
 		Version:   "dev",
 		BuildTime: "unknown",

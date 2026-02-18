@@ -29,6 +29,11 @@ func (a *EspeakNGAdapter) Type() ProviderType {
 	return ProviderEspeakNG
 }
 
+// Available returns true when built with espeak tag
+func (a *EspeakNGAdapter) Available() bool {
+	return true
+}
+
 // Synthesize synthesizes text to speech
 func (a *EspeakNGAdapter) Synthesize(ctx context.Context, req *SynthesizeRequest) (*SynthesizeResponse, error) {
 	// First try to extract language from voice parameter
@@ -47,20 +52,20 @@ func (a *EspeakNGAdapter) Synthesize(ctx context.Context, req *SynthesizeRequest
 	espeakReq := &EspeakNGRequest{
 		Text:     req.Text,
 		Language: language,
-		Voice:    "f3",  // Default to female voice
-		Rate:     175,   // Default rate
-		Pitch:    50,    // Default pitch
-		Volume:   100,   // Default volume
+		Voice:    "f3",    // Default to female voice
+		Rate:     1.0,     // Default rate multiplier
+		Pitch:    0,       // Default pitch adjustment
+		Volume:   1.0,     // Default volume multiplier
 	}
 
 	// Apply speed adjustment
 	if req.Speed > 0 {
-		espeakReq.Rate = int(175 * req.Speed)
+		espeakReq.Rate = req.Speed
 	}
 
 	// Apply pitch adjustment
 	if req.Pitch != 0 {
-		espeakReq.Pitch = 50 + int(req.Pitch)
+		espeakReq.Pitch = req.Pitch
 	}
 
 	// Synthesize

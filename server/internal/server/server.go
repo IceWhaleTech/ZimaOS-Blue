@@ -51,8 +51,12 @@ func OnServerStart(callback func(port int)) {
 }
 
 type Server struct {
-	echo   *echo.Echo
-	config *config.ServerConfig
+	echo           *echo.Echo
+	config         *config.ServerConfig
+	shutdownChan   chan struct{}
+	httpServer     *http.Server
+	shutdownMu     sync.Mutex
+	isShuttingDown bool
 }
 
 func New(cfg *config.ServerConfig) *Server {
@@ -81,8 +85,9 @@ func New(cfg *config.ServerConfig) *Server {
 	}))
 
 	return &Server{
-		echo:   e,
-		config: cfg,
+		echo:         e,
+		config:       cfg,
+		shutdownChan: make(chan struct{}),
 	}
 }
 
@@ -122,6 +127,31 @@ func checkExistingServer(host string, port int) bool {
 	return ok && service == "zimaos-blue"
 }
 
+// requestGracefulShutdown requests the existing server to shutdown gracefully
+func requestGracefulShutdown(host string, port int) bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	url := fmt.Sprintf("http://%s:%d/api/v1/shutdown", host, port)
+
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Wait a bit for the old server to shutdown
+	time.Sleep(1 * time.Second)
+	return true
+}
+
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	logger.Info().Str("addr", addr).Msg("Starting HTTP server")
@@ -134,28 +164,43 @@ func (s *Server) Start() error {
 	ln, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		if isAddrInUse(err) {
-			// Check if it's our own previous instance — if so, just reuse it
+			// Check if it's our own previous instance
 			if checkExistingServer(s.config.Host, s.config.Port) {
 				logger.Info().
 					Int("port", s.config.Port).
-					Msg("Existing ZimaOS-Blue server already running on port, reusing")
-				actualPort.Store(int32(s.config.Port))
-				security.SetServerPort(s.config.Port)
-				network.SetDynamicPort(s.config.Port)
-				return nil
-			}
-			// Not our server — fallback to random port if enabled
-			if s.config.PortAutoFallback {
-				logger.Warn().
-					Int("configured_port", s.config.Port).
-					Msg("Port in use by another process, falling back to random port")
-				randomAddr := fmt.Sprintf("%s:0", s.config.Host)
-				ln, err = lc.Listen(context.Background(), "tcp", randomAddr)
-				if err != nil {
-					return fmt.Errorf("failed to create listener on random port: %w", err)
+					Msg("Detected existing ZimaOS-Blue server, requesting graceful shutdown")
+
+				// Request graceful shutdown of the old instance
+				if requestGracefulShutdown(s.config.Host, s.config.Port) {
+					logger.Info().Msg("Old instance shutdown successfully, reusing port")
+
+					// Retry listening after old instance shutdown
+					ln, err = lc.Listen(context.Background(), "tcp", addr)
+					if err != nil {
+						return fmt.Errorf("failed to listen after graceful shutdown: %w", err)
+					}
+				} else {
+					logger.Warn().Msg("Failed to shutdown old instance, will reuse connection")
+					// Old behavior: just reuse the existing server
+					actualPort.Store(int32(s.config.Port))
+					security.SetServerPort(s.config.Port)
+					network.SetDynamicPort(s.config.Port)
+					return nil
 				}
 			} else {
-				return fmt.Errorf("failed to create listener: %w", err)
+				// Not our server — fallback to random port if enabled
+				if s.config.PortAutoFallback {
+					logger.Warn().
+						Int("configured_port", s.config.Port).
+						Msg("Port in use by another process, falling back to random port")
+					randomAddr := fmt.Sprintf("%s:0", s.config.Host)
+					ln, err = lc.Listen(context.Background(), "tcp", randomAddr)
+					if err != nil {
+						return fmt.Errorf("failed to create listener on random port: %w", err)
+					}
+				} else {
+					return fmt.Errorf("failed to create listener: %w", err)
+				}
 			}
 		} else {
 			return fmt.Errorf("failed to create listener: %w", err)
@@ -194,6 +239,9 @@ func (s *Server) Start() error {
 		WriteTimeout: s.config.WriteTimeout,
 		IdleTimeout:  s.config.IdleTimeout,
 	}
+
+	// Store server reference for graceful shutdown
+	s.httpServer = server
 
 	s.echo.Listener = ln
 	return s.echo.StartServer(server)
@@ -240,14 +288,58 @@ func (s *Server) StartTLS() error {
 	return httpsServer.Serve(ln)
 }
 
+// Shutdown gracefully shuts down the server
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.shutdownMu.Lock()
+	if s.isShuttingDown {
+		s.shutdownMu.Unlock()
+		return fmt.Errorf("shutdown already in progress")
+	}
+	s.isShuttingDown = true
+	s.shutdownMu.Unlock()
+
+	logger.Info().Msg("Initiating graceful shutdown")
+
+	// Signal shutdown
+	close(s.shutdownChan)
+
+	// Shutdown HTTP server if it exists
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			logger.Error().Err(err).Msg("Error during HTTP server shutdown")
+			return err
+		}
+	}
+
+	logger.Info().Msg("Server shutdown complete")
+	return nil
+}
+
+// RegisterShutdownRoute registers the graceful shutdown endpoint
+func (s *Server) RegisterShutdownRoute() {
+	s.echo.POST("/api/v1/shutdown", func(c echo.Context) error {
+		logger.Info().Msg("Received shutdown request")
+
+		// Start shutdown in background
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := s.Shutdown(ctx); err != nil {
+				logger.Error().Err(err).Msg("Shutdown failed")
+			}
+		}()
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":  "ok",
+			"message": "Server shutting down gracefully",
+		})
+	})
+}
+
 // isAddrInUse checks if the error indicates the address is already in use
 func isAddrInUse(err error) bool {
 	return strings.Contains(err.Error(), "address already in use")
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	logger.Info().Msg("Shutting down HTTP server")
-	return s.echo.Shutdown(ctx)
 }
 
 func zerologMiddleware() echo.MiddlewareFunc {

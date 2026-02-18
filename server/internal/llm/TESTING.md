@@ -137,7 +137,7 @@ go test -v ./internal/llm -run TestOpenAI
 ### 基准测试输出
 
 \`\`\`
-BenchmarkOpenAIDirect-8                5    1234567890 ns/op
+BenchmarkOpenAIDirect-8                5    1807890 ns/op
 BenchmarkOpenAIThroughServer-8         5    1345678901 ns/op
 \`\`\`
 

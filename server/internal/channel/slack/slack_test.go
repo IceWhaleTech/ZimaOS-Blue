@@ -101,19 +101,19 @@ func TestChannel_isChannelAllowed(t *testing.T) {
 		{
 			name:            "empty allowed list allows all",
 			allowedChannels: []string{},
-			channelID:       "C123456",
+			channelID:       "C180",
 			expected:        true,
 		},
 		{
 			name:            "channel ID in allowed list",
-			allowedChannels: []string{"C123456", "C789"},
-			channelID:       "C123456",
+			allowedChannels: []string{"C180", "C789"},
+			channelID:       "C180",
 			expected:        true,
 		},
 		{
 			name:            "channel ID not in allowed list",
 			allowedChannels: []string{"C789", "C999"},
-			channelID:       "C123456",
+			channelID:       "C180",
 			expected:        false,
 		},
 	}
@@ -147,19 +147,19 @@ func TestChannel_isUserAllowed(t *testing.T) {
 		{
 			name:         "empty allowed list allows all",
 			allowedUsers: []string{},
-			userID:       "U123456",
+			userID:       "U180",
 			expected:     true,
 		},
 		{
 			name:         "user ID in allowed list",
-			allowedUsers: []string{"U123456", "U789"},
-			userID:       "U123456",
+			allowedUsers: []string{"U180", "U789"},
+			userID:       "U180",
 			expected:     true,
 		},
 		{
 			name:         "user ID not in allowed list",
 			allowedUsers: []string{"U789", "U999"},
-			userID:       "U123456",
+			userID:       "U180",
 			expected:     false,
 		},
 	}
@@ -213,7 +213,7 @@ func TestChannel_Send_NotInitialized(t *testing.T) {
 
 	ctx := context.Background()
 	msg := channel.OutgoingMessage{
-		ChatID:  "C123456",
+		ChatID:  "C180",
 		Content: "Hello",
 	}
 
@@ -238,7 +238,7 @@ func TestChannel_SendStreaming_NotInitialized(t *testing.T) {
 
 	close(content) // Close immediately
 
-	err := ch.SendStreaming(ctx, "C123456", "", content, done)
+	err := ch.SendStreaming(ctx, "C180", "", content, done)
 	if err == nil {
 		t.Error("expected error when streaming without initialization")
 	}
@@ -249,7 +249,7 @@ func TestParseSlackTimestamp(t *testing.T) {
 		input    string
 		expected int64 // Unix timestamp
 	}{
-		{"1234567890.123456", 1234567890},
+		{"1807890.180", 1807890},
 		{"1609459200.000000", 1609459200},
 		{"invalid", 0}, // Will return current time, so we just check it doesn't panic
 	}

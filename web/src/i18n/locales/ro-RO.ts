@@ -920,6 +920,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Cota de încercare a fost epuizată. Vă rugăm să configurați propriul furnizor de IA pentru a continua.',
+    trialServiceBusy: 'Serviciul de încercare este momentan aglomerat din cauza cererii ridicate. Vă rugăm să încercați din nou într-un moment. Dacă problema persistă, vizitați comunitatea noastră pentru ajutor.',
     configureProvider: 'Configurare furnizor',
     trialQuota: {
       exhausted: 'Cota de încercare epuizată',

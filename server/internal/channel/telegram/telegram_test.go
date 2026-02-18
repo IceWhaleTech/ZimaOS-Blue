@@ -150,19 +150,19 @@ func TestChannel_isGroupAllowed(t *testing.T) {
 		{
 			name:          "empty allowed list allows all",
 			allowedGroups: []string{},
-			chatID:        -123456,
+			chatID:        -180,
 			expected:      true,
 		},
 		{
 			name:          "chat ID in allowed list",
-			allowedGroups: []string{"-123456", "-789"},
-			chatID:        -123456,
+			allowedGroups: []string{"-180", "-789"},
+			chatID:        -180,
 			expected:      true,
 		},
 		{
 			name:          "chat ID not in allowed list",
 			allowedGroups: []string{"-789", "-999"},
-			chatID:        -123456,
+			chatID:        -180,
 			expected:      false,
 		},
 	}
@@ -191,8 +191,8 @@ func TestParseChatID(t *testing.T) {
 		expected int64
 		hasError bool
 	}{
-		{"123456", 123456, false},
-		{"-123456", -123456, false},
+		{"180", 180, false},
+		{"-180", -180, false},
 		{"0", 0, false},
 		{"invalid", 0, true},
 	}
@@ -270,7 +270,7 @@ func TestChannel_Send_NotInitialized(t *testing.T) {
 
 	ctx := context.Background()
 	msg := channel.OutgoingMessage{
-		ChatID:  "123456",
+		ChatID:  "180",
 		Content: "Hello",
 	}
 
@@ -294,7 +294,7 @@ func TestChannel_SendStreaming_NotInitialized(t *testing.T) {
 
 	close(content) // Close immediately
 
-	err := ch.SendStreaming(ctx, "123456", "", content, done)
+	err := ch.SendStreaming(ctx, "180", "", content, done)
 	if err == nil {
 		t.Error("expected error when streaming without initialization")
 	}

@@ -280,7 +280,7 @@ func TestGuard_CheckInput(t *testing.T) {
 func TestGuard_FilterOutput(t *testing.T) {
 	guard := NewGuard(nil, nil)
 
-	result := guard.FilterOutput("api_key=sk-1234567890abcdefghijklmnop")
+	result := guard.FilterOutput("api_key=sk-1807890abcdefghijklmnop")
 
 	if !result.WasFiltered {
 		t.Error("Expected output filtering")

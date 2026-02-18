@@ -293,9 +293,12 @@ function stopModelPoll() {
 
 async function startModelDownload() {
   try {
+    modelStatus.value = { ...(modelStatus.value || {} as PrunerModelStatus), downloading: true, state: 'connecting' }
     await proxyCacheApi.downloadPrunerModel()
     startModelPoll()
-  } catch { /* ignore */ }
+  } catch {
+    modelStatus.value = { ...(modelStatus.value || {} as PrunerModelStatus), downloading: false, state: 'error', error: 'Download request failed' }
+  }
 }
 
 async function cancelModelDownload() {
@@ -629,7 +632,7 @@ onUnmounted(stopModelPoll)
           </button>
         </div>
 
-        <div v-if="failoverConfig.enabled" class="space-y-2">
+        <div v-if="failoverConfig.enabled" class="grid grid-cols-4 gap-2">
           <div
             v-for="sub in ([
               { key: 'circuit_breaker', label: 'apiProxy.circuitBreaker', desc: 'apiProxy.circuitBreakerDesc', val: failoverConfig.circuit_breaker },
@@ -638,24 +641,22 @@ onUnmounted(stopModelPoll)
               { key: 'streaming_anomaly', label: 'apiProxy.streamingAnomaly', desc: 'apiProxy.streamingAnomalyDesc', val: failoverConfig.streaming_anomaly?.enabled },
             ] as const)"
             :key="sub.key"
-            class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0"
+            class="group relative flex flex-col items-center gap-1.5 py-2.5 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
+            :title="t(sub.desc)"
           >
-            <div>
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t(sub.label) }}</span>
-              <p class="text-xs text-gray-400 dark:text-gray-500">{{ t(sub.desc) }}</p>
-            </div>
             <button
               type="button"
               :disabled="togglingFailoverSub === sub.key"
               :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+                'relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors',
                 sub.val ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
                 togglingFailoverSub === sub.key ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
               ]"
               @click="toggleFailoverSub(sub.key as any)"
             >
-              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', sub.val ? 'translate-x-6' : 'translate-x-1']" />
+              <span :class="['inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform', sub.val ? 'translate-x-4' : 'translate-x-0.5']" />
             </button>
+            <span class="text-xs text-gray-600 dark:text-gray-400 text-center leading-tight">{{ t(sub.label) }}</span>
           </div>
         </div>
       </div>

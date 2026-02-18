@@ -151,6 +151,11 @@ func (ph *ProxyHandler) GetCache() *CCCache {
 	return ph.cache
 }
 
+// GetProviderMemory returns the provider memory instance for external access.
+func (ph *ProxyHandler) GetProviderMemory() *ProviderMemory {
+	return ph.providerMemory
+}
+
 // IsRoutingEnabled returns whether model routing is enabled.
 func (ph *ProxyHandler) IsRoutingEnabled() bool {
 	return ph.routingEnabled.Load()
@@ -306,6 +311,15 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Mode:    providerpool.RoutingMode(routingMode),
 	}
 
+	// Log available models for this request
+	if candidates, err := ph.providerPool.Router.FindCandidates(pr.model); err == nil && len(candidates) > 0 {
+		modelList := make([]string, len(candidates))
+		for i, c := range candidates {
+			modelList[i] = c.Model
+		}
+		slog.Info("[proxy] model candidates", "requested", pr.model, "candidates", modelList)
+	}
+
 	var finalResp *http.Response
 	err := ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, func(result *providerpool.RouteResult) error {
 		pid := result.Provider.ID
@@ -383,15 +397,15 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
 			}
 
-			// model_not_found: try aliases before giving up on this provider
-			if statusCode == http.StatusNotFound || strings.Contains(errStr, "model_not_found") {
-				if aliasResp := ph.tryModelAliases(r, result, pr, modelToSend, effectiveFormat); aliasResp != nil {
-					finalResp = aliasResp
-					return nil
-				}
+			// 4xx: model not available on this provider, try next
+			if statusCode < 500 {
+				slog.Warn("[proxy] client error from provider, trying next",
+					"provider", pid, "status", statusCode, "body", errStr)
+				return fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 			}
 
-			slog.Warn("[proxy] upstream error, trying next provider",
+			// 5xx: server error, return immediately
+			slog.Warn("[proxy] upstream server error",
 				"provider", pid, "status", statusCode, "body", errStr)
 			return fmt.Errorf("upstream returned %d: %s", statusCode, errStr)
 		}

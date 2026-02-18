@@ -344,7 +344,7 @@ func generateThreatID() string {
 }
 
 func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	const letters = "abcdefghijklmnopqrstuvwxyz0180789"
 	b := make([]byte, n)
 	for i := range b {
 		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]

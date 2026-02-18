@@ -94,6 +94,9 @@ fn graceful_quit(app_handle: &tauri::AppHandle) {
     info!("Graceful quit: stopping Go server");
     let _ = blue_ffi::stop_server();
 
+    // Give the server a moment to clean up
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
     // Destroy all windows so the run-loop has nothing left to keep alive
     for (_, window) in app_handle.webview_windows() {
         let _ = window.destroy();
@@ -117,7 +120,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            server_port: std::sync::Mutex::new(23456),
+            server_port: std::sync::Mutex::new(80),
             server_running: std::sync::Mutex::new(false),
             cli_args: CliArgs::default(),
         }
@@ -183,11 +186,11 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
         args.clone()
     };
 
-    // Determine port: explicit CLI --port > default 23456
+    // Determine port: explicit CLI --port > default 80
     let port = if let Some(state) = app.try_state::<AppState>() {
-        state.cli_args.port.unwrap_or(23456)
+        state.cli_args.port.unwrap_or(80)
     } else {
-        23456
+        80
     };
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -325,7 +328,7 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     info!("Platform: Windows (using CGO library approach)");
 
-    let default_port = cli_args.port.unwrap_or(23456);
+    let default_port = cli_args.port.unwrap_or(80);
     let app_state = AppState {
         server_port: std::sync::Mutex::new(default_port),
         server_running: std::sync::Mutex::new(false),
@@ -397,6 +400,20 @@ pub fn run() {
                         #[cfg(not(target_os = "macos"))]
                         {
                             QUITTING.store(true, Ordering::SeqCst);
+                            info!("Stopping server before exit");
+                            #[cfg(any(target_os = "windows"))]
+                            {
+                                let _ = blue_ffi::stop_server();
+                                // Give the server a moment to clean up
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            }
+                            #[cfg(target_os = "linux")]
+                            {
+                                let app_clone = app.app_handle().clone();
+                                tauri::async_runtime::block_on(async {
+                                    let _ = server::stop_server(app_clone).await;
+                                });
+                            }
                             app.exit(0);
                         }
                     }
@@ -426,7 +443,7 @@ pub fn run() {
                             let port = if let Some(state) = app.try_state::<AppState>() {
                                 *state.server_port.lock().unwrap()
                             } else {
-                                23456
+                                80
                             };
                             let url = format!("http://localhost:{}", port);
                             if let Ok(window) = tauri::WebviewWindowBuilder::new(
@@ -476,7 +493,7 @@ pub fn run() {
                 let port = if let Some(state) = app_handle.try_state::<AppState>() {
                     *state.server_port.lock().unwrap()
                 } else {
-                    23456
+                    80
                 };
 
                 // Navigate the main window to the Go server URL
@@ -538,6 +555,20 @@ pub fn run() {
                         #[cfg(not(target_os = "macos"))]
                         {
                             QUITTING.store(true, Ordering::SeqCst);
+                            info!("Graceful quit: stopping server");
+                            #[cfg(any(target_os = "windows"))]
+                            {
+                                let _ = blue_ffi::stop_server();
+                                // Give the server a moment to clean up
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            }
+                            #[cfg(target_os = "linux")]
+                            {
+                                let app_clone = app_handle.clone();
+                                tauri::async_runtime::block_on(async {
+                                    let _ = server::stop_server(app_clone).await;
+                                });
+                            }
                             app_handle.exit(0);
                         }
                     }

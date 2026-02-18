@@ -5,7 +5,7 @@ import { getErrorMessage } from '@/utils/error'
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
 
 // Use absolute URL in Tauri, relative URL in browser
-const baseURL = isTauri ? 'http://localhost:23456/api/v1' : '/api/v1'
+const baseURL = isTauri ? 'http://localhost/api/v1' : '/api/v1'
 
 const api = axios.create({
   baseURL,

@@ -8,18 +8,21 @@ import (
 
 // service implements the Service interface.
 type service struct {
-	providers       map[ProviderType]Provider
-	defaultProvider ProviderType
-	speed           float32
-	pitch           float32
-	volume          float32
-	mu              sync.RWMutex
+	providers         map[ProviderType]Provider
+	defaultProvider   ProviderType
+	speed             float32
+	pitch             float32
+	volume            float32
+	vocoderManager    *VocoderModelManager
+	kokoroManager     *KokoroModelManager
+	mu                sync.RWMutex
 }
 
 // ServiceConfig holds the configuration for the TTS service.
 type ServiceConfig struct {
 	DefaultProvider ProviderType
 	Providers       []ProviderConfig
+	DataPath        string // Path for model downloads
 }
 
 // NewService creates a new TTS service.
@@ -30,6 +33,12 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 		speed:           1.0,
 		pitch:           0,
 		volume:          100,
+	}
+
+	// Initialize vocoder manager if dataPath provided
+	if cfg.DataPath != "" {
+		s.vocoderManager = NewVocoderModelManager(cfg.DataPath)
+		s.kokoroManager = NewKokoroModelManager(cfg.DataPath)
 	}
 
 	// Initialize providers
@@ -60,13 +69,15 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 func createProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {
 	case ProviderEspeakNG:
-		dataPath := "./data"
+		dataPath := "" // empty = auto-detect in NewEspeakNGProvider
 		if cfg.BaseURL != "" {
 			dataPath = cfg.BaseURL
 		}
 		return NewEspeakNGAdapter(dataPath), nil
 	case ProviderEdge:
 		return NewEdgeTTSProvider(), nil
+	case ProviderMacOSNative:
+		return NewMacOSNativeTTS(), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}
@@ -74,51 +85,40 @@ func createProvider(cfg ProviderConfig) (Provider, error) {
 
 // Synthesize synthesizes text using the default provider.
 func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) (*SynthesizeResponse, error) {
-	return s.SynthesizeWithProvider(ctx, s.defaultProvider, req)
+	s.mu.RLock()
+	defaultProvider := s.defaultProvider
+	providersCount := len(s.providers)
+	s.mu.RUnlock()
+
+	if providersCount == 0 || defaultProvider == "" {
+		return nil, ErrNoProviderConfigured
+	}
+
+	return s.SynthesizeWithProvider(ctx, defaultProvider, req)
 }
 
-// SynthesizeWithProvider synthesizes text using a specific provider with fallback.
+// SynthesizeWithProvider synthesizes text using a specific provider.
 func (s *service) SynthesizeWithProvider(ctx context.Context, providerType ProviderType, req *SynthesizeRequest) (*SynthesizeResponse, error) {
 	s.mu.RLock()
 	provider, ok := s.providers[providerType]
 	s.mu.RUnlock()
 
 	if !ok {
-		return nil, ErrProviderNotFound
+		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerType)
 	}
 
-	// Try the specified provider
-	result, err := provider.Synthesize(ctx, req)
-	if err == nil {
-		return result, nil
-	}
-
-	// If specified provider fails, try fallback to default provider
-	if providerType != s.defaultProvider {
-		s.mu.RLock()
-		defaultProvider, ok := s.providers[s.defaultProvider]
-		s.mu.RUnlock()
-
-		if ok {
-			result, fallbackErr := defaultProvider.Synthesize(ctx, req)
-			if fallbackErr == nil {
-				return result, nil
-			}
-		}
-	}
-
-	// If both fail, return original error
-	return nil, err
+	return provider.Synthesize(ctx, req)
 }
 
 // SynthesizeStream synthesizes text with streaming audio output.
 func (s *service) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, callback StreamCallback) error {
 	s.mu.RLock()
-	provider, ok := s.providers[s.defaultProvider]
+	defaultProvider := s.defaultProvider
+	provider, ok := s.providers[defaultProvider]
 	s.mu.RUnlock()
 
-	if !ok {
-		return ErrProviderNotFound
+	if !ok || defaultProvider == "" {
+		return ErrNoProviderConfigured
 	}
 
 	return provider.SynthesizeStream(ctx, req, callback)
@@ -127,26 +127,29 @@ func (s *service) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, 
 // ListVoices returns available voices from the default provider.
 func (s *service) ListVoices(ctx context.Context) ([]Voice, error) {
 	s.mu.RLock()
-	provider, ok := s.providers[s.defaultProvider]
+	defaultProvider := s.defaultProvider
+	provider, ok := s.providers[defaultProvider]
 	s.mu.RUnlock()
 
-	if !ok {
-		return nil, ErrProviderNotFound
+	if !ok || defaultProvider == "" {
+		return nil, ErrNoProviderConfigured
 	}
 
 	return provider.ListVoices(ctx)
 }
 
-// ListProviders returns all available providers.
+// ListProviders returns all supported provider types.
 func (s *service) ListProviders() []ProviderType {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	providers := make([]ProviderType, 0, len(s.providers))
-	for pt := range s.providers {
-		providers = append(providers, pt)
+	result := []ProviderType{ProviderEdge}
+	// Only include espeak-ng if it's available in this build
+	if (&EspeakNGAdapter{}).Available() {
+		result = append(result, ProviderEspeakNG)
 	}
-	return providers
+	// Include macOS native provider if available
+	if (&MacOSNativeTTS{}).Available() {
+		result = append(result, ProviderMacOSNative)
+	}
+	return result
 }
 
 // GetDefaultProvider returns the default provider type.
@@ -155,12 +158,23 @@ func (s *service) GetDefaultProvider() ProviderType {
 }
 
 // SetDefaultProvider sets the default provider type.
+// If the provider is not yet initialized, it will be created on demand.
 func (s *service) SetDefaultProvider(providerType ProviderType) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.providers[providerType]; !ok {
-		return fmt.Errorf("provider %s not available", providerType)
+		// Lazily create the provider on demand
+		provider, err := createProvider(ProviderConfig{Type: providerType, Enabled: true})
+		if err != nil {
+			return fmt.Errorf("provider %s not available: %w", providerType, err)
+		}
+		// Check if the provider is actually functional (e.g. not a stub)
+		type availableChecker interface{ Available() bool }
+		if ac, ok := provider.(availableChecker); ok && !ac.Available() {
+			return fmt.Errorf("provider %s not available: not included in this build", providerType)
+		}
+		s.providers[providerType] = provider
 	}
 
 	s.defaultProvider = providerType
@@ -191,6 +205,82 @@ func (s *service) SetConfig(speed, pitch, volume float32) {
 	s.pitch = pitch
 	if volume >= 0 {
 		s.volume = volume
+	}
+}
+
+// GetVocoderStatus returns vocoder model status.
+func (s *service) GetVocoderStatus() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.vocoderManager == nil {
+		return map[string]interface{}{
+			"ready":       false,
+			"error":       "vocoder manager not initialized",
+			"downloading": false,
+		}
+	}
+
+	return s.vocoderManager.GetModelStatus()
+}
+
+// DownloadVocoderModel starts downloading the vocoder model.
+func (s *service) DownloadVocoderModel(ctx context.Context) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.vocoderManager == nil {
+		return fmt.Errorf("vocoder manager not initialized")
+	}
+
+	return s.vocoderManager.DownloadModel(ctx)
+}
+
+// CancelVocoderDownload cancels the vocoder download.
+func (s *service) CancelVocoderDownload() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.vocoderManager != nil {
+		s.vocoderManager.CancelDownload()
+	}
+}
+
+// GetKokoroStatus returns Kokoro model status.
+func (s *service) GetKokoroStatus() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.kokoroManager == nil {
+		return map[string]interface{}{
+			"ready":       false,
+			"error":       "kokoro manager not initialized",
+			"downloading": false,
+		}
+	}
+
+	return s.kokoroManager.GetModelStatus()
+}
+
+// DownloadKokoroModel starts downloading the Kokoro model.
+func (s *service) DownloadKokoroModel(ctx context.Context) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.kokoroManager == nil {
+		return fmt.Errorf("kokoro manager not initialized")
+	}
+
+	return s.kokoroManager.DownloadModel(ctx)
+}
+
+// CancelKokoroDownload cancels the Kokoro download.
+func (s *service) CancelKokoroDownload() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.kokoroManager != nil {
+		s.kokoroManager.CancelDownload()
 	}
 }
 

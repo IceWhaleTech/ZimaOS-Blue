@@ -5,8 +5,8 @@ package tts
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../third_party/espeak-ng/src/include
 #cgo windows CFLAGS: -DLIBESPEAK_NG_EXPORT
-#cgo darwin LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic
-#cgo linux LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lpthread
+#cgo darwin LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lc++
+#cgo linux LDFLAGS: -L${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng -lespeak-ng -L${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools -lucd -L${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer -lspeechPlayer -L${SRCDIR}/../../../third_party/espeak-ng/build -lsonic -lstdc++ -lpthread
 #cgo windows LDFLAGS: ${SRCDIR}/../../../third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a ${SRCDIR}/../../../third_party/espeak-ng/build/src/ucd-tools/libucd.a ${SRCDIR}/../../../third_party/espeak-ng/build/src/speechPlayer/libspeechPlayer.a
 
 #include <stdlib.h>
@@ -57,7 +57,7 @@ int espeak_cgo_init(const char* data_path) {
     return g_sample_rate;
 }
 
-// Synthesize text to audio
+// Synthesize text to audio with optimized parameters
 int espeak_cgo_synth(const char* text, const char* voice, int rate, int pitch, int volume) {
     // Reset buffer
     g_audio_size = 0;
@@ -67,10 +67,12 @@ int espeak_cgo_synth(const char* text, const char* voice, int rate, int pitch, i
         return -1;
     }
 
-    // Set parameters
+    // Set parameters with optimized defaults
+    // rate: 150 (default), pitch: 55, volume: 110
     espeak_SetParameter(espeakRATE, rate, 0);
     espeak_SetParameter(espeakPITCH, pitch, 0);
     espeak_SetParameter(espeakVOLUME, volume, 0);
+    espeak_SetParameter(espeakWORDGAP, 8, 0);  // gap between words
 
     // Synthesize
     unsigned int flags = espeakCHARS_UTF8 | espeakENDPAUSE;
@@ -121,20 +123,24 @@ import (
 
 // EspeakNGRequest represents a synthesis request
 type EspeakNGRequest struct {
-	Text     string `json:"text"`
-	Language string `json:"language"` // e.g., "en", "cmn", "ja"
-	Voice    string `json:"voice"`    // e.g., "f3", "m1", "whisper" (optional variant)
-	Rate     int    `json:"rate"`     // 80-450 (words per minute)
-	Pitch    int    `json:"pitch"`    // 0-99
-	Volume   int    `json:"volume"`   // 0-200
+	Text     string  `json:"text"`
+	Language string  `json:"language"` // e.g., "en", "cmn", "ja"
+	Voice    string  `json:"voice"`    // e.g., "f3", "m1", "whisper" (optional variant)
+	Rate     float32 `json:"rate"`     // multiplier (1.0 = default 150 wpm)
+	Pitch    float32 `json:"pitch"`    // adjustment (-50 to 50, default 0)
+	Volume   float32 `json:"volume"`   // multiplier (1.0 = default 110)
 }
 
 // EspeakNGProvider implements TTS using eSpeak-NG via CGO static linking
 type EspeakNGProvider struct {
-	dataPath    string
-	initialized bool
-	sampleRate  int
-	mu          sync.Mutex
+	dataPath      string
+	vocoderPath   string
+	initialized   bool
+	sampleRate    int
+	mu            sync.Mutex
+	vocoder       *VocoderInstance
+	vocoderOnce   sync.Once
+	preprocessor  *AudioPreprocessor
 }
 
 // NewEspeakNGProvider creates a new eSpeak-NG provider
@@ -144,7 +150,8 @@ func NewEspeakNGProvider(dataPath string) *EspeakNGProvider {
 		dataPath = findEspeakDataPath()
 	}
 	return &EspeakNGProvider{
-		dataPath: dataPath,
+		dataPath:    dataPath,
+		vocoderPath: findVocoderModel(dataPath),
 	}
 }
 
@@ -175,25 +182,7 @@ func findEspeakDataPath() string {
 		}
 	}
 
-	// Check working directory
-	if cwd, err := os.Getwd(); err == nil {
-		candidates := []string{
-			filepath.Join(cwd, "data", "espeak-ng-data"),
-			filepath.Join(cwd, "data", "espeak-ng"),
-			filepath.Join(cwd, "..", "third_party", "espeak-ng", "build"),
-			filepath.Join(cwd, "third_party", "espeak-ng", "build"),
-		}
-		for _, path := range candidates {
-			if _, err := os.Stat(filepath.Join(path, "phontab")); err == nil {
-				return filepath.Dir(path)
-			}
-			if _, err := os.Stat(filepath.Join(path, "espeak-ng-data", "phontab")); err == nil {
-				return path
-			}
-		}
-	}
-
-	// System paths
+	// System paths (no working directory dependency)
 	systemPaths := []string{
 		"/usr/share/espeak-ng-data",
 		"/usr/local/share/espeak-ng-data",
@@ -230,6 +219,7 @@ func (p *EspeakNGProvider) Initialize() error {
 
 	p.sampleRate = int(sampleRate)
 	p.initialized = true
+	p.preprocessor = NewAudioPreprocessor(p.sampleRate)
 	return nil
 }
 
@@ -257,28 +247,40 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 		voice = voice + "+" + req.Voice
 	}
 
+	// Apply multipliers to base values (150/55/110)
 	rate := req.Rate
-	if rate < 80 {
-		rate = 80
+	if rate <= 0 {
+		rate = 1.0  // default multiplier
 	}
-	if rate > 450 {
-		rate = 450
+	finalRate := int(150 * rate)
+	if finalRate < 80 {
+		finalRate = 80
+	}
+	if finalRate > 450 {
+		finalRate = 450
 	}
 
 	pitch := req.Pitch
-	if pitch < 0 {
-		pitch = 0
+	// Pitch is adjustment (-50 to 50), default 0
+	// Convert to espeak range (0-99) with base 50
+	finalPitch := int(50 + pitch)
+	if finalPitch < 0 {
+		finalPitch = 0
 	}
-	if pitch > 99 {
-		pitch = 99
+	if finalPitch > 99 {
+		finalPitch = 99
 	}
 
 	volume := req.Volume
-	if volume < 0 {
-		volume = 0
+	if volume <= 0 {
+		volume = 1.0  // default multiplier
 	}
-	if volume > 200 {
-		volume = 200
+	finalVolume := int(110 * volume)
+	if finalVolume < 0 {
+		finalVolume = 0
+	}
+	if finalVolume > 200 {
+		finalVolume = 200
 	}
 
 	// Convert strings to C
@@ -289,7 +291,7 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 	defer C.free(unsafe.Pointer(cVoice))
 
 	// Synthesize
-	numSamples := C.espeak_cgo_synth(cText, cVoice, C.int(rate), C.int(pitch), C.int(volume))
+	numSamples := C.espeak_cgo_synth(cText, cVoice, C.int(finalRate), C.int(finalPitch), C.int(finalVolume))
 	if numSamples < 0 {
 		return nil, fmt.Errorf("synthesis failed with code: %d", numSamples)
 	}
@@ -308,6 +310,33 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 		pcmData[i*2+1] = byte(sample >> 8)
 	}
 
+	// Apply vocoder if model exists (lazy load)
+	if p.vocoderPath != "" {
+		p.vocoderOnce.Do(func() {
+			p.vocoder, _ = InitVocoder(p.vocoderPath, p.sampleRate)
+		})
+		if p.vocoder != nil {
+			// Convert bytes to int16 samples
+			int16Samples := make([]int16, len(pcmData)/2)
+			for i := 0; i < len(int16Samples); i++ {
+				int16Samples[i] = int16(pcmData[i*2]) | (int16(pcmData[i*2+1]) << 8)
+			}
+
+			// Apply preprocessing: EQ + Lowpass
+			int16Samples = p.preprocessor.Preprocess(int16Samples)
+
+			// Process with vocoder
+			if processed, err := p.vocoder.Process(int16Samples); err == nil {
+				// Convert back to bytes
+				pcmData = make([]byte, len(processed)*2)
+				for i, sample := range processed {
+					pcmData[i*2] = byte(sample)
+					pcmData[i*2+1] = byte(sample >> 8)
+				}
+			}
+		}
+	}
+
 	// Convert to WAV
 	wavData := pcmToWav(pcmData, p.sampleRate)
 	return io.NopCloser(bytes.NewReader(wavData)), nil
@@ -323,6 +352,41 @@ func (p *EspeakNGProvider) Type() string {
 	return "espeak-ng"
 }
 
+// ListVoices returns available voices (marked as robotic)
+func (p *EspeakNGProvider) ListVoices(ctx context.Context) ([]Voice, error) {
+	voices := []Voice{
+		{ID: "en", Name: "English", Language: "en", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "cmn", Name: "Mandarin Chinese", Language: "cmn", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "yue", Name: "Cantonese", Language: "yue", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "ja", Name: "Japanese", Language: "ja", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "ko", Name: "Korean", Language: "ko", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "es", Name: "Spanish", Language: "es", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "fr", Name: "French", Language: "fr", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "de", Name: "German", Language: "de", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "it", Name: "Italian", Language: "it", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "pt", Name: "Portuguese", Language: "pt", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "ru", Name: "Russian", Language: "ru", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "pl", Name: "Polish", Language: "pl", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "nl", Name: "Dutch", Language: "nl", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "sv", Name: "Swedish", Language: "sv", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "no", Name: "Norwegian", Language: "no", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "da", Name: "Danish", Language: "da", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "fi", Name: "Finnish", Language: "fi", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "cs", Name: "Czech", Language: "cs", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "sk", Name: "Slovak", Language: "sk", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "hu", Name: "Hungarian", Language: "hu", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "ro", Name: "Romanian", Language: "ro", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "el", Name: "Greek", Language: "el", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "tr", Name: "Turkish", Language: "tr", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "ar", Name: "Arabic", Language: "ar", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "he", Name: "Hebrew", Language: "he", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "fa", Name: "Persian", Language: "fa", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "vi", Name: "Vietnamese", Language: "vi", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+		{ID: "th", Name: "Thai", Language: "th", Gender: "neutral", Provider: "eSpeak-NG (Robotic)", Quality: "low"},
+	}
+	return voices, nil
+}
+
 // SupportedLanguages returns list of supported languages
 func (p *EspeakNGProvider) SupportedLanguages() []string {
 	return []string{
@@ -336,6 +400,10 @@ func (p *EspeakNGProvider) SupportedLanguages() []string {
 func (p *EspeakNGProvider) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.vocoder != nil {
+		p.vocoder.Close()
+		p.vocoder = nil
+	}
 
 	if p.initialized {
 		C.espeak_cgo_cleanup()
@@ -369,4 +437,27 @@ func pcmToWav(pcmData []byte, sampleRate int) []byte {
 	buf.Write(pcmData)
 
 	return buf.Bytes()
+}
+
+// findVocoderModel searches for HiFi-GAN model file relative to dataPath
+func findVocoderModel(dataPath string) string {
+	candidates := []string{
+		filepath.Join(os.Getenv("HOME"), ".zimaos-blue", "data", "vocoder", "generator_v1.pt"),
+		filepath.Join(os.Getenv("HOME"), ".zimaos-blue-dev", "data", "vocoder", "generator_v1.pt"),
+	}
+
+	// Add dataPath-relative candidates if dataPath is provided
+	if dataPath != "" {
+		candidates = append(candidates,
+			filepath.Join(dataPath, "vocoder", "generator_v1.pt"),
+			filepath.Join(filepath.Dir(dataPath), "vocoder", "generator_v1.pt"),
+		)
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
 }

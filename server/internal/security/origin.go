@@ -276,8 +276,8 @@ func GetDynamicOriginsDefault() []string {
 }
 
 // serverPort stores the actual server port for dynamic CORS origins.
-// Default to 23456, but should be updated via SetServerPort when server starts.
-var serverPort int = 23456
+// Default to 80, but should be updated via SetServerPort when server starts.
+var serverPort int = 80
 var serverPortMu sync.RWMutex
 
 // SetServerPort sets the server port for dynamic CORS origin generation.

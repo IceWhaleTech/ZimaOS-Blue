@@ -22,17 +22,17 @@ func TestMaskAPIKey(t *testing.T) {
 		},
 		{
 			name:     "8 char key",
-			input:    "12345678",
+			input:    "18078",
 			expected: "********",
 		},
 		{
 			name:     "normal key",
-			input:    "sk-ant-api03-1234567890abcdef",
+			input:    "sk-ant-api03-1807890abcdef",
 			expected: "sk-a*********************cdef",
 		},
 		{
 			name:     "long key",
-			input:    "sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz",
+			input:    "sk-ant-api03-1807890abcdefghijklmnopqrstuvwxyz",
 			expected: "sk-a*****************************************wxyz",
 		},
 	}
@@ -98,7 +98,7 @@ func TestEnvConfig_GetConfiguredProviders(t *testing.T) {
 
 func TestEnvConfig_ToDisplay(t *testing.T) {
 	config := &EnvConfig{
-		AnthropicAPIKey: "sk-ant-api03-1234567890",
+		AnthropicAPIKey: "sk-ant-api03-1807890",
 		OpenAIAPIKey:    "",
 		OpenAIBaseURL:   "https://api.openai.com",
 	}

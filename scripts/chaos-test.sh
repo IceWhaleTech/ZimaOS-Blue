@@ -8,7 +8,7 @@ set -e
 
 # Configuration
 SERVICE_NAME="${SERVICE_NAME:-zimaos-blue}"
-HEALTH_URL="${HEALTH_URL:-http://localhost:23456/health}"
+HEALTH_URL="${HEALTH_URL:-http://localhost/health}"
 TEST_DURATION="${TEST_DURATION:-60}"  # seconds per test
 RECOVERY_TIMEOUT="${RECOVERY_TIMEOUT:-30}"  # seconds to wait for recovery
 

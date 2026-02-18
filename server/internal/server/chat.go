@@ -18,6 +18,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -523,6 +524,14 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		Bool("has_claude_code", h.claudeCodeHandler != nil).
 		Msg("ProcessChannelMessage called")
 
+	// Extract language from message metadata
+	lang := i18n.DefaultLanguage
+	if msg.Metadata != nil {
+		if langStr, ok := msg.Metadata["language"].(string); ok {
+			lang = i18n.ParseLanguage(langStr)
+		}
+	}
+
 	// Validate input - allow empty content if there are attachments
 	if msg.Content == "" && len(msg.Attachments) == 0 {
 		logger.Warn().Str("channel", msg.ChannelName).Msg("empty message content")
@@ -889,12 +898,21 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		})
 
 		if err != nil {
-			// Log cooldown info
-			if cooldowns := h.providerPool.Router.ListCooldowns(); len(cooldowns) > 0 {
+			// Log cooldown info and provide detailed error message
+			cooldowns := h.providerPool.Router.ListCooldowns()
+			if len(cooldowns) > 0 {
 				logger.Warn().Int("providers_in_cooldown", len(cooldowns)).Msg("providers in cooldown")
 			}
 			logger.Error().Err(err).Msg("LLM chat failed with all providers")
-			return "", fmt.Errorf("AI service unavailable: %w", err)
+
+			// Provide user-friendly error message based on error type
+			if errors.Is(err, providerpool.ErrNoAvailableProvider) {
+				if len(cooldowns) > 0 {
+					return "", fmt.Errorf(i18n.T(lang, i18n.MsgProvidersInCooldown, len(cooldowns)))
+				}
+				return "", fmt.Errorf(i18n.T(lang, i18n.MsgNoProviderAvailable))
+			}
+			return "", fmt.Errorf(i18n.T(lang, i18n.MsgServiceUnavailable))
 		}
 
 		if responseContent == "" {
@@ -1574,8 +1592,18 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	if err != nil {
 		// Emit error event to companion (async)
-		h.emitErrorEventAsync(sessionID, proxy.SanitizeError(err))
-		return echo.NewHTTPError(http.StatusInternalServerError, proxy.SanitizeError(err))
+		sanitizedErr := proxy.SanitizeError(err)
+		h.emitErrorEventAsync(sessionID, sanitizedErr)
+		// For trial provider errors, return a friendly message key so the frontend
+		// can show a localized, user-friendly message instead of raw error text.
+		if providerpool.IsTrialProvider(providerID) {
+			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+				"success":     false,
+				"trial_error": true,
+				"message":     "trial_service_busy",
+			})
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, sanitizedErr)
 	}
 
 	// Get provider name for display
@@ -2013,9 +2041,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				latencyMs := float64(time.Since(startTime).Milliseconds())
 				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "stream_error")
 			}
+			// For trial provider, replace raw error with friendly message key
+			chunkErr := chunk.Error
+			if providerpool.IsTrialProvider(providerID) {
+				chunkErr = "trial_service_busy"
+			}
 			// Send error to client
 			data := map[string]interface{}{
-				"error":     chunk.Error,
+				"error":     chunkErr,
 				"done":      true,
 				"stream_id": streamID,
 			}
@@ -2305,6 +2338,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
 		errMsg := "An error occurred while streaming the response"
+		if providerpool.IsTrialProvider(providerID) {
+			errMsg = "trial_service_busy"
+		}
 		if h.metricsRecorder != nil {
 			latencyMs := float64(time.Since(startTime).Milliseconds())
 			h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "error")

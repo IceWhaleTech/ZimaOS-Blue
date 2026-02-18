@@ -368,7 +368,7 @@ func TestChatHandlerStreamMessageWithProviderPoolID(t *testing.T) {
 	registry := llm.NewProviderRegistry()
 	// Use CustomProvider which has Name() = "custom"
 	// Provider Pool IDs that don't match known mappings will map to "custom"
-	customProvider := llm.NewCustomProvider("test-key", "http://localhost:23456")
+	customProvider := llm.NewCustomProvider("test-key", "http://localhost")
 	registry.Register(customProvider)
 
 	toolRegistry := tools.NewRegistry()

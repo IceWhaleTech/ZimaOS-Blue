@@ -294,6 +294,7 @@ export default {
     threatLevel: '위협 수준',
     dismissWarning: '무시',
     trialExhausted: '체험판 할당량이 소진되었습니다. 계속하려면 AI 공급자를 직접 설정하세요.',
+    trialServiceBusy: '체험판 서비스가 현재 이용자가 많아 혼잡합니다. 잠시 후 다시 시도해 주세요. 이 메시지가 계속 표시되면 커뮤니티에서 도움을 받으세요.',
     configureProvider: '공급자 설정',
     // Claude Code CLI
     poweredByClaudeCode: '{name}로 구동',

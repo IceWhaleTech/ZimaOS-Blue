@@ -494,7 +494,7 @@ func findConfigFile() string {
 func defaults() Config {
 	return Config{
 		Server: ServerConfig{
-			Host: "0.0.0.0", Port: 23456, PortAutoFallback: true,
+			Host: "0.0.0.0", Port: 80, PortAutoFallback: true,
 			ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second,
 		},
 		Log:    LogConfig{Level: "info", Format: "console", Output: "stdout"},
@@ -529,7 +529,7 @@ func defaults() Config {
 
 		Security: SecurityConfig{
 			JWT: JWTConfig{Secret: "change-me-in-production-use-a-strong-secret-key", Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
-			OIDC: OIDCConfig{Enabled: true, Issuer: "http://localhost:23456", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
+			OIDC: OIDCConfig{Enabled: true, Issuer: "http://localhost", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
 			Users:    UsersConfig{DefaultRole: "user"},
 			Password: PasswordConfig{MinLength: 12, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
 			MFA:      MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},

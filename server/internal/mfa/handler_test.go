@@ -241,7 +241,7 @@ func TestHandler_RegenerateRecoveryCodes(t *testing.T) {
 func TestHandler_ValidateMFA(t *testing.T) {
 	handler, e := setupTestHandler()
 
-	reqBody := `{"mfa_token":"test_token","code":"123456"}`
+	reqBody := `{"mfa_token":"test_token","code":"180"}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/mfa/validate", strings.NewReader(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()

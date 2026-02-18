@@ -173,7 +173,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Preview mode routes (no auth required)
 	previewModeService := preview.NewModeService(s.UserService)
 	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
-	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService)
+	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService, s.UserService)
 	previewHandler.SetDataDir(dataDir)
 	previewHandler.RegisterRoutes(e)
 	logger.Info("Preview mode routes registered")

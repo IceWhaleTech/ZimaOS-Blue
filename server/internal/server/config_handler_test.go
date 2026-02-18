@@ -32,7 +32,7 @@ func TestConfigHandler_Reload(t *testing.T) {
 		cfg := &config.Config{
 			Server: config.ServerConfig{
 				Host: "0.0.0.0",
-				Port: 23456,
+				Port: 80,
 			},
 			Worker: config.WorkerConfig{
 				PoolSize: 10,
@@ -78,7 +78,7 @@ func TestConfigHandler_Status(t *testing.T) {
 		cfg := &config.Config{
 			Server: config.ServerConfig{
 				Host: "0.0.0.0",
-				Port: 23456,
+				Port: 80,
 			},
 			Worker: config.WorkerConfig{
 				PoolSize: 10,

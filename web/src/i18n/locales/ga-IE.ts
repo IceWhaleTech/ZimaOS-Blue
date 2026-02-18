@@ -920,6 +920,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Tá an cuóta triail ídithe. Cuir do sholáthraí AI féin i bhfeidhm le leanúint ar aghaidh.',
+    trialServiceBusy: 'Tá an tseirbhís triail gnóthach faoi láthair mar gheall ar éileamh ard. Bain triail eile as i gceann nóiméid. Má leanann sé seo, tabhair cuairt ar ár bpobal le haghaidh cabhrach.',
     configureProvider: 'Cumraigh Soláthraí',
     trialQuota: {
       exhausted: 'Cuóta triail ídithe',

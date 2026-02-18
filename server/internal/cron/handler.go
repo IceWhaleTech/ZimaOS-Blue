@@ -47,6 +47,11 @@ func (h *Handler) svc() *Service {
 	return h.service
 }
 
+// GetService returns the cron service for cleanup purposes.
+func (h *Handler) GetService() *Service {
+	return h.svc()
+}
+
 // CreateRequest represents a create job request.
 type CreateRequest struct {
 	Name        string                 `json:"name" validate:"required"`

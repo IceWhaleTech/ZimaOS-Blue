@@ -100,7 +100,7 @@ func NewSecurityScanner(handler *Handler, config *ScannerConfig) *SecurityScanne
 	return &SecurityScanner{
 		handler:  handler,
 		config:   config,
-		httpPort: 23456,
+		httpPort: 80,
 		tlsPort:  8443,
 	}
 }

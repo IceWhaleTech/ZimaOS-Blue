@@ -148,7 +148,7 @@ func TestCCSwitchIntegration_ListProfilesDisplay(t *testing.T) {
 			{
 				Name:     "default",
 				Provider: "anthropic",
-				APIKey:   "sk-ant-api03-1234567890abcdef",
+				APIKey:   "sk-ant-api03-1807890abcdef",
 			},
 		},
 	}
@@ -168,7 +168,7 @@ func TestCCSwitchIntegration_ListProfilesDisplay(t *testing.T) {
 	}
 
 	// Check that API key is masked
-	if displays[0].APIKey == "sk-ant-api03-1234567890abcdef" {
+	if displays[0].APIKey == "sk-ant-api03-1807890abcdef" {
 		t.Error("API key should be masked in display")
 	}
 

@@ -13,7 +13,7 @@ import (
 func TestNew(t *testing.T) {
 	cfg := &config.ServerConfig{
 		Host:         "127.0.0.1",
-		Port:         23456,
+		Port:         80,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -31,7 +31,7 @@ func TestNew(t *testing.T) {
 func TestHealthHandler(t *testing.T) {
 	cfg := &config.ServerConfig{
 		Host: "127.0.0.1",
-		Port: 23456,
+		Port: 80,
 	}
 	s := New(cfg)
 	s.RegisterHealthRoutes()
@@ -61,7 +61,7 @@ func TestHealthHandler(t *testing.T) {
 func TestLivenessHandler(t *testing.T) {
 	cfg := &config.ServerConfig{
 		Host: "127.0.0.1",
-		Port: 23456,
+		Port: 80,
 	}
 	s := New(cfg)
 	s.RegisterHealthRoutes()
@@ -88,7 +88,7 @@ func TestLivenessHandler(t *testing.T) {
 func TestReadinessHandler_Ready(t *testing.T) {
 	cfg := &config.ServerConfig{
 		Host: "127.0.0.1",
-		Port: 23456,
+		Port: 80,
 	}
 	s := New(cfg)
 	s.RegisterHealthRoutes()
@@ -108,7 +108,7 @@ func TestReadinessHandler_Ready(t *testing.T) {
 func TestReadinessHandler_NotReady(t *testing.T) {
 	cfg := &config.ServerConfig{
 		Host: "127.0.0.1",
-		Port: 23456,
+		Port: 80,
 	}
 	s := New(cfg)
 	s.RegisterHealthRoutes()

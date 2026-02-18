@@ -96,19 +96,19 @@ func TestChannel_isGuildAllowed(t *testing.T) {
 		{
 			name:          "empty allowed list allows all",
 			allowedGuilds: []string{},
-			guildID:       "123456",
+			guildID:       "180",
 			expected:      true,
 		},
 		{
 			name:          "guild ID in allowed list",
-			allowedGuilds: []string{"123456", "789"},
-			guildID:       "123456",
+			allowedGuilds: []string{"180", "789"},
+			guildID:       "180",
 			expected:      true,
 		},
 		{
 			name:          "guild ID not in allowed list",
 			allowedGuilds: []string{"789", "999"},
-			guildID:       "123456",
+			guildID:       "180",
 			expected:      false,
 		},
 	}
@@ -141,19 +141,19 @@ func TestChannel_isUserAllowed(t *testing.T) {
 		{
 			name:         "empty allowed list allows all",
 			allowedUsers: []string{},
-			userID:       "123456",
+			userID:       "180",
 			expected:     true,
 		},
 		{
 			name:         "user ID in allowed list",
-			allowedUsers: []string{"123456", "789"},
-			userID:       "123456",
+			allowedUsers: []string{"180", "789"},
+			userID:       "180",
 			expected:     true,
 		},
 		{
 			name:         "user ID not in allowed list",
 			allowedUsers: []string{"789", "999"},
-			userID:       "123456",
+			userID:       "180",
 			expected:     false,
 		},
 	}
@@ -204,7 +204,7 @@ func TestChannel_Send_NotInitialized(t *testing.T) {
 
 	ctx := context.Background()
 	msg := channel.OutgoingMessage{
-		ChatID:  "123456",
+		ChatID:  "180",
 		Content: "Hello",
 	}
 
@@ -228,7 +228,7 @@ func TestChannel_SendStreaming_NotInitialized(t *testing.T) {
 
 	close(content) // Close immediately
 
-	err := ch.SendStreaming(ctx, "123456", "", content, done)
+	err := ch.SendStreaming(ctx, "180", "", content, done)
 	if err == nil {
 		t.Error("expected error when streaming without initialization")
 	}

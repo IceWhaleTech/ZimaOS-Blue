@@ -234,7 +234,7 @@ fmt.Printf("[%s] %s: %s\n", level, title, message)
 
 **问题描述：**
 ```go
-v.SetDefault("security.oidc.issuer", "http://localhost:23456")
+v.SetDefault("security.oidc.issuer", "http://localhost")
 ```
 
 **风险：**

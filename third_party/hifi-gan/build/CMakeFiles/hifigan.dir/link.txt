@@ -1,0 +1,2 @@
+/usr/bin/ar qc libhifigan.a CMakeFiles/hifigan.dir/src/hifigan.cpp.o
+/usr/bin/ranlib libhifigan.a

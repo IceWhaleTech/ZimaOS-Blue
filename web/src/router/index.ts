@@ -16,7 +16,7 @@ let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 5000)
-  const url = isTauri ? 'http://localhost:23456/api/v1/system/mode' : '/api/v1/system/mode'
+  const url = isTauri ? 'http://localhost/api/v1/system/mode' : '/api/v1/system/mode'
   try {
     const response = await fetch(url, { signal: controller.signal })
     clearTimeout(timeoutId)
@@ -88,7 +88,7 @@ async function fetchPreviewToken(): Promise<void> {
 
   try {
     // Use absolute URL in Tauri, relative URL in browser
-    const url = isTauri ? 'http://localhost:23456/api/v1/preview/token' : '/api/v1/preview/token'
+    const url = isTauri ? 'http://localhost/api/v1/preview/token' : '/api/v1/preview/token'
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

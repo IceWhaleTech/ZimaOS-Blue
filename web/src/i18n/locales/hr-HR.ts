@@ -1337,6 +1337,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Pokusna kvota je iscrpljena. Molimo konfigurujte vlastiti AI pružatelja da nastavite.',
+    trialServiceBusy: 'Pokusna usluga je trenutno zauzeta zbog velike potražnje. Pokušajte ponovo za trenutak. Ako se ovo nastavi, posjetite našu zajednicu za pomoć.',
     configureProvider: 'Konfiguruj pružatelja',
     trialQuota: {
       exhausted: 'Pokusna kvota iscrpljena',

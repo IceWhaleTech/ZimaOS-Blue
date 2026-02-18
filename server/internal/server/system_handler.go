@@ -268,7 +268,7 @@ type SecurityConfigResponse struct {
 func (h *SystemHandler) GetConfig(c echo.Context) error {
 	// Get configured values or defaults
 	host := "0.0.0.0"
-	port := 23456
+	port := 80
 	portAutoFallback := true
 
 	if h.serverConfig != nil {

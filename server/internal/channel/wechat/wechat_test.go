@@ -135,7 +135,7 @@ func TestChannel_verifySignature(t *testing.T) {
 
 	// Test with known values
 	// Note: This is a simplified test. In production, you'd use actual WeChat signatures.
-	timestamp := "1234567890"
+	timestamp := "1807890"
 	nonce := "test-nonce"
 	encrypt := "test-encrypt"
 
@@ -166,7 +166,7 @@ func TestChannel_convertMessage(t *testing.T) {
 				Content:      "Hello",
 				FromUserName: "user123",
 				MsgId:        "msg123",
-				CreateTime:   1234567890,
+				CreateTime:   1807890,
 			},
 			expected: channel.MessageTypeText,
 		},
@@ -176,7 +176,7 @@ func TestChannel_convertMessage(t *testing.T) {
 				MsgType:      "image",
 				FromUserName: "user123",
 				MsgId:        "msg123",
-				CreateTime:   1234567890,
+				CreateTime:   1807890,
 				MediaId:      "media123",
 			},
 			expected: channel.MessageTypeImage,
@@ -187,7 +187,7 @@ func TestChannel_convertMessage(t *testing.T) {
 				MsgType:      "voice",
 				FromUserName: "user123",
 				MsgId:        "msg123",
-				CreateTime:   1234567890,
+				CreateTime:   1807890,
 				MediaId:      "media123",
 			},
 			expected: channel.MessageTypeAudio,
@@ -198,7 +198,7 @@ func TestChannel_convertMessage(t *testing.T) {
 				MsgType:      "video",
 				FromUserName: "user123",
 				MsgId:        "msg123",
-				CreateTime:   1234567890,
+				CreateTime:   1807890,
 				MediaId:      "media123",
 			},
 			expected: channel.MessageTypeVideo,
@@ -209,7 +209,7 @@ func TestChannel_convertMessage(t *testing.T) {
 				MsgType:      "file",
 				FromUserName: "user123",
 				MsgId:        "msg123",
-				CreateTime:   1234567890,
+				CreateTime:   1807890,
 				MediaId:      "media123",
 			},
 			expected: channel.MessageTypeFile,

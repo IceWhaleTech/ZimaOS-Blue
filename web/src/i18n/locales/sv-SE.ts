@@ -1155,6 +1155,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Provkvoten har förbrukats. Konfigurera din egen AI-leverantör för att fortsätta.',
+    trialServiceBusy: 'Provtjänsten är för närvarande upptagen på grund av hög efterfrågan. Försök igen om en stund. Om detta fortsätter, besök vår community för hjälp.',
     configureProvider: 'Konfigurera leverantör',
     trialQuota: {
       exhausted: 'Provkvot förbrukad',

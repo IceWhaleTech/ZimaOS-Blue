@@ -12,10 +12,10 @@ func TestHashAPIKey(t *testing.T) {
 		key      string
 		expected string
 	}{
-		{"sk-1234567890abcdef", "sk-12345...cdef"},
+		{"sk-1807890abcdef", "sk-12345...cdef"},
 		{"short", "*****"},
 		{"exactly12ch", "***********"},
-		{"sk-proj-1234567890abcdefghijklmnop", "sk-proj-...mnop"},
+		{"sk-proj-1807890abcdefghijklmnop", "sk-proj-...mnop"},
 	}
 
 	for _, tt := range tests {

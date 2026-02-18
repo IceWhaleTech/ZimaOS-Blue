@@ -530,9 +530,9 @@ func addFirewallRule(serviceName, exePath string) error {
 		return fmt.Errorf("failed to add application rule: %w", err)
 	}
 
-	// Rule 2: Port-specific rule for TCP port 23456 (default Echo server port)
-	portRuleName := serviceName + "-Port-23456"
-	if err := addPortRule(rules, portRuleName, 23456); err != nil {
+	// Rule 2: Port-specific rule for TCP port 80 (default Echo server port)
+	portRuleName := serviceName + "-Port-80"
+	if err := addPortRule(rules, portRuleName, 80); err != nil {
 		return fmt.Errorf("failed to add port rule: %w", err)
 	}
 

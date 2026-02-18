@@ -100,6 +100,13 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	// Initialize built-in providers synchronously (required for chat to work immediately)
 	pool.initBuiltinProviders()
 
+	// Remove trial provider if quota is already exhausted (e.g. zero quota, expired, tampered)
+	if pool.TrialQuotaManager != nil && pool.TrialQuotaManager.IsExhausted() {
+		pool.TrialQuotaManager.DeleteTrialProvider()
+		fmt.Printf("[Pool] Trial provider removed at startup (reason: %s)\n",
+			pool.TrialQuotaManager.GetStatus().ExhaustedReason)
+	}
+
 	return pool, nil
 }
 

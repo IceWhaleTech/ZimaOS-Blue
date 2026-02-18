@@ -1074,6 +1074,7 @@ export default {
   chat: {
     ...enUS.chat,
     trialExhausted: 'Zkušební kvóta byla vyčerpána. Nakonfigurujte prosím vlastního poskytovatele AI pro pokračování.',
+    trialServiceBusy: 'Zkušební služba je momentálně přetížena kvůli vysoké poptávce. Zkuste to prosím za chvíli znovu. Pokud problém přetrvává, navštivte naši komunitu pro pomoc.',
     configureProvider: 'Konfigurovat poskytovatele',
     trialQuota: {
       exhausted: 'Zkušební kvóta vyčerpána',

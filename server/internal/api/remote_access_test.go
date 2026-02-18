@@ -17,7 +17,7 @@ import (
 
 func setupRemoteAccessHandler(t *testing.T) (*RemoteAccessHandler, *echo.Echo) {
 	tm := ngrok.NewTunnelManager()
-	h := NewRemoteAccessHandler(tm, 23456)
+	h := NewRemoteAccessHandler(tm, 80)
 
 	e := echo.New()
 	h.RegisterRoutes(e)
@@ -74,7 +74,7 @@ func TestRemoteAccessHandler_GetRemoteAccessStatus(t *testing.T) {
 func TestRemoteAccessHandler_StartRemoteAccess_NgrokNotInstalled(t *testing.T) {
 	_, e := setupRemoteAccessHandler(t)
 
-	body := `{"port": 23456}`
+	body := `{"port": 80}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/remote-access/start", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -146,7 +146,7 @@ func setupRemoteAccessHandlerWithRepo(t *testing.T) (*RemoteAccessHandler, *echo
 	t.Cleanup(func() { repo.Close() })
 
 	tm := ngrok.NewTunnelManagerWithRepo(repo)
-	h := NewRemoteAccessHandlerWithRepo(tm, repo, 23456)
+	h := NewRemoteAccessHandlerWithRepo(tm, repo, 80)
 
 	e := echo.New()
 	h.RegisterRoutes(e)

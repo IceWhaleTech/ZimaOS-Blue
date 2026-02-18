@@ -155,7 +155,7 @@ func (s *ConfigStore) saveLocked() error {
 
 // generateTunnelSubdomain generates a random subdomain like "echo-" + 8 base58 chars.
 func generateTunnelSubdomain() string {
-	const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	const base58Alphabet = "180789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 	const n = 8
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

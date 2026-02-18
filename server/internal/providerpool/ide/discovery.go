@@ -436,7 +436,7 @@ func findProxyURL(ideType IDEType, configPath string) string {
 	case IDETypeWindsurf:
 		return tryPorts([]int{9800, 9801, 9802})
 	case IDETypeClaudeCode:
-		return tryPorts([]int{9000, 9001, 9002, 23456})
+		return tryPorts([]int{9000, 9001, 9002, 80})
 	case IDETypeQoder:
 		return tryPorts([]int{9500, 9501, 9502})
 	case IDETypeTRAE:

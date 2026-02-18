@@ -238,6 +238,7 @@ export default {
     threatLevel: 'Nível de ameaça',
     dismissWarning: 'Descartar',
     trialExhausted: 'A cota de teste foi esgotada. Configure seu próprio provedor de IA para continuar.',
+    trialServiceBusy: 'O serviço de teste está atualmente ocupado devido à alta demanda. Tente novamente em instantes. Se isso persistir, visite nossa comunidade para obter ajuda.',
     configureProvider: 'Configurar provedor',
     // Claude Code CLI
     poweredByClaudeCode: 'Alimentado por {name}',

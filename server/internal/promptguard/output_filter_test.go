@@ -65,12 +65,12 @@ func TestOutputFilter_Filter_APIKey(t *testing.T) {
 	}{
 		{
 			name:   "api_key pattern",
-			input:  "Your API key is api_key=sk-1234567890abcdefghijklmnop",
+			input:  "Your API key is api_key=sk-1807890abcdefghijklmnop",
 			expect: "[API_KEY_REDACTED]",
 		},
 		{
 			name:   "secret_key pattern",
-			input:  "secret_key: abcdefghijklmnopqrstuvwxyz123456",
+			input:  "secret_key: abcdefghijklmnopqrstuvwxyz180",
 			expect: "[API_KEY_REDACTED]",
 		},
 	}
@@ -353,7 +353,7 @@ func TestOutputFilter_AddSystemPromptPattern(t *testing.T) {
 func TestOutputFilter_ValidateOutput(t *testing.T) {
 	filter := NewOutputFilter(nil)
 
-	violations := filter.ValidateOutput("api_key=sk-1234567890abcdefghijklmnop")
+	violations := filter.ValidateOutput("api_key=sk-1807890abcdefghijklmnop")
 
 	if len(violations) == 0 {
 		t.Error("Expected violations for API key")
@@ -367,7 +367,7 @@ func TestOutputFilter_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func() {
 			for j := 0; j < 100; j++ {
-				filter.Filter("api_key=sk-1234567890abcdefghijklmnop")
+				filter.Filter("api_key=sk-1807890abcdefghijklmnop")
 			}
 			done <- true
 		}()
@@ -390,7 +390,7 @@ func BenchmarkOutputFilter_Filter(b *testing.B) {
 
 func BenchmarkOutputFilter_Filter_WithViolations(b *testing.B) {
 	filter := NewOutputFilter(nil)
-	output := "Your API key is api_key=sk-1234567890abcdefghijklmnop and password=secret123"
+	output := "Your API key is api_key=sk-1807890abcdefghijklmnop and password=secret123"
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
