@@ -1,4 +1,4 @@
-import api from './client'
+import api, { ensureFreshToken } from './client'
 
 // Types
 export interface VoiceSession {
@@ -22,9 +22,10 @@ export interface TranscribeResponse {
 }
 
 export interface SynthesizeResponse {
-  audio: string // Base64 encoded
-  content_type: string
-  format: string
+  audio?: string // Base64 encoded
+  content_type?: string
+  format?: string
+  played_locally?: boolean // Server played through local speakers
 }
 
 export interface Voice {
@@ -97,29 +98,27 @@ export const voiceApi = {
     }),
 
   // Synthesize text to speech
-  synthesize: (text: string, voice?: string, format?: string, speed?: number, provider?: string) =>
+  synthesize: (text: string) =>
     api.post<SynthesizeResponse>(
       '/voice/synthesize',
-      { text, voice, format, speed, provider },
-      { headers: { Accept: 'application/json' } }
+      { text },
+      { headers: { Accept: 'application/json' }, timeout: 120000 }
     ),
 
   // Synthesize and get audio blob
-  synthesizeAudio: async (
-    text: string,
-    voice?: string,
-    format?: string,
-    speed?: number,
-    provider?: string
-  ): Promise<Blob> => {
-    const response = await api.post('/voice/synthesize', { text, voice, format, speed, provider }, {
+  synthesizeAudio: async (text: string): Promise<Blob> => {
+    const response = await api.post('/voice/synthesize', { text }, {
       responseType: 'blob',
+      timeout: 120000,
     })
     return response.data
   },
 
   // List available voices
   listVoices: () => api.get<Voice[]>('/voice/voices'),
+
+  // Stop local speech playback
+  stopSpeaking: () => api.post('/voice/synthesize/stop'),
 
   // Streaming TTS via SSE - synthesize text and stream audio chunks
   synthesizeStream: (text: string, format?: string): EventSource => {
@@ -255,7 +254,9 @@ export class VoiceWebSocket {
     this.reconnectAttempts++
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
 
-    setTimeout(() => {
+    setTimeout(async () => {
+      // Refresh token before reconnecting — expired tokens cause repeated failures
+      await ensureFreshToken().catch(() => {})
       this.connect().catch(() => {
         // Reconnect failed, will try again
       })
@@ -482,11 +483,13 @@ export const ttsAudioManager = new TTSAudioManager()
 
 // Streaming TTS Queue Manager - plays sentences as they arrive
 class StreamingTTSManager {
-  private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean }> = []
+  private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean; playedLocally?: boolean; fetching?: boolean }> = []
   private playIndex = 0 // cursor: next item to play
+  private fetchIndex = 0 // cursor: next item to fetch
   private isPlaying = false
   private isStopped = false
   private currentEventSource: EventSource | null = null
+  private static readonly PREFETCH_AHEAD = 2 // how many sentences to prefetch ahead of playback
   public onSentenceStart: ((index: number) => void) | null = null
   public onComplete: (() => void) | null = null
 
@@ -504,23 +507,38 @@ class StreamingTTSManager {
       this.isStopped = false
       this.queue = []
       this.playIndex = 0
+      this.fetchIndex = 0
     }
 
     const sentences = this.splitIntoSentences(text)
     if (sentences.length === 0) return
 
-    // Append new sentences to queue, fetch audio for each
-    const startIndex = this.queue.length
+    // Append new sentences to queue
     for (const s of sentences) {
       this.queue.push({ text: s })
     }
-    sentences.forEach((sentence, i) => {
-      this.fetchAudio(sentence, startIndex + i)
-    })
+
+    // Kick off prefetch pipeline
+    this.prefetch()
 
     // Kick off playback if not already running
     if (!this.isPlaying) {
       this.playNext()
+    }
+  }
+
+  // Prefetch up to PREFETCH_AHEAD sentences ahead of the current play position
+  private prefetch() {
+    while (
+      this.fetchIndex < this.queue.length &&
+      this.fetchIndex < this.playIndex + StreamingTTSManager.PREFETCH_AHEAD &&
+      !this.queue[this.fetchIndex].fetching &&
+      !this.queue[this.fetchIndex].audio &&
+      !this.queue[this.fetchIndex].failed
+    ) {
+      this.queue[this.fetchIndex].fetching = true
+      this.fetchAudio(this.queue[this.fetchIndex].text, this.fetchIndex)
+      this.fetchIndex++
     }
   }
 
@@ -538,11 +556,14 @@ class StreamingTTSManager {
         received = true
         const data = JSON.parse(e.data)
         if (this.queue[index]) {
-          this.queue[index].audio = data.audio
-          this.queue[index].contentType = data.content_type
+          if (data.played_locally) {
+            this.queue[index].playedLocally = true
+          } else {
+            this.queue[index].audio = data.audio
+            this.queue[index].contentType = data.content_type
+          }
         }
         es.close()
-        // Nudge playback in case it was waiting for this audio
         if (!this.isPlaying) this.playNext()
       })
 
@@ -581,11 +602,18 @@ class StreamingTTSManager {
       return
     }
 
+    // Server already played locally — skip browser playback
+    if (item.playedLocally) {
+      this.playIndex++
+      this.playNext()
+      return
+    }
+
     if (!item.audio || !item.contentType) {
       // Audio not ready yet, wait and retry with a max retry limit
       const retryKey = `_retries_${this.playIndex}`
       const retries = (this as any)[retryKey] || 0
-      if (retries > 50) { // 50 * 100ms = 5s max wait per sentence
+      if (retries > 150) { // 150 * 100ms = 15s max wait per sentence (Kokoro local inference can be slow)
         console.warn('TTS audio fetch timeout, skipping sentence:', item.text)
         delete (this as any)[retryKey]
         this.playIndex++
@@ -619,6 +647,8 @@ class StreamingTTSManager {
     this.playIndex++
 
     if (!this.isStopped) {
+      // Trigger prefetch for next sentences as we advance
+      this.prefetch()
       this.playNext()
     }
   }
@@ -628,8 +658,10 @@ class StreamingTTSManager {
     this.isPlaying = false
     this.queue = []
     this.playIndex = 0
+    this.fetchIndex = 0
     this.currentEventSource?.close()
     ttsAudioManager.stop()
+    voiceApi.stopSpeaking().catch(() => {})
   }
 }
 

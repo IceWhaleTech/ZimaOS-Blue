@@ -59,7 +59,7 @@ Vytvorený pre odvážnych vývojárov, ktorí chcú **tvoriť vlastných agento
 Ideme ešte ďalej: natívna podpora pre **20+ IM platforiem**, **hlasovo ovládané** rozhrania pre prirodzený, kontextovo uvedomelý dialóg, **bezúdržbové prepínanie modelov** s IDE skenovaním a SOUL-vrstvené osobnosti.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### Rýchly a ľahký
@@ -95,49 +95,13 @@ Veríme, že **osobné počítačové systémy novej generácie** prijímajú LL
 - **Lokálne orientovaný, ultra ľahký, multiplatformový** – Nevyžaduje výkonný hardvér. Beží na čomkoľvek, čo dokáže počítať.
 - **Bezpečný a auditovateľný** – Audit relácií, sandboxing, riadenie oprávnení a vstavaný API proxy fungujúci ako aplikačný firewall — každý bajt dnu/von je viditeľný.
 
-![](../../docs/assets/design_principle.png)
-
 Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôležité**. Verní <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **dizajnovej filozofii ZimaOS**, Blue prináša:
 - **Od nuly k jednej jedným kliknutím** – Okamžité nasadenie, žiadna zložitá konfigurácia.
 - **Rýchle prototypovanie** – Tvorte kreatívne alebo ručne scenárovo špecifické nástroje, interakcie a balíčky aplikácií.
 - **Globálne pripravený** – **Svet je veľký** a nehovorí predvolene anglicky. **20+ jazykov, natívne**, žiadne bariéry.
 - **Otvorený ekosystém modelov** – Žiadne uzamknutie dodávateľom. Prineste si vlastné modely.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Poskytovateľ | Modely | Typ |
-|--------------|--------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi atď. | Lokálny |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (zameranie na súkromie) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | Modely OpenAI cez Azure | Cloud |
-| OpenRouter | 100+ agregovaných modelov | Cloud |
-| AIHubMix | Multi-provider agregátor | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Vlastný | Akékoľvek API kompatibilné s OpenAI / Anthropic / Gemini | Cloud / Lokálny |
-
-</details>
-
-### Podporované IDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## Rýchly štart
 

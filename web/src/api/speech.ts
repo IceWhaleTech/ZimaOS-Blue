@@ -99,6 +99,21 @@ export interface ModelInfo {
   downloaded: boolean
 }
 
+export interface EspeakLanguagePack {
+  code: string
+  name: string
+  downloaded: boolean
+  size: number // actual file size in bytes
+}
+
+export interface EspeakLibraryStatus {
+  installed: boolean
+  path: string
+  language_count: number
+  data_size: number
+  static_linked: boolean
+}
+
 // Speech API
 export const speechApi = {
   // Unified status
@@ -176,18 +191,32 @@ export const speechApi = {
       text,
     }),
 
-  // eSpeak-NG language pack management
+  // Kokoro model management
+  getKokoroStatus: () =>
+    api.get<{ ready: boolean; downloading: boolean; progress?: number; error?: string; init_stage?: string; speed?: string; eta?: string; file?: string; file_index?: number; total_files?: number; downloaded_human?: string }>('/speech/kokoro/status'),
+
+  downloadKokoro: () =>
+    api.post<{ status: string; message: string }>('/speech/kokoro/download'),
+
+  cancelKokoroDownload: () =>
+    api.post<{ status: string; message: string }>('/speech/kokoro/download/cancel'),
+
+  // eSpeak-NG status (engine is statically linked, data detected at runtime)
   listEspeakLanguages: () =>
-    api.get<{ languages: Array<{code: string; name: string; downloaded: boolean; size: string}> }>('/speech/espeak/languages'),
+    api.get<{ languages: EspeakLanguagePack[]; count: number }>('/speech/espeak/languages'),
 
-  downloadEspeakLanguage: (langCode: string) =>
-    api.post<{ status: string; message: string }>('/speech/espeak/download', { lang_code: langCode }),
+  getEspeakLibraryStatus: () =>
+    api.get<EspeakLibraryStatus>('/speech/espeak/library/status'),
 
-  downloadAllEspeakLanguages: () =>
-    api.post<{ status: string; message: string }>('/speech/espeak/download-all'),
+  // Vocoder (HiFi-GAN) management
+  getVocoderStatus: () =>
+    api.get<{ ready: boolean; downloading: boolean; progress?: DownloadProgress; error?: string }>('/speech/vocoder/status'),
 
-  deleteEspeakLanguage: (langCode: string) =>
-    api.delete<{ status: string; message: string }>(`/speech/espeak/language?lang_code=${langCode}`),
+  downloadVocoder: () =>
+    api.post<{ status: string; message: string }>('/speech/vocoder/download'),
+
+  cancelVocoderDownload: () =>
+    api.post<{ status: string; message: string }>('/speech/vocoder/download/cancel'),
 
   // TTS synthesis
   synthesize: async (text: string): Promise<{ audio: string; content_type: string }> => {

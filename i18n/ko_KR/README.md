@@ -64,7 +64,7 @@ Clawdbot에서 영감을 받아, 우리는 개인 컴퓨팅의 **미래**가 엣
 한 걸음 더 나아갑니다: **20개 이상의 IM 플랫폼** 네이티브 지원, 자연스럽고 맥락을 인식하는 대화를 위한 **음성 기반** 인터페이스, IDE 스캔을 통한 **설정 없는 모델 전환**, 그리고 SOUL 레이어 퍼스널리티를 제공합니다.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### 빠르고 가벼움
@@ -100,49 +100,13 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 - **로컬 우선, 초경량, 크로스 디바이스** – 고사양 하드웨어 불필요. 연산이 가능한 모든 기기에서 실행.
 - **안전하고 감사 가능** – 세션 감사, 샌드박싱, 권한 제어, 애플리케이션 레이어 방화벽 역할을 하는 내장 API 프록시 — 모든 입출력 바이트가 가시적.
 
-![](../../docs/assets/design_principle.png)
-
 보일러플레이트를 최소화하여 **중요한 것에 집중**할 수 있습니다. <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS의 설계 철학**에 충실하게, Blue는 다음을 제공합니다:
 - **원클릭으로 제로에서 원까지** – 복잡한 설정 없이 즉시 배포.
 - **빠른 프로토타이핑** – 시나리오별 도구, 상호작용, 앱 패키지를 바이브 코딩하거나 직접 제작.
 - **글로벌 대응** – **세상은 넓고**, 영어가 기본이 아닙니다. **20개 이상의 언어, 네이티브 지원**, 장벽 없음.
 - **개방형 모델 생태계** – 벤더 종속 없음. 자신의 모델을 가져오세요.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| 프로바이더 | 모델 | 유형 |
-|----------|--------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | 클라우드 |
-| Anthropic | Claude 4.5, Claude 4 | 클라우드 |
-| Google | Gemini 2.5, Gemini 2.0 | 클라우드 |
-| Ollama | Llama, Qwen, Gemma, Phi 등 | 로컬 |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | 클라우드 |
-| Grok | Grok-3, Grok-3-mini | 클라우드 |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | 클라우드 |
-| GLM | GLM-4, GLM-4-Flash | 클라우드 |
-| Moonshot | Moonshot-v1 | 클라우드 |
-| MiniMax | abab6.5, abab5.5 | 클라우드 |
-| Venice | Llama, Mistral (프라이버시 우선) | 클라우드 |
-| AWS Bedrock | Claude, Llama, Titan | 클라우드 |
-| Azure | Azure를 통한 OpenAI 모델 | 클라우드 |
-| OpenRouter | 100+ 통합 모델 | 클라우드 |
-| AIHubMix | 멀티 프로바이더 애그리게이터 | 클라우드 |
-| Codex | OpenAI Codex | 클라우드 |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | 클라우드 |
-| 커스텀 | 모든 OpenAI / Anthropic / Gemini 호환 API | 클라우드 / 로컬 |
-
-</details>
-
-### 지원되는 IDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## 빠른 시작
 

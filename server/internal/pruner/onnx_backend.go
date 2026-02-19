@@ -27,6 +27,13 @@ type OnnxBackend struct {
 // NewOnnxBackend creates a new ONNX-based pruning backend.
 // modelDir should contain: model.onnx, vocab.json, merges.txt
 func NewOnnxBackend(cfg Config, modelDir string) (*OnnxBackend, error) {
+	// Ensure ONNX Runtime library path is set (data dir is parent of model dir)
+	dataPath := filepath.Dir(modelDir)
+	onnx.SetDataDir(dataPath)
+	if libPath := onnx.RuntimeLibPath(dataPath); libPath != "" {
+		onnx.SetLibraryPath(libPath)
+	}
+
 	vocabPath := filepath.Join(modelDir, "vocab.json")
 	mergesPath := filepath.Join(modelDir, "merges.txt")
 

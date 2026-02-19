@@ -59,7 +59,7 @@ Pensato per sviluppatori audaci che vogliono **creare i propri agenti in modo li
 Vai oltre: offre supporto nativo per **oltre 20 piattaforme di messaggistica**, interfacce **a controllo vocale** per dialoghi naturali e contestuali, **cambio modello senza configurazione** con scansione IDE, e personalità a livelli SOUL.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### Veloce e Leggero
@@ -95,49 +95,13 @@ Crediamo che la **prossima generazione dell'informatica personale** abbracci gli
 - **Local-First, Ultra-Leggero, Multi-Dispositivo** – Nessun hardware di fascia alta richiesto. Funziona su qualsiasi cosa in grado di calcolare.
 - **Sicuro e Verificabile** – Audit delle sessioni, sandboxing, controllo dei permessi e un proxy API integrato che funge da firewall a livello applicativo — ogni byte in entrata/uscita è visibile.
 
-![](../../docs/assets/design_principle.png)
-
 Riduciamo al minimo il codice ripetitivo così puoi **concentrarti su ciò che conta**. Fedeli alla <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filosofia di design di ZimaOS**, Blue offre:
 - **Da Zero a Uno con Un Click** – Deploy istantaneo, nessuna configurazione complessa.
 - **Prototipazione Rapida** – Crea liberamente o artigianalmente strumenti, interazioni e pacchetti app specifici per ogni scenario.
 - **Pronto per il Mondo** – **Il mondo è grande**, e non parla solo inglese. **Oltre 20 lingue, native**, senza barriere.
 - **Ecosistema di Modelli Aperto** – Nessun vendor lock-in. Porta i tuoi modelli.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Provider | Modelli | Tipo |
-|----------|---------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi ecc. | Locale |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (privacy-first) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | Modelli OpenAI tramite Azure | Cloud |
-| OpenRouter | 100+ modelli aggregati | Cloud |
-| AIHubMix | Aggregatore multi-provider | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Personalizzato | Qualsiasi API compatibile OpenAI / Anthropic / Gemini | Cloud / Locale |
-
-</details>
-
-### IDE Supportati
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## Avvio Rapido
 

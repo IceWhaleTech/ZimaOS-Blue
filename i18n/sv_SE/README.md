@@ -59,7 +59,7 @@ Byggt för modiga utvecklare som vill **vibba eller handgjort skapa sina egna ag
 Ta det vidare: det levererar inbyggt stöd för **20+ IM-plattformar**, **röststyrda** gränssnitt för naturlig, kontextmedveten dialog, **nollkonfigurations-modellväxling** med IDE-skanning, och SOUL-skiktade personligheter.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### Snabbt, lätt
@@ -95,49 +95,13 @@ Vi tror att **nästa generations personlig databehandling** omfamnar LLM:er — 
 - **Lokalt-först, ultralätt, plattformsoberoende** – Ingen avancerad hårdvara krävs. Körs på allt som kan beräkna.
 - **Säkert och granskningsbart** – Sessionsgranskning, sandlådning, behörighetskontroller och en inbyggd API-proxy som fungerar som en applikationslager-brandvägg — varje byte in/ut är synlig.
 
-![](../../docs/assets/design_principle.png)
-
 Vi minimerar standardkod så att du **fokuserar på det som spelar roll**. Trogen <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS designfilosofi** levererar Blue:
 - **Noll till ett med ett klick** – Distribuera direkt, ingen komplex konfiguration.
 - **Snabb prototypning** – Vibba eller handgjort skapa scenariospecifika verktyg, interaktioner och apppaket.
 - **Globalt redo** – **Världen är stor**, och den har inte engelska som standard. **20+ språk, inbyggt**, inga barriärer.
 - **Öppet modellekosystem** – Ingen leverantörsinlåsning. Ta med dina egna modeller.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Leverantör | Modeller | Typ |
-|------------|----------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Moln |
-| Anthropic | Claude 4.5, Claude 4 | Moln |
-| Google | Gemini 2.5, Gemini 2.0 | Moln |
-| Ollama | Llama, Qwen, Gemma, Phi m.fl. | Lokal |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Moln |
-| Grok | Grok-3, Grok-3-mini | Moln |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Moln |
-| GLM | GLM-4, GLM-4-Flash | Moln |
-| Moonshot | Moonshot-v1 | Moln |
-| MiniMax | abab6.5, abab5.5 | Moln |
-| Venice | Llama, Mistral (integritetsfokus) | Moln |
-| AWS Bedrock | Claude, Llama, Titan | Moln |
-| Azure | OpenAI-modeller via Azure | Moln |
-| OpenRouter | 100+ aggregerade modeller | Moln |
-| AIHubMix | Flerleverantörsaggregator | Moln |
-| Codex | OpenAI Codex | Moln |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Moln |
-| Anpassad | Alla OpenAI / Anthropic / Gemini-kompatibla API:er | Moln / Lokal |
-
-</details>
-
-### IDE-stöd
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## Snabbstart
 

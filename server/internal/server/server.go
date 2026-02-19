@@ -26,6 +26,15 @@ import (
 // actualPort stores the actual port the server is listening on
 var actualPort atomic.Int32
 
+// globalServer holds a reference to the running server for dynamic TLS start
+var globalServer atomic.Pointer[Server]
+
+// SetGlobalServer stores the server instance for dynamic TLS operations.
+func SetGlobalServer(s *Server) { globalServer.Store(s) }
+
+// GetGlobalServer returns the running server instance (may be nil).
+func GetGlobalServer() *Server { return globalServer.Load() }
+
 // onServerStartCallbacks stores callbacks to run after server starts
 var onServerStartCallbacks []func(port int)
 var onServerStartMu sync.Mutex
@@ -57,6 +66,7 @@ type Server struct {
 	httpServer     *http.Server
 	shutdownMu     sync.Mutex
 	isShuttingDown bool
+	tlsStarted    atomic.Bool
 }
 
 func New(cfg *config.ServerConfig) *Server {
@@ -286,6 +296,28 @@ func (s *Server) StartTLS() error {
 	}
 
 	return httpsServer.Serve(ln)
+}
+
+// EnsureTLSStarted starts the HTTPS listener if a certificate is available
+// and it hasn't been started yet.  Safe to call multiple times — only the
+// first successful call actually starts the listener.
+func (s *Server) EnsureTLSStarted() {
+	if s.tlsStarted.Load() {
+		return
+	}
+	tlsManager := security.GetGlobalTLSManager()
+	if tlsManager == nil || tlsManager.GetCertificate() == nil {
+		return
+	}
+	if !s.tlsStarted.CompareAndSwap(false, true) {
+		return // another goroutine won the race
+	}
+	go func() {
+		if err := s.StartTLS(); err != nil {
+			logger.Error().Err(err).Msg("Dynamic HTTPS server error")
+			s.tlsStarted.Store(false) // allow retry
+		}
+	}()
 }
 
 // Shutdown gracefully shuts down the server

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/onnx"
 )
 
 // PrunerModelInfo describes a downloadable pruner model file.
@@ -67,6 +68,7 @@ type PrunerFileStatus struct {
 // PrunerModelManager manages pruner model downloads via the unified downloader.
 type PrunerModelManager struct {
 	modelDir   string
+	dataPath   string
 	downloader *downloader.ModelDownloader
 }
 
@@ -74,6 +76,7 @@ type PrunerModelManager struct {
 func NewPrunerModelManager(modelDir string) *PrunerModelManager {
 	return &PrunerModelManager{
 		modelDir:   modelDir,
+		dataPath:   filepath.Dir(modelDir),
 		downloader: downloader.NewModelDownloader(modelDir),
 	}
 }
@@ -153,7 +156,34 @@ func toDownloaderFiles() []downloader.ModelFile {
 
 // Download starts downloading all model files via the unified downloader.
 func (m *PrunerModelManager) Download(ctx context.Context) error {
-	return m.downloader.Download(ctx, toDownloaderFiles())
+	var files []downloader.ModelFile
+
+	// ONNX Runtime tgz first (if not already extracted)
+	if onnx.RuntimeLibPath(m.dataPath) == "" {
+		tgzFilename := onnx.RuntimeTgzFilename()
+		tgzURL := onnx.RuntimeTgzURL()
+		if tgzFilename != "" && tgzURL != "" {
+			dataPath := m.dataPath
+			files = append(files, downloader.ModelFile{
+				Filename: tgzFilename,
+				URL:      tgzURL,
+				Mirrors:  onnx.RuntimeTgzMirrors(),
+				Size:     "~30MB",
+				PostProcess: func(tgzPath string) error {
+					libPath, err := onnx.ExtractRuntimeFromTgz(tgzPath, dataPath)
+					if err != nil {
+						return err
+					}
+					onnx.SetLibraryPath(libPath)
+					onnx.SetDataDir(dataPath)
+					return nil
+				},
+			})
+		}
+	}
+
+	files = append(files, toDownloaderFiles()...)
+	return m.downloader.Download(ctx, files)
 }
 
 // CancelDownload cancels the current download.

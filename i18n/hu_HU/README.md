@@ -59,7 +59,7 @@ Bátor fejlesztőknek készült, akik **saját ágenseiket kreatívan vagy kézz
 Tovább gondolva: natív támogatás **20+ IM platformhoz**, **hangvezérelt** felületek természetes, kontextus-tudatos párbeszédekhez, **konfiguráció nélküli modellváltás** IDE-felismeréssel, és SOUL-rétegű személyiségek.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### Gyors és könnyű
@@ -95,49 +95,13 @@ Hisszük, hogy a **következő generációs személyi számítástechnika** mag�
 - **Helyi-első, ultrakönnyű, eszközök közötti** – Nem szükséges csúcskategóriás hardver. Fut mindenen, ami képes számítani.
 - **Biztonságos és auditálható** – Munkamenet-auditálás, sandboxing, jogosultság-kezelés és beépített API proxy, amely alkalmazásszintű tűzfalként működik — minden bejövő/kimenő bájt látható.
 
-![](../../docs/assets/design_principle.png)
-
 Minimalizáljuk a sablonkódot, hogy **arra összpontosíthasson, ami számít**. A <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS tervezési filozófiájához** hűen a Blue nyújtja:
 - **Nulláról egyre egy kattintással** – Azonnali telepítés, nincs bonyolult konfiguráció.
 - **Gyors prototípuskészítés** – Kreatívan vagy kézzel készítsen forgatókönyv-specifikus eszközöket, interakciókat és alkalmazáscsomagokat.
 - **Globálisan kész** – **A világ hatalmas**, és nem alapértelmezetten angol. **20+ nyelv, natívan**, akadályok nélkül.
 - **Nyílt modell-ökoszisztéma** – Nincs szállítói kötöttség. Hozza saját modelljeit.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Szolgáltató | Modellek | Típus |
-|-------------|----------|-------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi stb. | Lokális |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (adatvédelem-központú) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | OpenAI modellek Azure-on keresztül | Cloud |
-| OpenRouter | 100+ aggregált modell | Cloud |
-| AIHubMix | Több szolgáltatós aggregátor | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Egyéni | Bármely OpenAI / Anthropic / Gemini kompatibilis API | Cloud / Lokális |
-
-</details>
-
-### Támogatott IDE-k
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## Gyors kezdés
 

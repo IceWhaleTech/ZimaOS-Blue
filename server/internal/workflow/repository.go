@@ -166,7 +166,7 @@ func (r *Repository) GetWorkflow(ctx context.Context, id string) (*Workflow, err
 func (r *Repository) UpdateWorkflow(ctx context.Context, workflow *Workflow) error {
 	workflow.UpdatedAt = time.Now()
 	workflow.Version++
-	n, err := r.wfTable(ctx).Update(map[string]interface{}{
+	n, err := r.wfTable(ctx).Update(z.V{
 		"name": workflow.Name, "description": workflow.Description, "status": workflow.Status,
 		"nodes": marshalJSON(workflow.Nodes), "connections": marshalJSON(workflow.Connections),
 		"variables": marshalJSON(workflow.Variables), "settings": marshalJSON(workflow.Settings),

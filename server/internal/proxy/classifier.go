@@ -47,6 +47,10 @@ const (
 	ErrorTypeRepetitiveOutput RetryableErrorType = "repetitive_output"
 	ErrorTypeInfiniteLoop     RetryableErrorType = "infinite_loop"
 
+	// Model not configured — model appears in list but isn't usable on this provider.
+	// Should failover to next provider (model may work elsewhere).
+	ErrorTypeModelNotConfigured RetryableErrorType = "model_not_configured"
+
 	// Non-retryable
 	ErrorTypeInvalidRequest RetryableErrorType = "invalid_request"
 	ErrorTypeAuthFailed     RetryableErrorType = "auth_failed"
@@ -142,8 +146,23 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 			},
 		},
 		{
+			Type:        ErrorTypeModelNotConfigured,
+			Category:    ErrorCategoryFailover,
+			StatusCodes: []int{400, 403, 404, 422},
+			MessagePatterns: []*regexp.Regexp{
+				regexp.MustCompile(`(?i)not configured`),
+				regexp.MustCompile(`(?i)not enabled`),
+				regexp.MustCompile(`(?i)not available`),
+				regexp.MustCompile(`(?i)not supported`),
+				regexp.MustCompile(`(?i)no access`),
+				regexp.MustCompile(`(?i)not authorized.*model`),
+				regexp.MustCompile(`(?i)model.*disabled`),
+				regexp.MustCompile(`(?i)model.*unavailable`),
+			},
+		},
+		{
 			Type:        ErrorTypeModelNotFound,
-			Category:    ErrorCategoryNonRetryable,
+			Category:    ErrorCategoryFailover,
 			StatusCodes: []int{404},
 			MessagePatterns: []*regexp.Regexp{
 				regexp.MustCompile(`(?i)model.*not found`),
@@ -276,6 +295,20 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 			StatusCodes: []int{500, 502, 503, 504},
 			MessagePatterns: []*regexp.Regexp{
 				regexp.MustCompile(`.*`), // Match any message for these status codes
+			},
+		},
+		{
+			Type:        ErrorTypeModelNotConfigured,
+			Category:    ErrorCategoryFailover,
+			StatusCodes: []int{400, 403, 404, 422},
+			MessagePatterns: []*regexp.Regexp{
+				regexp.MustCompile(`(?i)not configured`),
+				regexp.MustCompile(`(?i)not enabled`),
+				regexp.MustCompile(`(?i)not available`),
+				regexp.MustCompile(`(?i)not supported`),
+				regexp.MustCompile(`(?i)no access`),
+				regexp.MustCompile(`(?i)model.*disabled`),
+				regexp.MustCompile(`(?i)model.*unavailable`),
 			},
 		},
 	}
@@ -452,9 +485,9 @@ func (c *APIErrorClassifier) defaultClassification(statusCode int, message strin
 		classification.ShouldFailover = false
 	case statusCode == 404:
 		classification.Type = ErrorTypeModelNotFound
-		classification.Category = ErrorCategoryNonRetryable
-		classification.Retryable = false
-		classification.ShouldFailover = false
+		classification.Category = ErrorCategoryFailover
+		classification.Retryable = true
+		classification.ShouldFailover = true
 	case statusCode >= 400:
 		classification.Type = ErrorTypeInvalidRequest
 		classification.Category = ErrorCategoryNonRetryable

@@ -3,6 +3,7 @@ package proxy
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -55,66 +56,145 @@ func (h *FailoverAPIHandler) GetConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, h.config)
 }
 
-// UpdateConfig updates failover configuration
+// UpdateConfig updates failover configuration (partial merge).
 // PUT /api/v1/proxy/failover/config
 func (h *FailoverAPIHandler) UpdateConfig(c echo.Context) error {
-	var updates FailoverConfig
-	if err := c.Bind(&updates); err != nil {
+	// Read raw JSON so we know which fields were actually sent.
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(c.Request().Body).Decode(&raw); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request body",
 		})
 	}
 
-	// Update config fields
-	if h.config != nil {
-		if updates.Enabled != h.config.Enabled {
-			h.config.Enabled = updates.Enabled
-		}
-		if updates.MaxRetries > 0 {
-			h.config.MaxRetries = updates.MaxRetries
-		}
-		if updates.RetryDelay > 0 {
-			h.config.RetryDelay = updates.RetryDelay
-		}
-		h.config.CircuitBreaker = updates.CircuitBreaker
-		if updates.FailureThreshold > 0 {
-			h.config.FailureThreshold = updates.FailureThreshold
-		}
-		if updates.RecoveryTimeout > 0 {
-			h.config.RecoveryTimeout = updates.RecoveryTimeout
-		}
+	if h.config == nil {
+		return c.JSON(http.StatusOK, h.config)
+	}
 
-		// Update error classification config
-		h.config.ErrorClassification.Enabled = updates.ErrorClassification.Enabled
-		if len(updates.ErrorClassification.FailoverErrors) > 0 {
-			h.config.ErrorClassification.FailoverErrors = updates.ErrorClassification.FailoverErrors
-		}
-		if len(updates.ErrorClassification.RetryableErrors) > 0 {
-			h.config.ErrorClassification.RetryableErrors = updates.ErrorClassification.RetryableErrors
-		}
+	// Helper: unmarshal a top-level field only if present in the request.
+	has := func(key string) bool { _, ok := raw[key]; return ok }
 
-		// Update streaming anomaly config
-		h.config.StreamingAnomaly.Enabled = updates.StreamingAnomaly.Enabled
-		if updates.StreamingAnomaly.WindowSize > 0 {
-			h.config.StreamingAnomaly.WindowSize = updates.StreamingAnomaly.WindowSize
+	if has("enabled") {
+		var v bool
+		json.Unmarshal(raw["enabled"], &v)
+		h.config.Enabled = v
+	}
+	if has("max_retries") {
+		var v int
+		json.Unmarshal(raw["max_retries"], &v)
+		if v > 0 {
+			h.config.MaxRetries = v
 		}
-		if updates.StreamingAnomaly.RepeatThreshold > 0 {
-			h.config.StreamingAnomaly.RepeatThreshold = updates.StreamingAnomaly.RepeatThreshold
+	}
+	if has("retry_delay") {
+		var v float64
+		json.Unmarshal(raw["retry_delay"], &v)
+		if v > 0 {
+			h.config.RetryDelay = time.Duration(v)
 		}
-		if updates.StreamingAnomaly.MinPatternLength > 0 {
-			h.config.StreamingAnomaly.MinPatternLength = updates.StreamingAnomaly.MinPatternLength
+	}
+	if has("circuit_breaker") {
+		var v bool
+		json.Unmarshal(raw["circuit_breaker"], &v)
+		h.config.CircuitBreaker = v
+	}
+	if has("failure_threshold") {
+		var v int
+		json.Unmarshal(raw["failure_threshold"], &v)
+		if v > 0 {
+			h.config.FailureThreshold = v
 		}
-		if updates.StreamingAnomaly.RecoveryStrategy != "" {
-			h.config.StreamingAnomaly.RecoveryStrategy = updates.StreamingAnomaly.RecoveryStrategy
+	}
+	if has("recovery_timeout") {
+		var v float64
+		json.Unmarshal(raw["recovery_timeout"], &v)
+		if v > 0 {
+			h.config.RecoveryTimeout = time.Duration(v)
 		}
+	}
 
-		// Update smart selection config
-		h.config.ContextWindowCheck = updates.ContextWindowCheck
-		if updates.QuotaCooldown > 0 {
-			h.config.QuotaCooldown = updates.QuotaCooldown
+	// Error classification — partial merge into nested struct.
+	if has("error_classification") {
+		var ecRaw map[string]json.RawMessage
+		json.Unmarshal(raw["error_classification"], &ecRaw)
+		if _, ok := ecRaw["enabled"]; ok {
+			var v bool
+			json.Unmarshal(ecRaw["enabled"], &v)
+			h.config.ErrorClassification.Enabled = v
 		}
-		if len(updates.ContextWindowOverride) > 0 {
-			h.config.ContextWindowOverride = updates.ContextWindowOverride
+		if _, ok := ecRaw["failover_errors"]; ok {
+			var v []string
+			json.Unmarshal(ecRaw["failover_errors"], &v)
+			if len(v) > 0 {
+				h.config.ErrorClassification.FailoverErrors = v
+			}
+		}
+		if _, ok := ecRaw["retryable_errors"]; ok {
+			var v []string
+			json.Unmarshal(ecRaw["retryable_errors"], &v)
+			if len(v) > 0 {
+				h.config.ErrorClassification.RetryableErrors = v
+			}
+		}
+	}
+
+	// Streaming anomaly — partial merge into nested struct.
+	if has("streaming_anomaly") {
+		var saRaw map[string]json.RawMessage
+		json.Unmarshal(raw["streaming_anomaly"], &saRaw)
+		if _, ok := saRaw["enabled"]; ok {
+			var v bool
+			json.Unmarshal(saRaw["enabled"], &v)
+			h.config.StreamingAnomaly.Enabled = v
+		}
+		if _, ok := saRaw["window_size"]; ok {
+			var v int
+			json.Unmarshal(saRaw["window_size"], &v)
+			if v > 0 {
+				h.config.StreamingAnomaly.WindowSize = v
+			}
+		}
+		if _, ok := saRaw["repeat_threshold"]; ok {
+			var v int
+			json.Unmarshal(saRaw["repeat_threshold"], &v)
+			if v > 0 {
+				h.config.StreamingAnomaly.RepeatThreshold = v
+			}
+		}
+		if _, ok := saRaw["min_pattern_length"]; ok {
+			var v int
+			json.Unmarshal(saRaw["min_pattern_length"], &v)
+			if v > 0 {
+				h.config.StreamingAnomaly.MinPatternLength = v
+			}
+		}
+		if _, ok := saRaw["recovery_strategy"]; ok {
+			var v string
+			json.Unmarshal(saRaw["recovery_strategy"], &v)
+			if v != "" {
+				h.config.StreamingAnomaly.RecoveryStrategy = v
+			}
+		}
+	}
+
+	// Context window check.
+	if has("context_window_check") {
+		var v bool
+		json.Unmarshal(raw["context_window_check"], &v)
+		h.config.ContextWindowCheck = v
+	}
+	if has("quota_cooldown") {
+		var v float64
+		json.Unmarshal(raw["quota_cooldown"], &v)
+		if v > 0 {
+			h.config.QuotaCooldown = time.Duration(v)
+		}
+	}
+	if has("context_window_override") {
+		var v map[string]int
+		json.Unmarshal(raw["context_window_override"], &v)
+		if len(v) > 0 {
+			h.config.ContextWindowOverride = v
 		}
 	}
 

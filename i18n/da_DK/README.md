@@ -59,7 +59,7 @@ Bygget til modige udviklere, der vil **vibe eller håndbygge deres egne agenter*
 Tag det videre: det leverer indbygget understøttelse af **20+ IM-platforme**, **stemmestyrede** grænseflader til naturlig, kontekstbevidst dialog, **nulkonfigurations-modelskift** med IDE-scanning og SOUL-lagdelte personligheder.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### Hurtigt, let
@@ -95,49 +95,13 @@ Vi tror, at **næste generations personlig computing** omfavner LLM'er — men *
 - **Lokalt-først, ultralet, på tværs af enheder** – Ingen avanceret hardware påkrævet. Kører på alt, der kan beregne.
 - **Sikkert og reviderbart** – Sessionsrevision, sandkassekørsel, rettighedskontroller og en indbygget API-proxy, der fungerer som en applikationslags-firewall — hver byte ind/ud er synlig.
 
-![](../../docs/assets/design_principle.png)
-
 Vi minimerer standardkode, så du **fokuserer på det, der betyder noget**. Tro mod <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS' designfilosofi** leverer Blue:
 - **Fra nul til ét med ét klik** – Udrulning med det samme, ingen kompleks konfiguration.
 - **Hurtig prototyping** – Vibe eller håndbyg scenariespecifikke værktøjer, interaktioner og apppakker.
 - **Globalt klar** – **Verden er stor**, og den har ikke engelsk som standard. **20+ sprog, indbygget**, ingen barrierer.
 - **Åbent modeløkosystem** – Ingen leverandørlåsning. Medbring dine egne modeller.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Udbyder | Modeller | Type |
-|---------|----------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi m.fl. | Lokal |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (privatlivsfokus) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | OpenAI-modeller via Azure | Cloud |
-| OpenRouter | 100+ aggregerede modeller | Cloud |
-| AIHubMix | Multiudbyder-aggregator | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Brugerdefineret | Alle OpenAI / Anthropic / Gemini-kompatible API'er | Cloud / Lokal |
-
-</details>
-
-### Understøttede IDE'er
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## Hurtig start
 

@@ -13,7 +13,15 @@ TRIAL_LICENSE?=$(ZIMAOS_TRIAL_LICENSE)
 # Build flags
 # -s: Omit symbol table and debug info
 # -w: Omit DWARF symbol table
-LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$(TRIAL_LICENSE)"
+BASE_LDFLAGS=-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$(TRIAL_LICENSE)
+
+# On macOS, embed Info.plist into __TEXT,__info_plist for NSBundle.mainBundle to read.
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+LDFLAGS=-ldflags "$(BASE_LDFLAGS) -extldflags '-sectcreate __TEXT __info_plist Info.plist'"
+else
+LDFLAGS=-ldflags "$(BASE_LDFLAGS)"
+endif
 
 # CGO is required for mattn/go-sqlite3
 # Windows users: install MinGW-w64 first (https://winlibs.com or `scoop install mingw`)
@@ -22,8 +30,8 @@ export CGO_ENABLED=1
 # Build tags
 # fts5: enable SQLite FTS5 full-text search (mattn/go-sqlite3)
 # whisper: enable whisper.cpp ASR support (requires CGo libs)
-TAGS=-tags 'fts5 espeak'
-TAGS_FULL=-tags 'fts5 espeak whisper'
+TAGS=-tags 'fts5 espeak kokoro'
+TAGS_FULL=-tags 'fts5 espeak kokoro whisper'
 
 # Default target
 all: lint test build
@@ -39,6 +47,9 @@ trim-dist:
 
 # Pack dist.tar.gz into binary (append + 8-byte LE offset trailer)
 # Layout: [Go binary][dist.tar.gz][8-byte offset of tar.gz start]
+# NOTE: On macOS this is skipped — appending data breaks the Mach-O structure
+# and TCC's strict signature validation rejects the binary, preventing
+# speech recognition authorization. Use sidecar-dist instead.
 pack-dist:
 	@echo "Packing dist into binary..."
 	@tar czf /tmp/zimaos-dist.tar.gz -C internal/web/dist .
@@ -48,18 +59,49 @@ pack-dist:
 	echo "Appended dist ($$(du -h /tmp/zimaos-dist.tar.gz | cut -f1)) at offset $$OFFSET"
 	@rm -f /tmp/zimaos-dist.tar.gz
 
-# Build the default binary (self-extract dist, no whisper/ASR)
+# Copy dist directory next to binary as sidecar (macOS only).
+# This preserves the Mach-O structure so codesign + TCC work correctly.
+sidecar-dist:
+	@echo "Copying dist as sidecar..."
+	@rm -rf $(BUILD_DIR)/dist
+	@cp -r internal/web/dist $(BUILD_DIR)/dist
+	@echo "Sidecar dist: $(BUILD_DIR)/dist ($$(du -sh $(BUILD_DIR)/dist | cut -f1))"
+
+# Code-sign macOS CLI binary (requires APPLE_SIGNING_IDENTITY env var)
+codesign:
+ifeq ($(UNAME_S),Darwin)
+ifdef APPLE_SIGNING_IDENTITY
+	@echo "Code-signing $(BUILD_DIR)/$(BINARY_NAME)..."
+	codesign --force --options runtime --sign "$(APPLE_SIGNING_IDENTITY)" \
+		--entitlements ../tauri-app/src-tauri/entitlements.plist $(BUILD_DIR)/$(BINARY_NAME)
+else
+	@echo "APPLE_SIGNING_IDENTITY not set, skipping code signing"
+endif
+endif
+
+# Build the default binary (no whisper/ASR)
+# macOS: build + codesign + pack-dist
+#   On first run, the binary detects appended dist, extracts it as sidecar,
+#   truncates itself to restore clean Mach-O, and restarts. This preserves
+#   single-file distribution while keeping TCC signature validation happy.
+# Linux: build + pack-dist
 build: trim-dist
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+ifeq ($(UNAME_S),Darwin)
+	@$(MAKE) codesign
+endif
 	@$(MAKE) pack-dist
 
-# Build full binary (with whisper/ASR)
+# Build full binary (with whisper/ASR) — same dist strategy as build
 build-full: trim-dist
 	@echo "Building $(BINARY_NAME) (full, with ASR)..."
 	@mkdir -p $(BUILD_DIR)
 	go build $(TAGS_FULL) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+ifeq ($(UNAME_S),Darwin)
+	@$(MAKE) codesign
+endif
 	@$(MAKE) pack-dist
 
 # Run tests

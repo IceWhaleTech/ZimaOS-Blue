@@ -13,6 +13,7 @@ type service struct {
 	speed             float32
 	pitch             float32
 	volume            float32
+	dataPath          string
 	vocoderManager    *VocoderModelManager
 	kokoroManager     *KokoroModelManager
 	mu                sync.RWMutex
@@ -33,6 +34,7 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 		speed:           1.0,
 		pitch:           0,
 		volume:          100,
+		dataPath:        cfg.DataPath,
 	}
 
 	// Initialize vocoder manager if dataPath provided
@@ -47,7 +49,7 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 			continue
 		}
 
-		provider, err := createProvider(providerCfg)
+		provider, err := createProvider(providerCfg, cfg.DataPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create provider %s: %w", providerCfg.Type, err)
 		}
@@ -66,18 +68,20 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 }
 
 // createProvider creates a provider based on the configuration.
-func createProvider(cfg ProviderConfig) (Provider, error) {
+func createProvider(cfg ProviderConfig, dataPath string) (Provider, error) {
 	switch cfg.Type {
 	case ProviderEspeakNG:
-		dataPath := "" // empty = auto-detect in NewEspeakNGProvider
+		dp := ""
 		if cfg.BaseURL != "" {
-			dataPath = cfg.BaseURL
+			dp = cfg.BaseURL
 		}
-		return NewEspeakNGAdapter(dataPath), nil
+		return NewEspeakNGAdapter(dp), nil
 	case ProviderEdge:
 		return NewEdgeTTSProvider(), nil
 	case ProviderMacOSNative:
 		return NewMacOSNativeTTS(), nil
+	case ProviderKokoro:
+		return NewKokoroProvider(dataPath), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}
@@ -141,13 +145,15 @@ func (s *service) ListVoices(ctx context.Context) ([]Voice, error) {
 // ListProviders returns all supported provider types.
 func (s *service) ListProviders() []ProviderType {
 	result := []ProviderType{ProviderEdge}
-	// Only include espeak-ng if it's available in this build
 	if (&EspeakNGAdapter{}).Available() {
 		result = append(result, ProviderEspeakNG)
 	}
-	// Include macOS native provider if available
 	if (&MacOSNativeTTS{}).Available() {
 		result = append(result, ProviderMacOSNative)
+	}
+	// Kokoro is listed only when compiled in
+	if KokoroAvailable() {
+		result = append(result, ProviderKokoro)
 	}
 	return result
 }
@@ -165,7 +171,7 @@ func (s *service) SetDefaultProvider(providerType ProviderType) error {
 
 	if _, ok := s.providers[providerType]; !ok {
 		// Lazily create the provider on demand
-		provider, err := createProvider(ProviderConfig{Type: providerType, Enabled: true})
+		provider, err := createProvider(ProviderConfig{Type: providerType, Enabled: true}, s.dataPath)
 		if err != nil {
 			return fmt.Errorf("provider %s not available: %w", providerType, err)
 		}
@@ -256,10 +262,21 @@ func (s *service) GetKokoroStatus() map[string]interface{} {
 			"ready":       false,
 			"error":       "kokoro manager not initialized",
 			"downloading": false,
+			"init_stage":  "",
 		}
 	}
 
-	return s.kokoroManager.GetModelStatus()
+	result := s.kokoroManager.GetModelStatus()
+
+	// Add init_stage from the Kokoro provider if it exists
+	if p, ok := s.providers[ProviderKokoro]; ok {
+		type initStager interface{ GetInitStage() string }
+		if is, ok := p.(initStager); ok {
+			result["init_stage"] = is.GetInitStage()
+		}
+	}
+
+	return result
 }
 
 // DownloadKokoroModel starts downloading the Kokoro model.

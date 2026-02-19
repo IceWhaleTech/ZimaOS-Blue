@@ -59,7 +59,7 @@ Stworzony dla odważnych programistów, którzy chcą **tworzyć własnych agent
 Idąc dalej: oferuje natywne wsparcie dla **ponad 20 platform komunikacyjnych**, interfejsy **sterowane głosem** do naturalnego, kontekstowego dialogu, **automatyczne przełączanie modeli** ze skanowaniem IDE oraz wielowarstwowe osobowości SOUL.
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### Szybki, lekki
@@ -95,49 +95,13 @@ Wierzymy, że **komputery osobiste nowej generacji** obejmują LLM — ale **kon
 - **Lokalne podejście, ultralekki, wieloplatformowy** – Nie wymaga wydajnego sprzętu. Działa na wszystkim, co potrafi obliczać.
 - **Bezpieczny i audytowalny** – Audyt sesji, sandboxing, kontrola uprawnień i wbudowany proxy API działający jako zapora warstwy aplikacji — każdy bajt wejścia/wyjścia jest widoczny.
 
-![](../../docs/assets/design_principle.png)
-
 Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filozofii projektowej ZimaOS**, Blue zapewnia:
 - **Od zera do jedynki jednym kliknięciem** – Natychmiastowe wdrożenie, bez skomplikowanej konfiguracji.
 - **Szybkie prototypowanie** – Twórz narzędzia, interakcje i pakiety aplikacji dopasowane do scenariuszy.
 - **Gotowy na cały świat** – **Świat jest ogromny** i nie domyślnie angielski. **Ponad 20 języków, natywnie**, bez barier.
 - **Otwarty ekosystem modeli** – Bez uzależnienia od dostawcy. Przynieś własne modele.
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Dostawca | Modele | Typ |
-|----------|--------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Chmura |
-| Anthropic | Claude 4.5, Claude 4 | Chmura |
-| Google | Gemini 2.5, Gemini 2.0 | Chmura |
-| Ollama | Llama, Qwen, Gemma, Phi itp. | Lokalny |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Chmura |
-| Grok | Grok-3, Grok-3-mini | Chmura |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Chmura |
-| GLM | GLM-4, GLM-4-Flash | Chmura |
-| Moonshot | Moonshot-v1 | Chmura |
-| MiniMax | abab6.5, abab5.5 | Chmura |
-| Venice | Llama, Mistral (prywatność) | Chmura |
-| AWS Bedrock | Claude, Llama, Titan | Chmura |
-| Azure | Modele OpenAI przez Azure | Chmura |
-| OpenRouter | 100+ zagregowanych modeli | Chmura |
-| AIHubMix | Agregator wielu dostawców | Chmura |
-| Codex | OpenAI Codex | Chmura |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Chmura |
-| Własny | Dowolne API kompatybilne z OpenAI / Anthropic / Gemini | Chmura / Lokalny |
-
-</details>
-
-### Obsługiwane IDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## Szybki start
 

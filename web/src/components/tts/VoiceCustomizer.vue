@@ -61,7 +61,7 @@ onMounted(async () => {
 const playPreview = async () => {
   try {
     const text = 'Hello, this is a voice preview.'
-    await ttsApi.synthesize(text, undefined, selectedVoice.value, rate.value)
+    await ttsApi.synthesize(text)
   } catch (err) {
     console.error('Failed to play preview:', err)
   }

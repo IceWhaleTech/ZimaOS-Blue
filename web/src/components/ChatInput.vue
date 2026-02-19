@@ -287,6 +287,9 @@ function handleCancel() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  // Skip Enter during IME composition (e.g. Chinese input confirming character selection)
+  if (event.isComposing || event.keyCode === 229) return
+
   // Send on Enter (without Shift)
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()

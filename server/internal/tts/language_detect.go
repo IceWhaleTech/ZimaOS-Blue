@@ -4,63 +4,94 @@ import (
 	"unicode"
 )
 
-// LanguageStats holds language detection statistics
+// LanguageStats holds language detection statistics.
+// CJKHan counts are shared across Chinese/Japanese/Korean since Han ideographs
+// are used by all three languages. Disambiguating scripts (Kana, Hangul) break ties.
 type LanguageStats struct {
-	Chinese  int     // 中文字符数
-	Japanese int     // 日文假名数
-	Korean   int     // 韩文字符数
-	Latin    int     // 拉丁字符数 (英文等)
-	Other    int     // 其他字符数
-	Total    int     // 总有效字符数
+	CJKHan   int // CJK Unified Ideographs (shared: zh, ja, ko)
+	Kana     int // Hiragana + Katakana (unique to Japanese)
+	Hangul   int // Korean Hangul (unique to Korean)
+	Latin    int // Latin script (en, fr, de, es, pt, etc.)
+	Cyrillic int // Cyrillic script (ru, uk, bg, etc.)
+	Arabic   int // Arabic script (ar, fa, ur, etc.)
+	Thai     int // Thai script
+	Devanag  int // Devanagari script (hi, mr, ne, etc.)
+	Other    int // Other letters/numbers
+	Total    int // Total scored characters
 }
 
-// DetectLanguage detects the primary language of text based on Unicode ranges
-// Returns the detected language code and confidence ratio (0.0-1.0)
+// DetectLanguage detects the primary language of text based on Unicode ranges.
+// Returns the detected language code and confidence ratio (0.0-1.0).
 func DetectLanguage(text string) (lang string, ratio float64) {
 	stats := AnalyzeText(text)
 	return stats.PrimaryLanguage()
 }
 
-// AnalyzeText analyzes text and returns language statistics
+// AnalyzeText analyzes text and returns language statistics.
 func AnalyzeText(text string) *LanguageStats {
 	stats := &LanguageStats{}
 
 	for _, r := range text {
-		// Skip whitespace and punctuation
 		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
 			continue
 		}
 
-		// Chinese characters (CJK Unified Ideographs)
-		// Note: Japanese Kanji also falls in this range
-		if isChinese(r) {
-			stats.Chinese++
-			stats.Total++
-			continue
-		}
-
-		// Japanese Hiragana and Katakana
-		if isJapanese(r) {
-			stats.Japanese++
+		// Japanese Kana — check before Han so we don't double-count
+		if unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) {
+			stats.Kana++
 			stats.Total++
 			continue
 		}
 
 		// Korean Hangul
-		if isKorean(r) {
-			stats.Korean++
+		if unicode.Is(unicode.Hangul, r) {
+			stats.Hangul++
 			stats.Total++
 			continue
 		}
 
-		// Latin characters (English, etc.)
-		if isLatin(r) {
+		// CJK Han ideographs — shared across zh/ja/ko
+		if unicode.Is(unicode.Han, r) {
+			stats.CJKHan++
+			stats.Total++
+			continue
+		}
+
+		// Latin
+		if unicode.Is(unicode.Latin, r) {
 			stats.Latin++
 			stats.Total++
 			continue
 		}
 
-		// Other characters (numbers, etc.)
+		// Cyrillic
+		if unicode.Is(unicode.Cyrillic, r) {
+			stats.Cyrillic++
+			stats.Total++
+			continue
+		}
+
+		// Arabic
+		if unicode.Is(unicode.Arabic, r) {
+			stats.Arabic++
+			stats.Total++
+			continue
+		}
+
+		// Thai
+		if unicode.Is(unicode.Thai, r) {
+			stats.Thai++
+			stats.Total++
+			continue
+		}
+
+		// Devanagari
+		if unicode.Is(unicode.Devanagari, r) {
+			stats.Devanag++
+			stats.Total++
+			continue
+		}
+
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			stats.Other++
 			stats.Total++
@@ -70,102 +101,152 @@ func AnalyzeText(text string) *LanguageStats {
 	return stats
 }
 
-// PrimaryLanguage returns the primary language and its ratio
+// PrimaryLanguage returns the primary language and its confidence ratio.
+// Han ideographs are distributed to CJK languages based on disambiguating scripts:
+//   - If Kana present → Han counts toward Japanese
+//   - If Hangul present → Han counts toward Korean
+//   - If neither → Han counts toward Chinese
+//   - If both Kana and Hangul → Han split proportionally
 func (s *LanguageStats) PrimaryLanguage() (lang string, ratio float64) {
 	if s.Total == 0 {
 		return "en", 0.0
 	}
 
-	// Find the dominant language
-	max := s.Latin
-	lang = "en"
+	// Build effective scores for each language
+	scores := s.effectiveScores()
 
-	// If Japanese kana exists, it's likely Japanese (even with Kanji)
-	if s.Japanese > 0 {
-		// Japanese text often mixes Kanji (Chinese chars) with Kana
-		japaneseTotal := s.Japanese + s.Chinese
-		if japaneseTotal > max {
-			max = japaneseTotal
-			lang = "ja"
-			ratio = float64(japaneseTotal) / float64(s.Total)
-			return lang, ratio
+	// Find the dominant language
+	best := "en"
+	bestScore := 0
+	for l, sc := range scores {
+		if sc > bestScore {
+			bestScore = sc
+			best = l
 		}
 	}
 
-	if s.Chinese > max {
-		max = s.Chinese
-		lang = "cmn" // eSpeak-NG uses "cmn" for Mandarin
-	}
-
-	if s.Korean > max {
-		max = s.Korean
-		lang = "ko"
-	}
-
 	if s.Total > 0 {
-		ratio = float64(max) / float64(s.Total)
+		ratio = float64(bestScore) / float64(s.Total)
 	}
-
-	return lang, ratio
+	return best, ratio
 }
 
-// GetLanguageRatios returns all language ratios
+// effectiveScores distributes CJKHan to the appropriate CJK languages
+// and returns per-language scores.
+func (s *LanguageStats) effectiveScores() map[string]int {
+	scores := make(map[string]int)
+
+	// Unique-script languages
+	if s.Latin > 0 {
+		scores["en"] = s.Latin
+	}
+	if s.Cyrillic > 0 {
+		scores["ru"] = s.Cyrillic
+	}
+	if s.Arabic > 0 {
+		scores["ar"] = s.Arabic
+	}
+	if s.Thai > 0 {
+		scores["th"] = s.Thai
+	}
+	if s.Devanag > 0 {
+		scores["hi"] = s.Devanag
+	}
+
+	// Distribute CJK Han ideographs
+	if s.CJKHan > 0 {
+		kana := s.Kana
+		hangul := s.Hangul
+		disambig := kana + hangul
+
+		if disambig == 0 {
+			// No Kana or Hangul → pure Han → Chinese
+			scores["cmn"] = s.CJKHan
+		} else {
+			// Distribute Han proportionally to disambiguating scripts
+			if kana > 0 {
+				jaHan := s.CJKHan * kana / disambig
+				scores["ja"] = kana + jaHan
+			}
+			if hangul > 0 {
+				koHan := s.CJKHan * hangul / disambig
+				scores["ko"] = hangul + koHan
+			}
+			// Any remainder goes to Chinese if there's leftover
+			distributed := 0
+			if kana > 0 {
+				distributed += s.CJKHan * kana / disambig
+			}
+			if hangul > 0 {
+				distributed += s.CJKHan * hangul / disambig
+			}
+			if remainder := s.CJKHan - distributed; remainder > 0 {
+				scores["cmn"] += remainder
+			}
+		}
+	} else {
+		// No Han at all — Kana/Hangul stand alone
+		if s.Kana > 0 {
+			scores["ja"] = s.Kana
+		}
+		if s.Hangul > 0 {
+			scores["ko"] = s.Hangul
+		}
+	}
+
+	return scores
+}
+
+// GetLanguageRatios returns all language ratios.
 func (s *LanguageStats) GetLanguageRatios() map[string]float64 {
 	ratios := make(map[string]float64)
 	if s.Total == 0 {
 		return ratios
 	}
-
-	if s.Chinese > 0 {
-		ratios["zh"] = float64(s.Chinese) / float64(s.Total)
+	scores := s.effectiveScores()
+	for l, sc := range scores {
+		if sc > 0 {
+			ratios[l] = float64(sc) / float64(s.Total)
+		}
 	}
-	if s.Japanese > 0 {
-		ratios["ja"] = float64(s.Japanese) / float64(s.Total)
-	}
-	if s.Korean > 0 {
-		ratios["ko"] = float64(s.Korean) / float64(s.Total)
-	}
-	if s.Latin > 0 {
-		ratios["en"] = float64(s.Latin) / float64(s.Total)
-	}
-
 	return ratios
 }
 
-// IsMixedLanguage returns true if text contains multiple languages
+// IsMixedLanguage returns true if text contains multiple language scripts.
 func (s *LanguageStats) IsMixedLanguage() bool {
 	count := 0
-	if s.Chinese > 0 {
-		count++
-	}
-	if s.Japanese > 0 {
-		count++
-	}
-	if s.Korean > 0 {
-		count++
+	if s.CJKHan > 0 || s.Kana > 0 || s.Hangul > 0 {
+		count++ // CJK family counts as one group
 	}
 	if s.Latin > 0 {
 		count++
+	}
+	if s.Cyrillic > 0 {
+		count++
+	}
+	if s.Arabic > 0 {
+		count++
+	}
+	if s.Thai > 0 {
+		count++
+	}
+	if s.Devanag > 0 {
+		count++
+	}
+	// Also check if multiple CJK sub-scripts are present
+	cjkSubs := 0
+	if s.Kana > 0 {
+		cjkSubs++
+	}
+	if s.Hangul > 0 {
+		cjkSubs++
+	}
+	if s.CJKHan > 0 && s.Kana == 0 && s.Hangul == 0 {
+		cjkSubs++ // pure Han = Chinese
+	}
+	if cjkSubs > 1 {
+		count++ // multiple CJK languages
 	}
 	return count > 1
 }
 
-// isChinese checks if a rune is a Chinese character
-func isChinese(r rune) bool {
-	return unicode.Is(unicode.Han, r)
-}
-
-// isJapanese checks if a rune is Japanese Hiragana or Katakana
-func isJapanese(r rune) bool {
-	return unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r)
-}
-
-// isKorean checks if a rune is Korean Hangul
-func isKorean(r rune) bool {
-	return unicode.Is(unicode.Hangul, r)
-}
-
-// isLatin checks if a rune is a Latin character
-func isLatin(r rune) bool {
-	return unicode.Is(unicode.Latin, r)
-}

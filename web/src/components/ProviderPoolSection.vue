@@ -766,7 +766,7 @@ onMounted(() => {
     <!-- Provider List -->
     <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Provider Cards -->
-      <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
+      <div class="space-y-2 max-h-[360px] overflow-y-auto lg:max-h-[480px]">
         <!-- Drag hint -->
         <p v-if="filteredProviders.length > 1 && !searchQuery" class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -814,6 +814,13 @@ onMounted(() => {
               </div>
             </div>
             <div class="flex items-center gap-2">
+              <!-- Free tier badge -->
+              <span
+                v-if="provider.id === 'nvidia'"
+                class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+              >
+                {{ t('providerPool.freeTier') }}
+              </span>
               <!-- API Keys count -->
               <span
                 v-if="provider.api_keys?.length"
@@ -1018,13 +1025,27 @@ onMounted(() => {
           <div class="mb-4">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
-              <button
-                v-if="currentTabSelectedProvider!.type !== 'trial'"
-                class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
-                @click="openKeyModal(currentTabSelectedProvider!.id)"
-              >
-                + {{ t('providerPool.addKey') }}
-              </button>
+              <div class="flex items-center gap-2">
+                <a
+                  v-if="currentTabSelectedProvider!.id === 'nvidia'"
+                  href="https://build.nvidia.com/settings/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs flex items-center gap-1"
+                >
+                  {{ t('providerPool.getApiKey') }}
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+                <button
+                  v-if="currentTabSelectedProvider!.type !== 'trial'"
+                  class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
+                  @click="openKeyModal(currentTabSelectedProvider!.id)"
+                >
+                  + {{ t('providerPool.addKey') }}
+                </button>
+              </div>
             </div>
             <div class="space-y-1">
               <!-- Trial provider: show placeholder -->

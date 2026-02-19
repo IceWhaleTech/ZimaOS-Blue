@@ -9,10 +9,9 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
 import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
-import { voiceApi, ttsAudioManager, streamingTTSManager } from '@/api/voice'
+import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
-import { detectLanguage, detectVoiceForText } from '@/utils/language'
-import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
+import { useNotificationStore } from '@/stores/notification'
 
 const { t } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -55,23 +54,6 @@ const longPressThreshold = 500 // ms
 // TTS playback state
 const isSpeaking = ref(false)
 const ttsError = ref<string | null>(null)
-const showLanguagePackPrompt = ref(false)
-const missingLanguage = ref<{code: string; name: string} | null>(null)
-const downloadingLanguagePack = ref(false)
-
-// Language code to name mapping
-const languageNames: Record<string, string> = {
-  'en': 'English', 'zh': 'Chinese', 'ja': 'Japanese', 'ko': 'Korean',
-  'de': 'German', 'fr': 'French', 'es': 'Spanish', 'ru': 'Russian',
-  'ar': 'Arabic', 'pt': 'Portuguese', 'it': 'Italian', 'nl': 'Dutch',
-  'pl': 'Polish', 'tr': 'Turkish', 'hi': 'Hindi', 'th': 'Thai',
-  'vi': 'Vietnamese', 'id': 'Indonesian', 'fil': 'Filipino', 'uk': 'Ukrainian',
-  'cs': 'Czech', 'sv': 'Swedish', 'da': 'Danish', 'no': 'Norwegian',
-  'fi': 'Finnish', 'el': 'Greek', 'he': 'Hebrew'
-}
-
-// TTS model download prompt
-const showTTSDownloadPrompt = ref(false)
 
 // Attachment preview state
 const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
@@ -251,16 +233,8 @@ watch(() => props.message.content, (newContent, _oldContent) => {
   const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
   if (!autoPlayEnabled) return
 
-  // Extract clean text
-  const textContent = newContent
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`[^`]+`/g, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[#*_~]/g, '')
-    .trim()
-
-  // Find new complete sentences
-  const sentences = textContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
+  // Find new complete sentences (backend humanizer will clean markdown)
+  const sentences = newContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
   const completeSentences = sentences.join('')
 
   // Play new sentences that haven't been played yet
@@ -283,13 +257,7 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
     const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
     if (!autoPlayEnabled) return
 
-    // Extract text content
     const textContent = props.message.content
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`[^`]+`/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/[#*_~]/g, '')
-      .trim()
 
     if (!textContent) return
 
@@ -312,8 +280,7 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
       // Play full text if nothing was played during streaming
       hasAutoPlayed.value = true
       isSpeaking.value = true
-      const provider = localStorage.getItem('tts-provider') || 'edge-tts'
-      await playTTSAudio(textContent, provider)
+      await playTTSAudio(textContent)
       isSpeaking.value = false
     }
 
@@ -396,119 +363,98 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
 }
 
 // TTS playback function
-async function checkTTSModelReady(): Promise<boolean> {
-  try {
-    const res = await speechApi.getTTSStatus()
-    return res.data?.ready ?? false
-  } catch {
-    return true // Assume ready if check fails
-  }
-}
-
 async function handlePlayTTS() {
   if (isSpeaking.value) {
     // Stop current playback (both manual and streaming)
+    ttsAborted = true
     streamingTTSManager.stop()
     ttsAudioManager.stop()
     isSpeaking.value = false
     return
   }
 
-  // Check if TTS model is ready
-  const ready = await checkTTSModelReady()
-  if (!ready) {
-    showTTSDownloadPrompt.value = true
-    return
-  }
-
   ttsError.value = null
 
-  // Get plain text content (strip markdown)
   const textContent = props.message.content
-    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-    .replace(/`[^`]+`/g, '') // Remove inline code
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
-    .replace(/[#*_~]/g, '') // Remove markdown formatting
-    .trim()
 
   if (!textContent) {
     ttsError.value = t('chat.ttsNoContent')
     return
   }
 
-  // Get provider setting
-  const provider = localStorage.getItem('tts-provider') || 'edge-tts'
-
-  // For espeak-ng, check if language pack is downloaded
-  if (provider === 'espeak-ng') {
-    const detectedLang = detectLanguage(textContent)
-    try {
-      const res = await speechApi.listEspeakLanguages()
-      const languages = res.data?.languages || []
-      const langPack = languages.find(l => l.code === detectedLang)
-      if (langPack && !langPack.downloaded) {
-        // Language pack not downloaded, show prompt
-        missingLanguage.value = { code: detectedLang, name: languageNames[detectedLang] || detectedLang }
-        showLanguagePackPrompt.value = true
-        return
-      }
-    } catch (e) {
-      console.error('Failed to check language packs:', e)
-    }
-  }
-
-  await playTTSAudio(textContent, provider)
+  await playTTSAudio(textContent)
 }
 
-async function playTTSAudio(textContent: string, provider: string) {
-  isSpeaking.value = true
+let ttsAborted = false
+
+// Show init progress toast when Kokoro is still loading
+async function showInitProgressToast(): Promise<void> {
+  const notification = useNotificationStore()
+  const provider = localStorage.getItem('tts-provider') || ''
+  if (provider !== 'kokoro') return
+
   try {
-    // Get speech speed from settings
-    const speed = parseFloat(localStorage.getItem('tts-speech-speed') || '1.0')
-    // Auto-detect language and select appropriate voice
-    const voice = detectVoiceForText(textContent)
-    const response = await voiceApi.synthesize(textContent, voice, undefined, speed, provider)
-    if (response.data.audio) {
-      // Use ttsAudioManager to play - it will stop any previous audio
-      await ttsAudioManager.play(response.data.audio, response.data.content_type, () => {
-        // Callback when audio is stopped externally
-        isSpeaking.value = false
-      })
+    const res = await speechApi.getKokoroStatus()
+    const stage = res.data.init_stage
+    if (!stage || stage === 'ready') return
+
+    const stageKey = `speech.initStage.${stage}`
+    const toastId = notification.info(
+      t('speech.initProgress'),
+      t(stageKey),
+      { duration: 0, dismissible: true }
+    )
+
+    // Poll until ready
+    const poll = setInterval(async () => {
+      try {
+        const r = await speechApi.getKokoroStatus()
+        const s = r.data.init_stage
+        if (!s || s === 'ready' || s === 'error') {
+          clearInterval(poll)
+          notification.remove(toastId)
+          if (s === 'ready') {
+            notification.success(t('speech.initComplete'), undefined, { duration: 2000 })
+          }
+        }
+      } catch {
+        clearInterval(poll)
+        notification.remove(toastId)
+      }
+    }, 500)
+  } catch {
+    // Ignore — status endpoint may not be available
+  }
+}
+
+// Stream text sentence-by-sentence for fast first-audio and overlapping fetch/playback
+async function playTTSAudio(textContent: string) {
+  isSpeaking.value = true
+  ttsAborted = false
+
+  // Show init progress toast if Kokoro is still loading
+  showInitProgressToast()
+
+  // Use streaming manager: splits into sentences, prefetches 2 ahead,
+  // plays each as soon as ready — first audio arrives much faster than
+  // waiting for the entire text to be synthesized.
+  streamingTTSManager.onComplete = () => {
+    if (!ttsAborted) {
+      isSpeaking.value = false
     }
-  } catch (error) {
-    console.error('TTS error:', error)
+    streamingTTSManager.onComplete = null
+  }
+
+  try {
+    await streamingTTSManager.streamText(textContent)
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return
+    console.error('TTS error:', e)
     ttsError.value = t('chat.ttsError')
-  } finally {
     isSpeaking.value = false
   }
 }
 
-async function downloadLanguagePackAndPlay() {
-  if (!missingLanguage.value) return
-
-  downloadingLanguagePack.value = true
-  try {
-    await speechApi.downloadEspeakLanguage(missingLanguage.value.code)
-    showLanguagePackPrompt.value = false
-
-    // Now play the TTS
-    const textContent = props.message.content
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`[^`]+`/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/[#*_~]/g, '')
-      .trim()
-
-    const provider = localStorage.getItem('tts-provider') || 'edge-tts'
-    await playTTSAudio(textContent, provider)
-  } catch (error) {
-    console.error('Failed to download language pack:', error)
-    ttsError.value = t('chat.downloadLanguagePackError')
-  } finally {
-    downloadingLanguagePack.value = false
-    missingLanguage.value = null
-  }
-}
 
 // Open attachment preview modal
 function openAttachmentPreview(attachment: { type: string; name: string; mime_type: string; data: string }) {
@@ -989,13 +935,6 @@ async function handleMobileTTS() {
       </div>
     </Teleport>
 
-    <!-- TTS Model Download Prompt -->
-    <ModelDownloadPrompt
-      v-model:model-visible="showTTSDownloadPrompt"
-      type="tts"
-      @downloaded="handlePlayTTS"
-    />
-
     <!-- Mobile Action Menu (Bottom Sheet) -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1049,40 +988,6 @@ async function handleMobileTTS() {
           </div>
         </div>
       </Transition>
-    </Teleport>
-
-    <!-- Language Pack Download Prompt -->
-    <Teleport to="body">
-      <div
-        v-if="showLanguagePackPrompt"
-        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-        @click.self="showLanguagePackPrompt = false"
-      >
-        <div class="bg-white dark:bg-gray-700 rounded-lg shadow-xl max-w-sm w-full mx-4 p-6">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-            {{ t('chat.languagePackRequired') }}
-          </h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            {{ t('chat.languagePackRequiredDesc', { language: missingLanguage?.name || missingLanguage?.code }) }}
-          </p>
-          <div class="flex gap-3">
-            <button
-              class="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-              @click="showLanguagePackPrompt = false"
-            >
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
-              :disabled="downloadingLanguagePack"
-              @click="downloadLanguagePackAndPlay"
-            >
-              <span v-if="downloadingLanguagePack">{{ t('common.downloading') }}...</span>
-              <span v-else>{{ t('chat.downloadAndPlay') }}</span>
-            </button>
-          </div>
-        </div>
-      </div>
     </Teleport>
   </div>
 </template>

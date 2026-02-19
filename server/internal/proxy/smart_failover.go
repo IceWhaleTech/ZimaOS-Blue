@@ -121,10 +121,6 @@ func (sfh *SmartFailoverHandler) ExecuteWithSmartFailover(
 	provider *Provider,
 	fn func(*Provider) (*http.Response, error),
 ) (*http.Response, error) {
-	if !sfh.config.Enabled {
-		return fn(provider)
-	}
-
 	// Execute request
 	resp, err := fn(provider)
 

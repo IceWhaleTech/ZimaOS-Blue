@@ -121,8 +121,8 @@ func TestAPIErrorClassifier_ClassifyError(t *testing.T) {
 			statusCode: 404,
 			responseBody: `{"error":{"message":"Model not found"}}`,
 			expectedType:   ErrorTypeModelNotFound,
-			expectedCat:    ErrorCategoryNonRetryable,
-			shouldFailover: false,
+			expectedCat:    ErrorCategoryFailover,
+			shouldFailover: true,
 		},
 	}
 

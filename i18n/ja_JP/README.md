@@ -64,7 +64,7 @@ Clawdbotに触発され、私たちはパーソナルコンピューティング
 さらに一歩先へ：**20以上のIMプラットフォーム**のネイティブサポート、自然で文脈を理解した対話のための**音声駆動**インターフェース、IDEスキャンによる**ゼロコンフィグモデル切り替え**、SOULレイヤードパーソナリティを提供します。
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### 高速・軽量
@@ -100,49 +100,13 @@ Goでネイティブコンパイル — インタプリタなし、VMなし、�
 - **ローカルファースト、超軽量、クロスデバイス** – ハイエンドハードウェア不要。計算能力があるものなら何でも動作します。
 - **安全で監査可能** – セッション監査、サンドボックス、権限制御、アプリケーション層ファイアウォールとして機能する組み込みAPIプロキシ — すべての入出力バイトが可視化されます。
 
-![](../../docs/assets/design_principle.png)
-
 ボイラープレートを最小限に抑え、**本当に重要なことに集中**できます。<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOSの設計哲学**に忠実に、Blueは以下を提供します：
 - **ワンクリックでゼロからイチへ** – 複雑な設定なしで即座にデプロイ。
 - **ラピッドプロトタイピング** – シナリオ固有のツール、インタラクション、アプリパッケージをバイブコーディングまたは手作り。
 - **グローバル対応** – **世界は広い**、そして英語がデフォルトではありません。**20以上の言語をネイティブサポート**、障壁なし。
 - **オープンモデルエコシステム** – ベンダーロックインなし。お好みのモデルをお使いください。
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| プロバイダー | モデル | タイプ |
-|----------|--------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | クラウド |
-| Anthropic | Claude 4.5, Claude 4 | クラウド |
-| Google | Gemini 2.5, Gemini 2.0 | クラウド |
-| Ollama | Llama, Qwen, Gemma, Phi 等 | ローカル |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | クラウド |
-| Grok | Grok-3, Grok-3-mini | クラウド |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | クラウド |
-| GLM | GLM-4, GLM-4-Flash | クラウド |
-| Moonshot | Moonshot-v1 | クラウド |
-| MiniMax | abab6.5, abab5.5 | クラウド |
-| Venice | Llama, Mistral（プライバシー優先） | クラウド |
-| AWS Bedrock | Claude, Llama, Titan | クラウド |
-| Azure | Azure経由のOpenAIモデル | クラウド |
-| OpenRouter | 100+ 集約モデル | クラウド |
-| AIHubMix | マルチプロバイダーアグリゲーター | クラウド |
-| Codex | OpenAI Codex | クラウド |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | クラウド |
-| カスタム | 任意のOpenAI / Anthropic / Gemini互換API | クラウド / ローカル |
-
-</details>
-
-### サポートされるIDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## クイックスタート
 

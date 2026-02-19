@@ -4,5 +4,7 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>ZimaOS Blue needs microphone access for voice input and speech recognition.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>ZimaOS Blue uses on-device speech recognition to transcribe your voice input.</string>
 </dict>
 </plist>

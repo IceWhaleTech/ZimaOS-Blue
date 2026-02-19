@@ -6,28 +6,31 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
 // ModelFile describes a downloadable model file with fallback mirrors.
 type ModelFile struct {
-	Filename string   `json:"filename"`
-	URL      string   `json:"url"`      // Primary URL (usually HuggingFace)
-	Mirrors  []string `json:"mirrors"`  // Fallback URLs (hf-mirror, modelscope)
-	Size     string   `json:"size"`     // Human-readable size
+	Filename    string                `json:"filename"`
+	URL         string                `json:"url"`      // Primary URL (usually HuggingFace)
+	Mirrors     []string              `json:"mirrors"`  // Fallback URLs (hf-mirror, modelscope)
+	Size        string                `json:"size"`     // Human-readable size
+	PostProcess func(path string) error `json:"-"`      // Optional post-download hook (e.g. extract tgz)
 }
 
 // DownloadProgress tracks download progress for a single file.
 type DownloadProgress struct {
-	File       string  `json:"file"`
-	FileIndex  int     `json:"file_index"`
-	TotalFiles int     `json:"total_files"`
-	Downloaded int64   `json:"downloaded"`
-	Total      int64   `json:"total"`
-	Percentage float64 `json:"percentage"`
-	SpeedHuman string  `json:"speed_human"`
-	ETA        string  `json:"eta"`
+	File            string  `json:"file"`
+	FileIndex       int     `json:"file_index"`
+	TotalFiles      int     `json:"total_files"`
+	Downloaded      int64   `json:"downloaded"`
+	Total           int64   `json:"total"`
+	Percentage      float64 `json:"percentage"`
+	SpeedHuman      string  `json:"speed_human"`
+	DownloadedHuman string  `json:"downloaded_human"`
+	ETA             string  `json:"eta"`
 }
 
 // Download states
@@ -135,11 +138,30 @@ func (d *ModelDownloader) Download(ctx context.Context, files []ModelFile) error
 		// Try ModelScope first (fastest in China), then mirrors, then primary
 		urls := buildURLList(f)
 		if err := d.downloadWithFallback(ctx, urls, destPath); err != nil {
+			// Context canceled = user-initiated cancel, not an error
+			if ctx.Err() == context.Canceled {
+				d.mu.Lock()
+				d.state = StateIdle
+				d.lastError = ""
+				d.mu.Unlock()
+				return nil
+			}
 			d.mu.Lock()
 			d.state = StateError
 			d.lastError = fmt.Sprintf("%s: %v", f.Filename, err)
 			d.mu.Unlock()
 			return fmt.Errorf("download %s: %w", f.Filename, err)
+		}
+
+		// Run post-process hook if defined (e.g. extract tgz)
+		if f.PostProcess != nil {
+			if err := f.PostProcess(destPath); err != nil {
+				d.mu.Lock()
+				d.state = StateError
+				d.lastError = fmt.Sprintf("%s post-process: %v", f.Filename, err)
+				d.mu.Unlock()
+				return fmt.Errorf("post-process %s: %w", f.Filename, err)
+			}
 		}
 	}
 	return nil
@@ -225,6 +247,13 @@ func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string
 	d.state = StateDownloading
 	d.mu.Unlock()
 
+	// Ensure parent directory exists for nested files (e.g. voices/af_heart.bin)
+	if dir := filepath.Dir(destPath); dir != d.destDir {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("create subdirectory: %w", err)
+		}
+	}
+
 	out, err := os.Create(destPath + ".tmp")
 	if err != nil {
 		return err
@@ -260,6 +289,9 @@ func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string
 			d.progress.Downloaded = downloaded
 			if d.progress.Total > 0 {
 				d.progress.Percentage = float64(downloaded) / float64(d.progress.Total) * 100
+			} else {
+				// Content-Length unknown: show downloaded bytes, percentage stays 0
+				d.progress.DownloadedHuman = formatSize(downloaded)
 			}
 
 			// Calculate speed and ETA
@@ -309,6 +341,17 @@ func formatSpeed(bytesPerSec float64) string {
 		return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024)
 	} else {
 		return fmt.Sprintf("%.1f MB/s", bytesPerSec/1024/1024)
+	}
+}
+
+// formatSize formats bytes to human-readable string.
+func formatSize(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	} else {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/1024/1024)
 	}
 }
 

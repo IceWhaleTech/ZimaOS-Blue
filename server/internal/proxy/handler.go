@@ -689,6 +689,15 @@ func (ph *ProxyHandler) tryOnProvider(
 				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 			}
 
+			// Check if this is a "not configured" / "model not found" error
+			// that should trigger provider failover instead of just model blacklisting
+			if isModelNotConfiguredError(statusCode, errBody) {
+				slog.Warn("[proxy] model not configured on provider, trying next provider",
+					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+				// Don't blacklist — model may work on another provider
+				return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", model, pid, errStr)
+			}
+
 			// 4xx: blacklist this model on this provider, try next model/format
 			slog.Warn("[proxy] 4xx, trying next combination",
 				"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
@@ -697,6 +706,42 @@ func (ph *ProxyHandler) tryOnProvider(
 		}
 	}
 	return nil, "", "", lastErr
+}
+
+// isModelNotConfiguredError checks if the error response indicates the model
+// is listed but not actually configured/available on this provider.
+// These errors should trigger provider failover rather than model blacklisting,
+// because the same model may work on a different provider.
+func isModelNotConfiguredError(statusCode int, body []byte) bool {
+	if statusCode != 400 && statusCode != 403 && statusCode != 404 && statusCode != 422 {
+		return false
+	}
+
+	msg := strings.ToLower(string(body))
+
+	// "not configured" patterns — model appears in list but isn't usable
+	notConfiguredPatterns := []string{
+		"not configured",
+		"not enabled",
+		"not available",
+		"not supported",
+		"no access",
+		"model disabled",
+		"model unavailable",
+		"model not found",
+		"does not exist",
+		"invalid model",
+		"unknown model",
+		"not authorized",
+		"permission denied",
+	}
+
+	for _, pattern := range notConfiguredPatterns {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseRetryAfter parses the Retry-After header value into a duration.

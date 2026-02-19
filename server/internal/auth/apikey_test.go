@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -766,4 +767,637 @@ func TestAPIKeyService_ReEncryptAllKeys(t *testing.T) {
 			t.Errorf("decrypted key %d does not match original", i)
 		}
 	}
+}
+
+func TestAPIKeyService_CreateKey_EdgeCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer svc.Close()
+
+	t.Run("create key with single scope", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "single-scope-key",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		if len(key.Scopes) != 1 {
+			t.Errorf("expected 1 scope, got %d", len(key.Scopes))
+		}
+		if key.Scopes[0] != "read" {
+			t.Errorf("expected scope 'read', got '%s'", key.Scopes[0])
+		}
+	})
+
+	t.Run("create key with many scopes", func(t *testing.T) {
+		scopes := []string{
+			"read:users", "write:users", "delete:users",
+			"read:posts", "write:posts", "delete:posts",
+			"read:comments", "write:comments", "delete:comments",
+			"admin:system", "admin:config", "admin:logs",
+		}
+
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "many-scopes-key",
+			Scopes: scopes,
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		if len(key.Scopes) != len(scopes) {
+			t.Errorf("expected %d scopes, got %d", len(scopes), len(key.Scopes))
+		}
+	})
+
+	t.Run("create multiple keys for same user", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			_, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+				UserID: "user-multi",
+				Name:   "test-key",
+				Scopes: []string{"read"},
+			})
+			if err != nil {
+				t.Fatalf("failed to create key %d: %v", i, err)
+			}
+		}
+
+		keys, err := svc.ListKeys(context.Background(), "user-multi")
+		if err != nil {
+			t.Fatalf("failed to list keys: %v", err)
+		}
+
+		if len(keys) != 5 {
+			t.Errorf("expected 5 keys, got %d", len(keys))
+		}
+	})
+
+	t.Run("key prefix is first 8 chars of key", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "prefix-test",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		if len(key.Prefix) != 8 {
+			t.Errorf("expected prefix length 8, got %d", len(key.Prefix))
+		}
+
+		if !strings.HasPrefix(key.Key, key.Prefix) {
+			t.Error("key should start with prefix")
+		}
+	})
+
+	t.Run("key starts with ek_ prefix", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "prefix-test",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		if !strings.HasPrefix(key.Key, "ek_") {
+			t.Errorf("key should start with 'ek_', got '%s'", key.Key[:3])
+		}
+	})
+}
+
+func TestAPIKeyService_ValidateKey_EdgeCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer func() {
+		time.Sleep(200 * time.Millisecond)
+		svc.Close()
+	}()
+
+	t.Run("validate revoked key returns ErrAPIKeyRevoked", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "revoke-test",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		err = svc.RevokeKey(context.Background(), key.ID, "user-123")
+		if err != nil {
+			t.Fatalf("failed to revoke key: %v", err)
+		}
+
+		_, err = svc.ValidateKey(context.Background(), key.Key)
+		if err != ErrAPIKeyRevoked {
+			t.Errorf("expected ErrAPIKeyRevoked, got %v", err)
+		}
+	})
+
+	t.Run("validate key updates last_used timestamp", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "timestamp-test",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		// First validation
+		_, err = svc.ValidateKey(context.Background(), key.Key)
+		if err != nil {
+			t.Fatalf("failed to validate key: %v", err)
+		}
+
+		// Wait for async update
+		time.Sleep(150 * time.Millisecond)
+
+		// Get key info to check last_used
+		keys, err := svc.ListKeys(context.Background(), "user-123")
+		if err != nil {
+			t.Fatalf("failed to list keys: %v", err)
+		}
+
+		var found bool
+		for _, k := range keys {
+			if k.ID == key.ID {
+				found = true
+				if k.LastUsed == nil {
+					t.Error("last_used should be set after validation")
+				}
+				break
+			}
+		}
+
+		if !found {
+			t.Error("key not found in list")
+		}
+	})
+
+	t.Run("validate same key multiple times succeeds", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "multi-validate",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		for i := 0; i < 5; i++ {
+			_, err := svc.ValidateKey(context.Background(), key.Key)
+			if err != nil {
+				t.Errorf("validation %d failed: %v", i, err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+}
+
+func TestAPIKeyService_ListKeys_EdgeCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer svc.Close()
+
+	t.Run("list keys for user with no keys returns empty", func(t *testing.T) {
+		keys, err := svc.ListKeys(context.Background(), "user-no-keys")
+		if err != nil {
+			t.Fatalf("failed to list keys: %v", err)
+		}
+
+		if len(keys) != 0 {
+			t.Errorf("expected 0 keys, got %d", len(keys))
+		}
+	})
+
+	t.Run("list keys excludes revoked keys", func(t *testing.T) {
+		// Create 3 keys
+		var keyIDs []string
+		for i := 0; i < 3; i++ {
+			key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+				UserID: "user-revoke-test",
+				Name:   "test-key",
+				Scopes: []string{"read"},
+			})
+			if err != nil {
+				t.Fatalf("failed to create key: %v", err)
+			}
+			keyIDs = append(keyIDs, key.ID)
+		}
+
+		// Revoke one key
+		err := svc.RevokeKey(context.Background(), keyIDs[1], "user-revoke-test")
+		if err != nil {
+			t.Fatalf("failed to revoke key: %v", err)
+		}
+
+		// List should return only 2 keys
+		keys, err := svc.ListKeys(context.Background(), "user-revoke-test")
+		if err != nil {
+			t.Fatalf("failed to list keys: %v", err)
+		}
+
+		if len(keys) != 2 {
+			t.Errorf("expected 2 keys (excluding revoked), got %d", len(keys))
+		}
+	})
+
+	t.Run("list keys returns keys in descending creation order", func(t *testing.T) {
+		var keyIDs []string
+		for i := 0; i < 3; i++ {
+			key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+				UserID: "user-order-test",
+				Name:   "test-key",
+				Scopes: []string{"read"},
+			})
+			if err != nil {
+				t.Fatalf("failed to create key: %v", err)
+			}
+			keyIDs = append(keyIDs, key.ID)
+			time.Sleep(10 * time.Millisecond) // Ensure different timestamps
+		}
+
+		keys, err := svc.ListKeys(context.Background(), "user-order-test")
+		if err != nil {
+			t.Fatalf("failed to list keys: %v", err)
+		}
+
+		// Keys should be in reverse order (newest first)
+		if keys[0].ID != keyIDs[2] {
+			t.Error("first key should be the newest")
+		}
+		if keys[2].ID != keyIDs[0] {
+			t.Error("last key should be the oldest")
+		}
+	})
+}
+
+func TestAPIKeyService_RevokeKey_EdgeCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer svc.Close()
+
+	t.Run("revoke non-existent key returns ErrUnauthorized", func(t *testing.T) {
+		err := svc.RevokeKey(context.Background(), "non-existent-id", "user-123")
+		if err != ErrUnauthorized {
+			t.Errorf("expected ErrUnauthorized, got %v", err)
+		}
+	})
+
+	t.Run("revoke already revoked key", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "double-revoke",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		// First revoke
+		err = svc.RevokeKey(context.Background(), key.ID, "user-123")
+		if err != nil {
+			t.Fatalf("first revoke failed: %v", err)
+		}
+
+		// Second revoke should succeed (n>0 check passes)
+		err = svc.RevokeKey(context.Background(), key.ID, "user-123")
+		if err != nil {
+			t.Errorf("second revoke should succeed, got error: %v", err)
+		}
+	})
+
+	t.Run("validate key after revoke returns ErrAPIKeyRevoked", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "validate-after-revoke",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		err = svc.RevokeKey(context.Background(), key.ID, "user-123")
+		if err != nil {
+			t.Fatalf("failed to revoke key: %v", err)
+		}
+
+		_, err = svc.ValidateKey(context.Background(), key.Key)
+		if err != ErrAPIKeyRevoked {
+			t.Errorf("expected ErrAPIKeyRevoked, got %v", err)
+		}
+	})
+}
+
+func TestAPIKeyService_HasScope_Patterns(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer func() {
+		time.Sleep(200 * time.Millisecond)
+		svc.Close()
+	}()
+
+	t.Run("prefix wildcard scope read:* matches read:users", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "wildcard-test",
+			Scopes: []string{"read:*"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		info, err := svc.ValidateKey(context.Background(), key.Key)
+		if err != nil {
+			t.Fatalf("failed to validate key: %v", err)
+		}
+
+		if !info.HasScope("read:users") {
+			t.Error("read:* should match read:users")
+		}
+		if !info.HasScope("read:posts") {
+			t.Error("read:* should match read:posts")
+		}
+	})
+
+	t.Run("prefix wildcard scope read:* does not match write:users", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "wildcard-test-2",
+			Scopes: []string{"read:*"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		info, err := svc.ValidateKey(context.Background(), key.Key)
+		if err != nil {
+			t.Fatalf("failed to validate key: %v", err)
+		}
+
+		if info.HasScope("write:users") {
+			t.Error("read:* should not match write:users")
+		}
+		if info.HasScope("delete:posts") {
+			t.Error("read:* should not match delete:posts")
+		}
+	})
+
+	t.Run("empty scopes returns false for any scope", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "no-scopes",
+			Scopes: []string{},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		info, err := svc.ValidateKey(context.Background(), key.Key)
+		if err != nil {
+			t.Fatalf("failed to validate key: %v", err)
+		}
+
+		if info.HasScope("read") {
+			t.Error("empty scopes should not match any scope")
+		}
+		if info.HasScope("write") {
+			t.Error("empty scopes should not match any scope")
+		}
+	})
+}
+
+func TestAPIKeyService_RotateKey_GracePeriod(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+	svc, err := NewAPIKeyService(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	defer func() {
+		time.Sleep(200 * time.Millisecond)
+		svc.Close()
+	}()
+
+	t.Run("default grace period is 24h when 0 is passed", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "grace-test",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		result, err := svc.RotateKey(context.Background(), &RotateKeyRequest{
+			KeyID:       key.ID,
+			UserID:      "user-123",
+			GracePeriod: 0, // Should default to 24h
+		})
+		if err != nil {
+			t.Fatalf("failed to rotate key: %v", err)
+		}
+
+		if result.OldKey.GracePeriod == nil {
+			t.Fatal("grace period should be set")
+		}
+
+		expectedGrace := result.OldKey.RotatedAt.Add(24 * time.Hour)
+		if !result.OldKey.GracePeriod.Equal(expectedGrace) {
+			t.Errorf("expected grace period ~24h from rotation, got %v", result.OldKey.GracePeriod.Sub(*result.OldKey.RotatedAt))
+		}
+	})
+
+	t.Run("custom grace period is respected", func(t *testing.T) {
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-234",
+			Name:   "custom-grace",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		customGrace := 48 * time.Hour
+		result, err := svc.RotateKey(context.Background(), &RotateKeyRequest{
+			KeyID:       key.ID,
+			UserID:      "user-234",
+			GracePeriod: customGrace,
+		})
+		if err != nil {
+			t.Fatalf("failed to rotate key: %v", err)
+		}
+
+		if result.OldKey.GracePeriod == nil {
+			t.Fatal("grace period should be set")
+		}
+
+		expectedGrace := result.OldKey.RotatedAt.Add(customGrace)
+		if !result.OldKey.GracePeriod.Equal(expectedGrace) {
+			t.Errorf("expected grace period ~48h from rotation, got %v", result.OldKey.GracePeriod.Sub(*result.OldKey.RotatedAt))
+		}
+	})
+
+	t.Run("new key inherits expiration from old key", func(t *testing.T) {
+		expiresAt := time.Now().Add(7 * 24 * time.Hour)
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID:    "user-345",
+			Name:      "expiry-inherit",
+			Scopes:    []string{"read"},
+			ExpiresAt: expiresAt,
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		result, err := svc.RotateKey(context.Background(), &RotateKeyRequest{
+			KeyID:  key.ID,
+			UserID: "user-345",
+		})
+		if err != nil {
+			t.Fatalf("failed to rotate key: %v", err)
+		}
+
+		if result.NewKey.ExpiresAt == nil {
+			t.Fatal("new key should inherit expiration")
+		}
+
+		// Allow small time difference due to processing
+		diff := result.NewKey.ExpiresAt.Sub(expiresAt)
+		if diff > time.Second || diff < -time.Second {
+			t.Errorf("new key expiration should match old key, diff: %v", diff)
+		}
+	})
+}
+
+func TestAPIKeyService_GetDecryptedKey_EdgeCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+
+	t.Run("get decrypted key without encryption returns ErrKeyNotConfigured", func(t *testing.T) {
+		svc, err := NewAPIKeyService(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		defer svc.Close()
+
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "no-encryption",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		_, err = svc.GetDecryptedKey(context.Background(), key.ID, "user-123")
+		if err != ErrKeyNotConfigured {
+			t.Errorf("expected ErrKeyNotConfigured, got %v", err)
+		}
+	})
+
+	t.Run("get decrypted key for non-existent key returns ErrAPIKeyNotFound", func(t *testing.T) {
+		encKey, _ := GenerateKey()
+		enc, _ := NewEncryptor(&EncryptionConfig{Key: encKey})
+
+		svc, err := NewAPIKeyService(dbPath+"_nonexist", WithEncryption(enc))
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		defer svc.Close()
+
+		_, err = svc.GetDecryptedKey(context.Background(), "non-existent-id", "user-123")
+		if err != ErrAPIKeyNotFound {
+			t.Errorf("expected ErrAPIKeyNotFound, got %v", err)
+		}
+	})
+
+	t.Run("get decrypted key for revoked key returns ErrAPIKeyRevoked", func(t *testing.T) {
+		encKey, _ := GenerateKey()
+		enc, _ := NewEncryptor(&EncryptionConfig{Key: encKey})
+
+		svc, err := NewAPIKeyService(dbPath+"_revoked", WithEncryption(enc))
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		defer svc.Close()
+
+		key, err := svc.CreateKey(context.Background(), &CreateKeyRequest{
+			UserID: "user-123",
+			Name:   "revoke-decrypt",
+			Scopes: []string{"read"},
+		})
+		if err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+
+		err = svc.RevokeKey(context.Background(), key.ID, "user-123")
+		if err != nil {
+			t.Fatalf("failed to revoke key: %v", err)
+		}
+
+		_, err = svc.GetDecryptedKey(context.Background(), key.ID, "user-123")
+		if err != ErrAPIKeyRevoked {
+			t.Errorf("expected ErrAPIKeyRevoked, got %v", err)
+		}
+	})
+}
+
+func TestAPIKeyService_ReEncryptAllKeys_EdgeCases(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "apikeys_test.db")
+
+	t.Run("re-encrypt with nil encryptors returns ErrKeyNotConfigured", func(t *testing.T) {
+		svc, err := NewAPIKeyService(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		defer svc.Close()
+
+		_, err = svc.ReEncryptAllKeys(context.Background(), nil, nil)
+		if err != ErrKeyNotConfigured {
+			t.Errorf("expected ErrKeyNotConfigured, got %v", err)
+		}
+	})
+
+	t.Run("re-encrypt with no keys returns 0 count", func(t *testing.T) {
+		oldKey, _ := GenerateKey()
+		oldEnc, _ := NewEncryptor(&EncryptionConfig{Key: oldKey})
+		newKey, _ := GenerateKey()
+		newEnc, _ := NewEncryptor(&EncryptionConfig{Key: newKey})
+
+		svc, err := NewAPIKeyService(dbPath+"_empty", WithEncryption(oldEnc))
+		if err != nil {
+			t.Fatalf("failed to create service: %v", err)
+		}
+		defer svc.Close()
+
+		count, err := svc.ReEncryptAllKeys(context.Background(), oldEnc, newEnc)
+		if err != nil {
+			t.Fatalf("re-encrypt should succeed with no keys: %v", err)
+		}
+
+		if count != 0 {
+			t.Errorf("expected 0 keys re-encrypted, got %d", count)
+		}
+	})
 }

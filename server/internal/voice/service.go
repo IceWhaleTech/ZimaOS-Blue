@@ -3,9 +3,12 @@ package voice
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
-	"strings"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -24,17 +27,20 @@ type service struct {
 	ttsService tts.Service
 	sessions   map[string]*Session
 	mu         sync.RWMutex
-	// TTS cache
-	ttsCache   map[string]*ttsCacheEntry
-	ttsCacheMu sync.RWMutex
-	ttsSF      singleflight.Group
+	// TTS disk cache — bounded LRU index, audio stored in /tmp
+	ttsCacheDir string
+	ttsIndex    []*ttsCacheEntry // LRU order: oldest first, newest last
+	ttsIndexMu  sync.Mutex
+	ttsSF       singleflight.Group
 }
 
-// ttsCacheEntry represents a cached TTS result
+// ttsCacheMaxSize is the maximum number of TTS results cached on disk.
+const ttsCacheMaxSize = 5
+
+// ttsCacheEntry is an LRU index entry pointing to a file on disk.
 type ttsCacheEntry struct {
-	audio       []byte
+	hash        string // SHA-256 hex of cache key
 	contentType string
-	createdAt   time.Time
 }
 
 // ServiceConfig holds the configuration for the voice service.
@@ -45,12 +51,21 @@ type ServiceConfig struct {
 
 // NewService creates a new voice service.
 func NewService(cfg *ServiceConfig) Service {
+	cacheDir := filepath.Join(os.TempDir(), "zimaos-tts-cache")
+	os.MkdirAll(cacheDir, 0o755)
 	return &service{
-		sttService: cfg.STTService,
-		ttsService: cfg.TTSService,
-		sessions:   make(map[string]*Session),
-		ttsCache:   make(map[string]*ttsCacheEntry),
+		sttService:  cfg.STTService,
+		ttsService:  cfg.TTSService,
+		sessions:    make(map[string]*Session),
+		ttsCacheDir: cacheDir,
 	}
+}
+
+// SetSTTService replaces the STT service (e.g. to switch from whisper to macOS native).
+func (s *service) SetSTTService(svc stt.Service) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sttService = svc
 }
 
 // CreateSession creates a new voice session.
@@ -158,28 +173,45 @@ func (s *service) Transcribe(ctx context.Context, req *TranscribeRequest, audio 
 	}, nil
 }
 
-// maxChunkLen is the threshold (in runes) above which text is split into chunks.
-const maxChunkLen = 200
+// maxSynthesizeLen is the maximum text length (in runes) accepted for synthesis.
+// Frontend is responsible for splitting long text into sentences.
+const maxSynthesizeLen = 2000
+
+// ttsCacheHash returns a short SHA-256 hex hash for the cache key.
+func ttsCacheHash(key string) string {
+	h := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(h[:16]) // 32 hex chars, collision-safe enough
+}
 
 // synthesizeChunk synthesizes a single text chunk via singleflight (dedup identical requests).
 func (s *service) synthesizeChunk(ctx context.Context, text string, format tts.AudioFormat, speed, pitch, volume float32) ([]byte, string, error) {
 	provider := string(s.ttsService.GetDefaultProvider())
 	key := fmt.Sprintf("%s:%s:%s:%.2f:%.2f:%.2f", provider, text, format, speed, pitch, volume)
+	hash := ttsCacheHash(key)
 
-	// Check cache first
-	s.ttsCacheMu.RLock()
-	if entry, exists := s.ttsCache[key]; exists {
-		s.ttsCacheMu.RUnlock()
-		return entry.audio, entry.contentType, nil
+	// Check disk cache (LRU index lookup + file read)
+	s.ttsIndexMu.Lock()
+	for i, entry := range s.ttsIndex {
+		if entry.hash == hash {
+			// Promote to most-recent (move to end)
+			s.ttsIndex = append(append(s.ttsIndex[:i], s.ttsIndex[i+1:]...), entry)
+			s.ttsIndexMu.Unlock()
+			data, err := os.ReadFile(filepath.Join(s.ttsCacheDir, hash))
+			if err == nil {
+				return data, entry.contentType, nil
+			}
+			// File missing — fall through to re-synthesize
+			break
+		}
 	}
-	s.ttsCacheMu.RUnlock()
+	s.ttsIndexMu.Unlock()
 
 	// Singleflight dedup: identical chunks only synthesize once
 	type sfResult struct {
 		audio       []byte
 		contentType string
 	}
-	v, err, _ := s.ttsSF.Do(key, func() (interface{}, error) {
+	v, err, _ := s.ttsSF.Do(hash, func() (interface{}, error) {
 		result, err := s.ttsService.Synthesize(ctx, &tts.SynthesizeRequest{
 			Text: text, Format: format, Speed: speed, Pitch: pitch, Volume: volume,
 		})
@@ -191,10 +223,19 @@ func (s *service) synthesizeChunk(ctx context.Context, text string, format tts.A
 		if err != nil {
 			return nil, err
 		}
-		// Cache
-		s.ttsCacheMu.Lock()
-		s.ttsCache[key] = &ttsCacheEntry{audio: data, contentType: result.ContentType, createdAt: time.Now()}
-		s.ttsCacheMu.Unlock()
+		// Write audio to disk
+		_ = os.WriteFile(filepath.Join(s.ttsCacheDir, hash), data, 0o644)
+
+		// Update LRU index, evict oldest if over limit
+		entry := &ttsCacheEntry{hash: hash, contentType: result.ContentType}
+		s.ttsIndexMu.Lock()
+		s.ttsIndex = append(s.ttsIndex, entry)
+		for len(s.ttsIndex) > ttsCacheMaxSize {
+			evicted := s.ttsIndex[0]
+			s.ttsIndex = s.ttsIndex[1:]
+			os.Remove(filepath.Join(s.ttsCacheDir, evicted.hash))
+		}
+		s.ttsIndexMu.Unlock()
 		return &sfResult{audio: data, contentType: result.ContentType}, nil
 	})
 	if err != nil {
@@ -205,7 +246,7 @@ func (s *service) synthesizeChunk(ctx context.Context, text string, format tts.A
 }
 
 // Synthesize synthesizes text to speech.
-// Long text is split into sentence chunks and synthesized concurrently via singleflight.
+// Frontend splits long text into sentences; backend synthesizes each call directly.
 func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byte, string, error) {
 	if req.Text == "" {
 		return nil, "", fmt.Errorf("text is required")
@@ -219,99 +260,92 @@ func (s *service) Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byt
 		return nil, "", fmt.Errorf("text contains only formatting or emojis")
 	}
 
+	if utf8.RuneCountInString(cleanText) > maxSynthesizeLen {
+		cleanText = string([]rune(cleanText)[:maxSynthesizeLen])
+	}
+
 	speed, pitch, volume := s.ttsService.GetConfig()
 	format := tts.AudioFormat(req.Format)
 	if format == "" {
-		format = tts.FormatMP3
+		format = tts.FormatWAV
 	}
 
-	chunks := splitTextForTTS(cleanText, maxChunkLen)
-
-	// Single chunk: no concurrency needed
-	if len(chunks) == 1 {
-		return s.synthesizeChunk(ctx, chunks[0], format, speed, pitch, volume)
-	}
-
-	// Multiple chunks: synthesize concurrently via singleflight
-	type indexedResult struct {
-		idx         int
-		audio       []byte
-		contentType string
-		err         error
-	}
-	ch := make(chan indexedResult, len(chunks))
-	for i, chunk := range chunks {
-		go func(idx int, text string) {
-			audio, ct, err := s.synthesizeChunk(ctx, text, format, speed, pitch, volume)
-			ch <- indexedResult{idx: idx, audio: audio, contentType: ct, err: err}
-		}(i, chunk)
-	}
-
-	// Collect in order
-	ordered := make([]indexedResult, len(chunks))
-	for range chunks {
-		r := <-ch
-		if r.err != nil {
-			return nil, "", fmt.Errorf("synthesis failed: %w", r.err)
-		}
-		ordered[r.idx] = r
-	}
-
-	var buf bytes.Buffer
-	var contentType string
-	for _, r := range ordered {
-		buf.Write(r.audio)
-		if contentType == "" {
-			contentType = r.contentType
-		}
-	}
-	return buf.Bytes(), contentType, nil
+	return s.synthesizeChunk(ctx, cleanText, format, speed, pitch, volume)
 }
 
-// splitTextForTTS splits text into sentence-level chunks.
-func splitTextForTTS(text string, maxRunes int) []string {
-	if utf8.RuneCountInString(text) <= maxRunes {
-		return []string{text}
+// SynthesizeStream synthesizes text with chunk-by-chunk streaming.
+// Each audio chunk is delivered via callback as soon as it's ready.
+func (s *service) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, callback func(audio []byte, contentType string) error) error {
+	if req.Text == "" {
+		return fmt.Errorf("text is required")
+	}
+	if s.ttsService == nil {
+		return fmt.Errorf("TTS service not configured")
 	}
 
-	var chunks []string
-	var current strings.Builder
-	currentLen := 0
-
-	for _, r := range text {
-		current.WriteRune(r)
-		currentLen++
-
-		isSentenceEnd := r == '.' || r == '!' || r == '?' ||
-			r == '。' || r == '！' || r == '？' || r == '；' ||
-			r == '\n'
-
-		if isSentenceEnd && currentLen > 0 {
-			if s := strings.TrimSpace(current.String()); s != "" {
-				chunks = append(chunks, s)
-			}
-			current.Reset()
-			currentLen = 0
-		} else if currentLen >= maxRunes {
-			s := current.String()
-			cutIdx := strings.LastIndexAny(s, ",;，、 ")
-			if cutIdx > len(s)/2 {
-				chunks = append(chunks, strings.TrimSpace(s[:cutIdx+1]))
-				remainder := s[cutIdx+1:]
-				current.Reset()
-				current.WriteString(remainder)
-				currentLen = utf8.RuneCountInString(remainder)
-			} else {
-				chunks = append(chunks, strings.TrimSpace(s))
-				current.Reset()
-				currentLen = 0
-			}
-		}
+	cleanText := humanizer.Humanize(req.Text, humanizer.ModeVoice)
+	if cleanText == "" {
+		return fmt.Errorf("text contains only formatting or emojis")
 	}
-	if s := strings.TrimSpace(current.String()); s != "" {
-		chunks = append(chunks, s)
+	if utf8.RuneCountInString(cleanText) > maxSynthesizeLen {
+		cleanText = string([]rune(cleanText)[:maxSynthesizeLen])
 	}
-	return chunks
+
+	speed, pitch, volume := s.ttsService.GetConfig()
+	format := tts.AudioFormat(req.Format)
+	if format == "" {
+		format = tts.FormatWAV
+	}
+
+	return s.ttsService.SynthesizeStream(ctx, &tts.SynthesizeRequest{
+		Text: cleanText, Format: format, Speed: speed, Pitch: pitch, Volume: volume,
+	}, func(chunk []byte) error {
+		return callback(chunk, "audio/wav")
+	})
+}
+
+// SpeakLocally plays text through local audio output if the provider supports it.
+// When speed is non-default, returns false so the caller falls through to Synthesize
+// (which returns audio data to the frontend for custom-rate playback).
+func (s *service) SpeakLocally(ctx context.Context, text string) (bool, error) {
+	if s.ttsService == nil {
+		return false, nil
+	}
+
+	speed, _, _ := s.ttsService.GetConfig()
+
+	// Non-default speed: skip local playback, let frontend handle audio with rate control
+	if speed != 1.0 {
+		return false, nil
+	}
+
+	provider := s.ttsService.GetProvider(s.ttsService.GetDefaultProvider())
+	if provider == nil {
+		return false, nil
+	}
+	speaker, ok := provider.(tts.LocalSpeaker)
+	if !ok {
+		return false, nil
+	}
+	cleanText := humanizer.Humanize(text, humanizer.ModeVoice)
+	if cleanText == "" {
+		return false, fmt.Errorf("text contains only formatting or emojis")
+	}
+	return true, speaker.SpeakLocally(ctx, cleanText, speed)
+}
+
+// StopSpeaking stops any currently running local speech.
+func (s *service) StopSpeaking() {
+	if s.ttsService == nil {
+		return
+	}
+	provider := s.ttsService.GetProvider(s.ttsService.GetDefaultProvider())
+	if provider == nil {
+		return
+	}
+	if speaker, ok := provider.(tts.LocalSpeaker); ok {
+		speaker.StopSpeaking()
+	}
 }
 
 // ProcessVoiceInput processes voice input and returns a response.

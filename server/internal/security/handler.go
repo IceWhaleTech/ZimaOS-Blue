@@ -1774,6 +1774,9 @@ func (h *Handler) UploadTLSCert(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
+	// Dynamically start HTTPS listener if not already running
+	notifyCertReady()
+
 	// Add domains to CORS
 	certInfo := tlsManager.GetCertificateInfo()
 	if certInfo != nil {
@@ -1783,10 +1786,12 @@ func (h *Handler) UploadTLSCert(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, TLSConfigResponse{
-		Enabled:  true,
-		Port:     tlsManager.GetHTTPSPort(),
-		HasCert:  true,
-		CertInfo: certInfo,
+		Enabled:   true,
+		Port:      tlsManager.GetHTTPSPort(),
+		HasCert:   true,
+		CertInfo:  certInfo,
+		HTTPSOnly: tlsManager.IsHTTPSOnly(),
+		HTTPSPort: tlsManager.GetHTTPSPort(),
 	})
 }
 
@@ -1809,6 +1814,9 @@ func (h *Handler) GenerateSelfSignedCert(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Dynamically start HTTPS listener if not already running
+	notifyCertReady()
+
 	// Add domains to CORS
 	certInfo := tlsManager.GetCertificateInfo()
 	if certInfo != nil {
@@ -1825,6 +1833,8 @@ func (h *Handler) GenerateSelfSignedCert(c echo.Context) error {
 		HasCert:    true,
 		CertInfo:   certInfo,
 		SelfSigned: true,
+		HTTPSOnly:  tlsManager.IsHTTPSOnly(),
+		HTTPSPort:  tlsManager.GetHTTPSPort(),
 	})
 }
 
@@ -1891,6 +1901,9 @@ func (h *Handler) RequestACMECert(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	// Dynamically start HTTPS listener if not already running
+	notifyCertReady()
 
 	// Add domains to CORS
 	for _, domain := range req.Domains {

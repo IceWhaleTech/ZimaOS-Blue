@@ -15,12 +15,11 @@ func TestSynthesizeCaching(t *testing.T) {
 	}
 
 	voiceSvc := svc.(*service)
-	if voiceSvc.ttsCache == nil {
-		t.Fatal("TTS cache should be initialized")
+	if len(voiceSvc.ttsIndex) != 0 {
+		t.Error("Cache index should be empty initially")
 	}
-
-	if len(voiceSvc.ttsCache) != 0 {
-		t.Error("Cache should be empty initially")
+	if voiceSvc.ttsCacheDir == "" {
+		t.Error("Cache dir should be set")
 	}
 }
 
@@ -38,72 +37,23 @@ func TestServiceCreation(t *testing.T) {
 	if voiceSvc.sessions == nil {
 		t.Error("Sessions map should be initialized")
 	}
-
-	if voiceSvc.ttsCache == nil {
-		t.Error("TTS cache should be initialized")
+	if voiceSvc.ttsCacheDir == "" {
+		t.Error("TTS cache dir should be set")
 	}
 }
 
-func TestCacheKeyGeneration(t *testing.T) {
-	tests := []struct {
-		name    string
-		req1    *SynthesizeRequest
-		req2    *SynthesizeRequest
-		sameKey bool
-	}{
-		{
-			name: "identical requests",
-			req1: &SynthesizeRequest{
-				Text:   "Hello",
-				Format: "mp3",
-			},
-			req2: &SynthesizeRequest{
-				Text:   "Hello",
-				Format: "mp3",
-			},
-			sameKey: true,
-		},
-		{
-			name: "different text",
-			req1: &SynthesizeRequest{
-				Text:   "Hello",
-				Format: "mp3",
-			},
-			req2: &SynthesizeRequest{
-				Text:   "World",
-				Format: "mp3",
-			},
-			sameKey: false,
-		},
-		{
-			name: "different format",
-			req1: &SynthesizeRequest{
-				Text:   "Hello",
-				Format: "mp3",
-			},
-			req2: &SynthesizeRequest{
-				Text:   "Hello",
-				Format: "wav",
-			},
-			sameKey: false,
-		},
+func TestCacheHash(t *testing.T) {
+	h1 := ttsCacheHash("provider:Hello:mp3:1.00:1.00:1.00")
+	h2 := ttsCacheHash("provider:Hello:mp3:1.00:1.00:1.00")
+	h3 := ttsCacheHash("provider:World:mp3:1.00:1.00:1.00")
+
+	if h1 != h2 {
+		t.Errorf("Same input should produce same hash: %s vs %s", h1, h2)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			key1 := generateCacheKey(tt.req1)
-			key2 := generateCacheKey(tt.req2)
-
-			if tt.sameKey && key1 != key2 {
-				t.Errorf("Expected same cache key, got different: %s vs %s", key1, key2)
-			}
-			if !tt.sameKey && key1 == key2 {
-				t.Errorf("Expected different cache keys, got same: %s", key1)
-			}
-		})
+	if h1 == h3 {
+		t.Error("Different input should produce different hash")
 	}
-}
-
-func generateCacheKey(req *SynthesizeRequest) string {
-	return req.Text + ":" + req.Format
+	if len(h1) != 32 {
+		t.Errorf("Hash should be 32 hex chars, got %d", len(h1))
+	}
 }

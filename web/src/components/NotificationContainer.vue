@@ -25,7 +25,7 @@ function getColorClasses(type: NotificationType): string {
     case 'warning':
       return 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200'
     case 'info':
-      return 'bg-gray-700 dark:bg-gray-500/30 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-white'
+      return 'bg-gray-100 dark:bg-gray-800/80 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200'
   }
 }
 
@@ -38,7 +38,7 @@ function getIconColorClass(type: NotificationType): string {
     case 'warning':
       return 'text-yellow-500 dark:text-yellow-400'
     case 'info':
-      return 'text-gray-900 dark:text-white dark:text-white'
+      return 'text-gray-500 dark:text-gray-400'
   }
 }
 </script>

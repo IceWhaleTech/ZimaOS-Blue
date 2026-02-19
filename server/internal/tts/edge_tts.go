@@ -62,7 +62,7 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequest
 
 	voice := req.Voice
 	if voice == "" {
-		voice = p.defaultVoice
+		voice = p.detectVoice(req.Text)
 	}
 
 	// Convert speed to rate string (e.g., 1.2 -> "+20%", 0.8 -> "-20%")
@@ -264,4 +264,29 @@ func GetVoicesByLanguage(voices []Voice, langPrefix string) []Voice {
 		}
 	}
 	return filtered
+}
+
+// detectVoice auto-detects language from text and returns the best Edge-TTS voice.
+func (p *EdgeTTSProvider) detectVoice(text string) string {
+	lang, _ := DetectLanguage(text)
+	switch lang {
+	case "ja":
+		return "ja-JP-NanamiNeural"
+	case "ko":
+		return "ko-KR-SunHiNeural"
+	case "cmn", "zh":
+		return "zh-CN-XiaoxiaoNeural"
+	case "en":
+		return "en-US-AriaNeural"
+	case "ru":
+		return "ru-RU-SvetlanaNeural"
+	case "ar":
+		return "ar-SA-ZariyahNeural"
+	case "th":
+		return "th-TH-PremwadeeNeural"
+	case "hi":
+		return "hi-IN-SwaraNeural"
+	default:
+		return p.defaultVoice
+	}
 }

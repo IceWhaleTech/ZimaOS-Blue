@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sync"
 	"syscall"
@@ -67,6 +68,18 @@ var (
 )
 
 func main() {
+	// On macOS, if the binary has appended dist data (from pack-dist),
+	// extract it as a sidecar directory and truncate the binary to restore
+	// clean Mach-O. TCC's strict signature validation rejects modified
+	// binaries, so this ensures speech recognition auth works on next run.
+	// The current process continues normally with dist from tmpdir/sidecar.
+	web.SelfExtractAndRestart()
+
+	// On macOS, request speech recognition authorization on thread 0
+	// BEFORE starting the server. runtime.LockOSThread() in macos_init.go
+	// pins this goroutine to thread 0 (required by AppKit/TCC).
+	macosRequestSTTAuthorization()
+
 	// Fast-path: CLI subcommands bypass cobra to minimize page faults and RSS.
 	// All init() functions have already run, but we avoid touching cobra's
 	// command tree, flag parsing, and the heavy code paths they pull in.
@@ -75,7 +88,21 @@ func main() {
 			return
 		}
 	}
-	Execute()
+
+	// On macOS, the main goroutine (thread 0) must pump the Cocoa run loop
+	// for Speech framework callbacks. Run the server on a goroutine and
+	// keep thread 0 for the run loop. On non-darwin, macosRunMainRunLoop()
+	// is a no-op so we fall through to Execute() directly.
+	if isDarwin() {
+		go func() {
+			Execute()
+			// Server shut down — stop the run loop so main() can return
+			macosStopMainRunLoop()
+		}()
+		macosRunMainRunLoop() // blocks thread 0 until StopMainRunLoop()
+	} else {
+		Execute()
+	}
 }
 
 // runServer is the main server entry point, called by cobra rootCmd
@@ -441,19 +468,30 @@ func runServer() {
 	// Chromium is very heavy on memory, skip at startup
 	logger.Info().Msg("Browser automation will be initialized on first use")
 
-	// TTS service — edge-tts is lightweight (pure Go, no CGO), safe to init at startup
+	// TTS service — pick OS-appropriate default provider
 	{
+		defaultTTSProvider := tts.ProviderEdge
+		if runtime.GOOS == "darwin" {
+			defaultTTSProvider = tts.ProviderMacOSNative
+		}
+
+		providers := []tts.ProviderConfig{
+			{Type: tts.ProviderEdge, Enabled: true},
+		}
+		if defaultTTSProvider == tts.ProviderMacOSNative {
+			providers = append(providers, tts.ProviderConfig{Type: tts.ProviderMacOSNative, Enabled: true})
+		}
+
 		var err error
 		ttsService, err = tts.NewService(&tts.ServiceConfig{
-			DefaultProvider: tts.ProviderEdge,
-			Providers: []tts.ProviderConfig{
-				{Type: tts.ProviderEdge, Enabled: true},
-			},
+			DefaultProvider: defaultTTSProvider,
+			Providers:       providers,
+			DataPath:        dataDir,
 		})
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize TTS service, speech features will be limited")
 		} else {
-			logger.Info().Msg("TTS service initialized (edge-tts)")
+			logger.Info().Msgf("TTS service initialized (%s)", defaultTTSProvider)
 		}
 	}
 
@@ -623,6 +661,14 @@ func runServer() {
 		return srv.Shutdown(ctx)
 	})
 
+	// Store global server reference for dynamic TLS start
+	server.SetGlobalServer(srv)
+
+	// Register callback so cert generation/upload dynamically starts HTTPS
+	security.OnCertReady(func() {
+		srv.EnsureTLSStarted()
+	})
+
 	// Start server in background
 	lm.Go(func(ctx context.Context) {
 		if err := srv.Start(); err != nil {
@@ -633,11 +679,7 @@ func runServer() {
 	// Start HTTPS server if TLS is enabled and certificate is available
 	tlsManager := security.GetGlobalTLSManager()
 	if tlsManager != nil && tlsManager.GetCertificate() != nil {
-		lm.Go(func(ctx context.Context) {
-			if err := srv.StartTLS(); err != nil {
-				logger.Error().Err(err).Msg("HTTPS server error")
-			}
-		})
+		srv.EnsureTLSStarted()
 	}
 
 	// Wait for shutdown signal
@@ -731,10 +773,38 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			}
 		}
 	}
-	if sttService != nil {
+	// On macOS, prefer native STT (always available, no download needed)
+	logger.Info("ASR provider setup", zap.String("goos", runtime.GOOS), zap.Bool("sttServiceNil", sttService == nil))
+	if runtime.GOOS == "darwin" {
+		logger.Info("macOS detected, initializing native STT...")
+		macosSTT := speech.NewMacOSNativeSTT()
+		if err := macosSTT.Initialize(); err == nil {
+			speechService.SetASRProvider(macosSTT)
+			// Also update voice service to use macOS native STT for /voice/transcribe
+			if voiceHandler != nil {
+				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(macosSTT))
+			}
+			logger.Info("macOS native STT initialized OK",
+				zap.String("providerType", string(macosSTT.Type())),
+				zap.String("providerName", macosSTT.Name()))
+		} else {
+			logger.Warn("macOS native STT init failed, falling back to whisper", zap.Error(err))
+			if sttService != nil {
+				if wp := sttService.GetWhisperProvider(); wp != nil && wp.IsInitialized() {
+					speechService.SetASRProvider(wp)
+				}
+			}
+		}
+	} else if sttService != nil {
 		if wp := sttService.GetWhisperProvider(); wp != nil {
 			speechService.SetASRProvider(wp)
 		}
+	}
+	// Log final ASR provider state
+	if p := speechService.GetASRProvider(); p != nil {
+		logger.Info("Final ASR provider", zap.String("type", string(p.Type())), zap.String("name", p.Name()))
+	} else {
+		logger.Warn("No ASR provider configured")
 	}
 
 	// Initialize Claude Code handler

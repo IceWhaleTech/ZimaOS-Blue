@@ -25,6 +25,29 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+// onCertReady is called after a certificate is generated/uploaded/obtained.
+// The server package sets this to trigger dynamic HTTPS listener start.
+var (
+	onCertReadyMu sync.Mutex
+	onCertReadyFn func()
+)
+
+// OnCertReady registers a callback invoked after a certificate becomes available.
+func OnCertReady(fn func()) {
+	onCertReadyMu.Lock()
+	defer onCertReadyMu.Unlock()
+	onCertReadyFn = fn
+}
+
+func notifyCertReady() {
+	onCertReadyMu.Lock()
+	fn := onCertReadyFn
+	onCertReadyMu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
 // TLSManager manages TLS certificates.
 type TLSManager struct {
 	mu             sync.RWMutex
@@ -845,13 +868,8 @@ func (m *TLSManager) HTTPSRedirectMiddleware() echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			// Skip HTTPS redirect for localhost/127.0.0.1 (Tauri desktop app)
-			host := c.Request().Host
-			if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
-				return next(c)
-			}
-
 			// Redirect to HTTPS
+			host := c.Request().Host
 			httpsPort := m.GetHTTPSPort()
 			if httpsPort != 443 {
 				// Remove existing port if present

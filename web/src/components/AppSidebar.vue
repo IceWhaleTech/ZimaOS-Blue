@@ -85,7 +85,7 @@ interface NavItem {
 const allNavItems: NavItem[] = [
   {
     name: 'nav.dashboard',
-    path: '/',
+    path: '/home',
     icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z',
     permission: PagePermissions.HOME,
     adminOnly: true,
@@ -132,6 +132,13 @@ const allNavItems: NavItem[] = [
     adminOnly: true,
   },
 ]
+
+// Check if a nav item is active (handles trailing slashes and sub-paths)
+const isActive = (itemPath: string) => {
+  const currentPath = route.path.replace(/\/+$/, '') || '/'
+  const navPath = itemPath.replace(/\/+$/, '') || '/'
+  return currentPath === navPath || currentPath.startsWith(navPath + '/')
+}
 
 // Filter nav items based on permissions
 const navItems = computed(() => {
@@ -184,7 +191,7 @@ const navItems = computed(() => {
         :to="item.path"
         class="flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 cursor-pointer group"
         :class="[
-          route.path === item.path
+          isActive(item.path)
             ? 'bg-gray-100 dark:bg-gray-700/20 text-gray-900 dark:text-gray-300 border border-gray-900/30 dark:border-gray-700/30'
             : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white border border-transparent',
           isCollapsed ? 'justify-center' : 'space-x-3'

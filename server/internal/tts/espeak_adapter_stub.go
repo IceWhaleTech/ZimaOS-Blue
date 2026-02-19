@@ -33,4 +33,5 @@ func (a *EspeakNGAdapter) ListVoices(_ context.Context) ([]Voice, error) {
 
 func (a *EspeakNGAdapter) SupportedFormats() []AudioFormat { return nil }
 func (a *EspeakNGAdapter) MaxTextLength() int              { return 0 }
+func (a *EspeakNGAdapter) GetProvider() *EspeakNGProvider    { return nil }
 func (a *EspeakNGAdapter) Close()                          {}

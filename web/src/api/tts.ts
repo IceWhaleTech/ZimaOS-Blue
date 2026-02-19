@@ -65,10 +65,10 @@ export const ttsApi = {
     api.delete<{ message: string; language: string }>(`/tts/espeak/packs/${language}`),
 
   // Synthesis
-  synthesize: (text: string, provider?: string, voice?: string, rate?: number) =>
+  synthesize: (text: string) =>
     api.post(
       '/tts/synthesize',
-      { text, provider, voice, rate },
+      { text },
       { responseType: 'blob' }
     ),
 }

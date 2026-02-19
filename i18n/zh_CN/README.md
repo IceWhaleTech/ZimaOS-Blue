@@ -65,7 +65,7 @@
 更进一步：它原生支持 **20+ 即时通讯平台**、**语音驱动**的自然上下文感知对话界面、**零配置模型切换**（支持 IDE 扫描）以及 SOUL 分层人格系统。
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
 </p>
 
 ### 快速、轻量
@@ -101,49 +101,13 @@ Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务
 - **本地优先、超轻量、跨设备** – 无需高端硬件。能计算的地方就能运行。
 - **安全可审计** – 会话审计、沙箱隔离、权限控制，以及内置的 API 代理充当应用层防火墙 —— 每一个字节的进出都清晰可见。
 
-![](../../docs/assets/design_principle.png)
-
 我们最大限度减少样板代码，让你**专注于真正重要的事**。秉承 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS 的设计哲学**，Blue 提供：
 - **一键从零到一** – 即时部署，无需复杂配置。
 - **快速原型开发** – 随心或精心打造场景化工具、交互和应用包。
 - **全球化就绪** – **世界很大**，不应默认只有英语。**20+ 种语言，原生支持**，零障碍。
 - **开放模型生态** – 无供应商锁定。自带模型即可。
 
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| 提供商 | 模型 | 类型 |
-|----------|--------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | 云端 |
-| Anthropic | Claude 4.5, Claude 4 | 云端 |
-| Google | Gemini 2.5, Gemini 2.0 | 云端 |
-| Ollama | Llama, Qwen, Gemma, Phi 等 | 本地 |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | 云端 |
-| Grok | Grok-3, Grok-3-mini | 云端 |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | 云端 |
-| GLM | GLM-4, GLM-4-Flash | 云端 |
-| Moonshot | Moonshot-v1 | 云端 |
-| MiniMax | abab6.5, abab5.5 | 云端 |
-| Venice | Llama, Mistral（隐私优先） | 云端 |
-| AWS Bedrock | Claude, Llama, Titan | 云端 |
-| Azure | 通过 Azure 使用 OpenAI 模型 | 云端 |
-| OpenRouter | 100+ 聚合模型 | 云端 |
-| AIHubMix | 多提供商聚合器 | 云端 |
-| Codex | OpenAI Codex | 云端 |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | 云端 |
-| 自定义 | 任何 OpenAI / Anthropic / Gemini 兼容 API | 云端 / 本地 |
-
-</details>
-
-### 支持的 IDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+![](../../docs/assets/design_principle.png)
 
 ## 快速开始
 

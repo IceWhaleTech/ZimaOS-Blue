@@ -17,7 +17,7 @@ const aliases: Record<string, string> = {
 // Known provider icon files
 const knownIcons = new Set([
   'aihubmix', 'anthropic', 'aws', 'azure', 'codex', 'deepseek', 'default',
-  'glm', 'google', 'grok', 'minimax', 'moonshot', 'ngrok', 'ollama',
+  'glm', 'google', 'grok', 'minimax', 'moonshot', 'ngrok', 'nvidia', 'ollama',
   'openai', 'openrouter', 'qwen', 'siliconflow', 'venice',
 ])
 
@@ -54,6 +54,6 @@ const sizeClass = computed(() => {
     :alt="providerId"
     :class="[sizeClass, 'dark:brightness-150']"
     class="inline-block"
-    @error="($event.target as HTMLImageElement).src = '/icons/providers/default.svg'"
+    @error="(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = '/icons/providers/default.svg' } }"
   />
 </template>

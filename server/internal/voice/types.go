@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
 
 var (
@@ -166,6 +168,16 @@ type Service interface {
 	Transcribe(ctx context.Context, req *TranscribeRequest, audio []byte) (*TranscribeResponse, error)
 	// Synthesize synthesizes text to speech.
 	Synthesize(ctx context.Context, req *SynthesizeRequest) ([]byte, string, error)
+	// SynthesizeStream synthesizes text and calls back with each audio chunk.
+	// This enables true streaming: the first chunk arrives while later chunks are still being synthesized.
+	SynthesizeStream(ctx context.Context, req *SynthesizeRequest, callback func(audio []byte, contentType string) error) error
+	// SpeakLocally plays text through local audio output (blocking until done).
+	// Returns false if the current provider doesn't support local playback.
+	SpeakLocally(ctx context.Context, text string) (bool, error)
+	// StopSpeaking stops any currently running local speech.
+	StopSpeaking()
+	// SetSTTService replaces the STT service at runtime.
+	SetSTTService(svc stt.Service)
 	// ProcessVoiceInput processes voice input and returns a response.
 	ProcessVoiceInput(ctx context.Context, sessionID string, text string) (string, error)
 }

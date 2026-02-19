@@ -105,7 +105,7 @@ start_server() {
         warn "Air not installed, running without hot reload"
         warn "Run 'go install github.com/air-verse/air@latest' to enable hot reload"
         # Build first
-        go build -tags 'fts5 espeak' -o blue ./cmd/blue
+        go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
         success "Server built successfully"
 
         info "Starting server on http://localhost"
@@ -165,7 +165,7 @@ start_all() {
     if command_exists air; then
         air
     else
-        go build -tags 'fts5 espeak dev' -o blue ./cmd/blue
+        go build -tags 'fts5 espeak kokoro dev' -o blue ./cmd/blue
         ./blue
     fi
 }
@@ -237,6 +237,28 @@ build_third_party() {
     success "Third_party libraries ready"
 }
 
+# Code-sign macOS binary or .app bundle (skipped if APPLE_SIGNING_IDENTITY is not set)
+codesign_binary() {
+    local target="$1"
+    if [ "$(uname -s)" != "Darwin" ]; then
+        return
+    fi
+    if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+        warn "APPLE_SIGNING_IDENTITY not set, skipping code signing"
+        warn "macOS native speech recognition requires a signed binary"
+        return
+    fi
+    info "Code-signing $target ..."
+    local entitlements="$PROJECT_ROOT/tauri-app/src-tauri/entitlements.plist"
+    local deep_flag=""
+    if [[ "$target" == *.app ]]; then
+        deep_flag="--deep"
+    fi
+    codesign --force $deep_flag --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+        --entitlements "$entitlements" "$target"
+    success "Binary signed: $(codesign -dv "$target" 2>&1 | head -1)"
+}
+
 # Build for production
 build_all() {
     check_prereqs
@@ -249,8 +271,27 @@ build_all() {
     # Build server
     info "Building Go server..."
     cd "$PROJECT_ROOT/server"
-    go build -tags 'fts5 espeak' -ldflags="-s -w" -o blue ./cmd/blue
-    success "Server built: server/echo"
+    EXTRA_LDFLAGS=""
+    if [ "$(uname -s)" = "Darwin" ]; then
+        EXTRA_LDFLAGS="-extldflags '-sectcreate __TEXT __info_plist Info.plist'"
+    fi
+    go build -tags 'fts5 espeak kokoro' -ldflags="-s -w $EXTRA_LDFLAGS" -o blue ./cmd/blue
+
+    # macOS: create .app bundle + codesign (TCC needs proper bundle for speech recognition)
+    if [ "$(uname -s)" = "Darwin" ]; then
+        info "Creating .app bundle..."
+        APP_BUNDLE="$PROJECT_ROOT/server/Blue.app"
+        rm -rf "$APP_BUNDLE"
+        mkdir -p "$APP_BUNDLE/Contents/MacOS"
+        mkdir -p "$APP_BUNDLE/Contents/Resources"
+        cp "$PROJECT_ROOT/server/blue" "$APP_BUNDLE/Contents/MacOS/blue"
+        cp "$PROJECT_ROOT/server/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+        if [ -d "$PROJECT_ROOT/server/internal/web/dist" ]; then
+            cp -r "$PROJECT_ROOT/server/internal/web/dist" "$APP_BUNDLE/Contents/Resources/dist"
+        fi
+        codesign_binary "$APP_BUNDLE"
+    fi
+    success "Server built: server/blue"
 
     # Build web
     info "Building web frontend..."
@@ -285,7 +326,7 @@ prd_run() {
     cp -r "$PROJECT_ROOT/web/dist" "$PROJECT_ROOT/server/internal/web/dist"
     success "Web assets copied to server/internal/web/dist"
 
-    # Build server with pack-dist (appends web assets to binary)
+    # Build server with pack-dist (signs before packing, appends web assets to binary)
     info "Building Go server (production mode)..."
     cd "$PROJECT_ROOT/server"
     make build

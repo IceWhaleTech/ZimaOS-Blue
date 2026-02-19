@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { speechApi, type SpeechStatus, type ASRModel, type TTSModel } from '@/api/speech'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // Tab state
 const activeTab = ref<'asr' | 'tts'>('asr')
@@ -19,6 +19,29 @@ const _asrDownloadProgress = ref(0)
 const ttsDownloadProgress = ref(0)
 const ttsDownloading = ref(false)
 const error = ref<string | null>(null)
+
+// Kokoro state
+const kokoroReady = ref(false)
+const kokoroDownloading = ref(false)
+const kokoroDownloadProgress = ref(0)
+const kokoroDownloadSpeed = ref('')
+const kokoroDownloadETA = ref('')
+const kokoroDownloadFile = ref('')
+const kokoroDownloadFileIndex = ref(0)
+const kokoroDownloadTotalFiles = ref(0)
+const kokoroDownloadedHuman = ref('')
+const kokoroLangsExpanded = ref(false)
+
+const kokoroLanguages = ['en-US', 'en-GB', 'ja-JP', 'zh-CN', 'es-ES', 'fr-FR', 'hi-IN', 'it-IT', 'pt-BR']
+const kokoroCurrentLangSupported = computed(() => kokoroLanguages.includes(locale.value))
+const kokoroOtherLangs = computed(() =>
+  kokoroLanguages.filter(l => l !== locale.value)
+)
+
+// eSpeak-NG state (engine is statically linked, data dir detected at runtime)
+const espeakDataReady = ref(false)
+const espeakLangCount = ref(0)
+const espeakDataSize = ref(0)
 
 // Computed: get all downloading models from server status
 const serverDownloadingASRModels = computed(() => {
@@ -59,8 +82,8 @@ const editBeforeSend = computed({
   }
 })
 
-// TTS Provider selection
-const selectedProvider = ref(localStorage.getItem('tts-provider') || 'edge-tts')
+// TTS Provider selection - synced from server status
+const selectedProvider = ref(localStorage.getItem('tts-provider') || '')
 const selectedTTSModel = ref(localStorage.getItem('tts-model') || 'piper-en')
 const selectedASRModel = ref(localStorage.getItem('asr-model') || '')
 
@@ -72,43 +95,6 @@ const speechVolume = ref(parseFloat(localStorage.getItem('tts-speech-volume') ||
 // Auto-play TTS for assistant responses
 const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') === 'true')
 
-// eSpeak-NG language packs - 27 languages with sizes
-const espeak_languages = ref<Array<{code: string; name: string; downloaded: boolean; size: string}>>([
-  { code: 'en', name: 'English', downloaded: true, size: '250KB' },
-  { code: 'zh', name: 'Chinese', downloaded: false, size: '400KB' },
-  { code: 'es', name: 'Spanish', downloaded: false, size: '280KB' },
-  { code: 'fr', name: 'French', downloaded: false, size: '300KB' },
-  { code: 'de', name: 'German', downloaded: false, size: '320KB' },
-  { code: 'ja', name: 'Japanese', downloaded: false, size: '420KB' },
-  { code: 'ko', name: 'Korean', downloaded: false, size: '410KB' },
-  { code: 'ru', name: 'Russian', downloaded: false, size: '350KB' },
-  { code: 'pt', name: 'Portuguese', downloaded: false, size: '310KB' },
-  { code: 'it', name: 'Italian', downloaded: false, size: '290KB' },
-  { code: 'nl', name: 'Dutch', downloaded: false, size: '300KB' },
-  { code: 'pl', name: 'Polish', downloaded: false, size: '320KB' },
-  { code: 'tr', name: 'Turkish', downloaded: false, size: '340KB' },
-  { code: 'ar', name: 'Arabic', downloaded: false, size: '380KB' },
-  { code: 'hi', name: 'Hindi', downloaded: false, size: '360KB' },
-  { code: 'th', name: 'Thai', downloaded: false, size: '350KB' },
-  { code: 'vi', name: 'Vietnamese', downloaded: false, size: '330KB' },
-  { code: 'id', name: 'Indonesian', downloaded: false, size: '280KB' },
-  { code: 'fil', name: 'Filipino', downloaded: false, size: '290KB' },
-  { code: 'uk', name: 'Ukrainian', downloaded: false, size: '340KB' },
-  { code: 'cs', name: 'Czech', downloaded: false, size: '310KB' },
-  { code: 'sv', name: 'Swedish', downloaded: false, size: '280KB' },
-  { code: 'da', name: 'Danish', downloaded: false, size: '260KB' },
-  { code: 'no', name: 'Norwegian', downloaded: false, size: '270KB' },
-  { code: 'fi', name: 'Finnish', downloaded: false, size: '290KB' },
-  { code: 'el', name: 'Greek', downloaded: false, size: '320KB' },
-  { code: 'he', name: 'Hebrew', downloaded: false, size: '350KB' },
-])
-const espeak_downloading = ref(false)
-const espeak_download_progress = ref(0)
-
-const allPacksDownloaded = computed(() => {
-  return espeak_languages.value.every(lang => lang.downloaded)
-})
-
 async function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
   try {
@@ -117,28 +103,6 @@ async function saveProvider() {
   } catch (err) {
     console.error('Failed to switch TTS provider:', err)
     error.value = t('speech.switchError')
-  }
-}
-
-// Download and enable eSpeak-NG directly
-async function downloadAndEnableEspeak() {
-  espeak_downloading.value = true
-  espeak_download_progress.value = 0
-  error.value = null
-  try {
-    // Download all language packs
-    await speechApi.downloadAllEspeakLanguages()
-    await syncEspeakLanguages()
-
-    // Enable eSpeak-NG provider
-    selectedProvider.value = 'espeak-ng'
-    await speechApi.switchTTSProvider('espeak-ng')
-    await fetchStatus()
-  } catch (e: unknown) {
-    console.error('Failed to download and enable eSpeak:', e)
-    error.value = t('speech.downloadError')
-  } finally {
-    espeak_downloading.value = false
   }
 }
 
@@ -203,6 +167,11 @@ async function fetchStatus() {
   try {
     const res = await speechApi.getStatus()
     status.value = res.data
+    // Sync provider from server when no local preference is set
+    if (!selectedProvider.value && res.data?.tts?.provider && res.data.tts.provider !== 'none') {
+      selectedProvider.value = res.data.tts.provider
+      localStorage.setItem('tts-provider', selectedProvider.value)
+    }
   } catch (e) {
     console.error('Failed to fetch speech status:', e)
     error.value = t('speech.fetchError')
@@ -323,6 +292,69 @@ async function cancelASRDownload() {
   }
 }
 
+async function fetchKokoroStatus() {
+  try {
+    const res = await speechApi.getKokoroStatus()
+    kokoroReady.value = res.data.ready
+    kokoroDownloading.value = res.data.downloading
+    if (res.data.progress !== undefined) {
+      kokoroDownloadProgress.value = res.data.progress
+    }
+    kokoroDownloadSpeed.value = res.data.speed || ''
+    kokoroDownloadETA.value = res.data.eta || ''
+    kokoroDownloadFile.value = res.data.file || ''
+    kokoroDownloadFileIndex.value = res.data.file_index || 0
+    kokoroDownloadTotalFiles.value = res.data.total_files || 0
+    kokoroDownloadedHuman.value = res.data.downloaded_human || ''
+  } catch (e) {
+    console.error('Failed to fetch Kokoro status:', e)
+  }
+}
+
+async function downloadKokoro() {
+  kokoroDownloading.value = true
+  kokoroDownloadProgress.value = 0
+  error.value = null
+  try {
+    await speechApi.downloadKokoro()
+    let pollCount = 0
+    const pollInterval = setInterval(async () => {
+      await fetchKokoroStatus()
+      pollCount++
+      // Grace period: don't stop polling in first 3s (goroutine may not have started yet)
+      if (!kokoroDownloading.value && pollCount > 3) {
+        clearInterval(pollInterval)
+      }
+    }, 1000)
+  } catch (e) {
+    console.error('Failed to download Kokoro model:', e)
+    error.value = t('speech.downloadError')
+    kokoroDownloading.value = false
+  }
+}
+
+async function cancelKokoroDownload() {
+  try {
+    await speechApi.cancelKokoroDownload()
+    kokoroDownloading.value = false
+    kokoroDownloadProgress.value = 0
+  } catch (e) {
+    console.error('Failed to cancel Kokoro download:', e)
+    error.value = t('speech.cancelError')
+  }
+}
+
+async function fetchEspeakStatus() {
+  try {
+    const res = await speechApi.getEspeakLibraryStatus()
+    espeakDataReady.value = res.data.installed
+    espeakLangCount.value = res.data.language_count || 0
+    espeakDataSize.value = res.data.data_size || 0
+  } catch (e) {
+    console.error('Failed to fetch eSpeak status:', e)
+  }
+}
+
 async function _deleteTTSModel(modelType?: string) {
   if (!confirm(t('speech.confirmDelete'))) return
   try {
@@ -335,28 +367,13 @@ async function _deleteTTSModel(modelType?: string) {
   }
 }
 
-async function syncEspeakLanguages() {
-  try {
-    const res = await speechApi.listEspeakLanguages()
-    const languages = res.data?.languages || []
-
-    // Update downloaded status from server
-    for (const lang of languages) {
-      const local = espeak_languages.value.find(l => l.code === lang.code)
-      if (local) {
-        local.downloaded = lang.downloaded
-      }
-    }
-  } catch (e) {
-    console.error('Failed to sync eSpeak languages:', e)
-  }
-}
 
 onMounted(() => {
   fetchStatus()
   fetchASRModels()
   fetchTTSModels()
-  syncEspeakLanguages()
+  fetchKokoroStatus()
+  fetchEspeakStatus()
 })
 </script>
 
@@ -397,6 +414,22 @@ onMounted(() => {
 
     <!-- ASR Tab Content -->
     <div v-show="activeTab === 'asr'" class="space-y-6">
+      <!-- macOS Native STT Status -->
+      <div v-if="status?.asr?.provider === 'macos-native'" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM7 12a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.93V22h-2v-3.07A7 7 0 0 1 5 12h2z"/></svg>
+            </div>
+            <div>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeName') }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.macosNativeSTTDesc') }}</p>
+            </div>
+          </div>
+          <span v-if="status?.asr?.ready" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">{{ t('speech.ready') }}</span>
+        </div>
+      </div>
+
       <!-- ASR Models -->
       <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
@@ -499,63 +532,141 @@ v-else-if="isModelDownloading(model.id)"
         <div class="space-y-2">
           <label
 class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
-            :class="selectedProvider === 'edge-tts' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
-            <input v-model="selectedProvider" type="radio" value="edge-tts" class="sr-only" @change="saveProvider" />
-            <div class="flex-1">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">Edge TTS</span>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.edgeTTSDesc') }}</p>
-            </div>
-            <span v-if="selectedProvider === 'edge-tts'" class="text-gray-900 dark:text-white">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-            </span>
-          </label>
-          <label
-class="flex items-start p-3 border rounded-lg cursor-pointer transition-colors"
-            :class="selectedProvider === 'espeak-ng' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
-            <input v-model="selectedProvider" type="radio" value="espeak-ng" class="sr-only" @change="saveProvider" />
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-900 dark:text-white">eSpeak-NG</span>
-                <span class="text-xs text-gray-400">8.7 MB</span>
-              </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.espeakNGDesc') }}</p>
-              <!-- Download Progress (inline) -->
-              <div v-if="espeak_downloading" class="mt-2">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
-                    <div class="bg-gray-400 dark:bg-gray-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(espeak_download_progress)}%` }"></div>
-                  </div>
-                  <span class="text-xs text-gray-500">{{ Math.floor(espeak_download_progress) }}%</span>
-                </div>
-              </div>
-            </div>
-            <div class="flex items-center gap-2 ml-2">
-              <button
-                v-if="!allPacksDownloaded"
-                :disabled="espeak_downloading"
-                class="px-2 py-1 bg-gray-700 dark:bg-gray-500 text-white rounded text-xs hover:bg-gray-700 dark:bg-gray-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                @click.prevent="downloadAndEnableEspeak"
-              >
-                {{ espeak_downloading ? t('speech.downloading') : t('common.download') }}
-              </button>
-              <span v-else class="text-xs text-green-600 dark:text-green-400">{{ t('common.downloaded') }}</span>
-              <span v-if="selectedProvider === 'espeak-ng'" class="text-gray-900 dark:text-white">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-              </span>
-            </div>
-          </label>
-          <label
-class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             :class="selectedProvider === 'macos-native' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
             <input v-model="selectedProvider" type="radio" value="macos-native" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">macOS Native</span>
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeName') }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{{ t('speech.macosNativeQuality') }}</span>
+              </div>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.macosNativeDesc') }}</p>
             </div>
             <span v-if="selectedProvider === 'macos-native'" class="text-gray-900 dark:text-white">
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
             </span>
           </label>
+          <label
+class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
+            :class="selectedProvider === 'edge-tts' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            <input v-model="selectedProvider" type="radio" value="edge-tts" class="sr-only" @change="saveProvider" />
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M21.17 3.25Q21.5 3.25 21.76 3.5 22 3.74 22 4.08V19.92Q22 20.26 21.76 20.5 21.5 20.75 21.17 20.75H2.83Q2.5 20.75 2.24 20.5 2 20.26 2 19.92V4.08Q2 3.74 2.24 3.5 2.5 3.25 2.83 3.25ZM12.67 12.13Q12.67 10.41 11.78 9.5 10.89 8.58 9.33 8.58 7.78 8.58 6.89 9.5 6 10.41 6 12.13 6 13.84 6.89 14.76 7.78 15.67 9.33 15.67 10.89 15.67 11.78 14.76 12.67 13.84 12.67 12.13ZM18 8.75H14.5V9.92H18ZM18 11.42H14.5V12.58H18ZM18 14.08H14.5V15.25H18Z"/></svg>
+                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.edgeTTSName') }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">{{ t('speech.edgeTTSQuality') }}</span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.edgeTTSDesc') }}</p>
+            </div>
+            <span v-if="selectedProvider === 'edge-tts'" class="text-gray-900 dark:text-white">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            </span>
+          </label>
+          <!-- eSpeak-NG + HiFi-GAN -->
+          <div
+            class="p-3 border rounded-lg transition-colors"
+            :class="selectedProvider === 'espeak-ng' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700'">
+            <label class="flex items-center cursor-pointer">
+              <input v-model="selectedProvider" type="radio" value="espeak-ng" class="sr-only" @change="saveProvider" :disabled="!espeakDataReady" />
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">eSpeak-NG</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">{{ t('speech.espeakNGQuality') }}</span>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.espeakNGDesc') }}</p>
+              </div>
+              <span v-if="selectedProvider === 'espeak-ng'" class="text-gray-900 dark:text-white">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              </span>
+            </label>
+            <!-- Status -->
+            <div class="mt-2">
+              <div v-if="espeakDataReady" class="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                {{ t('speech.espeakDepLib') }}
+                <span class="text-gray-400">({{ espeakLangCount }} {{ t('speech.espeakLangs') }}, {{ (espeakDataSize / 1024 / 1024).toFixed(1) }}MB)</span>
+              </div>
+              <div v-else class="text-xs text-red-500 dark:text-red-400">
+                <span>✗ {{ t('speech.espeakDepLib') }}</span>
+                <p class="text-red-400 mt-1">{{ t('speech.espeakNeedRebuild') }}</p>
+              </div>
+            </div>
+          </div>
+          <!-- Kokoro TTS -->
+          <div
+            class="p-3 border rounded-lg transition-colors"
+            :class="selectedProvider === 'kokoro' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700'">
+            <label class="flex items-center cursor-pointer">
+              <input v-model="selectedProvider" type="radio" value="kokoro" class="sr-only" @change="saveProvider" :disabled="!kokoroReady" />
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">Kokoro</span>
+                  <a :href="t('speech.kokoroGithub')" target="_blank" rel="noopener" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click.stop>
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                  </a>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">{{ t('speech.kokoroQuality') }}</span>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.kokoroDesc') }}</p>
+              </div>
+              <span v-if="selectedProvider === 'kokoro'" class="text-gray-900 dark:text-white">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              </span>
+            </label>
+            <!-- Download / Status -->
+            <div class="mt-2">
+              <div v-if="kokoroReady" class="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                {{ t('speech.kokoroReady') }}
+              </div>
+              <div v-else-if="kokoroDownloading" class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
+                    <div class="bg-purple-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: kokoroDownloadProgress > 0 ? `${kokoroDownloadProgress}%` : '100%', animation: kokoroDownloadProgress <= 0 ? 'pulse 2s ease-in-out infinite' : 'none', opacity: kokoroDownloadProgress <= 0 ? 0.5 : 1 }"></div>
+                  </div>
+                  <span class="text-xs text-gray-500 whitespace-nowrap">{{ kokoroDownloadProgress > 0 ? Math.floor(kokoroDownloadProgress) + '%' : kokoroDownloadedHuman || '...' }}</span>
+                  <button class="text-red-500 hover:text-red-600 text-xs whitespace-nowrap" @click="cancelKokoroDownload">
+                    {{ t('speech.kokoroCancelDownload') }}
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400">
+                  <span v-if="kokoroDownloadFile">{{ kokoroDownloadFile }}</span>
+                  <span v-if="kokoroDownloadTotalFiles > 1"> ({{ kokoroDownloadFileIndex + 1 }}/{{ kokoroDownloadTotalFiles }})</span>
+                  <span v-if="kokoroDownloadSpeed"> · {{ kokoroDownloadSpeed }}</span>
+                  <span v-if="kokoroDownloadETA"> · {{ kokoroDownloadETA }}</span>
+                  <span v-if="!kokoroDownloadFile">{{ t('speech.kokoroDownloading') }}</span>
+                </p>
+              </div>
+              <button
+                v-else
+                class="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-medium"
+                @click="downloadKokoro">
+                {{ t('speech.kokoroDownload') }}
+              </button>
+            </div>
+            <!-- Supported Languages -->
+            <div class="mt-2">
+              <p class="text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{{ t('speech.kokoroLanguages') }}</p>
+              <!-- Current language supported -->
+              <div v-if="kokoroCurrentLangSupported" class="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mb-1">
+                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                {{ t('speech.kokoroSupportsYourLang', { lang: t(`speech.langName.${locale}`) }) }}
+              </div>
+              <!-- Collapsed: show "other N languages" button -->
+              <button
+                v-if="!kokoroLangsExpanded"
+                class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline"
+                @click="kokoroLangsExpanded = true">
+                {{ t('speech.kokoroOtherLangs', { count: kokoroOtherLangs.length }) }}
+              </button>
+              <!-- Expanded: show all other languages -->
+              <div v-else class="flex flex-wrap gap-1">
+                <span v-for="lang in kokoroOtherLangs" :key="lang"
+                  class="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                  {{ t(`speech.langName.${lang}`) }}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

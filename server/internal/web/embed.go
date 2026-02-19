@@ -109,7 +109,8 @@ func localDistCandidates() []string {
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		candidates = append(candidates,
-			filepath.Join(dir, "..", "internal", "web", "dist"),
+			filepath.Join(dir, "dist"),                          // Sidecar: bin/dist (macOS build)
+			filepath.Join(dir, "..", "internal", "web", "dist"), // Dev layout
 			filepath.Join(dir, "internal", "web", "dist"),
 		)
 		// macOS .app bundle: Contents/MacOS/exe → Contents/Resources/dist

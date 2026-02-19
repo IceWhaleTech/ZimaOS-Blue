@@ -7,42 +7,19 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"sync"
-	"unsafe"
 )
 
-/*
-#cgo LDFLAGS: -framework AVFoundation -framework Foundation
-#include <stdlib.h>
-
-// Wrapper for AVSpeechSynthesizer
-typedef struct {
-    void* synthesizer;
-    void* audioEngine;
-} macos_tts_t;
-
-// Initialize TTS
-macos_tts_t* macos_tts_init(void);
-
-// Synthesize text to audio
-unsigned char* macos_tts_synthesize(macos_tts_t* tts, const char* text, const char* voice, float rate, float pitch, float volume, int* output_len);
-
-// Get available voices
-const char** macos_tts_get_voices(int* count);
-
-// Cleanup
-void macos_tts_cleanup(macos_tts_t* tts);
-void macos_tts_free_audio(unsigned char* audio);
-void macos_tts_free_voices(const char** voices, int count);
-*/
-import "C"
-
-// MacOSNativeTTS implements TTS using macOS native AVSpeechSynthesizer
+// MacOSNativeTTS implements TTS using macOS `say` command
 type MacOSNativeTTS struct {
-	initialized bool
-	mu          sync.Mutex
-	tts         *C.macos_tts_t
-	voices      []string
+	mu       sync.Mutex         // serializes speech (held for duration of say)
+	cancelMu sync.Mutex         // protects cancelFn (never held during say)
+	cancelFn context.CancelFunc // cancel the currently running say process
 }
 
 // NewMacOSNativeTTS creates a new macOS native TTS provider
@@ -50,43 +27,14 @@ func NewMacOSNativeTTS() *MacOSNativeTTS {
 	return &MacOSNativeTTS{}
 }
 
-// Initialize initializes the macOS TTS provider
+// Initialize is a no-op; `say` is always available on macOS
 func (p *MacOSNativeTTS) Initialize() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.initialized {
-		return nil
-	}
-
-	tts := C.macos_tts_init()
-	if tts == nil {
-		return fmt.Errorf("failed to initialize macOS TTS")
-	}
-
-	p.tts = tts
-	p.initialized = true
-
-	// Load available voices
-	var count C.int
-	voicesPtr := C.macos_tts_get_voices(&count)
-	if voicesPtr != nil {
-		defer C.macos_tts_free_voices(voicesPtr, count)
-		for i := 0; i < int(count); i++ {
-			voicePtr := *(**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(voicesPtr)) + uintptr(i)*unsafe.Sizeof(uintptr(0))))
-			p.voices = append(p.voices, C.GoString(voicePtr))
-		}
-	}
-
 	return nil
 }
 
-// Synthesize generates speech from text
+// Synthesize generates speech from text using the macOS `say` command.
+// It writes AIFF-C to a temp file, then converts to WAV in-memory.
 func (p *MacOSNativeTTS) Synthesize(ctx context.Context, req *SynthesizeRequest) (*SynthesizeResponse, error) {
-	if err := p.Initialize(); err != nil {
-		return nil, err
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -94,27 +42,70 @@ func (p *MacOSNativeTTS) Synthesize(ctx context.Context, req *SynthesizeRequest)
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	voice := req.Voice
-	if voice == "" {
-		voice = "com.apple.speech.synthesis.voice.Alex"
+	slog.Info("[macos-tts] synthesize start", "text_len", len(req.Text), "speed", req.Speed)
+
+	// Create temp file for AIFF output
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("tts_%d.aiff", os.Getpid()))
+	defer os.Remove(tmpFile)
+
+	// Build say command
+	args := []string{"-o", tmpFile}
+
+	// Select voice based on language detection
+	if voice := detectMacOSVoice(req.Text); voice != "" {
+		args = append(args, "-v", voice)
 	}
 
-	cText := C.CString(req.Text)
-	defer C.free(unsafe.Pointer(cText))
-
-	cVoice := C.CString(voice)
-	defer C.free(unsafe.Pointer(cVoice))
-
-	var outputLen C.int
-	audioPtr := C.macos_tts_synthesize(p.tts, cText, cVoice, C.float(req.Speed), C.float(req.Pitch), C.float(req.Volume), &outputLen)
-	if audioPtr == nil {
-		return nil, fmt.Errorf("synthesis failed")
+	if req.Speed > 0 && req.Speed != 1.0 {
+		wpm := int(req.Speed * 200)
+		if wpm < 80 {
+			wpm = 80
+		}
+		if wpm > 500 {
+			wpm = 500
+		}
+		args = append(args, "-r", strconv.Itoa(wpm))
 	}
-	defer C.macos_tts_free_audio(audioPtr)
+	args = append(args, req.Text)
 
-	audioData := C.GoBytes(unsafe.Pointer(audioPtr), outputLen)
+	cmd := exec.CommandContext(ctx, "say", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		slog.Error("[macos-tts] say command failed", "error", err, "output", string(output))
+		return nil, fmt.Errorf("say command failed: %w", err)
+	}
+
+	// Read the AIFF-C file
+	aiffData, err := os.ReadFile(tmpFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read TTS output: %w", err)
+	}
+
+	if len(aiffData) < 54 {
+		return nil, fmt.Errorf("say produced empty audio (%d bytes)", len(aiffData))
+	}
+
+	slog.Info("[macos-tts] say produced AIFF", "bytes", len(aiffData))
+
+	// Convert AIFF-C to WAV using afconvert (built-in macOS tool)
+	wavFile := tmpFile + ".wav"
+	defer os.Remove(wavFile)
+
+	convertCmd := exec.CommandContext(ctx, "afconvert",
+		"-f", "WAVE", "-d", "LEI16", tmpFile, wavFile)
+	if output, err := convertCmd.CombinedOutput(); err != nil {
+		slog.Error("[macos-tts] afconvert failed", "error", err, "output", string(output))
+		return nil, fmt.Errorf("afconvert failed: %w", err)
+	}
+
+	wavData, err := os.ReadFile(wavFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read WAV output: %w", err)
+	}
+
+	slog.Info("[macos-tts] synthesize ok", "wav_bytes", len(wavData))
+
 	return &SynthesizeResponse{
-		Audio:       io.NopCloser(bytes.NewReader(audioData)),
+		Audio:       io.NopCloser(bytes.NewReader(wavData)),
 		Format:      FormatWAV,
 		ContentType: "audio/wav",
 	}, nil
@@ -132,8 +123,8 @@ func (p *MacOSNativeTTS) SynthesizeStream(ctx context.Context, req *SynthesizeRe
 	for {
 		n, err := resp.Audio.Read(buf)
 		if n > 0 {
-			if err := callback(buf[:n]); err != nil {
-				return err
+			if cbErr := callback(buf[:n]); cbErr != nil {
+				return cbErr
 			}
 		}
 		if err == io.EOF {
@@ -148,16 +139,9 @@ func (p *MacOSNativeTTS) SynthesizeStream(ctx context.Context, req *SynthesizeRe
 
 // ListVoices returns available system voices
 func (p *MacOSNativeTTS) ListVoices(ctx context.Context) ([]Voice, error) {
-	if err := p.Initialize(); err != nil {
-		return nil, err
-	}
-
-	voices := []Voice{
-		{ID: "com.apple.speech.synthesis.voice.Alex", Name: "Alex", Language: "en-US", Gender: "male", Provider: "macOS Native", Quality: "high"},
-		{ID: "com.apple.speech.synthesis.voice.Victoria", Name: "Victoria", Language: "en-US", Gender: "female", Provider: "macOS Native", Quality: "high"},
-		{ID: "com.apple.speech.synthesis.voice.Samantha", Name: "Samantha", Language: "en-US", Gender: "female", Provider: "macOS Native", Quality: "high"},
-	}
-	return voices, nil
+	return []Voice{
+		{ID: "default", Name: "System Default", Language: "en-US", Gender: "neutral", Provider: "macOS Native", Quality: "high"},
+	}, nil
 }
 
 // SupportedFormats returns supported audio formats
@@ -180,18 +164,88 @@ func (p *MacOSNativeTTS) Type() ProviderType {
 	return "macos-native"
 }
 
-// Close cleans up resources
-func (p *MacOSNativeTTS) Close() {
+// SpeakLocally plays text through local audio output (blocking until done).
+func (p *MacOSNativeTTS) SpeakLocally(ctx context.Context, text string, speed float32) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.tts != nil {
-		C.macos_tts_cleanup(p.tts)
-		p.tts = nil
+
+	cmdCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	p.cancelMu.Lock()
+	p.cancelFn = cancel
+	p.cancelMu.Unlock()
+
+	defer func() {
+		p.cancelMu.Lock()
+		p.cancelFn = nil
+		p.cancelMu.Unlock()
+	}()
+
+	args := []string{}
+
+	// Select voice based on language detection
+	if voice := detectMacOSVoice(text); voice != "" {
+		args = append(args, "-v", voice)
 	}
-	p.initialized = false
+
+	if speed > 0 && speed != 1.0 {
+		wpm := int(speed * 200)
+		if wpm < 80 {
+			wpm = 80
+		}
+		if wpm > 500 {
+			wpm = 500
+		}
+		args = append(args, "-r", strconv.Itoa(wpm))
+	}
+	args = append(args, text)
+
+	slog.Info("[macos-tts] speak locally", "text_len", len(text), "speed", speed)
+	cmd := exec.CommandContext(cmdCtx, "say", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		if cmdCtx.Err() != nil {
+			slog.Info("[macos-tts] speak locally cancelled")
+			return cmdCtx.Err()
+		}
+		slog.Error("[macos-tts] say failed", "error", err, "output", string(output))
+		return fmt.Errorf("say failed: %w", err)
+	}
+	slog.Info("[macos-tts] speak locally done")
+	return nil
 }
 
-// Available returns true if macOS native TTS is available (always true on darwin)
+// StopSpeaking cancels any currently running local speech.
+func (p *MacOSNativeTTS) StopSpeaking() {
+	p.cancelMu.Lock()
+	defer p.cancelMu.Unlock()
+	if p.cancelFn != nil {
+		p.cancelFn()
+		p.cancelFn = nil
+	}
+}
+
+// Close is a no-op
+func (p *MacOSNativeTTS) Close() {}
+
+// Available returns true if macOS native TTS is available
 func (p *MacOSNativeTTS) Available() bool {
-	return true
+	_, err := exec.LookPath("say")
+	return err == nil
+}
+
+// detectMacOSVoice auto-detects language and returns a macOS voice name.
+// macOS ships with voices for many languages; these are common built-in ones.
+func detectMacOSVoice(text string) string {
+	lang, _ := DetectLanguage(text)
+	switch lang {
+	case "ja":
+		return "Kyoko" // Japanese female (built-in)
+	case "ko":
+		return "Yuna" // Korean female (built-in)
+	case "cmn", "zh":
+		return "Tingting" // Chinese female (built-in)
+	default:
+		return "" // system default
+	}
 }

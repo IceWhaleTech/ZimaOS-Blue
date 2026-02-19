@@ -1,4 +1,5 @@
 import type { StreamChunk, SendMessageRequest } from '@/api/chat'
+import { ensureFreshToken } from '@/api/client'
 
 export interface SSEClientOptions {
   onMessage: (chunk: StreamChunk) => void
@@ -36,12 +37,26 @@ export class SSEClient {
         headers['Authorization'] = `Bearer ${token}`
       }
 
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(request),
         signal: this.abortController.signal,
       })
+
+      // Handle 401 — refresh token and retry once
+      if (response.status === 401) {
+        const newToken = await ensureFreshToken()
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`
+          response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(request),
+            signal: this.abortController!.signal,
+          })
+        }
+      }
 
       if (!response.ok) {
         // Handle security block (403)
@@ -80,7 +95,7 @@ export class SSEClient {
             // Fall through to generic error
           }
         }
-        // Handle authentication error (401) or other errors with message
+        // Handle other errors with message
         try {
           const data = await response.json()
           const message = data.error?.message || data.message || `HTTP error! status: ${response.status}`

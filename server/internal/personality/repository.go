@@ -161,7 +161,7 @@ func (r *Repository) GetActive() (*Personality, error) {
 // Activate sets a personality as active
 func (r *Repository) Activate(id string) error {
 	// Deactivate all others
-	_, err := r.personalities().Update(map[string]interface{}{
+	_, err := r.personalities().Update(z.V{
 		"is_active": 0,
 	})
 	if err != nil {
@@ -169,7 +169,7 @@ func (r *Repository) Activate(id string) error {
 	}
 
 	// Activate this one
-	_, err = r.personalities().Update(map[string]interface{}{
+	_, err = r.personalities().Update(z.V{
 		"is_active": 1,
 	}, z.Where(z.Eq("id", id)))
 	return err
@@ -200,7 +200,7 @@ func (r *Repository) Update(p *Personality) error {
 		return err
 	}
 
-	_, err := r.personalities().Update(map[string]interface{}{
+	_, err := r.personalities().Update(z.V{
 		"name":          p.Name,
 		"description":   p.Description,
 		"system_prompt": p.SystemPrompt,

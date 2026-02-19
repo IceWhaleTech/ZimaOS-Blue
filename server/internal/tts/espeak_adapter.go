@@ -52,7 +52,6 @@ func (a *EspeakNGAdapter) Synthesize(ctx context.Context, req *SynthesizeRequest
 	espeakReq := &EspeakNGRequest{
 		Text:     req.Text,
 		Language: language,
-		Voice:    "f3",    // Default to female voice
 		Rate:     1.0,     // Default rate multiplier
 		Pitch:    0,       // Default pitch adjustment
 		Volume:   1.0,     // Default volume multiplier

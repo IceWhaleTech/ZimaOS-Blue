@@ -91,20 +91,20 @@ func (r *SQLiteRepository) passwordHistoryTable(ctx context.Context) *z.ZormTabl
 
 // userRow is the intermediate struct for zorm scanning
 type userRow struct {
-	ID                  string  `json:"id"`
-	Username            string  `json:"username"`
-	Email               *string `json:"email"`
-	PasswordHash        string  `json:"password_hash"`
-	MFASecret           *string `json:"mfa_secret"`
-	MFAEnabled          int     `json:"mfa_enabled"`
-	Role                string  `json:"role"`
-	Status              string  `json:"status"`
-	FailedLoginAttempts int     `json:"failed_login_attempts"`
-	LockedUntil         *string `json:"locked_until"`
-	LastLoginAt         *string `json:"last_login_at"`
-	CreatedAt           string  `json:"created_at"`
-	UpdatedAt           string  `json:"updated_at"`
-	DeletedAt           *string `json:"deleted_at"`
+	ID                  string  `json:"id" zorm:"id"`
+	Username            string  `json:"username" zorm:"username"`
+	Email               *string `json:"email" zorm:"email"`
+	PasswordHash        string  `json:"password_hash" zorm:"password_hash"`
+	MFASecret           *string `json:"mfa_secret" zorm:"mfa_secret"`
+	MFAEnabled          int     `json:"mfa_enabled" zorm:"mfa_enabled"`
+	Role                string  `json:"role" zorm:"role"`
+	Status              string  `json:"status" zorm:"status"`
+	FailedLoginAttempts int     `json:"failed_login_attempts" zorm:"failed_login_attempts"`
+	LockedUntil         *string `json:"locked_until" zorm:"locked_until"`
+	LastLoginAt         *string `json:"last_login_at" zorm:"last_login_at"`
+	CreatedAt           string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt           string  `json:"updated_at" zorm:"updated_at"`
+	DeletedAt           *string `json:"deleted_at" zorm:"deleted_at"`
 }
 
 func parseTimeStr(s string) time.Time {
@@ -211,7 +211,7 @@ func (r *SQLiteRepository) GetByEmail(ctx context.Context, email string) (*User,
 func (r *SQLiteRepository) Update(ctx context.Context, user *User) error {
 	user.UpdatedAt = time.Now().UTC()
 	n, err := r.usersTable(ctx).Update(
-		map[string]interface{}{
+		z.V{
 			"username":              user.Username,
 			"email":                 user.Email,
 			"password_hash":         user.PasswordHash,
@@ -245,7 +245,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, user *User) error {
 func (r *SQLiteRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	now := time.Now().UTC()
 	n, err := r.usersTable(ctx).Update(
-		map[string]interface{}{"deleted_at": now, "updated_at": now},
+		z.V{"deleted_at": now, "updated_at": now},
 		z.Where(z.Eq("id", id.String()), z.IsNull("deleted_at")),
 	)
 	if err != nil {
@@ -402,14 +402,14 @@ func (r *SQLiteRepository) GetPasswordHistory(ctx context.Context, userID uuid.U
 
 // sessionRow is the intermediate struct for zorm scanning
 type sessionRow struct {
-	ID           string  `json:"id"`
-	UserID       string  `json:"user_id"`
-	RefreshToken string  `json:"refresh_token"`
-	UserAgent    string  `json:"user_agent"`
-	IPAddress    string  `json:"ip_address"`
-	ExpiresAt    string  `json:"expires_at"`
-	CreatedAt    string  `json:"created_at"`
-	RevokedAt    *string `json:"revoked_at"`
+	ID           string  `json:"id" zorm:"id"`
+	UserID       string  `json:"user_id" zorm:"user_id"`
+	RefreshToken string  `json:"refresh_token" zorm:"refresh_token"`
+	UserAgent    string  `json:"user_agent" zorm:"user_agent"`
+	IPAddress    string  `json:"ip_address" zorm:"ip_address"`
+	ExpiresAt    string  `json:"expires_at" zorm:"expires_at"`
+	CreatedAt    string  `json:"created_at" zorm:"created_at"`
+	RevokedAt    *string `json:"revoked_at" zorm:"revoked_at"`
 }
 
 func rowToSession(row sessionRow) *Session {
@@ -492,7 +492,7 @@ func (r *SQLiteRepository) GetUserSessions(ctx context.Context, userID uuid.UUID
 // RevokeSession revokes a session.
 func (r *SQLiteRepository) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	n, err := r.sessionsTable(ctx).Update(
-		map[string]interface{}{"revoked_at": time.Now().UTC()},
+		z.V{"revoked_at": time.Now().UTC()},
 		z.Where(z.Eq("id", id.String()), z.IsNull("revoked_at")),
 	)
 	if err != nil {
@@ -507,7 +507,7 @@ func (r *SQLiteRepository) RevokeSession(ctx context.Context, id uuid.UUID) erro
 // RevokeUserSessions revokes all sessions for a user.
 func (r *SQLiteRepository) RevokeUserSessions(ctx context.Context, userID uuid.UUID) error {
 	_, err := r.sessionsTable(ctx).Update(
-		map[string]interface{}{"revoked_at": time.Now().UTC()},
+		z.V{"revoked_at": time.Now().UTC()},
 		z.Where(z.Eq("user_id", userID.String()), z.IsNull("revoked_at")),
 	)
 	if err != nil {

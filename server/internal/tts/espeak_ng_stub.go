@@ -10,12 +10,11 @@ import (
 
 // EspeakNGRequest represents a synthesis request (stub).
 type EspeakNGRequest struct {
-	Text     string `json:"text"`
-	Language string `json:"language"`
-	Voice    string `json:"voice"`
-	Rate     int    `json:"rate"`
-	Pitch    int    `json:"pitch"`
-	Volume   int    `json:"volume"`
+	Text     string  `json:"text"`
+	Language string  `json:"language"`
+	Rate     float32 `json:"rate"`
+	Pitch    float32 `json:"pitch"`
+	Volume   float32 `json:"volume"`
 }
 
 // EspeakNGProvider is a stub when built without espeak tag.
@@ -37,4 +36,7 @@ func (p *EspeakNGProvider) Synthesize(_ context.Context, _ *EspeakNGRequest) (io
 func (p *EspeakNGProvider) Name() string             { return "eSpeak-NG (disabled)" }
 func (p *EspeakNGProvider) Type() string              { return "espeak-ng" }
 func (p *EspeakNGProvider) SupportedLanguages() []string { return nil }
-func (p *EspeakNGProvider) Close()                    {}
+func (p *EspeakNGProvider) TextToPhonemes(_, _ string) (string, error) {
+	return "", fmt.Errorf("espeak-ng not available: build with -tags espeak")
+}
+func (p *EspeakNGProvider) Close() {}

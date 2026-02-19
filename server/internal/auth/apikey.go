@@ -324,7 +324,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKeyInf
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.table(bgCtx).Update(
-			map[string]interface{}{"last_used": time.Now()},
+			z.V{"last_used": time.Now()},
 			z.Where(z.Eq("id", info.ID)),
 		)
 	}()
@@ -354,7 +354,7 @@ func (s *APIKeyService) ListKeys(ctx context.Context, userID string) ([]*APIKeyI
 // RevokeKey revokes an API key
 func (s *APIKeyService) RevokeKey(ctx context.Context, id, userID string) error {
 	n, err := s.table(ctx).Update(
-		map[string]interface{}{"revoked": 1},
+		z.V{"revoked": 1},
 		z.Where(z.Eq("id", id), z.Eq("user_id", userID)),
 	)
 	if err != nil {
@@ -451,7 +451,7 @@ func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*
 	}
 
 	_, err = t.Update(
-		map[string]interface{}{
+		z.V{
 			"rotated_to":   newID,
 			"rotated_at":   now,
 			"grace_period": graceEnd,
@@ -489,7 +489,7 @@ func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*
 // CompleteRotation completes a rotation by revoking the old key
 func (s *APIKeyService) CompleteRotation(ctx context.Context, oldKeyID, userID string) error {
 	n, err := s.table(ctx).Update(
-		map[string]interface{}{"revoked": 1},
+		z.V{"revoked": 1},
 		z.Where(
 			z.Eq("id", oldKeyID),
 			z.Eq("user_id", userID),
@@ -508,7 +508,7 @@ func (s *APIKeyService) CompleteRotation(ctx context.Context, oldKeyID, userID s
 // CleanupExpiredRotations revokes old keys that have passed their grace period
 func (s *APIKeyService) CleanupExpiredRotations(ctx context.Context) (int64, error) {
 	n, err := s.table(ctx).Update(
-		map[string]interface{}{"revoked": 1},
+		z.V{"revoked": 1},
 		z.Where(
 			z.IsNotNull("rotated_to"),
 			z.IsNotNull("grace_period"),
@@ -639,7 +639,7 @@ func (s *APIKeyService) ReEncryptAllKeys(ctx context.Context, oldEnc, newEnc *En
 		}
 
 		_, err = s.table(ctx).Update(
-			map[string]interface{}{"encrypted_key": newEncrypted},
+			z.V{"encrypted_key": newEncrypted},
 			z.Where(z.Eq("id", row.ID)),
 		)
 		if err != nil {

@@ -1,8 +1,11 @@
 package voice
 
 import (
+	"context"
 	"encoding/base64"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -28,6 +31,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/transcribe", h.Transcribe)
 	g.POST("/synthesize", h.Synthesize)
 	g.GET("/synthesize/stream", h.SynthesizeStream)
+	g.POST("/synthesize/stop", h.StopSpeaking)
 	g.GET("/voices", h.ListVoices)
 	g.POST("/sessions", h.CreateSession)
 	g.GET("/sessions/:id", h.GetSession)
@@ -124,19 +128,43 @@ func (h *Handler) Synthesize(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "text is required")
 	}
 
+	// Check if client is on loopback — try local playback first
+	if isLoopback(c.RealIP()) {
+		supported, err := h.service.SpeakLocally(c.Request().Context(), req.Text)
+		if supported {
+			if err != nil {
+				if err == context.Canceled {
+					slog.Info("[tts] local playback stopped by user")
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"played_locally": true,
+						"stopped":        true,
+					})
+				}
+				slog.Error("[tts] local playback failed", "error", err)
+				return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+			}
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"played_locally": true,
+			})
+		}
+	}
+
 	// Default format
 	if req.Format == "" {
-		req.Format = "mp3"
+		req.Format = "wav"
 	}
 
 	// Synthesize - voice/speed/provider are determined internally
+	slog.Info("[tts] synthesize request", "text_len", len(req.Text), "format", req.Format)
 	audioData, contentType, err := h.service.Synthesize(c.Request().Context(), &SynthesizeRequest{
 		Text:   req.Text,
 		Format: req.Format,
 	})
 	if err != nil {
+		slog.Error("[tts] synthesize failed", "error", err, "text_len", len(req.Text))
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
+	slog.Info("[tts] synthesize ok", "audio_bytes", len(audioData), "content_type", contentType)
 
 	// Check if client wants base64 response
 	if c.Request().Header.Get("Accept") == "application/json" {
@@ -152,7 +180,7 @@ func (h *Handler) Synthesize(c echo.Context) error {
 }
 
 // SynthesizeStream handles streaming text-to-speech requests via SSE.
-// Client sends sentences as query params, server streams back audio chunks.
+// Uses true chunk-by-chunk streaming: each sentence's audio is sent as soon as it's ready.
 func (h *Handler) SynthesizeStream(c echo.Context) error {
 	text := c.QueryParam("text")
 	if text == "" {
@@ -161,7 +189,7 @@ func (h *Handler) SynthesizeStream(c echo.Context) error {
 
 	format := c.QueryParam("format")
 	if format == "" {
-		format = "mp3"
+		format = "wav"
 	}
 
 	// Set SSE headers
@@ -170,21 +198,43 @@ func (h *Handler) SynthesizeStream(c echo.Context) error {
 	c.Response().Header().Set("Connection", "keep-alive")
 	c.Response().WriteHeader(http.StatusOK)
 
-	// Synthesize audio
-	audioData, contentType, err := h.service.Synthesize(c.Request().Context(), &SynthesizeRequest{
+	// Loopback: play locally, send played_locally event instead of audio
+	if isLoopback(c.RealIP()) {
+		supported, err := h.service.SpeakLocally(c.Request().Context(), text)
+		if supported {
+			if err != nil && err != context.Canceled {
+				c.Response().Write([]byte("event: error\ndata: " + err.Error() + "\n\n"))
+				c.Response().Flush()
+				return nil
+			}
+			c.Response().Write([]byte("event: audio\ndata: {\"played_locally\":true}\n\n"))
+			c.Response().Flush()
+			c.Response().Write([]byte("event: done\ndata: {}\n\n"))
+			c.Response().Flush()
+			return nil
+		}
+	}
+
+	// True streaming: each chunk arrives as a separate SSE event
+	err := h.service.SynthesizeStream(c.Request().Context(), &SynthesizeRequest{
 		Text:   text,
 		Format: format,
+	}, func(audio []byte, contentType string) error {
+		audioBase64 := base64.StdEncoding.EncodeToString(audio)
+		_, writeErr := c.Response().Write([]byte("event: audio\ndata: {\"audio\":\"" + audioBase64 + "\",\"content_type\":\"" + contentType + "\"}\n\n"))
+		if writeErr != nil {
+			return writeErr
+		}
+		c.Response().Flush()
+		return nil
 	})
+
 	if err != nil {
+		slog.Error("[tts-stream] streaming synthesis failed", "error", err)
 		c.Response().Write([]byte("event: error\ndata: " + err.Error() + "\n\n"))
 		c.Response().Flush()
 		return nil
 	}
-
-	// Send audio as base64 in SSE event
-	audioBase64 := base64.StdEncoding.EncodeToString(audioData)
-	c.Response().Write([]byte("event: audio\ndata: {\"audio\":\"" + audioBase64 + "\",\"content_type\":\"" + contentType + "\"}\n\n"))
-	c.Response().Flush()
 
 	// Send done event
 	c.Response().Write([]byte("event: done\ndata: {}\n\n"))
@@ -290,5 +340,17 @@ func (h *Handler) CloseSession(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "closed"})
+}
+
+// isLoopback checks if an IP string is a loopback address.
+func isLoopback(ip string) bool {
+	parsed := net.ParseIP(ip)
+	return parsed != nil && parsed.IsLoopback()
+}
+
+// StopSpeaking stops any currently running local speech.
+func (h *Handler) StopSpeaking(c echo.Context) error {
+	h.service.StopSpeaking()
+	return c.JSON(http.StatusOK, map[string]string{"status": "stopped"})
 }
 

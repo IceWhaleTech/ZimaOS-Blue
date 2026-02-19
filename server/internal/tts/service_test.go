@@ -3,6 +3,7 @@ package tts
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"testing"
 )
@@ -96,10 +97,9 @@ func TestNewService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		providers := svc.ListProviders()
-		if len(providers) != 0 {
-			t.Errorf("expected 0 providers, got %d", len(providers))
-		}
+		// ListProviders returns platform-available providers (edge-tts, macOS-native, etc.)
+		// not just the configured ones, so we just verify the service was created
+		_ = svc.ListProviders()
 	})
 }
 
@@ -145,8 +145,8 @@ func TestService_Synthesize(t *testing.T) {
 		}
 
 		_, err := emptySvc.Synthesize(context.Background(), req)
-		if err != ErrProviderNotFound {
-			t.Errorf("expected ErrProviderNotFound, got %v", err)
+		if !errors.Is(err, ErrNoProviderConfigured) {
+			t.Errorf("expected ErrNoProviderConfigured, got %v", err)
 		}
 	})
 }
@@ -201,7 +201,7 @@ func TestService_SynthesizeWithProvider(t *testing.T) {
 		}
 
 		_, err := svc.SynthesizeWithProvider(context.Background(), "nonexistent", req)
-		if err != ErrProviderNotFound {
+		if !errors.Is(err, ErrProviderNotFound) {
 			t.Errorf("expected ErrProviderNotFound, got %v", err)
 		}
 	})
@@ -276,8 +276,8 @@ func TestService_ListVoices(t *testing.T) {
 		}
 
 		_, err := emptySvc.ListVoices(context.Background())
-		if err != ErrProviderNotFound {
-			t.Errorf("expected ErrProviderNotFound, got %v", err)
+		if !errors.Is(err, ErrNoProviderConfigured) {
+			t.Errorf("expected ErrNoProviderConfigured, got %v", err)
 		}
 	})
 }

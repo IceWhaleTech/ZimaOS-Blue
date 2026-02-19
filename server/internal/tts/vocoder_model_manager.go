@@ -22,7 +22,7 @@ func NewVocoderModelManager(dataPath string) *VocoderModelManager {
 	destDir := filepath.Join(dataPath, "vocoder")
 	return &VocoderModelManager{
 		downloader: downloader.NewModelDownloader(destDir),
-		modelPath:  filepath.Join(destDir, "generator_v1.pt"),
+		modelPath:  filepath.Join(destDir, "hifigan_v3.onnx"),
 	}
 }
 
@@ -59,15 +59,17 @@ func (m *VocoderModelManager) DownloadModel(ctx context.Context) error {
 	}
 
 	// Define model files with mirrors
+	// HiFi-GAN V3 ONNX model converted from jik876/hifi-gan LJ_V3 checkpoint
+	// Mel params: sr=22050, n_fft=1024, hop=256, win=1024, n_mels=80, fmin=0, fmax=8000
 	files := []downloader.ModelFile{
 		{
-			Filename: "generator_v1.pt",
-			URL:      "https://huggingface.co/espeak-ng/hifi-gan/resolve/main/generator_v1.pt",
+			Filename: "hifigan_v3.onnx",
+			URL:      "https://huggingface.co/orca-zhang/hifigan-v3-onnx/resolve/main/hifigan_v3.onnx",
 			Mirrors: []string{
-				"https://hf-mirror.com/espeak-ng/hifi-gan/resolve/main/generator_v1.pt",
-				"https://modelscope.cn/models/espeak-ng/hifi-gan/resolve/main/generator_v1.pt",
+				"https://hf-mirror.com/orca-zhang/hifigan-v3-onnx/resolve/main/hifigan_v3.onnx",
+				"https://modelscope.cn/models/orcazhang/hifigan-v3-onnx/resolve/master/hifigan_v3.onnx",
 			},
-			Size: "~100MB",
+			Size: "~5MB",
 		},
 	}
 

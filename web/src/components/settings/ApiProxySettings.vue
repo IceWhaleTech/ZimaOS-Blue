@@ -31,7 +31,6 @@ const routingRules = ref<RoutingRule[]>([])
 const togglingRule = ref<string | null>(null)
 const switchingBackend = ref(false)
 const failoverConfig = ref<FailoverConfig | null>(null)
-const togglingFailover = ref(false)
 const togglingFailoverSub = ref<string | null>(null)
 const maskingStats = ref<MaskingStats | null>(null)
 const togglingMasking = ref(false)
@@ -191,16 +190,6 @@ async function toggleRule(name: string) {
   } finally {
     togglingRule.value = null
   }
-}
-
-async function toggleFailover() {
-  if (!failoverConfig.value || togglingFailover.value) return
-  togglingFailover.value = true
-  try {
-    const res = await proxyApi.updateFailoverConfig({ enabled: !failoverConfig.value.enabled })
-    failoverConfig.value = res.data
-    emit('status-change', t(failoverConfig.value.enabled ? 'apiProxy.failoverEnabled' : 'apiProxy.failoverDisabled'))
-  } finally { togglingFailover.value = false }
 }
 
 async function toggleFailoverSub(field: 'circuit_breaker' | 'context_window_check' | 'error_classification' | 'streaming_anomaly') {
@@ -613,26 +602,12 @@ onUnmounted(stopModelPoll)
 
       <!-- Smart Failover Section -->
       <div v-if="failoverConfig" class="glass-card p-4">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.failoverTitle') }}</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.failoverDesc') }}</p>
-          </div>
-          <button
-            type="button"
-            :disabled="togglingFailover"
-            :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              failoverConfig.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
-              togglingFailover ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-            ]"
-            @click="toggleFailover"
-          >
-            <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', failoverConfig.enabled ? 'translate-x-6' : 'translate-x-1']" />
-          </button>
+        <div class="mb-4">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.failoverTitle') }}</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.failoverDesc') }}</p>
         </div>
 
-        <div v-if="failoverConfig.enabled" class="grid grid-cols-4 gap-2">
+        <div class="grid grid-cols-4 gap-2 mt-3">
           <div
             v-for="sub in ([
               { key: 'circuit_breaker', label: 'apiProxy.circuitBreaker', desc: 'apiProxy.circuitBreakerDesc', val: failoverConfig.circuit_breaker },

@@ -63,6 +63,21 @@ import (
 // routesStartTime records when the server started, used for uptime calculation
 var routesStartTime = time.Now()
 
+// featureDisabled returns an echo handler that responds with a standard
+// "feature not enabled" JSON payload.  This is used as a catch-all for
+// optional features whose handler was not initialised at startup so that
+// the frontend never sees a raw 404.
+func featureDisabled(feature string) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"enabled": false,
+			"feature": feature,
+			"status":  "not_initialized",
+			"message": feature + " is not enabled",
+		})
+	}
+}
+
 // RoutesDeps holds all dependencies needed for route registration
 type RoutesDeps struct {
 	DB               *sql.DB
@@ -231,6 +246,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.FormfillerHandler != nil {
 		formfillerGroup := v1.Group("/formfiller")
 		deps.FormfillerHandler.RegisterRoutes(formfillerGroup)
+	} else {
+		stub := featureDisabled("formfiller")
+		formfillerGroup := v1.Group("/formfiller")
+		formfillerGroup.GET("/templates", stub)
+		formfillerGroup.GET("/config", stub)
+		formfillerGroup.Any("/*", stub)
 	}
 
 	// External auth routes
@@ -317,6 +338,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.SharedCache != nil {
 			detailedMetricsHandler.SetCacheProvider(deps.SharedCache)
 		}
+	}
+	if deps.MetricsCollector == nil && deps.MetricsWriter == nil {
+		stub := featureDisabled("metrics")
+		metricsGroup := v1.Group("/metrics")
+		metricsGroup.GET("/summary", stub)
+		metricsGroup.GET("/all", stub)
+		metricsGroup.Any("/*", stub)
 	}
 
 	// System routes
@@ -416,23 +444,53 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Backup routes
 	if deps.BackupHandler != nil {
 		deps.BackupHandler.RegisterRoutes(v1)
+	} else {
+		stub := featureDisabled("backup")
+		backupGroup := v1.Group("/backup")
+		backupGroup.GET("", stub)
+		backupGroup.GET("/progress", stub)
+		backupGroup.Any("/*", stub)
 	}
 
 	// Security routes (protected)
 	if deps.SecurityHandler != nil {
 		securityGroup := protected.Group("/security")
 		deps.SecurityHandler.RegisterRoutes(securityGroup)
+	} else {
+		stub := featureDisabled("security")
+		securityGroup := protected.Group("/security")
+		securityGroup.GET("/sessions", stub)
+		securityGroup.GET("/settings", stub)
+		securityGroup.GET("/events", stub)
+		securityGroup.GET("/stats", stub)
+		securityGroup.GET("/blocked-ips", stub)
+		securityGroup.GET("/threats/stats", stub)
+		securityGroup.GET("/threats", stub)
+		securityGroup.GET("/scan", stub)
+		securityGroup.GET("/cors", stub)
+		securityGroup.GET("/tls", stub)
+		securityGroup.Any("/*", stub)
 	}
 
 	// Sandbox routes (protected)
 	if deps.SandboxHandler != nil {
 		sandboxGroup := protected.Group("/sandbox")
 		deps.SandboxHandler.RegisterRoutes(sandboxGroup)
+	} else {
+		stub := featureDisabled("sandbox")
+		sandboxGroup := protected.Group("/sandbox")
+		sandboxGroup.GET("/info", stub)
+		sandboxGroup.Any("/*", stub)
 	}
 
 	// Cron routes (protected) - /api/cron/*
 	if deps.CronHandler != nil {
 		deps.CronHandler.RegisterRoutes(apiProtected)
+	} else {
+		stub := featureDisabled("cron")
+		cronGroup := apiProtected.Group("/cron")
+		cronGroup.GET("", stub)
+		cronGroup.Any("/*", stub)
 	}
 
 	// Heartbeat routes (protected) - /api/heartbeat/*
@@ -483,17 +541,39 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.HAHandler != nil {
 		haGroup := apiProtected.Group("/homeassistant")
 		deps.HAHandler.RegisterRoutes(haGroup)
+	} else {
+		stub := featureDisabled("homeassistant")
+		haGroup := apiProtected.Group("/homeassistant")
+		haGroup.GET("/status", stub)
+		haGroup.GET("/entities", stub)
+		haGroup.GET("/scenes", stub)
+		haGroup.GET("/automations", stub)
+		haGroup.Any("/*", stub)
 	}
 
 	// Browser automation routes (protected) - /api/browser/*
 	if deps.BrowserHandler != nil {
 		browserGroup := apiProtected.Group("/browser")
 		deps.BrowserHandler.RegisterRoutes(browserGroup)
+	} else {
+		stub := featureDisabled("browser")
+		browserGroup := apiProtected.Group("/browser")
+		browserGroup.GET("/tasks", stub)
+		browserGroup.GET("/sessions", stub)
+		browserGroup.GET("/security", stub)
+		browserGroup.Any("/*", stub)
 	}
 
 	// Workflow routes
 	if deps.WorkflowHandler != nil {
 		deps.WorkflowHandler.RegisterRoutes(e)
+	} else {
+		stub := featureDisabled("workflow")
+		wfGroup := v1.Group("/workflows")
+		wfGroup.GET("", stub)
+		wfGroup.GET("/stats", stub)
+		wfGroup.GET("/templates", stub)
+		wfGroup.Any("/*", stub)
 	}
 
 	// Voice routes - /api/v1/voice/*
@@ -504,12 +584,30 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.VoiceWSHandler != nil {
 			deps.VoiceWSHandler.RegisterRoutes(voiceGroup)
 		}
+	} else {
+		stub := featureDisabled("voice")
+		voiceGroup := v1.Group("/voice")
+		voiceGroup.GET("/voices", stub)
+		voiceGroup.GET("/sessions", stub)
+		voiceGroup.POST("/transcribe", stub)
+		voiceGroup.POST("/synthesize", stub)
+		voiceGroup.Any("/*", stub)
 	}
 
 	// Speech routes - /api/v1/speech/*
 	if deps.SpeechHandler != nil {
 		speechGroup := v1.Group("/speech")
 		deps.SpeechHandler.RegisterRoutes(speechGroup)
+	} else {
+		stub := featureDisabled("speech")
+		speechGroup := v1.Group("/speech")
+		speechGroup.GET("/status", stub)
+		speechGroup.GET("/models", stub)
+		speechGroup.GET("/asr/status", stub)
+		speechGroup.GET("/asr/models", stub)
+		speechGroup.GET("/tts/status", stub)
+		speechGroup.GET("/tts/models", stub)
+		speechGroup.Any("/*", stub)
 	}
 
 	// Form filler routes are now public (registered above in v1)
@@ -520,6 +618,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	if deps.CompanionWSHandler != nil {
 		deps.CompanionWSHandler.RegisterRoutes(e)
+	}
+	if deps.CompanionHandler == nil {
+		stub := featureDisabled("companion")
+		v1.GET("/companion/stream", stub)
 	}
 
 	// Provider pool routes (protected)
@@ -541,6 +643,25 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
 		failoverGroup := protected.Group("/proxy/failover")
 		failoverHandler.RegisterRoutes(failoverGroup)
+	} else {
+		stub := featureDisabled("providers")
+		providersGroup := protected.Group("/providers")
+		providersGroup.GET("", stub)
+		providersGroup.Any("/*", stub)
+		modelsGroup := protected.Group("/models")
+		modelsGroup.GET("", stub)
+		ideGroup := protected.Group("/ide")
+		ideGroup.GET("/scan", stub)
+		ideGroup.Any("/*", stub)
+		pricingGroup := protected.Group("/pricing")
+		pricingGroup.GET("", stub)
+		pricingGroup.Any("/*", stub)
+		failoverStub := featureDisabled("proxy_failover")
+		failoverGroup := protected.Group("/proxy/failover")
+		failoverGroup.GET("/config", failoverStub)
+		failoverGroup.GET("/metrics", failoverStub)
+		failoverGroup.GET("/breakers", failoverStub)
+		failoverGroup.Any("/*", failoverStub)
 	}
 
 	// Proxy cache config + handler (hoisted for toggle persistence sharing)
@@ -550,6 +671,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		cacheHandler = proxy.NewCacheAPIHandler(deps.SharedCache, cacheConfig)
 		cacheGroup := v1.Group("/proxy/cache")
 		cacheHandler.RegisterRoutes(cacheGroup)
+	} else {
+		stub := featureDisabled("proxy_cache")
+		cacheGroup := v1.Group("/proxy/cache")
+		cacheGroup.GET("/stats", stub)
+		cacheGroup.GET("/config", stub)
+		cacheGroup.Any("/*", stub)
 	}
 
 	// OpenAI-compatible proxy routes on /v1/*
@@ -749,6 +876,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		claudeCodeGroup := protected.Group("/claudecode")
 		deps.ClaudeCodeHandler.RegisterRoutes(claudeCodeGroup)
 		deps.ChatHandler.SetClaudeCodeHandler(deps.ClaudeCodeHandler)
+	} else {
+		stub := featureDisabled("claudecode")
+		claudeCodeGroup := protected.Group("/claudecode")
+		claudeCodeGroup.GET("/version", stub)
+		claudeCodeGroup.GET("/config", stub)
+		claudeCodeGroup.Any("/*", stub)
 	}
 
 	// Memory routes
@@ -792,6 +925,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				logger.Info("Progressive search enabled")
 			}
 		}
+	} else {
+		stub := featureDisabled("memory")
+		memGroup := v1.Group("/memory")
+		memGroup.GET("/stats", stub)
+		memGroup.GET("/backend", stub)
+		memGroup.POST("/search", stub)
+		memGroup.Any("/*", stub)
 	}
 
 	// Memory Service v2 routes (versioned entries, namespaces)
@@ -882,6 +1022,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.ChannelConfigStore != nil {
 		channelConfigHandler := server.NewChannelConfigHandler(deps.ChannelConfigStore)
 		channelConfigHandler.RegisterRoutes(api)
+	} else {
+		stub := featureDisabled("channels")
+		api.GET("/channels", stub)
 	}
 
 	// Set shared cache on chat handler
@@ -920,6 +1063,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		detailedMetricsHandler := metrics.NewHandler(deps.MetricsWriter)
 		myGroup.GET("/usage", detailedMetricsHandler.GetMyUsage)
 		logger.Info("User usage route registered")
+	} else {
+		myGroup.GET("/usage", featureDisabled("metrics"))
 	}
 
 	// Static routes (must be last)

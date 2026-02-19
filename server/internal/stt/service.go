@@ -60,6 +60,16 @@ func NewServiceWithProvider(provider *WhisperProvider) Service {
 	return s
 }
 
+// NewServiceFromProvider wraps any Provider into a Service.
+func NewServiceFromProvider(provider Provider) Service {
+	s := &service{
+		providers:       make(map[ProviderType]Provider),
+		defaultProvider: provider.Type(),
+	}
+	s.providers[provider.Type()] = provider
+	return s
+}
+
 // createProvider creates a provider based on the configuration.
 func createProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {

@@ -4,6 +4,28 @@ import { getErrorMessage } from '@/utils/error'
 // Detect if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
 
+async function reacquirePreviewToken(): Promise<string | null> {
+  try {
+    const url = isTauri ? 'http://localhost/api/v1/preview/token' : '/api/v1/preview/token'
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    if (response.ok) {
+      const data = await response.json()
+      if (data.token) {
+        localStorage.setItem('preview_token', data.token)
+        localStorage.setItem('token', data.token)
+        return data.token
+      }
+    }
+  } catch {
+    // Preview token fetch failed
+  }
+  return null
+}
+
 // Use absolute URL in Tauri, relative URL in browser
 const baseURL = isTauri ? 'http://localhost/api/v1' : '/api/v1'
 
@@ -38,6 +60,55 @@ function clearAuthAndRedirect() {
   }
 }
 
+/**
+ * Shared token refresh/re-acquire logic for use outside the axios interceptor.
+ * Returns the new token on success, or null (and redirects) on failure.
+ */
+export async function ensureFreshToken(): Promise<string | null> {
+  // Preview mode: re-acquire preview token
+  if (localStorage.getItem('preview_token')) {
+    return reacquirePreviewToken()
+  }
+
+  // Normal mode: if already refreshing, wait for it
+  if (isRefreshing) {
+    return new Promise<string>((resolve) => {
+      addRefreshSubscriber(resolve)
+    })
+  }
+
+  isRefreshing = true
+  const refreshTokenValue = localStorage.getItem('refresh_token')
+  if (!refreshTokenValue) {
+    isRefreshing = false
+    clearAuthAndRedirect()
+    return null
+  }
+
+  try {
+    const url = isTauri ? 'http://localhost/api/v1/auth/refresh' : '/api/v1/auth/refresh'
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshTokenValue }),
+    })
+    if (!response.ok) {
+      throw new Error('refresh failed')
+    }
+    const data = await response.json()
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('refresh_token', data.refresh_token)
+    isRefreshing = false
+    onRefreshed(data.token)
+    return data.token
+  } catch {
+    isRefreshing = false
+    refreshSubscribers = []
+    clearAuthAndRedirect()
+    return null
+  }
+}
+
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
@@ -66,9 +137,17 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-      // Skip refresh for preview mode
+      originalRequest._retry = true
+
+      // Preview mode: re-acquire a preview token and retry
       const isPreview = !!localStorage.getItem('preview_token')
       if (isPreview) {
+        const newToken = await reacquirePreviewToken()
+        if (newToken) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return api(originalRequest)
+        }
+        // Preview token fetch failed — nothing more we can do
         return Promise.reject(error)
       }
 
@@ -77,8 +156,6 @@ api.interceptors.response.use(
         clearAuthAndRedirect()
         return Promise.reject(error)
       }
-
-      originalRequest._retry = true
 
       if (isRefreshing) {
         // Another request is already refreshing — queue this one
@@ -135,14 +212,24 @@ export function getAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-/** Authenticated fetch wrapper — injects Bearer token automatically. */
-export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+/** Authenticated fetch wrapper — injects Bearer token and retries on 401. */
+export async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers)
   const token = localStorage.getItem('token')
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
-  return fetch(input, { ...init, headers })
+  const response = await fetch(input, { ...init, headers })
+
+  if (response.status === 401) {
+    const newToken = await ensureFreshToken()
+    if (newToken) {
+      headers.set('Authorization', `Bearer ${newToken}`)
+      return fetch(input, { ...init, headers })
+    }
+  }
+
+  return response
 }
 
 export default api

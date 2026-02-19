@@ -58,7 +58,7 @@ int espeak_cgo_init(const char* data_path) {
 }
 
 // Synthesize text to audio with optimized parameters
-int espeak_cgo_synth(const char* text, const char* voice, int rate, int pitch, int volume) {
+int espeak_cgo_synth(const char* text, const char* voice, int rate, int pitch, int pitch_range, int volume) {
     // Reset buffer
     g_audio_size = 0;
 
@@ -67,15 +67,15 @@ int espeak_cgo_synth(const char* text, const char* voice, int rate, int pitch, i
         return -1;
     }
 
-    // Set parameters with optimized defaults
-    // rate: 150 (default), pitch: 55, volume: 110
+    // Core parameters
     espeak_SetParameter(espeakRATE, rate, 0);
     espeak_SetParameter(espeakPITCH, pitch, 0);
+    espeak_SetParameter(espeakRANGE, pitch_range, 0);
     espeak_SetParameter(espeakVOLUME, volume, 0);
-    espeak_SetParameter(espeakWORDGAP, 8, 0);  // gap between words
+    espeak_SetParameter(espeakWORDGAP, 5, 0);
 
     // Synthesize
-    unsigned int flags = espeakCHARS_UTF8 | espeakENDPAUSE;
+    unsigned int flags = espeakCHARS_UTF8 | espeakENDPAUSE | espeakSSML;
     if (espeak_Synth(text, strlen(text) + 1, 0, POS_CHARACTER, 0, flags, NULL, NULL) != EE_OK) {
         return -2;
     }
@@ -112,12 +112,13 @@ import "C"
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -125,8 +126,7 @@ import (
 type EspeakNGRequest struct {
 	Text     string  `json:"text"`
 	Language string  `json:"language"` // e.g., "en", "cmn", "ja"
-	Voice    string  `json:"voice"`    // e.g., "f3", "m1", "whisper" (optional variant)
-	Rate     float32 `json:"rate"`     // multiplier (1.0 = default 150 wpm)
+	Rate     float32 `json:"rate"`     // multiplier (1.0 = default 130 wpm)
 	Pitch    float32 `json:"pitch"`    // adjustment (-50 to 50, default 0)
 	Volume   float32 `json:"volume"`   // multiplier (1.0 = default 110)
 }
@@ -199,12 +199,16 @@ func findEspeakDataPath() string {
 
 // Initialize initializes the eSpeak-NG library
 func (p *EspeakNGProvider) Initialize() error {
+	log.Println("[tts/espeak] Initialize: acquiring lock...")
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.initialized {
+		log.Println("[tts/espeak] Initialize: already initialized")
 		return nil
 	}
+
+	log.Printf("[tts/espeak] Initialize: dataPath=%q", p.dataPath)
 
 	var cDataPath *C.char
 	if p.dataPath != "" {
@@ -212,7 +216,9 @@ func (p *EspeakNGProvider) Initialize() error {
 		defer C.free(unsafe.Pointer(cDataPath))
 	}
 
+	log.Println("[tts/espeak] Initialize: calling espeak_cgo_init...")
 	sampleRate := C.espeak_cgo_init(cDataPath)
+	log.Printf("[tts/espeak] Initialize: espeak_cgo_init returned %d", sampleRate)
 	if sampleRate < 0 {
 		return fmt.Errorf("failed to initialize eSpeak-NG")
 	}
@@ -220,17 +226,23 @@ func (p *EspeakNGProvider) Initialize() error {
 	p.sampleRate = int(sampleRate)
 	p.initialized = true
 	p.preprocessor = NewAudioPreprocessor(p.sampleRate)
+	log.Printf("[tts/espeak] Initialize: done, sampleRate=%d", p.sampleRate)
 	return nil
 }
 
 // Synthesize generates speech from text
 func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest) (io.ReadCloser, error) {
+	start := time.Now()
+	log.Printf("[tts/espeak] Synthesize: start, text_len=%d lang=%q", len(req.Text), req.Language)
+
 	if err := p.Initialize(); err != nil {
 		return nil, err
 	}
 
+	log.Println("[tts/espeak] Synthesize: acquiring mu lock...")
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	log.Printf("[tts/espeak] Synthesize: lock acquired (%.1fms)", float64(time.Since(start).Microseconds())/1000)
 
 	// Validate parameters
 	if req.Text == "" {
@@ -242,17 +254,16 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 		voice = "en"
 	}
 
-	// Add voice variant if specified (e.g., "en+f3", "cmn+m1")
-	if req.Voice != "" {
-		voice = voice + "+" + req.Voice
-	}
+	// Always use "zima" voice variant for optimized formant settings
+	voice = voice + "+zima"
 
-	// Apply multipliers to base values (150/55/110)
+	// Apply multipliers to optimized base values
+	// Base rate: 160 wpm (slightly brisk, natural female pace)
 	rate := req.Rate
 	if rate <= 0 {
 		rate = 1.0  // default multiplier
 	}
-	finalRate := int(150 * rate)
+	finalRate := int(160 * rate)
 	if finalRate < 80 {
 		finalRate = 80
 	}
@@ -261,15 +272,18 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 	}
 
 	pitch := req.Pitch
+	// Pitch base: 70 (higher for female voice, espeak range 0-99)
 	// Pitch is adjustment (-50 to 50), default 0
-	// Convert to espeak range (0-99) with base 50
-	finalPitch := int(50 + pitch)
+	finalPitch := int(70 + pitch)
 	if finalPitch < 0 {
 		finalPitch = 0
 	}
 	if finalPitch > 99 {
 		finalPitch = 99
 	}
+
+	// Pitch range: 50 (wider variation for natural female intonation)
+	finalPitchRange := 50
 
 	volume := req.Volume
 	if volume <= 0 {
@@ -283,6 +297,8 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 		finalVolume = 200
 	}
 
+	log.Printf("[tts/espeak] Synthesize: voice=%q rate=%d pitch=%d range=%d vol=%d", voice, finalRate, finalPitch, finalPitchRange, finalVolume)
+
 	// Convert strings to C
 	cText := C.CString(req.Text)
 	defer C.free(unsafe.Pointer(cText))
@@ -291,7 +307,10 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 	defer C.free(unsafe.Pointer(cVoice))
 
 	// Synthesize
-	numSamples := C.espeak_cgo_synth(cText, cVoice, C.int(finalRate), C.int(finalPitch), C.int(finalVolume))
+	log.Println("[tts/espeak] Synthesize: calling espeak_cgo_synth...")
+	synthStart := time.Now()
+	numSamples := C.espeak_cgo_synth(cText, cVoice, C.int(finalRate), C.int(finalPitch), C.int(finalPitchRange), C.int(finalVolume))
+	log.Printf("[tts/espeak] Synthesize: espeak_cgo_synth returned %d samples (%.1fms)", numSamples, float64(time.Since(synthStart).Microseconds())/1000)
 	if numSamples < 0 {
 		return nil, fmt.Errorf("synthesis failed with code: %d", numSamples)
 	}
@@ -309,11 +328,16 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 		pcmData[i*2] = byte(sample)
 		pcmData[i*2+1] = byte(sample >> 8)
 	}
+	log.Printf("[tts/espeak] Synthesize: copied %d bytes PCM data", len(pcmData))
 
 	// Apply vocoder if model exists (lazy load)
 	if p.vocoderPath != "" {
+		log.Printf("[tts/espeak] Synthesize: vocoder path=%q", p.vocoderPath)
 		p.vocoderOnce.Do(func() {
+			log.Println("[tts/espeak] Synthesize: loading vocoder model...")
+			loadStart := time.Now()
 			p.vocoder, _ = InitVocoder(p.vocoderPath, p.sampleRate)
+			log.Printf("[tts/espeak] Synthesize: vocoder loaded (%.1fms), ok=%v", float64(time.Since(loadStart).Microseconds())/1000, p.vocoder != nil)
 		})
 		if p.vocoder != nil {
 			// Convert bytes to int16 samples
@@ -322,23 +346,37 @@ func (p *EspeakNGProvider) Synthesize(ctx context.Context, req *EspeakNGRequest)
 				int16Samples[i] = int16(pcmData[i*2]) | (int16(pcmData[i*2+1]) << 8)
 			}
 
-			// Apply preprocessing: EQ + Lowpass
-			int16Samples = p.preprocessor.Preprocess(int16Samples)
+			log.Printf("[tts/espeak] Synthesize: applying lowpass to %d samples...", len(int16Samples))
+			lpStart := time.Now()
+			// Apply lowpass filter before mel extraction (skip EQ — HiFi-GAN regenerates audio)
+			int16Samples = p.preprocessor.ApplyLowpass(int16Samples)
+			log.Printf("[tts/espeak] Synthesize: lowpass done (%.1fms)", float64(time.Since(lpStart).Microseconds())/1000)
 
-			// Process with vocoder
+			// Process with vocoder (eSpeak 22050 Hz = HiFi-GAN V3 native rate)
+			log.Printf("[tts/espeak] Synthesize: running vocoder on %d samples...", len(int16Samples))
+			vocStart := time.Now()
 			if processed, err := p.vocoder.Process(int16Samples); err == nil {
+				log.Printf("[tts/espeak] Synthesize: vocoder done, %d→%d samples (%.1fms)", len(int16Samples), len(processed), float64(time.Since(vocStart).Microseconds())/1000)
 				// Convert back to bytes
 				pcmData = make([]byte, len(processed)*2)
 				for i, sample := range processed {
 					pcmData[i*2] = byte(sample)
 					pcmData[i*2+1] = byte(sample >> 8)
 				}
+			} else {
+				log.Printf("[tts/espeak] Synthesize: vocoder error: %v (%.1fms)", err, float64(time.Since(vocStart).Microseconds())/1000)
 			}
+		} else {
+			log.Println("[tts/espeak] Synthesize: vocoder not available, passthrough")
 		}
+	} else {
+		log.Println("[tts/espeak] Synthesize: no vocoder path, passthrough")
 	}
 
-	// Convert to WAV
+	// Convert to WAV (always 22050 Hz — eSpeak native = HiFi-GAN V3 native)
+	log.Printf("[tts/espeak] Synthesize: encoding WAV, %d bytes PCM, sr=%d", len(pcmData), p.sampleRate)
 	wavData := pcmToWav(pcmData, p.sampleRate)
+	log.Printf("[tts/espeak] Synthesize: done, total %.1fms, wav=%d bytes", float64(time.Since(start).Microseconds())/1000, len(wavData))
 	return io.NopCloser(bytes.NewReader(wavData)), nil
 }
 
@@ -411,46 +449,20 @@ func (p *EspeakNGProvider) Close() {
 	}
 }
 
-// pcmToWav converts PCM data to WAV format
-func pcmToWav(pcmData []byte, sampleRate int) []byte {
-	dataSize := len(pcmData)
-	buf := new(bytes.Buffer)
 
-	// RIFF header
-	buf.WriteString("RIFF")
-	binary.Write(buf, binary.LittleEndian, uint32(36+dataSize))
-	buf.WriteString("WAVE")
-
-	// fmt chunk
-	buf.WriteString("fmt ")
-	binary.Write(buf, binary.LittleEndian, uint32(16))           // chunk size
-	binary.Write(buf, binary.LittleEndian, uint16(1))            // audio format (PCM)
-	binary.Write(buf, binary.LittleEndian, uint16(1))            // num channels (mono)
-	binary.Write(buf, binary.LittleEndian, uint32(sampleRate))   // sample rate
-	binary.Write(buf, binary.LittleEndian, uint32(sampleRate*2)) // byte rate
-	binary.Write(buf, binary.LittleEndian, uint16(2))            // block align
-	binary.Write(buf, binary.LittleEndian, uint16(16))           // bits per sample
-
-	// data chunk
-	buf.WriteString("data")
-	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
-	buf.Write(pcmData)
-
-	return buf.Bytes()
-}
-
-// findVocoderModel searches for HiFi-GAN model file relative to dataPath
+// findVocoderModel searches for HiFi-GAN ONNX model file relative to dataPath
 func findVocoderModel(dataPath string) string {
+	const modelFile = "hifigan_v3.onnx"
 	candidates := []string{
-		filepath.Join(os.Getenv("HOME"), ".zimaos-blue", "data", "vocoder", "generator_v1.pt"),
-		filepath.Join(os.Getenv("HOME"), ".zimaos-blue-dev", "data", "vocoder", "generator_v1.pt"),
+		filepath.Join(os.Getenv("HOME"), ".zimaos-blue", "data", "vocoder", modelFile),
+		filepath.Join(os.Getenv("HOME"), ".zimaos-blue-dev", "data", "vocoder", modelFile),
 	}
 
 	// Add dataPath-relative candidates if dataPath is provided
 	if dataPath != "" {
 		candidates = append(candidates,
-			filepath.Join(dataPath, "vocoder", "generator_v1.pt"),
-			filepath.Join(filepath.Dir(dataPath), "vocoder", "generator_v1.pt"),
+			filepath.Join(dataPath, "vocoder", modelFile),
+			filepath.Join(filepath.Dir(dataPath), "vocoder", modelFile),
 		)
 	}
 

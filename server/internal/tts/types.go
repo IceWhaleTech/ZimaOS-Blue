@@ -134,6 +134,19 @@ type Provider interface {
 	MaxTextLength() int
 }
 
+// Phonemizer converts text to IPA phoneme strings.
+type Phonemizer interface {
+	// TextToPhonemes converts text to IPA phonemes.
+	// lang is a language code (e.g. "en", "cmn", "ja").
+	TextToPhonemes(text, lang string) (string, error)
+}
+
+// LocalSpeaker is an optional interface for providers that can play audio locally.
+type LocalSpeaker interface {
+	SpeakLocally(ctx context.Context, text string, speed float32) error
+	StopSpeaking()
+}
+
 // ProviderConfig holds the configuration for a TTS provider.
 type ProviderConfig struct {
 	// Type is the provider type.

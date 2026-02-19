@@ -3,11 +3,13 @@ package speech
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
@@ -85,16 +87,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/transcribe", h.Transcribe)
 	g.POST("/confirm", h.ConfirmTranscription)
 
-	// eSpeak-NG language pack management
+	// eSpeak-NG status (engine is statically linked, data dir detected at runtime)
 	espeak := g.Group("/espeak")
 	espeak.GET("/languages", h.ListEspeakLanguages)
-	espeak.POST("/download", h.DownloadEspeakLanguage)
-	espeak.POST("/download-all", h.DownloadAllEspeakLanguages)
-	espeak.DELETE("/language", h.DeleteEspeakLanguage)
-
-	// eSpeak-NG library management
 	espeak.GET("/library/status", h.GetEspeakLibraryStatus)
-	espeak.POST("/library/download", h.DownloadEspeakLibrary)
 
 	// Vocoder management
 	vocoder := g.Group("/vocoder")
@@ -169,19 +165,43 @@ func (h *Handler) GetASRStatus(c echo.Context) error {
 func (h *Handler) ListASRModels(c echo.Context) error {
 	provider := h.service.GetASRProvider()
 
-	// If provider is initialized, use its ListModels method (includes download status)
+	var providerInfo string
+	if provider != nil {
+		providerInfo = fmt.Sprintf("type=%s name=%s", provider.Type(), provider.Name())
+	} else {
+		providerInfo = "nil"
+	}
+	fmt.Printf("[ListASRModels] provider: %s\n", providerInfo)
+
+	var models []interface{}
+
+	// If macOS native STT is active, include it as a built-in model entry
+	if provider != nil && provider.Type() == ProviderMacOSNative {
+		models = append(models, map[string]interface{}{
+			"id":          "macos-native",
+			"name":        "speech.asrModelInfo.macosNative.name",
+			"description": "speech.asrModelInfo.macosNative.description",
+			"size":        "",
+			"downloaded":  true,
+			"active":      true,
+		})
+	}
+
+	// If provider supports ListModels (e.g. Whisper), add those too
 	if provider != nil {
 		if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
-			models := lister.ListModels()
+			models = append(models, lister.ListModels()...)
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"models": models,
 			})
 		}
 	}
 
-	// If provider is not initialized, return available models from metadata
-	// This allows users to see what models are available for download
-	models := stt.GetAvailableASRModels()
+	// Add available Whisper models from metadata
+	for _, m := range stt.GetAvailableASRModels() {
+		models = append(models, m)
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"models": models,
 	})
@@ -593,98 +613,30 @@ func (h *Handler) SetTTSConfig(c echo.Context) error {
 	})
 }
 
-// ListEspeakLanguages returns available eSpeak-NG language packs.
+// ListEspeakLanguages returns available eSpeak-NG language dictionaries
+// by scanning the real espeak-ng-data directory.
 func (h *Handler) ListEspeakLanguages(c echo.Context) error {
 	languages := h.espeakManager.ListLanguagePacks()
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"languages": languages,
+		"count":     len(languages),
 	})
 }
 
-// DownloadEspeakLanguage downloads an eSpeak-NG language pack.
-func (h *Handler) DownloadEspeakLanguage(c echo.Context) error {
-	var req struct {
-		LangCode string `json:"lang_code"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid request",
-		})
-	}
-
-	if err := h.espeakManager.DownloadLanguagePack(req.LangCode); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	// Note: With static CGO linking, all languages are built-in
-	// No need to mark languages as available dynamically
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "downloaded",
-		"message": "Language pack downloaded: " + req.LangCode,
-	})
-}
-
-// DownloadAllEspeakLanguages downloads all eSpeak-NG language packs at once.
-func (h *Handler) DownloadAllEspeakLanguages(c echo.Context) error {
-	if err := h.espeakManager.DownloadAllLanguagePacks(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	// Note: With static CGO linking, all languages are built-in
-	// No need to mark languages as available dynamically
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "downloaded",
-		"message": "All language packs downloaded successfully",
-	})
-}
-
-// DeleteEspeakLanguage deletes an eSpeak-NG language pack.
-func (h *Handler) DeleteEspeakLanguage(c echo.Context) error {
-	langCode := c.QueryParam("lang_code")
-	if langCode == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "lang_code is required",
-		})
-	}
-
-	if err := h.espeakManager.DeleteLanguagePack(langCode); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "deleted",
-		"message": "Language pack deleted: " + langCode,
-	})
-}
-
-// GetEspeakLibraryStatus returns the eSpeak-NG library installation status.
+// GetEspeakLibraryStatus returns whether the espeak-ng-data directory
+// was found and how many language dictionaries are available.
 func (h *Handler) GetEspeakLibraryStatus(c echo.Context) error {
 	installed := h.espeakManager.IsLibraryInstalled()
+	dataPath := h.espeakManager.GetLibraryPath()
+	langCount := h.espeakManager.LanguageCount()
+	dataSize := h.espeakManager.GetDataSize()
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"installed": installed,
-		"path":      h.espeakManager.GetLibraryPath(),
-	})
-}
-
-// DownloadEspeakLibrary downloads the eSpeak-NG library.
-func (h *Handler) DownloadEspeakLibrary(c echo.Context) error {
-	if err := h.espeakManager.DownloadLibrary(); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{
-		"status":  "downloaded",
-		"message": "eSpeak-NG library downloaded successfully",
+		"installed":      installed,
+		"path":           dataPath,
+		"language_count": langCount,
+		"data_size":      dataSize,
+		"static_linked":  true, // engine is always statically linked via CGO
 	})
 }
 
@@ -720,18 +672,37 @@ func (h *Handler) CancelVocoderDownload(c echo.Context) error {
 
 // GetKokoroStatus returns the Kokoro model status.
 func (h *Handler) GetKokoroStatus(c echo.Context) error {
-	status := h.service.GetTTSService().GetKokoroStatus()
-	return c.JSON(http.StatusOK, status)
+	raw := h.service.GetTTSService().GetKokoroStatus()
+	// Flatten progress struct for frontend
+	resp := map[string]interface{}{
+		"ready":       raw["ready"],
+		"downloading": raw["downloading"],
+		"error":       raw["error"],
+		"init_stage":  raw["init_stage"],
+	}
+	if p, ok := raw["progress"].(*downloader.DownloadProgress); ok && p != nil {
+		resp["progress"] = p.Percentage
+		resp["speed"] = p.SpeedHuman
+		resp["eta"] = p.ETA
+		resp["file"] = p.File
+		resp["file_index"] = p.FileIndex
+		resp["total_files"] = p.TotalFiles
+		resp["downloaded_human"] = p.DownloadedHuman
+	} else {
+		resp["progress"] = 0
+	}
+	return c.JSON(http.StatusOK, resp)
 }
 
 // DownloadKokoro starts downloading the Kokoro model.
 func (h *Handler) DownloadKokoro(c echo.Context) error {
-	ctx := c.Request().Context()
-	if err := h.service.GetTTSService().DownloadKokoroModel(ctx); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": err.Error(),
-		})
-	}
+	go func() {
+		ctx := context.Background()
+		if err := h.service.GetTTSService().DownloadKokoroModel(ctx); err != nil {
+			// Error is stored in model manager state, polled via GetKokoroStatus
+			_ = err
+		}
+	}()
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"status":  "downloading",

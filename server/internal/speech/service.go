@@ -3,6 +3,7 @@ package speech
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
@@ -109,7 +110,11 @@ func (s *service) Initialize() error {
 
 	// Initialize TTS provider based on configuration
 	if s.config.TTS.Provider == "" {
-		s.config.TTS.Provider = "edge-tts" // Default to Edge TTS
+		if runtime.GOOS == "darwin" {
+			s.config.TTS.Provider = "macos-native"
+		} else {
+			s.config.TTS.Provider = "edge-tts"
+		}
 	}
 
 	// TTS provider initialization is handled by ttsService
@@ -117,7 +122,19 @@ func (s *service) Initialize() error {
 
 	// Initialize ASR provider based on configuration
 	if s.config.ASR.Provider == "" {
-		s.config.ASR.Provider = "none" // No default ASR provider
+		if runtime.GOOS == "darwin" {
+			s.config.ASR.Provider = "macos-native"
+		} else {
+			s.config.ASR.Provider = "none"
+		}
+	}
+
+	// Create macOS native ASR provider if configured
+	if s.config.ASR.Provider == "macos-native" && runtime.GOOS == "darwin" {
+		macosSTT := NewMacOSNativeSTT()
+		if err := macosSTT.Initialize(); err == nil {
+			s.asrProvider = macosSTT
+		}
 	}
 
 	// Create Sherpa ASR provider if configured
@@ -179,7 +196,7 @@ func (s *service) GetStatus() *StatusResponse {
 		resp.ASR.Provider = s.config.ASR.Provider
 		if s.asrProvider != nil {
 			resp.ASR.Ready = true
-			resp.ASR.ModelType = s.asrProvider.Name()
+			resp.ASR.ModelType = string(s.asrProvider.Type())
 
 			// Get download status from Whisper provider
 			if whisperProvider, ok := s.asrProvider.(*stt.WhisperProvider); ok {

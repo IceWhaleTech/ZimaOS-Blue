@@ -160,12 +160,17 @@ if [ "$GOOS" = "darwin" ]; then
 
     # Build for current architecture
     CGO_ENABLED=1 go build -buildmode=c-archive \
+        -tags 'fts5 espeak kokoro' \
         -ldflags="$GO_LDFLAGS" \
         -o "$LIB_DIR/libblue.a" \
         ./cmd/bluelib/
 
     print_step "Go library built: $LIB_DIR/libblue.a"
     ls -lh "$LIB_DIR/libblue.a"
+
+    # Clean up embedded dist to avoid double-bundling (Tauri webview serves the frontend)
+    rm -rf "$EMBED_DIR"
+    print_step "Cleaned server/internal/web/dist (Tauri webview serves frontend)"
 
     # Note: No sidecar needed for macOS
     print_step "macOS uses CGO library - no sidecar binary needed"
@@ -196,7 +201,7 @@ else
     fi
 
     # Build with optimizations (NO UPX compression!)
-    CGO_ENABLED=0 go build -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
+    CGO_ENABLED=0 go build -tags 'fts5 kokoro' -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
 
     # Also copy to bin directory for resources bundling
     mkdir -p "$TAURI_DIR/bin"
