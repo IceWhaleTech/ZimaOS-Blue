@@ -1404,6 +1404,8 @@ export default {
     cacheDesc: 'Cachování odpovědí pro požadavky API proxy, snížení latence a nákladů',
     cacheSwitch: 'Povolit cache',
     prunerTitle: 'Pruner kontextu',
+    prunerDesc: 'Inteligentní ořezávání kontextu založené na IR skóre — odstraňuje řádky s nízkou relevancí při zachování klíčové sémantiky, s minimálním dopadem na kvalitu výstupu.',
+    prunerSavings: 'Lokální IR šetří ~47% tokenů (kód + dokumenty). SWE-Pruner šetří 54% tokenů (pouze kód).',
     prunerSwitch: 'Povolit pruner',
     routingTitle: 'Směrování modelů',
     routingSwitch: 'Povolit směrování modelů',

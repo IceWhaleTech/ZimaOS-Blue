@@ -1,4 +1,4 @@
-//go:build whisper
+//go:build !cgo || !whisper
 
 package stt
 

@@ -129,6 +129,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,7 +142,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **Notă:** Compilările Windows necesită [MinGW-w64](https://www.mingw-w64.org/) (gcc) și [CMake](https://cmake.org/) pentru dependențe native C (espeak-ng, whisper.cpp, opus). Asigurați-vă că `gcc` și `cmake` sunt în `PATH`.
+> **Notă:** Compilările Windows necesită:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) și [CMake](https://cmake.org/) pentru dependențe native C (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) pentru biblioteci de sistem (winmm, etc.)
+>
+> Asigurați-vă că `gcc`, `cmake` sunt în `PATH`.
 
 ## Prezentare generală a arhitecturii
 

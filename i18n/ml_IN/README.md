@@ -134,6 +134,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -146,7 +147,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **കുറിപ്പ്:** Windows ബിൽഡുകൾക്ക് നേറ്റീവ് C ഡിപൻഡൻസികൾക്കായി (espeak-ng, whisper.cpp, opus) [MinGW-w64](https://www.mingw-w64.org/) (gcc) ഉം [CMake](https://cmake.org/) ഉം ആവശ്യമാണ്. `gcc` ഉം `cmake` ഉം `PATH`-ൽ ഉണ്ടെന്ന് ഉറപ്പാക്കുക.
+> **കുറിപ്പ്:** Windows ബിൽഡുകൾക്ക് ആവശ്യമാണ്:
+> - നേറ്റീവ് C ഡിപൻഡൻസികൾക്കായി (espeak-ng, whisper.cpp, opus, kokoro, onnx) [MinGW-w64](https://www.mingw-w64.org/) (gcc) ഉം [CMake](https://cmake.org/) ഉം
+> - സിസ്റ്റം ലൈബ്രറികൾക്കായി (winmm, etc.) [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
+>
+> `gcc` ഉം `cmake` ഉം `PATH`-ൽ ഉണ്ടെന്ന് ഉറപ്പാക്കുക.
 
 ## ആർക്കിടെക്ചർ അവലോകനം
 

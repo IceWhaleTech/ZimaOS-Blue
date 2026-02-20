@@ -1328,6 +1328,8 @@ export default {
     ...enUS.apiProxy,
     cacheTitle: 'CC Cache',
     prunerTitle: 'Kontekstbeskærer',
+    prunerDesc: 'Intelligent kontekstbeskæring baseret på IR-score — fjerner linjer med lav relevans, mens nøglesemantik bevares, med minimal indvirkning på outputkvalitet.',
+    prunerSavings: 'Lokal IR sparer ~47% tokens (kode + dokumenter). SWE-Pruner sparer 54% tokens (kun kode).',
     routingTitle: 'Modelrouting',
   },
   encryption: {

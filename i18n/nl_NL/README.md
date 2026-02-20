@@ -129,6 +129,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,7 +142,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **Opmerking:** Windows-builds vereisen [MinGW-w64](https://www.mingw-w64.org/) (gcc) en [CMake](https://cmake.org/) voor native C-afhankelijkheden (espeak-ng, whisper.cpp, opus). Zorg ervoor dat `gcc` en `cmake` in uw `PATH` staan.
+> **Opmerking:** Windows-builds vereisen:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) en [CMake](https://cmake.org/) voor native C-afhankelijkheden (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) voor systeembibliotheken (winmm, etc.)
+>
+> Zorg ervoor dat `gcc`, `cmake` in uw `PATH` staan.
 
 ## Architectuuroverzicht
 

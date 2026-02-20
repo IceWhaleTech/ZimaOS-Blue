@@ -15,64 +15,357 @@ Set-Location "g:\GitHub\ZimaOS-Blue\web"
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 npm install
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+
+# Check production dependencies for vulnerabilities
+Write-Host "[STEP 1.1] Checking production dependencies for vulnerabilities..."
+npm audit --omit=dev
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Production dependencies have vulnerabilities. Please fix them before building." -ForegroundColor Red
+    throw "Production dependencies have vulnerabilities"
+}
+
 npm run build
 if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 Write-Host "[OK] Frontend built"
 
-# Step 2: Copy to server embed dir
-Write-Host "[STEP 2] Copying frontend to server/internal/web/dist..."
+# Step 1.5: Clean up server embed dir (not needed for Tauri)
+Write-Host "[STEP 1.5] Cleaning server embed dir..."
 $embedDir = "g:\GitHub\ZimaOS-Blue\server\internal\web\dist"
-if (Test-Path $embedDir) { Remove-Item -Recurse -Force $embedDir }
-New-Item -ItemType Directory -Path $embedDir -Force | Out-Null
-Copy-Item -Recurse -Force "g:\GitHub\ZimaOS-Blue\web\dist\*" $embedDir
-Get-ChildItem -Recurse -Filter "*.map" $embedDir | Remove-Item -Force
-# Clean up build artifacts
-Remove-Item -Force "$embedDir\stats.html" -ErrorAction SilentlyContinue
-Get-ChildItem -Recurse -Filter "*.gz" $embedDir | Remove-Item -Force
-Get-ChildItem -Recurse -Filter "*.br" $embedDir | Remove-Item -Force
-Write-Host "[OK] Frontend copied"
+if (Test-Path $embedDir) {
+    Remove-Item -Recurse -Force $embedDir
+    Write-Host "[OK] Removed $embedDir"
+} else {
+    Write-Host "[OK] $embedDir does not exist"
+}
 
-# Step 3: Build Go static library (needs MinGW in PATH for CGO)
-Write-Host "[STEP 3] Building Go static library (c-archive)..."
-Set-Location "g:\GitHub\ZimaOS-Blue\server"
-$tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
-if (!(Test-Path "$tauriDir\lib")) { New-Item -ItemType Directory "$tauriDir\lib" -Force | Out-Null }
-# Temporarily add MinGW to PATH for CGO
-$env:Path = "C:\mingw64\bin;" + $basePath
+# Step 2: Build Go server (FFI mode)
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
 $env:CGO_ENABLED = "1"
-$env:CC = "gcc"
-$env:CXX = "g++"
-# Build ldflags with trial license (Ed25519-signed, from environment)
 $goLdflags = "-s -w"
 if ($env:ZIMAOS_TRIAL_LICENSE) {
-    Write-Host "[OK] Using trial license from environment variable (will be embedded in binary)"
     $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
 }
-go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
-Write-Host "[OK] Static library built: lib/libblue.a"
-# Restore PATH without MinGW (avoid link.exe conflict with MSVC)
-$env:Path = $basePath
-Remove-Item Env:\CGO_ENABLED -ErrorAction SilentlyContinue
-Remove-Item Env:\CC -ErrorAction SilentlyContinue
-Remove-Item Env:\CXX -ErrorAction SilentlyContinue
-
-# Step 4: Clean data dir
-Write-Host "[STEP 4] Cleaning data directory..."
-if (Test-Path "$tauriDir\data") { Remove-Item -Recurse -Force "$tauriDir\data" }
-New-Item -ItemType Directory "$tauriDir\data" -Force | Out-Null
-
-# Step 5: Build Tauri (MSVC toolchain, no MinGW)
-Write-Host "[STEP 5] Building Tauri application..."
-Set-Location "g:\GitHub\ZimaOS-Blue\tauri-app"
-npm install
-if ($LASTEXITCODE -ne 0) { throw "tauri npm install failed" }
-npx tauri build --no-bundle
-if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
-Write-Host "[OK] Tauri build complete (no-bundle, using custom NSIS skin installer)"
-
-# Step 6: Copy to FilesToInstall
-Write-Host "[STEP 6] Preparing NSIS files..."
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 2: Build Go library (c-archive, whisper via FFI)
+Write-Host "[STEP 2] Building Go library..."
+Set-Location "g:GitHubZimaOS-Blueserver"
+$tauriDir = "g:GitHubZimaOS-Blue	auri-appsrc-tauri"
+if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+$env:CGO_ENABLED = "1"
+$goLdflags = "-s -w"
+if ($env:ZIMAOS_TRIAL_LICENSE) {
+    $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
+}
+go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
+Write-Host "[OK] libblue.a built (whisper via FFI)"
+# Step 5: Copy to FilesToInstall
+Write-Host "[STEP 5] Preparing NSIS files..."
 $skinDir = "$tauriDir\nsis\skin-installer"
 $filesDir = "$skinDir\FilesToInstall"
 $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe"
@@ -87,8 +380,8 @@ foreach ($rd in $releaseDirs) {
     }
 }
 
-# Copy frontend dist directory
-$distSrc = "g:\GitHub\ZimaOS-Blue\server\internal\web\dist"
+# Copy frontend dist directory directly from web/dist
+$distSrc = "g:\GitHub\ZimaOS-Blue\web\dist"
 if (Test-Path $distSrc) {
     Get-ChildItem -Recurse -File $distSrc | ForEach-Object {
         $relativePath = $_.FullName.Substring($distSrc.Length + 1)
@@ -102,8 +395,16 @@ if (Test-Path $distSrc) {
     Write-Host "[WARN] Frontend dist not found at $distSrc"
 }
 
-# Step 6.5: Sign executables before packaging
-Write-Host "[STEP 6.5] Signing executables..."
+# Clean up build artifacts from FilesToInstall
+Write-Host "[STEP 6] Cleaning build artifacts..."
+Remove-Item -Force "$filesDir\dist\stats.html" -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Path "$filesDir\dist" -Filter "*.gz" | Remove-Item -Force
+Get-ChildItem -Recurse -Path "$filesDir\dist" -Filter "*.br" | Remove-Item -Force
+Get-ChildItem -Recurse -Path "$filesDir\dist" -Filter "*.map" | Remove-Item -Force
+Write-Host "[OK] Build artifacts cleaned"
+
+# Step 6.1: Sign executables before packaging
+Write-Host "[STEP 6.1] Signing executables..."
 & $signtool sign /tr http://timestamp.digicert.com /td sha256 /fd sha256 /a "$filesDir\blue.exe"
 if ($LASTEXITCODE -ne 0) { throw "Failed to sign blue.exe" }
 Write-Host "[OK] blue.exe signed"

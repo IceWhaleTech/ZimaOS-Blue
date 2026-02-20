@@ -1,0 +1,16 @@
+# Build Configuration for ZimaOS-Blue
+
+# Whisper/Opus Integration Mode
+# - static: Compile libraries into binary (larger size, no runtime deps)
+# - ffi: Load libraries at runtime (smaller size, needs DLLs)
+BUILD_MODE=static
+
+# Library paths (for FFI mode)
+LIB_DIR=libs
+
+# Build tags
+GO_BUILD_TAGS=whisper
+
+# Optimization flags
+RUST_PROFILE=release
+GO_LDFLAGS=-s -w

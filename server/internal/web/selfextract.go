@@ -1,4 +1,4 @@
-//go:build !dev
+//go:build !dev && darwin
 
 package web
 
@@ -67,8 +67,10 @@ func SelfExtractAndRestart() bool {
 	child.Stderr = os.Stderr
 	child.Stdin = os.Stdin
 	child.Env = os.Environ()
-	// Inherit the process group so signals propagate
-	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: false}
+	// Inherit the process group so signals propagate (Unix/macOS only)
+	if runtime.GOOS != "windows" {
+		child.SysProcAttr = &syscall.SysProcAttr{Setpgid: false}
+	}
 
 	if err := child.Start(); err != nil {
 		log.Printf("[web] failed to start child: %v", err)

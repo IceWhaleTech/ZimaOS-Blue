@@ -2,19 +2,18 @@ fn main() {
     // Platform-specific build configuration
     #[cfg(target_os = "windows")]
     {
-        // Link the Go static library (libblue.a for GNU toolchain)
+        // Link Go static library (libblue.a)
         let lib_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("lib");
-
         println!("cargo:rustc-link-search=native={}", lib_path.display());
         println!("cargo:rustc-link-lib=static=blue");
 
-        // Link Windows system libraries required by Go runtime
+        // Windows system libraries for Go runtime
         println!("cargo:rustc-link-lib=ws2_32");
         println!("cargo:rustc-link-lib=userenv");
         println!("cargo:rustc-link-lib=ntdll");
         println!("cargo:rustc-link-lib=winmm");
 
-        // Rerun if the library changes
+        // Note: whisper/opus loaded via FFI (no static linking)
         println!("cargo:rerun-if-changed=lib/libblue.a");
     }
 

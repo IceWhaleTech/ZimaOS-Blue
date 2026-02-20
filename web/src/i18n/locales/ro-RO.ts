@@ -1083,6 +1083,8 @@ export default {
   apiProxy: {
     ...enUS.apiProxy,
     title: 'Proxy API',
+    prunerDesc: 'Tăiere inteligentă a contextului bazată pe scorul IR — elimină liniile cu relevanță scăzută păstrând semantica cheie, cu impact neglijabil asupra calității rezultatului.',
+    prunerSavings: 'IR local economisește ~47% tokeni (cod + documente). SWE-Pruner economisește 54% tokeni (doar cod).',
   },
   encryption: {
     ...enUS.encryption,

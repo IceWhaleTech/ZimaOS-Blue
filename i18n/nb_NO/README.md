@@ -129,6 +129,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,7 +142,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **Merk:** Windows-bygg krever [MinGW-w64](https://www.mingw-w64.org/) (gcc) og [CMake](https://cmake.org/) for native C-avhengigheter (espeak-ng, whisper.cpp, opus). Sørg for at `gcc` og `cmake` er i `PATH`.
+> **Merk:** Windows-bygg krever:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) og [CMake](https://cmake.org/) for native C-avhengigheter (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for systembiblioteker (winmm, etc.)
+>
+> Sørg for at `gcc`, `cmake` er i `PATH`.
 
 ## Arkitekturoversikt
 

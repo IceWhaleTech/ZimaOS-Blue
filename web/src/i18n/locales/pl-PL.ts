@@ -1380,6 +1380,8 @@ export default {
     cacheEnabled: 'Pamięć podręczna włączona',
     cacheDisabled: 'Pamięć podręczna wyłączona',
     prunerTitle: 'Przycinacz kontekstu',
+    prunerDesc: 'Inteligentne przycinanie kontekstu oparte na wyniku IR — usuwa linie o niskiej istotności, zachowując kluczową semantykę, z nieznacznym wpływem na jakość wyników.',
+    prunerSavings: 'Lokalny IR oszczędza ~47% tokenów (kod + dokumenty). SWE-Pruner oszczędza 54% tokenów (tylko kod).',
     prunerSwitch: 'Włącz przycinacz',
     prunerEnabled: 'Przycinacz włączony',
     prunerDisabled: 'Przycinacz wyłączony',

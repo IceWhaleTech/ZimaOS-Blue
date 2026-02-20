@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -197,7 +199,15 @@ func SaveTrialState(dataDir string, licenseSig []byte, state *trialState) error 
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(stateFilePath(dataDir), []byte(content), 0600)
+	filePath := stateFilePath(dataDir)
+	if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
+		return err
+	}
+	// Set hidden + system attributes on Windows
+	if runtime.GOOS == "windows" {
+		setWindowsHiddenSystem(filePath)
+	}
+	return nil
 }
 
 // LoadTrialState reads and verifies the HMAC-protected state file.
@@ -260,7 +270,15 @@ func SaveLicenseIAT(dataDir string, iat int64) error {
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dataDir, licenseIATFile), []byte(fmt.Sprintf("%d", iat)), 0600)
+	filePath := filepath.Join(dataDir, licenseIATFile)
+	if err := os.WriteFile(filePath, []byte(fmt.Sprintf("%d", iat)), 0600); err != nil {
+		return err
+	}
+	// Set hidden + system attributes on Windows
+	if runtime.GOOS == "windows" {
+		setWindowsHiddenSystem(filePath)
+	}
+	return nil
 }
 
 // LoadLicenseIAT reads the stored license IAT. Returns 0 if not found.
@@ -272,4 +290,22 @@ func LoadLicenseIAT(dataDir string) int64 {
 	var iat int64
 	fmt.Sscanf(string(data), "%d", &iat)
 	return iat
+}
+
+// setWindowsHiddenSystem sets FILE_ATTRIBUTE_HIDDEN and FILE_ATTRIBUTE_SYSTEM on Windows.
+func setWindowsHiddenSystem(path string) error {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	pathPtr, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	attrs, err := syscall.GetFileAttributes(pathPtr)
+	if err != nil {
+		return err
+	}
+	// Set both HIDDEN (0x2) and SYSTEM (0x4) attributes
+	attrs |= syscall.FILE_ATTRIBUTE_HIDDEN | syscall.FILE_ATTRIBUTE_SYSTEM
+	return syscall.SetFileAttributes(pathPtr, attrs)
 }

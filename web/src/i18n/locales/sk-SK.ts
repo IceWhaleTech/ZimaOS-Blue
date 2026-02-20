@@ -1083,6 +1083,8 @@ export default {
   apiProxy: {
     ...enUS.apiProxy,
     title: 'API proxy',
+    prunerDesc: 'Inteligentné orezávanie kontextu založené na IR skóre — odstraňuje riadky s nízkou relevantnosťou pri zachovaní kľúčovej sémantiky, s zanedbateľným vplyvom na kvalitu výstupu.',
+    prunerSavings: 'Lokálne IR šetrí ~47% tokenov (kód + dokumenty). SWE-Pruner šetrí 54% tokenov (iba kód).',
   },
   encryption: {
     ...enUS.encryption,

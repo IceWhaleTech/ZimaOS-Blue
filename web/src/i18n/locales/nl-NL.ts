@@ -1324,6 +1324,8 @@ export default {
     ...enUS.apiProxy,
     cacheTitle: 'CC-cache',
     prunerTitle: 'Contextsnoeier',
+    prunerDesc: 'Intelligente contextsnoeiing op basis van IR-score — verwijdert regels met lage relevantie terwijl belangrijke semantiek behouden blijft, met verwaarloosbare impact op outputkwaliteit.',
+    prunerSavings: 'Lokale IR bespaart ~47% tokens (code + docs). SWE-Pruner bespaart 54% tokens (alleen code).',
     routingTitle: 'Modelroutering',
   },
   encryption: {

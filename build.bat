@@ -198,6 +198,16 @@ if errorlevel 1 exit /b 1
 
 echo [INFO] Building for production...
 
+:: Check production dependencies for vulnerabilities
+echo [INFO] Checking production dependencies for vulnerabilities...
+cd /d "%PROJECT_ROOT%web"
+call npm audit --omit=dev
+if errorlevel 1 (
+    echo [ERROR] Production dependencies have vulnerabilities. Please fix them before building.
+    exit /b 1
+)
+echo.
+
 :: Build third_party native libraries
 call :build_third_party
 if errorlevel 1 exit /b 1
@@ -248,6 +258,16 @@ call :check_prereqs
 if errorlevel 1 exit /b 1
 
 echo [INFO] Production run: build web, copy to server/internal/web, start server...
+
+:: Check production dependencies for vulnerabilities
+echo [INFO] Checking production dependencies for vulnerabilities...
+cd /d "%PROJECT_ROOT%web"
+call npm audit --omit=dev
+if errorlevel 1 (
+    echo [ERROR] Production dependencies have vulnerabilities. Please fix them before building.
+    exit /b 1
+)
+echo.
 
 :: Build web
 echo [INFO] Building web frontend...

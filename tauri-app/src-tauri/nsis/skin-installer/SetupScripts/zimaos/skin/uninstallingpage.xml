@@ -3,7 +3,7 @@
 <!-- 进度 -->
   <VerticalLayout >
   
-    <VerticalLayout width="480" height="250" roundcorner="5,5" bkimage="file='form\pic.png'">
+    <VerticalLayout width="480" height="240" roundcorner="5,5" bkimage="file='form\pic.png'">
 	
 	</VerticalLayout>
 	<VerticalLayout bkcolor="#FFFFFFFF" >   

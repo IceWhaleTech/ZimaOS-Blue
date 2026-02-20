@@ -135,6 +135,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -147,7 +148,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **注意：** Windows 建置需要 [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 來編譯原生 C 相依套件（espeak-ng、whisper.cpp、opus）。請確保 `gcc` 和 `cmake` 已加入 `PATH` 環境變數中。
+> **注意：** Windows 建置需要：
+> - [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 來編譯原生 C 相依套件（espeak-ng、whisper.cpp、opus、kokoro、onnx）
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) 用於系統函式庫（winmm 等）
+>
+> 請確保 `gcc`、`cmake` 已加入 `PATH` 環境變數中。
 
 ## 架構概覽
 

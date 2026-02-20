@@ -129,6 +129,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,7 +142,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **Uwaga:** Kompilacja w systemie Windows wymaga [MinGW-w64](https://www.mingw-w64.org/) (gcc) i [CMake](https://cmake.org/) dla natywnych zależności C (espeak-ng, whisper.cpp, opus). Upewnij się, że `gcc` i `cmake` są w `PATH`.
+> **Uwaga:** Kompilacja w systemie Windows wymaga:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) i [CMake](https://cmake.org/) dla natywnych zależności C (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) dla bibliotek systemowych (winmm, etc.)
+>
+> Upewnij się, że `gcc`, `cmake` są w `PATH`.
 
 ## Przegląd architektury
 

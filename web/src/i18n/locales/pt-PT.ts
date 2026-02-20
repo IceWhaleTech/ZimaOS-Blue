@@ -449,6 +449,8 @@ export default {
     ...ptBR.apiProxy,
     downloadModel: 'Descarregar modelo',
     downloading: 'A descarregar',
+    prunerDesc: 'Poda inteligente de contexto baseada em pontuação IR — remove linhas de baixa relevância preservando a semântica chave, com impacto negligenciável na qualidade de saída.',
+    prunerSavings: 'IR local poupa ~47% tokens (código + docs). SWE-Pruner poupa 54% tokens (apenas código).',
   },
   encryption: { ...ptBR.encryption },
   providerSettings: {

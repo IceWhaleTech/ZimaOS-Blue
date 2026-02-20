@@ -119,6 +119,14 @@ cd "$PROJECT_ROOT/web"
 # Clean previous build
 rm -rf dist node_modules/.vite
 npm install
+
+# Check production dependencies for vulnerabilities
+print_step "Checking production dependencies for vulnerabilities..."
+if ! npm audit --omit=dev; then
+    print_error "Production dependencies have vulnerabilities. Please fix them before building."
+    exit 1
+fi
+
 npm run build
 
 # Verify frontend build succeeded
@@ -224,6 +232,14 @@ cargo clean
 print_step "Building Tauri application..."
 cd "$SCRIPT_DIR"
 npm install
+
+# Check production dependencies for vulnerabilities
+print_step "Checking Tauri app production dependencies for vulnerabilities..."
+if ! npm audit --omit=dev; then
+    print_error "Tauri app production dependencies have vulnerabilities. Please fix them before building."
+    exit 1
+fi
+
 npm run build
 
 # Step 7: Post-build processing (macOS only)

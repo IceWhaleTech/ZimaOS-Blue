@@ -134,6 +134,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -146,7 +147,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **注意:** Windowsでのビルドには、ネイティブC依存関係（espeak-ng、whisper.cpp、opus）のために[MinGW-w64](https://www.mingw-w64.org/)（gcc）と[CMake](https://cmake.org/)が必要です。`gcc`と`cmake`が`PATH`に含まれていることを確認してください。
+> **注意:** Windowsでのビルドには以下が必要です：
+> - ネイティブC依存関係（espeak-ng、whisper.cpp、opus、kokoro、onnx）のために[MinGW-w64](https://www.mingw-w64.org/)（gcc）と[CMake](https://cmake.org/)
+> - システムライブラリ（winmmなど）のために[Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
+>
+> `gcc`と`cmake`が`PATH`に含まれていることを確認してください。
 
 ## アーキテクチャ概要
 

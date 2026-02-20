@@ -1380,6 +1380,8 @@ export default {
     cacheEnabled: 'Cache aktiverad',
     cacheDisabled: 'Cache inaktiverad',
     prunerTitle: 'Kontextbeskärare',
+    prunerDesc: 'Intelligent kontextbeskärning baserad på IR-poäng — tar bort rader med låg relevans samtidigt som nyckelsemantics bevaras, med försumbar påverkan på outputkvalitet.',
+    prunerSavings: 'Lokal IR sparar ~47% tokens (kod + dokument). SWE-Pruner sparar 54% tokens (endast kod).',
     prunerSwitch: 'Aktivera beskärare',
     prunerEnabled: 'Beskärare aktiverad',
     prunerDisabled: 'Beskärare inaktiverad',

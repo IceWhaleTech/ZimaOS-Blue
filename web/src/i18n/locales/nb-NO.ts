@@ -993,6 +993,8 @@ export default {
     cacheDesc: 'Responsbufring for API-proxy-forespørsler, reduserer forsinkelse og kostnader',
     cacheSwitch: 'Aktiver hurtigbuffer',
     prunerTitle: 'Kontekstbeskjærer',
+    prunerDesc: 'Intelligent kontekstbeskjæring basert på IR-score — fjerner linjer med lav relevans mens nøkkelsemantikk bevares, med ubetydelig innvirkning på outputkvalitet.',
+    prunerSavings: 'Lokal IR sparer ~47% tokens (kode + dokumenter). SWE-Pruner sparer 54% tokens (kun kode).',
     prunerSwitch: 'Aktiver beskjærer',
     routingTitle: 'Modellruting',
     routingDesc: 'Rut enkle oppgaver til billigere modeller for å spare kostnader',

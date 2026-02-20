@@ -9,8 +9,8 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 COMMAND="${1:-prd}"
 
-# Enable CGO for eSpeak-NG static linking
-export CGO_ENABLED=1
+# Disable CGO for FFI mode
+export CGO_ENABLED=0
 
 # Add Python user bin to PATH for edge-tts
 export PATH="$PATH:$HOME/Library/Python/3.9/bin:$HOME/.local/bin"
@@ -265,8 +265,19 @@ build_all() {
 
     info "Building for production..."
 
-    # Build third_party native libraries
-    build_third_party
+    # Check production dependencies for vulnerabilities
+    info "Checking production dependencies for vulnerabilities..."
+    cd "$PROJECT_ROOT/web"
+    if ! npm audit --omit=dev; then
+        error "Production dependencies have vulnerabilities. Please fix them before building."
+        exit 1
+    fi
+
+    # Build third_party native libraries (FFI mode - shared libs)
+    if [ ! -d "$PROJECT_ROOT/libs" ] || [ -z "$(ls -A $PROJECT_ROOT/libs 2>/dev/null)" ]; then
+        info "Building shared libraries for FFI..."
+        "$PROJECT_ROOT/scripts/build-libs.sh"
+    fi
 
     # Build server
     info "Building Go server..."
@@ -310,6 +321,14 @@ prd_run() {
     check_prereqs
 
     info "Production run: build web, copy to server/internal/web, start server..."
+
+    # Check production dependencies for vulnerabilities
+    info "Checking production dependencies for vulnerabilities..."
+    cd "$PROJECT_ROOT/web"
+    if ! npm audit --omit=dev; then
+        error "Production dependencies have vulnerabilities. Please fix them before building."
+        exit 1
+    fi
 
     # Build web
     info "Building web frontend..."

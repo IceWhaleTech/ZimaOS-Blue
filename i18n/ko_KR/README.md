@@ -134,6 +134,7 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -146,7 +147,11 @@ sh build.sh
 .\build.bat
 ```
 
-> **참고:** Windows 빌드에는 네이티브 C 종속성(espeak-ng, whisper.cpp, opus)을 위해 [MinGW-w64](https://www.mingw-w64.org/)(gcc)와 [CMake](https://cmake.org/)가 필요합니다. `gcc`와 `cmake`가 `PATH`에 포함되어 있는지 확인하세요.
+> **참고:** Windows 빌드에는 다음이 필요합니다：
+> - 네이티브 C 종속성(espeak-ng, whisper.cpp, opus, kokoro, onnx)을 위해 [MinGW-w64](https://www.mingw-w64.org/)(gcc)와 [CMake](https://cmake.org/)
+> - 시스템 라이브러리(winmm 등)를 위해 [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
+>
+> `gcc`와 `cmake`가 `PATH`에 포함되어 있는지 확인하세요.
 
 ## 아키텍처 개요
 

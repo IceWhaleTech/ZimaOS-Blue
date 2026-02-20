@@ -941,6 +941,8 @@ export default {
     cacheDesc: 'Predmemorija odgovora za API proxy zahtjeve, smanjuje latenciju i troškove',
     cacheSwitch: 'Omogući predmemoriju',
     prunerTitle: 'Rezač konteksta',
+    prunerDesc: 'Inteligentno rezanje konteksta temeljeno na IR rezultatu — uklanja retke niske relevantnosti uz zadržavanje ključne semantike, s minimalnim utjecajem na kvalitetu izlaza.',
+    prunerSavings: 'Lokalni IR štedi ~47% tokena (kod + dokumenti). SWE-Pruner štedi 54% tokena (samo kod).',
     prunerSwitch: 'Omogući rezač',
     routingTitle: 'Usmjeravanje modela',
     routingSwitch: 'Omogući usmjeravanje modela',

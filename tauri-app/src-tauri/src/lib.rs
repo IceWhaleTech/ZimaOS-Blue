@@ -84,9 +84,9 @@ fn quit_label_for_locale(locale: &str) -> String {
     format!("{} ZimaOS Blue", verb)
 }
 
-/// Gracefully shut down: stop Go server, then terminate the app via AppKit.
+/// Gracefully shut down: stop Go server, then terminate the app.
 /// This avoids C exit() which races with Go runtime cleanup.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn graceful_quit(app_handle: &tauri::AppHandle) {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return; // Already quitting
@@ -97,18 +97,27 @@ fn graceful_quit(app_handle: &tauri::AppHandle) {
     // Give the server a moment to clean up
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // Destroy all windows so the run-loop has nothing left to keep alive
+    // Destroy all windows to close SSE connections and allow clean shutdown
     for (_, window) in app_handle.webview_windows() {
         let _ = window.destroy();
     }
 
-    // Ask AppKit to terminate normally — this unwinds the run-loop
-    // instead of calling C exit(), giving Go runtime a clean shutdown.
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::NSApplication;
-    if let Some(mtm) = MainThreadMarker::new() {
-        let ns_app = NSApplication::sharedApplication(mtm);
-        ns_app.terminate(None);
+    #[cfg(target_os = "macos")]
+    {
+        // Ask AppKit to terminate normally — this unwinds the run-loop
+        // instead of calling C exit(), giving Go runtime a clean shutdown.
+        use objc2::MainThreadMarker;
+        use objc2_app_kit::NSApplication;
+        if let Some(mtm) = MainThreadMarker::new() {
+            let ns_app = NSApplication::sharedApplication(mtm);
+            ns_app.terminate(None);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, destroying windows will trigger app exit naturally
+        // No need for explicit exit call - let the event loop finish
     }
 }
 pub struct AppState {
@@ -395,18 +404,12 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         info!("Quit requested from tray");
-                        #[cfg(target_os = "macos")]
+                        #[cfg(any(target_os = "macos", target_os = "windows"))]
                         graceful_quit(&app.app_handle());
-                        #[cfg(not(target_os = "macos"))]
+                        #[cfg(target_os = "linux")]
                         {
                             QUITTING.store(true, Ordering::SeqCst);
                             info!("Stopping server before exit");
-                            #[cfg(any(target_os = "windows"))]
-                            {
-                                let _ = blue_ffi::stop_server();
-                                // Give the server a moment to clean up
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                            }
                             #[cfg(target_os = "linux")]
                             {
                                 let app_clone = app.app_handle().clone();
@@ -455,9 +458,10 @@ pub fn run() {
                             .inner_size(1400.0, 900.0)
                             .min_inner_size(800.0, 600.0)
                             .center()
+                            .visible(false) // Start hidden to prevent flash
                             .build()
                             {
-                                let _ = window.show();
+                                // Window will be shown by frontend after content loads
                                 let _ = window.set_focus();
                             }
                         }
@@ -550,18 +554,12 @@ pub fn run() {
                         }
                     } else if !QUITTING.load(Ordering::SeqCst) {
                         // "quit" behavior: stop server and exit
-                        #[cfg(target_os = "macos")]
+                        #[cfg(any(target_os = "macos", target_os = "windows"))]
                         graceful_quit(app_handle);
-                        #[cfg(not(target_os = "macos"))]
+                        #[cfg(target_os = "linux")]
                         {
                             QUITTING.store(true, Ordering::SeqCst);
                             info!("Graceful quit: stopping server");
-                            #[cfg(any(target_os = "windows"))]
-                            {
-                                let _ = blue_ffi::stop_server();
-                                // Give the server a moment to clean up
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                            }
                             #[cfg(target_os = "linux")]
                             {
                                 let app_clone = app_handle.clone();

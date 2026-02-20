@@ -1031,6 +1031,8 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
+    prunerDesc: 'Bearradh cliste comhthéacs bunaithe ar scór IR — baintear línte íseal-ábharthachta agus séimeantaic eochair á gcaomhnú, le tionchar beag ar cháilíocht aschuir.',
+    prunerSavings: 'Sábhálann IR áitiúil ~47% comharthaí (cód + doiciméid). Sábhálann SWE-Pruner 54% comharthaí (cód amháin).',
   },
   encryption: {
     ...enUS.encryption,
@@ -1315,14 +1317,6 @@ export default {
     macosNativeName: 'macOS Dúchasach', macosNativeDesc: 'Sintéis cainte macOS ionsuite (as líne, gan íoslódáil)', macosNativeSTTDesc: 'Aithint cainte macOS ionsuite (as líne, gan íoslódáil)', macosNativeQuality: 'Maith',
     noModelsAvailable: 'Níl múnlaí ar fáil ón soláthraí seo',
     asrTab: 'Aithint Cainte (ASR)', ttsTab: 'Téacs go Cainte (TTS)',
-    asr: {
-      title: 'Aithint Cainte (ASR)',
-      description: 'Tiontaigh caint go téacs ag baint úsáide as múnlaí AI áitiúla',
-    },
-    tts: {
-      title: 'Téacs go Cainte (TTS)',
-      description: 'Tiontaigh téacs go caint nádúrtha ag baint úsáide as múnlaí AI áitiúla',
-    },
     prompt: {
       asrTitle: 'Múnla Aithint Cainte ag Teastáil',
       asrDescription: 'Chun ionchur gutha a úsáid, íoslódáil múnla aithint cainte le do thoil.',
