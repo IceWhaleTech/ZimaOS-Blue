@@ -1,3 +1,5 @@
+//go:build kokoro
+
 package tts
 
 import "strings"

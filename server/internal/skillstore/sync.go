@@ -12,17 +12,19 @@ import (
 	"time"
 )
 
-// SyncService handles periodic synchronization of skills from remote sources.
+// SyncService handles on-demand synchronization of skills from remote sources.
+// Sync is triggered via the /skill-store/refresh API when the user enters the Skill Store page.
 type SyncService struct {
 	store         *Store
 	httpClient    *http.Client
 	sources       map[string]*Source
 	mu            sync.RWMutex
 	stopCh        chan struct{}
-	wg            sync.WaitGroup
 	interval      time.Duration
 	logger        *slog.Logger
 	readmeFetcher *ReadmeFetcher
+	progressMu    sync.RWMutex
+	progress      map[string]*SyncProgress // in-memory progress per source
 }
 
 // Source represents a skill source configuration.
@@ -67,6 +69,7 @@ func NewSyncService(store *Store, config SyncServiceConfig, log *slog.Logger) *S
 		stopCh:   make(chan struct{}),
 		interval: config.Interval,
 		logger:   log,
+		progress: make(map[string]*SyncProgress),
 	}
 
 	// Initialize README fetcher
@@ -111,48 +114,22 @@ func (s *SyncService) GetSources() []*Source {
 	return sources
 }
 
-// Start starts the periodic sync service.
+// Start initializes the sync service (README fetcher, etc.) without auto-syncing.
+// Sync is triggered on-demand via the /skill-store/refresh API when the user enters the page.
 func (s *SyncService) Start(ctx context.Context) {
 	// Start README fetcher
 	if s.readmeFetcher != nil {
 		s.readmeFetcher.Start(ctx)
 	}
-
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.run(ctx)
-	}()
 }
 
 // Stop stops the sync service.
 func (s *SyncService) Stop() {
 	close(s.stopCh)
-	s.wg.Wait()
 
 	// Stop README fetcher
 	if s.readmeFetcher != nil {
 		s.readmeFetcher.Stop()
-	}
-}
-
-// run is the main sync loop.
-func (s *SyncService) run(ctx context.Context) {
-	// Initial sync on startup
-	s.SyncAll(ctx)
-
-	ticker := time.NewTicker(s.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.stopCh:
-			return
-		case <-ticker.C:
-			s.SyncAll(ctx)
-		}
 	}
 }
 
@@ -238,6 +215,16 @@ func (s *SyncService) ForceSyncAll(ctx context.Context) {
 // doSync performs the actual sync operation for a source.
 func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 	startTime := time.Now()
+
+	// Set in-memory progress
+	s.progressMu.Lock()
+	s.progress[source.ID] = &SyncProgress{StartedAt: startTime}
+	s.progressMu.Unlock()
+	defer func() {
+		s.progressMu.Lock()
+		delete(s.progress, source.ID)
+		s.progressMu.Unlock()
+	}()
 
 	// Update status to in_progress
 	status := &SyncStatus{
@@ -568,6 +555,13 @@ func (s *SyncService) fetchClawHubSkillsWithInsert(ctx context.Context, source *
 				// Continue to next page even if insert fails
 			} else {
 				totalCount += len(pageSkills)
+				// Update in-memory progress
+				s.progressMu.Lock()
+				if p, ok := s.progress[source.ID]; ok {
+					p.CurrentPage = page
+					p.SkillsSynced = totalCount
+				}
+				s.progressMu.Unlock()
 				if s.logger != nil {
 					s.logger.Debug("inserted page skills", "page", page, "count", len(pageSkills), "total", totalCount)
 				}
@@ -721,6 +715,13 @@ func (s *SyncService) GetAllSyncStatus(ctx context.Context) ([]*SyncStatus, erro
 			continue
 		}
 		if status != nil {
+			// Attach in-memory progress if syncing
+			s.progressMu.RLock()
+			if p, ok := s.progress[id]; ok {
+				cp := *p
+				status.Progress = &cp
+			}
+			s.progressMu.RUnlock()
 			statuses = append(statuses, status)
 		}
 	}

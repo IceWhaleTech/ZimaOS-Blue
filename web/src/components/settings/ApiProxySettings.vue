@@ -31,7 +31,6 @@ const routingRules = ref<RoutingRule[]>([])
 const togglingRule = ref<string | null>(null)
 const switchingBackend = ref(false)
 const failoverConfig = ref<FailoverConfig | null>(null)
-const togglingFailoverSub = ref<string | null>(null)
 const maskingStats = ref<MaskingStats | null>(null)
 const togglingMasking = ref(false)
 
@@ -192,27 +191,12 @@ async function toggleRule(name: string) {
   }
 }
 
-async function toggleFailoverSub(field: 'circuit_breaker' | 'context_window_check' | 'error_classification' | 'streaming_anomaly') {
-  if (!failoverConfig.value || togglingFailoverSub.value) return
-  togglingFailoverSub.value = field
-  try {
-    let update: Partial<FailoverConfig>
-    if (field === 'circuit_breaker') update = { circuit_breaker: !failoverConfig.value.circuit_breaker }
-    else if (field === 'context_window_check') update = { context_window_check: !failoverConfig.value.context_window_check }
-    else if (field === 'error_classification') update = { error_classification: { enabled: !failoverConfig.value.error_classification.enabled } }
-    else update = { streaming_anomaly: { enabled: !failoverConfig.value.streaming_anomaly.enabled } }
-    const res = await proxyApi.updateFailoverConfig(update)
-    failoverConfig.value = res.data
-  } finally { togglingFailoverSub.value = null }
-}
-
 async function toggleMasking() {
-  if (togglingMasking.value) return
+  if (togglingMasking.value || !maskingStats.value) return
   togglingMasking.value = true
   try {
-    // Toggle by adding/removing all default rules
-    const statsRes = await proxyApi.getMaskingStats()
-    maskingStats.value = statsRes.data
+    const res = await proxyApi.toggleMasking(!maskingStats.value.enabled)
+    maskingStats.value = res.data
     emit('status-change', t(maskingStats.value?.enabled ? 'apiProxy.maskingEnabled' : 'apiProxy.maskingDisabled'))
   } finally { togglingMasking.value = false }
 }
@@ -610,27 +594,16 @@ onUnmounted(stopModelPoll)
         <div class="grid grid-cols-4 gap-2 mt-3">
           <div
             v-for="sub in ([
-              { key: 'circuit_breaker', label: 'apiProxy.circuitBreaker', desc: 'apiProxy.circuitBreakerDesc', val: failoverConfig.circuit_breaker },
-              { key: 'context_window_check', label: 'apiProxy.contextWindowCheck', desc: 'apiProxy.contextWindowCheckDesc', val: failoverConfig.context_window_check },
-              { key: 'error_classification', label: 'apiProxy.errorClassification', desc: 'apiProxy.errorClassificationDesc', val: failoverConfig.error_classification?.enabled },
-              { key: 'streaming_anomaly', label: 'apiProxy.streamingAnomaly', desc: 'apiProxy.streamingAnomalyDesc', val: failoverConfig.streaming_anomaly?.enabled },
+              { key: 'circuit_breaker', label: 'apiProxy.circuitBreaker', desc: 'apiProxy.circuitBreakerDesc' },
+              { key: 'context_window_check', label: 'apiProxy.contextWindowCheck', desc: 'apiProxy.contextWindowCheckDesc' },
+              { key: 'error_classification', label: 'apiProxy.errorClassification', desc: 'apiProxy.errorClassificationDesc' },
+              { key: 'streaming_anomaly', label: 'apiProxy.streamingAnomaly', desc: 'apiProxy.streamingAnomalyDesc' },
             ] as const)"
             :key="sub.key"
             class="group relative flex flex-col items-center gap-1.5 py-2.5 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
             :title="t(sub.desc)"
           >
-            <button
-              type="button"
-              :disabled="togglingFailoverSub === sub.key"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors',
-                sub.val ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
-                togglingFailoverSub === sub.key ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-              ]"
-              @click="toggleFailoverSub(sub.key as any)"
-            >
-              <span :class="['inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform', sub.val ? 'translate-x-4' : 'translate-x-0.5']" />
-            </button>
+            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
             <span class="text-xs text-gray-600 dark:text-gray-400 text-center leading-tight">{{ t(sub.label) }}</span>
           </div>
         </div>
@@ -649,13 +622,13 @@ onUnmounted(stopModelPoll)
               &middot;
               {{ t('apiProxy.maskingMatches') }}: {{ maskingStats.total_masks }}
             </span>
-            <span
-              :class="maskingStats.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'"
-              class="flex items-center gap-1"
+            <button
+              :disabled="togglingMasking"
+              :class="['relative inline-flex h-5 w-9 items-center rounded-full transition-colors', maskingStats.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600']"
+              @click="toggleMasking"
             >
-              <span :class="['w-2 h-2 rounded-full', maskingStats.enabled ? 'bg-green-500' : 'bg-gray-400']"></span>
-              {{ maskingStats.enabled ? t('apiProxy.maskingEnabled') : t('apiProxy.maskingDisabled') }}
-            </span>
+              <span :class="['inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform', maskingStats.enabled ? 'translate-x-4' : 'translate-x-0.5']" />
+            </button>
           </div>
         </div>
       </div>

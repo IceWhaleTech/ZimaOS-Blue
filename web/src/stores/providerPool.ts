@@ -80,6 +80,16 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     try {
       const response = await providerPoolApi.listProviders()
       providers.value = response.data.providers || []
+      // Populate models from inlined provider data
+      const allModels: Model[] = []
+      for (const p of providers.value) {
+        if (p.models && p.models.length > 0) {
+          allModels.push(...p.models)
+        }
+      }
+      if (allModels.length > 0) {
+        models.value = allModels
+      }
       // Also fetch trial quota
       fetchTrialQuota()
     } catch (err) {
@@ -232,9 +242,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
-  async function testProvider(id: string) {
+  async function testProvider(id: string, keyId?: string) {
     try {
-      const response = await providerPoolApi.testProvider(id)
+      const response = await providerPoolApi.testProvider(id, keyId)
       const provider = providers.value.find(p => p.id === id)
       if (provider) {
         provider.status = response.data.healthy ? 'active' : 'error'

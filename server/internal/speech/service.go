@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 )
@@ -40,19 +42,26 @@ type Service interface {
 	SetTTSProvider(provider tts.Provider)
 	// SetASRProvider sets the ASR provider.
 	SetASRProvider(provider stt.Provider)
+	// SetASRPermissionDenied records that ASR permission was denied (e.g. macOS TCC).
+	SetASRPermissionDenied(errMsg string)
+	// SetEspeakManager sets the eSpeak manager for status reporting.
+	SetEspeakManager(em *EspeakManager)
 }
 
 // service implements the Service interface.
 type service struct {
-	sttService   stt.Service
-	ttsService   tts.Service
-	asrProvider  stt.Provider
-	ttsProvider  tts.Provider
-	config       *Config
-	initConfig   *InitConfig
-	initialized  bool
-	initializing bool
-	mu           sync.RWMutex
+	sttService       stt.Service
+	ttsService       tts.Service
+	asrProvider      stt.Provider
+	ttsProvider      tts.Provider
+	espeakManager    *EspeakManager
+	config           *Config
+	initConfig       *InitConfig
+	initialized      bool
+	initializing     bool
+	asrPermDenied    bool   // macOS STT permission denied
+	asrPermError     string // macOS STT permission error message
+	mu               sync.RWMutex
 }
 
 // NewService creates a new unified speech service.
@@ -121,12 +130,11 @@ func (s *service) Initialize() error {
 	// No direct provider creation here anymore
 
 	// Initialize ASR provider based on configuration
-	if s.config.ASR.Provider == "" {
-		if runtime.GOOS == "darwin" {
-			s.config.ASR.Provider = "macos-native"
-		} else {
-			s.config.ASR.Provider = "none"
-		}
+	// On macOS, always use native STT — whisper is not available in macOS builds
+	if runtime.GOOS == "darwin" {
+		s.config.ASR.Provider = "macos-native"
+	} else if s.config.ASR.Provider == "" {
+		s.config.ASR.Provider = "none"
 	}
 
 	// Create macOS native ASR provider if configured
@@ -134,6 +142,9 @@ func (s *service) Initialize() error {
 		macosSTT := NewMacOSNativeSTT()
 		if err := macosSTT.Initialize(); err == nil {
 			s.asrProvider = macosSTT
+		} else {
+			s.asrPermDenied = true
+			s.asrPermError = err.Error()
 		}
 	}
 
@@ -170,6 +181,11 @@ func (s *service) IsInitialized() bool {
 
 // GetStatus returns the unified speech status.
 func (s *service) GetStatus() *StatusResponse {
+	// Ensure services are initialized so permission/readiness state is accurate
+	if !s.IsInitialized() && s.initConfig != nil {
+		_ = s.Initialize()
+	}
+
 	resp := &StatusResponse{
 		TTS: TTSStatus{
 			Ready:    false,
@@ -187,7 +203,33 @@ func (s *service) GetStatus() *StatusResponse {
 		resp.TTS.Provider = s.config.TTS.Provider
 		if s.ttsProvider != nil {
 			resp.TTS.Ready = true
-			resp.TTS.ModelType = s.ttsProvider.Name()
+			resp.TTS.ModelName = s.ttsProvider.Name()
+		}
+	}
+
+	// Populate available TTS providers from the TTS service
+	hasEspeak := false
+	if s.ttsService != nil {
+		for _, pt := range s.ttsService.ListProviders() {
+			name := string(pt)
+			resp.TTS.AvailableProviders = append(resp.TTS.AvailableProviders, name)
+			if name == "espeak-ng" {
+				hasEspeak = true
+			}
+		}
+
+		// Populate TTS component download statuses (Kokoro, Vocoder)
+		resp.TTS.Components = s.getTTSComponentStatuses()
+	}
+
+	// Populate eSpeak status only when espeak-ng is an available provider
+	if hasEspeak && s.espeakManager != nil {
+		resp.Espeak = &EspeakStatus{
+			Installed:     s.espeakManager.IsLibraryInstalled(),
+			Path:          s.espeakManager.GetLibraryPath(),
+			LanguageCount: s.espeakManager.LanguageCount(),
+			DataSize:      s.espeakManager.GetDataSize(),
+			StaticLinked:  true,
 		}
 	}
 
@@ -196,16 +238,16 @@ func (s *service) GetStatus() *StatusResponse {
 		resp.ASR.Provider = s.config.ASR.Provider
 		if s.asrProvider != nil {
 			resp.ASR.Ready = true
-			resp.ASR.ModelType = string(s.asrProvider.Type())
+			resp.ASR.ModelName = string(s.asrProvider.Type())
 
 			// Get download status from Whisper provider
 			if whisperProvider, ok := s.asrProvider.(*stt.WhisperProvider); ok {
 				status := whisperProvider.GetModelStatus()
 				resp.ASR.Downloading = status.Downloading
 				resp.ASR.HasPending = status.HasPending
-				// Use the actual model type from status (e.g., "whisper-tiny")
+				// Use the actual model name from status (e.g., "whisper-tiny")
 				if status.ModelType != "" {
-					resp.ASR.ModelType = status.ModelType
+					resp.ASR.ModelName = status.ModelType
 				}
 				if status.Downloading && status.Progress != nil {
 					// Add to downloads list
@@ -220,8 +262,7 @@ func (s *service) GetStatus() *StatusResponse {
 							ETA:        status.Progress.ETA,
 						},
 					}}
-					// Keep backward compatibility
-					resp.ASR.ModelType = status.ModelType
+					resp.ASR.ModelName = status.ModelType
 					resp.ASR.Progress = &Progress{
 						File:       status.Progress.File,
 						Downloaded: status.Progress.Downloaded,
@@ -235,7 +276,140 @@ func (s *service) GetStatus() *StatusResponse {
 		}
 	}
 
+	// Report macOS permission denied state
+	if s.asrPermDenied {
+		resp.ASR.PermissionDenied = true
+		resp.ASR.PermissionError = s.asrPermError
+		resp.ASR.PermissionAppName = GetTCCAppName()
+	}
+
+	// Report macOS on-device status
+	if s.asrProvider != nil {
+		if macosSTT, ok := s.asrProvider.(*MacOSNativeSTT); ok {
+			resp.ASR.OnDeviceSupported = macosSTT.SupportsOnDevice()
+			resp.ASR.OnDeviceOnly = macosSTT.RequireOnDevice()
+			resp.ASR.DictationAvailable = macosSTT.DictationAvailable()
+			// OfflineLanguages fetched separately via /asr/offline-languages
+		}
+	}
+
+	// Populate ASR models
+	resp.ASR.Models = s.listASRModels(resp)
+
+	// Populate TTS models
+	resp.TTS.Models = s.listTTSModels()
+
 	return resp
+}
+
+// listASRModels returns ASR models for the status response.
+// On macOS, only the native model is returned; otherwise whisper models.
+func (s *service) listASRModels(st *StatusResponse) []interface{} {
+	isMacOS := runtime.GOOS == "darwin"
+	isMacOSProvider := st.ASR.Provider == "macos-native"
+	if isMacOS || isMacOSProvider {
+		model := map[string]interface{}{
+			"id":          "macos-native",
+			"name":        "speech.macosNativeName",
+			"description": "speech.macosNativeDesc",
+			"size":        "",
+			"downloaded":  true,
+			"active":      s.asrProvider != nil && s.asrProvider.Type() == ProviderMacOSNative,
+		}
+		if st.ASR.PermissionDenied {
+			model["permission_denied"] = true
+			model["active"] = false
+		}
+		return []interface{}{model}
+	}
+
+	// Whisper models
+	if s.asrProvider != nil {
+		if lister, ok := s.asrProvider.(interface{ ListModels() []interface{} }); ok {
+			return lister.ListModels()
+		}
+	}
+	// Fallback: available whisper models from metadata
+	models := make([]interface{}, 0, len(stt.GetAvailableASRModels()))
+	for _, m := range stt.GetAvailableASRModels() {
+		models = append(models, m)
+	}
+	return models
+}
+
+// listTTSModels returns TTS models for the status response.
+func (s *service) listTTSModels() []interface{} {
+	if s.ttsProvider != nil {
+		if lister, ok := s.ttsProvider.(interface{ ListModels() []interface{} }); ok {
+			return lister.ListModels()
+		}
+	}
+	return []interface{}{}
+}
+
+// getTTSComponentStatuses returns download/readiness status for TTS components
+// (Kokoro model, vocoder) so the frontend can poll a single /speech/status endpoint.
+// Components that are not compiled in are omitted entirely.
+func (s *service) getTTSComponentStatuses() map[string]*ComponentDownloadStatus {
+	if s.ttsService == nil {
+		return nil
+	}
+	components := make(map[string]*ComponentDownloadStatus)
+
+	// Kokoro status
+	raw := s.ttsService.GetKokoroStatus()
+	kokoro := &ComponentDownloadStatus{}
+	if v, ok := raw["ready"].(bool); ok {
+		kokoro.Ready = v
+	}
+	if v, ok := raw["downloading"].(bool); ok {
+		kokoro.Downloading = v
+	}
+	if v, ok := raw["error"].(string); ok {
+		kokoro.Error = v
+	}
+	if v, ok := raw["init_stage"].(string); ok {
+		kokoro.InitStage = v
+	}
+	if p, ok := raw["progress"].(*downloader.DownloadProgress); ok && p != nil {
+		kokoro.Progress = p.Percentage
+		kokoro.Speed = p.SpeedHuman
+		kokoro.ETA = p.ETA
+		kokoro.File = p.File
+		kokoro.FileIndex = p.FileIndex
+		kokoro.TotalFiles = p.TotalFiles
+		kokoro.DownloadedSize = p.DownloadedHuman
+	}
+	if !isNotCompiledIn(kokoro.Error) {
+		components["kokoro"] = kokoro
+	}
+
+	// Vocoder status
+	rawV := s.ttsService.GetVocoderStatus()
+	vocoder := &ComponentDownloadStatus{}
+	if v, ok := rawV["ready"].(bool); ok {
+		vocoder.Ready = v
+	}
+	if v, ok := rawV["downloading"].(bool); ok {
+		vocoder.Downloading = v
+	}
+	if v, ok := rawV["error"].(string); ok {
+		vocoder.Error = v
+	}
+	if !isNotCompiledIn(vocoder.Error) {
+		components["vocoder"] = vocoder
+	}
+
+	if len(components) == 0 {
+		return nil
+	}
+	return components
+}
+
+// isNotCompiledIn returns true if the error string indicates the component
+// was not compiled into this binary (e.g. "not compiled in").
+func isNotCompiledIn(errMsg string) bool {
+	return strings.Contains(errMsg, "not compiled in")
 }
 
 // GetModels returns all available models.
@@ -297,11 +471,14 @@ func (s *service) IsEditBeforeSendEnabled() bool {
 	return s.config.ASR.EditBeforeSend
 }
 
-// SetASRProvider sets the ASR provider.
+// SetASRProvider sets the ASR provider and updates the config to match.
 func (s *service) SetASRProvider(provider stt.Provider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.asrProvider = provider
+	if provider != nil {
+		s.config.ASR.Provider = string(provider.Type())
+	}
 }
 
 // SetTTSProvider sets the TTS provider.
@@ -309,6 +486,21 @@ func (s *service) SetTTSProvider(provider tts.Provider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ttsProvider = provider
+}
+
+// SetASRPermissionDenied records that ASR permission was denied.
+func (s *service) SetASRPermissionDenied(errMsg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asrPermDenied = true
+	s.asrPermError = errMsg
+}
+
+// SetEspeakManager sets the eSpeak manager for status reporting.
+func (s *service) SetEspeakManager(em *EspeakManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.espeakManager = em
 }
 
 // Transcribe transcribes audio using the configured ASR provider.

@@ -11,6 +11,8 @@ export interface ASRModel {
   streaming: boolean
   downloaded: boolean
   active: boolean
+  permission_denied?: boolean
+  recommended?: boolean
 }
 
 // TTS Model types
@@ -21,28 +23,6 @@ export interface TTSModel {
   languages: string[]
   size: string
   downloaded: boolean
-}
-
-export interface ASRStatus {
-  ready: boolean
-  model_dir: string
-  model_type: string
-  streaming_supported: boolean
-  downloading: boolean
-  progress?: DownloadProgress
-  has_pending: boolean
-  pending_model?: string
-  saved_progress?: DownloadProgress
-}
-
-export interface TTSStatus {
-  ready: boolean
-  model_dir: string
-  model_type: string
-  downloading: boolean
-  progress?: DownloadProgress
-  has_pending: boolean
-  pending_model?: string
 }
 
 export interface DownloadProgress {
@@ -63,70 +43,66 @@ export interface TranscriptionResult {
   session_id?: string
 }
 
+export interface ComponentDownloadStatus {
+  ready: boolean
+  downloading: boolean
+  progress: number
+  error?: string
+  init_stage?: string
+  speed?: string
+  eta?: string
+  file?: string
+  file_index?: number
+  total_files?: number
+  downloaded_human?: string
+}
+
 export interface SpeechStatus {
   tts: {
     ready: boolean
     provider: string
-    model_type?: string
+    model_name?: string
     downloading?: boolean
     progress?: DownloadProgress
+    available_providers?: string[]
+    models: TTSModel[]
+    components?: Record<string, ComponentDownloadStatus>
   }
   asr: {
     ready: boolean
     provider: string
-    model_type?: string
+    model_name?: string
     streaming_supported: boolean
     edit_before_send: boolean
     downloading: boolean
     progress?: DownloadProgress
     has_pending: boolean
+    permission_denied?: boolean
+    permission_error?: string
+    permission_app_name?: string
+    downloads?: { model_type: string; progress: DownloadProgress }[]
+    on_device_supported?: boolean
+    on_device_only?: boolean
+    dictation_available?: boolean
+    offline_languages?: string[]
+    models: ASRModel[]
+  }
+  espeak?: {
+    installed: boolean
+    path?: string
+    language_count: number
+    data_size: number
+    static_linked: boolean
   }
 }
 
-export interface SpeechModels {
-  tts: ModelInfo[]
-  asr: ModelInfo[]
-}
-
-export interface ModelInfo {
-  id: string
-  name: string
-  description: string
-  type: 'tts' | 'asr'
-  languages?: string[]
-  size: string
-  streaming?: boolean
-  downloaded: boolean
-}
-
-export interface EspeakLanguagePack {
-  code: string
-  name: string
-  downloaded: boolean
-  size: number // actual file size in bytes
-}
-
-export interface EspeakLibraryStatus {
-  installed: boolean
-  path: string
-  language_count: number
-  data_size: number
-  static_linked: boolean
-}
 
 // Speech API
 export const speechApi = {
-  // Unified status
+  // Unified status (includes models in asr.models / tts.models)
   getStatus: () => api.get<SpeechStatus>('/speech/status'),
 
-  // Unified models
-  getModels: () => api.get<SpeechModels>('/speech/models'),
-
   // ASR model management
-  getASRStatus: () => api.get<ASRStatus>('/speech/asr/status'),
-
-  listASRModels: () => api.get<{ models: ASRModel[] }>('/speech/asr/models'),
-
   downloadASRModel: (modelType: string) =>
     api.post<{ status: string; message: string }>('/speech/asr/download', { model_type: modelType }),
 
@@ -136,23 +112,13 @@ export const speechApi = {
   switchASRModel: (modelType: string) =>
     api.post<{ status: string; message: string }>('/speech/asr/switch', { model_type: modelType }),
 
-  deleteASRModel: (modelType?: string) =>
-    api.delete<{ status: string; message: string }>(`/speech/asr/model${modelType ? `?model_type=${modelType}` : ''}`),
+  setASROnDevice: (onDeviceOnly: boolean) =>
+    api.post<{ on_device_only: boolean; on_device_supported: boolean; dictation_available?: boolean; error?: string }>('/speech/asr/on-device', { on_device_only: onDeviceOnly }),
 
-  // TTS model management (Sherpa) - unified under /speech/tts/*
-  getTTSStatus: () => api.get<TTSStatus>('/speech/tts/status'),
+  getOfflineLanguages: () =>
+    api.get<{ offline_languages: string[] }>('/speech/asr/offline-languages'),
 
-  listTTSModels: () => api.get<{ models: TTSModel[] }>('/speech/tts/models'),
-
-  downloadTTSModel: (modelType: string) =>
-    api.post<{ status: string; message: string }>('/speech/tts/download', { model_type: modelType }),
-
-  switchTTSModel: (modelType: string) =>
-    api.post<{ status: string; message: string }>('/speech/tts/switch', { model_type: modelType }),
-
-  deleteTTSModel: (modelType?: string) =>
-    api.delete<{ status: string; message: string }>(`/speech/tts/model${modelType ? `?model_type=${modelType}` : ''}`),
-
+  // TTS provider management
   switchTTSProvider: (provider: string) =>
     api.post<{ status: string; message: string; provider: string }>('/speech/tts/provider', { provider }),
 
@@ -162,7 +128,7 @@ export const speechApi = {
   setTTSConfig: (speed: number, pitch: number, volume: number) =>
     api.post<{ status: string; speed: number; pitch: number; volume: number }>('/speech/tts/config', { speed, pitch, volume }),
 
-  // Transcription with edit support
+  // Transcription
   transcribe: async (audio: Blob, format: string, language?: string): Promise<TranscriptionResult> => {
     const formData = new FormData()
     formData.append('audio', audio, `audio.${format}`)
@@ -171,52 +137,50 @@ export const speechApi = {
       formData.append('language', language)
     }
 
-    const response = await authFetch('/api/v1/speech/transcribe', {
-      method: 'POST',
-      body: formData,
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20000)
+
+    let response: Response
+    try {
+      response = await authFetch('/api/v1/speech/transcribe', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+    } catch (e: any) {
+      clearTimeout(timer)
+      if (e.name === 'AbortError') {
+        const err = new Error('Transcription timed out') as any
+        err.error_code = 'timeout'
+        throw err
+      }
+      throw e
+    }
+    clearTimeout(timer)
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Transcription failed')
+      const errorData = await response.json()
+      const err = new Error(errorData.error || 'Transcription failed') as any
+      err.error_code = errorData.error_code
+      throw err
     }
 
     return response.json()
   },
 
-  // Confirm edited transcription
-  confirmTranscription: (sessionId: string, text: string) =>
-    api.post<{ status: string; text: string }>('/speech/confirm', {
-      session_id: sessionId,
-      text,
-    }),
-
-  // Kokoro model management
-  getKokoroStatus: () =>
-    api.get<{ ready: boolean; downloading: boolean; progress?: number; error?: string; init_stage?: string; speed?: string; eta?: string; file?: string; file_index?: number; total_files?: number; downloaded_human?: string }>('/speech/kokoro/status'),
-
+  // Kokoro model management (status via unified /speech/status components)
   downloadKokoro: () =>
-    api.post<{ status: string; message: string }>('/speech/kokoro/download'),
+    api.post<{ status: string; message: string }>('/speech/tts/kokoro/download'),
 
   cancelKokoroDownload: () =>
-    api.post<{ status: string; message: string }>('/speech/kokoro/download/cancel'),
+    api.post<{ status: string; message: string }>('/speech/tts/kokoro/download/cancel'),
 
-  // eSpeak-NG status (engine is statically linked, data detected at runtime)
-  listEspeakLanguages: () =>
-    api.get<{ languages: EspeakLanguagePack[]; count: number }>('/speech/espeak/languages'),
-
-  getEspeakLibraryStatus: () =>
-    api.get<EspeakLibraryStatus>('/speech/espeak/library/status'),
-
-  // Vocoder (HiFi-GAN) management
-  getVocoderStatus: () =>
-    api.get<{ ready: boolean; downloading: boolean; progress?: DownloadProgress; error?: string }>('/speech/vocoder/status'),
-
+  // Vocoder (HiFi-GAN) management (status via unified /speech/status components)
   downloadVocoder: () =>
-    api.post<{ status: string; message: string }>('/speech/vocoder/download'),
+    api.post<{ status: string; message: string }>('/speech/tts/vocoder/download'),
 
   cancelVocoderDownload: () =>
-    api.post<{ status: string; message: string }>('/speech/vocoder/download/cancel'),
+    api.post<{ status: string; message: string }>('/speech/tts/vocoder/download/cancel'),
 
   // TTS synthesis
   synthesize: async (text: string): Promise<{ audio: string; content_type: string }> => {

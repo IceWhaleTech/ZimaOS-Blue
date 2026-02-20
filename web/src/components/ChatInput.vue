@@ -50,10 +50,6 @@ const voiceMode = ref(false)
 const isTouchDevice = ref(false)
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
-// Transcription popup state
-const showTranscriptionPopup = ref(false)
-const transcribedText = ref('')
-
 // Image preview state
 const showImagePreview = ref(false)
 const previewImageSrc = ref('')
@@ -282,6 +278,14 @@ function handleSend() {
   }
 }
 
+function clearMessage() {
+  message.value = ''
+  if (textareaRef.value) {
+    textareaRef.value.style.height = 'auto'
+    textareaRef.value.focus()
+  }
+}
+
 function handleCancel() {
   emit('cancel')
 }
@@ -315,8 +319,14 @@ function getFileIcon(type: string): string {
 // Voice recording functions
 async function checkASRModelReady(): Promise<boolean> {
   try {
-    const res = await speechApi.getASRStatus()
-    return res.data?.ready ?? false
+    const res = await speechApi.getStatus()
+    // Check for macOS permission denied
+    if (res.data?.asr?.permission_denied) {
+      const appName = res.data.asr.permission_app_name || 'Terminal'
+      voiceError.value = t('speech.macosNativePermissionToast', { appName })
+      return false
+    }
+    return res.data?.asr?.ready ?? false
   } catch {
     return true // Assume ready if check fails
   }
@@ -328,7 +338,10 @@ async function startRecording() {
   // Check if ASR model is ready
   const ready = await checkASRModelReady()
   if (!ready) {
-    showASRDownloadPrompt.value = true
+    // If voiceError was set (e.g. permission denied), don't show download prompt
+    if (!voiceError.value) {
+      showASRDownloadPrompt.value = true
+    }
     return
   }
 
@@ -347,23 +360,31 @@ async function startRecording() {
       const lang = localeStore.currentLocale.split('-')[0]
       const response = await voiceApi.transcribe(wavBlob, 'wav', lang)
       if (response.data.text) {
-        // In compact voice mode, show transcription popup for editing
+        // In compact voice mode, exit voice mode so textarea becomes visible
         if (isCompact.value && voiceMode.value) {
-          transcribedText.value = response.data.text
-          showTranscriptionPopup.value = true
-        } else {
-          // Desktop: append to message directly
-          if (message.value.trim()) {
-            message.value += ' ' + response.data.text
-          } else {
-            message.value = response.data.text
-          }
-          handleInput()
+          voiceMode.value = false
         }
+        // Append transcribed text to message textarea
+        if (message.value.trim()) {
+          message.value += ' ' + response.data.text
+        } else {
+          message.value = response.data.text
+        }
+        handleInput()
+        // Focus textarea so user can edit or press Enter to send
+        nextTick(() => textareaRef.value?.focus())
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transcription error:', error)
-      voiceError.value = t('chat.voiceTranscriptionError')
+      const errorCode = error?.response?.data?.error_code
+      if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+        voiceError.value = t('chat.voiceTranscriptionTimeout')
+      } else if (errorCode === 'on_device_unavailable') {
+        voiceError.value = t('speech.onDeviceUnavailableError')
+      } else {
+        const serverMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message
+        voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+      }
     } finally {
       isTranscribing.value = false
       recorder.value = null
@@ -441,21 +462,6 @@ function handleVoiceClick() {
   toggleRecording()
 }
 
-// Transcription popup handlers
-function confirmTranscription() {
-  if (transcribedText.value.trim()) {
-    emit('send', transcribedText.value.trim(), [...attachments.value])
-    attachments.value = []
-  }
-  showTranscriptionPopup.value = false
-  transcribedText.value = ''
-}
-
-function cancelTranscription() {
-  showTranscriptionPopup.value = false
-  transcribedText.value = ''
-}
-
 // Cleanup on unmount
 onUnmounted(() => {
   if (recorder.value) {
@@ -502,6 +508,11 @@ function handleMobileCamera() {
 function handleMobileVoice() {
   showMobileMenu.value = false
   toggleRecording()
+}
+
+function handleMobileVoiceToggle() {
+  showMobileMenu.value = false
+  toggleVoiceMode()
 }
 
 function handleMobileTalkMode() {
@@ -704,21 +715,20 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
             </button>
 
             <button
-              :disabled="disabled || streaming || isTranscribing"
-              class="w-full px-4 py-3 flex items-center gap-3 transition-colors disabled:opacity-50"
-              :class="isRecording
-                ? 'bg-red-500/20 text-red-400'
-                : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10'"
-              @click="handleMobileVoice"
+              :disabled="disabled || streaming"
+              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+              @click="handleMobileVoiceToggle"
             >
-              <svg v-if="isTranscribing" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <!-- Text cursor icon when in voice mode (switch to text) -->
+              <svg v-if="voiceMode" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <rect x="4" y="3" width="16" height="18" rx="2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 7h4m-2 0v10m-2 0h4" />
               </svg>
+              <!-- Mic icon when in text mode (switch to voice) -->
               <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
-              <span class="text-sm">{{ isRecording ? t('chat.stopRecording') : t('chat.startRecording') }}</span>
+              <span class="text-sm">{{ voiceMode ? t('chat.switchToKeyboard') : t('chat.switchToVoice') }}</span>
             </button>
 
             <button
@@ -740,7 +750,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
       <button
         v-if="!isCompact"
         :disabled="disabled || streaming"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.attachFile')"
         @click="openFileDialog"
       >
@@ -764,7 +774,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
       <button
         v-if="!isCompact"
         :disabled="disabled || streaming"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.takePhoto')"
         @click="openCameraDialog"
       >
@@ -794,7 +804,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
       <button
         v-if="!isCompact"
         :disabled="disabled || streaming || isTranscribing"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        class="flex-shrink-0 w-10 h-10 rounded-xl glass-card flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :class="isRecording
           ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
           : 'text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10'"
@@ -832,7 +842,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
       <button
         v-if="!isCompact"
         :disabled="disabled || streaming"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         :title="t('chat.talkMode.title')"
         @click="$emit('openTalkMode')"
       >
@@ -849,24 +859,6 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
             stroke-width="2"
             d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
           />
-        </svg>
-      </button>
-
-      <!-- Compact: Voice/Keyboard toggle button -->
-      <button
-        v-if="isCompact"
-        :disabled="disabled || streaming"
-        class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        :title="voiceMode ? t('chat.switchToKeyboard') : t('chat.switchToVoice')"
-        @click="toggleVoiceMode"
-      >
-        <!-- Keyboard icon when in voice mode -->
-        <svg v-if="voiceMode" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h.01M15 9h.01M9 13h.01M15 13h.01M12 9h.01M12 13h.01" />
-        </svg>
-        <!-- Mic icon when in keyboard mode -->
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
         </svg>
       </button>
 
@@ -907,18 +899,28 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
           v-model="message"
           :disabled="disabled || streaming"
           :placeholder="placeholder"
-          class="w-full glass-input text-gray-900 dark:text-white px-3 py-1.5 sm:px-4 sm:py-2 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+          class="chat-textarea w-full glass-input text-gray-900 dark:text-white px-3 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
           rows="1"
           @keydown="handleKeydown"
           @input="handleInput"
           @paste="handlePaste"
         />
+        <button
+          v-if="message.length > 0"
+          class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors cursor-pointer"
+          title="Clear"
+          @click="clearMessage"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
       <!-- Send/Cancel button -->
       <button
         v-if="streaming"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
+        class="flex-shrink-0 w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
         :title="t('common.cancel')"
         @click="handleCancel"
       >
@@ -941,7 +943,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
       <button
         v-else
         :disabled="!canSend"
-        class="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
+        class="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
         :title="t('chat.send')"
         @click="handleSend"
       >
@@ -985,53 +987,6 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
       <span>{{ t('chat.recording') }}</span>
     </div>
 
-    <!-- Transcription popup (compact voice mode) -->
-    <Transition
-      enter-active-class="transition ease-out duration-200"
-      enter-from-class="opacity-0 translate-y-2"
-      enter-to-class="opacity-100 translate-y-0"
-      leave-active-class="transition ease-in duration-150"
-      leave-from-class="opacity-100 translate-y-0"
-      leave-to-class="opacity-0 translate-y-2"
-    >
-      <div
-        v-if="showTranscriptionPopup"
-        class="mt-3 glass-card rounded-xl p-3 border border-white/10"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-sm font-medium text-gray-700 dark:text-slate-200">{{ t('chat.transcription.title') }}</span>
-          <button
-            class="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
-            @click="cancelTranscription"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <textarea
-          v-model="transcribedText"
-          class="w-full glass-input text-gray-900 dark:text-white px-3 py-2 resize-none text-sm rounded-lg"
-          rows="3"
-          @keydown.enter.ctrl.prevent="confirmTranscription"
-          @keydown.enter.meta.prevent="confirmTranscription"
-          @keydown.esc="cancelTranscription"
-        />
-        <div class="flex justify-end mt-2">
-          <button
-            :disabled="!transcribedText.trim()"
-            class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm flex items-center gap-1.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
-            @click="confirmTranscription"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-            {{ t('chat.send') }}
-          </button>
-        </div>
-      </div>
-    </Transition>
-
     </div>
   </div>
 </template>
@@ -1057,15 +1012,22 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
 }
 
 textarea {
-  min-height: 40px;
   max-height: 200px;
   border-radius: var(--radius-lg);
+  box-sizing: border-box;
 }
 
-@media (min-width: 640px) {
-  textarea {
-    min-height: 44px;
-  }
+.chat-textarea {
+  height: 40px;
+  min-height: 40px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  line-height: 20px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  margin: 0;
+  display: block;
+  vertical-align: top;
 }
 
 textarea::-webkit-scrollbar {

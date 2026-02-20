@@ -818,6 +818,20 @@ export default {
     selectProvider: 'Roghnaigh soláthraí chun sonraí a fheiceáil',
     testSuccess: 'Nasc rathúil',
     testFailed: 'Theip ar an nasc',
+    configure: 'Cumraigh',
+    baseUrlNotConfigured: 'URL bonn gan chumrú — cliceáil Cumraigh chun é a shocrú',
+    healthErrors: {
+      authError: 'Theip ar fhíordheimhniú (HTTP {code}) — seiceáil d\'eochair API le do thoil',
+      baseUrlNotConfigured: 'URL bonn gan chumrú — socraigh URL an endpoint le do thoil',
+      baseUrlNotConfiguredAzure: 'Endpoint Azure OpenAI gan chumrú — cliceáil Cumraigh thuas chun URL an endpoint a shocrú',
+      baseUrlNotConfiguredBedrock: 'Endpoint AWS Bedrock gan chumrú — cliceáil Cumraigh thuas chun URL an endpoint a shocrú',
+      networkError: 'Theip ar nasc líonra — seiceáil an URL agus do líonra le do thoil',
+      certificateError: 'Earráid teastais TLS — cumasaigh \"Scipeáil Fíorú TLS\" nó seiceáil an teastas',
+      timeoutError: 'Am nasc istigh — d\'fhéadfadh an freastalaí a bheith síos nó dorochtana',
+      connectionError: 'Theip ar nasc — fíoraigh URL an tsoláthraí le do thoil',
+      endpointNotFound: 'Endpoint seiceála sláinte gan aimsiú (HTTP 404)',
+      unexpectedStatus: 'Freagra gan choinne (HTTP {code})',
+    },
   },
   preview: {
     createAccount: 'Cruthaigh cuntas',
@@ -919,6 +933,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    responseInterrupted: 'Cuireadh isteach ar an bhfreagra',
     trialExhausted: 'Tá an cuóta triail ídithe. Cuir do sholáthraí AI féin i bhfeidhm le leanúint ar aghaidh.',
     trialServiceBusy: 'Tá an tseirbhís triail gnóthach faoi láthair mar gheall ar éileamh ard. Bain triail eile as i gceann nóiméid. Má leanann sé seo, tabhair cuairt ar ár bpobal le haghaidh cabhrach.',
     configureProvider: 'Cumraigh Soláthraí',
@@ -937,6 +952,7 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Failed to transcribe audio',
+    voiceTranscriptionTimeout: 'Tháinig an tras-scríobh as am. D\'fhéadfadh an taifeadadh a bheith ró-fhada nó go bhfuil an freastalaí gnóthach, bain triail eile as.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Could not access microphone',
     dismiss: 'Dismiss',
@@ -976,6 +992,11 @@ export default {
     noSkillsAvailable: 'Níl aon scileanna ar fáil faoi láthair',
     clearSearch: 'Glan cuardach',
     allLoaded: 'Gach {count} scil luchtaithe',
+    status: {
+      ...enUS.skillStore.status,
+      syncing: 'Siopa scileanna á shioncronú...',
+      skillsSynced: '{count} scileanna sioncronaithe',
+    },
   },
 
   authProviders: {
@@ -1314,7 +1335,13 @@ export default {
     langName: { 'en-US': 'Béarla (SAM)', 'en-GB': 'Béarla (RA)', 'ja-JP': 'Seapáinis', 'zh-CN': 'Sínis (Shimplithe)', 'es-ES': 'Spáinnis', 'fr-FR': 'Fraincis', 'hi-IN': 'Hiondúis', 'it-IT': 'Iodáilis', 'pt-BR': 'Portaingéilis (An Bhrasaíl)' },
     ttsProvider: 'Soláthraí TTS', edgeTTSName: 'Microsoft Edge TTS', edgeTTSQuality: 'Nádúrtha', espeakNGQuality: 'As líne',
     espeakDepLib: 'Inneall eSpeak-NG + sonraí teanga', espeakLangs: 'teangacha', espeakNeedRebuild: 'Níor aimsíodh sonraí eSpeak-NG. Atóg le clib espeak.',
-    macosNativeName: 'macOS Dúchasach', macosNativeDesc: 'Sintéis cainte macOS ionsuite (as líne, gan íoslódáil)', macosNativeSTTDesc: 'Aithint cainte macOS ionsuite (as líne, gan íoslódáil)', macosNativeQuality: 'Maith',
+    macosNativeName: 'macOS Dúchasach', macosNativeDesc: 'Sintéis cainte macOS ionsuite (as líne, gan íoslódáil)', macosNativeSTTDesc: 'Aithint cainte macOS ionsuite (as líne, gan íoslódáil)', macosNativeQuality: 'Sármhaith',
+    macosNativeOnDeviceOnly: 'Gléas amháin',
+    macosNativeOnDeviceDesc: 'Cuir iallach ar aithint ar an ngléas (ní sheoltar sonraí chuig freastalaithe Apple)',
+    macosNativeOnDeviceUnsupported: 'Níl an múnla ar an ngléas ar fáil don teanga reatha',
+    dictationDisabledGuide: 'Níl an deachtú cumasaithe. Teastaíonn deachtú le haghaidh aithint ar an ngléas. Téigh go Socruithe Córais > Méarchlár > Deachtú chun é a chumasú.',
+    recheckDictation: 'Athsheiceáil',
+    onDeviceUnavailableError: 'Níl aithint ar an ngléas ar fáil. Cumasaigh deachtú i Socruithe Córais > Méarchlár > Deachtú, nó díchumasaigh an mód "Gléas amháin".',
     noModelsAvailable: 'Níl múnlaí ar fáil ón soláthraí seo',
     asrTab: 'Aithint Cainte (ASR)', ttsTab: 'Téacs go Cainte (TTS)',
     prompt: {

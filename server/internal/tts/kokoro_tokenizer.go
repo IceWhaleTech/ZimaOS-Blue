@@ -1,3 +1,5 @@
+//go:build kokoro
+
 package tts
 
 // KokoroTokenizer tokenizes phoneme text for Kokoro ONNX model.

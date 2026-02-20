@@ -818,6 +818,20 @@ export default {
     selectProvider: 'Επιλέξτε προμηθευτή για λεπτομέρειες',
     testSuccess: 'Η σύνδεση πέτυχε',
     testFailed: 'Η σύνδεση απέτυχε',
+    configure: 'Ρύθμιση',
+    baseUrlNotConfigured: 'Το βασικό URL δεν έχει ρυθμιστεί — κάντε κλικ στο Ρύθμιση για να το ορίσετε',
+    healthErrors: {
+      authError: 'Η πιστοποίηση απέτυχε (HTTP {code}) — ελέγξτε το κλειδί API σας',
+      baseUrlNotConfigured: 'Το βασικό URL δεν έχει ρυθμιστεί — ορίστε το URL του τελικού σημείου',
+      baseUrlNotConfiguredAzure: 'Το τελικό σημείο Azure OpenAI δεν έχει ρυθμιστεί — κάντε κλικ στο Ρύθμιση παραπάνω για να ορίσετε το URL του τελικού σημείου',
+      baseUrlNotConfiguredBedrock: 'Το τελικό σημείο AWS Bedrock δεν έχει ρυθμιστεί — κάντε κλικ στο Ρύθμιση παραπάνω για να ορίσετε το URL του τελικού σημείου',
+      networkError: 'Η σύνδεση δικτύου απέτυχε — ελέγξτε το URL και τη σύνδεση δικτύου σας',
+      certificateError: 'Σφάλμα πιστοποιητικού TLS — ενεργοποιήστε «Παράλειψη επαλήθευσης TLS» ή ελέγξτε το πιστοποιητικό',
+      timeoutError: 'Λήξη χρονικού ορίου σύνδεσης — ο διακομιστής μπορεί να είναι εκτός λειτουργίας ή μη προσβάσιμος',
+      connectionError: 'Η σύνδεση απέτυχε — επαληθεύστε το URL του παρόχου',
+      endpointNotFound: 'Το τελικό σημείο ελέγχου υγείας δεν βρέθηκε (HTTP 404)',
+      unexpectedStatus: 'Μη αναμενόμενη απάντηση (HTTP {code})',
+    },
   },
   preview: {
     createAccount: 'Δημιουργία λογαριασμού',
@@ -981,7 +995,13 @@ export default {
     langName: { 'en-US': 'Αγγλικά (ΗΠΑ)', 'en-GB': 'Αγγλικά (ΗΒ)', 'ja-JP': 'Ιαπωνικά', 'zh-CN': 'Κινεζικά (Απλοποιημένα)', 'es-ES': 'Ισπανικά', 'fr-FR': 'Γαλλικά', 'hi-IN': 'Χίντι', 'it-IT': 'Ιταλικά', 'pt-BR': 'Πορτογαλικά (Βραζιλία)' },
     ttsProvider: 'Πάροχος TTS', edgeTTSName: 'Microsoft Edge TTS', edgeTTSQuality: 'Φυσικό', espeakNGQuality: 'Εκτός σύνδεσης',
     espeakDepLib: 'Μηχανή eSpeak-NG + γλωσσικά δεδομένα', espeakLangs: 'γλώσσες', espeakNeedRebuild: 'Τα δεδομένα eSpeak-NG δεν βρέθηκαν. Ξαναχτίστε με την ετικέτα espeak.',
-    macosNativeName: 'macOS Εγγενές', macosNativeDesc: 'Ενσωματωμένη σύνθεση ομιλίας macOS (εκτός σύνδεσης, χωρίς λήψη)', macosNativeSTTDesc: 'Ενσωματωμένη αναγνώριση ομιλίας macOS (εκτός σύνδεσης, χωρίς λήψη)', macosNativeQuality: 'Καλό',
+    macosNativeName: 'macOS Εγγενές', macosNativeDesc: 'Ενσωματωμένη σύνθεση ομιλίας macOS (εκτός σύνδεσης, χωρίς λήψη)', macosNativeSTTDesc: 'Ενσωματωμένη αναγνώριση ομιλίας macOS (εκτός σύνδεσης, χωρίς λήψη)', macosNativeQuality: 'Εξαιρετικό',
+    macosNativeOnDeviceOnly: 'Μόνο στη συσκευή',
+    macosNativeOnDeviceDesc: 'Εξαναγκασμός αναγνώρισης στη συσκευή (δεν αποστέλλονται δεδομένα στους διακομιστές της Apple)',
+    macosNativeOnDeviceUnsupported: 'Το μοντέλο στη συσκευή δεν είναι διαθέσιμο για την τρέχουσα γλώσσα',
+    dictationDisabledGuide: 'Η υπαγόρευση δεν είναι ενεργοποιημένη. Η αναγνώριση στη συσκευή απαιτεί υπαγόρευση. Μεταβείτε στις Ρυθμίσεις συστήματος > Πληκτρολόγιο > Υπαγόρευση για να την ενεργοποιήσετε.',
+    recheckDictation: 'Επανέλεγχος',
+    onDeviceUnavailableError: 'Η αναγνώριση στη συσκευή δεν είναι διαθέσιμη. Ενεργοποιήστε την υπαγόρευση στις Ρυθμίσεις συστήματος > Πληκτρολόγιο > Υπαγόρευση ή απενεργοποιήστε τη λειτουργία «Μόνο στη συσκευή».',
     noModelsAvailable: 'Δεν υπάρχουν διαθέσιμα μοντέλα από αυτόν τον πάροχο',
     asrTab: 'Αναγνώριση ομιλίας (ASR)', ttsTab: 'Μετατροπή κειμένου σε ομιλία (TTS)',
     prompt: {
@@ -1029,6 +1049,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    responseInterrupted: 'Η απάντηση διακόπηκε',
     trialExhausted: 'Το δοκιμαστικό όριο έχει εξαντληθεί. Παρακαλώ διαμορφώστε τον δικό σας πάροχο AI για να συνεχίσετε.',
     trialServiceBusy: 'Η δοκιμαστική υπηρεσία είναι αυτή τη στιγμή απασχολημένη λόγω υψηλής ζήτησης. Παρακαλώ δοκιμάστε ξανά σε λίγο. Αν αυτό συνεχιστεί, επισκεφθείτε την κοινότητά μας για βοήθεια.',
     configureProvider: 'Διαμόρφωση παρόχου',
@@ -1047,6 +1068,7 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Failed to transcribe audio',
+    voiceTranscriptionTimeout: 'Η μεταγραφή έληξε. Η εγγραφή μπορεί να είναι πολύ μεγάλη ή ο διακομιστής είναι απασχολημένος, δοκιμάστε ξανά.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Could not access microphone',
     dismiss: 'Dismiss',
@@ -1086,6 +1108,11 @@ export default {
     noSkillsAvailable: 'Δεν υπάρχουν διαθέσιμες δεξιότητες αυτή τη στιγμή',
     clearSearch: 'Εκκαθάριση αναζήτησης',
     allLoaded: 'Φορτώθηκαν όλες οι {count} δεξιότητες',
+    status: {
+      ...enUS.skillStore.status,
+      syncing: 'Συγχρονισμός καταστήματος δεξιοτήτων...',
+      skillsSynced: '{count} δεξιότητες συγχρονίστηκαν',
+    },
   },
 
   personality: {

@@ -310,6 +310,7 @@ build-blue-lib-arm64:
 	@mkdir -p $(TAURI_LIB_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
 		go build -buildmode=c-archive \
+		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue_arm64.a \
 		./cmd/bluelib
@@ -322,6 +323,7 @@ build-blue-lib-x64:
 	@mkdir -p $(TAURI_LIB_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
 		go build -buildmode=c-archive \
+		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue_x64.a \
 		./cmd/bluelib
@@ -349,6 +351,7 @@ ifeq ($(shell uname -m),arm64)
 	@echo "Detected Apple Silicon, building ARM64 library..."
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
 		go build -buildmode=c-archive \
+		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue.a \
 		./cmd/bluelib
@@ -356,6 +359,7 @@ else
 	@echo "Detected Intel, building x64 library..."
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
 		go build -buildmode=c-archive \
+		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue.a \
 		./cmd/bluelib

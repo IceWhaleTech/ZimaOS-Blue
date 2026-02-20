@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bytes"
 	"io"
 	"log/slog"
 	"net/http"
@@ -164,12 +163,8 @@ func (ap *AuthProber) ProbeAndForward(
 		}
 		ap.Apply(req, strat, apiKey, provider)
 
-		// Restore body so the actual request can read it
-		if req.Body != nil {
-			if bodyBytes, readErr := io.ReadAll(req.Body); readErr == nil {
-				req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			}
-		}
+		// Body is already an io.NopCloser(bytes.NewReader(...)) from buildUpstreamRequestWithFormat,
+		// so it's seekable and doesn't need to be re-read. No copy needed.
 
 		resp, err := doRequest(req)
 		if err != nil {

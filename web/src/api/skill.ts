@@ -133,6 +133,13 @@ export interface SearchResponse {
   total_pages: number
   next_cursor?: string
   has_more: boolean
+  initializing?: boolean
+}
+
+export interface SyncProgress {
+  current_page: number
+  skills_synced: number
+  started_at: string
 }
 
 export interface SyncStatus {
@@ -144,6 +151,7 @@ export interface SyncStatus {
   status: 'success' | 'failed' | 'in_progress' | 'pending'
   error_message?: string
   next_sync_at: string
+  progress?: SyncProgress
 }
 
 export interface BrowseResponse {
@@ -233,7 +241,7 @@ export const skillApi = {
     api.post<{ success: boolean; message: string }>(`/skill-store/uninstall/${id}`),
 
   refresh: () =>
-    api.post<{ success: boolean; skills_count: number; errors?: string[] }>('/skill-store/refresh'),
+    api.post<{ success: boolean; skills_count?: number; message?: string; syncing?: boolean; sync_status?: SyncStatus[] }>('/skill-store/refresh'),
 
   // Sync (v0.10.8)
   sync: (sourceId?: string) =>

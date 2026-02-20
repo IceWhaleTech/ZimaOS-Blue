@@ -182,12 +182,13 @@ func DefaultProxyConfig() *ProxyConfig {
 			LoadBalancing:   "priority",
 			Providers:       []*ProviderConfig{},
 			Failover: FailoverConfig{
-				Enabled:          true,
-				MaxRetries:       3,
-				RetryDelay:       time.Second,
-				CircuitBreaker:   true,
-				FailureThreshold: 5,
-				RecoveryTimeout:  30 * time.Second,
+				Enabled:            true,
+				MaxRetries:         3,
+				RetryDelay:         time.Second,
+				CircuitBreaker:     true,
+				FailureThreshold:   5,
+				RecoveryTimeout:    30 * time.Second,
+				ContextWindowCheck: true,
 				ErrorClassification: ErrorClassificationConfig{
 					Enabled: true,
 					FailoverErrors: []string{

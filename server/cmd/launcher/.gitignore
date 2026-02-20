@@ -1,0 +1,3 @@
+# Embedded assets copied by Makefile during build
+bluecli
+dist.tar.gz

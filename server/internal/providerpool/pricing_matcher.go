@@ -7,21 +7,29 @@ import (
 
 // Pre-compiled regexps to avoid re-compiling on every call.
 var (
-	datePatternRe    = regexp.MustCompile(`-\d{4}[-]?\d{2}[-]?\d{2}$`)
+	datePatternRe    = regexp.MustCompile(`-?\d{4}[-]?\d{2}[-]?\d{2}$`)
 	delimiterSplitRe = regexp.MustCompile(`[-_.:@/]`)
 	pureDigitsRe     = regexp.MustCompile(`^\d+$`)
+	multiHyphenRe    = regexp.MustCompile(`-{2,}`)
+	versionSuffixRe  = regexp.MustCompile(`[:-]v\d+$`)
+	providerPrefixRe = regexp.MustCompile(`^(azure|bedrock|vertex|openrouter|models|accounts)/`)
 )
 
 // BuiltinModelPricing contains known model pricing (per 1M tokens, USD)
-// Updated: 2025-01
+// Updated: 2026-02
 var BuiltinModelPricing = map[string]*ModelPricing{
 	// ===== Anthropic Claude =====
+	// Claude 4.6
+	"claude-opus-4-6":   {ModelID: "claude-opus-4-6", InputPrice: 5.0, OutputPrice: 25.0, CachePrice: 0.5},
+	"claude-sonnet-4-6": {ModelID: "claude-sonnet-4-6", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.3},
 	// Claude 4.5
-	"claude-opus-4-5":   {ModelID: "claude-opus-4-5", InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875},
-	"claude-sonnet-4-5": {ModelID: "claude-sonnet-4-5", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375},
+	"claude-opus-4-5":   {ModelID: "claude-opus-4-5", InputPrice: 5.0, OutputPrice: 25.0, CachePrice: 0.5},
+	"claude-sonnet-4-5": {ModelID: "claude-sonnet-4-5", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.3},
+	// Claude 4.1
+	"claude-opus-4-1": {ModelID: "claude-opus-4-1", InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875},
 	// Claude 4
-	"claude-sonnet-4":   {ModelID: "claude-sonnet-4", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375},
-	"claude-opus-4":     {ModelID: "claude-opus-4", InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875},
+	"claude-sonnet-4": {ModelID: "claude-sonnet-4", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375},
+	"claude-opus-4":   {ModelID: "claude-opus-4", InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875},
 	// Claude 3.5
 	"claude-3-5-sonnet": {ModelID: "claude-3-5-sonnet", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375},
 	"claude-3-5-haiku":  {ModelID: "claude-3-5-haiku", InputPrice: 0.8, OutputPrice: 4.0, CachePrice: 0.1},
@@ -29,8 +37,18 @@ var BuiltinModelPricing = map[string]*ModelPricing{
 	"claude-3-opus":   {ModelID: "claude-3-opus", InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875},
 	"claude-3-sonnet": {ModelID: "claude-3-sonnet", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375},
 	"claude-3-haiku":  {ModelID: "claude-3-haiku", InputPrice: 0.25, OutputPrice: 1.25, CachePrice: 0.03},
+	// Claude Haiku 4.5
+	"claude-haiku-4-5": {ModelID: "claude-haiku-4-5", InputPrice: 1.0, OutputPrice: 5.0, CachePrice: 0.1},
 
 	// ===== OpenAI GPT =====
+	// GPT-5
+	"gpt-5":      {ModelID: "gpt-5", InputPrice: 1.25, OutputPrice: 10.0, CachePrice: 0.125},
+	"gpt-5-mini": {ModelID: "gpt-5-mini", InputPrice: 0.25, OutputPrice: 2.0, CachePrice: 0.025},
+	"gpt-5-nano": {ModelID: "gpt-5-nano", InputPrice: 0.05, OutputPrice: 0.4, CachePrice: 0.005},
+	"gpt-5-pro":  {ModelID: "gpt-5-pro", InputPrice: 15.0, OutputPrice: 120.0, CachePrice: 1.5},
+	"gpt-5.1":    {ModelID: "gpt-5.1", InputPrice: 1.25, OutputPrice: 10.0, CachePrice: 0.125},
+	"gpt-5.2":    {ModelID: "gpt-5.2", InputPrice: 1.75, OutputPrice: 14.0, CachePrice: 0.175},
+	"gpt-5.2-pro": {ModelID: "gpt-5.2-pro", InputPrice: 21.0, OutputPrice: 168.0, CachePrice: 2.1},
 	// GPT-4o
 	"gpt-4o":      {ModelID: "gpt-4o", InputPrice: 2.5, OutputPrice: 10.0, CachePrice: 1.25},
 	"gpt-4o-mini": {ModelID: "gpt-4o-mini", InputPrice: 0.15, OutputPrice: 0.6, CachePrice: 0.075},
@@ -44,24 +62,39 @@ var BuiltinModelPricing = map[string]*ModelPricing{
 	"gpt-4": {ModelID: "gpt-4", InputPrice: 30.0, OutputPrice: 60.0, CachePrice: 15.0},
 	// GPT-3.5
 	"gpt-3.5-turbo": {ModelID: "gpt-3.5-turbo", InputPrice: 0.5, OutputPrice: 1.5, CachePrice: 0.25},
-	// o1/o3 reasoning
+	// Codex
+	"codex-1":    {ModelID: "codex-1", InputPrice: 2.0, OutputPrice: 8.0, CachePrice: 0.5},
+	"codex-mini": {ModelID: "codex-mini", InputPrice: 1.5, OutputPrice: 6.0, CachePrice: 0.375},
+	// o-series reasoning
 	"o1":         {ModelID: "o1", InputPrice: 15.0, OutputPrice: 60.0, CachePrice: 7.5},
 	"o1-mini":    {ModelID: "o1-mini", InputPrice: 1.1, OutputPrice: 4.4, CachePrice: 0.55},
 	"o1-preview": {ModelID: "o1-preview", InputPrice: 15.0, OutputPrice: 60.0, CachePrice: 7.5},
+	"o1-pro":     {ModelID: "o1-pro", InputPrice: 150.0, OutputPrice: 600.0, CachePrice: 75.0},
+	"o3":         {ModelID: "o3", InputPrice: 2.0, OutputPrice: 8.0, CachePrice: 1.0},
 	"o3-mini":    {ModelID: "o3-mini", InputPrice: 1.1, OutputPrice: 4.4, CachePrice: 0.55},
+	"o3-pro":     {ModelID: "o3-pro", InputPrice: 20.0, OutputPrice: 80.0, CachePrice: 10.0},
+	"o4-mini":    {ModelID: "o4-mini", InputPrice: 1.1, OutputPrice: 4.4, CachePrice: 0.55},
 
 	// ===== Google Gemini =====
-	"gemini-2.0-flash":       {ModelID: "gemini-2.0-flash", InputPrice: 0.1, OutputPrice: 0.4, CachePrice: 0.025},
-	"gemini-2.0-flash-lite":  {ModelID: "gemini-2.0-flash-lite", InputPrice: 0.075, OutputPrice: 0.3, CachePrice: 0.01875},
-	"gemini-1.5-pro":         {ModelID: "gemini-1.5-pro", InputPrice: 1.25, OutputPrice: 5.0, CachePrice: 0.3125},
-	"gemini-1.5-flash":       {ModelID: "gemini-1.5-flash", InputPrice: 0.075, OutputPrice: 0.3, CachePrice: 0.01875},
-	"gemini-1.5-flash-8b":    {ModelID: "gemini-1.5-flash-8b", InputPrice: 0.0375, OutputPrice: 0.15, CachePrice: 0.01},
-	"gemini-2.5-pro-preview": {ModelID: "gemini-2.5-pro-preview", InputPrice: 1.25, OutputPrice: 10.0, CachePrice: 0.3125},
-	"gemini-2.5-flash":       {ModelID: "gemini-2.5-flash", InputPrice: 0.15, OutputPrice: 0.6, CachePrice: 0.0375},
+	// Gemini 3.x
+	"gemini-3.1-pro":   {ModelID: "gemini-3.1-pro", InputPrice: 2.0, OutputPrice: 12.0, CachePrice: 0.2},
+	"gemini-3-pro":     {ModelID: "gemini-3-pro", InputPrice: 2.0, OutputPrice: 12.0, CachePrice: 0.2},
+	"gemini-3-flash":   {ModelID: "gemini-3-flash", InputPrice: 0.5, OutputPrice: 3.0, CachePrice: 0.05},
+	// Gemini 2.5
+	"gemini-2.5-pro":        {ModelID: "gemini-2.5-pro", InputPrice: 1.25, OutputPrice: 10.0, CachePrice: 0.125},
+	"gemini-2.5-flash":      {ModelID: "gemini-2.5-flash", InputPrice: 0.30, OutputPrice: 2.5, CachePrice: 0.03},
+	"gemini-2.5-flash-lite": {ModelID: "gemini-2.5-flash-lite", InputPrice: 0.10, OutputPrice: 0.4, CachePrice: 0.01},
+	// Gemini 2.0
+	"gemini-2.0-flash":      {ModelID: "gemini-2.0-flash", InputPrice: 0.1, OutputPrice: 0.4, CachePrice: 0.025},
+	"gemini-2.0-flash-lite": {ModelID: "gemini-2.0-flash-lite", InputPrice: 0.075, OutputPrice: 0.3, CachePrice: 0.01875},
+	// Gemini 1.5
+	"gemini-1.5-pro":      {ModelID: "gemini-1.5-pro", InputPrice: 1.25, OutputPrice: 5.0, CachePrice: 0.3125},
+	"gemini-1.5-flash":    {ModelID: "gemini-1.5-flash", InputPrice: 0.075, OutputPrice: 0.3, CachePrice: 0.01875},
+	"gemini-1.5-flash-8b": {ModelID: "gemini-1.5-flash-8b", InputPrice: 0.0375, OutputPrice: 0.15, CachePrice: 0.01},
 
 	// ===== DeepSeek =====
-	"deepseek-chat":     {ModelID: "deepseek-chat", InputPrice: 0.27, OutputPrice: 1.1, CachePrice: 0.07},
-	"deepseek-reasoner": {ModelID: "deepseek-reasoner", InputPrice: 0.55, OutputPrice: 2.19, CachePrice: 0.14},
+	"deepseek-chat":     {ModelID: "deepseek-chat", InputPrice: 0.28, OutputPrice: 0.42, CachePrice: 0.028},
+	"deepseek-reasoner": {ModelID: "deepseek-reasoner", InputPrice: 0.28, OutputPrice: 0.42, CachePrice: 0.028},
 
 	// ===== Mistral =====
 	"mistral-large":  {ModelID: "mistral-large", InputPrice: 2.0, OutputPrice: 6.0, CachePrice: 0.5},
@@ -82,10 +115,11 @@ var BuiltinModelPricing = map[string]*ModelPricing{
 	"command-r":      {ModelID: "command-r", InputPrice: 0.15, OutputPrice: 0.6, CachePrice: 0.0375},
 
 	// ===== xAI Grok =====
+	"grok-4":      {ModelID: "grok-4", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.75},
+	"grok-3":      {ModelID: "grok-3", InputPrice: 2.0, OutputPrice: 10.0, CachePrice: 0.5},
+	"grok-3-mini": {ModelID: "grok-3-mini", InputPrice: 0.10, OutputPrice: 0.30, CachePrice: 0.025},
 	"grok-2":      {ModelID: "grok-2", InputPrice: 2.0, OutputPrice: 10.0, CachePrice: 0.5},
 	"grok-2-mini": {ModelID: "grok-2-mini", InputPrice: 0.2, OutputPrice: 1.0, CachePrice: 0.05},
-	"grok-3":      {ModelID: "grok-3", InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.75},
-	"grok-3-mini": {ModelID: "grok-3-mini", InputPrice: 0.3, OutputPrice: 0.5, CachePrice: 0.075},
 
 	// ===== Meta Llama =====
 	"llama-3.3-70b":  {ModelID: "llama-3.3-70b", InputPrice: 0.8, OutputPrice: 0.8, CachePrice: 0.2},
@@ -97,26 +131,33 @@ var BuiltinModelPricing = map[string]*ModelPricing{
 
 // ModelFamily represents a family of models with similar pricing tiers
 type ModelFamily struct {
-	Name     string   // Family name (e.g., "claude", "gpt")
-	Keywords []string // Keywords to match (e.g., ["claude", "anthropic"])
-	Tiers    map[string]*ModelPricing // Tier name -> pricing
+	Name        string   // Family name (e.g., "claude", "gpt")
+	Keywords    []string // Keywords to match (e.g., ["claude", "anthropic"])
+	DefaultTier string   // Default tier when no tier matches (e.g., "sonnet", "4o")
+	Tiers       map[string]*ModelPricing // Tier name -> pricing
 }
 
 // builtinModelFamilies defines pricing tiers for model families
 var builtinModelFamilies = []ModelFamily{
 	{
-		Name:     "claude",
-		Keywords: []string{"claude", "anthropic"},
+		Name:        "claude",
+		Keywords:    []string{"claude", "anthropic"},
+		DefaultTier: "sonnet",
 		Tiers: map[string]*ModelPricing{
-			"opus":   {InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875},
-			"sonnet": {InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375},
-			"haiku":  {InputPrice: 0.8, OutputPrice: 4.0, CachePrice: 0.1},
+			"opus":   {InputPrice: 5.0, OutputPrice: 25.0, CachePrice: 0.5},
+			"sonnet": {InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.3},
+			"haiku":  {InputPrice: 1.0, OutputPrice: 5.0, CachePrice: 0.1},
 		},
 	},
 	{
-		Name:     "gpt",
-		Keywords: []string{"gpt", "openai", "chatgpt"},
+		Name:        "gpt",
+		Keywords:    []string{"gpt", "openai", "chatgpt"},
+		DefaultTier: "4o",
 		Tiers: map[string]*ModelPricing{
+			"5":       {InputPrice: 1.25, OutputPrice: 10.0, CachePrice: 0.125},
+			"5-mini":  {InputPrice: 0.25, OutputPrice: 2.0, CachePrice: 0.025},
+			"5-nano":  {InputPrice: 0.05, OutputPrice: 0.4, CachePrice: 0.005},
+			"5-pro":   {InputPrice: 15.0, OutputPrice: 120.0, CachePrice: 1.5},
 			"4o":      {InputPrice: 2.5, OutputPrice: 10.0, CachePrice: 1.25},
 			"4o-mini": {InputPrice: 0.15, OutputPrice: 0.6, CachePrice: 0.075},
 			"4":       {InputPrice: 30.0, OutputPrice: 60.0, CachePrice: 15.0},
@@ -127,27 +168,30 @@ var builtinModelFamilies = []ModelFamily{
 		},
 	},
 	{
-		Name:     "gemini",
-		Keywords: []string{"gemini", "google", "bard"},
+		Name:        "gemini",
+		Keywords:    []string{"gemini", "google", "bard"},
+		DefaultTier: "flash",
 		Tiers: map[string]*ModelPricing{
-			"pro":        {InputPrice: 1.25, OutputPrice: 5.0, CachePrice: 0.3125},
-			"flash":      {InputPrice: 0.075, OutputPrice: 0.3, CachePrice: 0.01875},
-			"flash-lite": {InputPrice: 0.075, OutputPrice: 0.3, CachePrice: 0.01875},
+			"pro":        {InputPrice: 2.0, OutputPrice: 12.0, CachePrice: 0.2},
+			"flash":      {InputPrice: 0.30, OutputPrice: 2.5, CachePrice: 0.03},
+			"flash-lite": {InputPrice: 0.10, OutputPrice: 0.4, CachePrice: 0.01},
 			"ultra":      {InputPrice: 5.0, OutputPrice: 15.0, CachePrice: 1.25},
 		},
 	},
 	{
-		Name:     "deepseek",
-		Keywords: []string{"deepseek"},
+		Name:        "deepseek",
+		Keywords:    []string{"deepseek"},
+		DefaultTier: "chat",
 		Tiers: map[string]*ModelPricing{
-			"chat":     {InputPrice: 0.27, OutputPrice: 1.1, CachePrice: 0.07},
-			"reasoner": {InputPrice: 0.55, OutputPrice: 2.19, CachePrice: 0.14},
-			"coder":    {InputPrice: 0.27, OutputPrice: 1.1, CachePrice: 0.07},
+			"chat":     {InputPrice: 0.28, OutputPrice: 0.42, CachePrice: 0.028},
+			"reasoner": {InputPrice: 0.28, OutputPrice: 0.42, CachePrice: 0.028},
+			"coder":    {InputPrice: 0.28, OutputPrice: 0.42, CachePrice: 0.028},
 		},
 	},
 	{
-		Name:     "mistral",
-		Keywords: []string{"mistral", "mixtral"},
+		Name:        "mistral",
+		Keywords:    []string{"mistral", "mixtral"},
+		DefaultTier: "large",
 		Tiers: map[string]*ModelPricing{
 			"large":  {InputPrice: 2.0, OutputPrice: 6.0, CachePrice: 0.5},
 			"medium": {InputPrice: 2.7, OutputPrice: 8.1, CachePrice: 0.675},
@@ -155,8 +199,9 @@ var builtinModelFamilies = []ModelFamily{
 		},
 	},
 	{
-		Name:     "qwen",
-		Keywords: []string{"qwen", "alibaba", "tongyi"},
+		Name:        "qwen",
+		Keywords:    []string{"qwen", "alibaba", "tongyi"},
+		DefaultTier: "plus",
 		Tiers: map[string]*ModelPricing{
 			"max":   {InputPrice: 1.6, OutputPrice: 6.4, CachePrice: 0.4},
 			"plus":  {InputPrice: 0.8, OutputPrice: 2.0, CachePrice: 0.2},
@@ -164,19 +209,22 @@ var builtinModelFamilies = []ModelFamily{
 		},
 	},
 	{
-		Name:     "grok",
-		Keywords: []string{"grok", "xai"},
+		Name:        "grok",
+		Keywords:    []string{"grok", "xai"},
+		DefaultTier: "3",
 		Tiers: map[string]*ModelPricing{
+			"4":      {InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.75},
+			"3":      {InputPrice: 2.0, OutputPrice: 10.0, CachePrice: 0.5},
+			"3-mini": {InputPrice: 0.10, OutputPrice: 0.30, CachePrice: 0.025},
 			"2":      {InputPrice: 2.0, OutputPrice: 10.0, CachePrice: 0.5},
 			"2-mini": {InputPrice: 0.2, OutputPrice: 1.0, CachePrice: 0.05},
-			"3":      {InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.75},
-			"3-mini": {InputPrice: 0.3, OutputPrice: 0.5, CachePrice: 0.075},
-			"mini":   {InputPrice: 0.2, OutputPrice: 1.0, CachePrice: 0.05},
+			"mini":   {InputPrice: 0.10, OutputPrice: 0.30, CachePrice: 0.025},
 		},
 	},
 	{
-		Name:     "llama",
-		Keywords: []string{"llama", "meta"},
+		Name:        "llama",
+		Keywords:    []string{"llama", "meta"},
+		DefaultTier: "70b",
 		Tiers: map[string]*ModelPricing{
 			"405b": {InputPrice: 3.0, OutputPrice: 3.0, CachePrice: 0.75},
 			"70b":  {InputPrice: 0.8, OutputPrice: 0.8, CachePrice: 0.2},
@@ -184,27 +232,49 @@ var builtinModelFamilies = []ModelFamily{
 		},
 	},
 	{
-		Name:     "o1",
-		Keywords: []string{"o1", "o3"},
+		Name:        "o-series",
+		Keywords:    []string{"o1", "o3", "o4"},
+		DefaultTier: "",
 		Tiers: map[string]*ModelPricing{
 			"":        {InputPrice: 15.0, OutputPrice: 60.0, CachePrice: 7.5},
 			"mini":    {InputPrice: 1.1, OutputPrice: 4.4, CachePrice: 0.55},
+			"pro":     {InputPrice: 20.0, OutputPrice: 80.0, CachePrice: 10.0},
 			"preview": {InputPrice: 15.0, OutputPrice: 60.0, CachePrice: 7.5},
 		},
 	},
 }
 
-// normalizeModelID normalizes a model ID for matching
-// e.g., "claude-opus-4-5-20251101" -> "claude-opus-4-5"
-//       "gpt-4o-2024-08-06" -> "gpt-4o"
+// normalizeModelID normalizes a model ID for matching.
+// Handles: case, spaces/underscores, provider prefixes, date suffixes, version tags.
+// e.g., "Claude Opus 4.5 20251101" -> "claude-opus-4-5"
+//
+//	"azure/gpt-4o-2024-08-06" -> "gpt-4o"
+//	"GPT_4o_Mini" -> "gpt-4o-mini"
 func normalizeModelID(modelID string) string {
-	normalized := strings.ToLower(modelID)
+	normalized := strings.ToLower(strings.TrimSpace(modelID))
 
-	// Remove date suffixes (e.g., "-20251101", "-2024-08-06")
+	// Replace spaces and underscores with hyphens
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+
+	// Collapse multiple hyphens
+	normalized = multiHyphenRe.ReplaceAllString(normalized, "-")
+
+	// Strip provider prefixes (azure/, bedrock/, etc.)
+	normalized = providerPrefixRe.ReplaceAllString(normalized, "")
+
+	// Remove date suffixes (e.g., "-20251101", "-2024-08-06", "20251101")
 	normalized = datePatternRe.ReplaceAllString(normalized, "")
 
-	// Remove version suffixes like "-latest", "-preview"
+	// Remove version suffixes like ":v1", "-v2"
+	normalized = versionSuffixRe.ReplaceAllString(normalized, "")
+
+	// Remove common trailing tags
 	normalized = strings.TrimSuffix(normalized, "-latest")
+	normalized = strings.TrimSuffix(normalized, "-preview")
+
+	// Clean up trailing hyphens
+	normalized = strings.TrimRight(normalized, "-")
 
 	return normalized
 }
@@ -296,17 +366,9 @@ func matchModelFamily(modelID string) (*ModelFamily, string) {
 			}
 		}
 
-		// If no tier matched but family matched, use default tier if exists
+		// If no tier matched but family matched, use DefaultTier
 		if tierName == "" {
-			if _, exists := family.Tiers[""]; exists {
-				tierName = ""
-			} else {
-				// Use first tier as fallback
-				for tn := range family.Tiers {
-					tierName = tn
-					break
-				}
-			}
+			tierName = family.DefaultTier
 		}
 
 		// Update best match if this family has higher score
@@ -326,20 +388,34 @@ func matchModelFamily(modelID string) (*ModelFamily, string) {
 func MatchModelPricing(modelID string) *ModelPricing {
 	normalized := normalizeModelID(modelID)
 
-	// 1. Try exact match in builtin pricing
-	if pricing, exists := BuiltinModelPricing[normalized]; exists {
-		result := *pricing
-		result.ModelID = modelID
-		return &result
-	}
+	// Also try with dots↔hyphens swapped (e.g., "4.6" ↔ "4-6")
+	altDot := strings.ReplaceAll(normalized, ".", "-")
+	altHyphen := strings.ReplaceAll(normalized, "-", ".")
 
-	// 2. Try partial match in builtin pricing (prefix match)
-	for key, pricing := range BuiltinModelPricing {
-		if strings.HasPrefix(normalized, key) || strings.HasPrefix(key, normalized) {
+	// 1. Try exact match in builtin pricing
+	for _, candidate := range []string{normalized, altDot, altHyphen} {
+		if pricing, exists := BuiltinModelPricing[candidate]; exists {
 			result := *pricing
 			result.ModelID = modelID
 			return &result
 		}
+	}
+
+	// 2. Try partial match in builtin pricing (longest prefix wins)
+	var bestKey string
+	var bestPricing *ModelPricing
+	for key, pricing := range BuiltinModelPricing {
+		if strings.HasPrefix(normalized, key) || strings.HasPrefix(key, normalized) {
+			if len(key) > len(bestKey) {
+				bestKey = key
+				bestPricing = pricing
+			}
+		}
+	}
+	if bestPricing != nil {
+		result := *bestPricing
+		result.ModelID = modelID
+		return &result
 	}
 
 	// 3. Try family + tier matching

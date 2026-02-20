@@ -69,6 +69,29 @@ function stripFirstLineHeading(content: string): string {
   return content
 }
 
+const interruptedIndicatorHtml = computed(() =>
+  `<div class="response-interrupted-indicator"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t('chat.responseInterrupted')}</span></div>`
+)
+
+// Strip [Response interrupted] marker from content, returns { content, interrupted }
+function stripInterruptedMarker(content: string): { content: string; interrupted: boolean } {
+  const re = /\n?\n?\[Response interrupted\]\s*$/
+  if (re.test(content)) {
+    return { content: content.replace(re, ''), interrupted: true }
+  }
+  return { content, interrupted: false }
+}
+
+// Render segment text with [Response interrupted] handling
+function renderSegmentHtml(text: string): string {
+  const { content, interrupted } = stripInterruptedMarker(text)
+  let html = renderMarkdown(content)
+  if (interrupted) {
+    html += interruptedIndicatorHtml.value
+  }
+  return html
+}
+
 const renderedContent = computed(() => {
   if (isUser.value) {
     return props.message.content
@@ -77,13 +100,13 @@ const renderedContent = computed(() => {
   let content = stripFirstLineHeading(props.message.content)
   // Replace [SILENT_REPLY] marker with icon (may appear without typeless cards)
   content = content.replace(/\[SILENT_REPLY\]/g, '💤')
-  // Trial provider may use Kiro-sourced quota — rebrand self-references to ZimaOS Blue
-  const provider = props.message.provider || metadata.value?.provider
-  if (provider === 'zimaos-blue-trial') {
-    content = content.replace(/\bI(?:'m|\s+am)\s+Kiro\b/gi, "I'm ZimaOS Blue")
-    content = content.replace(/我是\s*Kiro/g, '我是 ZimaOS Blue')
+  // Replace [Response interrupted] with styled indicator
+  const { content: cleaned, interrupted } = stripInterruptedMarker(content)
+  let html = renderMarkdown(cleaned)
+  if (interrupted) {
+    html += interruptedIndicatorHtml.value
   }
-  return renderMarkdown(content)
+  return html
 })
 
 // Parse typeless cards from assistant messages
@@ -171,7 +194,7 @@ function formatTokens(num: number | undefined): string {
 }
 
 function formatTTFT(ms: number | undefined): string {
-  if (ms === undefined || ms === null) return ''
+  if (ms === undefined || ms === null || ms === 0) return ''
   // Always convert to seconds
   const seconds = ms / 1000
   return seconds.toFixed(2) + 's'
@@ -226,6 +249,19 @@ onUnmounted(() => {
 const hasAutoPlayed = ref(false)
 const lastPlayedLength = ref(0)
 
+// Strip complex card content (code blocks, mermaid, tables) from text for TTS
+function stripComplexCardsForTTS(text: string): string {
+  return text
+    // Remove fenced code blocks (```...```)
+    .replace(/```[\s\S]*?```/g, '')
+    // Remove markdown tables (lines starting with |)
+    .replace(/^\|.*\|$/gm, '')
+    // Remove table separator lines (|---|---|)
+    .replace(/^\|[-:\s|]+\|$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 // Watch for content changes during streaming to play incrementally
 watch(() => props.message.content, (newContent, _oldContent) => {
   if (!props.isStreaming || !isAssistant.value) return
@@ -233,8 +269,11 @@ watch(() => props.message.content, (newContent, _oldContent) => {
   const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
   if (!autoPlayEnabled) return
 
+  // Strip complex cards (code, mermaid, tables) before extracting sentences
+  const ttsText = stripComplexCardsForTTS(newContent)
+
   // Find new complete sentences (backend humanizer will clean markdown)
-  const sentences = newContent.match(/[^.!?。！？]+[.!?。！？]+/g) || []
+  const sentences = ttsText.match(/[^.!?。！？]+[.!?。！？]+/g) || []
   const completeSentences = sentences.join('')
 
   // Play new sentences that haven't been played yet
@@ -257,7 +296,7 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
     const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
     if (!autoPlayEnabled) return
 
-    const textContent = props.message.content
+    const textContent = stripComplexCardsForTTS(props.message.content)
 
     if (!textContent) return
 
@@ -394,8 +433,8 @@ async function showInitProgressToast(): Promise<void> {
   if (provider !== 'kokoro') return
 
   try {
-    const res = await speechApi.getKokoroStatus()
-    const stage = res.data.init_stage
+    const res = await speechApi.getStatus()
+    const stage = res.data.tts?.components?.kokoro?.init_stage
     if (!stage || stage === 'ready') return
 
     const stageKey = `speech.initStage.${stage}`
@@ -408,8 +447,8 @@ async function showInitProgressToast(): Promise<void> {
     // Poll until ready
     const poll = setInterval(async () => {
       try {
-        const r = await speechApi.getKokoroStatus()
-        const s = r.data.init_stage
+        const r = await speechApi.getStatus()
+        const s = r.data.tts?.components?.kokoro?.init_stage
         if (!s || s === 'ready' || s === 'error') {
           clearInterval(poll)
           notification.remove(toastId)
@@ -819,7 +858,7 @@ async function handleMobileTTS() {
                 <div
                   v-if="segment.type === 'text'"
                   class="prose-content"
-                  v-html="renderMarkdown(segment.content as string)"
+                  v-html="renderSegmentHtml(segment.content as string)"
                 />
                 <TypelessCardComponent
                   v-else
@@ -1131,5 +1170,38 @@ async function handleMobileTTS() {
 /* User message wrapper for positioning copy button */
 .user-message-wrapper {
   display: inline-block;
+}
+
+/* Response interrupted indicator */
+.assistant-message :deep(.response-interrupted-indicator) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+}
+
+:root.light .assistant-message :deep(.response-interrupted-indicator),
+[data-theme="light"] .assistant-message :deep(.response-interrupted-indicator) {
+  color: #64748b;
+  border-color: rgba(100, 116, 139, 0.25);
+}
+
+/* Error block indicator (tool_use_error etc.) */
+.assistant-message :deep(.error-block-indicator) {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+:root.light .assistant-message :deep(.error-block-indicator),
+[data-theme="light"] .assistant-message :deep(.error-block-indicator) {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #dc2626;
 }
 </style>

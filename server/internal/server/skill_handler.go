@@ -1434,8 +1434,11 @@ func (r *RemoteSkillAdapter) Execute(ctx context.Context, input map[string]any) 
 // SearchSkills performs full-text search on skills in the local database
 func (h *SkillHandler) SearchSkills(c echo.Context) error {
 	if h.store == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "skill store not initialized",
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"skills":       []interface{}{},
+			"total":        0,
+			"has_more":     false,
+			"initializing": true,
 		})
 	}
 
@@ -1508,9 +1511,7 @@ func (h *SkillHandler) SearchSkills(c echo.Context) error {
 // GetCategories returns all unique skill categories
 func (h *SkillHandler) GetCategories(c echo.Context) error {
 	if h.store == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "skill store not initialized",
-		})
+		return c.JSON(http.StatusOK, []string{})
 	}
 
 	// Try cache first
@@ -1542,8 +1543,10 @@ func (h *SkillHandler) GetCategories(c echo.Context) error {
 // GetStats returns skill statistics
 func (h *SkillHandler) GetStats(c echo.Context) error {
 	if h.store == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "skill store not initialized",
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"total_skills": 0,
+			"installed":    0,
+			"initializing": true,
 		})
 	}
 
@@ -1576,8 +1579,9 @@ func (h *SkillHandler) GetStats(c echo.Context) error {
 // GetPopularSkills returns the most popular skills by downloads
 func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
 	if h.store == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "skill store not initialized",
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"skills":       []interface{}{},
+			"initializing": true,
 		})
 	}
 
@@ -1601,8 +1605,9 @@ func (h *SkillHandler) GetPopularSkills(c echo.Context) error {
 // GetRecentSkills returns the most recently updated skills
 func (h *SkillHandler) GetRecentSkills(c echo.Context) error {
 	if h.store == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "skill store not initialized",
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"skills":       []interface{}{},
+			"initializing": true,
 		})
 	}
 

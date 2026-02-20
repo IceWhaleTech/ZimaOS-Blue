@@ -20,6 +20,8 @@ const showParamsModal = ref(false)
 const showAllowedModelsModal = ref(false)
 const showIDEDiscoveryModal = ref(false)
 const testingProvider = ref<string | null>(null)
+const testingKeyId = ref<string | null>(null)
+const keyTestResults = ref<Record<string, { healthy: boolean; error?: string }>>({})
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
@@ -75,6 +77,56 @@ const allAvailableModels = ref<Model[]>([])
 const loadingAllModels = ref(false)
 const savingAllowedModels = ref(false)
 
+// Base URL editing
+const editingBaseUrl = ref(false)
+const baseUrlDraft = ref('')
+
+function startEditBaseUrl(provider: Provider) {
+  baseUrlDraft.value = provider.base_url || ''
+  editingBaseUrl.value = true
+}
+
+async function saveBaseUrl(providerId: string) {
+  try {
+    await store.updateProvider(providerId, { base_url: baseUrlDraft.value })
+    editingBaseUrl.value = false
+  } catch (e) {
+    console.error('Failed to update base URL:', e)
+  }
+}
+
+function cancelEditBaseUrl() {
+  editingBaseUrl.value = false
+}
+
+// Translate backend health check error codes to i18n messages
+function translateHealthError(error: string): string {
+  if (!error) return ''
+  if (error.startsWith('auth_error:')) {
+    const code = error.split(':')[1]
+    return t('providerPool.healthErrors.authError', { code })
+  }
+  if (error === 'base_url_not_configured:azure') {
+    return t('providerPool.healthErrors.baseUrlNotConfiguredAzure')
+  }
+  if (error === 'base_url_not_configured:bedrock') {
+    return t('providerPool.healthErrors.baseUrlNotConfiguredBedrock')
+  }
+  if (error === 'base_url_not_configured') {
+    return t('providerPool.healthErrors.baseUrlNotConfigured')
+  }
+  if (error === 'network_error') return t('providerPool.healthErrors.networkError')
+  if (error === 'certificate_error') return t('providerPool.healthErrors.certificateError')
+  if (error === 'timeout_error') return t('providerPool.healthErrors.timeoutError')
+  if (error === 'connection_error') return t('providerPool.healthErrors.connectionError')
+  if (error === 'endpoint_not_found') return t('providerPool.healthErrors.endpointNotFound')
+  if (error.startsWith('unexpected_status:')) {
+    const code = error.split(':')[1]
+    return t('providerPool.healthErrors.unexpectedStatus', { code })
+  }
+  // Fallback: return raw error for legacy/unknown codes
+  return error
+}
 
 // Computed
 const filteredProviders = computed(() => {
@@ -208,19 +260,9 @@ watch(activeTab, () => {
 async function loadData() {
   try {
     await store.fetchProviders()
-    await store.fetchModels()
-    await loadPricingData()
-  } catch (e) {
-    console.error('Failed to load data:', e)
-  }
-}
-
-async function loadPricingData() {
-  try {
-    await store.fetchPricingConfig()
     await store.fetchCustomPricing()
   } catch (e) {
-    console.error('Failed to load pricing data:', e)
+    console.error('Failed to load data:', e)
   }
 }
 
@@ -252,14 +294,22 @@ async function updateProviderLocation(providerId: string, location: 'cloud' | 'l
   }
 }
 
-async function testConnection(providerId: string) {
+async function testConnection(providerId: string, keyId?: string) {
   testingProvider.value = providerId
+  testingKeyId.value = keyId ?? null
   try {
-    await store.testProvider(providerId)
+    const result = await store.testProvider(providerId, keyId)
+    if (keyId && result) {
+      keyTestResults.value[keyId] = { healthy: result.healthy, error: result.error }
+    }
   } catch (e) {
     console.error('Failed to test provider:', e)
+    if (keyId) {
+      keyTestResults.value[keyId] = { healthy: false, error: 'request_failed' }
+    }
   } finally {
     testingProvider.value = null
+    testingKeyId.value = null
   }
 }
 
@@ -437,14 +487,20 @@ function getStatusIcon(status: string, enabled: boolean) {
   }
 }
 
+const capabilityLabels: Record<string, string> = {
+  chat: 'Chat',
+  vision: 'Vision',
+  function_call: 'Tools',
+  thinking: 'Thinking',
+  streaming: 'Stream',
+}
+
 function formatCapabilities(caps: Model['capabilities']) {
-  const labels: string[] = []
-  if (caps.chat) labels.push('Chat')
-  if (caps.vision) labels.push('Vision')
-  if (caps.function_call) labels.push('Tools')
-  if (caps.thinking) labels.push('Thinking')
-  if (caps.streaming) labels.push('Stream')
-  return labels.join(', ')
+  if (!caps || !caps.length) return ''
+  return caps
+    .map(c => capabilityLabels[c] || c)
+    .filter(Boolean)
+    .join(', ')
 }
 
 function openPricingModal(model?: Model) {
@@ -842,7 +898,7 @@ onMounted(() => {
               <span
                 :class="getStatusColor(provider.status, provider.enabled)"
                 class="text-xs"
-                :title="provider.status === 'error' && provider.last_error ? provider.last_error : ''"
+                :title="provider.status === 'error' && provider.last_error ? translateHealthError(provider.last_error) : ''"
               >
                 {{ getStatusIcon(provider.status, provider.enabled) }}
               </span>
@@ -937,15 +993,9 @@ onMounted(() => {
             </div>
             <div class="flex gap-1">
               <button
-                :disabled="testingProvider === currentTabSelectedProvider!.id"
+                :disabled="refreshingModels === currentTabSelectedProvider!.id || !currentTabSelectedProvider!.base_url"
                 class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
-                @click="testConnection(currentTabSelectedProvider!.id)"
-              >
-                {{ testingProvider === currentTabSelectedProvider!.id ? t('common.testing') : t('providerPool.test') }}
-              </button>
-              <button
-                :disabled="refreshingModels === currentTabSelectedProvider!.id"
-                class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
+                :title="!currentTabSelectedProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
                 @click="refreshModels(currentTabSelectedProvider!.id)"
               >
                 {{ refreshingModels === currentTabSelectedProvider!.id ? t('common.refreshing') : t('providerPool.refreshModels') }}
@@ -967,7 +1017,7 @@ onMounted(() => {
           >
             <div class="flex items-start gap-2">
               <span class="text-red-500 flex-shrink-0">⚠</span>
-              <p class="text-xs text-red-600 dark:text-red-400 break-all">{{ currentTabSelectedProvider!.last_error }}</p>
+              <p class="text-xs text-red-600 dark:text-red-400 break-all">{{ translateHealthError(currentTabSelectedProvider!.last_error!) }}</p>
             </div>
           </div>
 
@@ -977,8 +1027,9 @@ onMounted(() => {
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.modelParams') }}</h3>
               <div class="flex gap-1">
                 <button
-                  :disabled="detectingCapabilities === currentTabSelectedProvider!.id"
+                  :disabled="detectingCapabilities === currentTabSelectedProvider!.id || !currentTabSelectedProvider!.base_url"
                   class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
+                  :title="!currentTabSelectedProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
                   @click="detectCapabilities"
                 >
                   {{ detectingCapabilities === currentTabSelectedProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
@@ -1021,14 +1072,65 @@ onMounted(() => {
             </div>
           </div>
 
+          <!-- Base URL Section (for providers that need configuration) -->
+          <div
+            v-if="currentTabSelectedProvider!.type !== 'trial' && (
+              !currentTabSelectedProvider!.base_url ||
+              currentTabSelectedProvider!.id === 'azure-openai' ||
+              currentTabSelectedProvider!.id === 'bedrock' ||
+              currentTabSelectedProvider!.id === 'ollama' ||
+              currentTabSelectedProvider!.type === 'custom'
+            )"
+            class="mb-4"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.baseUrl') }}</h3>
+              <button
+                v-if="!editingBaseUrl"
+                class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
+                @click="startEditBaseUrl(currentTabSelectedProvider!)"
+              >
+                {{ currentTabSelectedProvider!.base_url ? t('common.edit') : t('providerPool.configure') }}
+              </button>
+            </div>
+            <div v-if="editingBaseUrl" class="flex gap-2">
+              <input
+                v-model="baseUrlDraft"
+                type="url"
+                :placeholder="currentTabSelectedProvider!.id === 'azure-openai' ? 'https://your-resource.openai.azure.com' : currentTabSelectedProvider!.id === 'bedrock' ? 'https://bedrock-runtime.us-east-1.amazonaws.com' : 'https://api.example.com/v1'"
+                class="flex-1 px-2 py-1 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+              />
+              <button
+                class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
+                @click="saveBaseUrl(currentTabSelectedProvider!.id)"
+              >
+                {{ t('common.save') }}
+              </button>
+              <button
+                class="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-xs"
+                @click="cancelEditBaseUrl()"
+              >
+                {{ t('common.cancel') }}
+              </button>
+            </div>
+            <div v-else class="text-xs">
+              <span v-if="currentTabSelectedProvider!.base_url" class="text-gray-600 dark:text-gray-400 font-mono break-all">
+                {{ currentTabSelectedProvider!.base_url }}
+              </span>
+              <span v-else class="text-amber-500 dark:text-amber-400">
+                {{ t('providerPool.baseUrlNotConfigured') }}
+              </span>
+            </div>
+          </div>
+
           <!-- API Keys Section -->
           <div class="mb-4">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
               <div class="flex items-center gap-2">
                 <a
-                  v-if="currentTabSelectedProvider!.id === 'nvidia'"
-                  href="https://build.nvidia.com/settings/api-keys"
+                  v-if="currentTabSelectedProvider!.api_key_url"
+                  :href="currentTabSelectedProvider!.api_key_url"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs flex items-center gap-1"
@@ -1062,14 +1164,26 @@ onMounted(() => {
                   :key="key.id"
                   class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs"
                 >
-                  <div>
-                    <span class="text-gray-700 dark:text-white font-mono">{{ key.key_hash }}</span>
-                    <span v-if="key.label" class="ml-2 text-gray-500">({{ formatKeyLabel(key.label) }})</span>
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="text-gray-700 dark:text-white font-mono truncate">{{ key.key_hash }}</span>
+                    <span v-if="key.label" class="text-gray-500 truncate">({{ formatKeyLabel(key.label) }})</span>
                   </div>
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-2 flex-shrink-0">
                     <span v-if="key.usage_count" class="text-gray-500">
-                      {{ t('providerPool.usageCount') }}: {{ key.usage_count }}
+                      {{ key.usage_count }}
                     </span>
+                    <!-- Test result indicator -->
+                    <span v-if="keyTestResults[key.id]?.healthy === true" class="text-green-500" title="Healthy">✓</span>
+                    <span v-else-if="keyTestResults[key.id]?.healthy === false" class="text-red-400" :title="keyTestResults[key.id]?.error || 'Failed'">✗</span>
+                    <!-- Test button -->
+                    <button
+                      :disabled="testingKeyId === key.id || !currentTabSelectedProvider!.base_url"
+                      class="px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded disabled:opacity-50"
+                      :title="!currentTabSelectedProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
+                      @click="testConnection(currentTabSelectedProvider!.id, key.id)"
+                    >
+                      {{ testingKeyId === key.id ? '...' : t('providerPool.test') }}
+                    </button>
                     <button
                       class="text-red-400 hover:text-red-300"
                       @click="removeAPIKey(currentTabSelectedProvider!.id, key.id)"

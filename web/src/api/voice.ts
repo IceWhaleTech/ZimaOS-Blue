@@ -86,6 +86,7 @@ export const voiceApi = {
     }
     return api.post<TranscribeResponse>('/voice/transcribe', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 20000,
     })
   },
 
@@ -122,7 +123,7 @@ export const voiceApi = {
 
   // Streaming TTS via SSE - synthesize text and stream audio chunks
   synthesizeStream: (text: string, format?: string): EventSource => {
-    const params = new URLSearchParams({ text, format: format || 'mp3' })
+    const params = new URLSearchParams({ text, ...(format ? { format } : {}) })
     const token = localStorage.getItem('token')
     if (token) params.set('token', token)
     return new EventSource(`/api/v1/voice/synthesize/stream?${params.toString()}`)
@@ -548,7 +549,7 @@ class StreamingTTSManager {
     try {
       const token = localStorage.getItem('token')
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
-      const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}&format=mp3${tokenParam}`)
+      const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}${tokenParam}`)
       let received = false
 
       es.addEventListener('audio', (e) => {

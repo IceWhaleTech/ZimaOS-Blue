@@ -121,6 +121,30 @@ func TestOTAChecker_CachePersistence(t *testing.T) {
 	}
 }
 
+func TestIsBlueOTAResponse(t *testing.T) {
+	tests := []struct {
+		name string
+		resp *OTAResponse
+		want bool
+	}{
+		{"nil", nil, false},
+		{"empty version", &OTAResponse{}, false},
+		{"blue in release note URL", &OTAResponse{Version: "1.0.0", ReleaseNoteURL: "https://example.com/ZimaOS-Blue/notes.md"}, true},
+		{"blue in package URL", &OTAResponse{Version: "1.2.3", Packages: []string{"https://example.com/blue.tar.gz"}}, true},
+		{"0.x with blue URL", &OTAResponse{Version: "0.0.5", ReleaseNoteURL: "https://example.com/blue/notes.md"}, true},
+		{"no URLs (bare response)", &OTAResponse{Version: "1.0.0"}, true},
+		{"non-blue release note", &OTAResponse{Version: "1.0.0", ReleaseNoteURL: "https://example.com/ZimaOS/notes.md"}, false},
+		{"non-blue package URL", &OTAResponse{Version: "1.0.0", Packages: []string{"https://example.com/zimaos.tar.gz"}, ReleaseNoteURL: "https://example.com/ZimaOS/notes.md"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBlueOTAResponse(tt.resp); got != tt.want {
+				t.Errorf("isBlueOTAResponse() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGetMachineID(t *testing.T) {
 	id := getMachineID()
 	if id == "" {

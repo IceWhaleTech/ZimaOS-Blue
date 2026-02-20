@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { AudioRecorder, VoiceWebSocket, playAudioFromBase64 } from '@/api/voice'
 import type { VoiceSessionState } from '@/api/voice'
 import { speechApi } from '@/api/speech'
+import { convertToWav } from '@/utils/audioConverter'
 import TranscriptionEditor from './TranscriptionEditor.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
@@ -60,8 +61,8 @@ let recorder: AudioRecorder | null = null
 // Check if ASR model is ready
 async function checkASRModelReady(): Promise<boolean> {
   try {
-    const res = await speechApi.getASRStatus()
-    return res.data?.ready ?? false
+    const res = await speechApi.getStatus()
+    return res.data?.asr?.ready ?? false
   } catch {
     return true // Assume ready if check fails
   }
@@ -212,14 +213,13 @@ async function transcribeLocally() {
     const mimeType = recorder?.mimeType || 'audio/webm'
     const audioBlob = new Blob(recordedChunks.value, { type: mimeType })
 
-    // Determine format from mime type (e.g., 'audio/webm' -> 'webm')
-    const format = mimeType.split('/')[1]?.split(';')[0] || 'webm'
+    // Convert to WAV for reliable server-side processing
+    const wavBlob = await convertToWav(audioBlob)
 
     // Use user's locale language for transcription (e.g., 'zh-CN' -> 'zh')
     const lang = localeStore.currentLocale.split('-')[0]
 
-    // Send directly to backend - backend will handle format conversion
-    const result = await speechApi.transcribe(audioBlob, format, lang)
+    const result = await speechApi.transcribe(wavBlob, 'wav', lang)
 
     if (result.text) {
       // If editBeforeSend is enabled, show editor; otherwise emit directly
@@ -234,9 +234,17 @@ async function transcribeLocally() {
         emit('transcript', result.text)
       }
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('Local transcription failed:', e)
-    error.value = t('chat.talkMode.transcriptionError')
+    const errorCode = e?.error_code || e?.response?.data?.error_code
+    if (errorCode === 'timeout' || e?.name === 'AbortError') {
+      error.value = t('chat.voiceTranscriptionTimeout')
+    } else if (errorCode === 'on_device_unavailable') {
+      error.value = t('speech.onDeviceUnavailableError')
+    } else {
+      const serverMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message
+      error.value = serverMsg || t('chat.talkMode.transcriptionError')
+    }
   } finally {
     isProcessing.value = false
   }

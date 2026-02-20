@@ -11,10 +11,24 @@ import (
 	"github.com/google/uuid"
 )
 
+// candidateSnapshot holds a precomputed candidate list for all known models.
+// Stored in atomic.Value for lock-free reads on the hot path.
+type candidateSnapshot struct {
+	// byModel maps model ID → sorted candidates (by default strategy)
+	byModel map[string][]*RouteCandidate
+	// allCandidates is the full list of all provider+model pairs (for empty model requests)
+	allCandidates []*RouteCandidate
+	// builtAt is when this snapshot was created
+	builtAt time.Time
+}
+
 // Router handles intelligent model routing and provider selection
 type Router struct {
 	registry  *Registry
 	discovery *ModelDiscovery
+
+	// Static candidate cache — rebuilt on provider changes, read lock-free
+	candidates atomic.Value // *candidateSnapshot
 
 	// Round-robin state
 	rrIndex map[string]*uint64
@@ -38,7 +52,7 @@ type Router struct {
 
 // NewRouter creates a new Router
 func NewRouter(registry *Registry, discovery *ModelDiscovery, defaultStrategy RoutingStrategy) *Router {
-	return &Router{
+	r := &Router{
 		registry:        registry,
 		discovery:       discovery,
 		rrIndex:         make(map[string]*uint64),
@@ -47,6 +61,8 @@ func NewRouter(registry *Registry, discovery *ModelDiscovery, defaultStrategy Ro
 		cooldownCfg:     DefaultCooldownConfig(),
 		defaultStrategy: defaultStrategy,
 	}
+	r.RebuildCandidates()
+	return r
 }
 
 // SetCooldownConfig sets the cooldown configuration
@@ -61,15 +77,63 @@ func (r *Router) SetFailoverCallback(cb func(*FailoverResult)) {
 	r.failoverCallback = cb
 }
 
-// Route selects the best provider for a model request
+// RebuildCandidates rebuilds the static candidate snapshot from current provider/model state.
+// Call this when providers are added/removed/updated or models change.
+// The snapshot is swapped atomically — zero contention on the read path.
+func (r *Router) RebuildCandidates() {
+	providers := r.registry.ListEnabled()
+	snap := &candidateSnapshot{
+		byModel: make(map[string][]*RouteCandidate),
+		builtAt: time.Now(),
+	}
+
+	for _, provider := range providers {
+		// Skip cloud providers without a usable API key
+		if provider.Location == ProviderLocationCloud {
+			if key, err := r.registry.GetAPIKey(provider.ID); err != nil || key == nil || key.Key == "" {
+				continue
+			}
+		}
+
+		models, err := r.discovery.GetModels(provider.ID)
+		if err != nil {
+			continue
+		}
+
+		for _, model := range models {
+			if !model.Enabled {
+				continue
+			}
+			c := &RouteCandidate{
+				Provider: provider,
+				Model:    model,
+			}
+			snap.byModel[model.ID] = append(snap.byModel[model.ID], c)
+			snap.byModel[model.Name] = append(snap.byModel[model.Name], c)
+			snap.allCandidates = append(snap.allCandidates, c)
+		}
+	}
+
+	r.candidates.Store(snap)
+}
+
+// Route selects the best provider for a model request.
+// Uses the precomputed candidate snapshot for O(1) lookup, falls back to dynamic search
+// for alias matching or when the snapshot doesn't have the model.
 func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 	if req.Strategy == "" {
 		req.Strategy = r.defaultStrategy
 	}
 
-	candidates, err := r.findCandidates(req)
-	if err != nil {
-		return nil, err
+	candidates := r.getCandidatesFromSnapshot(req)
+
+	// Fallback to dynamic search if snapshot miss (alias matching, etc.)
+	if len(candidates) == 0 {
+		var err error
+		candidates, err = r.findCandidates(req)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(candidates) == 0 {
@@ -92,6 +156,62 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 	}
 
 	return result, nil
+}
+
+// getCandidatesFromSnapshot returns candidates from the precomputed snapshot.
+// Returns a fresh copy so callers can sort/filter without affecting the snapshot.
+// Applies runtime filters (cooldown, exclude, routing mode) that can't be precomputed.
+func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate {
+	snapVal := r.candidates.Load()
+	if snapVal == nil {
+		return nil
+	}
+	snap := snapVal.(*candidateSnapshot)
+
+	var source []*RouteCandidate
+	if req.ModelID == "" {
+		source = snap.allCandidates
+	} else {
+		source = snap.byModel[req.ModelID]
+	}
+	if len(source) == 0 {
+		return nil
+	}
+
+	// Build exclusion set
+	excludeSet := make(map[string]bool, len(req.Exclude))
+	for _, id := range req.Exclude {
+		excludeSet[id] = true
+	}
+
+	// Copy + filter (runtime state: cooldown, exclude, routing mode, status)
+	result := make([]*RouteCandidate, 0, len(source))
+	for _, c := range source {
+		if excludeSet[c.Provider.ID] {
+			continue
+		}
+		if c.Provider.Status == ProviderStatusError {
+			continue
+		}
+		if r.IsInCooldown(c.Provider.ID) {
+			continue
+		}
+		if req.Mode != "" && req.Mode != RoutingModeAuto {
+			if req.Mode == RoutingModeCloud && c.Provider.Location != ProviderLocationCloud {
+				continue
+			}
+			if req.Mode == RoutingModeLocal && c.Provider.Location != ProviderLocationLocal {
+				continue
+			}
+		}
+		if req.RequireCap != nil && !matchesCapabilities(c.Model.Capabilities, *req.RequireCap) {
+			continue
+		}
+		// Copy the candidate so sorting doesn't mutate the snapshot
+		copy := *c
+		result = append(result, &copy)
+	}
+	return result
 }
 
 // findCandidates finds all providers that can serve the requested model
@@ -504,26 +624,31 @@ func classifyError(err error) FailoverReason {
 
 // RouteWithFallback attempts to route with automatic fallback on failure
 func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execute func(*RouteResult) error) error {
-	// Initialize failover tracking
-	failoverResult := &FailoverResult{
-		RequestID: uuid.New().String(),
-		StartTime: time.Now(),
-	}
-	defer func() {
-		failoverResult.EndTime = time.Now()
-		if r.failoverCallback != nil {
-			r.failoverCallback(failoverResult)
+	// Only allocate failover tracking when a callback is registered
+	var failoverResult *FailoverResult
+	if r.failoverCallback != nil {
+		failoverResult = &FailoverResult{
+			RequestID: uuid.New().String(),
+			StartTime: time.Now(),
 		}
-	}()
+		defer func() {
+			failoverResult.EndTime = time.Now()
+			r.failoverCallback(failoverResult)
+		}()
+	}
 
 	result, err := r.Route(req)
 	if err != nil {
-		failoverResult.FinalError = err.Error()
+		if failoverResult != nil {
+			failoverResult.FinalError = err.Error()
+		}
 		return err
 	}
 
 	// Try primary
-	failoverResult.TotalAttempts++
+	if failoverResult != nil {
+		failoverResult.TotalAttempts++
+	}
 	start := time.Now()
 	err = execute(result)
 	latency := time.Since(start)
@@ -531,8 +656,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 	if err == nil {
 		r.UpdateLatency(result.Provider.ID, latency)
 		r.RecordSuccess(result.Provider.ID)
-		failoverResult.SuccessProvider = result.Provider.ID
-		failoverResult.SuccessModel = result.Model.ID
+		if failoverResult != nil {
+			failoverResult.SuccessProvider = result.Provider.ID
+			failoverResult.SuccessModel = result.Model.ID
+		}
 		return nil
 	}
 
@@ -541,26 +668,30 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 	r.RecordFailure(result.Provider.ID, err)
 
 	// Track the failed attempt
-	failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-		Timestamp:    start,
-		ProviderID:   result.Provider.ID,
-		ProviderName: result.Provider.Name,
-		ModelID:      result.Model.ID,
-		Reason:       classifyError(err),
-		Error:        err.Error(),
-		Latency:      latency,
-	})
+	if failoverResult != nil {
+		failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+			Timestamp:    start,
+			ProviderID:   result.Provider.ID,
+			ProviderName: result.Provider.Name,
+			ModelID:      result.Model.ID,
+			Reason:       classifyError(err),
+			Error:        err.Error(),
+			Latency:      latency,
+		})
+	}
 
 	// Try fallbacks
 	for i, fallback := range result.Fallbacks {
 		// Check context
 		if ctx.Err() != nil {
-			failoverResult.FinalError = ctx.Err().Error()
+			if failoverResult != nil {
+				failoverResult.FinalError = ctx.Err().Error()
+			}
 			return ctx.Err()
 		}
 
 		// Update previous record with next provider info
-		if len(failoverResult.FailedAttempts) > 0 {
+		if failoverResult != nil && len(failoverResult.FailedAttempts) > 0 {
 			failoverResult.FailedAttempts[len(failoverResult.FailedAttempts)-1].NextProviderID = fallback.Provider.ID
 		}
 
@@ -574,7 +705,9 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 			fallbackResult.APIKey = apiKey
 		}
 
-		failoverResult.TotalAttempts++
+		if failoverResult != nil {
+			failoverResult.TotalAttempts++
+		}
 		start := time.Now()
 		err = execute(fallbackResult)
 		latency := time.Since(start)
@@ -582,8 +715,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		if err == nil {
 			r.UpdateLatency(fallback.Provider.ID, latency)
 			r.RecordSuccess(fallback.Provider.ID)
-			failoverResult.SuccessProvider = fallback.Provider.ID
-			failoverResult.SuccessModel = fallback.Model.ID
+			if failoverResult != nil {
+				failoverResult.SuccessProvider = fallback.Provider.ID
+				failoverResult.SuccessModel = fallback.Model.ID
+			}
 			return nil
 		}
 
@@ -591,24 +726,28 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		r.UpdateLatency(fallback.Provider.ID, latency*2)
 		r.RecordFailure(fallback.Provider.ID, err)
 
-		nextProviderID := ""
-		if i+1 < len(result.Fallbacks) {
-			nextProviderID = result.Fallbacks[i+1].Provider.ID
-		}
+		if failoverResult != nil {
+			nextProviderID := ""
+			if i+1 < len(result.Fallbacks) {
+				nextProviderID = result.Fallbacks[i+1].Provider.ID
+			}
 
-		failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-			Timestamp:      start,
-			ProviderID:     fallback.Provider.ID,
-			ProviderName:   fallback.Provider.Name,
-			ModelID:        fallback.Model.ID,
-			Reason:         classifyError(err),
-			Error:          err.Error(),
-			Latency:        latency,
-			NextProviderID: nextProviderID,
-		})
+			failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+				Timestamp:      start,
+				ProviderID:     fallback.Provider.ID,
+				ProviderName:   fallback.Provider.Name,
+				ModelID:        fallback.Model.ID,
+				Reason:         classifyError(err),
+				Error:          err.Error(),
+				Latency:        latency,
+				NextProviderID: nextProviderID,
+			})
+		}
 	}
 
-	failoverResult.FinalError = err.Error()
+	if failoverResult != nil {
+		failoverResult.FinalError = err.Error()
+	}
 	return err
 }
 

@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
 )
 
 // WhisperModelInfo contains metadata about a whisper model.
@@ -25,23 +24,13 @@ type WhisperModelInfo struct {
 	Recommended bool   `json:"recommended"`
 }
 
-// DownloadProgress tracks download progress.
-type DownloadProgress struct {
-	File       string  `json:"file"`
-	Downloaded int64   `json:"downloaded"`
-	Total      int64   `json:"total"`
-	Percentage float64 `json:"percentage"`
-	SpeedHuman string  `json:"speed_human"`
-	ETA        string  `json:"eta"`
-}
-
 // ModelStatus represents the status of a model.
 type ModelStatus struct {
-	Ready       bool              `json:"ready"`
-	ModelType   string            `json:"model_type,omitempty"`
-	Downloading bool              `json:"downloading"`
-	HasPending  bool              `json:"has_pending"`
-	Progress    *DownloadProgress `json:"progress,omitempty"`
+	Ready       bool                         `json:"ready"`
+	ModelType   string                       `json:"model_type,omitempty"`
+	Downloading bool                         `json:"downloading"`
+	HasPending  bool                         `json:"has_pending"`
+	Progress    *downloader.DownloadProgress `json:"progress,omitempty"`
 }
 
 var whisperModels = []WhisperModelInfo{
@@ -60,7 +49,6 @@ var whisperModels = []WhisperModelInfo{
 		Size:        "142 MB",
 		URL:         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
 		Filename:    "ggml-base.bin",
-		Recommended: true,
 	},
 	{
 		ID:          "whisper-small",
@@ -77,6 +65,7 @@ var whisperModels = []WhisperModelInfo{
 		Size:        "547 MB",
 		URL:         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
 		Filename:    "ggml-large-v3-turbo-q5_0.bin",
+		Recommended: true,
 	},
 }
 
@@ -87,13 +76,10 @@ func GetAvailableASRModels() []WhisperModelInfo {
 
 // WhisperModelManager manages whisper model downloads.
 type WhisperModelManager struct {
-	modelDir     string
-	activeModel  string
-	downloading  bool
-	currentModel string
-	progress     *DownloadProgress
-	cancelFunc   context.CancelFunc
-	mu           sync.Mutex
+	modelDir    string
+	activeModel string
+	dl          *downloader.ModelDownloader
+	mu          sync.Mutex
 }
 
 // modelConfig holds persisted model configuration.
@@ -103,17 +89,18 @@ type modelConfig struct {
 
 // NewWhisperModelManager creates a new model manager.
 func NewWhisperModelManager(modelDir string) *WhisperModelManager {
-	m := &WhisperModelManager{modelDir: modelDir}
+	m := &WhisperModelManager{
+		modelDir: modelDir,
+		dl:       downloader.NewModelDownloader(modelDir),
+	}
 	m.loadConfig()
 	return m
 }
 
-// configPath returns the path to the config file.
 func (m *WhisperModelManager) configPath() string {
 	return filepath.Join(m.modelDir, "config.json")
 }
 
-// loadConfig loads the persisted configuration.
 func (m *WhisperModelManager) loadConfig() {
 	data, err := os.ReadFile(m.configPath())
 	if err != nil {
@@ -126,7 +113,6 @@ func (m *WhisperModelManager) loadConfig() {
 	m.activeModel = cfg.ActiveModel
 }
 
-// saveConfig persists the current configuration.
 func (m *WhisperModelManager) saveConfig() {
 	cfg := modelConfig{ActiveModel: m.activeModel}
 	data, err := json.Marshal(cfg)
@@ -157,17 +143,24 @@ func (m *WhisperModelManager) GetModelStatus() ModelStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// When downloading, return the model being downloaded, not the active model
 	modelType := m.activeModel
-	if m.downloading && m.currentModel != "" {
-		modelType = m.currentModel
+	downloading := m.dl.IsDownloading()
+	if downloading {
+		if p := m.dl.GetProgress(); p != nil && p.File != "" {
+			for _, model := range whisperModels {
+				if model.Filename == p.File {
+					modelType = model.ID
+					break
+				}
+			}
+		}
 	}
 
 	return ModelStatus{
 		Ready:       m.isModelDownloaded(m.activeModel),
 		ModelType:   modelType,
-		Downloading: m.downloading,
-		Progress:    m.progress,
+		Downloading: downloading,
+		Progress:    m.dl.GetProgress(),
 	}
 }
 
@@ -197,14 +190,8 @@ func (m *WhisperModelManager) isModelDownloaded(modelType string) bool {
 	return false
 }
 
-// DownloadModel downloads a whisper model.
+// DownloadModel downloads a whisper model using the shared downloader.
 func (m *WhisperModelManager) DownloadModel(ctx context.Context, modelType string) error {
-	m.mu.Lock()
-	if m.downloading {
-		m.mu.Unlock()
-		return fmt.Errorf("download already in progress")
-	}
-
 	var modelInfo *WhisperModelInfo
 	for _, model := range whisperModels {
 		if model.ID == modelType {
@@ -213,110 +200,22 @@ func (m *WhisperModelManager) DownloadModel(ctx context.Context, modelType strin
 		}
 	}
 	if modelInfo == nil {
-		m.mu.Unlock()
 		return fmt.Errorf("unknown model: %s", modelType)
 	}
 
-	m.downloading = true
-	m.currentModel = modelType
-	m.progress = &DownloadProgress{File: modelInfo.Filename}
-
-	ctx, m.cancelFunc = context.WithCancel(ctx)
-	m.mu.Unlock()
-
-	defer func() {
-		m.mu.Lock()
-		m.downloading = false
-		m.cancelFunc = nil
-		m.mu.Unlock()
-	}()
-
-	if err := os.MkdirAll(m.modelDir, 0755); err != nil {
-		return err
+	files := []downloader.ModelFile{
+		{
+			Filename: modelInfo.Filename,
+			URL:      modelInfo.URL,
+			Size:     modelInfo.Size,
+		},
 	}
-
-	destPath := filepath.Join(m.modelDir, modelInfo.Filename)
-	return m.downloadFile(ctx, modelInfo.URL, destPath)
-}
-
-func (m *WhisperModelManager) downloadFile(ctx context.Context, url, destPath string) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed: %s", resp.Status)
-	}
-
-	out, err := os.Create(destPath + ".tmp")
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	m.mu.Lock()
-	m.progress.Total = resp.ContentLength
-	m.mu.Unlock()
-
-	startTime := time.Now()
-	buf := make([]byte, 32*1024)
-	var downloaded int64
-
-	for {
-		select {
-		case <-ctx.Done():
-			os.Remove(destPath + ".tmp")
-			return ctx.Err()
-		default:
-		}
-
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			out.Write(buf[:n])
-			downloaded += int64(n)
-
-			m.mu.Lock()
-			m.progress.Downloaded = downloaded
-			if m.progress.Total > 0 {
-				m.progress.Percentage = float64(downloaded) / float64(m.progress.Total) * 100
-			}
-			elapsed := time.Since(startTime).Seconds()
-			if elapsed > 0 {
-				speed := float64(downloaded) / elapsed
-				m.progress.SpeedHuman = formatSpeed(speed)
-				if speed > 0 && m.progress.Total > 0 {
-					remaining := float64(m.progress.Total-downloaded) / speed
-					m.progress.ETA = formatDuration(remaining)
-				}
-			}
-			m.mu.Unlock()
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			os.Remove(destPath + ".tmp")
-			return err
-		}
-	}
-
-	return os.Rename(destPath+".tmp", destPath)
+	return m.dl.Download(ctx, files)
 }
 
 // CancelDownload cancels the current download.
 func (m *WhisperModelManager) CancelDownload() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.cancelFunc != nil {
-		m.cancelFunc()
-	}
+	m.dl.Cancel()
 }
 
 // GetModelPath returns the path to a downloaded model.
@@ -338,18 +237,4 @@ func (m *WhisperModelManager) GetModelIDFromPath(modelPath string) string {
 		}
 	}
 	return ""
-}
-
-func formatSpeed(bytesPerSec float64) string {
-	if bytesPerSec >= 1024*1024 {
-		return fmt.Sprintf("%.1f MB/s", bytesPerSec/1024/1024)
-	}
-	return fmt.Sprintf("%.1f KB/s", bytesPerSec/1024)
-}
-
-func formatDuration(seconds float64) string {
-	if seconds < 60 {
-		return fmt.Sprintf("%ds", int(seconds))
-	}
-	return fmt.Sprintf("%dm%ds", int(seconds)/60, int(seconds)%60)
 }

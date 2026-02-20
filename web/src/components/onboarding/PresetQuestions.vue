@@ -15,13 +15,21 @@ const questions = ref<PresetQuestion[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
 
-// Get language code for API (zh, en, etc.)
+// Get language code for API — maps locale to backend question set key
 function getLangCode(): string {
   const lang = locale.value
-  if (lang.startsWith('zh')) return 'zh'
-  if (lang.startsWith('ja')) return 'ja'
-  if (lang.startsWith('ko')) return 'ko'
-  return 'en'
+  // Map full locale to short code used by backend
+  const mapping: Record<string, string> = {
+    'zh-CN': 'zh', 'zh-TW': 'zh-TW',
+    'ja-JP': 'ja', 'ko-KR': 'ko',
+    'de-DE': 'de', 'fr-FR': 'fr', 'es-ES': 'es', 'it-IT': 'it',
+    'pt-BR': 'pt-BR', 'pt-PT': 'pt-PT', 'ru-RU': 'ru',
+    'nl-NL': 'nl', 'pl-PL': 'pl', 'sv-SE': 'sv', 'da-DK': 'da',
+    'nb-NO': 'nb', 'cs-CZ': 'cs', 'sk-SK': 'sk', 'hu-HU': 'hu',
+    'ro-RO': 'ro', 'hr-HR': 'hr', 'el-GR': 'el', 'ca-ES': 'ca',
+    'ga-IE': 'ga', 'ml-IN': 'ml', 'en-GB': 'en',
+  }
+  return mapping[lang] || 'en'
 }
 
 // Map of placeholder names to real sample file paths

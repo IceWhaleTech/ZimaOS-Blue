@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -123,17 +124,76 @@ var (
 	sttAuthErr    error
 )
 
-// mainWorkCh receives closures to execute on thread 0's run loop.
-// RunMainRunLoop drains this channel while pumping NSRunLoop.
-var mainWorkCh = make(chan func(), 16)
-
 // mainDoneCh signals RunMainRunLoop to stop.
 var mainDoneCh = make(chan struct{})
 
-// SubmitToMainThread dispatches a closure to execute on thread 0.
-// Blocks until the closure is queued (not until it completes).
+// GCD dispatch support — used by SubmitToMainThread to dispatch closures
+// to the main thread via dispatch_async_f. Works in both CLI mode
+// (RunMainRunLoop pumps NSRunLoop which drains GCD main queue) and
+// Tauri mode (Tauri's Cocoa event loop drains GCD main queue).
+var (
+	gcdOnce          sync.Once
+	dispatchMainQueue uintptr // dispatch_queue_t from dispatch_get_main_queue()
+	dispatchAsyncF   func(queue uintptr, context uintptr, work uintptr)
+)
+
+// pendingWork stores Go closures keyed by an incrementing ID.
+// dispatch_async_f passes the ID as context, the C callback looks it up.
+var (
+	pendingWorkMu sync.Mutex
+	pendingWorkID uintptr
+	pendingWork   = make(map[uintptr]func())
+)
+
+func initGCD() {
+	gcdOnce.Do(func() {
+		libdispatch, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_LAZY)
+		if err != nil {
+			slog.Error("[macos-stt] failed to open libSystem for GCD", "err", err)
+			return
+		}
+		// dispatch_get_main_queue() is an inline that returns &_dispatch_main_q
+		dispatchMainQueue, err = purego.Dlsym(libdispatch, "_dispatch_main_q")
+		if err != nil {
+			slog.Error("[macos-stt] failed to find _dispatch_main_q", "err", err)
+			return
+		}
+		purego.RegisterLibFunc(&dispatchAsyncF, libdispatch, "dispatch_async_f")
+	})
+}
+
+// gcdCallback is the C function pointer passed to dispatch_async_f.
+// It receives the pendingWork ID as context, looks up and runs the closure.
+var gcdCallbackPtr = purego.NewCallback(func(ctx uintptr) {
+	pendingWorkMu.Lock()
+	fn, ok := pendingWork[ctx]
+	if ok {
+		delete(pendingWork, ctx)
+	}
+	pendingWorkMu.Unlock()
+	if ok {
+		fn()
+	}
+})
+
+// SubmitToMainThread dispatches a closure to execute on the main thread
+// via GCD dispatch_async_f. Non-blocking — returns immediately after queuing.
+// Works in both CLI mode (RunMainRunLoop) and Tauri mode (Cocoa event loop).
 func SubmitToMainThread(fn func()) {
-	mainWorkCh <- fn
+	initGCD()
+	if dispatchAsyncF == nil {
+		// Fallback: run inline if GCD init failed (shouldn't happen on macOS)
+		slog.Warn("[macos-stt] GCD not available, running inline")
+		fn()
+		return
+	}
+	pendingWorkMu.Lock()
+	pendingWorkID++
+	id := pendingWorkID
+	pendingWork[id] = fn
+	pendingWorkMu.Unlock()
+
+	dispatchAsyncF(dispatchMainQueue, id, gcdCallbackPtr)
 }
 
 // StopMainRunLoop signals RunMainRunLoop to return.
@@ -148,6 +208,8 @@ func StopMainRunLoop() {
 // Must be called from main() after RequestSTTAuthorization().
 // The server should be started on a separate goroutine before calling this.
 // Returns when StopMainRunLoop() is called.
+// In Tauri mode this is NOT called — Tauri owns the Cocoa event loop,
+// and SubmitToMainThread uses GCD dispatch_async which Tauri drains.
 func RunMainRunLoop() {
 	selCurrentRunLoop := objc.RegisterName("currentRunLoop")
 	selRunUntilDate := objc.RegisterName("runUntilDate:")
@@ -165,17 +227,8 @@ func RunMainRunLoop() {
 			return
 		default:
 		}
-		// Drain any pending work items
-		for {
-			select {
-			case fn := <-mainWorkCh:
-				fn()
-			default:
-				goto pump
-			}
-		}
-	pump:
-		// Pump the run loop for 50ms to let GCD/AppKit/Speech callbacks fire
+		// Pump the run loop for 50ms to let GCD/AppKit/Speech callbacks fire.
+		// GCD dispatch_async work items are delivered through this run loop.
 		futureDate := nsDateCls.Send(selDateWithInterval, 0.05)
 		runLoop.Send(selRunUntilDate, futureDate)
 	}
@@ -235,8 +288,10 @@ func RequestSTTAuthorization() (int, error) {
 }
 
 type MacOSNativeSTT struct {
-	initialized bool
-	mu          sync.Mutex
+	initialized       bool
+	requireOnDevice   bool // user preference: force on-device only
+	onDeviceSupported bool // cached at init time
+	mu                sync.Mutex
 }
 
 func NewMacOSNativeSTT() *MacOSNativeSTT {
@@ -271,7 +326,84 @@ func (p *MacOSNativeSTT) Initialize() error {
 
 	initSTTSelectors()
 	p.initialized = true
+
+	// Probe on-device support (SFSpeechRecognizer is thread-safe for this query)
+	cls := objc.ID(objc.GetClass("SFSpeechRecognizer"))
+	if cls != 0 {
+		recognizer := cls.Send(selAlloc).Send(selInit)
+		if recognizer != 0 {
+			p.onDeviceSupported = objc.Send[bool](recognizer, selSupportsOnDeviceRecognition)
+		}
+	}
+
 	return nil
+}
+
+// RequestSTTAuthorizationEmbedded is like RequestSTTAuthorization but for
+// embedded mode (Tauri). It skips NSApp initialization (Tauri already owns
+// the Cocoa event loop) and just checks/requests authorization status.
+// The requestAuthorization: callback fires via Tauri's run loop.
+// Can be called from any thread — does not require thread 0.
+func RequestSTTAuthorizationEmbedded() (int, error) {
+	sttAuthMu.Lock()
+	defer sttAuthMu.Unlock()
+
+	initSTTSelectors()
+
+	cls := objc.GetClass("SFSpeechRecognizer")
+	if cls == 0 {
+		sttAuthErr = fmt.Errorf("SFSpeechRecognizer class not found")
+		return 0, sttAuthErr
+	}
+
+	// Check current status
+	status := objc.Send[int](objc.ID(cls), selAuthorizationStatus)
+	slog.Info("[macos-stt] embedded authorization status", "status", status)
+
+	if status == 0 {
+		// Preflight checks
+		if !hasSpeechUsageDescription() {
+			slog.Warn("[macos-stt] NSSpeechRecognitionUsageDescription not found")
+			sttAuthErr = fmt.Errorf("macOS native speech recognition unavailable: " +
+				"NSSpeechRecognitionUsageDescription missing from Info.plist")
+			return 0, sttAuthErr
+		}
+		if !verifyCodeSignature() {
+			slog.Warn("[macos-stt] no valid code signature")
+			sttAuthErr = fmt.Errorf("macOS native speech recognition unavailable: " +
+				"no valid code signature. Sign the binary with codesign")
+			return 0, sttAuthErr
+		}
+
+		slog.Info("[macos-stt] requesting speech recognition authorization (embedded)...")
+
+		authCh := make(chan int, 1)
+		block := objc.NewBlock(func(_ objc.Block, s int) {
+			slog.Info("[macos-stt] embedded authorization callback", "status", s)
+			select {
+			case authCh <- s:
+			default:
+			}
+		})
+		objc.ID(cls).Send(selRequestAuthorization, block)
+
+		// Wait for callback — Tauri's run loop delivers it
+		select {
+		case status = <-authCh:
+			block.Release()
+		case <-time.After(30 * time.Second):
+			block.Release()
+			sttAuthErr = fmt.Errorf("speech recognition authorization timed out")
+			return 0, sttAuthErr
+		}
+	}
+
+	sttAuthStatus = status
+	if status == 1 || status == 2 {
+		sttAuthErr = fmt.Errorf("speech recognition denied or restricted (status=%d); "+
+			"grant permission in System Settings > Privacy & Security > Speech Recognition", status)
+	}
+	return status, sttAuthErr
 }
 
 // requestAuthorizationViaNSApp runs [NSApp run] on the current thread
@@ -357,8 +489,134 @@ func (p *MacOSNativeSTT) Type() stt.ProviderType    { return ProviderMacOSNative
 func (p *MacOSNativeSTT) Available() bool            { return true }
 func (p *MacOSNativeSTT) MaxDuration() time.Duration { return 60 * time.Second }
 
+// SetRequireOnDevice sets whether to force on-device recognition only.
+func (p *MacOSNativeSTT) SetRequireOnDevice(v bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.requireOnDevice = v
+}
+
+// RequireOnDevice returns the current on-device preference.
+func (p *MacOSNativeSTT) RequireOnDevice() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.requireOnDevice
+}
+
+// SupportsOnDevice returns the cached on-device recognition support status.
+// The value is probed once during Initialize().
+func (p *MacOSNativeSTT) SupportsOnDevice() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.onDeviceSupported
+}
+
+// DictationAvailable checks if macOS Dictation is enabled in System Settings.
+// On macOS Ventura+ (13+), reads com.apple.assistant.support → "Dictation Enabled".
+// Falls back to com.apple.HIToolbox → AppleDictationAutoEnable for older macOS.
+// NSUserDefaults is thread-safe — no need to dispatch to mainWorkCh.
+func (p *MacOSNativeSTT) DictationAvailable() bool {
+	initSTTSelectors()
+	cls := objc.ID(objc.GetClass("NSUserDefaults"))
+	if cls == 0 {
+		return false
+	}
+	selStandardUserDefaults := objc.RegisterName("standardUserDefaults")
+	selSynchronize := objc.RegisterName("synchronize")
+	selPersistentDomain := objc.RegisterName("persistentDomainForName:")
+	selObjectForKey := objc.RegisterName("objectForKey:")
+	selBoolValue := objc.RegisterName("boolValue")
+
+	defaults := cls.Send(selStandardUserDefaults)
+	if defaults == 0 {
+		return false
+	}
+	defaults.Send(selSynchronize)
+
+	// Primary: com.apple.assistant.support → "Dictation Enabled" (macOS Ventura+)
+	domain := defaults.Send(selPersistentDomain, nsString("com.apple.assistant.support"))
+	if domain != 0 {
+		val := domain.Send(selObjectForKey, nsString("Dictation Enabled"))
+		if val != 0 {
+			return objc.Send[bool](val, selBoolValue)
+		}
+	}
+
+	// Fallback: com.apple.HIToolbox → AppleDictationAutoEnable (older macOS)
+	domain = defaults.Send(selPersistentDomain, nsString("com.apple.HIToolbox"))
+	if domain == 0 {
+		return false
+	}
+	val := domain.Send(selObjectForKey, nsString("AppleDictationAutoEnable"))
+	if val == 0 {
+		return false
+	}
+	return objc.Send[bool](val, selBoolValue)
+}
+
 func (p *MacOSNativeSTT) SupportedFormats() []stt.AudioFormat {
 	return []stt.AudioFormat{stt.FormatWAV, stt.FormatMP3, stt.FormatFLAC, stt.FormatOGG}
+}
+
+// OfflineDictationLanguages returns the list of locale codes that have offline
+// dictation installed (Installed=1 in "Offline Dictation Status").
+// NSUserDefaults is thread-safe — no need to dispatch to mainWorkCh.
+func (p *MacOSNativeSTT) OfflineDictationLanguages() []string {
+	initSTTSelectors()
+	cls := objc.ID(objc.GetClass("NSUserDefaults"))
+	if cls == 0 {
+		return nil
+	}
+	defaults := cls.Send(objc.RegisterName("standardUserDefaults"))
+	if defaults == 0 {
+		return nil
+	}
+	defaults.Send(objc.RegisterName("synchronize"))
+
+	domain := defaults.Send(objc.RegisterName("persistentDomainForName:"), nsString("com.apple.assistant.support"))
+	if domain == 0 {
+		return nil
+	}
+	selObjectForKey := objc.RegisterName("objectForKey:")
+	offlineDict := domain.Send(selObjectForKey, nsString("Offline Dictation Status"))
+	if offlineDict == 0 {
+		return nil
+	}
+
+	// Get all keys from the NSDictionary
+	selAllKeys := objc.RegisterName("allKeys")
+	selCount := objc.RegisterName("count")
+	selObjAtIndex := objc.RegisterName("objectAtIndex:")
+	selBoolValue := objc.RegisterName("boolValue")
+
+	keys := offlineDict.Send(selAllKeys) // NSArray
+	if keys == 0 {
+		return nil
+	}
+	count := int(objc.Send[uintptr](keys, selCount))
+	var installed []string
+	for i := 0; i < count; i++ {
+		key := keys.Send(selObjAtIndex, uintptr(i))
+		if key == 0 {
+			continue
+		}
+		// Get the sub-dictionary for this locale
+		langDict := offlineDict.Send(selObjectForKey, key)
+		if langDict == 0 {
+			continue
+		}
+		installedVal := langDict.Send(selObjectForKey, nsString("Installed"))
+		if installedVal == 0 {
+			continue
+		}
+		if objc.Send[bool](installedVal, selBoolValue) {
+			locale := goString(key)
+			if locale != "" {
+				installed = append(installed, locale)
+			}
+		}
+	}
+	return installed
 }
 
 func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequest) (*stt.TranscribeResponse, error) {
@@ -390,8 +648,22 @@ func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequ
 	}
 	tmpFile.Close()
 
+	// Apple Speech framework is picky about audio formats. Use afconvert
+	// to re-encode into 16kHz 16-bit mono WAV which it always accepts.
+	// This also handles browser-produced WAV that may have quirks.
+	audioPath := tmpFile.Name()
+	if needsConversion(ext) {
+		wavPath := tmpFile.Name() + ".converted.wav"
+		if err := afconvertToWAV(ctx, audioPath, wavPath); err != nil {
+			slog.Warn("[macos-stt] afconvert failed, using original file", "error", err)
+		} else {
+			defer os.Remove(wavPath)
+			audioPath = wavPath
+		}
+	}
+
 	locale := langToLocale(req.Language)
-	text, err := p.recognize(ctx, tmpFile.Name(), locale)
+	text, err := p.recognize(ctx, audioPath, locale)
 	if err != nil {
 		return nil, err
 	}
@@ -411,10 +683,10 @@ func (p *MacOSNativeSTT) TranscribeStream(ctx context.Context, req *stt.Transcri
 }
 
 func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) (string, error) {
-	// All ObjC/Speech framework calls must happen on thread 0 (the main thread)
-	// where NSApp's run loop is being pumped by RunMainRunLoop().
-	// We dispatch the recognition setup to thread 0 and wait for the result
-	// on this goroutine via a channel.
+	// Speech framework calls are dispatched to the main thread via GCD
+	// (dispatch_async_f). In CLI mode, RunMainRunLoop pumps NSRunLoop which
+	// drains the GCD main queue. In Tauri mode, Tauri's Cocoa event loop
+	// drains it. We wait for the result on this goroutine via a channel.
 
 	type result struct {
 		text string
@@ -463,12 +735,15 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 		}
 		request.Send(selSetShouldReportPartial, false)
 
-		// Don't force on-device recognition — it can hang if the on-device model
-		// for the requested locale isn't downloaded. Let the system choose the
-		// best path (server or on-device). This matches hear's default behavior.
+		// Check on-device support and apply user preference
 		onDevice := objc.Send[bool](recognizer, selSupportsOnDeviceRecognition)
+		requireOnDevice := p.RequireOnDevice()
+		if requireOnDevice && onDevice {
+			request.Send(selSetRequiresOnDevice, true)
+		}
 		slog.Info("[macos-stt] starting recognition task",
-			"audioPath", audioPath, "locale", locale, "onDeviceSupported", onDevice)
+			"audioPath", audioPath, "locale", locale,
+			"onDeviceSupported", onDevice, "requireOnDevice", requireOnDevice)
 
 		// Block callback: ^(SFSpeechRecognitionResult *res, NSError *err)
 		var lastText string
@@ -500,8 +775,15 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 					default:
 					}
 				} else {
+					err := fmt.Errorf("recognition error: %s", desc)
+					// Detect on-device unavailable errors
+					if requireOnDevice && isOnDeviceError(desc) {
+						err = &OnDeviceUnavailableError{Locale: locale, Detail: desc}
+					} else if friendlyMsg := friendlySpeechError(desc); friendlyMsg != "" {
+						err = fmt.Errorf("%s", friendlyMsg)
+					}
 					select {
-					case ch <- result{err: fmt.Errorf("recognition error: %s", desc)}:
+					case ch <- result{err: err}:
 					default:
 					}
 				}
@@ -536,6 +818,65 @@ func (p *MacOSNativeSTT) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.initialized = false
+}
+
+// OnDeviceUnavailableError indicates on-device recognition failed for the locale.
+type OnDeviceUnavailableError struct {
+	Locale string
+	Detail string
+}
+
+func (e *OnDeviceUnavailableError) Error() string {
+	return fmt.Sprintf("on-device recognition not available for locale %q: %s", e.Locale, e.Detail)
+}
+
+// isOnDeviceError checks if an NSError description indicates on-device model unavailability.
+func isOnDeviceError(desc string) bool {
+	d := strings.ToLower(desc)
+	return strings.Contains(d, "on-device") ||
+		strings.Contains(d, "offline") ||
+		strings.Contains(d, "not supported for this locale") ||
+		strings.Contains(d, "siri and dictation") ||
+		strings.Contains(d, "no speech detected") // on-device may silently fail with this
+}
+
+// friendlySpeechError maps cryptic Apple Speech framework errors to user-friendly messages.
+func friendlySpeechError(desc string) string {
+	d := strings.ToLower(desc)
+	switch {
+	case strings.Contains(d, "cannot open"):
+		return "Could not process the audio. The recording may be too short or corrupted — please try again."
+	case strings.Contains(d, "no speech detected"):
+		return "No speech detected in the recording. Please speak clearly and try again."
+	case strings.Contains(d, "not available"):
+		return "Speech recognition is temporarily unavailable. Please try again later."
+	case strings.Contains(d, "rate limit"):
+		return "Too many requests. Please wait a moment and try again."
+	default:
+		return ""
+	}
+}
+
+// needsConversion returns true for formats that Apple Speech framework cannot handle directly.
+// WAV is not included because the frontend now converts to WAV before sending.
+func needsConversion(ext string) bool {
+	switch ext {
+	case ".webm", ".ogg":
+		return true
+	default:
+		return false
+	}
+}
+
+// afconvertToWAV uses macOS built-in afconvert to re-encode audio to 16kHz 16-bit mono WAV.
+func afconvertToWAV(ctx context.Context, src, dst string) error {
+	cmd := exec.CommandContext(ctx, "afconvert",
+		"-f", "WAVE", "-d", "LEI16@16000", "-c", "1", src, dst)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("afconvert: %w (output: %s)", err, string(output))
+	}
+	return nil
 }
 
 // langToLocale maps short language codes to BCP-47 locale identifiers.
@@ -643,4 +984,18 @@ func verifyCodeSignature() bool {
 	rc := secStaticCodeCheckValidity(staticCode, 0, 0)
 	slog.Info("[macos-stt] code signature check", "path", exe, "result", rc)
 	return rc == 0
+}
+
+// GetTCCAppName returns the app name that macOS TCC associates the speech
+// recognition permission with. TCC binds to the parent app's bundle ID:
+//   - Tauri app → "Blue"
+//   - CLI (launcher forces Terminal.app) → "Terminal"
+func GetTCCAppName() string {
+	// Check if running inside a .app bundle (Tauri)
+	exe, err := os.Executable()
+	if err == nil && strings.Contains(exe, ".app/Contents/MacOS/") {
+		return "Blue"
+	}
+	// CLI mode — launcher forces Terminal.app via osascript
+	return "Terminal"
 }

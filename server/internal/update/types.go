@@ -17,7 +17,7 @@ type UpdateInfo struct {
 
 // UpdateStatus represents current update status
 type UpdateStatus struct {
-	State          string    `json:"state"` // idle, checking, downloading, applying, failed
+	State          string    `json:"state"` // idle, checking, downloading, applying, restarting, failed
 	Progress       float64   `json:"progress"`
 	Error          string    `json:"error,omitempty"`
 	LastChecked    time.Time `json:"last_checked"`
@@ -51,6 +51,7 @@ const (
 	StateChecking    = "checking"
 	StateDownloading = "downloading"
 	StateApplying    = "applying"
+	StateRestarting  = "restarting"
 	StateFailed      = "failed"
 )
 

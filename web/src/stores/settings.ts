@@ -7,10 +7,16 @@ import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
 const STORAGE_KEY = 'zimaos-blue-settings'
 
 // Provider info for Chat page (simplified view of Provider Pool data)
+export interface ChatModelInfo {
+  id: string
+  inputPrice?: number
+  outputPrice?: number
+}
+
 export interface ChatProviderInfo {
   id: string        // Provider ID from Provider Pool
   name: string      // Display name
-  models: string[]  // Model IDs
+  models: ChatModelInfo[]
 }
 
 // Combined option for single dropdown: Provider(model)
@@ -20,6 +26,8 @@ export interface ProviderModelOption {
   providerId: string
   providerName: string
   modelId: string
+  inputPrice?: number
+  outputPrice?: number
 }
 
 // Theme style types
@@ -77,13 +85,15 @@ export const useSettingsStore = defineStore('settings', () => {
   const providerModelOptions = computed<ProviderModelOption[]>(() => {
     const options: ProviderModelOption[] = []
     for (const provider of providers.value) {
-      for (const modelId of provider.models) {
+      for (const model of provider.models) {
         options.push({
-          value: `${provider.id}:${modelId}`,
-          label: `${provider.name}(${modelId})`,
+          value: `${provider.id}:${model.id}`,
+          label: `${provider.name}(${model.id})`,
           providerId: provider.id,
           providerName: provider.name,
-          modelId: modelId,
+          modelId: model.id,
+          inputPrice: model.inputPrice,
+          outputPrice: model.outputPrice,
         })
       }
     }
@@ -135,26 +145,16 @@ export const useSettingsStore = defineStore('settings', () => {
       // Filter enabled providers and convert to ChatProviderInfo
       const enabledProviders = poolProviders.filter((p: Provider) => p.enabled)
 
-      // Fetch models for each enabled provider
-      const providerInfos: ChatProviderInfo[] = []
-      for (const provider of enabledProviders) {
-        try {
-          const modelsResponse = await providerPoolApi.listProviderModels(provider.id)
-          const models = modelsResponse.data.models || []
-          providerInfos.push({
-            id: provider.id,
-            name: provider.name,
-            models: models.filter((m: Model) => m.enabled).map((m: Model) => m.id),
-          })
-        } catch {
-          // If fetching models fails, still add provider with empty models
-          providerInfos.push({
-            id: provider.id,
-            name: provider.name,
-            models: [],
-          })
-        }
-      }
+      // Use inlined models from provider list response (no extra requests)
+      const providerInfos: ChatProviderInfo[] = enabledProviders.map((provider: Provider) => ({
+        id: provider.id,
+        name: provider.name,
+        models: (provider.models || []).filter((m: Model) => m.enabled).map((m: Model) => ({
+          id: m.id,
+          inputPrice: m.input_price,
+          outputPrice: m.output_price,
+        })),
+      }))
 
       providers.value = providerInfos
 
@@ -196,7 +196,11 @@ export const useSettingsStore = defineStore('settings', () => {
       // Fetch models from Provider Pool
       const response = await providerPoolApi.fetchProviderModels(targetProviderId)
       const models = response.data.models || []
-      const modelIds = models.filter((m: Model) => m.enabled).map((m: Model) => m.id)
+      const chatModels: ChatModelInfo[] = models.filter((m: Model) => m.enabled).map((m: Model) => ({
+        id: m.id,
+        inputPrice: m.input_price,
+        outputPrice: m.output_price,
+      }))
 
       // Update the provider's models in the list
       const index = providers.value.findIndex((p) => p.id === targetProviderId)
@@ -206,13 +210,14 @@ export const useSettingsStore = defineStore('settings', () => {
           providers.value[index] = {
             id: existingProvider.id,
             name: existingProvider.name,
-            models: modelIds,
+            models: chatModels,
           }
         }
       }
 
       // If current selection is no longer valid, select first model of this provider
       if (targetProviderId === selectedProvider.value) {
+        const modelIds = chatModels.map(m => m.id)
         if (modelIds.length > 0 && !modelIds.includes(selectedModel.value)) {
           const firstModel = modelIds[0]
           if (firstModel) {
@@ -221,7 +226,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
       }
 
-      return { id: targetProviderId, models: modelIds }
+      return { id: targetProviderId, models: chatModels.map(m => m.id) }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to refresh models'
       throw e
@@ -250,13 +255,13 @@ export const useSettingsStore = defineStore('settings', () => {
     if (provider && provider.models.length > 0) {
       // Try to keep current model if it exists in new provider
       const currentModel = selectedModel.value
-      if (provider.models.includes(currentModel)) {
+      if (provider.models.some(m => m.id === currentModel)) {
         selectedProviderModel.value = `${providerId}:${currentModel}`
       } else {
         // Select first model of new provider
         const firstModel = provider.models[0]
         if (firstModel) {
-          selectedProviderModel.value = `${providerId}:${firstModel}`
+          selectedProviderModel.value = `${providerId}:${firstModel.id}`
         }
       }
     }

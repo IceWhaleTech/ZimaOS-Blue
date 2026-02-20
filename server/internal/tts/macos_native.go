@@ -111,7 +111,9 @@ func (p *MacOSNativeTTS) Synthesize(ctx context.Context, req *SynthesizeRequest)
 	}, nil
 }
 
-// SynthesizeStream synthesizes text with streaming output
+// SynthesizeStream synthesizes text with streaming output.
+// Sends the complete audio as a single callback because the SSE frontend
+// closes the EventSource after the first audio event.
 func (p *MacOSNativeTTS) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, callback StreamCallback) error {
 	resp, err := p.Synthesize(ctx, req)
 	if err != nil {
@@ -119,22 +121,11 @@ func (p *MacOSNativeTTS) SynthesizeStream(ctx context.Context, req *SynthesizeRe
 	}
 	defer resp.Audio.Close()
 
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Audio.Read(buf)
-		if n > 0 {
-			if cbErr := callback(buf[:n]); cbErr != nil {
-				return cbErr
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
+	data, err := io.ReadAll(resp.Audio)
+	if err != nil {
+		return err
 	}
-	return nil
+	return callback(data)
 }
 
 // ListVoices returns available system voices

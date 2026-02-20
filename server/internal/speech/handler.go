@@ -3,13 +3,13 @@ package speech
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
@@ -26,10 +26,12 @@ type Handler struct {
 }
 
 // NewHandler creates a new speech handler.
-func NewHandler(svc Service, kv kvstore.Store) *Handler {
+func NewHandler(svc Service, kv kvstore.Store, dataPath string) *Handler {
+	em := NewEspeakManager(dataPath)
+	svc.SetEspeakManager(em)
 	return &Handler{
 		service:       svc,
-		espeakManager: NewEspeakManager("./data"),
+		espeakManager: em,
 		kv:            kv,
 	}
 }
@@ -59,56 +61,42 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Lazy initialization endpoint
 	g.POST("/init", h.Init)
 
-	// Unified status and models
+	// Unified status (includes models)
 	g.GET("/status", h.GetStatus)
-	g.GET("/models", h.GetModels)
 
 	// ASR model management
 	asr := g.Group("/asr")
-	asr.GET("/status", h.GetASRStatus)
-	asr.GET("/models", h.ListASRModels)
 	asr.POST("/download", h.DownloadASRModel)
 	asr.POST("/download/cancel", h.CancelASRDownload)
 	asr.POST("/switch", h.SwitchASRModel)
-	asr.DELETE("/model", h.DeleteASRModel)
+	asr.POST("/on-device", h.SetASROnDevice)
+	asr.GET("/offline-languages", h.GetOfflineLanguages)
 
-	// TTS model management (Sherpa)
+	// TTS management
 	tts := g.Group("/tts")
-	tts.GET("/status", h.GetTTSStatus)
-	tts.GET("/models", h.ListTTSModels)
-	tts.POST("/download", h.DownloadTTSModel)
-	tts.POST("/switch", h.SwitchTTSModel)
-	tts.DELETE("/model", h.DeleteTTSModel)
 	tts.POST("/provider", h.SwitchTTSProvider)
 	tts.GET("/config", h.GetTTSConfig)
 	tts.POST("/config", h.SetTTSConfig)
 
-	// Transcription with edit support
+	// Transcription
 	g.POST("/transcribe", h.Transcribe)
-	g.POST("/confirm", h.ConfirmTranscription)
 
-	// eSpeak-NG status (engine is statically linked, data dir detected at runtime)
+	// eSpeak-NG language list (detailed per-language data; summary status is in /status)
 	espeak := g.Group("/espeak")
 	espeak.GET("/languages", h.ListEspeakLanguages)
-	espeak.GET("/library/status", h.GetEspeakLibraryStatus)
 
-	// Vocoder management
-	vocoder := g.Group("/vocoder")
-	vocoder.GET("/status", h.GetVocoderStatus)
-	vocoder.POST("/download", h.DownloadVocoder)
-	vocoder.POST("/download/cancel", h.CancelVocoderDownload)
+	// Vocoder management (under TTS group)
+	tts.POST("/vocoder/download", h.DownloadVocoder)
+	tts.POST("/vocoder/download/cancel", h.CancelVocoderDownload)
 
-	// Kokoro model management
-	kokoro := g.Group("/kokoro")
-	kokoro.GET("/status", h.GetKokoroStatus)
-	kokoro.POST("/download", h.DownloadKokoro)
-	kokoro.POST("/download/cancel", h.CancelKokoroDownload)
+	// Kokoro model management (under TTS group)
+	tts.POST("/kokoro/download", h.DownloadKokoro)
+	tts.POST("/kokoro/download/cancel", h.CancelKokoroDownload)
 }
 
 // GetStatus returns the unified speech status.
 func (h *Handler) GetStatus(c echo.Context) error {
-	status := h.service.GetStatus()
-	return c.JSON(http.StatusOK, status)
+	return c.JSON(http.StatusOK, h.service.GetStatus())
 }
 
 // Init initializes TTS/STT services lazily.
@@ -127,83 +115,6 @@ func (h *Handler) Init(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "initialization started",
-	})
-}
-
-// GetModels returns all available models.
-func (h *Handler) GetModels(c echo.Context) error {
-	models := h.service.GetModels()
-	return c.JSON(http.StatusOK, models)
-}
-
-// GetASRStatus returns the ASR model status.
-func (h *Handler) GetASRStatus(c echo.Context) error {
-	provider := h.service.GetASRProvider()
-	if provider == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"ready":    false,
-			"provider": "none",
-			"message":  "ASR provider not configured",
-		})
-	}
-
-	// Check if provider is Whisper (has detailed status with download progress)
-	if whisperProvider, ok := provider.(*stt.WhisperProvider); ok {
-		status := whisperProvider.GetModelStatus()
-		return c.JSON(http.StatusOK, status)
-	}
-
-	// Return basic status for other providers
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"ready":    true,
-		"provider": provider.Type(),
-		"name":     provider.Name(),
-	})
-}
-
-// ListASRModels returns available ASR models.
-func (h *Handler) ListASRModels(c echo.Context) error {
-	provider := h.service.GetASRProvider()
-
-	var providerInfo string
-	if provider != nil {
-		providerInfo = fmt.Sprintf("type=%s name=%s", provider.Type(), provider.Name())
-	} else {
-		providerInfo = "nil"
-	}
-	fmt.Printf("[ListASRModels] provider: %s\n", providerInfo)
-
-	var models []interface{}
-
-	// If macOS native STT is active, include it as a built-in model entry
-	if provider != nil && provider.Type() == ProviderMacOSNative {
-		models = append(models, map[string]interface{}{
-			"id":          "macos-native",
-			"name":        "speech.asrModelInfo.macosNative.name",
-			"description": "speech.asrModelInfo.macosNative.description",
-			"size":        "",
-			"downloaded":  true,
-			"active":      true,
-		})
-	}
-
-	// If provider supports ListModels (e.g. Whisper), add those too
-	if provider != nil {
-		if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
-			models = append(models, lister.ListModels()...)
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"models": models,
-			})
-		}
-	}
-
-	// Add available Whisper models from metadata
-	for _, m := range stt.GetAvailableASRModels() {
-		models = append(models, m)
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": models,
 	})
 }
 
@@ -283,6 +194,14 @@ func (h *Handler) SwitchASRModel(c echo.Context) error {
 		})
 	}
 
+	// Already on the requested model — no-op success
+	if string(provider.Type()) == req.ModelType {
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":  "switched",
+			"message": "Already using " + req.ModelType,
+		})
+	}
+
 	// Check if provider supports model switching
 	if switcher, ok := provider.(interface{ SwitchModel(string) error }); ok {
 		if err := switcher.SwitchModel(req.ModelType); err != nil {
@@ -301,8 +220,8 @@ func (h *Handler) SwitchASRModel(c echo.Context) error {
 	})
 }
 
-// DeleteASRModel deletes a downloaded ASR model.
-func (h *Handler) DeleteASRModel(c echo.Context) error {
+// SetASROnDevice toggles on-device-only mode for macOS native STT.
+func (h *Handler) SetASROnDevice(c echo.Context) error {
 	provider := h.service.GetASRProvider()
 	if provider == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -310,110 +229,69 @@ func (h *Handler) DeleteASRModel(c echo.Context) error {
 		})
 	}
 
-	// Current providers don't support model deletion
-	return c.JSON(http.StatusBadRequest, map[string]string{
-		"error": "current provider does not support model deletion",
-	})
-}
-
-// GetTTSStatus returns the TTS model status.
-func (h *Handler) GetTTSStatus(c echo.Context) error {
-	provider := h.service.GetTTSProvider()
-	if provider == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"ready":    false,
-			"provider": "none",
-			"message":  "TTS provider not configured",
-		})
-	}
-
-	// Return basic status for all providers
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"ready":    true,
-		"provider": provider.Type(),
-		"name":     provider.Name(),
-	})
-}
-
-// ListTTSModels returns available TTS models.
-func (h *Handler) ListTTSModels(c echo.Context) error {
-	provider := h.service.GetTTSProvider()
-	if provider == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"models": []interface{}{},
-		})
-	}
-
-	// For providers that support model listing
-	if lister, ok := provider.(interface{ ListModels() []interface{} }); ok {
-		models := lister.ListModels()
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"models": models,
-		})
-	}
-
-	// For other providers, return empty models list
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": []interface{}{},
-	})
-}
-
-// DownloadTTSModel starts downloading a TTS model.
-func (h *Handler) DownloadTTSModel(c echo.Context) error {
-	provider := h.service.GetTTSProvider()
-	if provider == nil {
+	macosSTT, ok := provider.(*MacOSNativeSTT)
+	if !ok {
 		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "TTS provider not configured",
+			"error": "on-device mode only available for macOS native STT",
 		})
 	}
 
-	var req DownloadRequest
+	var req struct {
+		OnDeviceOnly bool `json:"on_device_only"`
+	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid request",
 		})
 	}
 
-	// Current providers don't support model downloads
-	return c.JSON(http.StatusBadRequest, map[string]string{
-		"error": "current provider does not support model downloads",
+	supportsOnDevice := macosSTT.SupportsOnDevice()
+	dictationAvailable := macosSTT.DictationAvailable()
+	slog.Info("[speech] SetASROnDevice",
+		"on_device_only", req.OnDeviceOnly,
+		"supports_on_device", supportsOnDevice,
+		"dictation_available", dictationAvailable)
+
+	// When enabling on-device, check prerequisites
+	if req.OnDeviceOnly && !dictationAvailable {
+		slog.Warn("[speech] on-device requested but Siri/Dictation is disabled")
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"on_device_only":      false,
+			"on_device_supported": supportsOnDevice,
+			"dictation_available": false,
+			"error":               "dictation_disabled",
+		})
+	}
+
+	macosSTT.SetRequireOnDevice(req.OnDeviceOnly)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"on_device_only":      req.OnDeviceOnly,
+		"on_device_supported": supportsOnDevice,
+		"dictation_available": dictationAvailable,
 	})
 }
 
-// SwitchTTSModel switches to a different TTS model.
-func (h *Handler) SwitchTTSModel(c echo.Context) error {
-	provider := h.service.GetTTSProvider()
+// GetOfflineLanguages returns installed offline dictation languages (macOS only).
+// Separated from /status because it reads NSUserDefaults which is non-critical info.
+func (h *Handler) GetOfflineLanguages(c echo.Context) error {
+	provider := h.service.GetASRProvider()
 	if provider == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "TTS provider not configured",
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"offline_languages": []string{},
 		})
 	}
-
-	var req SwitchRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid request",
+	macosSTT, ok := provider.(*MacOSNativeSTT)
+	if !ok {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"offline_languages": []string{},
 		})
 	}
-
-	// Current providers don't support model switching
-	return c.JSON(http.StatusBadRequest, map[string]string{
-		"error": "current provider does not support model switching",
-	})
-}
-
-// DeleteTTSModel deletes a downloaded TTS model.
-func (h *Handler) DeleteTTSModel(c echo.Context) error {
-	provider := h.service.GetTTSProvider()
-	if provider == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "TTS provider not configured",
-		})
+	langs := macosSTT.OfflineDictationLanguages()
+	if langs == nil {
+		langs = []string{}
 	}
-
-	// Current providers don't support model deletion
-	return c.JSON(http.StatusBadRequest, map[string]string{
-		"error": "current provider does not support model deletion",
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"offline_languages": langs,
 	})
 }
 
@@ -462,6 +340,14 @@ func (h *Handler) Transcribe(c echo.Context) error {
 	if provider != nil {
 		resp, err := provider.Transcribe(c.Request().Context(), req)
 		if err != nil {
+			var onDeviceErr *OnDeviceUnavailableError
+			if errors.As(err, &onDeviceErr) {
+				return c.JSON(http.StatusUnprocessableEntity, map[string]string{
+					"error":      err.Error(),
+					"error_code": "on_device_unavailable",
+					"locale":     onDeviceErr.Locale,
+				})
+			}
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
 			})
@@ -497,23 +383,6 @@ func (h *Handler) Transcribe(c echo.Context) error {
 		Duration:   resp.Duration,
 		Confidence: resp.Confidence,
 		Editable:   h.service.IsEditBeforeSendEnabled(),
-	})
-}
-
-// ConfirmTranscription confirms edited transcription.
-func (h *Handler) ConfirmTranscription(c echo.Context) error {
-	var req ConfirmRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid request",
-		})
-	}
-
-	// For now, just return success
-	// In a full implementation, this would send the text to the chat
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"status": "confirmed",
-		"text":   req.Text,
 	})
 }
 
@@ -623,29 +492,6 @@ func (h *Handler) ListEspeakLanguages(c echo.Context) error {
 	})
 }
 
-// GetEspeakLibraryStatus returns whether the espeak-ng-data directory
-// was found and how many language dictionaries are available.
-func (h *Handler) GetEspeakLibraryStatus(c echo.Context) error {
-	installed := h.espeakManager.IsLibraryInstalled()
-	dataPath := h.espeakManager.GetLibraryPath()
-	langCount := h.espeakManager.LanguageCount()
-	dataSize := h.espeakManager.GetDataSize()
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"installed":      installed,
-		"path":           dataPath,
-		"language_count": langCount,
-		"data_size":      dataSize,
-		"static_linked":  true, // engine is always statically linked via CGO
-	})
-}
-
-// GetVocoderStatus returns the vocoder model status.
-func (h *Handler) GetVocoderStatus(c echo.Context) error {
-	status := h.service.GetTTSService().GetVocoderStatus()
-	return c.JSON(http.StatusOK, status)
-}
-
 // DownloadVocoder starts downloading the vocoder model.
 func (h *Handler) DownloadVocoder(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -668,30 +514,6 @@ func (h *Handler) CancelVocoderDownload(c echo.Context) error {
 		"status":  "cancelled",
 		"message": "vocoder download cancelled",
 	})
-}
-
-// GetKokoroStatus returns the Kokoro model status.
-func (h *Handler) GetKokoroStatus(c echo.Context) error {
-	raw := h.service.GetTTSService().GetKokoroStatus()
-	// Flatten progress struct for frontend
-	resp := map[string]interface{}{
-		"ready":       raw["ready"],
-		"downloading": raw["downloading"],
-		"error":       raw["error"],
-		"init_stage":  raw["init_stage"],
-	}
-	if p, ok := raw["progress"].(*downloader.DownloadProgress); ok && p != nil {
-		resp["progress"] = p.Percentage
-		resp["speed"] = p.SpeedHuman
-		resp["eta"] = p.ETA
-		resp["file"] = p.File
-		resp["file_index"] = p.FileIndex
-		resp["total_files"] = p.TotalFiles
-		resp["downloaded_human"] = p.DownloadedHuman
-	} else {
-		resp["progress"] = 0
-	}
-	return c.JSON(http.StatusOK, resp)
 }
 
 // DownloadKokoro starts downloading the Kokoro model.

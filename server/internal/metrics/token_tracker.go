@@ -37,23 +37,44 @@ func DefaultTokenPricing() []TokenPricing {
 		{Pattern: "sonnet*", InputPrice: 3.00, OutputPrice: 15.00, CacheRead: 0.30, CacheWrite: 3.75},
 		{Pattern: "haiku*", InputPrice: 1.00, OutputPrice: 5.00, CacheRead: 0.10, CacheWrite: 1.25},
 
-		// OpenAI GPT series
+		// OpenAI GPT-5 series
+		{Pattern: "gpt-5-pro*", InputPrice: 15.00, OutputPrice: 120.00},
+		{Pattern: "gpt-5-mini*", InputPrice: 0.25, OutputPrice: 2.00},
+		{Pattern: "gpt-5-nano*", InputPrice: 0.05, OutputPrice: 0.40},
+		{Pattern: "gpt-5*", InputPrice: 1.25, OutputPrice: 10.00},
+		// OpenAI GPT-4 series
+		{Pattern: "gpt-4o-mini*", InputPrice: 0.15, OutputPrice: 0.60},
 		{Pattern: "gpt-4o*", InputPrice: 2.50, OutputPrice: 10.00},
+		{Pattern: "gpt-4.1-mini*", InputPrice: 0.40, OutputPrice: 1.60},
+		{Pattern: "gpt-4.1-nano*", InputPrice: 0.10, OutputPrice: 0.40},
+		{Pattern: "gpt-4.1*", InputPrice: 2.00, OutputPrice: 8.00},
 		{Pattern: "gpt-4-turbo*", InputPrice: 10.00, OutputPrice: 30.00},
 		{Pattern: "gpt-4*", InputPrice: 30.00, OutputPrice: 60.00},
 		{Pattern: "gpt-3.5*", InputPrice: 0.50, OutputPrice: 1.50},
+		// OpenAI o-series
+		{Pattern: "o4-mini*", InputPrice: 1.10, OutputPrice: 4.40},
+		{Pattern: "o3-pro*", InputPrice: 20.00, OutputPrice: 80.00},
+		{Pattern: "o3-mini*", InputPrice: 1.10, OutputPrice: 4.40},
+		{Pattern: "o3*", InputPrice: 2.00, OutputPrice: 8.00},
+		{Pattern: "o1-pro*", InputPrice: 150.00, OutputPrice: 600.00},
 		{Pattern: "o1-preview*", InputPrice: 15.00, OutputPrice: 60.00},
-		{Pattern: "o1-mini*", InputPrice: 3.00, OutputPrice: 12.00},
+		{Pattern: "o1-mini*", InputPrice: 1.10, OutputPrice: 4.40},
+		{Pattern: "o1*", InputPrice: 15.00, OutputPrice: 60.00},
 
 		// Google Gemini series
+		{Pattern: "gemini-3*-pro*", InputPrice: 2.00, OutputPrice: 12.00},
+		{Pattern: "gemini-3*-flash*", InputPrice: 0.50, OutputPrice: 3.00},
+		{Pattern: "gemini-2.5-pro*", InputPrice: 1.25, OutputPrice: 10.00},
+		{Pattern: "gemini-2.5-flash-lite*", InputPrice: 0.10, OutputPrice: 0.40},
+		{Pattern: "gemini-2.5-flash*", InputPrice: 0.30, OutputPrice: 2.50},
+		{Pattern: "gemini-2.0*", InputPrice: 0.10, OutputPrice: 0.40},
 		{Pattern: "gemini-1.5-pro*", InputPrice: 1.25, OutputPrice: 5.00},
 		{Pattern: "gemini-1.5-flash*", InputPrice: 0.075, OutputPrice: 0.30},
-		{Pattern: "gemini-2.0*", InputPrice: 0.10, OutputPrice: 0.40},
 
 		// Meta Llama series
 		{Pattern: "llama-3.1-405b*", InputPrice: 3.00, OutputPrice: 3.00},
-		{Pattern: "llama-3.1-70b*", InputPrice: 0.88, OutputPrice: 0.88},
-		{Pattern: "llama-3.1-8b*", InputPrice: 0.18, OutputPrice: 0.18},
+		{Pattern: "llama-3*-70b*", InputPrice: 0.80, OutputPrice: 0.80},
+		{Pattern: "llama-3*-8b*", InputPrice: 0.10, OutputPrice: 0.10},
 
 		// Mistral series
 		{Pattern: "mistral-large*", InputPrice: 2.00, OutputPrice: 6.00},
@@ -61,8 +82,13 @@ func DefaultTokenPricing() []TokenPricing {
 		{Pattern: "mistral-small*", InputPrice: 0.20, OutputPrice: 0.60},
 
 		// DeepSeek series
-		{Pattern: "deepseek-v3*", InputPrice: 0.27, OutputPrice: 1.10},
-		{Pattern: "deepseek-r1*", InputPrice: 0.55, OutputPrice: 2.19},
+		{Pattern: "deepseek*", InputPrice: 0.28, OutputPrice: 0.42},
+
+		// xAI Grok series
+		{Pattern: "grok-4*", InputPrice: 3.00, OutputPrice: 15.00},
+		{Pattern: "grok-3-mini*", InputPrice: 0.10, OutputPrice: 0.30},
+		{Pattern: "grok-3*", InputPrice: 2.00, OutputPrice: 10.00},
+		{Pattern: "grok-2*", InputPrice: 2.00, OutputPrice: 10.00},
 
 		// Default (fallback)
 		{Pattern: "*", InputPrice: 1.00, OutputPrice: 5.00},

@@ -119,14 +119,14 @@ func (cp *ConnectionPool) Close() {
 // DefaultConnectionConfig returns default connection configuration
 func DefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
-		MaxIdleConns:          10,
-		MaxIdleConnsPerHost:   5,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
 		MaxConnsPerHost:       100,
 		IdleConnTimeout:       90 * time.Second,
 		KeepAlive:             true,
 		KeepAliveInterval:     30 * time.Second,
-		DialTimeout:           30 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
+		DialTimeout:           10 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 60 * time.Second,
 		ForceHTTP2:            true,
 	}

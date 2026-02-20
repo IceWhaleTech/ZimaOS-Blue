@@ -27,6 +27,49 @@ success() { echo -e "${GREEN}[OK]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
+# Run a binary. On macOS, TCC binds speech recognition authorization to the
+# parent app's bundle ID. If not running inside a real terminal (e.g. launched
+# from an IDE), re-launch in Terminal.app so TCC uses com.apple.Terminal.
+run_binary() {
+    local bin="$1"
+    shift
+    # Resolve to absolute path — Terminal.app opens in ~/ by default
+    case "$bin" in
+        /*) ;; # already absolute
+        *)  bin="$(cd "$(dirname "$bin")" && pwd)/$(basename "$bin")" ;;
+    esac
+    if [ "$(uname -s)" = "Darwin" ] && ! is_real_terminal; then
+        info "Not running in Terminal.app, re-launching via Terminal..."
+        local cmd
+        cmd="'$(echo "$bin" | sed "s/'/'\\\\''/g")'"
+        for arg in "$@"; do
+            cmd="$cmd '$(echo "$arg" | sed "s/'/'\\\\''/g")'"
+        done
+        osascript -e "tell application \"Terminal\"
+            activate
+            -- Reuse the frontmost window if one exists, otherwise do script creates a new one
+            if (count of windows) > 0 then
+                do script \"$cmd\" in front window
+            else
+                do script \"$cmd\"
+            end if
+        end tell"
+        return
+    fi
+    exec "$bin" "$@"
+}
+
+# Check if we're running inside a real terminal (not an IDE integrated terminal).
+is_real_terminal() {
+    case "${TERM_PROGRAM:-}" in
+        Apple_Terminal|iTerm.app|WarpTerminal|Alacritty|tmux) return 0 ;;
+    esac
+    case "${__CFBundleIdentifier:-}" in
+        com.apple.Terminal|com.googlecode.iterm2|dev.warp.Warp-Stable) return 0 ;;
+    esac
+    return 1
+}
+
 # Check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -61,13 +104,12 @@ check_prereqs() {
     success "All prerequisites found"
 }
 
-# Install air for hot reload
-install_air() {
-    if ! command_exists air; then
-        info "Installing air for hot reload..."
-        go install github.com/air-verse/air@latest
-        success "Air installed"
-    fi
+# Trim web dist: remove pre-compressed files, stats, and samples not needed for local serving
+trim_dist() {
+    local dist_dir="$1"
+    info "Trimming dist (removing .gz, .br, stats.html)..."
+    find "$dist_dir" \( -name "*.gz" -o -name "*.br" -o -name "stats.html" \) -delete 2>/dev/null
+    info "Dist trimmed to $(du -sh "$dist_dir" | cut -f1)"
 }
 
 # Install dependencies
@@ -91,26 +133,16 @@ install_deps() {
     success "Node dependencies installed"
 }
 
-# Start the Go server with hot reload
+# Start the Go server
 start_server() {
-    info "Starting Go server with hot reload..."
+    info "Starting Go server..."
     cd "$PROJECT_ROOT/server"
 
-    # Check if air is available
-    if command_exists air; then
-        info "Starting server with air (hot reload enabled)"
-        info "Server will auto-restart when Go files change"
-        air
-    else
-        warn "Air not installed, running without hot reload"
-        warn "Run 'go install github.com/air-verse/air@latest' to enable hot reload"
-        # Build first
-        go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
-        success "Server built successfully"
+    go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
+    success "Server built successfully"
 
-        info "Starting server on http://localhost"
-        ./blue
-    fi
+    info "Starting server on http://localhost"
+    run_binary ./blue
 }
 
 # Start the web dev server
@@ -131,7 +163,6 @@ start_web() {
 start_all() {
     check_prereqs
     install_deps
-    install_air
 
     echo ""
     echo -e "${CYAN}========================================${NC}"
@@ -141,9 +172,6 @@ start_all() {
     echo -e "  Backend:  ${YELLOW}http://localhost${NC}"
     echo -e "  Frontend: ${YELLOW}http://localhost:3000${NC} (background)"
     echo ""
-    if command_exists air; then
-        echo -e "  ${GREEN}Hot reload enabled for backend${NC}"
-    fi
     echo -e "  Press ${YELLOW}Ctrl+C${NC} to stop backend server"
     echo ""
 
@@ -159,15 +187,11 @@ start_all() {
     # Give Vite time to start
     sleep 3
 
-    # Start server in foreground with hot reload
+    # Start server in foreground
     info "Starting Go server (dev mode)..."
     cd "$PROJECT_ROOT/server"
-    if command_exists air; then
-        air
-    else
-        go build -tags 'fts5 espeak kokoro dev' -o blue ./cmd/blue
-        ./blue
-    fi
+    go build -tags 'fts5 espeak kokoro dev' -o blue ./cmd/blue
+    run_binary ./blue
 }
 
 # Cleanup function
@@ -181,9 +205,6 @@ cleanup() {
 
     # Kill any remaining vite processes
     pkill -f "vite" 2>/dev/null || true
-
-    # Kill air if running
-    pkill -f "air" 2>/dev/null || true
 
     success "Services stopped"
 }
@@ -312,6 +333,7 @@ build_all() {
     fi
     npm run build
     success "Web built: web/dist/"
+    trim_dist "$PROJECT_ROOT/web/dist"
 
     success "Production build complete!"
 }
@@ -338,6 +360,7 @@ prd_run() {
     fi
     npm run build
     success "Web built: web/dist/"
+    trim_dist "$PROJECT_ROOT/web/dist"
 
     # Copy web/dist to server/internal/web/dist
     info "Copying web build to server/internal/web/dist..."
@@ -353,7 +376,7 @@ prd_run() {
 
     # Run the built binary
     info "Starting server (production mode, http://localhost)..."
-    ./bin/blue
+    run_binary ./bin/blue
 }
 
 # Clean build artifacts
@@ -380,7 +403,6 @@ case "$COMMAND" in
         ;;
     server)
         check_prereqs
-        install_air
         start_server
         ;;
     web)

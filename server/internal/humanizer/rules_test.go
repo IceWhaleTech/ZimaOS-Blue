@@ -203,7 +203,7 @@ func TestStripTypelessCards(t *testing.T) {
 
 func TestStripFunctionCalls(t *testing.T) {
 	webSearchCall := `<function_calls>
-<invoke name="Web Search">
+<invoke name="web_search">
 <parameter name="query">browser4 architecture diagram</parameter>
 <parameter name="region">wt-wt</parameter>
 <parameter name="max_results">10</parameter>
@@ -211,16 +211,16 @@ func TestStripFunctionCalls(t *testing.T) {
 </function_calls>`
 
 	calcCall := `<function_calls>
-<invoke name="Calculator">
+<invoke name="calculator">
 <parameter name="expression">2+2</parameter>
 </invoke>
 </function_calls>`
 
 	multiCall := `<function_calls>
-<invoke name="Web Search">
+<invoke name="web_search">
 <parameter name="query">golang generics</parameter>
 </invoke>
-<invoke name="Memory Search">
+<invoke name="memory_search">
 <parameter name="keyword">golang</parameter>
 <parameter name="limit">5</parameter>
 </invoke>

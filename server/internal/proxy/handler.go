@@ -304,25 +304,28 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ph.setRouteHeaders(w, pr)
 	routingMode := ph.extractRoutingMode(r)
-	slog.Info("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode)
+	slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode)
 
 	routeReq := &providerpool.RouteRequest{
 		ModelID: pr.model,
 		Mode:    providerpool.RoutingMode(routingMode),
 	}
 
+	// Failover is enabled by default; only disabled when explicitly configured off
+	failoverDisabled := ph.failover != nil && ph.failover.Config() != nil && !ph.failover.Config().Enabled
+
 	var finalResp *http.Response
-	err := ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, func(result *providerpool.RouteResult) error {
+	executeOnProvider := func(result *providerpool.RouteResult) error {
 		pid := result.Provider.ID
 		burl := result.Provider.BaseURL
 
 		// Throttle check: skip provider if recently 429'd
 		if ph.providerMemory.IsThrottled(pid, burl) {
-			slog.Info("[proxy] skipping throttled provider", "provider", pid)
+			slog.Debug("[proxy] skipping throttled provider", "provider", pid)
 			return fmt.Errorf("provider %s is throttled", pid)
 		}
 
-		// Try all Format × Model combinations on this provider
+		// Try all Model × Format combinations on this provider
 		resp, format, _, tryErr := ph.tryOnProvider(r, result, pr)
 		if tryErr != nil {
 			return tryErr
@@ -333,7 +336,20 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		finalResp = resp
 		return nil
-	})
+	}
+
+	var err error
+	if failoverDisabled {
+		// Failover explicitly disabled: only try the primary provider
+		result, routeErr := ph.providerPool.Router.Route(routeReq)
+		if routeErr != nil {
+			err = routeErr
+		} else {
+			err = executeOnProvider(result)
+		}
+	} else {
+		err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
+	}
 
 	if err != nil {
 		slog.Error("[proxy] all providers failed", "model", pr.model, "error", err)
@@ -341,7 +357,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer finalResp.Body.Close()
-	slog.Info("[proxy] upstream response", "status", finalResp.StatusCode, "streaming", pr.streaming, "content_type", finalResp.Header.Get("Content-Type"))
+	slog.Debug("[proxy] upstream response", "status", finalResp.StatusCode, "streaming", pr.streaming, "content_type", finalResp.Header.Get("Content-Type"))
 
 	ph.copyResponseWithCache(w, finalResp, pr)
 }
@@ -451,12 +467,11 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	// Format conversion: if provider expects Anthropic format but request is OpenAI,
 	// convert body and switch path to /v1/messages.
 	if effectiveFormat == providerpool.APIFormatAnthropic && strings.Contains(requestPath, "/chat/completions") {
-		fc := NewFormatConverter()
-		converted, newPath, convErr := fc.ConvertRequest(body, ProviderTypeAnthropic)
+		converted, newPath, convErr := sharedConverter.ConvertRequest(body, ProviderTypeAnthropic)
 		if convErr == nil {
 			body = converted
 			requestPath = newPath // "/v1/messages"
-			slog.Info("[proxy] converted OpenAI→Anthropic format", "provider", provider.ID, "path", newPath)
+			slog.Debug("[proxy] converted OpenAI→Anthropic format", "provider", provider.ID, "path", newPath)
 		} else {
 			slog.Warn("[proxy] format conversion failed, sending as-is", "provider", provider.ID, "error", convErr)
 		}
@@ -499,7 +514,7 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 		if err != nil {
 			continue
 		}
-		slog.Info("[proxy] trying model alias", "provider", pid, "original", failedModel, "alias", alias)
+		slog.Debug("[proxy] trying model alias", "provider", pid, "original", failedModel, "alias", alias)
 
 		resp, probeErr := ph.authProber.ProbeAndForward(
 			result.Provider, result.APIKey,
@@ -531,8 +546,8 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 }
 
 // allFormatsForProvider returns format candidates to try for a provider.
-// Remembered format first, then provider default, then remaining formats.
-func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, providerDefault providerpool.APIFormat) []providerpool.APIFormat {
+// Persisted format first, then remembered (in-memory), then provider default, then remaining.
+func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *providerpool.Provider) []providerpool.APIFormat {
 	allFormats := []providerpool.APIFormat{
 		providerpool.APIFormatOpenAI,
 		providerpool.APIFormatAnthropic,
@@ -541,26 +556,52 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, providerDefault 
 	var result []providerpool.APIFormat
 	seen := make(map[providerpool.APIFormat]bool)
 
-	// 1. Remembered format (highest priority)
+	// 1. Persisted detected format (highest priority — survives restarts)
+	if provider.DetectedFormat != "" {
+		result = append(result, provider.DetectedFormat)
+		seen[provider.DetectedFormat] = true
+	}
+
+	// 2. In-memory remembered format (from recent successful requests)
 	if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
 		f := providerpool.APIFormat(remembered)
-		result = append(result, f)
-		seen[f] = true
+		if !seen[f] {
+			result = append(result, f)
+			seen[f] = true
+		}
 	}
 
-	// 2. Provider default
-	if !seen[providerDefault] {
-		result = append(result, providerDefault)
-		seen[providerDefault] = true
+	// 3. Provider default
+	if !seen[provider.APIFormat] {
+		result = append(result, provider.APIFormat)
+		seen[provider.APIFormat] = true
 	}
 
-	// 3. Remaining formats
+	// 4. Remaining formats
 	for _, f := range allFormats {
 		if !seen[f] {
 			result = append(result, f)
 		}
 	}
 	return result
+}
+
+// persistDetectedFormat saves the detected API format to the provider for persistence across restarts.
+// Only updates if the format changed, to avoid unnecessary writes.
+func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, format providerpool.APIFormat) {
+	if provider.DetectedFormat == format {
+		return // already persisted
+	}
+	provider.DetectedFormat = format
+	provider.DetectedAt = time.Now()
+	if ph.providerPool != nil && ph.providerPool.Registry != nil {
+		// Async persist — don't block the request path on DB write
+		go func(p *providerpool.Provider) {
+			if err := ph.providerPool.Registry.Update(p); err != nil {
+				slog.Warn("[proxy] failed to persist detected format", "provider", p.ID, "format", format, "error", err)
+			}
+		}(provider)
+	}
 }
 
 // allModelsForProvider returns model candidates to try for a provider.
@@ -606,7 +647,10 @@ func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, ro
 	return result
 }
 
-// tryOnProvider tries all Format × Model combinations on a single provider.
+// tryOnProvider tries all Model × Format combinations on a single provider.
+// Model is the outer loop: if a model isn't configured, skip it entirely.
+// Format is the inner loop: try detected/remembered format first, then others.
+// If the provider already has a detected format, only that format is tried.
 // Returns (response, format used, model used, error).
 func (ph *ProxyHandler) tryOnProvider(
 	r *http.Request,
@@ -621,25 +665,32 @@ func (ph *ProxyHandler) tryOnProvider(
 		routedModel = result.Model.ID
 	}
 
-	formats := ph.allFormatsForProvider(pid, burl, result.Provider.APIFormat)
+	formats := ph.allFormatsForProvider(pid, burl, result.Provider)
 	models := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
 
 	if len(models) == 0 {
 		return nil, "", "", fmt.Errorf("all models blacklisted on provider %s", pid)
 	}
 
-	var lastErr error
-	for _, format := range formats {
-		for _, model := range models {
-			// Build body with this model
-			forwardBody := pr.body
-			if model != pr.model {
-				if newBody, err := sjson.SetBytes(pr.body, "model", model); err == nil {
-					forwardBody = newBody
-				}
-			}
+	// If provider has a known format (detected or remembered), only use that one
+	if result.Provider.DetectedFormat != "" {
+		formats = []providerpool.APIFormat{result.Provider.DetectedFormat}
+	} else if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
+		formats = []providerpool.APIFormat{providerpool.APIFormat(remembered)}
+	}
 
-			slog.Info("[proxy] trying", "provider", pid, "format", format, "model", model)
+	var lastErr error
+	for _, model := range models {
+		// Build body with this model
+		forwardBody := pr.body
+		if model != pr.model {
+			if newBody, err := sjson.SetBytes(pr.body, "model", model); err == nil {
+				forwardBody = newBody
+			}
+		}
+
+		for _, format := range formats {
+			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", model)
 
 			resp, probeErr := ph.authProber.ProbeAndForward(
 				result.Provider,
@@ -665,6 +716,8 @@ func (ph *ProxyHandler) tryOnProvider(
 				if model != pr.model {
 					ph.providerMemory.RememberModelAlias(pid, burl, pr.model, model)
 				}
+				// Persist detected format to provider (survives restarts)
+				ph.persistDetectedFormat(result.Provider, format)
 				return resp, format, model, nil
 			}
 
@@ -690,12 +743,15 @@ func (ph *ProxyHandler) tryOnProvider(
 			}
 
 			// Check if this is a "not configured" / "model not found" error
-			// that should trigger provider failover instead of just model blacklisting
 			if isModelNotConfiguredError(statusCode, errBody) {
-				slog.Warn("[proxy] model not configured on provider, trying next provider",
+				slog.Warn("[proxy] model not configured on provider, blacklisting and trying next",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
-				// Don't blacklist — model may work on another provider
-				return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", model, pid, errStr)
+				// Blacklist THIS model on THIS provider (per-provider scope) so we don't retry it
+				ph.providerMemory.BlacklistModel(pid, burl, model)
+				lastErr = fmt.Errorf("model %s not configured on provider %s: %s", model, pid, errStr)
+				// Skip remaining formats for this model — if model isn't configured,
+				// trying a different format won't help
+				break
 			}
 
 			// 4xx: blacklist this model on this provider, try next model/format
@@ -708,10 +764,39 @@ func (ph *ProxyHandler) tryOnProvider(
 	return nil, "", "", lastErr
 }
 
+// notConfiguredPatterns are pre-allocated pattern slices for isModelNotConfiguredError.
+// Avoids slice allocation on every error check.
+var notConfiguredPatternsEN = []string{
+	"not configured",
+	"not enabled",
+	"not available",
+	"not supported",
+	"no access",
+	"model disabled",
+	"model unavailable",
+	"model not found",
+	"does not exist",
+	"invalid model",
+	"unknown model",
+	"not authorized",
+	"permission denied",
+}
+
+var notConfiguredPatternsCN = []string{
+	"未配置",   // not configured
+	"未启用",   // not enabled
+	"不可用",   // not available
+	"不支持",   // not supported
+	"模型不存在", // model does not exist
+	"未找到",   // not found
+	"无权限",   // no permission
+}
+
 // isModelNotConfiguredError checks if the error response indicates the model
 // is listed but not actually configured/available on this provider.
-// These errors should trigger provider failover rather than model blacklisting,
-// because the same model may work on a different provider.
+// When detected, the model is blacklisted on this specific provider and the
+// next model candidate is tried. If all models are exhausted, the provider
+// fails and RouteWithFallback moves to the next provider.
 func isModelNotConfiguredError(statusCode int, body []byte) bool {
 	if statusCode != 400 && statusCode != 403 && statusCode != 404 && statusCode != 422 {
 		return false
@@ -719,28 +804,18 @@ func isModelNotConfiguredError(statusCode int, body []byte) bool {
 
 	msg := strings.ToLower(string(body))
 
-	// "not configured" patterns — model appears in list but isn't usable
-	notConfiguredPatterns := []string{
-		"not configured",
-		"not enabled",
-		"not available",
-		"not supported",
-		"no access",
-		"model disabled",
-		"model unavailable",
-		"model not found",
-		"does not exist",
-		"invalid model",
-		"unknown model",
-		"not authorized",
-		"permission denied",
-	}
-
-	for _, pattern := range notConfiguredPatterns {
+	for _, pattern := range notConfiguredPatternsEN {
 		if strings.Contains(msg, pattern) {
 			return true
 		}
 	}
+
+	for _, pattern := range notConfiguredPatternsCN {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+
 	return false
 }
 

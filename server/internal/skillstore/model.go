@@ -39,14 +39,22 @@ type Skill struct {
 
 // SyncStatus represents the synchronization status.
 type SyncStatus struct {
-	ID            int64     `json:"id" db:"id"`
-	SourceID      string    `json:"source_id" db:"source_id"`
-	LastSyncAt    time.Time `json:"last_sync_at" db:"last_sync_at"`
-	SkillCount    int       `json:"skill_count" db:"skill_count"`
-	SyncDuration  int64     `json:"sync_duration_ms" db:"sync_duration_ms"`
-	Status        string    `json:"status" db:"status"` // "success", "failed", "in_progress"
-	ErrorMessage  string    `json:"error_message,omitempty" db:"error_message"`
-	NextSyncAt    time.Time `json:"next_sync_at" db:"next_sync_at"`
+	ID            int64         `json:"id" db:"id"`
+	SourceID      string        `json:"source_id" db:"source_id"`
+	LastSyncAt    time.Time     `json:"last_sync_at" db:"last_sync_at"`
+	SkillCount    int           `json:"skill_count" db:"skill_count"`
+	SyncDuration  int64         `json:"sync_duration_ms" db:"sync_duration_ms"`
+	Status        string        `json:"status" db:"status"` // "success", "failed", "in_progress"
+	ErrorMessage  string        `json:"error_message,omitempty" db:"error_message"`
+	NextSyncAt    time.Time     `json:"next_sync_at" db:"next_sync_at"`
+	Progress      *SyncProgress `json:"progress,omitempty" db:"-"`
+}
+
+// SyncProgress represents real-time sync progress (in-memory only, not persisted).
+type SyncProgress struct {
+	CurrentPage  int       `json:"current_page"`
+	SkillsSynced int       `json:"skills_synced"`
+	StartedAt    time.Time `json:"started_at"`
 }
 
 // SearchResult represents a skill search result with relevance score.

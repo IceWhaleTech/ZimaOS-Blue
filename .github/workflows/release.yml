@@ -10,6 +10,7 @@ permissions:
 env:
   GO_VERSION: "1.24"
   NODE_VERSION: "20"
+  RUST_VERSION: "stable"
   BINARY_NAME: blue
 
 jobs:
@@ -65,6 +66,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-go@v5
         with:
@@ -85,14 +88,72 @@ jobs:
           find internal/web/dist -name "*.gz" -delete 2>/dev/null || true
           find internal/web/dist -name "*.br" -delete 2>/dev/null || true
 
+      # macOS: install Apple certificate into temporary keychain for codesigning
+      - name: Install Apple Certificate
+        if: matrix.goos == 'darwin'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp)
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_FILE"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p actions "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p actions "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security import "$CERT_FILE" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
+          rm "$CERT_FILE"
+
       # Linux arm64 cross-compile needs aarch64 C toolchain for CGO (sqlite3)
       - name: Install cross-compiler (linux/arm64)
         if: matrix.cross
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Build binary
+      # Build espeak-ng static library (Linux/Windows need it for TTS)
+      - name: Build espeak-ng
+        if: matrix.goos != 'darwin'
+        shell: bash
+        run: |
+          cd third_party/espeak-ng
+          mkdir -p build && cd build
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            cmake .. -DBUILD_SHARED_LIBS=OFF -G "MinGW Makefiles"
+            cmake --build . --config Release
+          elif [[ "${{ matrix.cross }}" == "true" ]]; then
+            cmake .. -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+              -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+              -DCMAKE_SYSTEM_NAME=Linux \
+              -DCMAKE_SYSTEM_PROCESSOR=aarch64
+            make -j$(nproc)
+          else
+            cmake .. -DBUILD_SHARED_LIBS=OFF
+            make -j$(nproc)
+          fi
+
+      # macOS uses launcher architecture (bluecli + launcher), others use direct go build
+      - name: Build binary (macOS)
+        if: matrix.goos == 'darwin'
+        working-directory: server
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+          ZIMAOS_TRIAL_LICENSE: ${{ secrets.ZIMAOS_TRIAL_LICENSE }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          export VERSION="${GITHUB_REF_NAME}"
+          export GIT_COMMIT="$(git rev-parse --short HEAD)"
+          export BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          make build
+
+      - name: Build binary (non-macOS)
+        if: matrix.goos != 'darwin'
         working-directory: server
         shell: bash
         env:
@@ -101,7 +162,6 @@ jobs:
           CGO_ENABLED: "1"
           ZIMAOS_TRIAL_LICENSE: ${{ secrets.ZIMAOS_TRIAL_LICENSE }}
         run: |
-          # Cross-compile CC for linux/arm64
           if [[ "${{ matrix.cross }}" == "true" ]]; then
             export CC=aarch64-linux-gnu-gcc
           fi
@@ -120,9 +180,11 @@ jobs:
           if [[ "${GOOS}" == "windows" ]]; then EXT=".exe"; fi
 
           mkdir -p bin
-          go build -ldflags "${LDFLAGS}" -o "bin/${BINARY_NAME}${EXT}" ./cmd/blue
+          go build -tags 'fts5 espeak kokoro' -ldflags "${LDFLAGS}" -o "bin/${BINARY_NAME}${EXT}" ./cmd/blue
 
+      # Pack dist into binary (Linux/Windows only — macOS launcher handles this)
       - name: Pack dist into binary
+        if: matrix.goos != 'darwin'
         working-directory: server
         shell: bash
         run: |
@@ -130,7 +192,6 @@ jobs:
           if [[ "${{ matrix.goos }}" == "windows" ]]; then EXT=".exe"; fi
           BINARY="bin/${BINARY_NAME}${EXT}"
 
-          # Convert runner.temp to Unix path on Windows (D:\a\_temp -> /d/a/_temp)
           RUNNER_TMP="${{ runner.temp }}"
           if command -v cygpath &>/dev/null; then
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
@@ -138,19 +199,16 @@ jobs:
           DIST_TAR="${RUNNER_TMP}/zimaos-dist.tar.gz"
           tar czf "${DIST_TAR}" -C internal/web/dist .
 
-          # Get binary size (cross-platform stat)
           if [[ "$(uname)" == "Darwin" ]]; then
             OFFSET=$(stat -f%z "${BINARY}")
           else
             OFFSET=$(stat -c%s "${BINARY}" 2>/dev/null || wc -c < "${BINARY}" | tr -d ' ')
           fi
 
-          # Export for python subprocess (avoids shell string escaping issues on Windows)
           export PACK_DIST_TAR="${DIST_TAR}"
           export PACK_BINARY="${BINARY}"
           export PACK_OFFSET="${OFFSET}"
 
-          # Use python for binary-safe append (avoids CRLF issues on Windows Git Bash)
           PYTHON=python3
           if [[ "${{ matrix.goos }}" == "windows" ]]; then PYTHON=python; fi
 
@@ -162,6 +220,35 @@ jobs:
               f.write(dist)
               f.write(struct.pack('<Q', int(os.environ['PACK_OFFSET'])))
           "
+
+      # Notarize macOS binary
+      - name: Notarize macOS binary
+        if: matrix.goos == 'darwin'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        working-directory: server/bin
+        run: |
+          # Sign the final launcher binary too
+          codesign --force --options runtime \
+            --sign "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
+            --entitlements ../../tauri-app/src-tauri/entitlements.plist \
+            --timestamp blue
+
+          # Notarize
+          zip blue.zip blue
+          xcrun notarytool submit blue.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          rm blue.zip
+
+      - name: Cleanup keychain
+        if: matrix.goos == 'darwin' && always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
 
       - name: Create archive & checksum
         working-directory: server/bin
@@ -190,9 +277,172 @@ jobs:
             server/bin/*.sha256
           retention-days: 1
 
+  build-tauri-macos:
+    name: Build Tauri macOS (${{ matrix.arch }})
+    needs: build-web
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            goarch: arm64
+          - arch: amd64
+            runner: macos-15
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: server/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: tauri-app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist/
+
+      - name: Copy dist to server embed dir
+        run: |
+          mkdir -p server/internal/web/dist
+          rsync -a web/dist/ server/internal/web/dist/
+          rm -f server/internal/web/dist/stats.html
+          find server/internal/web/dist -name "*.gz" -delete 2>/dev/null || true
+          find server/internal/web/dist -name "*.br" -delete 2>/dev/null || true
+
+      - name: Install Apple Certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp)
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_FILE"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p actions "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p actions "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security import "$CERT_FILE" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
+          rm "$CERT_FILE"
+
+      - name: Build Go static library
+        working-directory: server
+        env:
+          CGO_ENABLED: "1"
+          ZIMAOS_TRIAL_LICENSE: ${{ secrets.ZIMAOS_TRIAL_LICENSE }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          GIT_COMMIT="$(git rev-parse --short HEAD)"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          GO_LDFLAGS="-s -w"
+          GO_LDFLAGS="${GO_LDFLAGS} -X main.version=${VERSION}"
+          GO_LDFLAGS="${GO_LDFLAGS} -X main.gitCommit=${GIT_COMMIT}"
+          GO_LDFLAGS="${GO_LDFLAGS} -X main.buildTime=${BUILD_TIME}"
+          GO_LDFLAGS="${GO_LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=${ZIMAOS_TRIAL_LICENSE}"
+
+          mkdir -p ../tauri-app/src-tauri/lib
+          go build -buildmode=c-archive \
+            -tags 'fts5' \
+            -ldflags="${GO_LDFLAGS}" \
+            -o ../tauri-app/src-tauri/lib/libblue.a \
+            ./cmd/bluelib/
+
+      - name: Build Tauri app
+        working-directory: tauri-app
+        run: |
+          npm install
+          npm run build
+
+      - name: Codesign .app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          APP_DIR="tauri-app/src-tauri/target/release/bundle/macos"
+          APP_NAME="ZimaOS Blue"
+
+          # Copy web dist into .app Resources
+          RESOURCES_DIR="$APP_DIR/$APP_NAME.app/Contents/Resources/dist"
+          mkdir -p "$RESOURCES_DIR"
+          rsync -a web/dist/ "$RESOURCES_DIR/"
+
+          codesign --force --options runtime --deep \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements tauri-app/src-tauri/entitlements.plist \
+            --timestamp \
+            "$APP_DIR/$APP_NAME.app"
+          codesign --verify --verbose=2 "$APP_DIR/$APP_NAME.app"
+
+      - name: Create LZMA DMG
+        run: |
+          brew install create-dmg
+          APP_DIR="tauri-app/src-tauri/target/release/bundle/macos"
+          DMG_DIR="tauri-app/src-tauri/target/release/bundle/dmg"
+          APP_NAME="ZimaOS Blue"
+          VERSION="${GITHUB_REF_NAME}"
+          DMG_NAME="ZimaOS-Blue-${VERSION}-macos-${{ matrix.arch }}.dmg"
+
+          mkdir -p "$DMG_DIR"
+          create-dmg \
+            --volname "$APP_NAME" \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 100 \
+            --icon "$APP_NAME.app" 180 170 \
+            --hide-extension "$APP_NAME.app" \
+            --app-drop-link 480 170 \
+            --format ULMO \
+            "$DMG_DIR/$DMG_NAME" \
+            "$APP_DIR/$APP_NAME.app"
+
+      - name: Sign & Notarize DMG
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG_DIR="tauri-app/src-tauri/target/release/bundle/dmg"
+          DMG_FILE=$(find "$DMG_DIR" -name "*.dmg" -type f | head -1)
+
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG_FILE"
+
+          xcrun notarytool submit "$DMG_FILE" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "$DMG_FILE"
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-tauri-macos-${{ matrix.arch }}
+          path: tauri-app/src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 1
+
   release:
     name: Upload Release Assets
-    needs: build
+    needs: [build, build-tauri-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -246,7 +496,11 @@ jobs:
               '',
               '## Downloads',
               '',
-              '**macOS:**',
+              '**macOS Desktop App (DMG):**',
+              `- [macOS Apple Silicon (arm64)](${dl}/ZimaOS-Blue-${tag}-macos-arm64.dmg)`,
+              `- [macOS Intel (amd64)](${dl}/ZimaOS-Blue-${tag}-macos-amd64.dmg)`,
+              '',
+              '**macOS CLI:**',
               `- [macOS Apple Silicon (arm64)](${dl}/blue-${tag}-darwin-arm64.tar.gz)`,
               `- [macOS Intel (amd64)](${dl}/blue-${tag}-darwin-amd64.tar.gz)`,
               '',
@@ -257,7 +511,7 @@ jobs:
               '**Windows:**',
               `- [Windows x86_64 (amd64)](${dl}/blue-${tag}-windows-amd64.zip)`,
               '',
-              '**Checksums:** Each archive has a corresponding `.sha256` file.',
+              '**Checksums:** Each CLI archive has a corresponding `.sha256` file.',
             ].join('\n');
 
             await github.rest.repos.updateRelease({

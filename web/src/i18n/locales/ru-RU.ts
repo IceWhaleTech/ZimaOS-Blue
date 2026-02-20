@@ -142,6 +142,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    responseInterrupted: 'Ответ прерван',
     newChat: 'Новый чат',
     newConversation: 'Новый разговор',
     sendMessage: 'Отправить сообщение',
@@ -186,6 +187,7 @@ export default {
     voiceTranscribing: 'Транскрибирование...',
     recording: 'Запись...',
     voiceTranscriptionError: 'Не удалось транскрибировать аудио',
+    voiceTranscriptionTimeout: 'Время распознавания истекло. Запись может быть слишком длинной или сервер занят, попробуйте снова.',
     transcription: {
       title: 'Транскрипция',
       placeholder: 'Транскрибированный текст появится здесь...',
@@ -1643,6 +1645,20 @@ export default {
       isCustom: 'Своя',
       isDefault: 'По умолчанию',
     },
+    configure: 'Настроить',
+    baseUrlNotConfigured: 'Базовый URL не настроен — нажмите «Настроить» для установки',
+    healthErrors: {
+      authError: 'Ошибка аутентификации (HTTP {code}) — проверьте ваш API-ключ',
+      baseUrlNotConfigured: 'Базовый URL не настроен — укажите URL конечной точки',
+      baseUrlNotConfiguredAzure: 'Конечная точка Azure OpenAI не настроена — нажмите «Настроить» выше, чтобы указать URL',
+      baseUrlNotConfiguredBedrock: 'Конечная точка AWS Bedrock не настроена — нажмите «Настроить» выше, чтобы указать URL',
+      networkError: 'Сетевое подключение не удалось — проверьте URL и сетевое соединение',
+      certificateError: 'Ошибка TLS-сертификата — включите «Пропустить проверку TLS» или проверьте сертификат',
+      timeoutError: 'Время подключения истекло — сервер может быть недоступен',
+      connectionError: 'Подключение не удалось — проверьте URL провайдера',
+      endpointNotFound: 'Конечная точка проверки не найдена (HTTP 404)',
+      unexpectedStatus: 'Неожиданный ответ (HTTP {code})',
+    },
   },
   preview: {
     createAccount: 'Создать учётную запись',
@@ -1777,7 +1793,13 @@ export default {
     macosNativeName: 'macOS встроенный',
     macosNativeDesc: 'Встроенный синтез речи macOS (офлайн, без загрузки)',
     macosNativeSTTDesc: 'Встроенное распознавание речи macOS (офлайн, без загрузки)',
-    macosNativeQuality: 'Хорошо',
+    macosNativeQuality: 'Отлично',
+    macosNativeOnDeviceOnly: 'Только на устройстве',
+    macosNativeOnDeviceDesc: 'Принудительное распознавание на устройстве (данные не отправляются на серверы Apple)',
+    macosNativeOnDeviceUnsupported: 'Модель на устройстве недоступна для текущего языка',
+    dictationDisabledGuide: 'Диктовка не включена. Для распознавания на устройстве требуется диктовка. Перейдите в Системные настройки > Клавиатура > Диктовка, чтобы включить её.',
+    recheckDictation: 'Проверить снова',
+    onDeviceUnavailableError: 'Распознавание на устройстве недоступно. Включите диктовку в Системные настройки > Клавиатура > Диктовка или отключите режим «Только на устройстве».',
     noModelsAvailable: 'Нет доступных моделей от этого провайдера',
     asrTab: 'Распознавание речи (ASR)',
     ttsTab: 'Синтез речи (TTS)',
@@ -1911,6 +1933,11 @@ export default {
     noSkillsAvailable: 'В данный момент навыки недоступны',
     clearSearch: 'Очистить поиск',
     allLoaded: 'Все {count} навыков загружены',
+    status: {
+      ...enUS.skillStore.status,
+      syncing: 'Синхронизация магазина навыков...',
+      skillsSynced: '{count} навыков синхронизировано',
+    },
   },
 
     personality: {

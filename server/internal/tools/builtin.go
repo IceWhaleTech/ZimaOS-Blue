@@ -24,7 +24,7 @@ func NewCalculatorTool() *CalculatorTool {
 // Definition returns the tool's definition.
 func (c *CalculatorTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "Calculator",
+		Name:        "calculator",
 		Description: "Performs basic arithmetic operations. Supports +, -, *, /, and parentheses.",
 		Icon:        "calculator",
 		Parameters: map[string]interface{}{
@@ -200,7 +200,7 @@ func NewSystemInfoTool() *SystemInfoTool {
 // Definition returns the tool's definition.
 func (s *SystemInfoTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "System Info",
+		Name:        "system_info",
 		Description: "Returns information about the system (OS, architecture, hostname, CPU count, Go version).",
 		Icon:        "system-info",
 		Parameters: map[string]interface{}{
@@ -237,7 +237,7 @@ func NewCurrentTimeTool() *CurrentTimeTool {
 // Definition returns the tool's definition.
 func (t *CurrentTimeTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "Current Time",
+		Name:        "current_time",
 		Description: "Returns the current time in UTC, local time, and Unix timestamp. Optionally accepts a timezone.",
 		Icon:        "current-time",
 		Parameters: map[string]interface{}{
@@ -299,7 +299,7 @@ func NewFileReadTool(allowedPaths []string, maxFileSize int64) *FileReadTool {
 // Definition returns the tool's definition.
 func (f *FileReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "File Read",
+		Name:        "file_read",
 		Description: "Reads content from a file. Returns the file content as text.",
 		Icon:        "file-read",
 		Parameters: map[string]interface{}{
@@ -406,7 +406,7 @@ func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
 // Definition returns the tool's definition.
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "File Write",
+		Name:        "file_write",
 		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{

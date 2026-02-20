@@ -381,10 +381,6 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 		return models, nil
 	}
 	if err != nil {
-		// If authentication failed, stop immediately and report the error
-		if err == ErrAuthRequired {
-			return nil, err
-		}
 		errors = append(errors, fmt.Sprintf("OpenAI: %v", err))
 	}
 
@@ -618,10 +614,17 @@ func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provid
 
 	var errors []string
 	for _, url := range urls {
+		// Try with API key first (returns key-scoped model list if provider supports it)
 		result, err := d.tryFetchModels(ctx, url, apiKey, provider)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("%s: %v", url, err))
-			continue
+			// If auth failed with a key, retry without key to get the full model list
+			if err == ErrAuthRequired && apiKey != nil && apiKey.Key != "" {
+				result, err = d.tryFetchModels(ctx, url, nil, provider)
+			}
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %v", url, err))
+				continue
+			}
 		}
 		return d.parseOpenAIModelsResponse(result, provider)
 	}

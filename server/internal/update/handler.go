@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -55,6 +57,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/system/update/check", h.Check)
 	g.GET("/system/update/info", h.Info)
 	g.POST("/system/update/download", h.Download)
+	g.POST("/system/update/download-ota", h.DownloadOTA)
 	g.POST("/system/update/apply", h.Apply)
 	g.POST("/system/update/rollback", h.Rollback)
 	g.GET("/system/update/history", h.History)
@@ -155,23 +158,112 @@ func (h *Handler) downloadAsync(ctx context.Context) {
 	h.mu.Unlock()
 }
 
-// Apply applies the downloaded update
+// DownloadOTA downloads the update from OTA package URLs (with mirror fallback).
+// POST /api/v1/system/update/download-ota
+func (h *Handler) DownloadOTA(c echo.Context) error {
+	h.mu.Lock()
+	if h.status.State != StateIdle {
+		h.mu.Unlock()
+		return c.JSON(http.StatusConflict, map[string]string{"error": "update in progress"})
+	}
+	h.status.State = StateDownloading
+	h.status.Progress = 0
+	h.status.Error = ""
+	h.mu.Unlock()
+
+	go h.downloadOTAAsync()
+	return c.JSON(http.StatusAccepted, map[string]string{"status": "downloading"})
+}
+
+func (h *Handler) downloadOTAAsync() {
+	if h.otaChecker == nil {
+		h.setError("OTA checker not initialized")
+		return
+	}
+	latest := h.otaChecker.GetLatest()
+	if latest == nil || len(latest.Packages) == 0 {
+		h.setError("no OTA packages available")
+		return
+	}
+
+	h.downloader.SetProgressCallback(func(p float64) {
+		h.mu.Lock()
+		h.status.Progress = p
+		h.mu.Unlock()
+	})
+
+	// Try each package URL (mirrors)
+	var lastErr error
+	for _, url := range latest.Packages {
+		path, err := h.downloader.Download(context.Background(), url, "")
+		if err != nil {
+			lastErr = err
+			log.Printf("[update] download mirror failed (%s): %v", url, err)
+			continue
+		}
+		h.mu.Lock()
+		h.status.State = StateIdle
+		h.status.DownloadedPath = path
+		h.status.Progress = 100
+		h.mu.Unlock()
+		log.Printf("[update] download complete: %s", path)
+		return
+	}
+
+	h.setError(fmt.Sprintf("all download mirrors failed: %v", lastErr))
+}
+// The response is sent BEFORE the process is replaced, so the client
+// should start polling /api/v1/health to detect when the new version is up.
 func (h *Handler) Apply(c echo.Context) error {
 	h.mu.Lock()
 	if h.status.DownloadedPath == "" {
 		h.mu.Unlock()
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no update downloaded"})
 	}
+	if h.status.State == StateApplying || h.status.State == StateRestarting {
+		h.mu.Unlock()
+		return c.JSON(http.StatusConflict, map[string]string{"error": "update already in progress"})
+	}
 	h.status.State = StateApplying
 	path := h.status.DownloadedPath
 	h.mu.Unlock()
 
-	if err := h.applier.Apply(path); err != nil {
+	// Phase 1: backup + replace binary (synchronous — can still return error)
+	if err := h.applier.PrepareAndReplace(path); err != nil {
 		h.setError(err.Error())
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "applied"})
+	h.mu.Lock()
+	h.status.State = StateRestarting
+	h.status.DownloadedPath = ""
+	h.mu.Unlock()
+
+	// Phase 2: send response, then restart in background
+	targetVersion := ""
+	if h.latestInfo != nil {
+		targetVersion = h.latestInfo.LatestVersion
+	}
+
+	c.Response().Header().Set("Connection", "close")
+	if err := c.JSON(http.StatusOK, map[string]string{
+		"status":  "restarting",
+		"version": targetVersion,
+	}); err != nil {
+		return err
+	}
+	c.Response().Flush()
+
+	// Give the response time to reach the client, then exec
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		if err := h.applier.Restart(); err != nil {
+			log.Printf("[update] restart failed: %v", err)
+			h.setError(err.Error())
+		}
+	}()
+
+	return nil
 }
 
 // Rollback rolls back to previous version

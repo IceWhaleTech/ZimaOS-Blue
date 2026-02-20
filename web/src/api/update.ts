@@ -13,7 +13,7 @@ export interface UpdateInfo {
 }
 
 export interface UpdateStatus {
-  state: 'idle' | 'checking' | 'downloading' | 'applying' | 'failed'
+  state: 'idle' | 'checking' | 'downloading' | 'applying' | 'restarting' | 'failed'
   progress: number
   error?: string
   last_checked: string
@@ -36,15 +36,22 @@ export interface OTAStatus {
   delay?: number
 }
 
+export interface ApplyResponse {
+  status: string
+  version?: string
+}
+
 const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
 
 export const updateApi = {
   check: () => api.get<UpdateInfo>('/system/update/check'),
   info: () => api.get<UpdateInfoResponse>('/system/update/info'),
   download: () => api.post<{ status: string }>('/system/update/download'),
-  apply: () => api.post<{ status: string }>('/system/update/apply'),
+  downloadOTA: () => api.post<{ status: string }>('/system/update/download-ota'),
+  apply: () => api.post<ApplyResponse>('/system/update/apply'),
   rollback: () => api.post<{ status: string }>('/system/update/rollback'),
   history: () => api.get<any[]>('/system/update/history'),
   ota: () => api.get<OTAStatus>('/system/update/ota', { params: isTauri ? { desktop: '1' } : undefined }),
   releaseNotes: (url?: string) => api.get<string>('/system/update/release-notes', { params: url ? { url } : undefined, responseType: 'text' as const }),
+  health: () => fetch('/api/v1/health').then(r => r.ok ? r.json() : Promise.reject(r)),
 }

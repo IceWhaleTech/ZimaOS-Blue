@@ -220,20 +220,23 @@ func (o *OTAChecker) doRequest(ctx context.Context, url, hostHeader string) (*OT
 }
 
 // isBlueOTAResponse checks that the OTA response is for ZimaOS-Blue.
-// ZimaOS versions are 1.x+, Blue versions are 0.x. Also check URLs for "Blue"/"blue".
+// We verify by checking that package URLs or release note URL reference "blue".
 func isBlueOTAResponse(r *OTAResponse) bool {
 	if r == nil || r.Version == "" {
 		return false
 	}
-	// ZimaOS mainline versions start at 1.x; Blue is 0.x
-	if !strings.HasPrefix(r.Version, "0.") {
-		return false
+	// Release note URL referencing "blue" is the primary signal
+	if r.ReleaseNoteURL != "" && strings.Contains(strings.ToLower(r.ReleaseNoteURL), "blue") {
+		return true
 	}
-	// Double-check: release note URL should reference Blue, not ZimaOS mainline
-	if r.ReleaseNoteURL != "" && !strings.Contains(strings.ToLower(r.ReleaseNoteURL), "blue") {
-		return false
+	// Check package URLs for "blue"
+	for _, pkg := range r.Packages {
+		if strings.Contains(strings.ToLower(pkg), "blue") {
+			return true
+		}
 	}
-	return true
+	// No URL signals — accept if fetched from /blue endpoint (caller already uses /blue path)
+	return r.ReleaseNoteURL == "" && len(r.Packages) == 0
 }
 
 func getMachineID() string {

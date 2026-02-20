@@ -72,8 +72,8 @@ onMounted(async () => {
 // Check ASR model and connect
 async function checkAndConnect() {
   try {
-    const res = await speechApi.getASRStatus()
-    if (!res.data?.ready) {
+    const res = await speechApi.getStatus()
+    if (!res.data?.asr?.ready) {
       showASRDownloadPrompt.value = true
       return
     }

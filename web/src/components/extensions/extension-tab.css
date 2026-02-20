@@ -113,6 +113,8 @@
   font-size: 14px;
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
+  box-sizing: border-box;
+  height: 40px;
 }
 
 .search-input:focus {
@@ -128,6 +130,8 @@
   background: var(--glass-bg, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
   min-width: 120px;
+  box-sizing: border-box;
+  height: 40px;
 }
 
 .filter-actions {
@@ -148,6 +152,8 @@
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+  box-sizing: border-box;
+  height: 40px;
 }
 
 .btn-refresh:hover,

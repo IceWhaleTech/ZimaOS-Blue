@@ -14,8 +14,8 @@ func TestWebSearchTool_Definition(t *testing.T) {
 	tool := NewWebSearchTool(WebSearchConfig{})
 	def := tool.Definition()
 
-	if def.Name != "Web Search" {
-		t.Errorf("expected name 'Web Search', got '%s'", def.Name)
+	if def.Name != "web_search" {
+		t.Errorf("expected name 'web_search', got '%s'", def.Name)
 	}
 
 	if def.Description == "" {

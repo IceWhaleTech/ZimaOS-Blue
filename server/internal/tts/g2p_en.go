@@ -1,3 +1,5 @@
+//go:build kokoro
+
 package tts
 
 import (
@@ -8,7 +10,7 @@ import (
 	"unicode"
 )
 
-//go:embed data/us_gold.json
+//go:embed g2pdata/us_gold.json
 var usGoldFS embed.FS
 
 // EnglishG2P converts English text to IPA phonemes using dictionary lookup.
@@ -24,7 +26,7 @@ func NewEnglishG2P() *EnglishG2P {
 
 func (g *EnglishG2P) init() {
 	g.initOnce.Do(func() {
-		data, err := usGoldFS.ReadFile("data/us_gold.json")
+		data, err := usGoldFS.ReadFile("g2pdata/us_gold.json")
 		if err != nil {
 			g.dict = make(map[string]interface{})
 			return

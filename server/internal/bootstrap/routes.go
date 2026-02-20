@@ -316,6 +316,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Network routes
 	networkHandler := networkapi.NewNetworkHandler(cfg.Port)
 	networkHandler.RegisterRoutes(e)
+	// Add LAN addresses to CORS allowed origins after actual port is known
+	server.OnServerStart(func(port int) {
+		h := networkapi.NewNetworkHandler(port)
+		if err := h.InitializeCORSOrigins(); err != nil {
+			logger.Warn("Failed to initialize CORS origins from network addresses", zap.Error(err))
+		}
+	})
 
 	// Link preview routes
 	linkPreviewHandler := networkapi.NewLinkPreviewHandler()
@@ -638,11 +645,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		configGroup := protected.Group("/config")
 		providerPoolHandler.RegisterConfigRoutes(configGroup)
 
-		// Proxy failover routes
-		failoverConfig := proxy.DefaultProxyConfig().Routing.Failover
-		failoverHandler := proxy.NewFailoverAPIHandler(nil, &failoverConfig)
-		failoverGroup := protected.Group("/proxy/failover")
-		failoverHandler.RegisterRoutes(failoverGroup)
+		// Proxy failover routes are registered below in the proxy block
+		// so they share the same FailoverConfig pointer as the actual failover handler.
 	} else {
 		stub := featureDisabled("providers")
 		providersGroup := protected.Group("/providers")
@@ -679,6 +683,51 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		cacheGroup.Any("/*", stub)
 	}
 
+	// Data masking routes
+	{
+		dataMasker := proxy.NewDataMasker(nil)
+		maskingGroup := v1.Group("/proxy/masking")
+		maskingGroup.GET("/stats", func(c echo.Context) error {
+			return c.JSON(200, dataMasker.Stats())
+		})
+		maskingGroup.GET("/rules", func(c echo.Context) error {
+			return c.JSON(200, map[string]interface{}{
+				"rules":         dataMasker.ListRules(),
+				"default_rules": proxy.GetDefaultRules(),
+			})
+		})
+		maskingGroup.POST("/rules", func(c echo.Context) error {
+			var rule proxy.MaskingRule
+			if err := c.Bind(&rule); err != nil {
+				return c.JSON(400, map[string]string{"error": "invalid request"})
+			}
+			if err := dataMasker.AddRule(&rule); err != nil {
+				return c.JSON(400, map[string]string{"error": err.Error()})
+			}
+			return c.JSON(201, map[string]interface{}{"message": "rule added", "rule": rule})
+		})
+		maskingGroup.DELETE("/rules", func(c echo.Context) error {
+			id := c.QueryParam("id")
+			if id == "" {
+				return c.JSON(400, map[string]string{"error": "id required"})
+			}
+			if dataMasker.RemoveRule(id) {
+				return c.JSON(200, map[string]string{"message": "rule removed"})
+			}
+			return c.JSON(404, map[string]string{"error": "rule not found"})
+		})
+		maskingGroup.PUT("/toggle", func(c echo.Context) error {
+			var req struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := c.Bind(&req); err != nil || req.Enabled == nil {
+				return c.JSON(400, map[string]string{"error": "enabled field required"})
+			}
+			dataMasker.SetEnabled(*req.Enabled)
+			return c.JSON(200, dataMasker.Stats())
+		})
+	}
+
 	// OpenAI-compatible proxy routes on /v1/*
 	if deps.Config.Proxy != nil && deps.Config.Proxy.Enabled {
 		routingConfig := &deps.Config.Proxy.Routing
@@ -689,6 +738,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyConnPool := proxy.NewConnectionPool(&deps.Config.Proxy.Connection)
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+
+		// Failover API routes — share the same config pointer so API changes take effect
+		failoverAPIHandler := proxy.NewFailoverAPIHandler(nil, &routingConfig.Failover)
+		failoverGroup := protected.Group("/proxy/failover")
+		failoverAPIHandler.RegisterRoutes(failoverGroup)
+
 		if deps.ProviderPool != nil {
 			proxyHandler.SetProviderPool(deps.ProviderPool)
 		}
@@ -860,6 +915,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		routingGroup.GET("/stats", func(c echo.Context) error {
 			return c.JSON(200, proxyHandler.GetRoutingStats())
 		})
+
+		// Provider restriction management (blacklist/throttle clearing)
+		restrictionsHandler := proxy.NewRestrictionsHandler(proxyHandler.GetProviderMemory())
+		restrictionsHandler.RegisterRoutes(v1)
 	}
 
 	// Ngrok remote access routes
@@ -1016,6 +1075,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 	updateHandler := update.NewHandler(cfg.Version, updateCfg)
 	updateHandler.RegisterRoutes(v1)
+
+	// Wire up OTA background checker so DownloadOTA can find packages
+	otaChecker := update.NewOTAChecker(cfg.Version, cfg.DataDir, "")
+	updateHandler.SetOTAChecker(otaChecker)
+	go otaChecker.Run(deps.Ctx)
+
 	logger.Info("OTA update routes registered", zap.Bool("enabled", deps.Config.Update.Enabled))
 
 	// Channel config routes

@@ -297,10 +297,29 @@ func (s *service) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, 
 		format = tts.FormatWAV
 	}
 
+	// Determine content type from the provider's supported formats
+	provider := s.ttsService.GetProvider(s.ttsService.GetDefaultProvider())
+	contentType := "audio/wav"
+	if provider != nil {
+		formats := provider.SupportedFormats()
+		if len(formats) > 0 {
+			switch formats[0] {
+			case tts.FormatMP3:
+				contentType = "audio/mpeg"
+			case tts.FormatOPUS:
+				contentType = "audio/opus"
+			case tts.FormatAAC:
+				contentType = "audio/aac"
+			case tts.FormatFLAC:
+				contentType = "audio/flac"
+			}
+		}
+	}
+
 	return s.ttsService.SynthesizeStream(ctx, &tts.SynthesizeRequest{
 		Text: cleanText, Format: format, Speed: speed, Pitch: pitch, Volume: volume,
 	}, func(chunk []byte) error {
-		return callback(chunk, "audio/wav")
+		return callback(chunk, contentType)
 	})
 }
 

@@ -244,16 +244,16 @@ func formatSearchForIM(query string, results []struct {
 
 // Tool name localization for function_calls blocks.
 var toolNameZh = map[string]string{
-	"Web Search":      "网页搜索",
-	"Calculator":      "计算器",
-	"System Info":     "系统信息",
-	"Current Time":    "当前时间",
-	"File Read":       "读取文件",
-	"File Write":      "写入文件",
-	"Memory Search":   "记忆搜索",
-	"Memory Store":    "存储记忆",
-	"Memory Get":      "获取记忆",
-	"Memory Stats":    "记忆统计",
+	"web_search":      "网页搜索",
+	"calculator":      "计算器",
+	"system_info":     "系统信息",
+	"current_time":    "当前时间",
+	"file_read":       "读取文件",
+	"file_write":      "写入文件",
+	"memory_search":   "记忆搜索",
+	"memory_store":    "存储记忆",
+	"memory_get":      "获取记忆",
+	"memory_stats":    "记忆统计",
 }
 
 // Parameter name localization.

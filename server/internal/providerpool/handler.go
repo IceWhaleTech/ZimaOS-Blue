@@ -24,6 +24,7 @@ type Pool struct {
 	Storage           Storage
 	Config            *PoolConfig
 	TrialQuotaManager *TrialQuotaManager
+	pricingUpdater    *PricingUpdater
 }
 
 // PoolOption configures the Pool
@@ -55,6 +56,13 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 
 	// Create router
 	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	// Wire provider changes to rebuild the static candidate list.
+	// Must be async: the callback fires inside Registry.mu.Lock(),
+	// and RebuildCandidates needs Registry.mu.RLock() — sync call deadlocks.
+	registry.onProviderChange = func(provider *Provider, action string) {
+		go router.RebuildCandidates()
+	}
 
 	// Create IDE discovery
 	ideDiscovery := ide.NewDiscovery(10 * time.Second)
@@ -100,6 +108,10 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	// Initialize built-in providers synchronously (required for chat to work immediately)
 	pool.initBuiltinProviders()
 
+	// Start background pricing updater (fetches remote model_pricing.json via GitHub/jsdelivr)
+	pool.pricingUpdater = NewPricingUpdater(nil)
+	pool.pricingUpdater.Start()
+
 	// Remove trial provider if quota is already exhausted (e.g. zero quota, expired, tampered)
 	if pool.TrialQuotaManager != nil && pool.TrialQuotaManager.IsExhausted() {
 		pool.TrialQuotaManager.DeleteTrialProvider()
@@ -138,6 +150,8 @@ func (p *Pool) Start(ctx context.Context) {
 			// Log but don't fail - models can be fetched on demand
 			fmt.Printf("[Provider Pool] Failed to refresh models on startup: %v\n", err)
 		}
+		// Rebuild candidate list after models are refreshed
+		p.Router.RebuildCandidates()
 	}()
 }
 
@@ -184,10 +198,8 @@ func (p *Pool) initBuiltinProviders() {
 	}
 
 	builtins := BuiltinProviders()
-	fmt.Printf("[Pool] initBuiltinProviders: %d existing, %d builtins\n", len(existing), len(builtins))
 
 	for _, builtin := range builtins {
-		fmt.Printf("[Pool] initBuiltinProviders: processing %s (enabled=%v, hasKeys=%d)\n", builtin.ID, builtin.Enabled, len(builtin.APIKeys))
 		if existingProvider, exists := existingMap[builtin.ID]; exists {
 			// Update existing builtin provider's metadata (but preserve user settings)
 			needsUpdate := false
@@ -247,6 +259,12 @@ func (p *Pool) initBuiltinProviders() {
 			// Update website if changed
 			if existingProvider.Website != builtin.Website {
 				existingProvider.Website = builtin.Website
+				needsUpdate = true
+			}
+
+			// Update API key URL if changed
+			if existingProvider.APIKeyURL != builtin.APIKeyURL {
+				existingProvider.APIKeyURL = builtin.APIKeyURL
 				needsUpdate = true
 			}
 
@@ -356,25 +374,205 @@ func (h *Handler) RegisterPricingRoutes(g *echo.Group) {
 
 // Provider handlers
 
-// ListProviders returns all providers
+// providerResponse is a slim JSON representation for the list endpoint.
+// Omits internal/default-value fields like timestamps, detected format, health check details.
+type providerResponse struct {
+	ID       string           `json:"id"`
+	Name     string           `json:"name"`
+	Type     ProviderType     `json:"type"`
+	Location ProviderLocation `json:"location"`
+	Enabled  bool             `json:"enabled"`
+	Status   ProviderStatus   `json:"status"`
+
+	BaseURL   string    `json:"base_url,omitempty"`
+	APIFormat APIFormat `json:"api_format,omitempty"`
+
+	APIKeys []APIKey `json:"api_keys,omitempty"`
+
+	Priority      int      `json:"priority"`
+	AllowedModels []string `json:"allowed_models,omitempty"`
+
+	Icon        string `json:"icon,omitempty"`
+	CustomIcon  string `json:"custom_icon,omitempty"`
+	Description string `json:"description,omitempty"`
+	Website     string `json:"website,omitempty"`
+	APIKeyURL   string `json:"api_key_url,omitempty"`
+
+	Models []*modelResponse `json:"models"`
+}
+
+// modelResponse is a slim JSON representation for models with pricing.
+type modelResponse struct {
+	ID           string   `json:"id"`
+	ProviderID   string   `json:"provider_id"`
+	Name         string   `json:"name"`
+	DisplayName  string   `json:"display_name"`
+	Enabled      bool     `json:"enabled"`
+	Capabilities []string `json:"capabilities"`
+
+	InputPrice  float64 `json:"input_price"`
+	OutputPrice float64 `json:"output_price"`
+	CachePrice  float64 `json:"cache_price"`
+
+	ContextWindow int `json:"context_window,omitempty"`
+	MaxOutput     int `json:"max_output,omitempty"`
+}
+
+// capabilitiesToStrings converts ModelCapabilities to a list of enabled capability names.
+func capabilitiesToStrings(c ModelCapabilities) []string {
+	var caps []string
+	if c.Chat {
+		caps = append(caps, "chat")
+	}
+	if c.Completion {
+		caps = append(caps, "completion")
+	}
+	if c.Vision {
+		caps = append(caps, "vision")
+	}
+	if c.FunctionCall {
+		caps = append(caps, "function_call")
+	}
+	if c.Streaming {
+		caps = append(caps, "streaming")
+	}
+	if c.Thinking {
+		caps = append(caps, "thinking")
+	}
+	if c.JSON {
+		caps = append(caps, "json")
+	}
+	if c.SystemPrompt {
+		caps = append(caps, "system_prompt")
+	}
+	if caps == nil {
+		caps = []string{}
+	}
+	return caps
+}
+
+func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *providerResponse {
+	mr := make([]*modelResponse, len(models))
+	for i, m := range models {
+		mr[i] = &modelResponse{
+			ID:            m.ID,
+			ProviderID:    m.ProviderID,
+			Name:          m.Name,
+			DisplayName:   m.DisplayName,
+			Enabled:       m.Enabled,
+			Capabilities:  capabilitiesToStrings(m.Capabilities),
+			InputPrice:    m.InputPrice,
+			OutputPrice:   m.OutputPrice,
+			CachePrice:    m.CachePrice,
+			ContextWindow: m.ContextWindow,
+			MaxOutput:     m.MaxOutput,
+		}
+		// Enrich with pricing from PricingManager if model has no price set
+		if mr[i].InputPrice == 0 && mr[i].OutputPrice == 0 && pm != nil {
+			if pricing := pm.GetModelPricingWithHeuristics(m.ID, p.ID); pricing != nil {
+				mr[i].InputPrice = pricing.InputPrice
+				mr[i].OutputPrice = pricing.OutputPrice
+				mr[i].CachePrice = pricing.CachePrice
+			}
+		}
+	}
+	return &providerResponse{
+		ID:            p.ID,
+		Name:          p.Name,
+		Type:          p.Type,
+		Location:      p.Location,
+		Enabled:       p.Enabled,
+		Status:        p.Status,
+		BaseURL:       p.BaseURL,
+		APIFormat:     p.APIFormat,
+		APIKeys:       p.APIKeys,
+		Priority:      p.Priority,
+		AllowedModels: p.AllowedModels,
+		Icon:          p.Icon,
+		CustomIcon:    p.CustomIcon,
+		Description:   p.Description,
+		Website:       p.Website,
+		APIKeyURL:     p.APIKeyURL,
+		Models:        mr,
+	}
+}
+
+// toModelResponses converts a slice of Model to modelResponse (capabilities as string array).
+// If pm is non-nil, enriches pricing from PricingManager for models with no price set.
+func toModelResponses(models []*Model, pm *PricingManager) []*modelResponse {
+	result := make([]*modelResponse, len(models))
+	for i, m := range models {
+		result[i] = &modelResponse{
+			ID:            m.ID,
+			ProviderID:    m.ProviderID,
+			Name:          m.Name,
+			DisplayName:   m.DisplayName,
+			Enabled:       m.Enabled,
+			Capabilities:  capabilitiesToStrings(m.Capabilities),
+			InputPrice:    m.InputPrice,
+			OutputPrice:   m.OutputPrice,
+			CachePrice:    m.CachePrice,
+			ContextWindow: m.ContextWindow,
+			MaxOutput:     m.MaxOutput,
+		}
+		if result[i].InputPrice == 0 && result[i].OutputPrice == 0 && pm != nil {
+			if pricing := pm.GetModelPricingWithHeuristics(m.ID, m.ProviderID); pricing != nil {
+				result[i].InputPrice = pricing.InputPrice
+				result[i].OutputPrice = pricing.OutputPrice
+				result[i].CachePrice = pricing.CachePrice
+			}
+		}
+	}
+	return result
+}
+
+// ListProviders returns all providers with their models inlined.
 func (h *Handler) ListProviders(c echo.Context) error {
 	if h.pool == nil || h.pool.Registry == nil {
-		// Return built-in providers when pool is not available
 		builtinProviders := BuiltinProviders()
-		// Sanitize trial providers
 		sanitizedProviders := sanitizeTrialProviders(builtinProviders)
+		result := make([]*providerResponse, len(sanitizedProviders))
+		for i, p := range sanitizedProviders {
+			models := GetBuiltinModels(p.ID)
+			if models == nil {
+				models = []*Model{}
+			}
+			result[i] = toProviderResponse(p, models, nil)
+		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"providers": sanitizedProviders,
-			"total":     len(sanitizedProviders),
+			"providers": result,
+			"total":     len(result),
 		})
 	}
 
 	providers := h.pool.Registry.List()
-	// Sanitize trial providers (hide base_url and api_keys)
 	sanitizedProviders := sanitizeTrialProviders(providers)
+
+	// Fetch models per provider with 1s total timeout.
+	// GetFilteredModels reads cache/storage/builtin — normally instant.
+	ctx, cancel := context.WithTimeout(c.Request().Context(), time.Second)
+	defer cancel()
+
+	result := make([]*providerResponse, len(sanitizedProviders))
+	for i, p := range sanitizedProviders {
+		var models []*Model
+		if ctx.Err() == nil {
+			if m, err := h.pool.Discovery.GetFilteredModels(p.ID); err == nil {
+				models = m
+			}
+		}
+		if models == nil {
+			models = GetBuiltinModels(p.ID)
+		}
+		if models == nil {
+			models = []*Model{}
+		}
+		result[i] = toProviderResponse(p, models, h.pool.PricingManager)
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"providers": sanitizedProviders,
-		"total":     len(sanitizedProviders),
+		"providers": result,
+		"total":     len(result),
 	})
 }
 
@@ -543,7 +741,7 @@ func (h *Handler) DisableProvider(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "disabled"})
 }
 
-// TestProvider tests a provider connection
+// TestProvider tests a provider connection, optionally with a specific API key.
 func (h *Handler) TestProvider(c echo.Context) error {
 	id := c.Param("id")
 
@@ -555,11 +753,33 @@ func (h *Handler) TestProvider(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	// Use singleflight to deduplicate concurrent test requests for the same provider
-	key := fmt.Sprintf("test_provider:%s", id)
-	result, err, _ := h.sfGroup.Do(key, func() (interface{}, error) {
+	// Optional: test with a specific API key
+	var body struct {
+		KeyID string `json:"key_id"`
+	}
+	_ = c.Bind(&body) // ignore bind errors — key_id is optional
+
+	// Build a provider copy scoped to the target key
+	testProvider := *provider // shallow copy
+	var targetKey *APIKey
+	if body.KeyID != "" {
+		for i := range provider.APIKeys {
+			if provider.APIKeys[i].ID == body.KeyID {
+				targetKey = &provider.APIKeys[i]
+				break
+			}
+		}
+		if targetKey == nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "api key not found"})
+		}
+		testProvider.APIKeys = []APIKey{*targetKey}
+	}
+
+	// Use singleflight to deduplicate concurrent test requests for the same provider+key
+	sfKey := fmt.Sprintf("test_provider:%s:%s", id, body.KeyID)
+	result, err, _ := h.sfGroup.Do(sfKey, func() (interface{}, error) {
 		checker := NewHTTPHealthChecker(10 * time.Second)
-		return checker.Check(c.Request().Context(), provider), nil
+		return checker.Check(c.Request().Context(), &testProvider), nil
 	})
 
 	if err != nil {
@@ -567,6 +787,10 @@ func (h *Handler) TestProvider(c echo.Context) error {
 	}
 
 	healthResult := result.(*HealthCheckResult)
+	if targetKey != nil {
+		healthResult.KeyID = targetKey.ID
+		healthResult.KeyHash = targetKey.KeyHash
+	}
 	h.pool.Registry.SetHealth(id, healthResult)
 
 	return c.JSON(http.StatusOK, healthResult)
@@ -806,9 +1030,10 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	resp := toModelResponses(models, h.pool.PricingManager)
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": models,
-		"total":  len(models),
+		"models": resp,
+		"total":  len(resp),
 	})
 }
 
@@ -827,9 +1052,10 @@ func (h *Handler) FetchProviderModels(c echo.Context) error {
 	}
 
 	models := result.([]*Model)
+	resp := toModelResponses(models, h.pool.PricingManager)
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": models,
-		"total":  len(models),
+		"models": resp,
+		"total":  len(resp),
 	})
 }
 
@@ -847,17 +1073,18 @@ func (h *Handler) ListAllModels(c echo.Context) error {
 			}
 		}
 
+		resp := toModelResponses(allModels, nil)
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"models": allModels,
-			"total":  len(allModels),
+			"models": resp,
+			"total":  len(resp),
 		})
 	}
 
 	models := h.pool.Discovery.GetAllModels()
-
+	resp := toModelResponses(models, h.pool.PricingManager)
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": models,
-		"total":  len(models),
+		"models": resp,
+		"total":  len(resp),
 	})
 }
 

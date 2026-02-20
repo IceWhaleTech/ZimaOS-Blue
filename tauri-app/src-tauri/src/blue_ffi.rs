@@ -46,6 +46,10 @@ extern "C" {
 
     /// Force cleanup of all CGO resources
     fn BlueServerCleanup();
+
+    /// Request macOS speech recognition authorization (must be called from main thread)
+    /// Returns: authorization status (0=NotDetermined, 1=Denied, 2=Restricted, 3=Authorized, -1=N/A)
+    fn BlueRequestSTTAuthorization() -> c_int;
 }
 
 #[cfg(target_os = "windows")]
@@ -81,6 +85,9 @@ extern "C" {
 
     /// Force cleanup of all CGO resources
     fn BlueServerCleanup();
+
+    /// Request speech recognition authorization (no-op on Windows, returns -1)
+    fn BlueRequestSTTAuthorization() -> c_int;
 }
 
 /// Track if we've started the server (to prevent double-start)
@@ -229,6 +236,20 @@ pub fn get_version() -> String {
 pub fn cleanup() {
     info!("Forcing cleanup of CGO resources");
     unsafe { BlueServerCleanup() };
+}
+
+/// Request macOS speech recognition authorization via Go FFI.
+/// Must be called from the main thread on macOS (Tauri's Cocoa thread).
+/// Returns the authorization status:
+///   -1 = not applicable (non-macOS)
+///    0 = not determined
+///    1 = denied
+///    2 = restricted
+///    3 = authorized
+pub fn request_stt_authorization() -> i32 {
+    let status = unsafe { BlueRequestSTTAuthorization() };
+    info!("STT authorization result: {}", status);
+    status as i32
 }
 
 #[cfg(test)]

@@ -6,6 +6,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/tidwall/gjson"
 )
 
 // FNV-1a constants for fast, non-cryptographic hashing.
@@ -25,13 +27,30 @@ func NewCanonicalizer() *Canonicalizer {
 }
 
 // CanonicalKey generates a cache key from the request body using FNV-1a.
+// Uses gjson for zero-alloc field extraction instead of json.Unmarshal.
 // Key = FNV-1a(model + canonical(messages) + temp_bucket + topP_bucket + maxTokens)
 func (c *Canonicalizer) CanonicalKey(body []byte) string {
-	var req map[string]interface{}
-	if err := json.Unmarshal(body, &req); err != nil {
+	if !gjson.ValidBytes(body) {
 		return c.fnvHashBytes(body)
 	}
-	return c.CanonicalKeyFromParsed(req)
+
+	model := gjson.GetBytes(body, "model").Str
+	temp := bucketFloat(gjson.GetBytes(body, "temperature").Float(), 0.1)
+	topP := bucketFloat(gjson.GetBytes(body, "top_p").Float(), 0.1)
+	maxTokens := gjson.GetBytes(body, "max_tokens").Int()
+
+	msgs := gjson.GetBytes(body, "messages")
+	canonical := c.canonicalMessagesGjson(msgs, body)
+
+	var b strings.Builder
+	b.Grow(len(model) + len(canonical) + 32)
+	b.WriteString(model)
+	b.WriteByte('|')
+	b.WriteString(canonical)
+	b.WriteByte('|')
+	fmt.Fprintf(&b, "%.1f|%.1f|%d", temp, topP, maxTokens)
+
+	return c.fnvHashString(b.String())
 }
 
 // CanonicalKeyFromParsed generates a cache key from a pre-parsed request map.
@@ -135,6 +154,63 @@ func (c *Canonicalizer) canonicalMessages(msgs []interface{}) string {
 
 	data, _ := json.Marshal(msgs)
 	return string(data)
+}
+
+// canonicalMessagesGjson produces a stable hash-friendly string from messages
+// using gjson results, avoiding json.Unmarshal entirely.
+// It hashes role+content pairs directly with FNV, skipping billing headers.
+func (c *Canonicalizer) canonicalMessagesGjson(msgs gjson.Result, body []byte) string {
+	if !msgs.Exists() || !msgs.IsArray() {
+		return "[]"
+	}
+
+	arr := msgs.Array()
+	if len(arr) == 0 {
+		return "[]"
+	}
+
+	// Build sortable role+content pairs
+	type msgPair struct {
+		role    string
+		content string
+	}
+	pairs := make([]msgPair, 0, len(arr))
+	for _, msg := range arr {
+		role := msg.Get("role").Str
+		content := msg.Get("content").Str
+
+		// Skip billing headers
+		if role == "system" && isBillingHeader(content) {
+			continue
+		}
+		if content != "" {
+			content = cleanTrackingTokens(content)
+		}
+		pairs = append(pairs, msgPair{role: role, content: content})
+	}
+
+	// Sort by role for stability
+	sort.SliceStable(pairs, func(i, j int) bool {
+		return pairs[i].role < pairs[j].role
+	})
+
+	// Hash directly instead of marshaling to JSON
+	hash := fnvOffset64
+	for _, p := range pairs {
+		for i := 0; i < len(p.role); i++ {
+			hash ^= uint64(p.role[i])
+			hash *= fnvPrime64
+		}
+		hash ^= uint64('|')
+		hash *= fnvPrime64
+		for i := 0; i < len(p.content); i++ {
+			hash ^= uint64(p.content[i])
+			hash *= fnvPrime64
+		}
+		hash ^= uint64('\n')
+		hash *= fnvPrime64
+	}
+	return fmt.Sprintf("%016x", hash)
 }
 
 // isBillingHeader checks if content is a billing/tracking header.

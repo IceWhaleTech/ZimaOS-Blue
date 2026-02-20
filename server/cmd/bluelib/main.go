@@ -36,6 +36,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
@@ -50,6 +51,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
@@ -108,29 +110,14 @@ func setupSignalHandler() {
 			sig := <-signalChan
 			fmt.Fprintf(os.Stderr, "Received signal %v, initiating graceful shutdown...\n", sig)
 
-			// Trigger server stop via BlueServerStop
+			// Cancel the server context — this triggers the shutdown path
+			// in runServer() which will close streams, stop HTTP server, etc.
+			// The caller (BlueServerStop or Tauri) handles process lifecycle.
 			serverMu.Lock()
 			if isRunning && serverCancel != nil {
 				serverCancel()
-				serverMu.Unlock()
-
-				// Wait for server to stop with timeout
-				select {
-				case <-serverDone:
-					fmt.Fprintf(os.Stderr, "Server stopped gracefully\n")
-				case <-time.After(10 * time.Second):
-					fmt.Fprintf(os.Stderr, "Server shutdown timeout - forcing cleanup\n")
-				}
-
-				// Perform cleanup
-				performCleanup()
-			} else {
-				serverMu.Unlock()
 			}
-
-			// For CGO library, we need to exit the process
-			// But we've already done cleanup above
-			os.Exit(0)
+			serverMu.Unlock()
 		}()
 	})
 }
@@ -273,7 +260,7 @@ func BlueServerStop() C.int {
 	// Wait for server to stop with timeout
 	select {
 	case <-serverDone:
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		return 2 // Timeout
 	}
 
@@ -501,6 +488,34 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		zapLogger.Info("STT service initialized with Whisper provider")
 	}
 
+	// TTS service — pick OS-appropriate default provider
+	var ttsService tts.Service
+	{
+		defaultTTSProvider := tts.ProviderEdge
+		if runtime.GOOS == "darwin" {
+			defaultTTSProvider = tts.ProviderMacOSNative
+		}
+
+		providers := []tts.ProviderConfig{
+			{Type: tts.ProviderEdge, Enabled: true},
+		}
+		if defaultTTSProvider == tts.ProviderMacOSNative {
+			providers = append(providers, tts.ProviderConfig{Type: tts.ProviderMacOSNative, Enabled: true})
+		}
+
+		var err error
+		ttsService, err = tts.NewService(&tts.ServiceConfig{
+			DefaultProvider: defaultTTSProvider,
+			Providers:       providers,
+			DataPath:        dataDir,
+		})
+		if err != nil {
+			zapLogger.Warn("Failed to initialize TTS service", zap.Error(err))
+		} else {
+			zapLogger.Info("TTS service initialized", zap.String("provider", string(defaultTTSProvider)))
+		}
+	}
+
 	// Initialize voice handler with STT service
 	voiceService := voice.NewService(&voice.ServiceConfig{
 		STTService: sttService,
@@ -508,14 +523,53 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	voiceHandler := voice.NewHandler(voiceService)
 
 	// Initialize speech handler with ASR provider
+	asrProvider := "whisper"
+	if runtime.GOOS == "darwin" {
+		asrProvider = "macos-native"
+	}
+	speechKV, _ := kvstore.NewSQLiteStoreWithDB(services.DB)
 	speechService := speech.NewService(&speech.Config{
-		TTS: speech.TTSConfig{Provider: "edge-tts"},
-		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper"},
-	}, nil, nil)
-	if whisperASRProvider != nil {
+		TTS: speech.TTSConfig{Provider: "edge"},
+		ASR: speech.ASRConfig{Enabled: true, Provider: asrProvider, EditBeforeSend: true},
+	}, nil, ttsService)
+	if ttsService != nil {
+		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
+			speechService.SetTTSProvider(provider)
+		}
+	}
+	speechHandler := speech.NewHandler(speechService, speechKV, dataDir)
+
+	// Restore persisted TTS provider from kvstore
+	if ttsService != nil {
+		if saved := speechHandler.GetPersistedTTSProvider(); saved != "" {
+			if err := ttsService.SetDefaultProvider(tts.ProviderType(saved)); err != nil {
+				zapLogger.Warn("Failed to restore persisted TTS provider", zap.String("provider", saved), zap.Error(err))
+			} else {
+				if p := ttsService.GetProvider(tts.ProviderType(saved)); p != nil {
+					speechService.SetTTSProvider(p)
+				}
+				zapLogger.Info("Restored persisted TTS provider", zap.String("provider", saved))
+			}
+		}
+	}
+
+	// On macOS, use native STT (no whisper in Tauri macOS build)
+	if runtime.GOOS == "darwin" {
+		zapLogger.Info("macOS detected, initializing native STT...")
+		macosSTT := speech.NewMacOSNativeSTT()
+		if err := macosSTT.Initialize(); err == nil {
+			speechService.SetASRProvider(macosSTT)
+			if voiceHandler != nil {
+				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(macosSTT))
+			}
+			zapLogger.Info("macOS native STT initialized OK")
+		} else {
+			zapLogger.Warn("macOS native STT init failed, no ASR available", zap.Error(err))
+			speechService.SetASRPermissionDenied(err.Error())
+		}
+	} else if whisperASRProvider != nil {
 		speechService.SetASRProvider(whisperASRProvider)
 	}
-	speechHandler := speech.NewHandler(speechService, nil)
 
 	// Initialize companion handler
 	companionConfig := companion.DefaultConfig()
@@ -689,7 +743,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	select {
 	case <-ctx.Done():
 		zapLogger.Info("Shutting down server...")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		// Cancel all active SSE streams and close WebSocket connections first,
+		// so httpServer.Shutdown() doesn't have to wait for them to time out.
+		chatHandler.Shutdown()
+		if companionWSHandler != nil {
+			companionWSHandler.Close()
+		}
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
 		metricsCollector.Stop()

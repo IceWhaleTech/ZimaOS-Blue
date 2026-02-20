@@ -72,7 +72,8 @@ async function handleDownload(modelId: string) {
     if (props.type === 'asr') {
       await speechApi.downloadASRModel(modelId)
     } else {
-      await speechApi.downloadTTSModel(modelId)
+      // TTS models use provider-specific download flows (e.g. Kokoro)
+      return
     }
 
     pollInterval = setInterval(async () => {

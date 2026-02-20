@@ -242,10 +242,11 @@ export const proxyApi = {
   removeMaskingRule: (id: string) =>
     apiClient.delete<{ message: string }>(`/proxy/masking/rules?id=${encodeURIComponent(id)}`),
 
+  toggleMasking: (enabled: boolean) =>
+    apiClient.put<MaskingStats>('/proxy/masking/toggle', { enabled }),
+
   // Failover
   getFailoverConfig: () => apiClient.get<FailoverConfig>('/proxy/failover/config'),
-  updateFailoverConfig: (config: Partial<FailoverConfig>) =>
-    apiClient.put<FailoverConfig>('/proxy/failover/config', config),
 
   // Security Alerts (aggregated from guard stats)
   getSecurityAlerts: async (): Promise<{ data: SecurityAlert[] }> => {

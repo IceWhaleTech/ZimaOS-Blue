@@ -68,13 +68,6 @@ var (
 )
 
 func main() {
-	// On macOS, if the binary has appended dist data (from pack-dist),
-	// extract it as a sidecar directory and truncate the binary to restore
-	// clean Mach-O. TCC's strict signature validation rejects modified
-	// binaries, so this ensures speech recognition auth works on next run.
-	// The current process continues normally with dist from tmpdir/sidecar.
-	web.SelfExtractAndRestart()
-
 	// On macOS, request speech recognition authorization on thread 0
 	// BEFORE starting the server. runtime.LockOSThread() in macos_init.go
 	// pins this goroutine to thread 0 (required by AppKit/TCC).
@@ -749,16 +742,20 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Initialize speech handler
 	speechKV, _ := kvstore.NewSQLiteStoreWithDB(db)
+	asrProvider := "whisper"
+	if runtime.GOOS == "darwin" {
+		asrProvider = "macos-native"
+	}
 	speechService := speech.NewService(&speech.Config{
 		TTS: speech.TTSConfig{Provider: "edge", Model: ""},
-		ASR: speech.ASRConfig{Enabled: true, Provider: "whisper", EditBeforeSend: true},
+		ASR: speech.ASRConfig{Enabled: true, Provider: asrProvider, EditBeforeSend: true},
 	}, nil, ttsService)
 	if ttsService != nil {
 		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
 			speechService.SetTTSProvider(provider)
 		}
 	}
-	speechHandler := speech.NewHandler(speechService, speechKV)
+	speechHandler := speech.NewHandler(speechService, speechKV, dataDir)
 
 	// Restore persisted TTS provider from kvstore
 	if ttsService != nil {
@@ -789,6 +786,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 				zap.String("providerName", macosSTT.Name()))
 		} else {
 			logger.Warn("macOS native STT init failed, falling back to whisper", zap.Error(err))
+			speechService.SetASRPermissionDenied(err.Error())
 			if sttService != nil {
 				if wp := sttService.GetWhisperProvider(); wp != nil && wp.IsInitialized() {
 					speechService.SetASRProvider(wp)

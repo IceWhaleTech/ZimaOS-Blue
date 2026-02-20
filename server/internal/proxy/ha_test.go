@@ -209,9 +209,10 @@ func TestTryOnProvider_NotConfiguredSkipsToNextProvider(t *testing.T) {
 		t.Errorf("expected 'not configured' in error, got: %s", err.Error())
 	}
 
-	// Model should NOT be blacklisted (it might work on another provider)
-	if ph.providerMemory.IsModelBlacklisted("test-provider", upstream.URL, "gpt-4") {
-		t.Error("model should NOT be blacklisted for 'not configured' errors")
+	// Model SHOULD be blacklisted on THIS provider (per-provider scope)
+	// so future requests skip it. It can still work on other providers.
+	if !ph.providerMemory.IsModelBlacklisted("test-provider", upstream.URL, "gpt-4") {
+		t.Error("model SHOULD be blacklisted on this provider for 'not configured' errors")
 	}
 }
 
@@ -334,7 +335,7 @@ func TestTryOnProvider_10Models_OnlyLastWorks(t *testing.T) {
 		if err == nil {
 			t.Fatalf("model-%d should have failed", i)
 		}
-		// "not available" triggers isModelNotConfiguredError → no blacklist
+		// "not available" triggers isModelNotConfiguredError → blacklists on this provider
 	}
 
 	// Now try model-9 — should succeed

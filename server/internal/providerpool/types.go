@@ -90,9 +90,14 @@ type Provider struct {
 	Icon        string    `json:"icon,omitempty"`        // Built-in icon name (e.g., "openai", "anthropic")
 	CustomIcon  string    `json:"custom_icon,omitempty"` // Custom icon: base64 data URL or relative file path
 	Description string    `json:"description,omitempty"`
-	Website     string    `json:"website,omitempty"`     // Official website URL for the provider
+	Website     string    `json:"website,omitempty"`      // Official website URL for the provider
+	APIKeyURL   string    `json:"api_key_url,omitempty"`  // URL to obtain/manage API keys
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+
+	// Detected capabilities (persisted across restarts)
+	DetectedFormat APIFormat `json:"detected_format,omitempty"` // Probed API format that works (persisted)
+	DetectedAt     time.Time `json:"detected_at,omitempty"`     // When format was last probed
 
 	// Health check
 	LastHealthCheck time.Time `json:"last_health_check,omitempty"`
@@ -288,6 +293,8 @@ type RouteCandidate struct {
 // HealthCheckResult represents the result of a health check
 type HealthCheckResult struct {
 	ProviderID string        `json:"provider_id"`
+	KeyID      string        `json:"key_id,omitempty"`
+	KeyHash    string        `json:"key_hash,omitempty"`
 	Healthy    bool          `json:"healthy"`
 	Latency    time.Duration `json:"latency"`
 	Error      string        `json:"error,omitempty"`

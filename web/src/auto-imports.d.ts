@@ -156,7 +156,7 @@ declare global {
   export type { NotificationType, Notification } from './stores/notification'
   import('./stores/notification')
   // @ts-ignore
-  export type { ChatProviderInfo, ProviderModelOption, ThemeStyle, CloseBehavior } from './stores/settings'
+  export type { ChatModelInfo, ChatProviderInfo, ProviderModelOption, ThemeStyle, CloseBehavior } from './stores/settings'
   import('./stores/settings')
   // @ts-ignore
   export type { Theme } from './stores/theme'

@@ -141,6 +141,25 @@ func TestIsModelNotConfiguredError(t *testing.T) {
 			body:       ``,
 			expected:   false,
 		},
+		// Chinese error messages
+		{
+			name:       "Chinese: model not configured (未配置)",
+			statusCode: 400,
+			body:       `{"error":"端点/claude-aws未配置模型claude-3-7-sonnet"}`,
+			expected:   true,
+		},
+		{
+			name:       "Chinese: model not supported (不支持)",
+			statusCode: 400,
+			body:       `{"error":"该端点不支持此模型"}`,
+			expected:   true,
+		},
+		{
+			name:       "Chinese: model not found (未找到)",
+			statusCode: 404,
+			body:       `{"error":"未找到模型"}`,
+			expected:   true,
+		},
 	}
 
 	for _, tt := range tests {

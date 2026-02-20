@@ -3,12 +3,15 @@ package voice
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 )
 
 // Handler handles voice HTTP requests.
@@ -105,7 +108,17 @@ func (h *Handler) Transcribe(c echo.Context) error {
 		Language: language,
 	}, audioData)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		var onDeviceErr *speech.OnDeviceUnavailableError
+		if errors.As(err, &onDeviceErr) {
+			return c.JSON(http.StatusUnprocessableEntity, map[string]string{
+				"error":      err.Error(),
+				"error_code": "on_device_unavailable",
+				"locale":     onDeviceErr.Locale,
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusOK, result)

@@ -1,35 +1,36 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { speechApi, type SpeechStatus, type ASRModel, type TTSModel } from '@/api/speech'
+import { speechApi, type SpeechStatus, type ASRModel } from '@/api/speech'
+import { useTauri } from '@/composables/useTauri'
 
 const { t, locale } = useI18n()
+const { openInBrowser } = useTauri()
 
 // Tab state
 const activeTab = ref<'asr' | 'tts'>('asr')
 
 const status = ref<SpeechStatus | null>(null)
 const asrModels = ref<ASRModel[]>([])
-const ttsModels = ref<TTSModel[]>([])
 const loading = ref(false)
 const switchingModelId = ref<string | null>(null)  // Track which model is switching
 const asrDownloadingModelId = ref<string | null>(null)  // Track which model is downloading
-const _ttsDownloadingModelId = ref<string | null>(null)
-const _asrDownloadProgress = ref(0)
-const ttsDownloadProgress = ref(0)
-const ttsDownloading = ref(false)
 const error = ref<string | null>(null)
+const showDictationWarning = ref(false)
+const recheckingDictation = ref(false)
 
-// Kokoro state
-const kokoroReady = ref(false)
-const kokoroDownloading = ref(false)
-const kokoroDownloadProgress = ref(0)
-const kokoroDownloadSpeed = ref('')
-const kokoroDownloadETA = ref('')
-const kokoroDownloadFile = ref('')
-const kokoroDownloadFileIndex = ref(0)
-const kokoroDownloadTotalFiles = ref(0)
-const kokoroDownloadedHuman = ref('')
+// Kokoro state (derived from unified status response)
+const kokoroComponent = computed(() => status.value?.tts?.components?.kokoro)
+const kokoroReady = computed(() => kokoroComponent.value?.ready ?? false)
+const _kokoroDownloadingLocal = ref(false) // optimistic flag during download initiation
+const kokoroDownloading = computed(() => _kokoroDownloadingLocal.value || (kokoroComponent.value?.downloading ?? false))
+const kokoroDownloadProgress = computed(() => kokoroComponent.value?.progress ?? 0)
+const kokoroDownloadSpeed = computed(() => kokoroComponent.value?.speed ?? '')
+const kokoroDownloadETA = computed(() => kokoroComponent.value?.eta ?? '')
+const kokoroDownloadFile = computed(() => kokoroComponent.value?.file ?? '')
+const kokoroDownloadFileIndex = computed(() => kokoroComponent.value?.file_index ?? 0)
+const kokoroDownloadTotalFiles = computed(() => kokoroComponent.value?.total_files ?? 0)
+const kokoroDownloadedHuman = computed(() => kokoroComponent.value?.downloaded_human ?? '')
 const kokoroLangsExpanded = ref(false)
 
 const kokoroLanguages = ['en-US', 'en-GB', 'ja-JP', 'zh-CN', 'es-ES', 'fr-FR', 'hi-IN', 'it-IT', 'pt-BR']
@@ -38,10 +39,29 @@ const kokoroOtherLangs = computed(() =>
   kokoroLanguages.filter(l => l !== locale.value)
 )
 
-// eSpeak-NG state (engine is statically linked, data dir detected at runtime)
-const espeakDataReady = ref(false)
-const espeakLangCount = ref(0)
-const espeakDataSize = ref(0)
+// Offline dictation languages (macOS native STT) — fetched lazily via separate endpoint
+const offlineLanguages = ref<string[]>([])
+const offlineLangsFetched = ref(false)
+const currentLangOfflineInstalled = computed(() => {
+  const langs = offlineLanguages.value
+  if (!langs.length) return false
+  const cur = locale.value
+  return langs.includes(cur) || langs.some(l => l.split('-')[0] === cur.split('-')[0])
+})
+
+// Display name for a locale code — reuse speech.langName, fallback to Intl.DisplayNames
+const langDisplayNames = new Intl.DisplayNames([locale.value], { type: 'language' })
+function langName(code: string): string {
+  const i18nKey = `speech.langName.${code}`
+  const translated = t(i18nKey)
+  if (translated !== i18nKey) return translated
+  try { return langDisplayNames.of(code) ?? code } catch { return code }
+}
+
+// eSpeak-NG state (derived from unified status response)
+const espeakDataReady = computed(() => status.value?.espeak?.installed ?? false)
+const espeakLangCount = computed(() => status.value?.espeak?.language_count ?? 0)
+const espeakDataSize = computed(() => status.value?.espeak?.data_size ?? 0)
 
 // Computed: get all downloading models from server status
 const serverDownloadingASRModels = computed(() => {
@@ -68,10 +88,16 @@ function isModelDownloading(modelId: string) {
   return serverDownloadingASRModels.value.includes(modelId) || asrDownloadingModelId.value === modelId
 }
 
-const _asrReady = computed(() => status.value?.asr?.ready ?? false)
-const _ttsReady = computed(() => status.value?.tts?.ready ?? false)
-const currentASRModel = computed(() => status.value?.asr?.model_type ?? '')
-const _currentTTSModel = computed(() => status.value?.tts?.model_type ?? '')
+const currentASRModel = computed(() => status.value?.asr?.model_name ?? '')
+
+// Available TTS providers from server (respects build tags)
+const availableProviders = computed(() => status.value?.tts?.available_providers ?? [])
+function isProviderAvailable(provider: string) {
+  // Wait for status to load before showing providers
+  if (!status.value || availableProviders.value.length === 0) return false
+  return availableProviders.value.includes(provider)
+}
+
 const editBeforeSend = computed({
   get: () => status.value?.asr?.edit_before_send ?? false,
   set: async (value: boolean) => {
@@ -84,8 +110,6 @@ const editBeforeSend = computed({
 
 // TTS Provider selection - synced from server status
 const selectedProvider = ref(localStorage.getItem('tts-provider') || '')
-const selectedTTSModel = ref(localStorage.getItem('tts-model') || 'piper-en')
-const selectedASRModel = ref(localStorage.getItem('asr-model') || '')
 
 // Voice customization
 const speechRate = ref(parseFloat(localStorage.getItem('tts-speech-rate') || '1.0'))
@@ -103,34 +127,6 @@ async function saveProvider() {
   } catch (err) {
     console.error('Failed to switch TTS provider:', err)
     error.value = t('speech.switchError')
-  }
-}
-
-// Get localized ASR model name
-function _getAsrModelName(model: { id: string; name: string }): string {
-  // Backend returns i18n key like "speech.asrModelInfo.whisperTiny.name"
-  const translated = t(model.name)
-  return translated === model.name ? model.name : translated
-}
-
-// Get localized ASR model description
-function _getAsrModelDescription(model: { id: string; description: string }): string {
-  // Backend returns i18n key like "speech.asrModelInfo.whisperTiny.description"
-  const translated = t(model.description)
-  return translated === model.description ? model.description : translated
-}
-
-function _saveTTSModel() {
-  localStorage.setItem('tts-model', selectedTTSModel.value)
-  if (selectedTTSModel.value) {
-    switchTTSModel(selectedTTSModel.value)
-  }
-}
-
-function _saveASRModel() {
-  localStorage.setItem('asr-model', selectedASRModel.value)
-  if (selectedASRModel.value) {
-    switchASRModel(selectedASRModel.value)
   }
 }
 
@@ -167,6 +163,10 @@ async function fetchStatus() {
   try {
     const res = await speechApi.getStatus()
     status.value = res.data
+    // Populate models from status response
+    asrModels.value = (res.data?.asr?.models || []).filter(
+      (m: ASRModel) => m.id !== 'macos-native'
+    )
     // Sync provider from server when no local preference is set
     if (!selectedProvider.value && res.data?.tts?.provider && res.data.tts.provider !== 'none') {
       selectedProvider.value = res.data.tts.provider
@@ -177,24 +177,6 @@ async function fetchStatus() {
     error.value = t('speech.fetchError')
   } finally {
     loading.value = false
-  }
-}
-
-async function fetchASRModels() {
-  try {
-    const res = await speechApi.listASRModels()
-    asrModels.value = res.data?.models || []
-  } catch (e) {
-    console.error('Failed to fetch ASR models:', e)
-  }
-}
-
-async function fetchTTSModels() {
-  try {
-    const res = await speechApi.listTTSModels()
-    ttsModels.value = res.data?.models || []
-  } catch (e) {
-    console.error('Failed to fetch TTS models:', e)
   }
 }
 
@@ -209,39 +191,13 @@ async function downloadASRModel(modelType: string) {
       if (!status.value?.asr?.downloading) {
         clearInterval(pollInterval)
         asrDownloadingModelId.value = null
-        await fetchASRModels()
+        await fetchStatus()
       }
     }, 1000)
   } catch (e) {
     console.error('Failed to download ASR model:', e)
     error.value = t('speech.downloadError')
     asrDownloadingModelId.value = null
-  }
-}
-
-async function _downloadTTSModel(modelType: string) {
-  ttsDownloading.value = true
-  ttsDownloadProgress.value = 0
-  error.value = null
-  try {
-    await speechApi.downloadTTSModel(modelType)
-    // Poll for progress
-    const pollInterval = setInterval(async () => {
-      const res = await speechApi.getTTSStatus()
-      if (res.data?.progress) {
-        ttsDownloadProgress.value = res.data.progress.percentage
-      }
-      if (!res.data?.downloading) {
-        clearInterval(pollInterval)
-        ttsDownloading.value = false
-        await fetchStatus()
-        await fetchTTSModels()
-      }
-    }, 1000)
-  } catch (e) {
-    console.error('Failed to download TTS model:', e)
-    error.value = t('speech.downloadError')
-    ttsDownloading.value = false
   }
 }
 
@@ -258,122 +214,132 @@ async function switchASRModel(modelType: string) {
   }
 }
 
-async function switchTTSModel(modelType: string) {
-  try {
-    await speechApi.switchTTSModel(modelType)
-    await fetchStatus()
-  } catch (e) {
-    console.error('Failed to switch TTS model:', e)
-    error.value = t('speech.switchError')
-  }
-}
-
-async function _deleteASRModel(modelType?: string) {
-  if (!confirm(t('speech.confirmDelete'))) return
-  try {
-    await speechApi.deleteASRModel(modelType)
-    await fetchStatus()
-    await fetchASRModels()
-  } catch (e) {
-    console.error('Failed to delete ASR model:', e)
-    error.value = t('speech.deleteError')
-  }
-}
-
 async function cancelASRDownload() {
   try {
     await speechApi.cancelASRDownload()
     asrDownloadingModelId.value = null
     await fetchStatus()
-    await fetchASRModels()
   } catch (e) {
     console.error('Failed to cancel download:', e)
     error.value = t('speech.cancelError')
   }
 }
 
-async function fetchKokoroStatus() {
-  try {
-    const res = await speechApi.getKokoroStatus()
-    kokoroReady.value = res.data.ready
-    kokoroDownloading.value = res.data.downloading
-    if (res.data.progress !== undefined) {
-      kokoroDownloadProgress.value = res.data.progress
-    }
-    kokoroDownloadSpeed.value = res.data.speed || ''
-    kokoroDownloadETA.value = res.data.eta || ''
-    kokoroDownloadFile.value = res.data.file || ''
-    kokoroDownloadFileIndex.value = res.data.file_index || 0
-    kokoroDownloadTotalFiles.value = res.data.total_files || 0
-    kokoroDownloadedHuman.value = res.data.downloaded_human || ''
-  } catch (e) {
-    console.error('Failed to fetch Kokoro status:', e)
-  }
-}
-
 async function downloadKokoro() {
-  kokoroDownloading.value = true
-  kokoroDownloadProgress.value = 0
+  _kokoroDownloadingLocal.value = true
   error.value = null
   try {
     await speechApi.downloadKokoro()
     let pollCount = 0
     const pollInterval = setInterval(async () => {
-      await fetchKokoroStatus()
+      await fetchStatus()
       pollCount++
+      const comp = status.value?.tts?.components?.kokoro
       // Grace period: don't stop polling in first 3s (goroutine may not have started yet)
-      if (!kokoroDownloading.value && pollCount > 3) {
+      if (comp && !comp.downloading && pollCount > 3) {
+        _kokoroDownloadingLocal.value = false
         clearInterval(pollInterval)
       }
     }, 1000)
   } catch (e) {
     console.error('Failed to download Kokoro model:', e)
     error.value = t('speech.downloadError')
-    kokoroDownloading.value = false
+    _kokoroDownloadingLocal.value = false
   }
 }
 
 async function cancelKokoroDownload() {
   try {
     await speechApi.cancelKokoroDownload()
-    kokoroDownloading.value = false
-    kokoroDownloadProgress.value = 0
+    _kokoroDownloadingLocal.value = false
+    await fetchStatus()
   } catch (e) {
     console.error('Failed to cancel Kokoro download:', e)
     error.value = t('speech.cancelError')
   }
 }
 
-async function fetchEspeakStatus() {
+function openMacOSSettings() {
+  // Open macOS System Settings > Privacy & Security > Speech Recognition
+  openInBrowser('x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition')
+}
+
+async function toggleOnDevice() {
+  if (!status.value?.asr) return
+  const newValue = !status.value.asr.on_device_only
+  showDictationWarning.value = false
   try {
-    const res = await speechApi.getEspeakLibraryStatus()
-    espeakDataReady.value = res.data.installed
-    espeakLangCount.value = res.data.language_count || 0
-    espeakDataSize.value = res.data.data_size || 0
+    const resp = await speechApi.setASROnDevice(newValue)
+    if (resp.data.error === 'dictation_disabled') {
+      showDictationWarning.value = true
+      return
+    }
+    if (status.value.asr) {
+      status.value.asr.on_device_only = resp.data.on_device_only
+      status.value.asr.on_device_supported = resp.data.on_device_supported
+      status.value.asr.dictation_available = resp.data.dictation_available
+    }
+    // Fetch offline languages when enabling on-device
+    if (resp.data.on_device_only) {
+      offlineLangsFetched.value = false
+      fetchOfflineLanguages()
+    }
   } catch (e) {
-    console.error('Failed to fetch eSpeak status:', e)
+    console.error('Failed to toggle on-device mode', e)
   }
 }
 
-async function _deleteTTSModel(modelType?: string) {
-  if (!confirm(t('speech.confirmDelete'))) return
+async function recheckDictation() {
+  recheckingDictation.value = true
   try {
-    await speechApi.deleteTTSModel(modelType)
-    await fetchStatus()
-    await fetchTTSModels()
+    const resp = await speechApi.setASROnDevice(true)
+    if (resp.data.error === 'dictation_disabled') {
+      // Still not enabled
+      return
+    }
+    // Passed — on-device is now enabled
+    showDictationWarning.value = false
+    if (status.value?.asr) {
+      status.value.asr.on_device_only = resp.data.on_device_only
+      status.value.asr.on_device_supported = resp.data.on_device_supported
+      status.value.asr.dictation_available = resp.data.dictation_available
+    }
+    // Fetch offline languages after recheck succeeds
+    if (resp.data.on_device_only) {
+      offlineLangsFetched.value = false
+      fetchOfflineLanguages()
+    }
   } catch (e) {
-    console.error('Failed to delete TTS model:', e)
-    error.value = t('speech.deleteError')
+    console.error('Failed to recheck dictation', e)
+  } finally {
+    recheckingDictation.value = false
   }
 }
 
+async function fetchOfflineLanguages() {
+  if (offlineLangsFetched.value) return
+  try {
+    const res = await speechApi.getOfflineLanguages()
+    offlineLanguages.value = res.data?.offline_languages ?? []
+    offlineLangsFetched.value = true
+  } catch (e) {
+    console.error('Failed to fetch offline languages:', e)
+  }
+}
 
-onMounted(() => {
-  fetchStatus()
-  fetchASRModels()
-  fetchTTSModels()
-  fetchKokoroStatus()
-  fetchEspeakStatus()
+// Lazy-fetch offline languages when on-device mode is active
+watch(
+  () => status.value?.asr?.on_device_only,
+  (onDevice) => {
+    if (onDevice && status.value?.asr?.dictation_available) {
+      fetchOfflineLanguages()
+    }
+  },
+  { immediate: true }
+)
+
+onMounted(async () => {
+  await fetchStatus()
 })
 </script>
 
@@ -418,86 +384,154 @@ onMounted(() => {
       <div v-if="status?.asr?.provider === 'macos-native'" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM7 12a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.93V22h-2v-3.07A7 7 0 0 1 5 12h2z"/></svg>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" :class="status?.asr?.permission_denied ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-blue-100 dark:bg-blue-900/30'">
+              <!-- Warning icon when permission denied -->
+              <svg v-if="status?.asr?.permission_denied" class="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+              <!-- Apple icon when OK -->
+              <svg v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
             </div>
             <div>
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeName') }}</span>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.macosNativeSTTDesc') }}</p>
+              <p v-if="status?.asr?.permission_denied" class="text-xs text-amber-600 dark:text-amber-400">{{ t('speech.macosNativePermissionDenied') }}</p>
+              <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.macosNativeDesc') }}</p>
             </div>
           </div>
           <span v-if="status?.asr?.ready" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">{{ t('speech.ready') }}</span>
+          <span v-else-if="status?.asr?.permission_denied" class="text-xs px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">{{ t('speech.macosNativePermissionDenied') }}</span>
+        </div>
+        <!-- Permission guide -->
+        <div v-if="status?.asr?.permission_denied" class="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800/50">
+          <p class="text-xs text-amber-700 dark:text-amber-300 mb-2">{{ t('speech.macosNativePermissionGuide', { appName: status?.asr?.permission_app_name || 'Terminal' }) }}</p>
+          <button
+            class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors"
+            @click="openMacOSSettings">
+            {{ t('speech.macosNativeOpenSettings') }}
+          </button>
+        </div>
+        <!-- On-device toggle -->
+        <div v-if="status?.asr?.ready" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <div class="flex items-center justify-between">
+            <div class="flex-1 mr-3">
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeOnDeviceOnly') }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('speech.macosNativeOnDeviceDesc') }}</p>
+              <p v-if="!status?.asr?.on_device_supported && status?.asr?.on_device_only" class="text-xs text-amber-500 dark:text-amber-400 mt-0.5">{{ t('speech.macosNativeOnDeviceUnsupported') }}</p>
+            </div>
+            <button
+              class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="status?.asr?.on_device_only ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+              @click="toggleOnDevice">
+              <span
+                class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="status?.asr?.on_device_only ? 'translate-x-4' : 'translate-x-0'" />
+            </button>
+          </div>
+          <!-- Offline dictation languages (shown when on-device is enabled and dictation is available) -->
+          <div v-if="status?.asr?.on_device_only && status?.asr?.dictation_available && offlineLanguages.length > 0" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('speech.offlineLanguages') }}</span>
+              <span v-if="currentLangOfflineInstalled" class="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
+                {{ t('speech.currentLangInstalled') }}
+              </span>
+              <span v-else class="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                {{ t('speech.currentLangNotInstalled') }}
+              </span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="lang in offlineLanguages" :key="lang"
+                class="text-xs px-2 py-0.5 rounded-full"
+                :class="lang.split('-')[0] === locale.split('-')[0]
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                  : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'"
+              >{{ langName(lang) }}</span>
+            </div>
+          </div>
+        </div>
+        <!-- Dictation disabled warning (shown when user tries to enable on-device but dictation is off) -->
+        <div v-if="showDictationWarning" class="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800/50">
+          <p class="text-xs text-amber-700 dark:text-amber-300 mb-2">{{ t('speech.dictationDisabledGuide') }}</p>
+          <div class="flex gap-2">
+            <button
+              class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors"
+              @click="openInBrowser('x-apple.systempreferences:com.apple.Keyboard-Settings.extension')">
+              {{ t('speech.macosNativeOpenSettings') }}
+            </button>
+            <button
+              class="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg text-xs font-medium transition-colors"
+              :disabled="recheckingDictation"
+              @click="recheckDictation">
+              {{ recheckingDictation ? t('common.checking') : t('speech.recheckDictation') }}
+            </button>
+          </div>
         </div>
       </div>
-
-      <!-- ASR Models -->
-      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
+      <div v-if="asrModels.length > 0" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.asrModels') }}
         </h4>
-        <div v-if="asrModels.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
-          {{ t('speech.noModelsAvailable') }}
-        </div>
-        <div v-else class="space-y-2">
+        <div class="space-y-2">
           <div
-v-for="model in asrModels" :key="model.id"
-            class="flex items-center justify-between p-3 border rounded-lg"
-            :class="model.downloaded ? 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/20' : 'border-gray-200 dark:border-gray-700'">
-            <div class="flex-1">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
-              <span class="text-xs text-gray-400 ml-2">{{ model.size }}</span>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t(model.description) }}</p>
-              <!-- Download progress for this specific model -->
-              <div v-if="isModelDownloading(model.id)" class="mt-2">
+            v-for="model in asrModels" :key="model.id"
+            class="p-3 border rounded-lg transition-colors"
+            :class="currentASRModel === model.id ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700'">
+            <label class="flex items-center cursor-pointer" :class="{ 'opacity-50 cursor-not-allowed': model.permission_denied || (!model.downloaded && !isModelDownloading(model.id)) }">
+              <input
+                type="radio"
+                :value="model.id"
+                :checked="currentASRModel === model.id"
+                :disabled="model.permission_denied || !model.downloaded || !!switchingModelId"
+                class="sr-only"
+                @change="switchASRModel(model.id)" />
+              <div class="flex-1">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
-                    <div class="bg-gray-400 dark:bg-gray-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%` }"></div>
-                  </div>
-                  <span class="text-xs text-gray-500">{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span>
-                  <button class="text-red-500 hover:text-red-600 text-xs" @click="cancelASRDownload">
-                    {{ t('common.cancel') }}
-                  </button>
+                  <!-- Warning icon for permission denied -->
+                  <svg v-if="model.permission_denied" class="w-4 h-4 text-amber-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                  <!-- Apple icon for macOS native -->
+                  <svg v-else-if="model.id === 'macos-native'" class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+                  <!-- Whisper / AI icon -->
+                  <svg v-else class="w-4 h-4 text-gray-600 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
+                  <span v-if="model.size" class="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600/50 text-gray-600 dark:text-gray-300">{{ model.size }}</span>
+                  <span v-if="model.recommended" class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">{{ t('remoteAccess.recommended') }}</span>
+                  <span v-if="model.streaming" class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Streaming</span>
                 </div>
-                <!-- Detailed progress info -->
-                <div v-if="getModelProgress(model.id)" class="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                  <span v-if="getModelProgress(model.id)?.speed">{{ getModelProgress(model.id)?.speed }}</span>
-                  <span v-if="getModelProgress(model.id)?.eta">{{ $t('speech.eta') }}: {{ getModelProgress(model.id)?.eta }}</span>
-                  <span v-if="getModelProgress(model.id)?.total">{{ Math.round((getModelProgress(model.id)?.downloaded || 0) / 1024 / 1024) }}MB / {{ Math.round((getModelProgress(model.id)?.total || 0) / 1024 / 1024) }}MB</span>
-                </div>
+                <p v-if="model.permission_denied" class="text-xs text-amber-500 dark:text-amber-400 mt-0.5">{{ t('speech.macosNativePermissionDenied') }}</p>
+                <p v-else class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t(model.description) }}</p>
               </div>
-            </div>
-            <!-- Download button for not downloaded models -->
-            <button
-v-if="!model.downloaded && !isModelDownloading(model.id)"
-              class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-black dark:hover:bg-gray-600 text-xs font-medium"
-              @click="downloadASRModel(model.id)">
-              {{ t('common.download') }}
-            </button>
-            <!-- Downloading indicator -->
-            <span
-v-else-if="isModelDownloading(model.id)"
-              class="text-gray-900 dark:text-white text-xs font-medium">
-              {{ t('speech.downloading') }}
-            </span>
-            <!-- Switch button for downloaded models -->
-            <div v-else class="flex items-center gap-2">
-              <button
-                v-if="currentASRModel !== model.id && switchingModelId !== model.id"
-                :disabled="!!switchingModelId"
-                class="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xs font-medium disabled:opacity-50"
-                @click="switchASRModel(model.id)">
-                {{ t('common.use') }}
-              </button>
-              <span v-else-if="switchingModelId === model.id" class="text-gray-900 dark:text-white text-xs font-medium flex items-center gap-1">
-                <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <!-- Checkmark for active model -->
+              <span v-if="currentASRModel === model.id" class="text-gray-900 dark:text-white flex-shrink-0 ml-2">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+              </span>
+              <!-- Switching spinner -->
+              <span v-else-if="switchingModelId === model.id" class="text-gray-900 dark:text-white text-xs font-medium flex items-center gap-1 flex-shrink-0 ml-2">
+                <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                {{ t('speech.switching') }}
               </span>
-              <span v-else class="text-green-600 dark:text-green-400 text-xs font-medium">
-                {{ t('common.inUse') }}
-              </span>
+              <!-- Download button (right side) -->
+              <button v-else-if="!model.downloaded && !isModelDownloading(model.id)"
+                class="px-3 py-1 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-black dark:hover:bg-gray-600 text-xs font-medium flex-shrink-0 ml-2"
+                @click.prevent="downloadASRModel(model.id)">
+                {{ t('common.download') }}
+              </button>
+            </label>
+            <!-- Download progress -->
+            <div v-if="isModelDownloading(model.id)" class="mt-2">
+              <div class="flex items-center gap-2">
+                <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
+                  <div class="bg-gray-500 dark:bg-gray-400 h-1.5 rounded-full transition-all duration-300" :style="{ width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%` }"></div>
+                </div>
+                <span class="text-xs text-gray-500">{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span>
+                <button class="text-red-500 hover:text-red-600 text-xs" @click="cancelASRDownload">
+                  {{ t('common.cancel') }}
+                </button>
+              </div>
+              <div v-if="getModelProgress(model.id)" class="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                <span v-if="getModelProgress(model.id)?.speed">{{ getModelProgress(model.id)?.speed }}</span>
+                <span v-if="getModelProgress(model.id)?.eta">{{ $t('speech.eta') }}: {{ getModelProgress(model.id)?.eta }}</span>
+                <span v-if="getModelProgress(model.id)?.total">{{ Math.round((getModelProgress(model.id)?.downloaded || 0) / 1024 / 1024) }}MB / {{ Math.round((getModelProgress(model.id)?.total || 0) / 1024 / 1024) }}MB</span>
+              </div>
             </div>
           </div>
         </div>
@@ -529,14 +563,25 @@ v-else-if="isModelDownloading(model.id)"
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.ttsProvider') }}
         </h4>
-        <div class="space-y-2">
+        <!-- Loading skeleton while status is being fetched -->
+        <div v-if="loading || !status" class="space-y-2">
+          <div v-for="i in 2" :key="i" class="p-3 border border-gray-200 dark:border-gray-700 rounded-lg animate-pulse">
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded"></div>
+              <div class="h-4 w-24 bg-gray-200 dark:bg-gray-600 rounded"></div>
+            </div>
+            <div class="h-3 w-48 bg-gray-100 dark:bg-gray-700 rounded mt-1.5"></div>
+          </div>
+        </div>
+        <div v-else class="space-y-2">
           <label
+v-if="isProviderAvailable('macos-native')"
 class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             :class="selectedProvider === 'macos-native' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
             <input v-model="selectedProvider" type="radio" value="macos-native" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
               <div class="flex items-center gap-2">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeName') }}</span>
                 <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{{ t('speech.macosNativeQuality') }}</span>
               </div>
@@ -547,6 +592,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             </span>
           </label>
           <label
+v-if="isProviderAvailable('edge-tts')"
 class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             :class="selectedProvider === 'edge-tts' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
             <input v-model="selectedProvider" type="radio" value="edge-tts" class="sr-only" @change="saveProvider" />
@@ -564,6 +610,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
           </label>
           <!-- eSpeak-NG + HiFi-GAN -->
           <div
+            v-if="isProviderAvailable('espeak-ng')"
             class="p-3 border rounded-lg transition-colors"
             :class="selectedProvider === 'espeak-ng' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700'">
             <label class="flex items-center cursor-pointer">
@@ -594,6 +641,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
           </div>
           <!-- Kokoro TTS -->
           <div
+            v-if="isProviderAvailable('kokoro')"
             class="p-3 border rounded-lg transition-colors"
             :class="selectedProvider === 'kokoro' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700'">
             <label class="flex items-center cursor-pointer">
@@ -670,6 +718,25 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
         </div>
       </div>
 
+      <!-- Auto-play TTS -->
+      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.autoPlayTTS') }}</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('speech.autoPlayTTSDesc') }}</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              v-model="autoPlayTTS"
+              type="checkbox"
+              class="sr-only peer"
+              @change="saveAutoPlayTTS"
+            />
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
+          </label>
+        </div>
+      </div>
+
       <!-- Voice Customization -->
       <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
@@ -726,25 +793,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
               @change="saveSpeechVolume"
             />
           </div>
-        </div>
-      </div>
 
-      <!-- Auto-play TTS -->
-      <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
-        <div class="flex items-center justify-between">
-          <div>
-            <label class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.autoPlayTTS') }}</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('speech.autoPlayTTSDesc') }}</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input
-              v-model="autoPlayTTS"
-              type="checkbox"
-              class="sr-only peer"
-              @change="saveAutoPlayTTS"
-            />
-            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
-          </label>
         </div>
       </div>
     </div>

@@ -40,36 +40,66 @@ type TranscriptionResult struct {
 	SessionID  string  `json:"session_id,omitempty"`
 }
 
-// ConfirmRequest represents a request to confirm edited transcription.
-type ConfirmRequest struct {
-	SessionID string `json:"session_id"`
-	Text      string `json:"text"`
+// EspeakStatus represents the eSpeak-NG runtime data status.
+type EspeakStatus struct {
+	Installed     bool   `json:"installed"`
+	Path          string `json:"path,omitempty"`
+	LanguageCount int    `json:"language_count"`
+	DataSize      int64  `json:"data_size"`
+	StaticLinked  bool   `json:"static_linked"`
 }
 
 // StatusResponse represents the unified speech status.
 type StatusResponse struct {
-	TTS TTSStatus `json:"tts"`
-	ASR ASRStatus `json:"asr"`
+	TTS    TTSStatus    `json:"tts"`
+	ASR    ASRStatus    `json:"asr"`
+	Espeak *EspeakStatus `json:"espeak,omitempty"`
+}
+
+// ComponentDownloadStatus represents the download/readiness status of a TTS component (e.g. Kokoro model, vocoder).
+type ComponentDownloadStatus struct {
+	Ready          bool    `json:"ready"`
+	Downloading    bool    `json:"downloading"`
+	Progress       float64 `json:"progress"`
+	Error          string  `json:"error,omitempty"`
+	InitStage      string  `json:"init_stage,omitempty"`
+	Speed          string  `json:"speed,omitempty"`
+	ETA            string  `json:"eta,omitempty"`
+	File           string  `json:"file,omitempty"`
+	FileIndex      int     `json:"file_index,omitempty"`
+	TotalFiles     int     `json:"total_files,omitempty"`
+	DownloadedSize string  `json:"downloaded_human,omitempty"`
 }
 
 // TTSStatus represents TTS status.
 type TTSStatus struct {
-	Ready     bool   `json:"ready"`
-	Provider  string `json:"provider"`
-	ModelType string `json:"model_type,omitempty"`
+	Ready              bool                                `json:"ready"`
+	Provider           string                              `json:"provider"`
+	ModelName          string                              `json:"model_name,omitempty"`
+	AvailableProviders []string                            `json:"available_providers,omitempty"`
+	Models             []interface{}                       `json:"models"`
+	Components         map[string]*ComponentDownloadStatus `json:"components,omitempty"`
 }
 
 // ASRStatus represents ASR status.
 type ASRStatus struct {
 	Ready              bool              `json:"ready"`
 	Provider           string            `json:"provider"`
-	ModelType          string            `json:"model_type,omitempty"`
+	ModelName          string            `json:"model_name,omitempty"`
 	StreamingSupported bool              `json:"streaming_supported"`
 	EditBeforeSend     bool              `json:"edit_before_send"`
 	Downloading        bool              `json:"downloading"`
 	Progress           *Progress         `json:"progress,omitempty"`
-	Downloads          []DownloadStatus  `json:"downloads,omitempty"` // All active downloads
+	Downloads          []DownloadStatus  `json:"downloads,omitempty"`
 	HasPending         bool              `json:"has_pending"`
+	PermissionDenied   bool              `json:"permission_denied,omitempty"`
+	PermissionError    string            `json:"permission_error,omitempty"`
+	PermissionAppName  string            `json:"permission_app_name,omitempty"`
+	OnDeviceSupported    bool              `json:"on_device_supported,omitempty"`
+	OnDeviceOnly         bool              `json:"on_device_only,omitempty"`
+	DictationAvailable   bool              `json:"dictation_available,omitempty"`
+	OfflineLanguages     []string          `json:"offline_languages,omitempty"`
+	Models               []interface{}     `json:"models"`
 }
 
 // DownloadStatus represents a single model download status.

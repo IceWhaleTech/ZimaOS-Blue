@@ -11,6 +11,23 @@ export default {
   // Note: Most British English spelling differences (colour, favourite, etc.)
   // are handled in the UI components or are not used in the codebase.
   // This file can be extended with British English translations as needed.
+  providerPool: {
+    ...enUS.providerPool,
+    configure: 'Configure',
+    baseUrlNotConfigured: 'Base URL not configured — click Configure to set up',
+    healthErrors: {
+      authError: 'Authentication failed (HTTP {code}) — please check your API key',
+      baseUrlNotConfigured: 'Base URL not configured — please set up the endpoint URL',
+      baseUrlNotConfiguredAzure: 'Azure OpenAI endpoint not configured — click Configure above to set your endpoint URL',
+      baseUrlNotConfiguredBedrock: 'AWS Bedrock endpoint not configured — click Configure above to set your endpoint URL',
+      networkError: 'Network connection failed — please check the URL and your network',
+      certificateError: 'TLS certificate error — enable "Skip TLS Verify" or check the certificate',
+      timeoutError: 'Connection timed out — the server may be down or unreachable',
+      connectionError: 'Connection failed — please verify the provider URL',
+      endpointNotFound: 'Health check endpoint not found (HTTP 404)',
+      unexpectedStatus: 'Unexpected response (HTTP {code})',
+    },
+  },
     personality: {
     ...enUS.personality,
   },
@@ -57,6 +74,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    responseInterrupted: 'Response interrupted',
     startRecording: 'Start recording',
     stopRecording: 'Stop recording',
     recording: 'Recording...',
@@ -67,6 +85,7 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Failed to transcribe audio',
+    voiceTranscriptionTimeout: 'Transcription timed out. The audio may be too long or the server is busy, please try again.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Could not access microphone',
     dismiss: 'Dismiss',
@@ -104,11 +123,25 @@ export default {
     deleteError: 'Failed to delete model', cancelError: 'Failed to cancel download', eta: 'Time remaining', confirmDelete: 'Are you sure you want to delete this model?',
     ttsProvider: 'TTS provider', edgeTTSName: 'Microsoft Edge TTS', edgeTTSQuality: 'Natural', espeakNGQuality: 'Offline',
     espeakDepLib: 'eSpeak-NG engine + language data', espeakLangs: 'languages', espeakNeedRebuild: 'eSpeak-NG data not found. Please rebuild with espeak build tag.',
-    macosNativeName: 'macOS Native', macosNativeDesc: 'Built-in macOS speech synthesis (offline, no download)', macosNativeSTTDesc: 'Built-in macOS speech recognition (offline, no download)', macosNativeQuality: 'Good',
+    macosNativeName: 'macOS Native', macosNativeDesc: 'Built-in macOS speech synthesis (offline, no download)', macosNativeSTTDesc: 'Built-in macOS speech recognition (offline, no download)', macosNativeQuality: 'Excellent',
+    macosNativeOnDeviceOnly: 'On Device Only',
+    macosNativeOnDeviceDesc: 'Force on-device recognition (no data sent to Apple servers)',
+    macosNativeOnDeviceUnsupported: 'On-device model not available for current language',
+    dictationDisabledGuide: 'Dictation is not enabled. On-device recognition requires Dictation. Go to System Settings > Keyboard > Dictation to enable it.',
+    recheckDictation: 'Re-check',
+    onDeviceUnavailableError: 'On-device recognition is not available. Please enable Dictation in System Settings > Keyboard > Dictation, or disable "On Device Only" mode.',
     noModelsAvailable: 'No models available from this provider',
     asrTab: 'Speech Recognition (ASR)', ttsTab: 'Text to Speech (TTS)',
     prompt: { asrTitle: 'Speech recognition model required', asrDescription: 'To use voice input, please download a speech recognition model.', ttsTitle: 'Text to speech model required', ttsDescription: 'To play audio, please download a text to speech model.' },
     autoPlayTTS: 'Auto-play TTS', autoPlayTTSDesc: 'Automatically play TTS when the assistant responds',
     rate: 'Speech rate', pitch: 'Pitch', volume: 'Volume', voiceSettings: 'Voice settings',
+  },
+  skillStore: {
+    ...enUS.skillStore,
+    status: {
+      ...enUS.skillStore.status,
+      syncing: 'Syncing skill store...',
+      skillsSynced: '{count} skills synced',
+    },
   },
 }

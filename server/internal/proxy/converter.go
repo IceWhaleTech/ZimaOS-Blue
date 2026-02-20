@@ -28,6 +28,9 @@ func NewFormatConverter() *FormatConverter {
 	return &FormatConverter{}
 }
 
+// sharedConverter is a package-level singleton — FormatConverter is stateless.
+var sharedConverter = &FormatConverter{}
+
 // DetectProviderType detects the provider type from endpoint URL
 func (fc *FormatConverter) DetectProviderType(endpoint string) ProviderType {
 	if strings.Contains(endpoint, "anthropic") {

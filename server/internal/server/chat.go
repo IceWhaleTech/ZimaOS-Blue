@@ -376,6 +376,13 @@ func (h *ChatHandler) Close() {
 	close(h.eventStop)
 }
 
+// Shutdown cancels all active SSE streams and stops the event processor.
+// Call this before httpServer.Shutdown() so long-lived connections close promptly.
+func (h *ChatHandler) Shutdown() {
+	h.streamController.CancelAll()
+	h.Close()
+}
+
 // queueEvent queues an event for async processing. Falls back to sync if queue is full.
 func (h *ChatHandler) queueEvent(fn func()) {
 	select {
@@ -908,11 +915,11 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			// Provide user-friendly error message based on error type
 			if errors.Is(err, providerpool.ErrNoAvailableProvider) {
 				if len(cooldowns) > 0 {
-					return "", fmt.Errorf(i18n.T(lang, i18n.MsgProvidersInCooldown, len(cooldowns)))
+					return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgProvidersInCooldown, len(cooldowns)))
 				}
-				return "", fmt.Errorf(i18n.T(lang, i18n.MsgNoProviderAvailable))
+				return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgNoProviderAvailable))
 			}
-			return "", fmt.Errorf(i18n.T(lang, i18n.MsgServiceUnavailable))
+			return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
 		}
 
 		if responseContent == "" {
@@ -1083,37 +1090,230 @@ func formatToolResultsAsTypeless(toolCalls []llm.ToolCall, toolResults []llm.Mes
 			break
 		}
 		content := toolResults[i].Content
-		// For Web Search, wrap the raw JSON result in a typeless search card
-		if tc.Name == "Web Search" {
-			// The result is already a WebSearchResponse JSON — wrap as typeless card
-			var resp struct {
-				Query      string `json:"query"`
-				Results    []json.RawMessage `json:"results"`
-				TotalCount int    `json:"total_count"`
-			}
-			if json.Unmarshal([]byte(content), &resp) == nil && len(resp.Results) > 0 {
-				sb.WriteString("\n\n```typeless\n")
-				// Build search card JSON
-				card := map[string]interface{}{
-					"type":        "search",
-					"query":       resp.Query,
-					"total_count": resp.TotalCount,
-				}
-				// Parse results array
-				var results []interface{}
-				for _, r := range resp.Results {
-					var item interface{}
-					json.Unmarshal(r, &item)
-					results = append(results, item)
-				}
-				card["results"] = results
-				cardJSON, _ := json.Marshal(card)
-				sb.Write(cardJSON)
-				sb.WriteString("\n```")
-			}
+		card := toolResultToCard(tc.Name, content)
+		if card != nil {
+			cardJSON, _ := json.Marshal(card)
+			sb.WriteString("\n\n```typeless\n")
+			sb.Write(cardJSON)
+			sb.WriteString("\n```")
 		}
 	}
 	return sb.String()
+}
+
+// toolResultToCard converts a single tool result into a typeless card map.
+// Returns nil if no card should be rendered.
+func toolResultToCard(toolName, content string) map[string]interface{} {
+	switch toolName {
+	case "web_search":
+		return webSearchCard(content)
+	case "calculator":
+		return calculatorCard(content)
+	case "current_time":
+		return currentTimeCard(content)
+	case "file_read":
+		return fileReadCard(content)
+	case "file_write":
+		return fileWriteCard(content)
+	case "system_info":
+		return systemInfoCard(content)
+	case "memory_search":
+		return memorySearchCard(content)
+	default:
+		return genericToolCard(toolName, content)
+	}
+}
+
+func webSearchCard(content string) map[string]interface{} {
+	var resp struct {
+		Query      string            `json:"query"`
+		Results    []json.RawMessage `json:"results"`
+		TotalCount int               `json:"total_count"`
+	}
+	if json.Unmarshal([]byte(content), &resp) != nil || len(resp.Results) == 0 {
+		return nil
+	}
+	var results []interface{}
+	for _, r := range resp.Results {
+		var item interface{}
+		json.Unmarshal(r, &item)
+		results = append(results, item)
+	}
+	return map[string]interface{}{
+		"type":        "search",
+		"query":       resp.Query,
+		"total_count": resp.TotalCount,
+		"results":     results,
+	}
+}
+
+func calculatorCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "Calculator",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+	expr, _ := data["expression"].(string)
+	result := fmt.Sprintf("%v", data["result"])
+	details := []map[string]interface{}{}
+	if expr != "" {
+		details = append(details, map[string]interface{}{"label": "Expression", "value": expr})
+	}
+	details = append(details, map[string]interface{}{"label": "Result", "value": result, "copyable": true})
+	return map[string]interface{}{
+		"type":    "result",
+		"title":   "Calculator",
+		"status":  "success",
+		"message": result,
+		"details": details,
+	}
+}
+
+func currentTimeCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	details := []map[string]interface{}{}
+	for _, key := range []string{"datetime", "timezone", "unix"} {
+		if v, ok := data[key]; ok {
+			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
+		}
+	}
+	return map[string]interface{}{
+		"type":    "result",
+		"title":   "Current Time",
+		"status":  "info",
+		"details": details,
+	}
+}
+
+func fileReadCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "File Read",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+	fileContent, _ := data["content"].(string)
+	filePath, _ := data["path"].(string)
+	if fileContent == "" {
+		return nil
+	}
+	return map[string]interface{}{
+		"type":     "collapsible-code",
+		"title":    "File Read",
+		"filename": filePath,
+		"code":     fileContent,
+	}
+}
+
+func fileWriteCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	status := "success"
+	msg := "File written successfully"
+	if errMsg, ok := data["error"].(string); ok {
+		status = "error"
+		msg = errMsg
+	} else if m, ok := data["message"].(string); ok {
+		msg = m
+	}
+	details := []map[string]interface{}{}
+	if p, ok := data["path"].(string); ok {
+		details = append(details, map[string]interface{}{"label": "Path", "value": p})
+	}
+	return map[string]interface{}{
+		"type":    "result",
+		"title":   "File Write",
+		"status":  status,
+		"message": msg,
+		"details": details,
+	}
+}
+
+func systemInfoCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	details := []map[string]interface{}{}
+	for _, key := range []string{"os", "arch", "hostname", "cpu_cores", "memory_total", "go_version"} {
+		if v, ok := data[key]; ok {
+			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
+		}
+	}
+	return map[string]interface{}{
+		"type":    "result",
+		"title":   "System Info",
+		"status":  "info",
+		"details": details,
+	}
+}
+
+func memorySearchCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "Memory Search",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+	msg := "Search completed"
+	if results, ok := data["results"].([]interface{}); ok {
+		msg = fmt.Sprintf("Found %d results", len(results))
+	}
+	return map[string]interface{}{
+		"type":    "result",
+		"title":   "Memory Search",
+		"status":  "success",
+		"message": msg,
+	}
+}
+
+// genericToolCard creates a result card for any unrecognized tool.
+func genericToolCard(toolName, content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) == nil {
+		if errMsg, ok := data["error"].(string); ok {
+			return map[string]interface{}{
+				"type":    "result",
+				"title":   toolName,
+				"status":  "error",
+				"message": errMsg,
+			}
+		}
+	}
+	display := content
+	if len(display) > 500 {
+		display = display[:500] + "..."
+	}
+	return map[string]interface{}{
+		"type":    "result",
+		"title":   toolName,
+		"status":  "info",
+		"message": display,
+	}
 }
 
 // extractMemory extracts important information from conversation messages and saves to daily log.
@@ -2375,6 +2575,27 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if fullContent != "" && (streamCompleted || err == nil) {
 		if !streamCompleted {
 			logger.Warn().Str("conv_id", convID).Str("model", model).Msg("[chat] persisting message without explicit stream completion (safety net)")
+		}
+		// Safety-net token estimation: if the Done block was never reached
+		// (e.g., bridge path without finish_reason), estimate tokens here.
+		if totalInputTokens == 0 {
+			totalInputTokens = estimateInputTokens(compactedMessages)
+		}
+		if totalOutputTokens == 0 {
+			totalOutputTokens = estimateTokens(fullContent)
+		}
+		// Compute latency/TTFT if not already set
+		if finalLatencyMs == 0 {
+			finalLatencyMs = float64(time.Since(startTime).Milliseconds())
+		}
+		if finalTTFTMs == 0 && !firstChunkTime.IsZero() {
+			finalTTFTMs = float64(firstChunkTime.Sub(startTime).Milliseconds())
+		}
+		if finalTPS == 0 && totalOutputTokens > 0 {
+			totalDuration := time.Since(startTime).Seconds()
+			if totalDuration > 0 {
+				finalTPS = float64(totalOutputTokens) / totalDuration
+			}
 		}
 		finalStats := &memory.MessageStats{
 			InputTokens:     totalInputTokens,

@@ -148,6 +148,8 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequest
 }
 
 // SynthesizeStream synthesizes text with streaming audio output.
+// Sends the complete audio as a single callback because the SSE frontend
+// closes the EventSource after the first audio event.
 func (p *EdgeTTSProvider) SynthesizeStream(ctx context.Context, req *SynthesizeRequest, callback StreamCallback) error {
 	resp, err := p.Synthesize(ctx, req)
 	if err != nil {
@@ -155,22 +157,11 @@ func (p *EdgeTTSProvider) SynthesizeStream(ctx context.Context, req *SynthesizeR
 	}
 	defer resp.Audio.Close()
 
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Audio.Read(buf)
-		if n > 0 {
-			if err := callback(buf[:n]); err != nil {
-				return err
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read audio: %w", err)
-		}
+	data, err := io.ReadAll(resp.Audio)
+	if err != nil {
+		return fmt.Errorf("failed to read audio: %w", err)
 	}
-	return nil
+	return callback(data)
 }
 
 // ListVoices returns available voices.

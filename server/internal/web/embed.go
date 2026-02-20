@@ -109,7 +109,8 @@ func localDistCandidates() []string {
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		candidates = append(candidates,
-			filepath.Join(dir, "dist"),                          // Sidecar: bin/dist (macOS build)
+			filepath.Join(dir, ".dist"),                         // Launcher sidecar: bin/.dist (hidden)
+			filepath.Join(dir, "dist"),                          // Sidecar: bin/dist (legacy)
 			filepath.Join(dir, "..", "internal", "web", "dist"), // Dev layout
 			filepath.Join(dir, "internal", "web", "dist"),
 		)

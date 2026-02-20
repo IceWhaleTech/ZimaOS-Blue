@@ -139,10 +139,32 @@ func (s *QuestionsService) GetQuestionsByCategory(category string, lang string) 
 // defaultPresetQuestions returns the default set of preset questions for all languages.
 func defaultPresetQuestions() map[string][]PresetQuestion {
 	return map[string][]PresetQuestion{
-		"zh": chinesePresetQuestions(),
-		"en": englishPresetQuestions(),
-		"ja": japanesePresetQuestions(),
-		"ko": koreanPresetQuestions(),
+		"zh":    chinesePresetQuestions(),
+		"en":    englishPresetQuestions(),
+		"ja":    japanesePresetQuestions(),
+		"ko":    koreanPresetQuestions(),
+		"zh-TW": traditionalChinesePresetQuestions(),
+		"de":    germanPresetQuestions(),
+		"fr":    frenchPresetQuestions(),
+		"es":    spanishPresetQuestions(),
+		"it":    italianPresetQuestions(),
+		"pt-BR": brazilianPortuguesePresetQuestions(),
+		"ru":    russianPresetQuestions(),
+		"nl":    dutchPresetQuestions(),
+		"pl":    polishPresetQuestions(),
+		"sv":    swedishPresetQuestions(),
+		"da":    danishPresetQuestions(),
+		"nb":    norwegianPresetQuestions(),
+		"cs":    czechPresetQuestions(),
+		"sk":    slovakPresetQuestions(),
+		"hu":    hungarianPresetQuestions(),
+		"ro":    romanianPresetQuestions(),
+		"hr":    croatianPresetQuestions(),
+		"el":    greekPresetQuestions(),
+		"ca":    catalanPresetQuestions(),
+		"ga":    irishPresetQuestions(),
+		"ml":    malayalamPresetQuestions(),
+		"pt-PT": europeanPortuguesePresetQuestions(),
 	}
 }
 
@@ -223,6 +245,9 @@ func chinesePresetQuestions() []PresetQuestion {
 		{ID: "q51", Text: "找出这段JavaScript代码中的bug", Category: "agent2-ui", Icon: "🐛", Attachments: []PresetQuestionAttachment{
 			{Type: "file", Name: "buggy_calculator.js", MimeType: "text/javascript", Placeholder: "sample-js"},
 		}},
+
+		// Flowchart
+		{ID: "q52", Text: "画一个用户注册登录的流程图", Category: "creative", Icon: "📐"},
 	}
 }
 
@@ -347,6 +372,9 @@ func englishPresetQuestions() []PresetQuestion {
 		{ID: "q38", Text: "How to configure SSH on Linux?", Category: "tech", Icon: "🔐"},
 		{ID: "q39", Text: "Help me write product introduction copy", Category: "creative", Icon: "✍️"},
 		{ID: "q40", Text: "Explain the Git workflow", Category: "coding", Icon: "🔀"},
+
+		// Flowchart
+		{ID: "q52", Text: "Draw a user registration and login flowchart", Category: "creative", Icon: "📐"},
 	}
 }
 
@@ -402,6 +430,9 @@ func japanesePresetQuestions() []PresetQuestion {
 		{ID: "q51", Text: "このJavaScriptコードのバグを特定してください", Category: "agent2-ui", Icon: "🐛", Attachments: []PresetQuestionAttachment{
 			{Type: "file", Name: "buggy_calculator.js", MimeType: "text/javascript", Placeholder: "sample-js"},
 		}},
+
+		// Flowchart
+		{ID: "q52", Text: "ユーザー登録・ログインのフローチャートを描いてください", Category: "creative", Icon: "📐"},
 	}
 }
 
@@ -457,5 +488,8 @@ func koreanPresetQuestions() []PresetQuestion {
 		{ID: "q51", Text: "이 JavaScript 코드의 버그를 찾아 주세요", Category: "agent2-ui", Icon: "🐛", Attachments: []PresetQuestionAttachment{
 			{Type: "file", Name: "buggy_calculator.js", MimeType: "text/javascript", Placeholder: "sample-js"},
 		}},
+
+		// Flowchart
+		{ID: "q52", Text: "사용자 등록 및 로그인 흐름도를 그려 주세요", Category: "creative", Icon: "📐"},
 	}
 }

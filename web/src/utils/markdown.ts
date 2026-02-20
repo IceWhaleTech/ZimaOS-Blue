@@ -217,6 +217,16 @@ function isTreeLine(line: string): boolean {
 
 // Main render function
 export function renderMarkdown(markdown: string, _options: RenderOptions = {}): string {
+  // Pre-process: convert XML-like error/status tags into styled blocks before line splitting
+  // Matches <tool_use_error>...</tool_use_error> and similar tags (may span multiple lines)
+  markdown = markdown.replace(
+    /<(tool_use_error|error|system-error)>([\s\S]*?)<\/\1>/g,
+    (_match, _tag: string, body: string) => {
+      const escaped = escapeHtml(body.trim())
+      return `\n\`\`\`error-block\n${escaped}\n\`\`\`\n`
+    }
+  )
+
   const lines = markdown.split('\n')
   const result: string[] = []
   let inCodeBlock = false
@@ -300,6 +310,15 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         codeBlockContent = []
       } else {
         const code = codeBlockContent.join('\n')
+        if (codeBlockLang === 'error-block') {
+          // Render as styled error indicator (content already escaped during pre-processing)
+          result.push(
+            `<div class="error-block-indicator my-3 flex items-start gap-2 rounded-lg px-4 py-3 text-sm">` +
+              `<svg class="shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>` +
+              `<span>${code}</span>` +
+              `</div>`
+          )
+        } else {
         const highlighted = highlightCode(code, codeBlockLang)
         result.push(
           `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
@@ -310,6 +329,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
             `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
             `</div>`
         )
+        }
         inCodeBlock = false
         codeBlockLang = ''
       }

@@ -84,41 +84,35 @@ fn quit_label_for_locale(locale: &str) -> String {
     format!("{} ZimaOS Blue", verb)
 }
 
-/// Gracefully shut down: stop Go server, then terminate the app.
-/// This avoids C exit() which races with Go runtime cleanup.
+/// Gracefully shut down: close connections, stop Go server, then exit.
+/// We avoid NSApplication.terminate() because it triggers NSPersistentUIManager's
+/// synchronous XPC flush, which races with Go runtime cleanup and causes SIGABRT.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn graceful_quit(app_handle: &tauri::AppHandle) {
     if QUITTING.swap(true, Ordering::SeqCst) {
         return; // Already quitting
     }
-    info!("Graceful quit: stopping Go server");
-    let _ = blue_ffi::stop_server();
 
-    // Give the server a moment to clean up
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Destroy all windows to close SSE connections and allow clean shutdown
+    // 1. Destroy all windows first — this closes SSE/WebSocket connections
+    //    so the HTTP server can shut down without waiting for idle connections.
+    info!("Graceful quit: closing windows");
     for (_, window) in app_handle.webview_windows() {
         let _ = window.destroy();
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        // Ask AppKit to terminate normally — this unwinds the run-loop
-        // instead of calling C exit(), giving Go runtime a clean shutdown.
-        use objc2::MainThreadMarker;
-        use objc2_app_kit::NSApplication;
-        if let Some(mtm) = MainThreadMarker::new() {
-            let ns_app = NSApplication::sharedApplication(mtm);
-            ns_app.terminate(None);
-        }
-    }
+    // 2. Stop the Go server (blocks until server is down or timeout).
+    //    Internally this cancels all active SSE streams, closes WebSocket
+    //    connections, then shuts down the HTTP server.
+    info!("Graceful quit: stopping Go server");
+    let _ = blue_ffi::stop_server();
 
-    #[cfg(target_os = "windows")]
-    {
-        // On Windows, destroying windows will trigger app exit naturally
-        // No need for explicit exit call - let the event loop finish
-    }
+    // 3. Final CGo resource cleanup
+    blue_ffi::cleanup();
+
+    // 4. Exit via Tauri's event loop — this fires RunEvent::Exit for
+    //    platform cleanup (e.g. tray icon removal on Windows), then exits.
+    info!("Graceful quit: exiting");
+    app_handle.exit(0);
 }
 pub struct AppState {
     pub server_port: std::sync::Mutex<u16>,
@@ -482,6 +476,22 @@ pub fn run() {
             // Start the Blue server using platform-specific approach
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
+
+            // On macOS, request speech recognition authorization from the main thread
+            // before starting the Go server. TCC requires this to happen on thread 0
+            // where the Cocoa event loop runs.
+            #[cfg(target_os = "macos")]
+            {
+                info!("Requesting macOS speech recognition authorization...");
+                let status = blue_ffi::request_stt_authorization();
+                match status {
+                    3 => info!("Speech recognition authorized"),
+                    1 => info!("Speech recognition denied by user"),
+                    2 => info!("Speech recognition restricted"),
+                    0 => info!("Speech recognition not determined"),
+                    _ => info!("Speech recognition status: {}", status),
+                }
+            }
 
             tauri::async_runtime::spawn(async move {
                 info!("Attempting to start server...");

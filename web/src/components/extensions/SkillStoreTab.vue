@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { skillApi, type RemoteSkill, type SearchParams } from '@/api/skill'
+import { skillApi, type RemoteSkill, type SearchParams, type SyncStatus } from '@/api/skill'
 
 const { t } = useI18n()
 
@@ -9,11 +9,17 @@ const skills = ref<RemoteSkill[]>([])
 const loading = ref(false)
 const loadingMore = ref(false)
 const error = ref<string | null>(null)
+const initializing = ref(false)
 const searchQuery = ref('')
 const filterCategory = ref<string>('all')
 const sortBy = ref<'downloads' | 'rating' | 'updated' | 'name'>('downloads')
 const categories = ref<string[]>([])
 const installing = ref<Set<string>>(new Set())
+
+// Sync progress state
+const syncing = ref(false)
+const syncProgress = ref<SyncStatus | null>(null)
+let syncPollTimer: ReturnType<typeof setInterval> | null = null
 
 // Infinite scroll state
 const pageSize = 20
@@ -49,6 +55,16 @@ async function fetchSkills(append = false) {
       params.categories = filterCategory.value
     }
     const response = await skillApi.search(params)
+
+    // Handle initializing state — store not ready yet
+    if (response.data.initializing) {
+      initializing.value = true
+      skills.value = []
+      // Auto-retry after 3 seconds
+      setTimeout(() => fetchSkills(), 3000)
+      return
+    }
+    initializing.value = false
 
     // Handle null or undefined skills array
     const skillsData = response.data.skills || []
@@ -148,9 +164,58 @@ function openSkillHomepage(skill: RemoteSkill) {
   }
 }
 
+// Sync: trigger on page enter, poll for progress
+async function triggerSync() {
+  try {
+    const res = await skillApi.refresh()
+    if (res.data.syncing) {
+      syncing.value = true
+      // Find the in_progress source from response
+      const active = res.data.sync_status?.find(s => s.status === 'in_progress')
+      if (active) syncProgress.value = active
+      startSyncPolling()
+    }
+  } catch {
+    // Ignore — sync is best-effort
+  }
+}
+
+function startSyncPolling() {
+  stopSyncPolling()
+  syncPollTimer = setInterval(async () => {
+    try {
+      const res = await skillApi.syncStatus()
+      const active = res.data.find(s => s.status === 'in_progress')
+      if (active) {
+        syncProgress.value = active
+      } else {
+        // Sync finished
+        syncing.value = false
+        syncProgress.value = null
+        stopSyncPolling()
+        fetchSkills()
+      }
+    } catch {
+      // Ignore polling errors
+    }
+  }, 2000)
+}
+
+function stopSyncPolling() {
+  if (syncPollTimer) {
+    clearInterval(syncPollTimer)
+    syncPollTimer = null
+  }
+}
+
 onMounted(() => {
   fetchSkills()
   fetchCategories()
+  triggerSync()
+})
+
+onUnmounted(() => {
+  stopSyncPolling()
 })
 </script>
 
@@ -197,14 +262,35 @@ onMounted(() => {
       </button>
     </div>
 
+    <!-- Sync progress banner -->
+    <div v-if="syncing" class="sync-banner">
+      <div class="sync-banner-content">
+        <div class="sync-spinner"></div>
+        <span class="sync-label">{{ t('skillStore.status.syncing') }}</span>
+        <span v-if="syncProgress?.progress" class="sync-detail">
+          {{ t('skillStore.status.skillsSynced', { count: syncProgress.progress.skills_synced }) }}
+        </span>
+      </div>
+    </div>
+
     <!-- Error message -->
     <div v-if="error" class="error-banner">
       {{ error }}
       <button @click="error = null">×</button>
     </div>
 
+    <!-- Initializing state -->
+    <div v-if="initializing && !skills.length" class="initializing-state">
+      <svg class="initializing-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+      <div class="initializing-spinner"></div>
+      <h3>{{ t('skillStore.status.initializing') }}</h3>
+      <p>{{ t('skillStore.status.initializingDesc') }}</p>
+    </div>
+
     <!-- Loading -->
-    <div v-if="loading && !skills.length" class="loading">
+    <div v-else-if="loading && !skills.length" class="loading">
       <div class="spinner"></div>
       <span>{{ t('common.loading') }}</span>
     </div>
@@ -496,5 +582,79 @@ onMounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.initializing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.initializing-icon {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 16px;
+  opacity: 0.25;
+}
+
+.initializing-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(107, 114, 128, 0.2);
+  border-top-color: var(--color-text-secondary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+.initializing-state h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--color-text-primary);
+}
+
+.initializing-state p {
+  font-size: 13px;
+}
+
+/* Sync progress banner */
+.sync-banner {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+}
+
+.sync-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sync-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(59, 130, 246, 0.25);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.sync-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.sync-detail {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 </style>

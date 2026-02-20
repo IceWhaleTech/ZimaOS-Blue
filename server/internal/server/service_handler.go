@@ -303,7 +303,13 @@ func (h *ServiceHandler) Start(c echo.Context) error {
 	case "windows":
 		output, err = h.runCommand("sc", "start", h.serviceName)
 	case "darwin":
-		output, err = h.runCommand("launchctl", "start", h.getLaunchdLabel())
+		// Use "launchctl asuser <uid>" to ensure the service runs in the user's
+		// GUI launchd domain (required for TCC authorization).
+		uid := "0"
+		if u, err := user.Current(); err == nil {
+			uid = u.Uid
+		}
+		output, err = h.runCommand("launchctl", "asuser", uid, "launchctl", "start", h.getLaunchdLabel())
 	case "linux":
 		output, err = h.runCommand("systemctl", "start", h.getSystemdUnit())
 	default:
@@ -337,7 +343,11 @@ func (h *ServiceHandler) Stop(c echo.Context) error {
 	case "windows":
 		output, err = h.runCommand("sc", "stop", h.serviceName)
 	case "darwin":
-		output, err = h.runCommand("launchctl", "stop", h.getLaunchdLabel())
+		uid := "0"
+		if u, err := user.Current(); err == nil {
+			uid = u.Uid
+		}
+		output, err = h.runCommand("launchctl", "asuser", uid, "launchctl", "stop", h.getLaunchdLabel())
 	case "linux":
 		output, err = h.runCommand("systemctl", "stop", h.getSystemdUnit())
 	default:
@@ -373,11 +383,16 @@ func (h *ServiceHandler) Restart(c echo.Context) error {
 		h.runCommand("sc", "stop", h.serviceName)
 		output, err = h.runCommand("sc", "start", h.serviceName)
 	case "darwin":
-		output, err = h.runCommand("launchctl", "kickstart", "-k", "gui/"+h.getLaunchdLabel())
+		uid := "0"
+		if u, err := user.Current(); err == nil {
+			uid = u.Uid
+		}
+		domainTarget := "gui/" + uid + "/" + h.getLaunchdLabel()
+		output, err = h.runCommand("launchctl", "kickstart", "-k", domainTarget)
 		if err != nil {
-			// Fallback to stop/start
-			h.runCommand("launchctl", "stop", h.getLaunchdLabel())
-			output, err = h.runCommand("launchctl", "start", h.getLaunchdLabel())
+			// Fallback to stop/start via asuser
+			h.runCommand("launchctl", "asuser", uid, "launchctl", "stop", h.getLaunchdLabel())
+			output, err = h.runCommand("launchctl", "asuser", uid, "launchctl", "start", h.getLaunchdLabel())
 		}
 	case "linux":
 		output, err = h.runCommand("systemctl", "restart", h.getSystemdUnit())

@@ -288,36 +288,63 @@ func TestBuiltinModels(t *testing.T) {
 
 func TestGetHealthCheckURLs(t *testing.T) {
 	tests := []struct {
+		name     string
 		provider *Provider
+		method   string
 		expected string
 	}{
 		{
+			name:     "openai",
 			provider: &Provider{ID: "openai", BaseURL: "https://api.openai.com/v1"},
+			method:   "GET",
 			expected: "https://api.openai.com/v1/models",
 		},
 		{
-			provider: &Provider{ID: "anthropic", BaseURL: "https://api.anthropic.com"},
+			name:     "anthropic",
+			provider: &Provider{ID: "anthropic", BaseURL: "https://api.anthropic.com", APIFormat: APIFormatAnthropic},
+			method:   "POST",
 			expected: "https://api.anthropic.com/v1/messages",
 		},
 		{
-			provider: &Provider{ID: "ollama", BaseURL: "http://localhost:11434"},
+			name:     "ollama",
+			provider: &Provider{ID: "ollama", BaseURL: "http://localhost:11434", APIFormat: APIFormatOllama},
+			method:   "GET",
 			expected: "http://localhost:11434/api/tags",
 		},
 		{
-			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com"},
-			expected: "https://custom.api.com/models",
+			name:     "custom-openai-v1",
+			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com/v1", APIFormat: APIFormatOpenAI},
+			method:   "GET",
+			expected: "https://custom.api.com/v1/models",
 		},
 		{
-			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com/"},
-			expected: "https://custom.api.com/models",
+			name:     "custom-no-v1",
+			provider: &Provider{ID: "custom", BaseURL: "https://custom.api.com/", APIFormat: APIFormatOpenAI},
+			method:   "GET",
+			expected: "https://custom.api.com/v1/models",
+		},
+		{
+			name:     "trial-anthropic",
+			provider: &Provider{ID: "zimaos-blue-trial", BaseURL: "https://paid.tribiosapi.top", APIFormat: APIFormatAnthropic},
+			method:   "POST",
+			expected: "https://paid.tribiosapi.top/v1/messages",
+		},
+		{
+			name:     "glm-v4",
+			provider: &Provider{ID: "glm", BaseURL: "https://open.bigmodel.cn/api/paas/v4", APIFormat: APIFormatOpenAI},
+			method:   "GET",
+			expected: "https://open.bigmodel.cn/api/paas/v4/models",
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.provider.ID, func(t *testing.T) {
-			urls := getHealthCheckURLs(tt.provider)
+		t.Run(tt.name, func(t *testing.T) {
+			method, urls := getHealthCheckMethod(tt.provider)
 			if len(urls) == 0 {
 				t.Fatal("Expected at least one URL")
+			}
+			if method != tt.method {
+				t.Errorf("Expected method %s, got %s", tt.method, method)
 			}
 			if urls[0] != tt.expected {
 				t.Errorf("Expected %s, got %s", tt.expected, urls[0])

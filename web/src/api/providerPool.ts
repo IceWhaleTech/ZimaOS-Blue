@@ -33,10 +33,12 @@ export interface Provider {
   custom_icon?: string
   description?: string
   website?: string
-  created_at: string
-  updated_at: string
+  api_key_url?: string
+  created_at?: string
+  updated_at?: string
   last_health_check?: string
   last_error?: string
+  models?: Model[]
 }
 
 export interface APIKey {
@@ -55,27 +57,19 @@ export interface Model {
   name: string
   display_name: string
   enabled: boolean
-  capabilities: ModelCapabilities
+  capabilities: string[]
   input_price?: number
   output_price?: number
+  cache_price?: number
   context_window?: number
   max_output?: number
   description?: string
 }
 
-export interface ModelCapabilities {
-  chat: boolean
-  completion: boolean
-  vision: boolean
-  function_call: boolean
-  streaming: boolean
-  thinking: boolean
-  json: boolean
-  system_prompt: boolean
-}
-
 export interface HealthCheckResult {
   provider_id: string
+  key_id?: string
+  key_hash?: string
   healthy: boolean
   latency: number
   error?: string
@@ -269,8 +263,8 @@ export const providerPoolApi = {
   disableProvider: (id: string) =>
     api.post<{ status: string }>(`/providers/${id}/disable`),
 
-  testProvider: (id: string) =>
-    api.post<HealthCheckResult>(`/providers/${id}/test`),
+  testProvider: (id: string, keyId?: string) =>
+    api.post<HealthCheckResult>(`/providers/${id}/test`, keyId ? { key_id: keyId } : {}),
 
   updateModelParams: (id: string, params: ModelParams) =>
     api.put<{ message: string; model_params: ModelParams }>(`/providers/${id}/params`, params),

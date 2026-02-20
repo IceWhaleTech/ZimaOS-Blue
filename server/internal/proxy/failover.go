@@ -26,6 +26,11 @@ func NewFailoverHandler(config *FailoverConfig, router *Router) *FailoverHandler
 	}
 }
 
+// Config returns the failover configuration pointer.
+func (fh *FailoverHandler) Config() *FailoverConfig {
+	return fh.config
+}
+
 // getBreaker returns or creates a circuit breaker for a provider
 func (fh *FailoverHandler) getBreaker(name string) *resilience.CircuitBreaker {
 	fh.mu.RLock()

@@ -76,27 +76,7 @@ if [ "$GOOS" = "darwin" ]; then
         source "$HOME/.cargo/env"
     fi
 
-    # Build espeak-ng static library from source
-    ESPEAK_DIR="$PROJECT_ROOT/third_party/espeak-ng"
-    if [ ! -f "$ESPEAK_DIR/build/src/libespeak-ng/libespeak-ng.a" ]; then
-        print_step "Building espeak-ng from source..."
-        cd "$ESPEAK_DIR"
-        mkdir -p build && cd build
-        cmake .. -DBUILD_SHARED_LIBS=OFF
-        make -j$(sysctl -n hw.ncpu)
-        cd "$SCRIPT_DIR"
-    fi
-
-    # Build whisper.cpp static library from source
-    WHISPER_DIR="$PROJECT_ROOT/third_party/whisper.cpp"
-    if [ ! -f "$WHISPER_DIR/build/src/libwhisper.a" ]; then
-        print_step "Building whisper.cpp from source..."
-        cd "$WHISPER_DIR"
-        mkdir -p build && cd build
-        cmake .. -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_TESTS=OFF
-        make -j$(sysctl -n hw.ncpu)
-        cd "$SCRIPT_DIR"
-    fi
+    # macOS uses native Speech framework — no espeak-ng/whisper.cpp needed
 
     # Install fileicon for setting DMG icon
     if ! command -v fileicon &> /dev/null; then
@@ -137,6 +117,12 @@ fi
 
 print_step "Frontend built successfully ($(ls -1 "$PROJECT_ROOT/web/dist" | wc -l | tr -d ' ') files)"
 
+# Trim dist: remove pre-compressed files and stats (not needed for local serving)
+print_step "Trimming frontend dist (removing .gz, .br, stats.html)..."
+find "$PROJECT_ROOT/web/dist" \( -name "*.gz" -o -name "*.br" -o -name "stats.html" \) -delete 2>/dev/null
+TRIMMED_SIZE=$(du -sh "$PROJECT_ROOT/web/dist" | cut -f1)
+print_step "Frontend dist trimmed to $TRIMMED_SIZE"
+
 # Step 2: Copy frontend to server/internal/web/dist for Go embedding
 print_step "Copying frontend to server/internal/web/dist for Go embedding..."
 EMBED_DIR="$PROJECT_ROOT/server/internal/web/dist"
@@ -166,9 +152,9 @@ if [ "$GOOS" = "darwin" ]; then
         exit 1
     fi
 
-    # Build for current architecture
+    # macOS uses native Speech framework — no espeak/kokoro/whisper needed
     CGO_ENABLED=1 go build -buildmode=c-archive \
-        -tags 'fts5 espeak kokoro' \
+        -tags 'fts5' \
         -ldflags="$GO_LDFLAGS" \
         -o "$LIB_DIR/libblue.a" \
         ./cmd/bluelib/
@@ -180,10 +166,46 @@ if [ "$GOOS" = "darwin" ]; then
     rm -rf "$EMBED_DIR"
     print_step "Cleaned server/internal/web/dist (Tauri webview serves frontend)"
 
-    # Note: No sidecar needed for macOS
     print_step "macOS uses CGO library - no sidecar binary needed"
+elif [ "$GOOS" = "windows" ]; then
+    # Windows: Build Go static library for CGO integration (same as macOS)
+    print_step "Building Go static library for Windows (CGO approach with embedded frontend)..."
+    cd "$PROJECT_ROOT/server"
+
+    mkdir -p "$LIB_DIR"
+
+    if [ ! -f "$EMBED_DIR/index.html" ]; then
+        print_error "Embed directory missing - frontend must be built first"
+        exit 1
+    fi
+
+    # Build espeak-ng if not already built
+    ESPEAK_DIR="$PROJECT_ROOT/third_party/espeak-ng"
+    if [ ! -f "$ESPEAK_DIR/build/src/libespeak-ng/libespeak-ng.a" ]; then
+        print_step "Building espeak-ng from source..."
+        cd "$ESPEAK_DIR"
+        mkdir -p build && cd build
+        cmake .. -DBUILD_SHARED_LIBS=OFF -G "MinGW Makefiles"
+        cmake --build . --config Release
+        cd "$PROJECT_ROOT/server"
+    fi
+
+    # Windows needs espeak + kokoro for TTS
+    CGO_ENABLED=1 go build -buildmode=c-archive \
+        -tags 'fts5 espeak kokoro' \
+        -ldflags="$GO_LDFLAGS" \
+        -o "$LIB_DIR/libblue.a" \
+        ./cmd/bluelib/
+
+    print_step "Go library built: $LIB_DIR/libblue.a"
+    ls -lh "$LIB_DIR/libblue.a"
+
+    rm -rf "$EMBED_DIR"
+    print_step "Cleaned server/internal/web/dist (Tauri webview serves frontend)"
+
+    print_step "Windows uses CGO library - no sidecar binary needed"
 else
-    # Windows/Linux: Build Go sidecar binary
+    # Linux: Build Go sidecar binary
     print_step "Building Go sidecar (with embedded frontend)..."
     cd "$PROJECT_ROOT/server"
 
@@ -194,9 +216,6 @@ else
         linux-arm64)
             TARGET="aarch64-unknown-linux-gnu"
             ;;
-        windows-amd64)
-            TARGET="x86_64-pc-windows-msvc"
-            ;;
         *)
             print_error "Unsupported platform: $GOOS-$GOARCH"
             exit 1
@@ -204,9 +223,6 @@ else
     esac
 
     SIDECAR_NAME="blue-server-$TARGET"
-    if [ "$GOOS" = "windows" ]; then
-        SIDECAR_NAME="$SIDECAR_NAME.exe"
-    fi
 
     # Build with optimizations (NO UPX compression!)
     CGO_ENABLED=0 go build -tags 'fts5 kokoro' -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
@@ -224,9 +240,9 @@ rm -rf "$TAURI_DIR/data"
 mkdir -p "$TAURI_DIR/data"
 
 # Step 5: Clean Cargo cache (ensures icon/config changes take effect)
-print_step "Cleaning Cargo cache..."
-cd "$TAURI_DIR"
-cargo clean
+#print_step "Cleaning Cargo cache..."
+#cd "$TAURI_DIR"
+#cargo clean
 
 # Step 6: Build Tauri app
 print_step "Building Tauri application..."
