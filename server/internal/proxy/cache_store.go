@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"database/sql"
-	"encoding/json"
 	"os"
 	"time"
 )

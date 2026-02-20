@@ -6,6 +6,7 @@ export interface Conversation {
   title: string
   created_at: string
   updated_at: string
+  pinned?: boolean
 }
 
 export interface ToolCall {
@@ -101,6 +102,10 @@ export const conversationApi = {
   get: (id: string) => api.get<Conversation>(`/conversations/${id}`),
 
   delete: (id: string) => api.delete(`/conversations/${id}`),
+
+  pin: (id: string) => api.post(`/conversations/${id}/pin`),
+
+  unpin: (id: string) => api.post(`/conversations/${id}/unpin`),
 
   search: (query: string, limit = 20) =>
     api.get<Conversation[]>('/conversations', { params: { q: query, limit } }),

@@ -775,12 +775,12 @@ func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) 
 					default:
 					}
 				} else {
-					err := fmt.Errorf("recognition error: %s", desc)
+					var err error = fmt.Errorf("recognition error: %s", desc)
 					// Detect on-device unavailable errors
 					if requireOnDevice && isOnDeviceError(desc) {
 						err = &OnDeviceUnavailableError{Locale: locale, Detail: desc}
-					} else if friendlyMsg := friendlySpeechError(desc); friendlyMsg != "" {
-						err = fmt.Errorf("%s", friendlyMsg)
+					} else if se := friendlySpeechError(desc); se != nil {
+						err = se
 					}
 					select {
 					case ch <- result{err: err}:
@@ -840,20 +840,21 @@ func isOnDeviceError(desc string) bool {
 		strings.Contains(d, "no speech detected") // on-device may silently fail with this
 }
 
-// friendlySpeechError maps cryptic Apple Speech framework errors to user-friendly messages.
-func friendlySpeechError(desc string) string {
+// friendlySpeechError maps cryptic Apple Speech framework errors to SpeechError with error codes.
+// Returns nil if the error is not recognized.
+func friendlySpeechError(desc string) *SpeechError {
 	d := strings.ToLower(desc)
 	switch {
 	case strings.Contains(d, "cannot open"):
-		return "Could not process the audio. The recording may be too short or corrupted — please try again."
+		return &SpeechError{Code: "audio_invalid", Message: desc}
 	case strings.Contains(d, "no speech detected"):
-		return "No speech detected in the recording. Please speak clearly and try again."
+		return &SpeechError{Code: "no_speech", Message: desc}
 	case strings.Contains(d, "not available"):
-		return "Speech recognition is temporarily unavailable. Please try again later."
+		return &SpeechError{Code: "service_unavailable", Message: desc}
 	case strings.Contains(d, "rate limit"):
-		return "Too many requests. Please wait a moment and try again."
+		return &SpeechError{Code: "rate_limit", Message: desc}
 	default:
-		return ""
+		return nil
 	}
 }
 

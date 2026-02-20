@@ -72,6 +72,15 @@ async function checkASRModelReady(): Promise<boolean> {
 async function connect() {
   if (voiceWs?.isConnected) return
 
+  // Pre-request mic permission so the browser dialog doesn't interrupt recording
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    stream.getTracks().forEach(t => t.stop())
+  } catch {
+    error.value = t('chat.voiceMicrophoneError')
+    return
+  }
+
   // Check if ASR model is ready first
   const ready = await checkASRModelReady()
   if (!ready) {
@@ -241,6 +250,8 @@ async function transcribeLocally() {
       error.value = t('chat.voiceTranscriptionTimeout')
     } else if (errorCode === 'on_device_unavailable') {
       error.value = t('speech.onDeviceUnavailableError')
+    } else if (errorCode && t(`speech.error.${errorCode}`) !== `speech.error.${errorCode}`) {
+      error.value = t(`speech.error.${errorCode}`)
     } else {
       const serverMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message
       error.value = serverMsg || t('chat.talkMode.transcriptionError')

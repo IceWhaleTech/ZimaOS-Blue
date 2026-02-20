@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Conversation } from '@/api/chat'
 
@@ -17,10 +17,23 @@ const emit = defineEmits<{
   create: []
   delete: [id: string]
   search: [query: string]
+  pin: [id: string]
+  unpin: [id: string]
 }>()
 
 const searchQuery = ref('')
+const searchActive = ref(false)
 const showDeleteConfirm = ref<string | null>(null)
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+function toggleSearch() {
+  searchActive.value = !searchActive.value
+  if (searchActive.value) {
+    nextTick(() => searchInputRef.value?.focus())
+  } else {
+    searchQuery.value = ''
+  }
+}
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -60,6 +73,14 @@ function cancelDelete() {
   showDeleteConfirm.value = null
 }
 
+function handlePin(id: string, isPinned: boolean) {
+  if (isPinned) {
+    emit('unpin', id)
+  } else {
+    emit('pin', id)
+  }
+}
+
 // Debounced search
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 watch(searchQuery, (query) => {
@@ -74,54 +95,52 @@ watch(searchQuery, (query) => {
 
 <template>
   <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-700/30">
-    <!-- Header -->
-    <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-      <button
-        class="w-full py-2 px-4 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
-        @click="handleCreate"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+    <!-- Header: new chat + search merged into one row -->
+    <div class="flex items-center gap-2 p-3 border-b border-gray-200 dark:border-gray-700">
+      <!-- Default: New Chat button / Search active: Search input -->
+      <div class="flex-1 min-w-0">
+        <button
+          v-if="!searchActive"
+          class="w-full py-2 px-4 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+          @click="handleCreate"
         >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 4v16m8-8H4"
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          {{ t('chat.newChat') }}
+        </button>
+        <div v-else class="relative">
+          <input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            type="text"
+            :placeholder="t('chat.searchConversations')"
+            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
+            @keydown.escape="toggleSearch"
           />
-        </svg>
-        {{ t('chat.newChat') }}
-      </button>
-    </div>
-
-    <!-- Search -->
-    <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-      <div class="relative">
-        <input
-          v-model="searchQuery"
-          type="text"
-          :placeholder="t('chat.searchConversations')"
-          class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-        />
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
       </div>
+      <!-- Search / Close toggle button -->
+      <button
+        class="shrink-0 p-2 rounded-lg transition-colors"
+        :class="searchActive
+          ? 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+          : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'"
+        :title="searchActive ? t('common.cancel') : t('chat.searchConversations')"
+        @click="toggleSearch"
+      >
+        <!-- Search icon -->
+        <svg v-if="!searchActive" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <!-- Close icon -->
+        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
 
     <!-- Conversation list -->
@@ -170,6 +189,18 @@ watch(searchQuery, (query) => {
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <!-- Pin icon -->
+                  <svg
+                    v-if="conversation.pinned"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4 text-yellow-500 flex-shrink-0"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
+                  </svg>
+                </div>
                 <h3 class="text-gray-900 dark:text-white font-medium truncate">
                   {{ conversation.title }}
                 </h3>
@@ -180,27 +211,51 @@ watch(searchQuery, (query) => {
             </div>
           </button>
 
-          <!-- Delete button -->
-          <button
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-            :title="t('chat.deleteConversation')"
-            @click.stop="handleDelete(conversation.id)"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <!-- Pin/Unpin and Delete buttons -->
+          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <!-- Pin button -->
+            <button
+              class="p-2 text-gray-400 hover:text-yellow-500 transition-colors"
+              :title="conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')"
+              @click.stop="handlePin(conversation.id, conversation.pinned || false)"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                :fill="conversation.pinned ? 'currentColor' : 'none'"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 5a2 2 0 012-2h6a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                />
+              </svg>
+            </button>
+            <!-- Delete button -->
+            <button
+              class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+              :title="t('chat.deleteConversation')"
+              @click.stop="handleDelete(conversation.id)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          </div>
 
           <!-- Delete confirmation -->
           <div

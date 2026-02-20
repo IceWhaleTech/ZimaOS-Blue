@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"testing"
 )
 

@@ -348,6 +348,13 @@ func (h *Handler) Transcribe(c echo.Context) error {
 					"locale":     onDeviceErr.Locale,
 				})
 			}
+			var speechErr *SpeechError
+			if errors.As(err, &speechErr) {
+				return c.JSON(http.StatusUnprocessableEntity, map[string]string{
+					"error":      speechErr.Message,
+					"error_code": speechErr.Code,
+				})
+			}
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": err.Error(),
 			})

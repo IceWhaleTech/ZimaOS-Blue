@@ -1,10 +1,9 @@
 package proxy
 
 import (
-	"encoding/json"
-	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -48,7 +47,11 @@ func (c *Canonicalizer) CanonicalKey(body []byte) string {
 	b.WriteByte('|')
 	b.WriteString(canonical)
 	b.WriteByte('|')
-	fmt.Fprintf(&b, "%.1f|%.1f|%d", temp, topP, maxTokens)
+	b.Write(strconv.AppendFloat(nil, temp, 'f', 1, 64))
+	b.WriteByte('|')
+	b.Write(strconv.AppendFloat(nil, topP, 'f', 1, 64))
+	b.WriteByte('|')
+	b.Write(strconv.AppendInt(nil, maxTokens, 10))
 
 	return c.fnvHashString(b.String())
 }
@@ -71,9 +74,26 @@ func (c *Canonicalizer) CanonicalKeyFromParsed(req map[string]interface{}) strin
 	b.WriteByte('|')
 	b.WriteString(canonical)
 	b.WriteByte('|')
-	fmt.Fprintf(&b, "%.1f|%.1f|%d", temp, topP, maxTokens)
+	b.Write(strconv.AppendFloat(nil, temp, 'f', 1, 64))
+	b.WriteByte('|')
+	b.Write(strconv.AppendFloat(nil, topP, 'f', 1, 64))
+	b.WriteByte('|')
+	b.Write(strconv.AppendInt(nil, int64(maxTokens), 10))
 
 	return c.fnvHashString(b.String())
+}
+
+// hexDigits for fast hex encoding without fmt.Sprintf.
+const hexDigits = "0123456789abcdef"
+
+// fnvHashToHex converts a uint64 hash to a 16-char hex string without fmt.Sprintf.
+func fnvHashToHex(hash uint64) string {
+	var buf [16]byte
+	for i := 15; i >= 0; i-- {
+		buf[i] = hexDigits[hash&0xf]
+		hash >>= 4
+	}
+	return string(buf[:])
 }
 
 // fnvHashBytes computes FNV-1a hash of raw bytes.
@@ -83,7 +103,7 @@ func (c *Canonicalizer) fnvHashBytes(data []byte) string {
 		hash ^= uint64(b)
 		hash *= fnvPrime64
 	}
-	return fmt.Sprintf("%016x", hash)
+	return fnvHashToHex(hash)
 }
 
 // fnvHashString computes FNV-1a hash of a string.
@@ -93,7 +113,7 @@ func (c *Canonicalizer) fnvHashString(s string) string {
 		hash ^= uint64(s[i])
 		hash *= fnvPrime64
 	}
-	return fmt.Sprintf("%016x", hash)
+	return fnvHashToHex(hash)
 }
 
 // sanitizeMessages removes billing headers, cch tokens, and cc_version from messages.
@@ -210,7 +230,7 @@ func (c *Canonicalizer) canonicalMessagesGjson(msgs gjson.Result, body []byte) s
 		hash ^= uint64('\n')
 		hash *= fnvPrime64
 	}
-	return fmt.Sprintf("%016x", hash)
+	return fnvHashToHex(hash)
 }
 
 // isBillingHeader checks if content is a billing/tracking header.

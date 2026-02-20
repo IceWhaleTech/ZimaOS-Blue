@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -63,6 +62,13 @@ func readBody(r io.Reader) ([]byte, error) {
 	return out, nil
 }
 
+// readErrorBody reads a small error response body directly without pool overhead.
+// Error bodies are typically <1KB, so io.ReadAll is cheaper than pool get/put/copy.
+func readErrorBody(r io.Reader) []byte {
+	data, _ := io.ReadAll(io.LimitReader(r, 4096))
+	return data
+}
+
 // ProxyHandler handles incoming proxy requests.
 //
 // Architecture:
@@ -112,8 +118,13 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 }
 
 // SetProviderPool sets the Provider Pool for routing and API key lookup.
+// Triggers background auth probing for all enabled providers so the first
+// real request hits the cached-strategy fast path instead of probing live.
 func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 	ph.providerPool = pool
+	if pool != nil {
+		go ph.warmAuthStrategies()
+	}
 }
 
 // SetCache sets the response cache for the proxy handler.
@@ -185,6 +196,62 @@ func (ph *ProxyHandler) SetRoutingRuleEnabled(name string, enabled bool) bool {
 // GetRoutingStats returns a snapshot of routing cost savings.
 func (ph *ProxyHandler) GetRoutingStats() RoutingStatsSnapshot {
 	return ph.routingStats.Snapshot()
+}
+
+// warmAuthStrategies probes auth strategies for all enabled providers in the background.
+// This runs once at startup so the first real request hits the cached fast path.
+func (ph *ProxyHandler) warmAuthStrategies() {
+	pool := ph.providerPool
+	if pool == nil || pool.Registry == nil {
+		return
+	}
+
+	providers := pool.Registry.ListEnabled()
+	for _, p := range providers {
+		// Skip if already cached (e.g. from a previous warmup)
+		if _, ok := ph.authProber.Recall(p.ID, p.BaseURL); ok {
+			continue
+		}
+
+		apiKey, _ := pool.Registry.GetAPIKey(p.ID)
+		if apiKey == nil || apiKey.Key == "" {
+			// No key → AuthNone, cache it directly
+			ph.authProber.Remember(p.ID, p.BaseURL, AuthNone)
+			continue
+		}
+
+		// Try a lightweight HEAD/GET on the models endpoint to probe auth
+		strategies := ph.authProber.Strategies(p, apiKey)
+		for _, strat := range strategies {
+			probeURL := strings.TrimSuffix(p.BaseURL, "/") + "/v1/models"
+			req, err := http.NewRequest(http.MethodGet, probeURL, nil)
+			if err != nil {
+				continue
+			}
+			ph.authProber.Apply(req, strat, apiKey, p)
+
+			var client *http.Client
+			if p.SkipTLSVerify {
+				client = ph.connPool.GetInsecureClient(p.Name)
+			} else {
+				client = ph.connPool.GetClient(p.Name)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				continue
+			}
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+
+			if !isAuthError(resp.StatusCode) {
+				ph.authProber.Remember(p.ID, p.BaseURL, strat)
+				slog.Debug("[proxy] auth warmup success", "provider", p.ID, "strategy", strat.String())
+				break
+			}
+		}
+	}
+	slog.Info("[proxy] auth warmup complete", "providers", len(providers))
 }
 
 // extractRoutingMode extracts routing mode from API key scopes.
@@ -548,41 +615,50 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 // allFormatsForProvider returns format candidates to try for a provider.
 // Persisted format first, then remembered (in-memory), then provider default, then remaining.
 func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *providerpool.Provider) []providerpool.APIFormat {
-	allFormats := []providerpool.APIFormat{
-		providerpool.APIFormatOpenAI,
-		providerpool.APIFormatAnthropic,
-	}
+	// Use stack-allocated array — at most 4 formats (detected, remembered, default, remaining)
+	var buf [4]providerpool.APIFormat
+	n := 0
 
-	var result []providerpool.APIFormat
-	seen := make(map[providerpool.APIFormat]bool)
+	has := func(f providerpool.APIFormat) bool {
+		for i := 0; i < n; i++ {
+			if buf[i] == f {
+				return true
+			}
+		}
+		return false
+	}
 
 	// 1. Persisted detected format (highest priority — survives restarts)
 	if provider.DetectedFormat != "" {
-		result = append(result, provider.DetectedFormat)
-		seen[provider.DetectedFormat] = true
+		buf[n] = provider.DetectedFormat
+		n++
 	}
 
 	// 2. In-memory remembered format (from recent successful requests)
 	if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
 		f := providerpool.APIFormat(remembered)
-		if !seen[f] {
-			result = append(result, f)
-			seen[f] = true
+		if !has(f) {
+			buf[n] = f
+			n++
 		}
 	}
 
 	// 3. Provider default
-	if !seen[provider.APIFormat] {
-		result = append(result, provider.APIFormat)
-		seen[provider.APIFormat] = true
+	if !has(provider.APIFormat) {
+		buf[n] = provider.APIFormat
+		n++
 	}
 
 	// 4. Remaining formats
-	for _, f := range allFormats {
-		if !seen[f] {
-			result = append(result, f)
+	for _, f := range [...]providerpool.APIFormat{providerpool.APIFormatOpenAI, providerpool.APIFormatAnthropic} {
+		if !has(f) {
+			buf[n] = f
+			n++
 		}
 	}
+
+	result := make([]providerpool.APIFormat, n)
+	copy(result, buf[:n])
 	return result
 }
 
@@ -606,44 +682,59 @@ func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, f
 
 // allModelsForProvider returns model candidates to try for a provider.
 // Remembered alias first, then original model, then ModelAliases.
+// Uses stack-allocated array for the common case (≤8 candidates).
 func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string) []string {
-	var result []string
-	seen := make(map[string]bool)
+	var buf [8]string
+	n := 0
+
+	has := func(s string) bool {
+		for i := 0; i < n; i++ {
+			if buf[i] == s {
+				return true
+			}
+		}
+		return false
+	}
+
+	add := func(s string) {
+		if n < len(buf) {
+			buf[n] = s
+			n++
+		}
+	}
 
 	// 1. Remembered alias (highest priority)
 	if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, originalModel); ok {
 		if !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
-			result = append(result, alias)
-			seen[alias] = true
+			add(alias)
 		}
 	}
 
 	// 2. Routed model (from provider pool)
-	if routedModel != "" && !seen[routedModel] {
+	if routedModel != "" && !has(routedModel) {
 		if !ph.providerMemory.IsModelBlacklisted(pid, burl, routedModel) {
-			result = append(result, routedModel)
-			seen[routedModel] = true
+			add(routedModel)
 		}
 	}
 
 	// 3. Original model
-	if !seen[originalModel] {
+	if !has(originalModel) {
 		if !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel) {
-			result = append(result, originalModel)
-			seen[originalModel] = true
+			add(originalModel)
 		}
 	}
 
 	// 4. ModelAliases
 	if aliases, ok := ModelAliases[originalModel]; ok {
 		for _, alias := range aliases {
-			if !seen[alias] && !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
-				result = append(result, alias)
-				seen[alias] = true
+			if !has(alias) && !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
+				add(alias)
 			}
 		}
 	}
 
+	result := make([]string, n)
+	copy(result, buf[:n])
 	return result
 }
 
@@ -677,6 +768,35 @@ func (ph *ProxyHandler) tryOnProvider(
 		formats = []providerpool.APIFormat{result.Provider.DetectedFormat}
 	} else if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
 		formats = []providerpool.APIFormat{providerpool.APIFormat(remembered)}
+	}
+
+	// Fast path: single model + single format + model matches request (most common happy path).
+	// Avoids loop overhead, sjson.SetBytes, and slice iteration.
+	if len(models) == 1 && len(formats) == 1 && models[0] == pr.model {
+		format := formats[0]
+		slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
+		resp, probeErr := ph.authProber.ProbeAndForward(
+			result.Provider,
+			result.APIKey,
+			func() (*http.Request, error) {
+				return ph.buildUpstreamRequestWithFormat(r, result, pr.body, format)
+			},
+			func(req *http.Request) (*http.Response, error) {
+				if result.Provider.SkipTLSVerify {
+					return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+				}
+				return ph.connPool.GetClient(result.Provider.Name).Do(req)
+			},
+		)
+		if probeErr != nil {
+			return nil, "", "", probeErr
+		}
+		if resp.StatusCode < 400 {
+			ph.providerMemory.RememberFormat(pid, burl, string(format))
+			ph.persistDetectedFormat(result.Provider, format)
+			return resp, format, pr.model, nil
+		}
+		// Fall through to error handling in the general loop
 	}
 
 	var lastErr error
@@ -721,9 +841,9 @@ func (ph *ProxyHandler) tryOnProvider(
 				return resp, format, model, nil
 			}
 
-			// Handle error
+			// Handle error — use lightweight reader for small error bodies
 			statusCode := resp.StatusCode
-			errBody, _ := readBody(resp.Body)
+			errBody := readErrorBody(resp.Body)
 			resp.Body.Close()
 			errStr := string(errBody)
 			if len(errStr) > 256 {
@@ -765,58 +885,76 @@ func (ph *ProxyHandler) tryOnProvider(
 }
 
 // notConfiguredPatterns are pre-allocated pattern slices for isModelNotConfiguredError.
-// Avoids slice allocation on every error check.
-var notConfiguredPatternsEN = []string{
-	"not configured",
-	"not enabled",
-	"not available",
-	"not supported",
-	"no access",
-	"model disabled",
-	"model unavailable",
-	"model not found",
-	"does not exist",
-	"invalid model",
-	"unknown model",
-	"not authorized",
-	"permission denied",
+// Stored as []byte to avoid string→[]byte conversion on each check.
+var notConfiguredPatternsEN = [][]byte{
+	[]byte("not configured"),
+	[]byte("not enabled"),
+	[]byte("not available"),
+	[]byte("not supported"),
+	[]byte("no access"),
+	[]byte("model disabled"),
+	[]byte("model unavailable"),
+	[]byte("model not found"),
+	[]byte("does not exist"),
+	[]byte("invalid model"),
+	[]byte("unknown model"),
+	[]byte("not authorized"),
+	[]byte("permission denied"),
 }
 
-var notConfiguredPatternsCN = []string{
-	"未配置",   // not configured
-	"未启用",   // not enabled
-	"不可用",   // not available
-	"不支持",   // not supported
-	"模型不存在", // model does not exist
-	"未找到",   // not found
-	"无权限",   // no permission
+var notConfiguredPatternsCN = [][]byte{
+	[]byte("未配置"),   // not configured
+	[]byte("未启用"),   // not enabled
+	[]byte("不可用"),   // not available
+	[]byte("不支持"),   // not supported
+	[]byte("模型不存在"), // model does not exist
+	[]byte("未找到"),   // not found
+	[]byte("无权限"),   // no permission
 }
 
 // isModelNotConfiguredError checks if the error response indicates the model
 // is listed but not actually configured/available on this provider.
-// When detected, the model is blacklisted on this specific provider and the
-// next model candidate is tried. If all models are exhausted, the provider
-// fails and RouteWithFallback moves to the next provider.
+// Uses bytes.Contains with pre-lowered patterns to avoid strings.ToLower allocation.
 func isModelNotConfiguredError(statusCode int, body []byte) bool {
 	if statusCode != 400 && statusCode != 403 && statusCode != 404 && statusCode != 422 {
 		return false
 	}
 
-	msg := strings.ToLower(string(body))
+	lower := toLowerBytes(body)
 
 	for _, pattern := range notConfiguredPatternsEN {
-		if strings.Contains(msg, pattern) {
+		if bytes.Contains(lower, pattern) {
 			return true
 		}
 	}
 
+	// Chinese patterns — match against original body (no case folding needed for CJK)
 	for _, pattern := range notConfiguredPatternsCN {
-		if strings.Contains(msg, pattern) {
+		if bytes.Contains(body, pattern) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// toLowerBytes lowercases ASCII bytes in-place on a stack-allocated copy.
+// For bodies ≤4KB, uses stack buffer to avoid heap allocation.
+func toLowerBytes(b []byte) []byte {
+	n := len(b)
+	// Cap at 4KB — error bodies are typically small
+	if n > 4096 {
+		n = 4096
+	}
+	out := make([]byte, n)
+	for i := 0; i < n; i++ {
+		c := b[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		out[i] = c
+	}
+	return out
 }
 
 // parseRetryAfter parses the Retry-After header value into a duration.
@@ -902,7 +1040,7 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response)
 	w.WriteHeader(resp.StatusCode)
 
 	if isStreamingResponse(resp) {
-		ph.copyStreamingResponseWithCapture(w, resp)
+		ph.copyStreamingResponseWithCapture(w, resp, false)
 	} else {
 		io.Copy(w, resp.Body)
 	}
@@ -958,17 +1096,17 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 
 		// If upstream returned Anthropic SSE, convert to OpenAI SSE
 		if pr.upstreamFormat == ProviderTypeAnthropic {
-			fc := NewFormatConverter()
-			if err := fc.ConvertStreamingResponse(resp.Body, ProviderTypeAnthropic, w); err != nil {
+			if err := sharedConverter.ConvertStreamingResponse(resp.Body, ProviderTypeAnthropic, w); err != nil {
 				slog.Warn("[proxy] anthropic stream conversion error", "error", err)
 			}
 			return
 		}
 
 		// Stream to client while capturing for cache
-		captured := ph.copyStreamingResponseWithCapture(w, resp)
+		needCapture := ph.cache != nil && resp.StatusCode == http.StatusOK
+		captured := ph.copyStreamingResponseWithCapture(w, resp, needCapture)
 		// Cache the assembled non-streaming response
-		if ph.cache != nil && resp.StatusCode == http.StatusOK && len(captured) > 0 {
+		if needCapture && len(captured) > 0 {
 			assembled := assembleNonStreamingResponse(parseSSEChunks(captured))
 			if len(assembled) > 0 {
 				// Reuse pre-computed cacheKey and model — no re-parsing needed
@@ -987,8 +1125,7 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 
 	// Convert non-streaming Anthropic response to OpenAI format
 	if pr.upstreamFormat == ProviderTypeAnthropic && resp.StatusCode == http.StatusOK {
-		fc := NewFormatConverter()
-		if converted, convErr := fc.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
+		if converted, convErr := sharedConverter.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
 			respBody = converted
 		}
 	}
@@ -1029,8 +1166,9 @@ func (ph *ProxyHandler) writeSSEFromCache(w http.ResponseWriter, entry *CCCacheE
 
 // copyStreamingResponseWithCapture streams SSE to client while capturing raw data.
 // Returns the captured SSE bytes for cache assembly.
+// When needCapture is false, streams directly without buffering (zero-copy path).
 // Uses pooled 32KB buffers to reduce GC pressure.
-func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, resp *http.Response) []byte {
+func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, resp *http.Response, needCapture bool) []byte {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		data, _ := readBody(resp.Body)
@@ -1038,11 +1176,26 @@ func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, 
 		return data
 	}
 
-	var capture bytes.Buffer
 	bufPtr := sseBufferPool.Get().(*[]byte)
 	buf := *bufPtr
 	defer sseBufferPool.Put(bufPtr)
 
+	// Fast path: no capture needed (cache disabled or non-200)
+	if !needCapture {
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				w.Write(buf[:n])
+				flusher.Flush()
+			}
+			if err != nil {
+				break
+			}
+		}
+		return nil
+	}
+
+	var capture bytes.Buffer
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {

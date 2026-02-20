@@ -2,6 +2,7 @@ package providerpool
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -109,7 +110,9 @@ func (r *Router) RebuildCandidates() {
 				Model:    model,
 			}
 			snap.byModel[model.ID] = append(snap.byModel[model.ID], c)
-			snap.byModel[model.Name] = append(snap.byModel[model.Name], c)
+			if model.Name != model.ID {
+				snap.byModel[model.Name] = append(snap.byModel[model.Name], c)
+			}
 			snap.allCandidates = append(snap.allCandidates, c)
 		}
 	}
@@ -622,7 +625,10 @@ func classifyError(err error) FailoverReason {
 	return FailoverReasonAPIError
 }
 
-// RouteWithFallback attempts to route with automatic fallback on failure
+// RouteWithFallback attempts to route with automatic fallback on failure.
+// When the exact model is not found or all same-model providers fail,
+// it falls back to any healthy provider matching the routing mode (auto/cloud/local),
+// forwarding the original model name and letting the upstream decide.
 func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execute func(*RouteResult) error) error {
 	// Only allocate failover tracking when a callback is registered
 	var failoverResult *FailoverResult
@@ -637,52 +643,144 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		}()
 	}
 
+	// Track which providers we've already tried (to avoid retrying in blind fallback)
+	triedProviders := make(map[string]bool)
+
 	result, err := r.Route(req)
 	if err != nil {
+		// Model not in snapshot — skip to blind provider fallback
+		slog.Info("[router] model not in snapshot, trying blind provider fallback",
+			"model", req.ModelID, "mode", req.Mode)
+		goto blindFallback
+	}
+
+	{
+		// Try primary
 		if failoverResult != nil {
-			failoverResult.FinalError = err.Error()
+			failoverResult.TotalAttempts++
 		}
-		return err
-	}
+		start := time.Now()
+		err = execute(result)
+		latency := time.Since(start)
+		triedProviders[result.Provider.ID] = true
 
-	// Try primary
-	if failoverResult != nil {
-		failoverResult.TotalAttempts++
-	}
-	start := time.Now()
-	err = execute(result)
-	latency := time.Since(start)
+		if err == nil {
+			r.UpdateLatency(result.Provider.ID, latency)
+			r.RecordSuccess(result.Provider.ID)
+			if failoverResult != nil {
+				failoverResult.SuccessProvider = result.Provider.ID
+				failoverResult.SuccessModel = result.Model.ID
+			}
+			return nil
+		}
 
-	if err == nil {
-		r.UpdateLatency(result.Provider.ID, latency)
-		r.RecordSuccess(result.Provider.ID)
+		// Record failure for primary
+		r.UpdateLatency(result.Provider.ID, latency*2)
+		r.RecordFailure(result.Provider.ID, err)
+
 		if failoverResult != nil {
-			failoverResult.SuccessProvider = result.Provider.ID
-			failoverResult.SuccessModel = result.Model.ID
+			failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+				Timestamp:    start,
+				ProviderID:   result.Provider.ID,
+				ProviderName: result.Provider.Name,
+				ModelID:      result.Model.ID,
+				Reason:       classifyError(err),
+				Error:        err.Error(),
+				Latency:      latency,
+			})
 		}
-		return nil
+
+		// Try same-model fallbacks
+		for i, fallback := range result.Fallbacks {
+			if ctx.Err() != nil {
+				if failoverResult != nil {
+					failoverResult.FinalError = ctx.Err().Error()
+				}
+				return ctx.Err()
+			}
+
+			if failoverResult != nil && len(failoverResult.FailedAttempts) > 0 {
+				failoverResult.FailedAttempts[len(failoverResult.FailedAttempts)-1].NextProviderID = fallback.Provider.ID
+			}
+
+			fallbackResult := &RouteResult{
+				Provider: fallback.Provider,
+				Model:    fallback.Model,
+			}
+			if apiKey, keyErr := r.registry.GetAPIKey(fallback.Provider.ID); keyErr == nil {
+				fallbackResult.APIKey = apiKey
+			}
+
+			if failoverResult != nil {
+				failoverResult.TotalAttempts++
+			}
+			start := time.Now()
+			err = execute(fallbackResult)
+			latency := time.Since(start)
+			triedProviders[fallback.Provider.ID] = true
+
+			if err == nil {
+				r.UpdateLatency(fallback.Provider.ID, latency)
+				r.RecordSuccess(fallback.Provider.ID)
+				if failoverResult != nil {
+					failoverResult.SuccessProvider = fallback.Provider.ID
+					failoverResult.SuccessModel = fallback.Model.ID
+				}
+				return nil
+			}
+
+			r.UpdateLatency(fallback.Provider.ID, latency*2)
+			r.RecordFailure(fallback.Provider.ID, err)
+
+			if failoverResult != nil {
+				nextProviderID := ""
+				if i+1 < len(result.Fallbacks) {
+					nextProviderID = result.Fallbacks[i+1].Provider.ID
+				}
+				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+					Timestamp:      start,
+					ProviderID:     fallback.Provider.ID,
+					ProviderName:   fallback.Provider.Name,
+					ModelID:        fallback.Model.ID,
+					Reason:         classifyError(err),
+					Error:          err.Error(),
+					Latency:        latency,
+					NextProviderID: nextProviderID,
+				})
+			}
+		}
 	}
 
-	// Record failure for primary
-	r.UpdateLatency(result.Provider.ID, latency*2)
-	r.RecordFailure(result.Provider.ID, err)
-
-	// Track the failed attempt
-	if failoverResult != nil {
-		failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-			Timestamp:    start,
-			ProviderID:   result.Provider.ID,
-			ProviderName: result.Provider.Name,
-			ModelID:      result.Model.ID,
-			Reason:       classifyError(err),
-			Error:        err.Error(),
-			Latency:      latency,
-		})
+blindFallback:
+	// Blind provider fallback: try any healthy provider matching the routing mode.
+	// The original model name is forwarded as-is — the upstream decides if it supports it.
+	// This handles cases where our local model list is incomplete or the model is new.
+	blindCandidates := r.findBlindFallbackProviders(req.Mode, triedProviders)
+	if len(blindCandidates) == 0 {
+		if failoverResult != nil {
+			if err != nil {
+				failoverResult.FinalError = err.Error()
+			} else {
+				failoverResult.FinalError = ErrNoAvailableProvider.Error()
+			}
+		}
+		if err != nil {
+			return err
+		}
+		return ErrNoAvailableProvider
 	}
 
-	// Try fallbacks
-	for i, fallback := range result.Fallbacks {
-		// Check context
+	slog.Info("[router] trying blind provider fallback",
+		"model", req.ModelID, "candidates", len(blindCandidates))
+
+	// Use a passthrough Model with the original model ID so tryOnProvider sends it as-is
+	passthroughModel := &Model{
+		ID:      req.ModelID,
+		Name:    req.ModelID,
+		Enabled: true,
+	}
+
+	for _, provider := range blindCandidates {
 		if ctx.Err() != nil {
 			if failoverResult != nil {
 				failoverResult.FinalError = ctx.Err().Error()
@@ -690,57 +788,44 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 			return ctx.Err()
 		}
 
-		// Update previous record with next provider info
-		if failoverResult != nil && len(failoverResult.FailedAttempts) > 0 {
-			failoverResult.FailedAttempts[len(failoverResult.FailedAttempts)-1].NextProviderID = fallback.Provider.ID
+		blindResult := &RouteResult{
+			Provider: provider,
+			Model:    passthroughModel,
 		}
-
-		fallbackResult := &RouteResult{
-			Provider: fallback.Provider,
-			Model:    fallback.Model,
-		}
-
-		// Get API key
-		if apiKey, keyErr := r.registry.GetAPIKey(fallback.Provider.ID); keyErr == nil {
-			fallbackResult.APIKey = apiKey
+		if apiKey, keyErr := r.registry.GetAPIKey(provider.ID); keyErr == nil {
+			blindResult.APIKey = apiKey
 		}
 
 		if failoverResult != nil {
 			failoverResult.TotalAttempts++
 		}
 		start := time.Now()
-		err = execute(fallbackResult)
+		err = execute(blindResult)
 		latency := time.Since(start)
 
 		if err == nil {
-			r.UpdateLatency(fallback.Provider.ID, latency)
-			r.RecordSuccess(fallback.Provider.ID)
+			r.UpdateLatency(provider.ID, latency)
+			r.RecordSuccess(provider.ID)
 			if failoverResult != nil {
-				failoverResult.SuccessProvider = fallback.Provider.ID
-				failoverResult.SuccessModel = fallback.Model.ID
+				failoverResult.SuccessProvider = provider.ID
+				failoverResult.SuccessModel = req.ModelID
 			}
+			slog.Info("[router] blind fallback succeeded", "provider", provider.ID, "model", req.ModelID)
 			return nil
 		}
 
-		// Record failure
-		r.UpdateLatency(fallback.Provider.ID, latency*2)
-		r.RecordFailure(fallback.Provider.ID, err)
+		r.UpdateLatency(provider.ID, latency*2)
+		r.RecordFailure(provider.ID, err)
 
 		if failoverResult != nil {
-			nextProviderID := ""
-			if i+1 < len(result.Fallbacks) {
-				nextProviderID = result.Fallbacks[i+1].Provider.ID
-			}
-
 			failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-				Timestamp:      start,
-				ProviderID:     fallback.Provider.ID,
-				ProviderName:   fallback.Provider.Name,
-				ModelID:        fallback.Model.ID,
-				Reason:         classifyError(err),
-				Error:          err.Error(),
-				Latency:        latency,
-				NextProviderID: nextProviderID,
+				Timestamp:    start,
+				ProviderID:   provider.ID,
+				ProviderName: provider.Name,
+				ModelID:      req.ModelID,
+				Reason:       classifyError(err),
+				Error:        err.Error(),
+				Latency:      latency,
 			})
 		}
 	}
@@ -749,6 +834,48 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		failoverResult.FinalError = err.Error()
 	}
 	return err
+}
+
+// findBlindFallbackProviders returns healthy providers matching the routing mode,
+// excluding already-tried providers. Sorted by priority (highest first).
+func (r *Router) findBlindFallbackProviders(mode RoutingMode, exclude map[string]bool) []*Provider {
+	providers := r.registry.ListEnabled()
+	var candidates []*Provider
+
+	for _, p := range providers {
+		if exclude[p.ID] {
+			continue
+		}
+		if p.Status == ProviderStatusError {
+			continue
+		}
+		if r.IsInCooldown(p.ID) {
+			continue
+		}
+		// Cloud providers need a usable API key
+		if p.Location == ProviderLocationCloud {
+			if key, err := r.registry.GetAPIKey(p.ID); err != nil || key == nil || key.Key == "" {
+				continue
+			}
+		}
+		// Filter by routing mode
+		if mode != "" && mode != RoutingModeAuto {
+			if mode == RoutingModeCloud && p.Location != ProviderLocationCloud {
+				continue
+			}
+			if mode == RoutingModeLocal && p.Location != ProviderLocationLocal {
+				continue
+			}
+		}
+		candidates = append(candidates, p)
+	}
+
+	// Sort by priority (highest first)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Priority > candidates[j].Priority
+	})
+
+	return candidates
 }
 
 // FindBestProvider finds the best provider for a model without executing

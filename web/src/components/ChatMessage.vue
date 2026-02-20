@@ -684,6 +684,21 @@ async function handleMobileTTS() {
   closeMobileActions()
 }
 
+function handleMobileSelect() {
+  chatStore.enterMultiSelectMode(props.message.id)
+  closeMobileActions()
+}
+
+async function handleMobileDelete() {
+  chatStore.enterMultiSelectMode(props.message.id)
+  try {
+    await chatStore.deleteSelectedMessages()
+  } catch {
+    // Error handled in store
+  }
+  closeMobileActions()
+}
+
 </script>
 
 <template>
@@ -1014,6 +1029,28 @@ async function handleMobileTTS() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                 </svg>
                 <span class="text-base font-medium text-gray-900 dark:text-white">{{ isSpeaking ? t('chat.stopTTS') : t('chat.playTTS') }}</span>
+              </button>
+
+              <!-- Select action (enter multi-select mode) -->
+              <button
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                @click="handleMobileSelect"
+              >
+                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.selectMessage') }}</span>
+              </button>
+
+              <!-- Delete action -->
+              <button
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                @click="handleMobileDelete"
+              >
+                <svg class="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span class="text-base font-medium text-red-500">{{ t('common.delete') }}</span>
               </button>
 
               <!-- Cancel button -->

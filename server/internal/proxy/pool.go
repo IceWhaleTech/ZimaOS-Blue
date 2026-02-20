@@ -13,8 +13,7 @@ type ConnectionPool struct {
 	config            *ConnectionConfig
 	transport         *http.Transport
 	insecureTransport *http.Transport
-	clients           map[string]*http.Client
-	mu                sync.RWMutex
+	clients           sync.Map // map[string]*http.Client — read-heavy, write-once per key
 }
 
 // NewConnectionPool creates a new connection pool
@@ -48,7 +47,6 @@ func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
 		config:            config,
 		transport:         transport,
 		insecureTransport: insecureTransport,
-		clients:           make(map[string]*http.Client),
 	}
 }
 
@@ -63,18 +61,8 @@ func (cp *ConnectionPool) GetInsecureClient(provider string) *http.Client {
 }
 
 func (cp *ConnectionPool) getClient(key string, insecure bool) *http.Client {
-	cp.mu.RLock()
-	if client, ok := cp.clients[key]; ok {
-		cp.mu.RUnlock()
-		return client
-	}
-	cp.mu.RUnlock()
-
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
-
-	if client, ok := cp.clients[key]; ok {
-		return client
+	if v, ok := cp.clients.Load(key); ok {
+		return v.(*http.Client)
 	}
 
 	t := cp.transport
@@ -86,8 +74,8 @@ func (cp *ConnectionPool) getClient(key string, insecure bool) *http.Client {
 		Transport: t,
 		Timeout:   0,
 	}
-	cp.clients[key] = client
-	return client
+	actual, _ := cp.clients.LoadOrStore(key, client)
+	return actual.(*http.Client)
 }
 
 // GetTransport returns the underlying transport
@@ -97,8 +85,11 @@ func (cp *ConnectionPool) GetTransport() *http.Transport {
 
 // Stats returns connection pool statistics
 func (cp *ConnectionPool) Stats() map[string]interface{} {
-	cp.mu.RLock()
-	defer cp.mu.RUnlock()
+	clientCount := 0
+	cp.clients.Range(func(_, _ interface{}) bool {
+		clientCount++
+		return true
+	})
 
 	return map[string]interface{}{
 		"max_idle_conns":          cp.config.MaxIdleConns,
@@ -107,7 +98,7 @@ func (cp *ConnectionPool) Stats() map[string]interface{} {
 		"idle_conn_timeout":       cp.config.IdleConnTimeout.String(),
 		"keep_alive":              cp.config.KeepAlive,
 		"force_http2":             cp.config.ForceHTTP2,
-		"client_count":            len(cp.clients),
+		"client_count":            clientCount,
 	}
 }
 

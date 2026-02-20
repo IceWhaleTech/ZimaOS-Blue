@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ type CloudflareManager struct {
 	url       string
 	startedAt time.Time
 	cancel    context.CancelFunc
+	done      chan struct{} // closed when the tunnel goroutine exits
 	sf        singleflight.Group
 
 	onURLChange func(url string)
@@ -54,8 +56,10 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 
 	tunnelCtx, cancel := context.WithCancel(context.Background())
 	resultCh := make(chan error, 1)
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		defer func() {
 			if r := recover(); r != nil {
 				m.mu.Lock()
@@ -71,6 +75,7 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 				default:
 					err = fmt.Errorf("cloudflare tunnel panic: %v", v)
 				}
+				slog.Error("[tunnel] cloudflare panic recovered", "error", err)
 				if m.onError != nil {
 					m.onError(err)
 				}
@@ -100,6 +105,8 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 		}
 
 		<-tunnelCtx.Done()
+		// Wait for cloudflared daemon to finish its grace period shutdown
+		time.Sleep(2 * time.Second)
 		m.mu.Lock()
 		m.running = false
 		m.url = ""
@@ -109,6 +116,7 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 	m.mu.Lock()
 	m.running = true
 	m.cancel = cancel
+	m.done = done
 	m.startedAt = time.Now()
 	m.mu.Unlock()
 
@@ -129,15 +137,28 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 
 func (m *CloudflareManager) Stop() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if !m.running {
+		m.mu.Unlock()
 		return nil
 	}
 	if m.cancel != nil {
 		m.cancel()
 	}
+	done := m.done
+	m.mu.Unlock()
+
+	// Wait for the tunnel goroutine to finish
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+		}
+	}
+
+	m.mu.Lock()
 	m.running = false
 	m.url = ""
+	m.mu.Unlock()
 	return nil
 }
 

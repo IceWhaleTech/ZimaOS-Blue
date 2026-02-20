@@ -76,6 +76,14 @@ func (ap *AuthProber) Forget(providerID, baseURL string) {
 	ap.cache.Del(cacheKey(providerID, baseURL))
 }
 
+// Pre-allocated strategy arrays — avoids slice allocation on every call.
+var (
+	strategiesNone      = []AuthStrategy{AuthNone}
+	strategiesAnthropic = []AuthStrategy{AuthAnthropic, AuthBearer, AuthXAPIKey, AuthNone}
+	strategiesOllama    = []AuthStrategy{AuthNone, AuthBearer}
+	strategiesDefault   = []AuthStrategy{AuthBearer, AuthXAPIKey, AuthNone}
+)
+
 // Strategies returns an ordered list of auth strategies to try.
 // The cached winner (if any) is placed first for zero-latency happy path.
 func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *providerpool.APIKey) []AuthStrategy {
@@ -83,29 +91,34 @@ func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *provid
 
 	// No key → only try without auth
 	if !hasKey {
-		return []AuthStrategy{AuthNone}
+		return strategiesNone
 	}
 
 	// Build base order by API format
 	var base []AuthStrategy
 	switch provider.APIFormat {
 	case providerpool.APIFormatAnthropic:
-		base = []AuthStrategy{AuthAnthropic, AuthBearer, AuthXAPIKey, AuthNone}
+		base = strategiesAnthropic
 	case providerpool.APIFormatOllama:
-		base = []AuthStrategy{AuthNone, AuthBearer}
+		base = strategiesOllama
 	default: // openai, google, custom
-		base = []AuthStrategy{AuthBearer, AuthXAPIKey, AuthNone}
+		base = strategiesDefault
 	}
 
-	// If we have a cached winner, move it to front
+	// If we have a cached winner, move it to front using stack-allocated buffer
 	if cached, ok := ap.Recall(provider.ID, provider.BaseURL); ok {
-		reordered := []AuthStrategy{cached}
+		var buf [4]AuthStrategy
+		buf[0] = cached
+		n := 1
 		for _, s := range base {
 			if s != cached {
-				reordered = append(reordered, s)
+				buf[n] = s
+				n++
 			}
 		}
-		return reordered
+		result := make([]AuthStrategy, n)
+		copy(result, buf[:n])
+		return result
 	}
 
 	return base

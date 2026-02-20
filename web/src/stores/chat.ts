@@ -52,9 +52,13 @@ export const useChatStore = defineStore('chat', () => {
 
   const sortedConversations = computed(() => {
     const list = searchResults.value !== null ? searchResults.value : conversations.value
-    return [...list].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    )
+    return [...list].sort((a, b) => {
+      // Pinned conversations first
+      if (a.pinned && !b.pinned) return -1
+      if (!a.pinned && b.pinned) return 1
+      // Then sort by updated_at
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    })
   })
 
   // Actions
@@ -102,6 +106,32 @@ export const useChatStore = defineStore('chat', () => {
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete conversation'
+      throw e
+    }
+  }
+
+  async function pinConversation(id: string) {
+    try {
+      await conversationApi.pin(id)
+      const conv = conversations.value.find((c) => c.id === id)
+      if (conv) {
+        conv.pinned = true
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to pin conversation'
+      throw e
+    }
+  }
+
+  async function unpinConversation(id: string) {
+    try {
+      await conversationApi.unpin(id)
+      const conv = conversations.value.find((c) => c.id === id)
+      if (conv) {
+        conv.pinned = false
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to unpin conversation'
       throw e
     }
   }
@@ -746,6 +776,8 @@ export const useChatStore = defineStore('chat', () => {
     fetchConversations,
     createConversation,
     deleteConversation,
+    pinConversation,
+    unpinConversation,
     selectConversation,
     fetchMessages,
     loadMoreMessages,

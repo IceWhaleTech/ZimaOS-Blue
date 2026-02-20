@@ -193,6 +193,104 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 	return provider, nil
 }
 
+// tryProviderWithKeyFallback tries a provider with key fallback on auth errors (stream)
+func (h *ChatHandler) tryProviderWithKeyFallback(ctx context.Context, providerID string, chatReq llm.ChatRequest, streamCb func(chunk llm.StreamChunk) error) error {
+	if h.providerPool == nil {
+		provider, err := h.getProviderFromPool(providerID)
+		if err != nil {
+			return err
+		}
+		return provider.ChatStreamCallback(ctx, chatReq, streamCb)
+	}
+
+	poolProvider, err := h.providerPool.Registry.Get(providerID)
+	if err != nil {
+		return err
+	}
+
+	// Try each enabled API key
+	var lastErr error
+	for _, key := range poolProvider.APIKeys {
+		if !key.Enabled || key.Key == "" {
+			continue
+		}
+
+		var provider llm.Provider
+		switch poolProvider.APIFormat {
+		case providerpool.APIFormatAnthropic:
+			provider = llm.NewClaudeProvider(key.Key, poolProvider.BaseURL)
+		case providerpool.APIFormatOllama:
+			provider = llm.NewOllamaProvider(poolProvider.BaseURL)
+		default:
+			provider = llm.NewCustomProvider(key.Key, poolProvider.BaseURL)
+		}
+
+		err := provider.ChatStreamCallback(ctx, chatReq, streamCb)
+		if err == nil {
+			return nil
+		}
+
+		logger.Debug().Str("provider_id", providerID).Str("key_id", key.ID).Err(err).Msg("[chat] key fallback attempt failed")
+		lastErr = err
+
+		// If it's not an auth error, don't try other keys
+		if !strings.Contains(err.Error(), "401") && !strings.Contains(err.Error(), "403") && !strings.Contains(err.Error(), "invalid") && !strings.Contains(err.Error(), "unauthorized") {
+			return err
+		}
+	}
+
+	return lastErr
+}
+
+// tryProviderChatWithKeyFallback tries Chat (non-streaming) with key fallback
+func (h *ChatHandler) tryProviderChatWithKeyFallback(ctx context.Context, providerID string, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if h.providerPool == nil {
+		provider, err := h.getProviderFromPool(providerID)
+		if err != nil {
+			return nil, err
+		}
+		return provider.Chat(ctx, req)
+	}
+
+	poolProvider, err := h.providerPool.Registry.Get(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try each enabled API key
+	var lastErr error
+	for _, key := range poolProvider.APIKeys {
+		if !key.Enabled || key.Key == "" {
+			continue
+		}
+
+		var provider llm.Provider
+		switch poolProvider.APIFormat {
+		case providerpool.APIFormatAnthropic:
+			provider = llm.NewClaudeProvider(key.Key, poolProvider.BaseURL)
+		case providerpool.APIFormatOllama:
+			provider = llm.NewOllamaProvider(poolProvider.BaseURL)
+		default:
+			provider = llm.NewCustomProvider(key.Key, poolProvider.BaseURL)
+		}
+
+		resp, err := provider.Chat(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+
+		logger.Debug().Str("provider_id", providerID).Str("key_id", key.ID).Err(err).Msg("[chat] key fallback attempt failed")
+		lastErr = err
+
+		// If it's not an auth error, don't try other keys
+		if !strings.Contains(err.Error(), "401") && !strings.Contains(err.Error(), "403") && !strings.Contains(err.Error(), "invalid") && !strings.Contains(err.Error(), "unauthorized") {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
+}
+
 // getDefaultProvider returns an available provider from the pool.
 // It checks if any provider is available; the actual routing is handled by the proxy.
 // Returns error if no providers are configured, prompting user to configure one.
@@ -865,11 +963,11 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				if h.proxyBridge != nil {
 					resp, err = h.proxyBridge.Chat(ctx, req)
 					if err != nil {
-						logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider")
-						resp, err = provider.Chat(ctx, req)
+						logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider with key fallback")
+						resp, err = h.tryProviderChatWithKeyFallback(ctx, result.Provider.ID, req)
 					}
 				} else {
-					resp, err = provider.Chat(ctx, req)
+					resp, err = h.tryProviderChatWithKeyFallback(ctx, result.Provider.ID, req)
 				}
 				if err != nil {
 					logger.Error().
@@ -2440,11 +2538,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if h.proxyBridge != nil {
 		err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
 		if err != nil {
-			logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider")
-			err = provider.ChatStreamCallback(ctx, chatReq, streamCb)
+			logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider with key fallback")
+			err = h.tryProviderWithKeyFallback(ctx, providerID, chatReq, streamCb)
 		}
 	} else {
-		err = provider.ChatStreamCallback(ctx, chatReq, streamCb)
+		err = h.tryProviderWithKeyFallback(ctx, providerID, chatReq, streamCb)
 	}
 
 	// If stream had tool calls, execute them and loop back

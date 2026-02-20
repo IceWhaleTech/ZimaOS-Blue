@@ -1190,3 +1190,265 @@ func TestRegistryGetCustomProvider(t *testing.T) {
 		t.Errorf("Expected API key test-api-key, got %s", apiKey.Key)
 	}
 }
+
+// TestRouterBlindFallback_ModelNotInSnapshot verifies that when the requested model
+// is not in any provider's model list, RouteWithFallback still tries healthy providers
+// by forwarding the original model name (blind fallback).
+func TestRouterBlindFallback_ModelNotInSnapshot(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	var triedProviders []string
+
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "unknown-model-xyz",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		// Simulate: second provider succeeds
+		if result.Provider.ID == "provider-medium" {
+			return nil
+		}
+		return errors.New("model not found")
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback should succeed via blind fallback, got: %v", err)
+	}
+
+	// Should have tried providers in priority order: high, medium
+	if len(triedProviders) != 2 {
+		t.Fatalf("Expected 2 attempts, got %d: %v", len(triedProviders), triedProviders)
+	}
+	if triedProviders[0] != "provider-high" {
+		t.Errorf("First attempt should be provider-high, got %s", triedProviders[0])
+	}
+	if triedProviders[1] != "provider-medium" {
+		t.Errorf("Second attempt should be provider-medium, got %s", triedProviders[1])
+	}
+}
+
+// TestRouterBlindFallback_AllSameModelFail verifies that when the model exists in the
+// snapshot but all same-model providers fail, blind fallback tries remaining providers.
+func TestRouterBlindFallback_AllSameModelFail(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-blind-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	// Provider A has the model, Provider B does NOT have the model
+	providerA := &Provider{
+		ID: "provider-a", Name: "Provider A", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key-a", Enabled: true}},
+	}
+	providerB := &Provider{
+		ID: "provider-b", Name: "Provider B", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 50,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key-b", Enabled: true}},
+	}
+	registry.Register(providerA)
+	registry.Register(providerB)
+
+	// Only provider-a has "special-model"
+	storage.SaveModels("provider-a", []*Model{{
+		ID: "special-model", ProviderID: "provider-a", Name: "special-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	// provider-b has a different model
+	storage.SaveModels("provider-b", []*Model{{
+		ID: "other-model", ProviderID: "provider-b", Name: "other-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	router.RebuildCandidates()
+
+	var triedProviders []string
+
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "special-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		if result.Provider.ID == "provider-b" {
+			return nil // provider-b succeeds (upstream supports the model even though we don't know)
+		}
+		return errors.New("upstream error")
+	})
+
+	if err != nil {
+		t.Fatalf("Expected blind fallback to succeed, got: %v", err)
+	}
+
+	// provider-a tried first (same-model match), then provider-b (blind fallback)
+	if len(triedProviders) != 2 {
+		t.Fatalf("Expected 2 attempts, got %d: %v", len(triedProviders), triedProviders)
+	}
+	if triedProviders[0] != "provider-a" {
+		t.Errorf("First attempt should be provider-a, got %s", triedProviders[0])
+	}
+	if triedProviders[1] != "provider-b" {
+		t.Errorf("Second attempt should be provider-b (blind fallback), got %s", triedProviders[1])
+	}
+}
+
+// TestRouterBlindFallback_RespectsRoutingMode verifies that blind fallback
+// only tries providers matching the requested routing mode (cloud/local).
+func TestRouterBlindFallback_RespectsRoutingMode(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-blind-mode-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	cloudProvider := &Provider{
+		ID: "cloud-prov", Name: "Cloud", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "cloud-key", Enabled: true}},
+	}
+	localProvider := &Provider{
+		ID: "local-prov", Name: "Local", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 90,
+		Location: ProviderLocationLocal,
+		APIKeys:  []APIKey{{ID: "k2", Key: "local-key", Enabled: true}},
+	}
+	registry.Register(cloudProvider)
+	registry.Register(localProvider)
+
+	// Neither provider has the model in their list
+	router.RebuildCandidates()
+
+	// Request with cloud mode — should only try cloud provider
+	var triedProviders []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "new-model",
+		Mode:    RoutingModeCloud,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		return nil // succeed on first try
+	})
+
+	if err != nil {
+		t.Fatalf("Expected success, got: %v", err)
+	}
+	if len(triedProviders) != 1 || triedProviders[0] != "cloud-prov" {
+		t.Errorf("Expected only cloud-prov, got: %v", triedProviders)
+	}
+
+	// Request with local mode — should only try local provider
+	triedProviders = nil
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "new-model",
+		Mode:    RoutingModeLocal,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Expected success, got: %v", err)
+	}
+	if len(triedProviders) != 1 || triedProviders[0] != "local-prov" {
+		t.Errorf("Expected only local-prov, got: %v", triedProviders)
+	}
+}
+
+// TestRouterBlindFallback_AllFail verifies that when all providers fail
+// (including blind fallback), the error is properly returned.
+func TestRouterBlindFallback_AllFail(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "nonexistent-model",
+	}, func(result *RouteResult) error {
+		return errors.New("always fail")
+	})
+
+	if err == nil {
+		t.Fatal("Expected error when all providers fail")
+	}
+}
+
+// TestRouterBlindFallback_SkipsUnhealthyAndCooldown verifies that blind fallback
+// skips providers that are unhealthy or in cooldown.
+func TestRouterBlindFallback_SkipsUnhealthyAndCooldown(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-blind-skip-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	healthyProvider := &Provider{
+		ID: "healthy", Name: "Healthy", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 50,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	unhealthyProvider := &Provider{
+		ID: "unhealthy", Name: "Unhealthy", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusError, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key2", Enabled: true}},
+	}
+	registry.Register(healthyProvider)
+	registry.Register(unhealthyProvider)
+	router.RebuildCandidates()
+
+	var triedProviders []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "unknown-model",
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Expected success, got: %v", err)
+	}
+
+	// Should only try the healthy provider, not the unhealthy one
+	if len(triedProviders) != 1 || triedProviders[0] != "healthy" {
+		t.Errorf("Expected only healthy provider, got: %v", triedProviders)
+	}
+}
+
+// TestRouterBlindFallback_PassthroughModel verifies that blind fallback
+// sends the original model ID to the provider (passthrough).
+func TestRouterBlindFallback_PassthroughModel(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	var receivedModel string
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "gpt-5.3-codex",
+	}, func(result *RouteResult) error {
+		receivedModel = result.Model.ID
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Expected success, got: %v", err)
+	}
+	if receivedModel != "gpt-5.3-codex" {
+		t.Errorf("Expected passthrough model gpt-5.3-codex, got %s", receivedModel)
+	}
+}

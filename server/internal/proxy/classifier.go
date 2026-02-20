@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"

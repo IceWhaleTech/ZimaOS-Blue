@@ -381,6 +381,8 @@ async function startRecording() {
         voiceError.value = t('chat.voiceTranscriptionTimeout')
       } else if (errorCode === 'on_device_unavailable') {
         voiceError.value = t('speech.onDeviceUnavailableError')
+      } else if (errorCode && t(`speech.error.${errorCode}`) !== `speech.error.${errorCode}`) {
+        voiceError.value = t(`speech.error.${errorCode}`)
       } else {
         const serverMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message
         voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
@@ -423,7 +425,17 @@ function toggleRecording() {
 }
 
 // Voice mode toggle (compact only)
-function toggleVoiceMode() {
+async function toggleVoiceMode() {
+  if (!voiceMode.value) {
+    // Pre-request mic permission so the browser dialog doesn't interrupt long-press
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(t => t.stop())
+    } catch {
+      voiceError.value = t('chat.voiceMicrophoneError')
+      return
+    }
+  }
   voiceMode.value = !voiceMode.value
 }
 
@@ -505,16 +517,6 @@ function handleMobileCamera() {
   openCameraDialog()
 }
 
-function handleMobileVoice() {
-  showMobileMenu.value = false
-  toggleRecording()
-}
-
-function handleMobileVoiceToggle() {
-  showMobileMenu.value = false
-  toggleVoiceMode()
-}
-
 function handleMobileTalkMode() {
   showMobileMenu.value = false
   emit('openTalkMode')
@@ -546,11 +548,17 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
 
 <template>
   <div
-    class="chat-input-wrapper px-3 sm:px-4 pb-3 sm:pb-4 pt-2"
+    class="chat-input-wrapper"
+    :class="isCompact ? 'px-0 pb-0 pt-0' : 'px-3 sm:px-4 pb-3 sm:pb-4 pt-2'"
   >
     <div
-      class="chat-input-container glass-card shadow-lg rounded-2xl p-3 sm:p-4 max-w-4xl mx-auto"
-      :class="{ 'ring-2 ring-accent': dragOver }"
+      class="chat-input-container p-3 sm:p-4 max-w-4xl mx-auto"
+      :class="[
+        isCompact
+          ? 'border-t border-gray-200 dark:border-glass-border bg-white dark:bg-gray-800/80'
+          : 'glass-card shadow-lg rounded-2xl',
+        { 'ring-2 ring-accent': dragOver }
+      ]"
     >
     <!-- Hidden file input -->
     <input
@@ -653,97 +661,154 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
     </div>
 
     <div class="flex items-center gap-2 sm:gap-3">
-      <!-- Mobile: Collapsed menu button -->
-      <div v-if="isCompact" ref="mobileMenuRef" class="relative">
+      <!-- Mobile: WeChat-style layout -->
+      <template v-if="isCompact">
+        <!-- Left: Voice/Text toggle button -->
         <button
           :disabled="disabled || streaming"
           class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          :class="{ 'bg-gray-200 dark:bg-gray-600/20 text-gray-900 dark:text-gray-300': showMobileMenu }"
-          :title="t('chat.moreActions')"
-          @click.stop="toggleMobileMenu"
+          :title="voiceMode ? t('chat.switchToKeyboard') : t('chat.switchToVoice')"
+          @click="toggleVoiceMode"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 6v.01M12 12v.01M12 18v.01"
-            />
+          <!-- Keyboard icon when in voice mode -->
+          <svg v-if="voiceMode" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <rect x="2" y="4" width="20" height="16" rx="2" stroke-width="2" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
+          </svg>
+          <!-- Mic icon when in text mode -->
+          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
           </svg>
         </button>
 
-        <!-- Mobile menu dropdown -->
-        <Transition
-          enter-active-class="transition ease-out duration-200"
-          enter-from-class="opacity-0 translate-y-2"
-          enter-to-class="opacity-100 translate-y-0"
-          leave-active-class="transition ease-in duration-150"
-          leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 translate-y-2"
-        >
-          <div
-            v-if="showMobileMenu"
-            class="absolute bottom-full left-0 mb-2 w-48 glass-card rounded-xl shadow-lg border border-white/10 overflow-hidden z-50"
+        <!-- Center: Voice hold-to-speak or Textarea -->
+        <div v-if="voiceMode" class="flex-1 relative">
+          <button
+            :disabled="disabled || streaming || isTranscribing"
+            class="w-full h-10 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            :class="isRecording
+              ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
+              : isTranscribing
+                ? 'glass-card text-gray-500 dark:text-slate-300'
+                : 'glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 active:bg-gray-200 dark:active:bg-white/20'"
+            @touchstart.prevent="handleVoiceTouchStart"
+            @touchend.prevent="handleVoiceTouchEnd"
+            @touchcancel="handleVoiceTouchCancel"
+            @click="handleVoiceClick"
           >
-            <button
-              :disabled="disabled || streaming"
-              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-              @click="handleMobileAttachment"
-            >
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-              </svg>
-              <span class="text-sm">{{ t('chat.attachFile') }}</span>
-            </button>
+            <svg v-if="isTranscribing" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+            </svg>
+            <span class="text-sm">
+              <template v-if="isTranscribing">{{ t('chat.voiceTranscribing') }}</template>
+              <template v-else-if="isRecording">{{ isTouchDevice ? t('chat.releaseToSend') : t('chat.stopRecording') }}</template>
+              <template v-else>{{ isTouchDevice ? t('chat.holdToSpeak') : t('chat.clickToRecord') }}</template>
+            </span>
+          </button>
+        </div>
+        <div v-else class="flex-1 relative">
+          <textarea
+            ref="textareaRef"
+            v-model="message"
+            :disabled="disabled || streaming"
+            :placeholder="placeholder"
+            enterkeyhint="send"
+            class="chat-textarea w-full glass-input text-gray-900 dark:text-white px-3 pr-8 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+            rows="1"
+            @keydown="handleKeydown"
+            @input="handleInput"
+            @paste="handlePaste"
+          />
+          <button
+            v-if="message.length > 0"
+            class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors cursor-pointer"
+            title="Clear"
+            @click="clearMessage"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-            <button
-              :disabled="disabled || streaming"
-              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-              @click="handleMobileCamera"
-            >
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span class="text-sm">{{ t('chat.takePhoto') }}</span>
-            </button>
+        <!-- Right: + button for extensions (or Cancel during streaming) -->
+        <button
+          v-if="streaming"
+          class="flex-shrink-0 w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
+          :title="t('common.cancel')"
+          @click="handleCancel"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <div v-else ref="mobileMenuRef" class="relative">
+          <button
+            :disabled="disabled"
+            class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            :class="{ 'bg-gray-200 dark:bg-gray-600/20 text-gray-900 dark:text-gray-300': showMobileMenu }"
+            :title="t('chat.moreActions')"
+            @click.stop="toggleMobileMenu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
 
-            <button
-              :disabled="disabled || streaming"
-              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-              @click="handleMobileVoiceToggle"
+          <!-- Mobile extension menu dropdown -->
+          <Transition
+            enter-active-class="transition ease-out duration-200"
+            enter-from-class="opacity-0 translate-y-2"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition ease-in duration-150"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 translate-y-2"
+          >
+            <div
+              v-if="showMobileMenu"
+              class="absolute bottom-full right-0 mb-2 w-48 glass-card rounded-xl shadow-lg border border-white/10 overflow-hidden z-50"
             >
-              <!-- Text cursor icon when in voice mode (switch to text) -->
-              <svg v-if="voiceMode" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <rect x="4" y="3" width="16" height="18" rx="2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 7h4m-2 0v10m-2 0h4" />
-              </svg>
-              <!-- Mic icon when in text mode (switch to voice) -->
-              <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-              <span class="text-sm">{{ voiceMode ? t('chat.switchToKeyboard') : t('chat.switchToVoice') }}</span>
-            </button>
+              <button
+                :disabled="disabled || streaming"
+                class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                @click="handleMobileAttachment"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <span class="text-sm">{{ t('chat.attachFile') }}</span>
+              </button>
 
-            <button
-              :disabled="disabled || streaming"
-              class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-              @click="handleMobileTalkMode"
-            >
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
-              <span class="text-sm">{{ t('chat.talkMode.title') }}</span>
-            </button>
-          </div>
-        </Transition>
-      </div>
+              <button
+                :disabled="disabled || streaming"
+                class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                @click="handleMobileCamera"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span class="text-sm">{{ t('chat.takePhoto') }}</span>
+              </button>
+
+              <button
+                :disabled="disabled || streaming"
+                class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                @click="handleMobileTalkMode"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                <span class="text-sm">{{ t('chat.talkMode.title') }}</span>
+              </button>
+            </div>
+          </Transition>
+        </div>
+      </template>
 
       <!-- Desktop: Individual buttons -->
       <!-- Attachment button -->
@@ -862,38 +927,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
         </svg>
       </button>
 
-      <!-- Compact voice mode: hold-to-speak / click-to-record button (replaces textarea) -->
-      <div v-if="isCompact && voiceMode" class="flex-1 relative">
-        <button
-          :disabled="disabled || streaming || isTranscribing"
-          class="w-full h-10 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="isRecording
-            ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
-            : isTranscribing
-              ? 'glass-card text-gray-500 dark:text-slate-300'
-              : 'glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 active:bg-gray-200 dark:active:bg-white/20'"
-          @touchstart.prevent="handleVoiceTouchStart"
-          @touchend.prevent="handleVoiceTouchEnd"
-          @touchcancel="handleVoiceTouchCancel"
-          @click="handleVoiceClick"
-        >
-          <svg v-if="isTranscribing" class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-          <span class="text-sm">
-            <template v-if="isTranscribing">{{ t('chat.voiceTranscribing') }}</template>
-            <template v-else-if="isRecording">{{ isTouchDevice ? t('chat.releaseToSend') : t('chat.stopRecording') }}</template>
-            <template v-else>{{ isTouchDevice ? t('chat.holdToSpeak') : t('chat.clickToRecord') }}</template>
-          </span>
-        </button>
-      </div>
-
-      <!-- Normal textarea (hidden in compact voice mode) -->
-      <div v-else class="flex-1 relative">
+      <!-- Desktop: Normal textarea -->
+      <div v-if="!isCompact" class="flex-1 relative">
         <textarea
           ref="textareaRef"
           v-model="message"
@@ -917,49 +952,26 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
         </button>
       </div>
 
-      <!-- Send/Cancel button -->
+      <!-- Desktop: Send/Cancel button -->
       <button
-        v-if="streaming"
+        v-if="!isCompact && streaming"
         class="flex-shrink-0 w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
         :title="t('common.cancel')"
         @click="handleCancel"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5 sm:h-6 sm:w-6"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M6 18L18 6M6 6l12 12"
-          />
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
-
       <button
-        v-else
+        v-else-if="!isCompact"
         :disabled="!canSend"
         class="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
         :title="t('chat.send')"
         @click="handleSend"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5 sm:h-6 sm:w-6"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-          />
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
         </svg>
       </button>
     </div>
@@ -996,13 +1008,35 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
   background: linear-gradient(to top, var(--color-bg-base) 60%, transparent);
 }
 
+/* No gradient on mobile - flush to bottom */
+@media (max-width: 767px) {
+  .chat-input-wrapper {
+    background: none;
+  }
+}
+
 :root.light .chat-input-wrapper,
 [data-theme="light"] .chat-input-wrapper {
   background: linear-gradient(to top, rgb(249 250 251) 60%, transparent);
 }
 
+@media (max-width: 767px) {
+  :root.light .chat-input-wrapper,
+  [data-theme="light"] .chat-input-wrapper {
+    background: none;
+  }
+}
+
 .chat-input-container {
   border: 1px solid var(--glass-border);
+}
+
+/* On mobile, only top border, no side/bottom borders */
+@media (max-width: 767px) {
+  .chat-input-container {
+    border: none;
+    border-top: 1px solid var(--glass-border);
+  }
 }
 
 :root.light .chat-input-container,
