@@ -37,6 +37,7 @@ type Conversation struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	UserID    string    `json:"user_id,omitempty"`
+	Pinned    bool      `json:"pinned"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -131,6 +132,7 @@ func (s *Store) migrate() error {
 	CREATE TABLE IF NOT EXISTS conversations (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
+		pinned BOOLEAN DEFAULT 0,
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL
 	);
@@ -165,6 +167,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE messages ADD COLUMN stats TEXT",
 		"ALTER TABLE messages ADD COLUMN attachments TEXT",
 		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
+		"ALTER TABLE conversations ADD COLUMN pinned BOOLEAN DEFAULT 0",
 	}
 
 	for _, migration := range migrations {
@@ -174,6 +177,8 @@ func (s *Store) migrate() error {
 
 	// Create index for user_id filtering (ignore if exists)
 	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)")
+	// Create index for pinned conversations
+	s.db.Exec("CREATE INDEX IF NOT EXISTS idx_conversations_pinned ON conversations(pinned)")
 
 	return nil
 }
@@ -239,9 +244,9 @@ func (s *Store) CreateConversationWithID(ctx context.Context, id, title string) 
 func (s *Store) GetConversation(ctx context.Context, id string) (*Conversation, error) {
 	conv := &Conversation{}
 	err := s.db.QueryRowContext(ctx,
-		"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE id = ?",
+		"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE id = ?",
 		id,
-	).Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.CreatedAt, &conv.UpdatedAt)
+	).Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -260,12 +265,12 @@ func (s *Store) ListConversations(ctx context.Context, limit, offset int, userID
 
 	if len(userID) > 0 && userID[0] != "" {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
 			userID[0], limit, offset,
 		)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
 			limit, offset,
 		)
 	}
@@ -277,7 +282,7 @@ func (s *Store) ListConversations(ctx context.Context, limit, offset int, userID
 	var convs []Conversation
 	for rows.Next() {
 		var conv Conversation
-		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan conversation: %w", err)
 		}
 		convs = append(convs, conv)
@@ -314,6 +319,36 @@ func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string) e
 	return nil
 }
 
+// PinConversation pins a conversation.
+func (s *Store) PinConversation(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE conversations SET pinned = 1, updated_at = ? WHERE id = ?",
+		timeutil.NowTime(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to pin conversation: %w", err)
+	}
+	return nil
+}
+
+// UnpinConversation unpins a conversation.
+func (s *Store) UnpinConversation(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE conversations SET pinned = 0, updated_at = ? WHERE id = ?",
+		timeutil.NowTime(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to unpin conversation: %w", err)
+	}
+	return nil
+}
+
 // SearchConversations searches conversations by title, optionally filtered by userID.
 func (s *Store) SearchConversations(ctx context.Context, query string, limit int, userID ...string) ([]Conversation, error) {
 	var rows *sql.Rows
@@ -321,12 +356,12 @@ func (s *Store) SearchConversations(ctx context.Context, query string, limit int
 
 	if len(userID) > 0 && userID[0] != "" {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE user_id = ? AND title LIKE ? ORDER BY updated_at DESC LIMIT ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? AND title LIKE ? ORDER BY pinned DESC, updated_at DESC LIMIT ?",
 			userID[0], "%"+query+"%", limit,
 		)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY pinned DESC, updated_at DESC LIMIT ?",
 			"%"+query+"%", limit,
 		)
 	}
@@ -338,7 +373,7 @@ func (s *Store) SearchConversations(ctx context.Context, query string, limit int
 	var convs []Conversation
 	for rows.Next() {
 		var conv Conversation
-		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+		if err := rows.Scan(&conv.ID, &conv.Title, &conv.UserID, &conv.Pinned, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan conversation: %w", err)
 		}
 		convs = append(convs, conv)

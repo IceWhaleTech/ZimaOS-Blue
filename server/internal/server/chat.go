@@ -1606,6 +1606,42 @@ func (h *ChatHandler) DeleteConversation(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// PinConversation pins a conversation.
+func (h *ChatHandler) PinConversation(c echo.Context) error {
+	id := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, id); err != nil {
+		return err
+	}
+
+	err := h.store.PinConversation(c.Request().Context(), id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to pin conversation")
+	}
+
+	h.conversationCache.Invalidate(id)
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+// UnpinConversation unpins a conversation.
+func (h *ChatHandler) UnpinConversation(c echo.Context) error {
+	id := c.Param("id")
+
+	if _, err := h.checkConversationOwnership(c, id); err != nil {
+		return err
+	}
+
+	err := h.store.UnpinConversation(c.Request().Context(), id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to unpin conversation")
+	}
+
+	h.conversationCache.Invalidate(id)
+
+	return c.NoContent(http.StatusNoContent)
+}
+
 // GetMessages retrieves messages for a conversation.
 func (h *ChatHandler) GetMessages(c echo.Context) error {
 	id := c.Param("id")
@@ -2039,6 +2075,8 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/conversations", h.ListConversations)
 	g.GET("/conversations/:id", h.GetConversation)
 	g.DELETE("/conversations/:id", h.DeleteConversation)
+	g.POST("/conversations/:id/pin", h.PinConversation)
+	g.POST("/conversations/:id/unpin", h.UnpinConversation)
 	g.GET("/conversations/:id/messages", h.GetMessages)
 	g.POST("/conversations/:id/messages", h.SendMessage)
 	g.DELETE("/conversations/:id/messages", h.DeleteMessages)

@@ -297,6 +297,14 @@ async function handleDeleteConversation(id: string) {
   await chatStore.deleteConversation(id)
 }
 
+async function handlePinConversation(id: string) {
+  await chatStore.pinConversation(id)
+}
+
+async function handleUnpinConversation(id: string) {
+  await chatStore.unpinConversation(id)
+}
+
 function handleSearch(query: string) {
   chatStore.searchConversations(query)
 }
@@ -459,6 +467,8 @@ onUnmounted(() => {
         @create="handleCreateConversation"
         @delete="handleDeleteConversation"
         @search="handleSearch"
+        @pin="handlePinConversation"
+        @unpin="handleUnpinConversation"
       />
     </aside>
 
@@ -472,11 +482,12 @@ onUnmounted(() => {
       <!-- Chat header -->
       <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-          <!-- Sidebar toggle button -->
+          <!-- Back/Sidebar toggle button -->
           <button
             class="flex-shrink-0 p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer"
             :class="{ 'md:hidden': !isMobile }"
             @click="toggleSidebar"
+            :title="showSidebar ? '关闭会话列表' : '打开会话列表'"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -489,7 +500,7 @@ onUnmounted(() => {
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
-                d="M4 6h16M4 12h16M4 18h16"
+                d="M15 19l-7-7 7-7"
               />
             </svg>
           </button>
