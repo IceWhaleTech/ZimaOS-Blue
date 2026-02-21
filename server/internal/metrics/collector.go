@@ -72,7 +72,17 @@ func (c *Collector) Start() {
 
 // Stop stops the metrics collector
 func (c *Collector) Stop() {
-	close(c.stopCh)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if already stopped
+	select {
+	case <-c.stopCh:
+		// Already stopped
+		return
+	default:
+		close(c.stopCh)
+	}
 }
 
 // collect gathers current system metrics and stores them

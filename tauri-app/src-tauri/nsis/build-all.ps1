@@ -1,6 +1,13 @@
 $ErrorActionPreference = "Stop"
-$basePath = "C:\Users\Administrator\AppData\Local\nvm\v20.20.0;C:\Users\Administrator\.cargo\bin;C:\Program Files\Go\bin;" + $env:Path
-$env:Path = $basePath
+
+# Function to ensure PATH is correct
+function Ensure-Path {
+    $basePath = "C:\Users\Administrator\AppData\Local\nvm\v20.20.0;C:\Users\Administrator\.cargo\bin;C:\Program Files\Go\bin;" + $env:Path
+    $env:Path = $basePath
+}
+
+# Set PATH initially
+Ensure-Path
 
 Write-Host "=== Checking tools ==="
 Write-Host "Node: $(node --version)"
@@ -39,19 +46,26 @@ Write-Host ""
 Write-Host "[STEP 1] Building frontend..."
 Set-Location "g:\GitHub\ZimaOS-Blue\web"
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+
+# Ensure PATH is correct before npm operations
+Ensure-Path
+
+# Install all dependencies first
+Write-Host "[STEP 1.1] Installing all dependencies..."
 npm install
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
-# Check production dependencies for vulnerabilities
-Write-Host "[STEP 1.1] Checking production dependencies for vulnerabilities..."
+# Check production dependencies for vulnerabilities (after all deps are installed)
+Write-Host "[STEP 1.2] Checking production dependencies for vulnerabilities..."
 npm audit --omit=dev
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Production dependencies have vulnerabilities. Please fix them before building." -ForegroundColor Red
     throw "Production dependencies have vulnerabilities"
 }
 
-# Use npx to ensure vite is found
-npx vite build
+# Build using npm run build (which uses vite from node_modules/.bin)
+Write-Host "[STEP 1.3] Building frontend..."
+npm run build
 if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 Write-Host "[OK] Frontend built"
 

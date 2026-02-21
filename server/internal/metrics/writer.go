@@ -21,6 +21,7 @@ type MetricsWriter struct {
 	// Background collection
 	done chan struct{}
 	wg   sync.WaitGroup
+	mu   sync.Mutex // Protects Stop() from being called multiple times
 }
 
 // WriterConfig contains configuration for the metrics writer.
@@ -221,7 +222,18 @@ func (w *MetricsWriter) Start() {
 
 // Stop stops background metrics collection.
 func (w *MetricsWriter) Stop() {
-	close(w.done)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Check if already stopped
+	select {
+	case <-w.done:
+		// Already stopped
+		return
+	default:
+		close(w.done)
+	}
+
 	w.wg.Wait()
 
 	// Final persist before shutdown
