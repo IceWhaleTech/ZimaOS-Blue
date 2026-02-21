@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import type { ToolDefinition } from '@/api/chat'
 import { toolApi } from '@/api/chat'
 import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
+import { settingsApi, type Settings } from '@/api/settings'
 
 const STORAGE_KEY = 'zimaos-blue-settings'
 
@@ -80,6 +81,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)
+
+  // Backend settings (locale, timezone)
+  const backendSettings = ref<Settings>({})
+  const backendSettingsLoading = ref(false)
 
   // Computed: All provider-model options for dropdown
   const providerModelOptions = computed<ProviderModelOption[]>(() => {
@@ -304,6 +309,30 @@ export const useSettingsStore = defineStore('settings', () => {
     localStorage.removeItem(STORAGE_KEY)
   }
 
+  // Fetch backend settings (locale, timezone)
+  async function fetchBackendSettings() {
+    try {
+      backendSettingsLoading.value = true
+      const response = await settingsApi.get()
+      backendSettings.value = response.data
+    } catch (e) {
+      console.error('Failed to fetch backend settings:', e)
+    } finally {
+      backendSettingsLoading.value = false
+    }
+  }
+
+  // Update backend settings
+  async function updateBackendSettings(updates: Partial<Settings>) {
+    try {
+      const response = await settingsApi.patch(updates)
+      backendSettings.value = response.data
+    } catch (e) {
+      console.error('Failed to update backend settings:', e)
+      throw e
+    }
+  }
+
   return {
     // State
     providers,
@@ -316,6 +345,8 @@ export const useSettingsStore = defineStore('settings', () => {
     loading,
     refreshing,
     error,
+    backendSettings,
+    backendSettingsLoading,
 
     // Computed
     providerModelOptions,
@@ -337,5 +368,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setCloseBehavior,
     clearError,
     resetToDefaults,
+    fetchBackendSettings,
+    updateBackendSettings,
   }
 })

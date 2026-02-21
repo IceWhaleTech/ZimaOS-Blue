@@ -490,7 +490,7 @@ class StreamingTTSManager {
   private isPlaying = false
   private isStopped = false
   private currentEventSource: EventSource | null = null
-  private static readonly PREFETCH_AHEAD = 2 // how many sentences to prefetch ahead of playback
+  private static readonly SEQUENTIAL_FETCH = true // Fetch one sentence at a time, in order
   public onSentenceStart: ((index: number) => void) | null = null
   public onComplete: (() => void) | null = null
 
@@ -519,8 +519,8 @@ class StreamingTTSManager {
       this.queue.push({ text: s })
     }
 
-    // Kick off prefetch pipeline
-    this.prefetch()
+    // Kick off sequential fetch pipeline
+    this.fetchNext()
 
     // Kick off playback if not already running
     if (!this.isPlaying) {
@@ -528,19 +528,23 @@ class StreamingTTSManager {
     }
   }
 
-  // Prefetch up to PREFETCH_AHEAD sentences ahead of the current play position
-  private prefetch() {
-    while (
-      this.fetchIndex < this.queue.length &&
-      this.fetchIndex < this.playIndex + StreamingTTSManager.PREFETCH_AHEAD &&
-      !this.queue[this.fetchIndex].fetching &&
-      !this.queue[this.fetchIndex].audio &&
-      !this.queue[this.fetchIndex].failed
-    ) {
-      this.queue[this.fetchIndex].fetching = true
-      this.fetchAudio(this.queue[this.fetchIndex].text, this.fetchIndex)
+  // Fetch next sentence in sequence (one at a time)
+  private fetchNext() {
+    if (this.isStopped) return
+
+    // Only fetch one sentence at a time to maintain order
+    if (this.fetchIndex >= this.queue.length) return
+
+    const item = this.queue[this.fetchIndex]
+    if (item.fetching || item.audio || item.failed) {
+      // Already fetching/fetched/failed, move to next
       this.fetchIndex++
+      this.fetchNext()
+      return
     }
+
+    item.fetching = true
+    this.fetchAudio(item.text, this.fetchIndex)
   }
 
   private async fetchAudio(text: string, index: number) {
@@ -563,8 +567,14 @@ class StreamingTTSManager {
             this.queue[index].audio = data.audio
             this.queue[index].contentType = data.content_type
           }
+          this.queue[index].fetching = false
         }
         es.close()
+
+        // Fetch next sentence after current one completes
+        this.fetchNext()
+
+        // Trigger playback if not already playing
         if (!this.isPlaying) this.playNext()
       })
 
@@ -573,13 +583,27 @@ class StreamingTTSManager {
         // Mark as failed so playNext can skip it instead of retrying forever
         if (!received && this.queue[index]) {
           this.queue[index].failed = true
+          this.queue[index].fetching = false
+
+          // Continue to next sentence even on error
+          this.fetchNext()
+
           if (!this.isPlaying) this.playNext()
         }
+      })
+
+      es.addEventListener('done', () => {
+        es.close()
       })
     } catch (e) {
       console.error('Failed to fetch TTS audio:', e)
       if (this.queue[index]) {
         this.queue[index].failed = true
+        this.queue[index].fetching = false
+
+        // Continue to next sentence even on error
+        this.fetchNext()
+
         if (!this.isPlaying) this.playNext()
       }
     }
@@ -648,8 +672,6 @@ class StreamingTTSManager {
     this.playIndex++
 
     if (!this.isStopped) {
-      // Trigger prefetch for next sentences as we advance
-      this.prefetch()
       this.playNext()
     }
   }

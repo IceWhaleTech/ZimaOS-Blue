@@ -426,6 +426,7 @@ export default {
     enableClaudeCodePrompt: 'Enable {name} for more features',
     // Routing Mode
     routingMode: {
+      title: 'Routing Mode',
       auto: 'Auto',
       cloud: 'Cloud',
       local: 'Local',

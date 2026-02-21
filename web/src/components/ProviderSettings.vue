@@ -93,7 +93,9 @@ async function loadProviders() {
   try {
     loading.value = true
     error.value = null
-    const response = await providerSettingsApi.list()
+    // Pass current locale to get localized provider order
+    const locale = t('$locale') || 'en-US'
+    const response = await providerSettingsApi.list(locale)
     providers.value = response.data
     // Select first provider by default
     const firstProvider = providers.value[0]

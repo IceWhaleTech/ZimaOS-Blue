@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef, triggerRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useSettingsStore } from '@/stores/settings'
 import { getChannelIconOrDefault, getTunnelProviderIcon } from '@/utils/channelIcons'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 import {
@@ -16,6 +17,7 @@ import {
 import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
 
 const { t, te } = useI18n()
+const settingsStore = useSettingsStore()
 
 interface ChannelFieldDef {
   key: string
@@ -51,10 +53,46 @@ const saving = ref<string | null>(null)
 const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
-const showMoreChannels = ref(false)
 
-// Primary channels shown by default (top 7)
-const primaryChannelIds = ['telegram', 'discord', 'slack', 'whatsapp', 'wechat', 'feishu', 'dingtalk']
+// Show top 6 channels by default, collapse the rest (17 channels)
+const getInitialShowMoreState = (): boolean => {
+  // Always start collapsed - show only top 6 channels
+  return false
+}
+
+const showMoreChannels = ref(getInitialShowMoreState())
+
+// Localized channel ordering based on user's language/region
+const getLocalizedChannelOrder = (): string[] => {
+  // Priority 1: Use backend settings locale
+  const locale = settingsStore.backendSettings.locale || t('$locale') || 'en-US'
+
+  // Chinese regions (Mainland China)
+  if (locale === 'zh-CN') {
+    return ['wechat', 'dingtalk', 'feishu', 'qq', 'telegram', 'imessage']
+  }
+
+  // Taiwan region
+  if (locale === 'zh-TW') {
+    return ['line', 'telegram', 'imessage', 'instagram', 'messenger', 'discord']
+  }
+
+  // Japanese region
+  if (locale === 'ja-JP') {
+    return ['line', 'telegram', 'imessage', 'twitter', 'instagram', 'discord']
+  }
+
+  // Korean region
+  if (locale === 'ko-KR') {
+    return ['telegram', 'instagram', 'imessage', 'twitter', 'line', 'discord']
+  }
+
+  // Default (Western/International)
+  return ['whatsapp', 'telegram', 'imessage', 'messenger', 'instagram', 'discord']
+}
+
+// Primary channels shown by default - dynamically determined by locale
+const primaryChannelIds = computed(() => getLocalizedChannelOrder())
 
 // Remote Access state
 type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
@@ -412,14 +450,23 @@ const sortedChannels = computed(() => {
   })
 })
 
-// Primary channels (top 8 popular channels)
+// Primary channels (top channels based on locale)
 const primaryChannels = computed(() => {
-  return sortedChannels.value.filter(c => primaryChannelIds.includes(c.id))
+  const ids = primaryChannelIds.value
+  const filtered = sortedChannels.value.filter(c => ids.includes(c.id))
+
+  // Sort by the order defined in primaryChannelIds
+  return filtered.sort((a, b) => {
+    const indexA = ids.indexOf(a.id)
+    const indexB = ids.indexOf(b.id)
+    return indexA - indexB
+  })
 })
 
 // Secondary channels (shown after clicking "Load More")
 const secondaryChannels = computed(() => {
-  return sortedChannels.value.filter(c => !primaryChannelIds.includes(c.id))
+  const ids = primaryChannelIds.value
+  return sortedChannels.value.filter(c => !ids.includes(c.id))
 })
 
 // Channel map for O(1) lookup
@@ -847,6 +894,8 @@ function updateChannelField(channelId: string, fieldIndex: number, value: string
 }
 
 onMounted(() => {
+  // Load backend settings first to get locale
+  settingsStore.fetchBackendSettings()
   loadChannelConfigs()
   loadRemoteAccessStatus()
 })

@@ -140,15 +140,103 @@ func (r *ProviderRegistry) Get(name string) Provider {
 	return r.providers[name]
 }
 
-// List returns all registered provider names.
+// List returns all registered provider names in a localized order.
+// The order is optimized for different regions:
+// - zh-CN: Chinese providers first (Qwen, DeepSeek, GLM, Kimi, MiniMax)
+// - Default: International providers first (Anthropic, OpenAI, Gemini)
 func (r *ProviderRegistry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	names := make([]string, 0, len(r.providers))
 	for name := range r.providers {
+		// Skip codex provider (deprecated/removed)
+		if name == "codex" {
+			continue
+		}
 		names = append(names, name)
 	}
+
+	// Default order (international)
+	defaultOrder := []string{
+		"claude", "openai", "gemini", "nvidia", "grok",
+		"qwen", "deepseek", "glm", "kimi", "minimax",
+		"openrouter", "azure", "bedrock", "siliconflow", "venice", "ollama", "aihubmix",
+	}
+
+	// Sort by predefined order
+	sortByOrder(names, defaultOrder)
 	return names
+}
+
+// ListForLocale returns provider names ordered for a specific locale.
+func (r *ProviderRegistry) ListForLocale(locale string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.providers))
+	for name := range r.providers {
+		// Skip codex provider (deprecated/removed)
+		if name == "codex" {
+			continue
+		}
+		names = append(names, name)
+	}
+
+	var order []string
+
+	// Chinese (Simplified) - prioritize Chinese providers
+	if locale == "zh-CN" || locale == "zh_CN" {
+		order = []string{
+			"qwen", "deepseek", "glm", "kimi", "minimax",
+			"nvidia", "claude", "openai", "gemini", "grok",
+			"openrouter", "azure", "bedrock", "siliconflow", "venice", "ollama", "aihubmix",
+		}
+	} else {
+		// Default order (international)
+		order = []string{
+			"claude", "openai", "gemini", "nvidia", "grok",
+			"qwen", "deepseek", "glm", "kimi", "minimax",
+			"openrouter", "azure", "bedrock", "siliconflow", "venice", "ollama", "aihubmix",
+		}
+	}
+
+	sortByOrder(names, order)
+	return names
+}
+
+// sortByOrder sorts names according to the predefined order.
+// Names not in the order list are appended at the end alphabetically.
+func sortByOrder(names []string, order []string) {
+	// Create a map for O(1) lookup of order indices
+	orderMap := make(map[string]int, len(order))
+	for i, name := range order {
+		orderMap[name] = i
+	}
+
+	// Sort using the order map
+	for i := 0; i < len(names); i++ {
+		for j := i + 1; j < len(names); j++ {
+			iOrder, iExists := orderMap[names[i]]
+			jOrder, jExists := orderMap[names[j]]
+
+			// Both exist in order map - compare by order
+			if iExists && jExists {
+				if iOrder > jOrder {
+					names[i], names[j] = names[j], names[i]
+				}
+			} else if !iExists && jExists {
+				// j exists in order, i doesn't - j should come first
+				names[i], names[j] = names[j], names[i]
+			} else if !iExists && !jExists {
+				// Neither exists - sort alphabetically
+				if names[i] > names[j] {
+					names[i], names[j] = names[j], names[i]
+				}
+			}
+			// If iExists && !jExists, keep current order (i before j)
+		}
+	}
 }
 
 // Update replaces an existing provider with a new one.

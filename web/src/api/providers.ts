@@ -26,8 +26,11 @@ export interface TestConnectionResponse {
 
 // Provider settings API
 export const providerSettingsApi = {
-  // List all provider configurations
-  list: () => api.get<ProviderConfigResponse[]>('/providers/settings'),
+  // List all provider configurations with optional locale for ordering
+  list: (locale?: string) => {
+    const params = locale ? { locale } : {}
+    return api.get<ProviderConfigResponse[]>('/providers/settings', { params })
+  },
 
   // Get configuration for a specific provider
   get: (name: string) => api.get<ProviderConfigResponse>(`/providers/settings/${name}`),

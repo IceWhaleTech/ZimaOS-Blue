@@ -868,6 +868,17 @@ func (m *TLSManager) HTTPSRedirectMiddleware() echo.MiddlewareFunc {
 				return next(c)
 			}
 
+			// Check if request is already on HTTPS port by examining the local address
+			if addr, ok := c.Request().Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+				if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+					httpsPort := m.GetHTTPSPort()
+					if tcpAddr.Port == httpsPort {
+						// Already on HTTPS port, don't redirect
+						return next(c)
+					}
+				}
+			}
+
 			// Redirect to HTTPS
 			host := c.Request().Host
 			httpsPort := m.GetHTTPSPort()

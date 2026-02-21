@@ -443,6 +443,7 @@ export default {
     },
     // Routing Mode
     routingMode: {
+      title: '路由模式',
       auto: '自动',
       cloud: '云端',
       local: '本地',

@@ -26,10 +26,11 @@ type ProvidersConfig struct {
 
 // ProviderSettingsHandler handles provider settings API endpoints.
 type ProviderSettingsHandler struct {
-	registry *llm.ProviderRegistry
-	dataDir  string
-	mu       sync.RWMutex
-	config   *ProvidersConfig
+	registry        *llm.ProviderRegistry
+	dataDir         string
+	mu              sync.RWMutex
+	config          *ProvidersConfig
+	settingsHandler *SettingsHandler
 }
 
 // NewProviderSettingsHandler creates a new provider settings handler.
@@ -45,6 +46,11 @@ func NewProviderSettingsHandler(registry *llm.ProviderRegistry, dataDir string) 
 	// Apply saved configs to all providers
 	h.applyAllConfigs()
 	return h
+}
+
+// SetSettingsHandler sets the settings handler for accessing user locale
+func (h *ProviderSettingsHandler) SetSettingsHandler(sh *SettingsHandler) {
+	h.settingsHandler = sh
 }
 
 // applyAllConfigs applies all saved configurations to their respective providers.
@@ -117,8 +123,39 @@ func (h *ProviderSettingsHandler) ListProviderConfigs(c echo.Context) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	// Get all registered providers
-	providerNames := h.registry.List()
+	// Priority 1: Get locale from backend settings (user's configured language preference)
+	locale := ""
+	if h.settingsHandler != nil {
+		locale = h.settingsHandler.GetLocale()
+	}
+
+	// Priority 2: Get locale from query parameter (frontend override)
+	if queryLocale := c.QueryParam("locale"); queryLocale != "" {
+		locale = queryLocale
+	}
+
+	// Priority 3: Fallback to Accept-Language header if not provided
+	if locale == "" {
+		acceptLang := c.Request().Header.Get("Accept-Language")
+		if acceptLang != "" {
+			// Parse Accept-Language header (e.g., "zh-CN,zh;q=0.9,en;q=0.8")
+			// Take the first language code
+			if len(acceptLang) >= 5 {
+				locale = acceptLang[:5] // e.g., "zh-CN"
+			} else if len(acceptLang) >= 2 {
+				locale = acceptLang[:2] // e.g., "zh"
+			}
+		}
+	}
+
+	// Get all registered providers with localized order
+	var providerNames []string
+	if locale != "" {
+		providerNames = h.registry.ListForLocale(locale)
+	} else {
+		providerNames = h.registry.List()
+	}
+
 	configs := make([]ProviderConfigResponse, 0, len(providerNames))
 
 	for _, name := range providerNames {

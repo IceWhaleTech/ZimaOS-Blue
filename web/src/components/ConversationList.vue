@@ -85,15 +85,10 @@ function handlePin(id: string, isPinned: boolean) {
   }
 }
 
-// Long press handling for mobile - show context menu
+// Long press handling for mobile - show bottom sheet
 function startLongPress(id: string, event: MouseEvent | TouchEvent) {
   longPressId.value = id
   longPressTimer.value = setTimeout(() => {
-    const rect = (event.target as HTMLElement).getBoundingClientRect()
-    contextMenuPos.value = {
-      x: rect.left,
-      y: rect.bottom + 8
-    }
     showContextMenu.value = id
   }, 500) // 500ms long press
 }
@@ -307,33 +302,90 @@ watch(searchQuery, (query) => {
             </button>
           </div>
 
-          <!-- Long press context menu -->
-          <div
-            v-if="showContextMenu === conversation.id"
-            class="absolute inset-0 bg-white/95 dark:bg-gray-700/95 flex flex-col items-center justify-center gap-2 p-2 rounded"
-          >
-            <button
-              class="w-full px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white text-sm rounded transition-colors"
-              @click.stop="handlePin(conversation.id, conversation.pinned || false); showContextMenu = null"
-            >
-              {{ conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation') }}
-            </button>
-            <button
-              class="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
-              @click.stop="handleDelete(conversation.id); showContextMenu = null"
-            >
-              {{ t('chat.deleteConversation') }}
-            </button>
-            <button
-              class="w-full px-3 py-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm rounded transition-colors"
-              @click.stop="showContextMenu = null"
-            >
-              {{ t('common.cancel') }}
-            </button>
-          </div>
+          <!-- Long press context menu - removed, now using bottom sheet -->
         </div>
       </div>
     </div>
+
+    <!-- Bottom sheet for long press actions (teleported to body) -->
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div
+          v-if="showContextMenu"
+          class="fixed inset-0 z-[200] flex items-end"
+          @click="showContextMenu = null"
+        >
+          <!-- Backdrop -->
+          <div class="absolute inset-0 bg-black/50" />
+
+          <!-- Sheet content -->
+          <div
+            class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
+            @click.stop
+          >
+            <!-- Handle bar -->
+            <div class="flex justify-center pt-3 pb-2">
+              <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+            </div>
+
+            <!-- Actions -->
+            <div class="p-4 space-y-2">
+              <button
+                v-for="conv in conversations.filter(c => c.id === showContextMenu)"
+                :key="conv.id"
+                class="w-full px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white text-base font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                @click="handlePin(conv.id, conv.pinned || false); showContextMenu = null"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  :fill="conv.pinned ? 'currentColor' : 'none'"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 5a2 2 0 012-2h6a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  />
+                </svg>
+                {{ conv.pinned ? t('chat.unpinConversation') : t('chat.pinConversation') }}
+              </button>
+              <button
+                class="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white text-base font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                @click="handleDelete(showContextMenu); showContextMenu = null"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                {{ t('chat.deleteConversation') }}
+              </button>
+              <button
+                class="w-full px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-base font-medium rounded-xl transition-colors"
+                @click="showContextMenu = null"
+              >
+                {{ t('common.cancel') }}
+              </button>
+            </div>
+
+            <!-- Safe area padding for devices with notches -->
+            <div class="h-[env(safe-area-inset-bottom)]" />
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -349,5 +401,36 @@ watch(searchQuery, (query) => {
 .conversation-list::-webkit-scrollbar-thumb {
   background: #4b5563;
   border-radius: 3px;
+}
+
+/* Bottom sheet animation */
+.sheet-enter-active,
+.sheet-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.sheet-enter-active > div:last-child,
+.sheet-leave-active > div:last-child {
+  transition: transform 0.3s ease;
+}
+
+.sheet-enter-from,
+.sheet-leave-to {
+  opacity: 0;
+}
+
+.sheet-enter-from > div:last-child,
+.sheet-leave-to > div:last-child {
+  transform: translateY(100%);
+}
+
+.sheet-enter-to,
+.sheet-leave-from {
+  opacity: 1;
+}
+
+.sheet-enter-to > div:last-child,
+.sheet-leave-from > div:last-child {
+  transform: translateY(0);
 }
 </style>

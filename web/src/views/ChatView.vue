@@ -40,6 +40,8 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
 const isNarrowScreen = ref(false) // PC narrow screen (<768px)
+const isCompact = computed(() => isNarrowScreen.value) // Compact mode = narrow screen
+const isMac = computed(() => navigator.platform.toUpperCase().indexOf('MAC') >= 0)
 const pageStack = ref<string[]>([]) // Mobile page stack: conversation IDs
 const showListPage = computed(() => isMobile.value && pageStack.value.length === 0)
 const showRoutingMenu = ref(false)
@@ -333,7 +335,8 @@ function toggleSidebar() {
 }
 
 function toggleRoutingMenu() {
-  if (!showRoutingMenu.value && routingButtonRef.value) {
+  // On mobile, no need to calculate position (bottom sheet)
+  if (!showRoutingMenu.value && !isMobile.value && routingButtonRef.value) {
     const rect = routingButtonRef.value.getBoundingClientRect()
     routingMenuPosition.value = {
       x: rect.right,
@@ -350,7 +353,8 @@ function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
 
 // Theme style selector functions
 function toggleStyleSelector() {
-  if (!showStyleSelector.value && styleButtonRef.value) {
+  // On mobile, no need to calculate position (bottom sheet)
+  if (!showStyleSelector.value && !isMobile.value && styleButtonRef.value) {
     const rect = styleButtonRef.value.getBoundingClientRect()
     styleSelectorPosition.value = {
       x: rect.right,
@@ -368,6 +372,12 @@ function selectThemeStyle(style: ThemeStyle) {
 // Close routing menu when clicking outside
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
+
+  // On mobile, bottom sheets handle their own click-outside via backdrop
+  if (isMobile.value) {
+    return
+  }
+
   if (!target.closest('.routing-menu-container')) {
     showRoutingMenu.value = false
   }
@@ -384,9 +394,47 @@ function handleClickOutside(event: MouseEvent) {
 // Context menu handlers
 function handleMessageContextMenu(event: MouseEvent, messageId: string) {
   event.preventDefault()
+
+  // On mobile, only respond to long press (synthetic 'longpress' event)
+  // Ignore native contextmenu events on mobile
+  if (isMobile.value && event.type === 'contextmenu') {
+    return
+  }
+
   contextMenuMessageId.value = messageId
   contextMenuPosition.value = { x: event.clientX, y: event.clientY }
   showContextMenu.value = true
+}
+
+// Mobile long press handlers
+const longPressTimer = ref<number | null>(null)
+const longPressMessageId = ref<string | null>(null)
+
+function handleTouchStart(event: TouchEvent, messageId: string) {
+  longPressMessageId.value = messageId
+  longPressTimer.value = window.setTimeout(() => {
+    // Trigger context menu on long press
+    const touch = event.touches[0]
+    if (touch) {
+      // Create a synthetic MouseEvent for the context menu
+      // Mark it as from touch so handleMessageContextMenu can identify it
+      const syntheticEvent = new MouseEvent('longpress', {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        bubbles: true,
+        cancelable: true
+      })
+      handleMessageContextMenu(syntheticEvent, messageId)
+    }
+  }, 500) // 500ms long press
+}
+
+function handleTouchEnd() {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  longPressMessageId.value = null
 }
 
 function handleSelectMessage() {
@@ -455,21 +503,24 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   document.removeEventListener('click', handleClickOutside)
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+  }
 })
 </script>
 
 <template>
-  <div class="chat-view h-full flex relative" :class="themeStyleClass">
+  <!-- Desktop View -->
+  <div v-if="!isMobile" class="chat-view flex relative" :class="themeStyleClass">
     <!-- Overlay for narrow screen sidebar -->
     <div
-      v-if="!isMobile && isNarrowScreen && showSidebar"
+      v-if="isNarrowScreen && showSidebar"
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30"
       @click="toggleSidebar"
     />
 
     <!-- Desktop: Sidebar (always visible on wide screen, collapsible on narrow) -->
     <aside
-      v-if="!isMobile"
       class="conversation-sidebar flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar z-40 w-80"
       :class="{
         'fixed left-0 top-0 h-full': isNarrowScreen,
@@ -490,42 +541,13 @@ onUnmounted(() => {
       />
     </aside>
 
-    <!-- Mobile: Conversation list page (default) -->
-    <div
-      v-if="isMobile && showListPage"
-      class="flex-1 flex flex-col min-w-0"
+    <!-- Desktop: Main chat area -->
+    <main
+      class="flex-1 flex flex-col min-w-0 relative"
+      @dragover.prevent="chatInputRef?.handleDragOver($event)"
+      @dragleave="chatInputRef?.handleDragLeave()"
+      @drop.prevent="chatInputRef?.handleDrop($event)"
     >
-      <ConversationList
-        :conversations="chatStore.sortedConversations"
-        :current-id="chatStore.currentConversationId"
-        :loading="chatStore.loading"
-        :searching="chatStore.searching"
-        @select="handleSelectConversation"
-        @create="handleCreateConversation"
-        @delete="handleDeleteConversation"
-        @search="handleSearch"
-        @pin="handlePinConversation"
-        @unpin="handleUnpinConversation"
-      />
-    </div>
-
-    <!-- Main chat area (Desktop: flex-1, Mobile: fixed overlay with animation) -->
-    <Transition
-      name="slide-fade"
-      mode="out-in"
-    >
-      <main
-        v-if="!isMobile || !showListPage"
-        key="chat-main"
-        class="flex flex-col min-w-0 relative"
-        :class="{
-          'flex-1': !isMobile,
-          'fixed inset-0 z-50 bg-surface-base': isMobile && !showListPage
-        }"
-        @dragover.prevent="chatInputRef?.handleDragOver($event)"
-        @dragleave="chatInputRef?.handleDragLeave()"
-        @drop.prevent="chatInputRef?.handleDrop($event)"
-      >
       <!-- Chat header -->
       <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -557,25 +579,27 @@ onUnmounted(() => {
           <!-- Powered by Claude Code CLI badge -->
           <span
             v-if="isClaudeCodeEnabled"
-            class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0"
+            class="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0"
+            :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
             :title="t('chat.poweredByClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+            <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
-            {{ t('chat.poweredByClaudeCode', { name: 'Claude Code CLI' }) }}
+            <span v-if="!isCompact && !isMobile">{{ t('chat.poweredByClaudeCode', { name: 'Claude Code CLI' }) }}</span>
           </span>
           <!-- Enable Claude Code CLI prompt -->
           <router-link
             v-else
             to="/settings?tab=llm#claude-code-settings"
-            class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
+            class="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
+            :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
             :title="t('chat.enableClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            {{ t('chat.enableClaudeCodePrompt', { name: 'Claude Code CLI' }) }}
+            <span v-if="!isCompact && !isMobile">{{ t('chat.enableClaudeCodePrompt', { name: 'Claude Code CLI' }) }}</span>
           </router-link>
         </div>
 
@@ -591,7 +615,7 @@ onUnmounted(() => {
               :title="providerStatus.message"
             >
               <span class="w-2 h-2 rounded-full bg-gray-400" />
-              <span class="hidden sm:inline text-xs">{{ t('chat.addProvider') }}</span>
+              <span v-if="!isCompact && !isMobile" class="hidden sm:inline text-xs">{{ t('chat.addProvider') }}</span>
             </router-link>
 
             <!-- Has providers - show routing menu trigger -->
@@ -632,8 +656,8 @@ onUnmounted(() => {
                 <svg v-else class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>{{ routingModeInfo.label }}</span>
-                <span v-if="routingModeInfo.count > 0" class="opacity-60">({{ routingModeInfo.count }})</span>
+                <span v-if="!isCompact && !isMobile">{{ routingModeInfo.label }}</span>
+                <span v-if="!isCompact && !isMobile && routingModeInfo.count > 0" class="opacity-60">({{ routingModeInfo.count }})</span>
               </span>
               <!-- Dropdown arrow -->
               <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -696,7 +720,7 @@ onUnmounted(() => {
       <!-- Messages area -->
       <div
         ref="messagesContainer"
-        class="flex-1 overflow-y-auto overscroll-contain pb-32 chat-messages-area"
+        class="flex-1 overflow-y-auto overscroll-contain pb-32 chat-messages-area bg-surface-base"
         @scroll="handleScroll"
       >
         <!-- Load more indicator -->
@@ -861,10 +885,10 @@ onUnmounted(() => {
         </template>
       </div>
 
-      <!-- Context menu -->
-      <Teleport to="body">
+      <!-- Context menu -->\n      <Teleport to="body">
+        <!-- Desktop: Floating menu -->
         <div
-          v-if="showContextMenu"
+          v-if="showContextMenu && !isMobile"
           class="context-menu fixed z-[100] glass-card shadow-xl py-1 min-w-[160px]"
           :style="{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }"
         >
@@ -878,12 +902,52 @@ onUnmounted(() => {
             {{ t('chat.selectMessage') }}
           </button>
         </div>
+
+        <!-- Mobile: Bottom sheet -->
+        <Transition name="sheet">
+          <div
+            v-if="showContextMenu && isMobile"
+            class="fixed inset-0 z-[9999] flex items-end"
+            @click="showContextMenu = false"
+          >
+            <!-- Backdrop -->
+            <div class="absolute inset-0 bg-black/50" />
+
+            <!-- Sheet content -->
+            <div
+              class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
+              @click.stop
+            >
+              <!-- Handle bar -->
+              <div class="flex justify-center pt-3 pb-2">
+                <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+              </div>
+
+              <!-- Actions -->
+              <div class="p-4 space-y-2">
+                <button
+                  class="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-xl transition-colors"
+                  @click="handleSelectMessage"
+                >
+                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span class="font-medium">{{ t('chat.selectMessage') }}</span>
+                </button>
+              </div>
+
+              <!-- Safe area padding -->
+              <div class="h-[env(safe-area-inset-bottom)]" />
+            </div>
+          </div>
+        </Transition>
       </Teleport>
 
-      <!-- Routing mode dropdown menu (teleported to body for proper z-index) -->
+      <!-- Routing mode menu (teleported to body for proper z-index) -->
       <Teleport to="body">
+        <!-- Desktop: Dropdown menu -->
         <div
-          v-if="showRoutingMenu"
+          v-if="showRoutingMenu && !isMobile"
           class="routing-menu-container fixed z-[100] glass-card shadow-xl p-2 min-w-[200px]"
           :style="{ left: `${Math.max(8, routingMenuPosition.x - 200)}px`, top: `${routingMenuPosition.y}px` }"
         >
@@ -953,12 +1017,110 @@ onUnmounted(() => {
             <span>{{ t('chat.manageProviders') }}</span>
           </router-link>
         </div>
+
+        <!-- Mobile: Bottom sheet -->
+        <Transition name="sheet">
+          <div
+            v-if="showRoutingMenu && isMobile"
+            class="fixed inset-0 z-[9999] flex items-end"
+            @click="showRoutingMenu = false"
+          >
+            <!-- Backdrop -->
+            <div class="absolute inset-0 bg-black/50" />
+
+            <!-- Sheet content -->
+            <div
+              class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
+              @click.stop
+            >
+              <!-- Handle bar -->
+              <div class="flex justify-center pt-3 pb-2">
+                <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+              </div>
+
+              <!-- Title -->
+              <div class="px-4 pb-2">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('chat.routingMode.title') }}</h3>
+              </div>
+
+              <!-- Actions -->
+              <div class="p-4 space-y-2">
+                <!-- Auto mode -->
+                <button
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors"
+                  :class="providerPoolStore.routingMode === 'auto' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300'"
+                  @click="selectRoutingMode('auto')"
+                >
+                  <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <div class="flex-1">
+                    <div class="font-medium">{{ t('chat.routingMode.auto') }}</div>
+                    <div class="text-xs opacity-60">{{ t('chat.routingMode.autoDesc') }}</div>
+                  </div>
+                  <span class="text-sm opacity-60">{{ cloudActiveCount + localActiveCount }}</span>
+                </button>
+
+                <!-- Cloud mode -->
+                <button
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors"
+                  :class="providerPoolStore.routingMode === 'cloud' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300'"
+                  :disabled="!providerPoolStore.hasCloudProviders"
+                  @click="selectRoutingMode('cloud')"
+                >
+                  <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                  </svg>
+                  <div class="flex-1">
+                    <div class="font-medium" :class="{ 'opacity-50': !providerPoolStore.hasCloudProviders }">{{ t('chat.routingMode.cloud') }}</div>
+                    <div class="text-xs opacity-60">{{ t('chat.routingMode.cloudDesc') }}</div>
+                  </div>
+                  <span class="text-sm" :class="cloudActiveCount > 0 ? 'text-green-500' : 'opacity-40'">{{ cloudActiveCount }}</span>
+                </button>
+
+                <!-- Local mode -->
+                <button
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors"
+                  :class="providerPoolStore.routingMode === 'local' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300'"
+                  :disabled="!providerPoolStore.hasLocalProviders"
+                  @click="selectRoutingMode('local')"
+                >
+                  <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <div class="flex-1">
+                    <div class="font-medium" :class="{ 'opacity-50': !providerPoolStore.hasLocalProviders }">{{ t('chat.routingMode.local') }}</div>
+                    <div class="text-xs opacity-60">{{ t('chat.routingMode.localDesc') }}</div>
+                  </div>
+                  <span class="text-sm" :class="localActiveCount > 0 ? 'text-green-500' : 'opacity-40'">{{ localActiveCount }}</span>
+                </button>
+
+                <!-- Link to LLM settings -->
+                <router-link
+                  to="/settings?tab=llm"
+                  class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-xl transition-colors"
+                  @click="showRoutingMenu = false"
+                >
+                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>{{ t('chat.manageProviders') }}</span>
+                </router-link>
+              </div>
+
+              <!-- Safe area padding -->
+              <div class="h-[env(safe-area-inset-bottom)]" />
+            </div>
+          </div>
+        </Transition>
       </Teleport>
 
-      <!-- Theme style selector dropdown (teleported to body for proper z-index) -->
+      <!-- Theme style selector (teleported to body for proper z-index) -->
       <Teleport to="body">
+        <!-- Desktop: Dropdown menu -->
         <div
-          v-if="showStyleSelector"
+          v-if="showStyleSelector && !isMobile"
           class="style-selector-container fixed z-[100] glass-card shadow-xl p-3 min-w-[180px]"
           :style="{ left: `${Math.max(8, styleSelectorPosition.x - 180)}px`, top: `${styleSelectorPosition.y}px` }"
         >
@@ -979,6 +1141,54 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+
+        <!-- Mobile: Bottom sheet -->
+        <Transition name="sheet">
+          <div
+            v-if="showStyleSelector && isMobile"
+            class="fixed inset-0 z-[9999] flex items-end"
+            @click="showStyleSelector = false"
+          >
+            <!-- Backdrop -->
+            <div class="absolute inset-0 bg-black/50" />
+
+            <!-- Sheet content -->
+            <div
+              class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
+              @click.stop
+            >
+              <!-- Handle bar -->
+              <div class="flex justify-center pt-3 pb-2">
+                <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+              </div>
+
+              <!-- Title -->
+              <div class="px-4 pb-2">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('theme.styles.title') }}</h3>
+              </div>
+
+              <!-- Actions -->
+              <div class="p-4 space-y-2">
+                <button
+                  v-for="style in THEME_STYLES"
+                  :key="style.id"
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors"
+                  :class="settingsStore.themeStyle === style.id ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300'"
+                  @click="selectThemeStyle(style.id)"
+                >
+                  <span
+                    class="theme-style-btn flex-shrink-0"
+                    :class="`theme-style-btn-${style.id}`"
+                  />
+                  <span class="font-medium">{{ t(style.labelKey) }}</span>
+                </button>
+              </div>
+
+              <!-- Safe area padding -->
+              <div class="h-[env(safe-area-inset-bottom)]" />
+            </div>
+          </div>
+        </Transition>
       </Teleport>
 
       <!-- Multi-select action bar -->
@@ -1083,13 +1293,161 @@ onUnmounted(() => {
         @transcript="handleVoiceTranscript"
       />
     </main>
-    </Transition>
   </div>
+
+  <!-- Mobile View (Teleported to body for complete independence) -->
+  <Teleport to="body">
+    <!-- Mobile: Conversation list page -->
+    <div
+      v-if="isMobile && showListPage"
+      class="fixed inset-0 flex flex-col bg-white dark:bg-gray-900"
+      style="z-index: 50;"
+    >
+      <ConversationList
+        :conversations="chatStore.sortedConversations"
+        :current-id="chatStore.currentConversationId"
+        :loading="chatStore.loading"
+        :searching="chatStore.searching"
+        @select="handleSelectConversation"
+        @create="handleCreateConversation"
+        @delete="handleDeleteConversation"
+        @search="handleSearch"
+        @pin="handlePinConversation"
+        @unpin="handleUnpinConversation"
+      />
+    </div>
+
+    <!-- Mobile: Chat overlay -->
+    <Transition name="slide-only">
+      <div
+        v-if="isMobile && !showListPage"
+        class="fixed inset-0 flex flex-col bg-surface-base"
+        :class="themeStyleClass"
+        style="z-index: 50;"
+      >
+        <!-- Mobile header -->
+        <header class="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-glass-border glass-header bg-surface-base">
+          <div class="flex items-center gap-3 flex-1 min-w-0">
+            <button
+              class="p-1.5 -ml-1.5 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+              @click="toggleSidebar"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white truncate">
+              {{ chatStore.currentConversation?.title || t('chat.newChat') }}
+            </h2>
+          </div>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <button
+              class="p-1.5 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              @click.stop="toggleRoutingMenu"
+            >
+              <span
+                class="w-2 h-2 rounded-full inline-block"
+                :class="{
+                  'bg-red-500 animate-pulse': providerStatus.status === 'error',
+                  'bg-green-500': providerStatus.status === 'active',
+                  'bg-gray-400': providerStatus.status === 'none',
+                  'bg-yellow-500 animate-pulse': providerStatus.status === 'pending'
+                }"
+              />
+            </button>
+            <button
+              class="p-1.5 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              @click.stop="toggleStyleSelector"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <!-- Messages area -->
+        <div class="flex-1 overflow-y-auto overscroll-contain px-4 pb-32 bg-surface-base">
+          <!-- Empty state -->
+          <div v-if="chatStore.messages.length === 0 && !chatStore.loading" class="h-full flex flex-col items-center justify-center">
+            <img src="/logo.svg" alt="Logo" class="w-12 h-12 mb-4 opacity-60" />
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ t('chat.startConversation') }}</h3>
+            <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">{{ t('chat.startConversationDesc') }}</p>
+            <PresetQuestions @select="handlePresetQuestionSelect" />
+          </div>
+
+          <!-- Messages -->
+          <template v-else>
+            <div
+              v-for="(message, index) in chatStore.messages"
+              :key="`${message.conversation_id}-${message.id}`"
+              @touchstart="(e) => handleTouchStart(e, message.id)"
+              @touchend="handleTouchEnd"
+              @touchmove="handleTouchEnd"
+            >
+              <ChatMessage
+                :message="message"
+                :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
+                @contextmenu="handleMessageContextMenu"
+              />
+            </div>
+
+            <!-- Action buttons -->
+            <div v-if="chatStore.messages.length > 0" class="flex justify-center gap-2 py-4">
+              <button
+                v-if="chatStore.streaming"
+                class="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg text-sm cursor-pointer"
+                @click="handleCancel"
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+                {{ t('chat.stopGenerating') }}
+              </button>
+              <template v-else-if="chatStore.messages[chatStore.messages.length - 1]?.role === 'assistant'">
+                <button
+                  class="flex items-center gap-2 px-4 py-2 glass-card text-gray-600 dark:text-gray-300 rounded-lg text-sm cursor-pointer"
+                  @click="handleContinue"
+                >
+                  {{ t('chat.continueGenerating') }}
+                </button>
+                <button
+                  class="flex items-center gap-2 px-4 py-2 glass-card text-gray-600 dark:text-gray-300 rounded-lg text-sm cursor-pointer"
+                  @click="handleRegenerate"
+                >
+                  {{ t('chat.regenerate') }}
+                </button>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- Input area -->
+        <div class="flex-shrink-0 border-t border-gray-200 dark:border-glass-border bg-surface-base">
+          <ChatInput
+            :disabled="chatStore.sending"
+            :streaming="chatStore.streaming"
+            @send="handleSend"
+            @cancel="handleCancel"
+            @open-talk-mode="showTalkMode = true"
+          />
+        </div>
+
+        <!-- Talk Mode -->
+        <TalkMode
+          v-model="showTalkMode"
+          :conversation-id="chatStore.currentConversationId || undefined"
+          @transcript="handleVoiceTranscript"
+        />
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
 .chat-view {
-  height: calc(100vh - 64px);
+  min-height: 0;
+  flex: 1;
 }
 
 /* Safe area for mobile devices with notches */
@@ -1099,23 +1457,26 @@ onUnmounted(() => {
   }
 }
 
-/* Slide and fade animation for mobile chat overlay */
-.slide-fade-enter-active {
-  transition: all 0.3s ease-out;
+/* Slide animation for mobile chat overlay (no fade) */
+.slide-only-enter-active,
+.slide-only-leave-active {
+  transition: transform 0.3s ease-out;
 }
 
-.slide-fade-leave-active {
-  transition: all 0.3s ease-in;
-}
-
-.slide-fade-enter-from {
+.slide-only-enter-from {
   transform: translateX(100%);
-  opacity: 0;
 }
 
-.slide-fade-leave-to {
+.slide-only-enter-to {
+  transform: translateX(0);
+}
+
+.slide-only-leave-from {
+  transform: translateX(0);
+}
+
+.slide-only-leave-to {
   transform: translateX(100%);
-  opacity: 0;
 }
 
 .conversation-sidebar {
@@ -1182,6 +1543,37 @@ onUnmounted(() => {
   padding-top: 0;
   padding-bottom: 0;
   border-bottom-width: 0;
+}
+
+/* Bottom sheet animation for mobile menus */
+.sheet-enter-active,
+.sheet-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.sheet-enter-active > div:last-child,
+.sheet-leave-active > div:last-child {
+  transition: transform 0.3s ease;
+}
+
+.sheet-enter-from,
+.sheet-leave-to {
+  opacity: 0;
+}
+
+.sheet-enter-from > div:last-child,
+.sheet-leave-to > div:last-child {
+  transform: translateY(100%);
+}
+
+.sheet-enter-to,
+.sheet-leave-from {
+  opacity: 1;
+}
+
+.sheet-enter-to > div:last-child,
+.sheet-leave-from > div:last-child {
+  transform: translateY(0);
 }
 
 /* Token change animation */

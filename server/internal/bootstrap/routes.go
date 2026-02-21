@@ -1102,6 +1102,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	providerSettingsGroup := protected.Group("/providers/settings")
 	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
 
+	// User settings routes (protected)
+	settingsHandler := server.NewSettingsHandler(cfg.DataDir)
+	settingsHandler.RegisterRoutes(protected)
+	// Also make locale available to provider settings handler
+	providerSettingsHandler.SetSettingsHandler(settingsHandler)
+
 	// User-level routes (protected) — /api/v1/my/*
 	myGroup := protected.Group("/my")
 
