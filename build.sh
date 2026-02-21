@@ -190,7 +190,7 @@ start_all() {
     # Start server in foreground
     info "Starting Go server (dev mode)..."
     cd "$PROJECT_ROOT/server"
-    go build -tags 'fts5 espeak kokoro dev' -o blue ./cmd/blue
+    go build -tags 'fts5 espeak kokoro' -o blue ./cmd/blue
     run_binary ./blue
 }
 

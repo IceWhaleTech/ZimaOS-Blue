@@ -142,8 +142,9 @@ export default defineConfig({
           if (id.includes('node_modules/axios')) {
             return 'http'
           }
-          // Mermaid and ALL its dependencies must be in the same chunk
-          // to avoid "Cannot access 'x' before initialization" errors
+          // Mermaid is lazy-loaded via dynamic import() in CardMermaid.vue
+          // Do NOT assign it to a named chunk — let Vite naturally code-split it
+          // so it's only fetched when a mermaid card is actually rendered
           if (id.includes('node_modules/mermaid') ||
               id.includes('node_modules/d3') ||
               id.includes('node_modules/dagre') ||
@@ -153,7 +154,7 @@ export default defineConfig({
               id.includes('node_modules/khroma') ||
               id.includes('node_modules/lodash') ||
               id.includes('node_modules/stylis')) {
-            return 'mermaid'
+            return undefined // let Vite handle splitting naturally
           }
           // Other vendor libraries
           if (id.includes('node_modules')) {
@@ -165,8 +166,8 @@ export default defineConfig({
   },
   // Optimize dependencies
   optimizeDeps: {
-    include: ['vue', 'vue-router', 'pinia', 'axios', 'mermaid'],
-    exclude: ['@vue-flow/core'],
+    include: ['vue', 'vue-router', 'pinia', 'axios'],
+    exclude: ['@vue-flow/core', 'mermaid'],
   },
   test: {
     globals: true,

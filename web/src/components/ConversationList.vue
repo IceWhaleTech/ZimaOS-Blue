@@ -214,20 +214,18 @@ watch(searchQuery, (query) => {
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <!-- Pin icon -->
+                <h3 class="text-gray-900 dark:text-white font-medium truncate flex items-center gap-1.5">
+                  <!-- Pin icon inline with title -->
                   <svg
                     v-if="conversation.pinned"
                     xmlns="http://www.w3.org/2000/svg"
-                    class="h-4 w-4 text-yellow-500 flex-shrink-0"
+                    class="h-3.5 w-3.5 text-yellow-500 flex-shrink-0 transform rotate-45"
                     viewBox="0 0 24 24"
                     fill="currentColor"
                   >
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
+                    <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
                   </svg>
-                </div>
-                <h3 class="text-gray-900 dark:text-white font-medium truncate">
-                  {{ conversation.title }}
+                  <span class="truncate">{{ conversation.title }}</span>
                 </h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {{ formatDate(conversation.updated_at) }}
@@ -246,16 +244,17 @@ watch(searchQuery, (query) => {
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5"
-                :fill="conversation.pinned ? 'currentColor' : 'none'"
+                class="h-5 w-5 transform rotate-45"
+                :class="{ 'text-yellow-500': conversation.pinned }"
                 viewBox="0 0 24 24"
+                :fill="conversation.pinned ? 'currentColor' : 'none'"
                 stroke="currentColor"
+                stroke-width="2"
               >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M5 5a2 2 0 012-2h6a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
                 />
               </svg>
             </button>
@@ -338,16 +337,16 @@ watch(searchQuery, (query) => {
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-5 w-5"
-                  :fill="conv.pinned ? 'currentColor' : 'none'"
+                  class="h-5 w-5 transform rotate-45"
                   viewBox="0 0 24 24"
+                  :fill="conv.pinned ? 'currentColor' : 'none'"
                   stroke="currentColor"
+                  stroke-width="2"
                 >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 5a2 2 0 012-2h6a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                    d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
                   />
                 </svg>
                 {{ conv.pinned ? t('chat.unpinConversation') : t('chat.pinConversation') }}

@@ -1952,6 +1952,11 @@ func (h *Handler) UpdateTLSSettings(c echo.Context) error {
 		tlsManager.SetHTTPSPort(req.HTTPSPort)
 	}
 
+	// Persist to disk so the setting survives restart
+	if err := tlsManager.SaveSettings(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save TLS settings"})
+	}
+
 	certInfo := tlsManager.GetCertificateInfo()
 	return c.JSON(http.StatusOK, TLSConfigResponse{
 		Enabled:   certInfo != nil,

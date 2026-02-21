@@ -7,15 +7,22 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/onnx"
 	ort "github.com/yalue/onnxruntime_go"
 )
+
+// kokoroIdleTimeout is how long the Kokoro model stays resident after the last use.
+// After this duration with no synthesis calls, the ONNX session, voice data, and
+// G2P dictionaries are unloaded to reclaim ~150MB of memory.
+const kokoroIdleTimeout = 10 * time.Minute
 
 // KokoroProvider implements TTS using Kokoro ONNX model
 // Supports 9 languages with high-quality voices:
@@ -35,10 +42,11 @@ type KokoroProvider struct {
 	initStage   string // current initialization stage for progress reporting
 	mu          sync.Mutex
 	session     *onnx.DynamicSession
-	voices      map[string][]float32 // lang -> voice style embeddings, shape [N, 256]
-	langMap    map[string]bool // supported BCP-47 language codes
-	g2p        *G2PDispatcher
-	tokenizer  *KokoroTokenizer
+	voices      map[string][]float32 // lang -> voice style embeddings, loaded lazily per-language
+	langMap     map[string]bool      // supported BCP-47 language codes
+	g2p         *G2PDispatcher
+	tokenizer   *KokoroTokenizer
+	idleTimer   *time.Timer // fires after kokoroIdleTimeout to unload model
 }
 
 // langVoiceMap maps BCP-47 language codes to Kokoro voice file names (female voices).
@@ -83,6 +91,36 @@ func NewKokoroProvider(dataPath string) *KokoroProvider {
 	return p
 }
 
+// touchActivity resets the idle unload timer. Must be called on every synthesis.
+func (p *KokoroProvider) touchActivity() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.idleTimer != nil {
+		p.idleTimer.Reset(kokoroIdleTimeout)
+	} else {
+		p.idleTimer = time.AfterFunc(kokoroIdleTimeout, p.unloadModel)
+	}
+}
+
+// unloadModel releases the ONNX session, voice data, and G2P dictionaries
+// to reclaim memory after a period of inactivity.
+func (p *KokoroProvider) unloadModel() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.initialized {
+		return
+	}
+	slog.Info("[kokoro] idle timeout, unloading model to reclaim memory")
+	if p.session != nil {
+		p.session.Close()
+		p.session = nil
+	}
+	p.voices = nil
+	p.g2p = nil
+	p.initialized = false
+	p.initStage = ""
+}
+
 // SupportedLanguages returns list of languages Kokoro can handle
 func (p *KokoroProvider) SupportedLanguages() []string {
 	return []string{
@@ -123,28 +161,15 @@ func (p *KokoroProvider) Initialize() error {
 		}
 	}
 
-	// Stage: loading voice data
-	p.initStage = "loading_voice"
-
-	// Load voice style embeddings for all languages
-	voicesDir := filepath.Join(filepath.Dir(p.modelPath), "voices")
-	p.voices = make(map[string][]float32)
-	for lang, voiceName := range langVoiceMap {
-		voicePath := filepath.Join(voicesDir, voiceName+".bin")
-		voiceRaw, err := os.ReadFile(voicePath)
-		if err != nil {
-			// Non-fatal: skip missing voice files, fall back to default
-			continue
-		}
-		data := make([]float32, len(voiceRaw)/4)
-		for i := range data {
-			bits := uint32(voiceRaw[i*4]) | uint32(voiceRaw[i*4+1])<<8 | uint32(voiceRaw[i*4+2])<<16 | uint32(voiceRaw[i*4+3])<<24
-			data[i] = math.Float32frombits(bits)
-		}
-		p.voices[lang] = data
+	// Voices are loaded lazily per-language in loadVoice() to save memory
+	if p.voices == nil {
+		p.voices = make(map[string][]float32)
 	}
-	if len(p.voices) == 0 {
-		return fmt.Errorf("no Kokoro voice files found in %s", voicesDir)
+
+	// Re-create G2P dispatcher if it was unloaded by idle timeout
+	if p.g2p == nil {
+		p.g2p = NewG2PDispatcher()
+		p.g2p.Warmup()
 	}
 
 	// Load ONNX model — inputs: input_ids[1,seq], style[1,256], speed[1]
@@ -161,7 +186,39 @@ func (p *KokoroProvider) Initialize() error {
 	p.session = session
 	p.initialized = true
 	p.initStage = "ready"
+
+	// Start idle timer
+	if p.idleTimer != nil {
+		p.idleTimer.Reset(kokoroIdleTimeout)
+	} else {
+		p.idleTimer = time.AfterFunc(kokoroIdleTimeout, p.unloadModel)
+	}
+
 	return nil
+}
+
+// loadVoice lazily loads a single voice file for the given language.
+// Must be called with p.mu held.
+func (p *KokoroProvider) loadVoice(lang string) {
+	if _, ok := p.voices[lang]; ok {
+		return // already loaded
+	}
+	voiceName, ok := langVoiceMap[lang]
+	if !ok {
+		return
+	}
+	voicesDir := filepath.Join(filepath.Dir(p.modelPath), "voices")
+	voicePath := filepath.Join(voicesDir, voiceName+".bin")
+	voiceRaw, err := os.ReadFile(voicePath)
+	if err != nil {
+		return
+	}
+	data := make([]float32, len(voiceRaw)/4)
+	for i := range data {
+		bits := uint32(voiceRaw[i*4]) | uint32(voiceRaw[i*4+1])<<8 | uint32(voiceRaw[i*4+2])<<16 | uint32(voiceRaw[i*4+3])<<24
+		data[i] = math.Float32frombits(bits)
+	}
+	p.voices[lang] = data
 }
 
 // kokoroMaxContentTokens is the maximum number of content tokens per chunk.
@@ -174,6 +231,7 @@ func (p *KokoroProvider) Synthesize(ctx context.Context, req *SynthesizeRequest)
 	if err := p.Initialize(); err != nil {
 		return nil, err
 	}
+	p.touchActivity()
 
 	if req.Text == "" {
 		return nil, fmt.Errorf("text cannot be empty")
@@ -301,7 +359,12 @@ func (p *KokoroProvider) prepareChunks(text, lang string) [][]int64 {
 }
 
 // synthesizeTokens runs ONNX inference on a single token sequence (already wrapped with PAD).
+// Must be called with p.mu held.
 func (p *KokoroProvider) synthesizeTokens(tokens []int64, speed float32, lang string) ([]float32, error) {
+	// Lazy-load voice data for the requested language
+	p.loadVoice(lang)
+	p.loadVoice("en-US") // fallback voice
+
 	// Select voice data for the language, fall back to en-US
 	voiceData := p.voices[lang]
 	if voiceData == nil {
@@ -313,6 +376,10 @@ func (p *KokoroProvider) synthesizeTokens(tokens []int64, speed float32, lang st
 			voiceData = v
 			break
 		}
+	}
+
+	if voiceData == nil {
+		return nil, fmt.Errorf("no voice data available")
 	}
 
 	// Get style vector from voice data: voice[len(tokens)] -> 256 floats
@@ -373,6 +440,7 @@ func (p *KokoroProvider) SynthesizeStream(ctx context.Context, req *SynthesizeRe
 	if err := p.Initialize(); err != nil {
 		return err
 	}
+	p.touchActivity()
 
 	if req.Text == "" {
 		return fmt.Errorf("text cannot be empty")
@@ -468,10 +536,16 @@ func (p *KokoroProvider) Type() ProviderType {
 func (p *KokoroProvider) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.idleTimer != nil {
+		p.idleTimer.Stop()
+		p.idleTimer = nil
+	}
 	if p.session != nil {
 		p.session.Close()
 		p.session = nil
 	}
+	p.voices = nil
+	p.g2p = nil
 	p.initialized = false
 }
 

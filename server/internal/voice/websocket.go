@@ -47,7 +47,7 @@ type wsConnection struct {
 
 // HandleStream handles WebSocket connections for voice streaming.
 func (h *WSHandler) HandleStream(c echo.Context) error {
-	// Get user ID from context (optional - use anonymous if not authenticated)
+	// Get user ID from context (set by auth middleware)
 	userID := c.Get("user_id")
 	userIDStr := "anonymous"
 	if userID != nil {

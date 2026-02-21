@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -847,6 +848,64 @@ func (m *TLSManager) GetHTTPSPort() int {
 		return 443
 	}
 	return m.config.HTTPSPort
+}
+
+// tlsPersistedSettings is the on-disk representation of user-changeable TLS settings.
+type tlsPersistedSettings struct {
+	HTTPSOnly bool `json:"https_only"`
+	HTTPSPort int  `json:"https_port,omitempty"`
+}
+
+// SaveSettings persists user-changeable TLS settings to a JSON file next to the cert dir.
+func (m *TLSManager) SaveSettings() error {
+	m.mu.RLock()
+	s := tlsPersistedSettings{
+		HTTPSOnly: m.config.HTTPSOnly,
+		HTTPSPort: m.config.HTTPSPort,
+	}
+	certDir := filepath.Dir(m.config.CertFile)
+	m.mu.RUnlock()
+
+	if certDir == "" || certDir == "." {
+		certDir = "./data/certs"
+	}
+	if err := os.MkdirAll(certDir, 0750); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(certDir, "tls_settings.json"), data, 0644)
+}
+
+// LoadSettings loads persisted TLS settings from disk, overriding in-memory defaults.
+func (m *TLSManager) LoadSettings() error {
+	m.mu.RLock()
+	certDir := filepath.Dir(m.config.CertFile)
+	m.mu.RUnlock()
+
+	if certDir == "" || certDir == "." {
+		certDir = "./data/certs"
+	}
+	data, err := os.ReadFile(filepath.Join(certDir, "tls_settings.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No persisted settings yet
+		}
+		return err
+	}
+	var s tlsPersistedSettings
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.config.HTTPSOnly = s.HTTPSOnly
+	if s.HTTPSPort > 0 {
+		m.config.HTTPSPort = s.HTTPSPort
+	}
+	m.mu.Unlock()
+	return nil
 }
 
 // HTTPSRedirectMiddleware returns an Echo middleware that redirects HTTP to HTTPS.

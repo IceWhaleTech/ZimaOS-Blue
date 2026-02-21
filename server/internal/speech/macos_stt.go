@@ -4,6 +4,7 @@ package speech
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,6 +45,15 @@ var (
 	selLocalizedDescription        objc.SEL
 	selStringWithUTF8String        objc.SEL
 	selUTF8String                  objc.SEL
+
+	// AVFoundation selectors for buffer-based recognition
+	selInitWithFormat              objc.SEL // AVAudioPCMBuffer initWithPCMFormat:frameCapacity:
+	selInitStdFormatSR             objc.SEL // AVAudioFormat initStandardFormatWithSampleRate:channels:
+	selAppendAudioPCMBuffer        objc.SEL // SFSpeechAudioBufferRecognitionRequest appendAudioPCMBuffer:
+	selEndAudio                    objc.SEL // SFSpeechAudioBufferRecognitionRequest endAudio
+	selFloatChannelData            objc.SEL // AVAudioPCMBuffer floatChannelData
+	selFrameLength                 objc.SEL // AVAudioPCMBuffer frameLength
+	selSetFrameLength              objc.SEL // AVAudioPCMBuffer setFrameLength:
 )
 
 func initSTTSelectors() {
@@ -54,6 +64,8 @@ func initSTTSelectors() {
 			slog.Error("[macos-stt] failed to load Speech.framework", "error", err)
 			return
 		}
+		// Load AVFoundation for AVAudioPCMBuffer / AVAudioFormat
+		_, _ = purego.Dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
 
 		selAlloc = objc.RegisterName("alloc")
 		selInit = objc.RegisterName("init")
@@ -74,6 +86,15 @@ func initSTTSelectors() {
 		selLocalizedDescription = objc.RegisterName("localizedDescription")
 		selStringWithUTF8String = objc.RegisterName("stringWithUTF8String:")
 		selUTF8String = objc.RegisterName("UTF8String")
+
+		// AVFoundation selectors for buffer-based recognition
+		selInitWithFormat = objc.RegisterName("initWithPCMFormat:frameCapacity:")
+		selInitStdFormatSR = objc.RegisterName("initStandardFormatWithSampleRate:channels:")
+		selAppendAudioPCMBuffer = objc.RegisterName("appendAudioPCMBuffer:")
+		selEndAudio = objc.RegisterName("endAudio")
+		selFloatChannelData = objc.RegisterName("floatChannelData")
+		selFrameLength = objc.RegisterName("frameLength")
+		selSetFrameLength = objc.RegisterName("setFrameLength:")
 	})
 }
 
@@ -91,8 +112,7 @@ func goString(nsStr objc.ID) string {
 	if nsStr == 0 {
 		return ""
 	}
-	sel := objc.RegisterName("UTF8String")
-	ptr := objc.Send[uintptr](nsStr, sel)
+	ptr := objc.Send[uintptr](nsStr, selUTF8String)
 	if ptr == 0 {
 		return ""
 	}
@@ -624,6 +644,26 @@ func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequ
 		return nil, err
 	}
 
+	// Read all audio data into memory
+	audioData, err := io.ReadAll(req.Audio)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read audio: %w", err)
+	}
+
+	locale := langToLocale(req.Language)
+
+	// For WAV/PCM: use buffer-based recognition (no temp file, no disk I/O)
+	if req.Format == stt.FormatWAV || req.Format == stt.FormatPCM || req.Format == "" {
+		if pcm, sr, ch, bps, parseErr := parseWAVData(audioData); parseErr == nil {
+			text, recErr := p.recognizeFromBuffer(ctx, pcm, sr, ch, bps, locale)
+			if recErr == nil {
+				return &stt.TranscribeResponse{Text: text, Language: req.Language}, nil
+			}
+			slog.Warn("[macos-stt] buffer recognition failed, falling back to file", "error", recErr)
+		}
+	}
+
+	// Fallback: write to temp file (non-WAV formats or buffer path failure)
 	ext := ".wav"
 	switch req.Format {
 	case stt.FormatMP3:
@@ -641,16 +681,13 @@ func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequ
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
 
-	if _, err := io.Copy(tmpFile, req.Audio); err != nil {
+	if _, err := tmpFile.Write(audioData); err != nil {
+		tmpFile.Close()
 		return nil, fmt.Errorf("failed to write audio: %w", err)
 	}
 	tmpFile.Close()
 
-	// Apple Speech framework is picky about audio formats. Use afconvert
-	// to re-encode into 16kHz 16-bit mono WAV which it always accepts.
-	// This also handles browser-produced WAV that may have quirks.
 	audioPath := tmpFile.Name()
 	if needsConversion(ext) {
 		wavPath := tmpFile.Name() + ".converted.wav"
@@ -662,7 +699,6 @@ func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequ
 		}
 	}
 
-	locale := langToLocale(req.Language)
 	text, err := p.recognize(ctx, audioPath, locale)
 	if err != nil {
 		return nil, err
@@ -680,6 +716,223 @@ func (p *MacOSNativeSTT) TranscribeStream(ctx context.Context, req *stt.Transcri
 		return err
 	}
 	return callback(resp)
+}
+
+// parseWAVData extracts PCM samples, sample rate, channels, and bits-per-sample from WAV data.
+func parseWAVData(data []byte) (pcm []byte, sampleRate, channels, bitsPerSample int, err error) {
+	if len(data) < 44 || string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
+		return nil, 0, 0, 0, fmt.Errorf("not a valid WAV file")
+	}
+	// Parse chunks starting after "WAVE"
+	offset := 12
+	for offset+8 <= len(data) {
+		id := string(data[offset : offset+4])
+		sz := int(binary.LittleEndian.Uint32(data[offset+4 : offset+8]))
+		payload := offset + 8
+		if payload+sz > len(data) {
+			sz = len(data) - payload
+		}
+		switch id {
+		case "fmt ":
+			if sz < 16 {
+				return nil, 0, 0, 0, fmt.Errorf("fmt chunk too small")
+			}
+			format := binary.LittleEndian.Uint16(data[payload : payload+2])
+			if format != 1 { // PCM only
+				return nil, 0, 0, 0, fmt.Errorf("unsupported WAV format: %d (need PCM=1)", format)
+			}
+			channels = int(binary.LittleEndian.Uint16(data[payload+2 : payload+4]))
+			sampleRate = int(binary.LittleEndian.Uint32(data[payload+4 : payload+8]))
+			bitsPerSample = int(binary.LittleEndian.Uint16(data[payload+14 : payload+16]))
+		case "data":
+			pcm = data[payload : payload+sz]
+		}
+		offset += 8 + sz
+		if sz%2 != 0 {
+			offset++ // pad to even
+		}
+	}
+	if pcm == nil || sampleRate == 0 {
+		return nil, 0, 0, 0, fmt.Errorf("missing fmt or data chunk")
+	}
+	return pcm, sampleRate, channels, bitsPerSample, nil
+}
+
+// recognizeFromBuffer uses SFSpeechAudioBufferRecognitionRequest to feed PCM
+// data directly to the Speech framework without writing a temp file.
+func (p *MacOSNativeSTT) recognizeFromBuffer(_ context.Context, pcm []byte, sampleRate, channels, bitsPerSample int, locale string) (string, error) {
+	type result struct {
+		text string
+		err  error
+	}
+	ch := make(chan result, 1)
+
+	SubmitToMainThread(func() {
+		initSTTSelectors()
+
+		// Create SFSpeechRecognizer
+		cls := objc.ID(objc.GetClass("SFSpeechRecognizer"))
+		var recognizer objc.ID
+		if locale != "" {
+			nsCls := objc.ID(objc.GetClass("NSLocale"))
+			nsLocale := nsCls.Send(selAlloc).Send(selInitWithLocaleIdentifier, nsString(locale))
+			recognizer = cls.Send(selAlloc).Send(selInitWithLocale, nsLocale)
+		} else {
+			recognizer = cls.Send(selAlloc).Send(selInit)
+		}
+		if recognizer == 0 {
+			ch <- result{err: fmt.Errorf("failed to create SFSpeechRecognizer")}
+			return
+		}
+		if !objc.Send[bool](recognizer, selIsAvailable) {
+			ch <- result{err: fmt.Errorf("speech recognizer not available for locale %q", locale)}
+			return
+		}
+
+		// Create AVAudioFormat (standard float32 format)
+		fmtCls := objc.ID(objc.GetClass("AVAudioFormat"))
+		if fmtCls == 0 {
+			ch <- result{err: fmt.Errorf("AVAudioFormat class not found")}
+			return
+		}
+		audioFmt := fmtCls.Send(selAlloc).Send(selInitStdFormatSR,
+			float64(sampleRate), uint32(channels))
+		if audioFmt == 0 {
+			ch <- result{err: fmt.Errorf("failed to create AVAudioFormat")}
+			return
+		}
+
+		// Convert int16 PCM to float32 samples
+		bytesPerSample := bitsPerSample / 8
+		numSamples := len(pcm) / bytesPerSample
+		frameCount := numSamples / channels
+
+		// Create AVAudioPCMBuffer
+		bufCls := objc.ID(objc.GetClass("AVAudioPCMBuffer"))
+		if bufCls == 0 {
+			ch <- result{err: fmt.Errorf("AVAudioPCMBuffer class not found")}
+			return
+		}
+		pcmBuf := bufCls.Send(selAlloc).Send(selInitWithFormat, audioFmt, uint32(frameCount))
+		if pcmBuf == 0 {
+			ch <- result{err: fmt.Errorf("failed to create AVAudioPCMBuffer")}
+			return
+		}
+
+		// Set frameLength
+		pcmBuf.Send(selSetFrameLength, uint32(frameCount))
+
+		// Get floatChannelData pointer: float * const *
+		channelDataPtr := objc.Send[uintptr](pcmBuf, selFloatChannelData)
+		if channelDataPtr == 0 {
+			ch <- result{err: fmt.Errorf("floatChannelData returned nil")}
+			return
+		}
+
+		// channelDataPtr is float**, dereference to get float* for channel 0
+		ch0Ptr := *(*uintptr)(unsafe.Pointer(channelDataPtr))
+		if ch0Ptr == 0 {
+			ch <- result{err: fmt.Errorf("channel 0 data pointer is nil")}
+			return
+		}
+
+		// Convert int16 LE PCM → float32 and write into the buffer
+		floatBuf := unsafe.Slice((*float32)(unsafe.Pointer(ch0Ptr)), frameCount)
+		if bitsPerSample == 16 {
+			for i := 0; i < frameCount; i++ {
+				sampleIdx := i * channels * 2 // take first channel if stereo
+				if sampleIdx+1 < len(pcm) {
+					s := int16(binary.LittleEndian.Uint16(pcm[sampleIdx : sampleIdx+2]))
+					floatBuf[i] = float32(s) / 32768.0
+				}
+			}
+		}
+
+		// Create SFSpeechAudioBufferRecognitionRequest
+		reqCls := objc.ID(objc.GetClass("SFSpeechAudioBufferRecognitionRequest"))
+		if reqCls == 0 {
+			ch <- result{err: fmt.Errorf("SFSpeechAudioBufferRecognitionRequest class not found")}
+			return
+		}
+		request := reqCls.Send(selAlloc).Send(selInit)
+		if request == 0 {
+			ch <- result{err: fmt.Errorf("failed to create buffer recognition request")}
+			return
+		}
+		request.Send(selSetShouldReportPartial, false)
+
+		onDevice := objc.Send[bool](recognizer, selSupportsOnDeviceRecognition)
+		requireOnDevice := p.RequireOnDevice()
+		if requireOnDevice && onDevice {
+			request.Send(selSetRequiresOnDevice, true)
+		}
+		slog.Info("[macos-stt] buffer recognition start",
+			"sampleRate", sampleRate, "channels", channels, "frames", frameCount,
+			"locale", locale, "onDevice", onDevice)
+
+		// Append audio buffer and signal end
+		request.Send(selAppendAudioPCMBuffer, pcmBuf)
+		request.Send(selEndAudio)
+
+		// Result handler block
+		var lastText string
+		block := objc.NewBlock(func(_ objc.Block, res objc.ID, nsErr objc.ID) {
+			if res != 0 {
+				transcription := res.Send(selBestTranscription)
+				if transcription != 0 {
+					text := goString(transcription.Send(selFormattedString))
+					if text != "" {
+						lastText = text
+					}
+				}
+				if objc.Send[bool](res, selIsFinal) {
+					select {
+					case ch <- result{text: lastText}:
+					default:
+					}
+					return
+				}
+			}
+			if nsErr != 0 {
+				desc := goString(nsErr.Send(selLocalizedDescription))
+				slog.Warn("[macos-stt] buffer recognition error", "desc", desc, "lastText", lastText)
+				if lastText != "" {
+					select {
+					case ch <- result{text: lastText}:
+					default:
+					}
+				} else {
+					var err error = fmt.Errorf("recognition error: %s", desc)
+					if requireOnDevice && isOnDeviceError(desc) {
+						err = &OnDeviceUnavailableError{Locale: locale, Detail: desc}
+					} else if se := friendlySpeechError(desc); se != nil {
+						err = se
+					}
+					select {
+					case ch <- result{err: err}:
+					default:
+					}
+				}
+			}
+		})
+
+		recognizer.Send(selRecognitionTaskWithRequest, request, block)
+
+		go func() {
+			time.Sleep(60 * time.Second)
+			block.Release()
+			select {
+			case ch <- result{err: fmt.Errorf("speech recognition timed out")}:
+			default:
+			}
+		}()
+	})
+
+	r := <-ch
+	if r.err != nil {
+		return "", r.err
+	}
+	return strings.TrimSpace(r.text), nil
 }
 
 func (p *MacOSNativeSTT) recognize(_ context.Context, audioPath, locale string) (string, error) {

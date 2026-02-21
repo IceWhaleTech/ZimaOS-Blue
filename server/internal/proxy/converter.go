@@ -6,9 +6,30 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
+
+// scannerBufPool reuses 64KB buffers for SSE line scanning.
+var scannerBufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 64*1024)
+		return &buf
+	},
+}
+
+// newPooledScanner creates a bufio.Scanner with a pooled buffer.
+// Caller must return the buffer via scannerBufPool.Put after scanning is done.
+func newPooledScanner(r io.Reader) (*bufio.Scanner, *[]byte) {
+	bufPtr := scannerBufPool.Get().(*[]byte)
+	s := bufio.NewScanner(r)
+	s.Buffer(*bufPtr, 256*1024) // 64KB initial, 256KB max for large tool_call JSON
+	return s, bufPtr
+}
 
 // ProviderType identifies the API format type
 type ProviderType string
@@ -882,7 +903,8 @@ func (fc *FormatConverter) convertGeminiStream(reader io.Reader, writer http.Res
 		return fmt.Errorf("streaming not supported")
 	}
 
-	scanner := bufio.NewScanner(reader)
+	scanner, bufPtr := newPooledScanner(reader)
+	defer scannerBufPool.Put(bufPtr)
 	messageID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
 
 	for scanner.Scan() {
@@ -976,42 +998,115 @@ func (fc *FormatConverter) convertGeminiStreamChunk(chunk GeminiStreamChunk, mes
 	}
 }
 
-// convertAnthropicStream converts Anthropic SSE to OpenAI SSE
+// convertAnthropicStream converts Anthropic SSE to OpenAI SSE.
+// Uses gjson for field extraction and template-based JSON output to avoid
+// json.Unmarshal + json.Marshal per chunk (the hot path for streaming).
 func (fc *FormatConverter) convertAnthropicStream(reader io.Reader, writer http.ResponseWriter) error {
 	flusher, ok := writer.(http.Flusher)
 	if !ok {
 		return fmt.Errorf("streaming not supported")
 	}
 
-	scanner := bufio.NewScanner(reader)
+	scanner, bufPtr := newPooledScanner(reader)
+	defer scannerBufPool.Put(bufPtr)
+
 	var messageID, model string
+	// Pre-allocate write buffer for SSE lines
+	var wb bytes.Buffer
+	wb.Grow(512)
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		line := scanner.Bytes()
+		if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
 			continue
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
-		var event AnthropicStreamEvent
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			continue
-		}
+		data := line[6:] // skip "data: "
+		eventType := gjson.GetBytes(data, "type").Str
 
-		chunk := fc.convertStreamEvent(event, &messageID, &model)
-		if chunk != nil {
-			chunkJSON, _ := json.Marshal(chunk)
-			writer.Write([]byte("data: " + string(chunkJSON) + "\n\n"))
+		switch eventType {
+		case "message_start":
+			messageID = gjson.GetBytes(data, "message.id").Str
+			model = gjson.GetBytes(data, "message.model").Str
+			wb.Reset()
+			wb.WriteString(`data: {"id":"`)
+			wb.WriteString(messageID)
+			wb.WriteString(`","object":"chat.completion.chunk","model":"`)
+			wb.WriteString(model)
+			wb.WriteString(`","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`)
+			wb.WriteString("\n\n")
+			writer.Write(wb.Bytes())
 			flusher.Flush()
-		}
 
-		if event.Type == "message_stop" {
+		case "content_block_delta":
+			deltaType := gjson.GetBytes(data, "delta.type").Str
+			if deltaType != "text_delta" {
+				continue
+			}
+			text := gjson.GetBytes(data, "delta.text").Str
+			wb.Reset()
+			wb.WriteString(`data: {"id":"`)
+			wb.WriteString(messageID)
+			wb.WriteString(`","object":"chat.completion.chunk","model":"`)
+			wb.WriteString(model)
+			wb.WriteString(`","choices":[{"index":0,"delta":{"content":`)
+			// JSON-encode the text content (handles escaping)
+			escapedText, _ := json.Marshal(text)
+			wb.Write(escapedText)
+			wb.WriteString(`},"finish_reason":null}]}`)
+			wb.WriteString("\n\n")
+			writer.Write(wb.Bytes())
+			flusher.Flush()
+
+		case "message_delta":
+			stopReason := gjson.GetBytes(data, "delta.stop_reason").Str
+			finishReason := "null"
+			switch stopReason {
+			case "end_turn":
+				finishReason = `"stop"`
+			case "max_tokens":
+				finishReason = `"length"`
+			case "tool_use":
+				finishReason = `"tool_calls"`
+			}
+			wb.Reset()
+			wb.WriteString(`data: {"id":"`)
+			wb.WriteString(messageID)
+			wb.WriteString(`","object":"chat.completion.chunk","model":"`)
+			wb.WriteString(model)
+			wb.WriteString(`","choices":[{"index":0,"delta":{},"finish_reason":`)
+			wb.WriteString(finishReason)
+			wb.WriteString(`}]`)
+			// Include usage if present
+			usage := gjson.GetBytes(data, "usage")
+			if usage.Exists() {
+				inputTokens := usage.Get("input_tokens").Int()
+				outputTokens := usage.Get("output_tokens").Int()
+				wb.WriteString(`,"usage":{"prompt_tokens":`)
+				wb.Write(appendInt(nil, inputTokens))
+				wb.WriteString(`,"completion_tokens":`)
+				wb.Write(appendInt(nil, outputTokens))
+				wb.WriteString(`,"total_tokens":`)
+				wb.Write(appendInt(nil, inputTokens+outputTokens))
+				wb.WriteByte('}')
+			}
+			wb.WriteByte('}')
+			wb.WriteString("\n\n")
+			writer.Write(wb.Bytes())
+			flusher.Flush()
+
+		case "message_stop":
 			writer.Write([]byte("data: [DONE]\n\n"))
 			flusher.Flush()
-			break
+			return scanner.Err()
 		}
 	}
 	return scanner.Err()
+}
+
+// appendInt appends an int64 as decimal to dst without fmt.Sprintf.
+func appendInt(dst []byte, v int64) []byte {
+	return strconv.AppendInt(dst, v, 10)
 }
 
 // convertStreamEvent converts Anthropic stream event to OpenAI chunk

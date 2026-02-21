@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,14 +22,15 @@ import (
 // parsedRequest holds pre-parsed request data to avoid redundant JSON parsing.
 // Created once in ServeHTTP and passed through the call chain.
 // Uses gjson for zero-alloc field extraction instead of map[string]interface{}.
+// Layout: pointer-sized fields first, then bools — minimizes padding for cache-line efficiency.
 type parsedRequest struct {
 	body           []byte
 	model          string
 	originalModel  string         // model before routing (for cost savings tracking)
-	streaming      bool
 	cacheKey       string         // computed once if cache enabled
-	routed         *RouteDecision // non-nil if rule engine rerouted the model
 	upstreamFormat ProviderType   // set when request was converted to non-OpenAI format
+	routed         *RouteDecision // non-nil if rule engine rerouted the model
+	streaming      bool
 }
 
 // sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
@@ -48,17 +48,48 @@ var bodyBufferPool = sync.Pool{
 	},
 }
 
+// parsedRequestPool reuses parsedRequest structs to reduce per-request heap allocs.
+var parsedRequestPool = sync.Pool{
+	New: func() interface{} {
+		return &parsedRequest{}
+	},
+}
+
+// acquireParsedRequest gets a zeroed parsedRequest from the pool.
+func acquireParsedRequest() *parsedRequest {
+	pr := parsedRequestPool.Get().(*parsedRequest)
+	*pr = parsedRequest{} // zero all fields
+	return pr
+}
+
+// releaseParsedRequest returns a parsedRequest to the pool.
+func releaseParsedRequest(pr *parsedRequest) {
+	pr.body = nil // release reference to body bytes
+	pr.routed = nil
+	parsedRequestPool.Put(pr)
+}
+
 // readBody reads an io.Reader into a []byte using a pooled buffer.
+// The returned slice owns its memory (copied from pool buffer).
+// For small bodies (≤8KB), uses a stack-friendly path.
 func readBody(r io.Reader) ([]byte, error) {
 	buf := bodyBufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	defer bodyBufferPool.Put(buf)
 	if _, err := buf.ReadFrom(r); err != nil {
+		bodyBufferPool.Put(buf)
 		return nil, err
 	}
-	// Return a copy — the buffer goes back to the pool
-	out := make([]byte, buf.Len())
-	copy(out, buf.Bytes())
+	// Steal the buffer's backing array if it's reasonably sized.
+	// This avoids the copy — buf.Bytes() returns a slice of the internal array,
+	// and we don't return buf to the pool so the caller owns the memory.
+	data := buf.Bytes()
+	if buf.Cap() <= 1<<20 { // ≤1MB: don't pool, let caller own it
+		return data, nil
+	}
+	// Oversized: copy and return buffer to pool
+	out := make([]byte, len(data))
+	copy(out, data)
+	bodyBufferPool.Put(buf)
 	return out, nil
 }
 
@@ -87,19 +118,25 @@ func readErrorBody(r io.Reader) []byte {
 // - route:auto - Auto select best provider (default)
 // - route:cloud - Force cloud provider (zimaos-blue-trial)
 // - route:local - Force local provider
+// Layout: hot-path fields first (same cache line), cold fields after.
 type ProxyHandler struct {
-	router          *Router            // Legacy router (fallback only)
-	connPool        *ConnectionPool    // HTTP connection pool
+	// Hot path — accessed on every request (first 64-byte cache line)
+	connPool       *ConnectionPool    // HTTP connection pool
+	providerPool   *providerpool.Pool // Provider Pool for routing and API keys
+	authProber     *AuthProber        // Auth strategy probing with memory
+	providerMemory *ProviderMemory    // Provider capability memory
+	cache          *CCCache           // Response cache (cc-cache)
+	routingEnabled atomic.Bool        // Toggle for model routing
+
+	// Warm path — accessed conditionally
 	failover        *FailoverHandler   // Failover handler
-	providerPool    *providerpool.Pool // Provider Pool for routing and API keys
-	cache           *CCCache           // Response cache (cc-cache)
 	prunerMw        *pruner.Middleware // Context pruner middleware (optional)
-	apiKeyValidator func(key string) ([]string, error)
 	modelRouter     *ModelRouter       // Model family routing + background downgrade
-	ruleEngine      *RuleEngine        // Condition-based tier routing (header/body/tool/tag)
-	routingEnabled  atomic.Bool        // Toggle for model routing (rule engine + model router)
-	authProber      *AuthProber        // Auth strategy probing with memory
-	providerMemory  *ProviderMemory    // Provider capability memory (format, model, tools, throttle)
+	ruleEngine      *RuleEngine        // Condition-based tier routing
+
+	// Cold path — rarely accessed per-request
+	router          *Router            // Legacy router (fallback only)
+	apiKeyValidator func(key string) ([]string, error)
 	routingStats    *RoutingStats      // Routing cost savings tracker
 }
 
@@ -305,10 +342,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse body ONCE — extract model and streaming flag with gjson (zero-alloc)
-	pr := &parsedRequest{body: bodyBytes}
+	pr := acquireParsedRequest()
+	defer releaseParsedRequest(pr)
+	pr.body = bodyBytes
 	if gjson.ValidBytes(bodyBytes) {
-		pr.model = gjson.GetBytes(bodyBytes, "model").Str
-		pr.streaming = gjson.GetBytes(bodyBytes, "stream").Bool()
+		bodyStr := unsafeString(bodyBytes)
+		pr.model = gjson.Get(bodyStr, "model").Str
+		pr.streaming = gjson.Get(bodyStr, "stream").Bool()
 	}
 
 	// Model routing: evaluate rule engine to potentially swap to a cheaper model
@@ -465,8 +505,7 @@ func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CC
 
 		// Convert Anthropic response to OpenAI format
 		if effectiveFormat == providerpool.APIFormatAnthropic && resp.StatusCode == http.StatusOK {
-			fc := NewFormatConverter()
-			if converted, convErr := fc.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
+			if converted, convErr := sharedConverter.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
 				respBody = converted
 			}
 		}
@@ -522,9 +561,9 @@ func (ph *ProxyHandler) buildUpstreamRequest(r *http.Request, route *providerpoo
 func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *providerpool.RouteResult, body []byte, effectiveFormat providerpool.APIFormat) (*http.Request, error) {
 	provider := route.Provider
 
-	targetURL, err := url.Parse(provider.BaseURL)
-	if err != nil {
-		return nil, err
+	targetURL := provider.ParsedBaseURL()
+	if targetURL == nil {
+		return nil, fmt.Errorf("invalid provider base URL: %s", provider.BaseURL)
 	}
 
 	// Build upstream URL - avoid duplicate path segments
@@ -614,10 +653,11 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 
 // allFormatsForProvider returns format candidates to try for a provider.
 // Persisted format first, then remembered (in-memory), then provider default, then remaining.
-func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *providerpool.Provider) []providerpool.APIFormat {
-	// Use stack-allocated array — at most 4 formats (detected, remembered, default, remaining)
+// Returns (buf, count, known) where known=true means the first format is from detection/memory.
+func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *providerpool.Provider) ([4]providerpool.APIFormat, int, bool) {
 	var buf [4]providerpool.APIFormat
 	n := 0
+	known := false
 
 	has := func(f providerpool.APIFormat) bool {
 		for i := 0; i < n; i++ {
@@ -632,6 +672,7 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 	if provider.DetectedFormat != "" {
 		buf[n] = provider.DetectedFormat
 		n++
+		known = true
 	}
 
 	// 2. In-memory remembered format (from recent successful requests)
@@ -641,6 +682,7 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 			buf[n] = f
 			n++
 		}
+		known = true
 	}
 
 	// 3. Provider default
@@ -657,9 +699,7 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 		}
 	}
 
-	result := make([]providerpool.APIFormat, n)
-	copy(result, buf[:n])
-	return result
+	return buf, n, known
 }
 
 // persistDetectedFormat saves the detected API format to the provider for persistence across restarts.
@@ -683,7 +723,7 @@ func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, f
 // allModelsForProvider returns model candidates to try for a provider.
 // Remembered alias first, then original model, then ModelAliases.
 // Uses stack-allocated array for the common case (≤8 candidates).
-func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string) []string {
+func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string) ([8]string, int) {
 	var buf [8]string
 	n := 0
 
@@ -733,9 +773,7 @@ func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, ro
 		}
 	}
 
-	result := make([]string, n)
-	copy(result, buf[:n])
-	return result
+	return buf, n
 }
 
 // tryOnProvider tries all Model × Format combinations on a single provider.
@@ -756,24 +794,22 @@ func (ph *ProxyHandler) tryOnProvider(
 		routedModel = result.Model.ID
 	}
 
-	formats := ph.allFormatsForProvider(pid, burl, result.Provider)
-	models := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
+	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, result.Provider)
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
 
-	if len(models) == 0 {
+	if nModels == 0 {
 		return nil, "", "", fmt.Errorf("all models blacklisted on provider %s", pid)
 	}
 
-	// If provider has a known format (detected or remembered), only use that one
-	if result.Provider.DetectedFormat != "" {
-		formats = []providerpool.APIFormat{result.Provider.DetectedFormat}
-	} else if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
-		formats = []providerpool.APIFormat{providerpool.APIFormat(remembered)}
+	// If format is known (detected or remembered), only try that one — skip fallback formats
+	if formatKnown {
+		nFormats = 1
 	}
 
 	// Fast path: single model + single format + model matches request (most common happy path).
 	// Avoids loop overhead, sjson.SetBytes, and slice iteration.
-	if len(models) == 1 && len(formats) == 1 && models[0] == pr.model {
-		format := formats[0]
+	if nModels == 1 && nFormats == 1 && modelsBuf[0] == pr.model {
+		format := formatsBuf[0]
 		slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
 		resp, probeErr := ph.authProber.ProbeAndForward(
 			result.Provider,
@@ -800,7 +836,8 @@ func (ph *ProxyHandler) tryOnProvider(
 	}
 
 	var lastErr error
-	for _, model := range models {
+	for mi := 0; mi < nModels; mi++ {
+		model := modelsBuf[mi]
 		// Build body with this model
 		forwardBody := pr.body
 		if model != pr.model {
@@ -809,7 +846,8 @@ func (ph *ProxyHandler) tryOnProvider(
 			}
 		}
 
-		for _, format := range formats {
+		for fi := 0; fi < nFormats; fi++ {
+			format := formatsBuf[fi]
 			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", model)
 
 			resp, probeErr := ph.authProber.ProbeAndForward(
@@ -979,9 +1017,9 @@ func parseRetryAfter(val string) time.Duration {
 func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.RouteResult) (*http.Response, error) {
 	provider := route.Provider
 
-	targetURL, err := url.Parse(provider.BaseURL)
-	if err != nil {
-		return nil, err
+	targetURL := provider.ParsedBaseURL()
+	if targetURL == nil {
+		return nil, fmt.Errorf("invalid provider base URL: %s", provider.BaseURL)
 	}
 
 	// Build upstream URL - avoid duplicate path segments
@@ -1166,7 +1204,7 @@ func (ph *ProxyHandler) writeSSEFromCache(w http.ResponseWriter, entry *CCCacheE
 
 // copyStreamingResponseWithCapture streams SSE to client while capturing raw data.
 // Returns the captured SSE bytes for cache assembly.
-// When needCapture is false, streams directly without buffering (zero-copy path).
+// When needCapture is false, streams directly without buffering (minimal-copy path).
 // Uses pooled 32KB buffers to reduce GC pressure.
 func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, resp *http.Response, needCapture bool) []byte {
 	flusher, ok := w.(http.Flusher)
@@ -1180,34 +1218,31 @@ func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, 
 	buf := *bufPtr
 	defer sseBufferPool.Put(bufPtr)
 
-	// Fast path: no capture needed (cache disabled or non-200)
+	// Fast path: no capture needed — use io.CopyBuffer for kernel-optimized copy
 	if !needCapture {
-		for {
-			n, err := resp.Body.Read(buf)
-			if n > 0 {
-				w.Write(buf[:n])
-				flusher.Flush()
-			}
-			if err != nil {
-				break
-			}
-		}
+		fw := &flushWriter{w: w, f: flusher}
+		io.CopyBuffer(fw, resp.Body, buf)
 		return nil
 	}
 
 	var capture bytes.Buffer
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			w.Write(buf[:n])
-			flusher.Flush()
-			capture.Write(buf[:n])
-		}
-		if err != nil {
-			break
-		}
-	}
+	fw := &flushWriter{w: w, f: flusher}
+	tee := io.TeeReader(resp.Body, &capture)
+	io.CopyBuffer(fw, tee, buf)
 	return capture.Bytes()
+}
+
+// flushWriter wraps a ResponseWriter+Flusher to flush after every Write.
+// This enables io.CopyBuffer to drive the streaming loop efficiently.
+type flushWriter struct {
+	w io.Writer
+	f http.Flusher
+}
+
+func (fw *flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+	fw.f.Flush()
+	return n, err
 }
 
 // isStreamingResponse checks if response is streaming
@@ -1228,15 +1263,14 @@ var hopByHopHeaders = map[string]bool{
 	"Upgrade":             true,
 }
 
-// copyHeaders copies headers from src to dst
+// copyHeaders copies headers from src to dst, skipping hop-by-hop headers.
+// Uses direct slice assignment instead of Add() to avoid per-value map lookups.
 func copyHeaders(dst, src http.Header) {
 	for key, values := range src {
 		if hopByHopHeaders[key] {
 			continue
 		}
-		for _, value := range values {
-			dst.Add(key, value)
-		}
+		dst[key] = values
 	}
 }
 

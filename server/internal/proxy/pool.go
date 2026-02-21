@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"golang.org/x/net/http2"
 )
 
 // ConnectionPool manages HTTP connections to upstream providers
@@ -14,17 +16,19 @@ type ConnectionPool struct {
 	transport         *http.Transport
 	insecureTransport *http.Transport
 	clients           sync.Map // map[string]*http.Client — read-heavy, write-once per key
+	dnsCache          *DNSCache
 }
 
 // NewConnectionPool creates a new connection pool
 func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
+	dnsCache := NewDNSCache(5*time.Minute, 128)
 	dialer := &net.Dialer{
 		Timeout:   config.DialTimeout,
 		KeepAlive: config.KeepAliveInterval,
 	}
 
 	transport := &http.Transport{
-		DialContext:           dialer.DialContext,
+		DialContext:           dnsCache.DialContext(dialer),
 		MaxIdleConns:          config.MaxIdleConns,
 		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
 		MaxConnsPerHost:       config.MaxConnsPerHost,
@@ -32,9 +36,20 @@ func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
 		TLSHandshakeTimeout:   config.TLSHandshakeTimeout,
 		ResponseHeaderTimeout: config.ResponseHeaderTimeout,
 		ForceAttemptHTTP2:     config.ForceHTTP2,
+		WriteBufferSize:       32 * 1024,
+		ReadBufferSize:        64 * 1024,
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		},
+	}
+
+	// Configure HTTP/2 with PING keepalive to detect dead connections early.
+	// Without this, idle HTTP/2 connections may be silently closed by intermediate
+	// proxies/LBs, causing the first request after idle to fail.
+	http2Transport, err := http2.ConfigureTransports(transport)
+	if err == nil {
+		http2Transport.ReadIdleTimeout = 30 * time.Second // send PING after 30s idle
+		http2Transport.PingTimeout = 15 * time.Second     // wait 15s for PONG
 	}
 
 	insecureTransport := transport.Clone()
@@ -42,11 +57,17 @@ func NewConnectionPool(config *ConnectionConfig) *ConnectionPool {
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: true, //nolint:gosec // user-opted skip for self-signed certs
 	}
+	// HTTP/2 PING for insecure transport too
+	if h2, err := http2.ConfigureTransports(insecureTransport); err == nil {
+		h2.ReadIdleTimeout = 30 * time.Second
+		h2.PingTimeout = 15 * time.Second
+	}
 
 	return &ConnectionPool{
 		config:            config,
 		transport:         transport,
 		insecureTransport: insecureTransport,
+		dnsCache:          dnsCache,
 	}
 }
 

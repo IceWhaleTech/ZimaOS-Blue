@@ -1,10 +1,8 @@
 package speech
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -360,14 +358,6 @@ func (h *Handler) Transcribe(c echo.Context) error {
 	}
 	defer src.Close()
 
-	// Read audio data
-	audioData, err := io.ReadAll(src)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "failed to read audio data",
-		})
-	}
-
 	// Get format and language from form
 	format := c.FormValue("format")
 	if format == "" {
@@ -375,9 +365,9 @@ func (h *Handler) Transcribe(c echo.Context) error {
 	}
 	language := c.FormValue("language")
 
-	// Create transcription request
+	// Create transcription request — pass reader directly, Transcribe does io.ReadAll internally
 	req := &stt.TranscribeRequest{
-		Audio:    bytes.NewReader(audioData),
+		Audio:    src,
 		Format:   stt.AudioFormat(format),
 		Language: language,
 	}

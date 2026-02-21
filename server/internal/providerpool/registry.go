@@ -20,6 +20,7 @@ type Registry struct {
 
 	// Callbacks
 	onProviderChange func(provider *Provider, action string)
+	onHealthResult   func(providerID string, result *HealthCheckResult) // latency feed
 }
 
 // RegistryOption configures the Registry
@@ -38,6 +39,13 @@ func WithProviderChangeCallback(cb func(provider *Provider, action string)) Regi
 	return func(r *Registry) {
 		r.onProviderChange = cb
 	}
+}
+
+// SetOnHealthResult sets a callback invoked after each health check with latency data.
+func (r *Registry) SetOnHealthResult(cb func(providerID string, result *HealthCheckResult)) {
+	r.mu.Lock()
+	r.onHealthResult = cb
+	r.mu.Unlock()
 }
 
 // NewRegistry creates a new Registry
@@ -368,6 +376,11 @@ func (r *Registry) runHealthCheck(ctx context.Context, checker HealthChecker) {
 		cancel()
 
 		r.SetHealth(provider.ID, result)
+
+		// Feed latency data to router for latency-based routing
+		if r.onHealthResult != nil {
+			r.onHealthResult(provider.ID, result)
+		}
 	}
 
 	// Save health status

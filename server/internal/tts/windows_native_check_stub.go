@@ -1,8 +1,13 @@
-// +build !windows
+//go:build !windows
 
 package tts
 
 // WindowsNativeAvailable checks if Windows native TTS is available
 func WindowsNativeAvailable() bool {
 	return false
+}
+
+// NewWindowsNativeTTSProvider returns nil on non-Windows platforms.
+func NewWindowsNativeTTSProvider() Provider {
+	return nil
 }

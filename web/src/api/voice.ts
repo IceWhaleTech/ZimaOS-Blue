@@ -482,73 +482,188 @@ class TTSAudioManager {
 // Singleton instance
 export const ttsAudioManager = new TTSAudioManager()
 
+// Human-like speech preprocessing - converts technical content to natural speech
+function preprocessForSpeech(text: string, locale: string = 'en-US'): string {
+  const isZh = locale.startsWith('zh')
+
+  // Replace mermaid diagrams first (before general code blocks)
+  text = text.replace(/```mermaid[\s\S]*?```/g, () => {
+    return isZh ? '流程图。' : 'Diagram.'
+  })
+
+  // Replace code blocks with language-specific description
+  text = text.replace(/```(\w+)?\s*\n[\s\S]*?```/g, (_, lang) => {
+    if (lang) {
+      return isZh ? `${lang}代码块。` : `${lang} code block.`
+    }
+    return isZh ? '代码块。' : 'Code block.'
+  })
+
+  // Replace inline code with description
+  text = text.replace(/`([^`]+)`/g, (match, code) => {
+    // Keep short inline code (< 15 chars), replace long ones
+    if (code.length > 15) {
+      return isZh ? '代码' : 'code'
+    }
+    // Remove backticks but keep the content for short code
+    return code
+  })
+
+  // Replace tables with description
+  text = text.replace(/\|[^\n]*\|[\s\S]*?\n\s*\n/g, () => {
+    return isZh ? '表格。' : 'Table.'
+  })
+
+  // Replace markdown images with description
+  text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, (_, alt) => {
+    if (alt && alt.trim()) {
+      return isZh ? `图片：${alt}。` : `Image: ${alt}.`
+    }
+    return isZh ? '图片。' : 'Image.'
+  })
+
+  // Replace URLs with description (keep domain for context)
+  text = text.replace(/https?:\/\/[^\s<>]+/g, (url) => {
+    try {
+      const domain = new URL(url).hostname.replace('www.', '')
+      return isZh ? `链接到${domain}` : `link to ${domain}`
+    } catch {
+      return isZh ? '链接' : 'link'
+    }
+  })
+
+  // Replace markdown links - keep link text, remove URL
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+
+  // Replace HTML tags
+  text = text.replace(/<[^>]+>/g, '')
+
+  // Replace markdown headers with just the text
+  text = text.replace(/^#{1,6}\s+/gm, '')
+
+  // Replace markdown bold/italic
+  text = text.replace(/\*\*([^*]+)\*\*/g, '$1')
+  text = text.replace(/\*([^*]+)\*/g, '$1')
+  text = text.replace(/__([^_]+)__/g, '$1')
+  text = text.replace(/_([^_]+)_/g, '$1')
+
+  // Replace markdown strikethrough
+  text = text.replace(/~~([^~]+)~~/g, '$1')
+
+  // Replace markdown lists - keep content, remove markers
+  text = text.replace(/^\s*[-*+]\s+/gm, '')
+  text = text.replace(/^\s*\d+\.\s+/gm, '')
+
+  // Replace multiple spaces/newlines with single space
+  text = text.replace(/\s+/g, ' ')
+
+  return text.trim()
+}
+
 // Streaming TTS Queue Manager - plays sentences as they arrive
 class StreamingTTSManager {
   private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean; playedLocally?: boolean; fetching?: boolean }> = []
   private playIndex = 0 // cursor: next item to play
   private fetchIndex = 0 // cursor: next item to fetch
   private isPlaying = false
-  private isStopped = false
+  private isStopped = true // start as stopped so first streamText resets
+  private playbackStarted = false // whether play() has been called
+  private generation = 0 // increments on reset/stop — stale async callbacks bail out
+  private activeFetches = 0 // concurrent fetch limiter
+  private static readonly MAX_CONCURRENT_FETCHES = 2
   private currentEventSource: EventSource | null = null
-  private static readonly SEQUENTIAL_FETCH = true // Fetch one sentence at a time, in order
+  private locale: string = 'en-US'
   public onSentenceStart: ((index: number) => void) | null = null
   public onComplete: (() => void) | null = null
 
-  // Split text into sentences
+  setLocale(locale: string) {
+    this.locale = locale
+  }
+
   private splitIntoSentences(text: string): string[] {
-    // Split by sentence-ending punctuation, keeping the punctuation
     const sentences = text.match(/[^.!?。！？]+[.!?。！？]+|[^.!?。！？]+$/g) || [text]
     return sentences.map(s => s.trim()).filter(s => s.length > 0)
   }
 
-  // Append new text to the queue without stopping current playback
+  // Reset state for a fresh session
+  reset() {
+    this.generation++
+    this.isStopped = false
+    this.playbackStarted = false
+    this.queue = []
+    this.playIndex = 0
+    this.fetchIndex = 0
+    this.isPlaying = false
+    this.activeFetches = 0
+  }
+
+  // Prefetch only — enqueue sentences and start fetching audio, but don't play
   async streamText(text: string): Promise<void> {
     if (this.isStopped) {
-      // First call or after stop — reset state
       this.isStopped = false
       this.queue = []
       this.playIndex = 0
       this.fetchIndex = 0
     }
 
-    const sentences = this.splitIntoSentences(text)
+    const processedText = preprocessForSpeech(text, this.locale)
+    const sentences = this.splitIntoSentences(processedText)
     if (sentences.length === 0) return
 
-    // Append new sentences to queue
     for (const s of sentences) {
       this.queue.push({ text: s })
     }
 
-    // Kick off sequential fetch pipeline
+    // Kick off fetch pipeline (prefetch only)
     this.fetchNext()
 
-    // Kick off playback if not already running
+    // If playback was already started (e.g. auto-play streaming), keep playing
+    if (this.playbackStarted && !this.isPlaying) {
+      this.playNext()
+    }
+  }
+
+  // Start playback of the prefetched queue
+  play() {
+    this.playbackStarted = true
     if (!this.isPlaying) {
       this.playNext()
     }
   }
 
-  // Fetch next sentence in sequence (one at a time)
+  // Convenience: prefetch + play in one call (for auto-play streaming)
+  async streamAndPlay(text: string): Promise<void> {
+    this.playbackStarted = true
+    await this.streamText(text)
+  }
+
   private fetchNext() {
     if (this.isStopped) return
-
-    // Only fetch one sentence at a time to maintain order
     if (this.fetchIndex >= this.queue.length) return
+    if (this.activeFetches >= StreamingTTSManager.MAX_CONCURRENT_FETCHES) return
 
     const item = this.queue[this.fetchIndex]
     if (item.fetching || item.audio || item.failed) {
-      // Already fetching/fetched/failed, move to next
       this.fetchIndex++
       this.fetchNext()
       return
     }
 
     item.fetching = true
+    this.activeFetches++
     this.fetchAudio(item.text, this.fetchIndex)
+    // Try to fill up to MAX_CONCURRENT_FETCHES
+    this.fetchIndex++
+    this.fetchNext()
   }
 
   private async fetchAudio(text: string, index: number) {
-    if (this.isStopped) return
+    if (this.isStopped) { this.activeFetches--; return }
+    const gen = this.generation
+
+    const onDone = () => {
+      if (gen === this.generation) this.activeFetches--
+    }
 
     try {
       const token = localStorage.getItem('token')
@@ -557,7 +672,8 @@ class StreamingTTSManager {
       let received = false
 
       es.addEventListener('audio', (e) => {
-        if (this.isStopped) { es.close(); return }
+        if (gen !== this.generation) { es.close(); onDone(); return }
+        if (this.isStopped) { es.close(); onDone(); return }
         received = true
         const data = JSON.parse(e.data)
         if (this.queue[index]) {
@@ -570,25 +686,23 @@ class StreamingTTSManager {
           this.queue[index].fetching = false
         }
         es.close()
+        onDone()
 
-        // Fetch next sentence after current one completes
         this.fetchNext()
-
-        // Trigger playback if not already playing
-        if (!this.isPlaying) this.playNext()
+        if (this.playbackStarted && !this.isPlaying) this.playNext()
       })
 
       es.addEventListener('error', () => {
         es.close()
-        // Mark as failed so playNext can skip it instead of retrying forever
+        if (gen !== this.generation) { onDone(); return }
         if (!received && this.queue[index]) {
           this.queue[index].failed = true
           this.queue[index].fetching = false
-
-          // Continue to next sentence even on error
+        }
+        onDone()
+        if (gen === this.generation) {
           this.fetchNext()
-
-          if (!this.isPlaying) this.playNext()
+          if (this.playbackStarted && !this.isPlaying) this.playNext()
         }
       })
 
@@ -596,38 +710,34 @@ class StreamingTTSManager {
         es.close()
       })
     } catch (e) {
+      onDone()
+      if (gen !== this.generation) return
       console.error('Failed to fetch TTS audio:', e)
       if (this.queue[index]) {
         this.queue[index].failed = true
         this.queue[index].fetching = false
-
-        // Continue to next sentence even on error
         this.fetchNext()
-
-        if (!this.isPlaying) this.playNext()
+        if (this.playbackStarted && !this.isPlaying) this.playNext()
       }
     }
   }
 
   private async playNext() {
-    if (this.isStopped || this.isPlaying) return
+    if (this.isStopped || this.isPlaying || !this.playbackStarted) return
+    const gen = this.generation
     if (this.playIndex >= this.queue.length) {
-      // All items played — check if more might arrive
-      // (caller may append more via streamText)
       this.onComplete?.()
       return
     }
 
     const item = this.queue[this.playIndex]
 
-    // Skip failed items
     if (item.failed) {
       this.playIndex++
       this.playNext()
       return
     }
 
-    // Server already played locally — skip browser playback
     if (item.playedLocally) {
       this.playIndex++
       this.playNext()
@@ -635,10 +745,9 @@ class StreamingTTSManager {
     }
 
     if (!item.audio || !item.contentType) {
-      // Audio not ready yet, wait and retry with a max retry limit
       const retryKey = `_retries_${this.playIndex}`
       const retries = (this as any)[retryKey] || 0
-      if (retries > 150) { // 150 * 100ms = 15s max wait per sentence (Kokoro local inference can be slow)
+      if (retries > 150) {
         console.warn('TTS audio fetch timeout, skipping sentence:', item.text)
         delete (this as any)[retryKey]
         this.playIndex++
@@ -646,11 +755,12 @@ class StreamingTTSManager {
         return
       }
       (this as any)[retryKey] = retries + 1
-      setTimeout(() => this.playNext(), 100)
+      setTimeout(() => {
+        if (gen === this.generation) this.playNext()
+      }, 100)
       return
     }
 
-    // Clear retry counter
     delete (this as any)[`_retries_${this.playIndex}`]
 
     this.isPlaying = true
@@ -659,9 +769,7 @@ class StreamingTTSManager {
     try {
       await ttsAudioManager.play(item.audio, item.contentType)
     } catch (e) {
-      // Only log real errors, not intentional stops
       if (e instanceof DOMException && e.name === 'AbortError') {
-        // Playback was intentionally stopped, don't continue chain
         this.isPlaying = false
         return
       }
@@ -669,6 +777,7 @@ class StreamingTTSManager {
     }
 
     this.isPlaying = false
+    if (gen !== this.generation) return
     this.playIndex++
 
     if (!this.isStopped) {
@@ -677,11 +786,14 @@ class StreamingTTSManager {
   }
 
   stop() {
+    this.generation++
     this.isStopped = true
     this.isPlaying = false
+    this.playbackStarted = false
     this.queue = []
     this.playIndex = 0
     this.fetchIndex = 0
+    this.activeFetches = 0
     this.currentEventSource?.close()
     ttsAudioManager.stop()
     voiceApi.stopSpeaking().catch(() => {})

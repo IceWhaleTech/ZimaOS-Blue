@@ -1077,7 +1077,6 @@ textarea {
   padding-bottom: 9px;
   line-height: 20px;
   overflow-y: auto;
-  scrollbar-gutter: stable;
   margin: 0;
   display: block;
   vertical-align: top;
@@ -1094,5 +1093,18 @@ textarea::-webkit-scrollbar-track {
 textarea::-webkit-scrollbar-thumb {
   background: var(--color-bg-surface);
   border-radius: 3px;
+}
+
+/* Hide scrollbar when content fits in one line */
+textarea::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+textarea:hover::-webkit-scrollbar-thumb {
+  background: var(--color-bg-surface);
+}
+
+textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
 }
 </style>

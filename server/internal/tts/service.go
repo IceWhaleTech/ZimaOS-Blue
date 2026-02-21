@@ -321,4 +321,15 @@ func (s *service) Close() {
 			esp.Close()
 		}
 	}
+
+	// Close any provider that implements a Close method (e.g. Kokoro idle timer)
+	type closer interface{ Close() }
+	for pt, p := range s.providers {
+		if pt == ProviderEspeakNG {
+			continue // already handled above
+		}
+		if c, ok := p.(closer); ok {
+			c.Close()
+		}
+	}
 }

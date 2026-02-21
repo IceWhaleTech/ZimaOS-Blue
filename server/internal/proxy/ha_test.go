@@ -107,15 +107,15 @@ func TestAllModelsForProvider_SkipsBlacklisted(t *testing.T) {
 	// Blacklist the original model
 	ph.providerMemory.BlacklistModel(pid, burl, "claude-3-5-haiku-20241022")
 
-	models := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
-	for _, m := range models {
-		if m == "claude-3-5-haiku-20241022" {
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
+	for i := 0; i < nModels; i++ {
+		if modelsBuf[i] == "claude-3-5-haiku-20241022" {
 			t.Fatal("blacklisted model should not appear in candidates")
 		}
 	}
 
 	// Should still have aliases available
-	if len(models) == 0 {
+	if nModels == 0 {
 		t.Fatal("expected at least one alias to be available")
 	}
 }
@@ -132,9 +132,9 @@ func TestAllModelsForProvider_AllBlacklisted(t *testing.T) {
 		ph.providerMemory.BlacklistModel(pid, burl, alias)
 	}
 
-	models := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
-	if len(models) != 0 {
-		t.Fatalf("expected 0 models when all blacklisted, got %d: %v", len(models), models)
+	_, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
+	if nModels != 0 {
+		t.Fatalf("expected 0 models when all blacklisted, got %d", nModels)
 	}
 }
 
@@ -147,12 +147,12 @@ func TestAllModelsForProvider_RememberedAliasFirst(t *testing.T) {
 	// Remember that "claude-haiku-4-5" worked for "claude-3-5-haiku-20241022"
 	ph.providerMemory.RememberModelAlias(pid, burl, "claude-3-5-haiku-20241022", "claude-haiku-4-5")
 
-	models := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
-	if len(models) == 0 {
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
+	if nModels == 0 {
 		t.Fatal("expected at least one model")
 	}
-	if models[0] != "claude-haiku-4-5" {
-		t.Errorf("expected remembered alias first, got %q", models[0])
+	if modelsBuf[0] != "claude-haiku-4-5" {
+		t.Errorf("expected remembered alias first, got %q", modelsBuf[0])
 	}
 }
 

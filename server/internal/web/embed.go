@@ -1,5 +1,3 @@
-//go:build !dev
-
 package web
 
 import (
@@ -101,6 +99,7 @@ func localDistCandidates() []string {
 	// Relative to working directory
 	if wd, err := os.Getwd(); err == nil {
 		candidates = append(candidates,
+			filepath.Join(wd, ".dist"),
 			filepath.Join(wd, "internal", "web", "dist"),
 			filepath.Join(wd, "server", "internal", "web", "dist"),
 		)

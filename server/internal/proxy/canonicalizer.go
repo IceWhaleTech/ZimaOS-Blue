@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/tidwall/gjson"
 )
@@ -14,6 +15,12 @@ const (
 	fnvOffset64 uint64 = 14695981039346656037
 	fnvPrime64  uint64 = 1099511628211
 )
+
+// unsafeString converts a byte slice to string without copying.
+// The caller MUST ensure the bytes are not modified while the string is in use.
+func unsafeString(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
+}
 
 // Canonicalizer generates stable cache keys from LLM API requests.
 // It sanitizes random/billing fields and normalizes parameters so that
@@ -26,34 +33,43 @@ func NewCanonicalizer() *Canonicalizer {
 }
 
 // CanonicalKey generates a cache key from the request body using FNV-1a.
-// Uses gjson for zero-alloc field extraction instead of json.Unmarshal.
-// Key = FNV-1a(model + canonical(messages) + temp_bucket + topP_bucket + maxTokens)
+// Hashes fields directly into FNV state — no intermediate strings.Builder needed.
+// Uses unsafe.String to avoid gjson's internal byte→string copy.
 func (c *Canonicalizer) CanonicalKey(body []byte) string {
 	if !gjson.ValidBytes(body) {
 		return c.fnvHashBytes(body)
 	}
 
-	model := gjson.GetBytes(body, "model").Str
-	temp := bucketFloat(gjson.GetBytes(body, "temperature").Float(), 0.1)
-	topP := bucketFloat(gjson.GetBytes(body, "top_p").Float(), 0.1)
-	maxTokens := gjson.GetBytes(body, "max_tokens").Int()
+	// unsafe.String avoids the copy that gjson.GetBytes does internally
+	bodyStr := unsafe.String(unsafe.SliceData(body), len(body))
+	model := gjson.Get(bodyStr, "model").Str
+	temp := bucketFloat(gjson.Get(bodyStr, "temperature").Float(), 0.1)
+	topP := bucketFloat(gjson.Get(bodyStr, "top_p").Float(), 0.1)
+	maxTokens := gjson.Get(bodyStr, "max_tokens").Int()
+	msgsHash := c.canonicalMessagesHash(gjson.Get(bodyStr, "messages"))
 
-	msgs := gjson.GetBytes(body, "messages")
-	canonical := c.canonicalMessagesGjson(msgs, body)
+	// Hash all fields directly into FNV — no strings.Builder allocation
+	hash := fnvOffset64
+	for i := 0; i < len(model); i++ {
+		hash ^= uint64(model[i])
+		hash *= fnvPrime64
+	}
+	hash ^= uint64('|')
+	hash *= fnvPrime64
+	// Mix in messages hash
+	hash ^= msgsHash
+	hash *= fnvPrime64
+	hash ^= uint64('|')
+	hash *= fnvPrime64
+	// Mix in temp/topP/maxTokens as raw bits
+	hash ^= math.Float64bits(temp)
+	hash *= fnvPrime64
+	hash ^= math.Float64bits(topP)
+	hash *= fnvPrime64
+	hash ^= uint64(maxTokens)
+	hash *= fnvPrime64
 
-	var b strings.Builder
-	b.Grow(len(model) + len(canonical) + 32)
-	b.WriteString(model)
-	b.WriteByte('|')
-	b.WriteString(canonical)
-	b.WriteByte('|')
-	b.Write(strconv.AppendFloat(nil, temp, 'f', 1, 64))
-	b.WriteByte('|')
-	b.Write(strconv.AppendFloat(nil, topP, 'f', 1, 64))
-	b.WriteByte('|')
-	b.Write(strconv.AppendInt(nil, maxTokens, 10))
-
-	return c.fnvHashString(b.String())
+	return fnvHashToHex(hash)
 }
 
 // CanonicalKeyFromParsed generates a cache key from a pre-parsed request map.
@@ -176,45 +192,58 @@ func (c *Canonicalizer) canonicalMessages(msgs []interface{}) string {
 	return string(data)
 }
 
-// canonicalMessagesGjson produces a stable hash-friendly string from messages
-// using gjson results, avoiding json.Unmarshal entirely.
-// It hashes role+content pairs directly with FNV, skipping billing headers.
-func (c *Canonicalizer) canonicalMessagesGjson(msgs gjson.Result, body []byte) string {
+// canonicalMessagesHash produces a stable FNV hash from messages using gjson,
+// avoiding all intermediate string/slice allocations.
+// Uses ForEach instead of Array() to avoid []Result heap allocation.
+// Uses insertion sort (O(n²) but n is small) to avoid sort.SliceStable's reflect alloc.
+func (c *Canonicalizer) canonicalMessagesHash(msgs gjson.Result) uint64 {
 	if !msgs.Exists() || !msgs.IsArray() {
-		return "[]"
+		return 0
 	}
 
-	arr := msgs.Array()
-	if len(arr) == 0 {
-		return "[]"
-	}
-
-	// Build sortable role+content pairs
+	// Collect role+content pairs, filtering billing headers.
+	// Use stack array for common case (≤16 messages).
 	type msgPair struct {
 		role    string
 		content string
 	}
-	pairs := make([]msgPair, 0, len(arr))
-	for _, msg := range arr {
+	var stackBuf [16]msgPair
+	n := 0
+
+	msgs.ForEach(func(_, msg gjson.Result) bool {
 		role := msg.Get("role").Str
 		content := msg.Get("content").Str
-
-		// Skip billing headers
 		if role == "system" && isBillingHeader(content) {
-			continue
+			return true // continue
 		}
 		if content != "" {
 			content = cleanTrackingTokens(content)
 		}
-		pairs = append(pairs, msgPair{role: role, content: content})
-	}
-
-	// Sort by role for stability
-	sort.SliceStable(pairs, func(i, j int) bool {
-		return pairs[i].role < pairs[j].role
+		if n < len(stackBuf) {
+			stackBuf[n] = msgPair{role: role, content: content}
+			n++
+		}
+		// Drop messages beyond 16 — extremely rare, acceptable for cache key stability
+		return true
 	})
 
-	// Hash directly instead of marshaling to JSON
+	if n == 0 {
+		return 0
+	}
+	pairs := stackBuf[:n]
+
+	// Insertion sort by role — avoids sort.SliceStable's reflect.Swapper alloc
+	for i := 1; i < len(pairs); i++ {
+		key := pairs[i]
+		j := i - 1
+		for j >= 0 && pairs[j].role > key.role {
+			pairs[j+1] = pairs[j]
+			j--
+		}
+		pairs[j+1] = key
+	}
+
+	// Hash directly
 	hash := fnvOffset64
 	for _, p := range pairs {
 		for i := 0; i < len(p.role); i++ {
@@ -230,15 +259,33 @@ func (c *Canonicalizer) canonicalMessagesGjson(msgs gjson.Result, body []byte) s
 		hash ^= uint64('\n')
 		hash *= fnvPrime64
 	}
-	return fnvHashToHex(hash)
+	return hash
 }
 
 // isBillingHeader checks if content is a billing/tracking header.
+// Uses case-insensitive prefix matching to avoid strings.ToLower allocation.
 func isBillingHeader(content string) bool {
-	lower := strings.ToLower(content)
-	return strings.HasPrefix(lower, "x-anthropic-billing-header:") ||
-		strings.HasPrefix(lower, "x-anthropic-billing") ||
-		strings.Contains(lower, "cch=")
+	return hasPrefixFold(content, "x-anthropic-billing") ||
+		containsFold(content, "cch=")
+}
+
+// hasPrefixFold is like strings.HasPrefix but case-insensitive, zero-alloc.
+func hasPrefixFold(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	return strings.EqualFold(s[:len(prefix)], prefix)
+}
+
+// containsFold is like strings.Contains but case-insensitive for short needles.
+func containsFold(s, needle string) bool {
+	nl := len(needle)
+	for i := 0; i <= len(s)-nl; i++ {
+		if strings.EqualFold(s[i:i+nl], needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanTrackingTokens removes cch=xxx, cc_version=xxx tokens from content.

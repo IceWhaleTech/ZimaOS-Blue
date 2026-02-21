@@ -13,8 +13,11 @@ import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const providerPoolStore = useProviderPoolStore()
+
+// Set locale for TTS human-like speech preprocessing
+streamingTTSManager.setLocale(locale.value)
 
 // Start loading highlight.js languages when chat is first rendered
 preloadHljs()
@@ -147,6 +150,11 @@ const hasCards = computed(() => parsedContent.value !== null && parsedContent.va
 const formattedTime = computed(() => {
   const date = new Date(props.message.created_at)
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+})
+
+const formattedTimeLong = computed(() => {
+  const date = new Date(props.message.created_at)
+  return date.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 
 // Get metadata from store or message itself
@@ -285,7 +293,7 @@ watch(() => props.message.content, (newContent, _oldContent) => {
       isSpeaking.value = true
       hasAutoPlayed.value = true
       // Don't await — let playback run in background so watcher can fire again
-      streamingTTSManager.streamText(newText)
+      streamingTTSManager.streamAndPlay(newText)
     }
   }
 })
@@ -308,7 +316,7 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
 
       if (remaining) {
         // Append remaining text to the streaming queue (non-blocking)
-        streamingTTSManager.streamText(remaining)
+        streamingTTSManager.streamAndPlay(remaining)
       }
       // Set onComplete to clear isSpeaking when all audio finishes
       streamingTTSManager.onComplete = () => {
@@ -485,7 +493,10 @@ async function playTTSAudio(textContent: string) {
   }
 
   try {
+    // Reset queue for fresh manual playback, prefetch all sentences, then start playing
+    streamingTTSManager.reset()
     await streamingTTSManager.streamText(textContent)
+    streamingTTSManager.play()
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return
     console.error('TTS error:', e)
@@ -703,7 +714,7 @@ async function handleMobileDelete() {
 
 <template>
   <div
-    class="message group relative p-4 transition-colors duration-150"
+    class="message group relative p-2 sm:p-4 transition-colors duration-150"
     :class="{
       'bg-gray-100 dark:bg-gray-600/10': isSelected,
       'cursor-pointer': isMultiSelectMode,
@@ -731,7 +742,7 @@ async function handleMobileDelete() {
 
     <!-- Message content wrapper -->
     <div
-      class="flex gap-3"
+      class="flex gap-2 sm:gap-3"
       :class="{
         'justify-end': isUser,
         'pl-8': isMultiSelectMode,
@@ -740,7 +751,7 @@ async function handleMobileDelete() {
       <!-- Avatar (AI) -->
       <div
         v-if="isAssistant"
-        class="avatar flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-sm font-bold"
+        class="avatar flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs sm:text-sm font-bold"
       >
         AI
       </div>
@@ -749,8 +760,8 @@ async function handleMobileDelete() {
       <div
         class="content min-w-0 max-w-[80%]"
       >
-        <!-- Provider and Model info (above chat bubble for assistant) -->
-        <div v-if="isAssistant && metadata && (metadata.provider || metadata.model)" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <!-- Provider and Model info (above chat bubble for assistant, hidden on mobile) -->
+        <div v-if="isAssistant && metadata && (metadata.provider || metadata.model)" class="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
           <!-- Cloud/Local icon -->
           <svg v-if="providerLocation === 'cloud'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
@@ -902,9 +913,9 @@ async function handleMobileDelete() {
           </span>
         </div>
 
-        <!-- Timestamp (always visible) -->
+        <!-- Timestamp (hidden on mobile, shown on desktop) -->
         <div
-          class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-2 flex-wrap"
+          class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 hidden sm:flex items-center gap-2 flex-wrap"
           :class="{ 'justify-end': isUser }"
         >
           <span>{{ formattedTime }}</span>
@@ -938,7 +949,7 @@ async function handleMobileDelete() {
       <!-- User avatar -->
       <div
         v-if="isUser"
-        class="avatar flex-shrink-0 w-8 h-8 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-sm font-bold"
+        class="avatar flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-xs sm:text-sm font-bold"
       >
         U
       </div>
@@ -1008,6 +1019,38 @@ async function handleMobileDelete() {
 
             <!-- Actions -->
             <div class="px-4 pb-6">
+              <!-- Message info card -->
+              <div class="px-4 py-3 mb-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-xs text-gray-500 dark:text-gray-400 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-400 dark:text-gray-500">{{ formattedTimeLong }}</span>
+                </div>
+                <div v-if="isAssistant && metadata?.provider" class="flex items-center gap-1.5">
+                  <svg v-if="providerLocation === 'cloud'" class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                  </svg>
+                  <svg v-else-if="providerLocation === 'local'" class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <span class="text-gray-700 dark:text-gray-300">{{ providerPoolStore.getProviderDisplayName(metadata.provider) }}</span>
+                  <template v-if="metadata.model">
+                    <span class="text-gray-300 dark:text-gray-600">/</span>
+                    <span class="text-gray-700 dark:text-gray-300">{{ metadata.model }}</span>
+                  </template>
+                </div>
+                <div v-if="isAssistant && metadata?.stats" class="flex items-center gap-3 flex-wrap text-gray-600 dark:text-gray-300">
+                  <span v-if="formatTokens(metadata.stats.input_tokens)" class="flex items-center gap-1">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4" /></svg>
+                    {{ formatTokens(metadata.stats.input_tokens) }}
+                  </span>
+                  <span v-if="formatTokens(metadata.stats.output_tokens)" class="flex items-center gap-1">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8v12m0 0l-4-4m4 4l4-4" /></svg>
+                    {{ formatTokens(metadata.stats.output_tokens) }}
+                  </span>
+                  <span v-if="formatTTFT(metadata.stats.ttft_ms)">⏱️ {{ formatTTFT(metadata.stats.ttft_ms) }}</span>
+                  <span v-if="formatSpeed(metadata.stats.tokens_per_second)">{{ formatSpeed(metadata.stats.tokens_per_second) }} t/s</span>
+                </div>
+              </div>
+
               <!-- Copy action -->
               <button
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"

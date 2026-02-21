@@ -3,6 +3,8 @@
 package providerpool
 
 import (
+	"net/url"
+	"sync"
 	"time"
 )
 
@@ -103,6 +105,19 @@ type Provider struct {
 	LastHealthCheck time.Time `json:"last_health_check,omitempty"`
 	LastError       string    `json:"last_error,omitempty"`
 	LastErrorTime   time.Time `json:"last_error_time,omitempty"`
+
+	// Cached parsed URL — lazily initialized, avoids url.Parse on every request
+	parsedURL     *url.URL  `json:"-"`
+	parsedURLOnce sync.Once `json:"-"`
+}
+
+// ParsedBaseURL returns the cached parsed URL for this provider.
+// Thread-safe, parsed once on first call. Returns nil if BaseURL is invalid.
+func (p *Provider) ParsedBaseURL() *url.URL {
+	p.parsedURLOnce.Do(func() {
+		p.parsedURL, _ = url.Parse(p.BaseURL)
+	})
+	return p.parsedURL
 }
 
 // APIKey represents a single API key with metadata

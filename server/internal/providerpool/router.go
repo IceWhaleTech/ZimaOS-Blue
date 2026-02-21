@@ -181,16 +181,20 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 		return nil
 	}
 
-	// Build exclusion set
-	excludeSet := make(map[string]bool, len(req.Exclude))
-	for _, id := range req.Exclude {
-		excludeSet[id] = true
+	// Build exclusion set — skip map alloc when no excludes (common case)
+	var excludeSet map[string]bool
+	if len(req.Exclude) > 0 {
+		excludeSet = make(map[string]bool, len(req.Exclude))
+		for _, id := range req.Exclude {
+			excludeSet[id] = true
+		}
 	}
 
 	// Copy + filter (runtime state: cooldown, exclude, routing mode, status)
 	result := make([]*RouteCandidate, 0, len(source))
+	needModeFilter := req.Mode != "" && req.Mode != RoutingModeAuto
 	for _, c := range source {
-		if excludeSet[c.Provider.ID] {
+		if len(excludeSet) > 0 && excludeSet[c.Provider.ID] {
 			continue
 		}
 		if c.Provider.Status == ProviderStatusError {
@@ -199,7 +203,7 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 		if r.IsInCooldown(c.Provider.ID) {
 			continue
 		}
-		if req.Mode != "" && req.Mode != RoutingModeAuto {
+		if needModeFilter {
 			if req.Mode == RoutingModeCloud && c.Provider.Location != ProviderLocationCloud {
 				continue
 			}

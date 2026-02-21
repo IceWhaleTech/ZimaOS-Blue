@@ -53,6 +53,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
@@ -152,6 +153,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// HTTPS redirect middleware (must be first)
 	tlsManager := security.GetGlobalTLSManager()
 	if tlsManager != nil {
+		// Load persisted TLS settings (overrides YAML defaults)
+		if err := tlsManager.LoadSettings(); err != nil {
+			logger.Warn("Failed to load persisted TLS settings", zap.Error(err))
+		}
+
 		// Try to load existing certificate from disk
 		if err := tlsManager.LoadCertificate(); err != nil {
 			logger.Debug("No existing TLS certificate found", zap.Error(err))
@@ -586,9 +592,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.VoiceHandler != nil {
 		voiceGroup := v1.Group("/voice")
 		deps.VoiceHandler.RegisterRoutes(voiceGroup)
-		// WebSocket handler for voice streaming
+		// WebSocket handler for voice streaming (requires auth, supports token in query param)
 		if deps.VoiceWSHandler != nil {
-			deps.VoiceWSHandler.RegisterRoutes(voiceGroup)
+			voiceWSGroup := protected.Group("/voice")
+			deps.VoiceWSHandler.RegisterRoutes(voiceWSGroup)
 		}
 	} else {
 		stub := featureDisabled("voice")
@@ -745,6 +752,28 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		if deps.ProviderPool != nil {
 			proxyHandler.SetProviderPool(deps.ProviderPool)
+
+			// Wire health check latency into router for latency-based routing
+			if deps.ProviderPool.Registry != nil && deps.ProviderPool.Router != nil {
+				deps.ProviderPool.Registry.SetOnHealthResult(func(providerID string, result *providerpool.HealthCheckResult) {
+					if result.Healthy && result.Latency > 0 {
+						deps.ProviderPool.Router.UpdateLatency(providerID, result.Latency)
+					}
+				})
+			}
+
+			// Connection warmup: pre-establish TCP+TLS to all providers (async)
+			go func() {
+				providers := deps.ProviderPool.Registry.ListEnabled()
+				urls := make([]string, 0, len(providers))
+				for _, p := range providers {
+					if p.BaseURL != "" {
+						urls = append(urls, p.BaseURL)
+					}
+				}
+				warmup := proxy.NewConnWarmup(proxyConnPool)
+				warmup.WarmProviders(urls)
+			}()
 		}
 		if deps.APIKeyService != nil {
 			proxyHandler.SetAPIKeyValidator(func(key string) ([]string, error) {
@@ -1136,6 +1165,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	} else {
 		myGroup.GET("/usage", featureDisabled("metrics"))
 	}
+
+	// Static routes (must be last)
+	web.RegisterStaticRoutes(e)
 
 	logger.Info("All routes registered")
 	return apiProtected

@@ -146,10 +146,32 @@ func (p *Pool) Start(ctx context.Context) {
 	go func() {
 		refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := p.Discovery.RefreshAll(refreshCtx); err != nil {
-			// Log but don't fail - models can be fetched on demand
-			fmt.Printf("[Provider Pool] Failed to refresh models on startup: %v\n", err)
+
+		providers := p.Registry.ListEnabled()
+		successCount := 0
+		failedProviders := []string{}
+
+		for _, provider := range providers {
+			if _, err := p.Discovery.FetchModels(refreshCtx, provider.ID); err != nil {
+				failedProviders = append(failedProviders, provider.Name)
+			} else {
+				successCount++
+			}
 		}
+
+		if len(failedProviders) > 0 {
+			if successCount == 0 {
+				// All providers failed - likely need configuration
+				fmt.Printf("[Provider Pool] Note: Providers need configuration (API keys) to fetch models. Models will be fetched on demand when providers are properly configured.\n")
+			} else {
+				// Some providers succeeded, some failed
+				fmt.Printf("[Provider Pool] Successfully refreshed %d provider(s). %d provider(s) need configuration: %v\n",
+					successCount, len(failedProviders), failedProviders)
+			}
+		} else {
+			fmt.Printf("[Provider Pool] Successfully refreshed models for all %d configured provider(s)\n", successCount)
+		}
+
 		// Rebuild candidate list after models are refreshed
 		p.Router.RebuildCandidates()
 	}()

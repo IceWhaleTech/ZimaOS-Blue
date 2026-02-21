@@ -56,6 +56,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 )
@@ -722,6 +723,9 @@ func runServer() {
 		ttsService.Close()
 		logger.Info().Msg("TTS service cleaned up")
 	}
+
+	// Clean up extracted web dist from tmpfs
+	web.CleanupDist()
 
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }

@@ -172,6 +172,7 @@ func BenchmarkAllFormatsForProvider(b *testing.B) {
 		ID:        "test",
 		APIFormat: providerpool.APIFormatOpenAI,
 	}
+	_ = provider.ParsedBaseURL() // warm the cache
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -287,7 +288,7 @@ func BenchmarkE2E_ParseAndRoute(b *testing.B) {
 		}
 
 		// Model candidate building
-		_ = ph.allModelsForProvider("provider-1", "https://api.openai.com", pr.model, "")
+		_, _ = ph.allModelsForProvider("provider-1", "https://api.openai.com", pr.model, "")
 
 		// Format candidate building
 		provider := &providerpool.Provider{
@@ -295,7 +296,7 @@ func BenchmarkE2E_ParseAndRoute(b *testing.B) {
 			BaseURL:   "https://api.openai.com",
 			APIFormat: providerpool.APIFormatOpenAI,
 		}
-		_ = ph.allFormatsForProvider("provider-1", "https://api.openai.com", provider)
+		_, _, _ = ph.allFormatsForProvider("provider-1", "https://api.openai.com", provider)
 	}
 }
 
@@ -323,14 +324,14 @@ func BenchmarkE2E_ParseAndRoute_Parallel(b *testing.B) {
 				pr.cacheKey = ph.cache.GenerateCanonicalKey(pr.body)
 			}
 
-			_ = ph.allModelsForProvider("provider-1", "https://api.openai.com", pr.model, "")
+			_, _ = ph.allModelsForProvider("provider-1", "https://api.openai.com", pr.model, "")
 
 			provider := &providerpool.Provider{
 				ID:        "provider-1",
 				BaseURL:   "https://api.openai.com",
 				APIFormat: providerpool.APIFormatOpenAI,
 			}
-			_ = ph.allFormatsForProvider("provider-1", "https://api.openai.com", provider)
+			_, _, _ = ph.allFormatsForProvider("provider-1", "https://api.openai.com", provider)
 		}
 	})
 }

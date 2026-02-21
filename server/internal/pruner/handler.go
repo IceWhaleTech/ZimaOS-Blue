@@ -151,11 +151,15 @@ func (h *APIHandler) StartModelDownload(c echo.Context) error {
 
 	go func() {
 		if err := h.modelManager.Download(context.Background()); err == nil {
-			// Auto-switch to ONNX after successful download
-			if err := h.switchBackend("onnx"); err != nil {
-				log.Printf("[pruner] auto-switch to onnx failed: %v", err)
+			// Auto-switch: local→hybrid (keep local IR + add neural), otherwise→onnx
+			target := "onnx"
+			if h.config.Backend == "local" || h.config.Backend == "hybrid" {
+				target = "hybrid"
+			}
+			if err := h.switchBackend(target); err != nil {
+				log.Printf("[pruner] auto-switch to %s failed: %v", target, err)
 			} else {
-				log.Printf("[pruner] auto-switched to onnx backend")
+				log.Printf("[pruner] auto-switched to %s backend", target)
 			}
 		}
 	}()

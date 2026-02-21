@@ -4,10 +4,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"time"
 
-	"github.com/orca-zhang/ecache"
+	ecache2 "github.com/orca-zhang/ecache2"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
@@ -38,22 +37,33 @@ func (s AuthStrategy) String() string {
 
 // AuthProber manages auth strategy probing and remembers what works.
 type AuthProber struct {
-	cache *ecache.Cache // key: "providerID:host" → AuthStrategy (as int)
+	cache *ecache2.Cache[uint64] // key: FNV-1a hash of "providerID:host" → AuthStrategy
 }
 
 // NewAuthProber creates a new auth prober with 1-hour TTL memory.
 func NewAuthProber() *AuthProber {
 	return &AuthProber{
-		cache: ecache.NewLRUCache(4, 64, 1*time.Hour),
+		cache: ecache2.NewLRUCache[uint64](4, 64, 1*time.Hour),
 	}
 }
 
-// cacheKey builds the memory key scoped to provider + upstream host.
-func cacheKey(providerID, baseURL string) string {
-	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
-		return providerID + ":" + u.Host
+// cacheKey builds the memory key as a raw FNV-1a uint64 hash. Zero allocation.
+func cacheKey(providerID, baseURL string) uint64 {
+	host := extractHost(baseURL)
+	hash := fnvOffset64
+	for i := 0; i < len(providerID); i++ {
+		hash ^= uint64(providerID[i])
+		hash *= fnvPrime64
 	}
-	return providerID
+	if host != "" {
+		hash ^= uint64(':')
+		hash *= fnvPrime64
+		for i := 0; i < len(host); i++ {
+			hash ^= uint64(host[i])
+			hash *= fnvPrime64
+		}
+	}
+	return hash
 }
 
 // Recall returns the cached winning strategy, if any.
@@ -82,6 +92,10 @@ var (
 	strategiesAnthropic = []AuthStrategy{AuthAnthropic, AuthBearer, AuthXAPIKey, AuthNone}
 	strategiesOllama    = []AuthStrategy{AuthNone, AuthBearer}
 	strategiesDefault   = []AuthStrategy{AuthBearer, AuthXAPIKey, AuthNone}
+	// Cached-winner fast paths — single strategy, zero alloc
+	strategiesCachedBearer   = []AuthStrategy{AuthBearer}
+	strategiesCachedXAPIKey  = []AuthStrategy{AuthXAPIKey}
+	strategiesCachedAnthropic = []AuthStrategy{AuthAnthropic}
 )
 
 // Strategies returns an ordered list of auth strategies to try.
@@ -105,20 +119,18 @@ func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *provid
 		base = strategiesDefault
 	}
 
-	// If we have a cached winner, move it to front using stack-allocated buffer
+	// If we have a cached winner, return a pre-built single-element slice
 	if cached, ok := ap.Recall(provider.ID, provider.BaseURL); ok {
-		var buf [4]AuthStrategy
-		buf[0] = cached
-		n := 1
-		for _, s := range base {
-			if s != cached {
-				buf[n] = s
-				n++
-			}
+		switch cached {
+		case AuthBearer:
+			return strategiesCachedBearer
+		case AuthXAPIKey:
+			return strategiesCachedXAPIKey
+		case AuthAnthropic:
+			return strategiesCachedAnthropic
+		case AuthNone:
+			return strategiesNone
 		}
-		result := make([]AuthStrategy, n)
-		copy(result, buf[:n])
-		return result
 	}
 
 	return base
