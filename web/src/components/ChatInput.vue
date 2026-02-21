@@ -1046,22 +1046,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
   }
 }
 
-.chat-input-container {
-  border: 1px solid var(--glass-border);
-}
-
-/* On mobile, only top border, no side/bottom borders */
-@media (max-width: 767px) {
-  .chat-input-container {
-    border: none;
-    border-top: 1px solid var(--glass-border);
-  }
-}
+/* Desktop: glass-card handles border. Mobile/compact: Tailwind border-t handles it. */
 
 :root.light .chat-input-container,
 [data-theme="light"] .chat-input-container {
   background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(0, 0, 0, 0.1);
 }
 
 textarea {

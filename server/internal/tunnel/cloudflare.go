@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/wizzard0/trycloudflared"
 	"golang.org/x/sync/singleflight"
 )
@@ -26,6 +27,42 @@ type CloudflareManager struct {
 }
 
 func NewCloudflareManager() *CloudflareManager { return &CloudflareManager{} }
+
+// tolerantRegisterer wraps a prometheus.Registerer to silently ignore
+// duplicate collector registrations (AlreadyRegisteredError).
+// This is needed because trycloudflared.CreateCloudflareTunnel calls
+// metrics.RegisterBuildInfo on every invocation, which panics on restart.
+type tolerantRegisterer struct {
+	prometheus.Registerer
+}
+
+func (t tolerantRegisterer) Register(c prometheus.Collector) error {
+	err := t.Registerer.Register(c)
+	if err != nil {
+		// Ignore AlreadyRegisteredError — the collector is already there
+		if _, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			return nil
+		}
+	}
+	return err
+}
+
+func (t tolerantRegisterer) MustRegister(cs ...prometheus.Collector) {
+	for _, c := range cs {
+		_ = t.Register(c) // silently ignore duplicates
+	}
+}
+
+var tolerantOnce sync.Once
+
+// installTolerantRegisterer permanently wraps prometheus.DefaultRegisterer
+// so that duplicate collector registrations (from tunnel restarts) are
+// silently ignored instead of panicking.
+func installTolerantRegisterer() {
+	tolerantOnce.Do(func() {
+		prometheus.DefaultRegisterer = tolerantRegisterer{prometheus.DefaultRegisterer}
+	})
+}
 
 func (m *CloudflareManager) Start(ctx context.Context, cfg *Config) error {
 	m.mu.Lock()
@@ -83,6 +120,10 @@ func (m *CloudflareManager) startTunnelInternal(port int) (interface{}, error) {
 			}
 		}()
 
+		// Install a tolerant Prometheus registerer permanently. We can't
+		// restore the original after CreateCloudflareTunnel because it spawns
+		// a child goroutine that calls MustRegister asynchronously.
+		installTolerantRegisterer()
 		tunnelURL, err := trycloudflared.CreateCloudflareTunnel(tunnelCtx, port)
 		if err != nil {
 			m.mu.Lock()

@@ -313,9 +313,11 @@ async function handleSelectConversation(id: string) {
 }
 
 async function handleCreateConversation() {
-  await chatStore.createConversation(t('chat.newConversation'))
-  if (isMobile.value) {
-    showSidebar.value = false
+  const conv = await chatStore.createConversation(t('chat.newConversation'))
+  if (isMobile.value && conv?.id) {
+    mobileAnimationEnabled.value = true
+    pageStack.value.push(conv.id)
+    await router.push({ query: { conversationId: conv.id } })
   }
 }
 
@@ -537,9 +539,10 @@ onUnmounted(() => {
     <!-- Sidebar / Conversation List -->
     <aside
       v-show="isMobile ? showListPage : showSidebar"
-      class="conversation-sidebar flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar z-40"
+      class="conversation-sidebar flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar"
       :class="{
         'w-80': !isMobile,
+        'z-40': !isMobile,
         'fixed left-0 top-0 h-full': !isMobile && isNarrowScreen,
         '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar,
         'mobile-list-page': isMobile && showListPage,
@@ -1297,7 +1300,7 @@ onUnmounted(() => {
 .mobile-view {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 10;
   background: var(--surface-base);
 }
 
@@ -1318,7 +1321,7 @@ onUnmounted(() => {
 .mobile-chat {
   position: fixed !important;
   inset: 0;
-  z-index: 51;
+  z-index: 20;
   background: var(--surface-base);
   flex-direction: column !important;
   transform: translateX(0);

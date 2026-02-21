@@ -259,7 +259,6 @@ func englishPresetQuestions() []PresetQuestion {
 		{ID: "q2", Text: "Explain what machine learning is", Category: "learning", Icon: "🎓"},
 		{ID: "q3", Text: "Recommend some sci-fi movies", Category: "entertainment", Icon: "🎬"},
 		{ID: "q4", Text: "Help me create a fitness plan", Category: "lifestyle", Icon: "💪"},
-		{ID: "q5", Text: "How can I improve work efficiency?", Category: "productivity", Icon: "⚡"},
 
 		// Coding & Tech
 		{ID: "q6", Text: "Write a quicksort in Python", Category: "coding", Icon: "💻"},
@@ -286,12 +285,9 @@ func englishPresetQuestions() []PresetQuestion {
 
 		// Work
 		{ID: "q19", Text: "How to prepare for a tech interview?", Category: "career", Icon: "👔"},
-		{ID: "q20", Text: "Help me write a project summary report", Category: "writing", Icon: "📝"},
+		{ID: "q20", Text: "How can I improve work efficiency?", Category: "productivity", Icon: "⚡"},
 
 		// Multimodal - Image Analysis
-		{ID: "q21", Text: "Identify objects in this image and mark positions", Category: "vision", Icon: "🔍", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "room.jpg", MimeType: "image/jpeg", Placeholder: "sample-photo"},
-		}},
 		{ID: "q22", Text: "Analyze the composition and colors of this photo", Category: "vision", Icon: "🎨", Attachments: []PresetQuestionAttachment{
 			{Type: "image", Name: "cityscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-scene"},
 		}},
@@ -299,30 +295,8 @@ func englishPresetQuestions() []PresetQuestion {
 			{Type: "image", Name: "invoice.jpg", MimeType: "image/jpeg", Placeholder: "sample-text-image"},
 		}},
 
-		// File & Document Analysis
-		{ID: "q24", Text: "Help me analyze this Excel spreadsheet", Category: "document", Icon: "📊", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "data.txt", MimeType: "text/plain", Placeholder: "sample-document"},
-		}},
-		{ID: "q25", Text: "Summarize the main content of this PDF", Category: "document", Icon: "📄", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "document.txt", MimeType: "text/plain", Placeholder: "sample-document"},
-		}},
-		{ID: "q26", Text: "Help me organize this CSV file data", Category: "document", Icon: "📋", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "sales_data.csv", MimeType: "text/csv", Placeholder: "sample-csv"},
-		}},
-
-		// Data Visualization
-		{ID: "q27", Text: "Generate a simple table from data", Category: "data", Icon: "📈"},
-		{ID: "q28", Text: "Help me analyze sales data trends", Category: "data", Icon: "📉"},
-
-		// Smart Home & IoT
-		{ID: "q29", Text: "How to automate home with Home Assistant?", Category: "smarthome", Icon: "🏡"},
-		{ID: "q30", Text: "Recommend smart home starter devices", Category: "smarthome", Icon: "💡"},
-
 		// Agent 2 UI Demo - Chart Analysis
-		{ID: "q41", Text: "Analyze the data trends in this chart", Category: "agent2-ui", Icon: "📊", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "chart.png", MimeType: "image/png", Placeholder: "sample-chart"},
-		}},
-		{ID: "q42", Text: "Help me interpret this sales data chart", Category: "agent2-ui", Icon: "📈", Attachments: []PresetQuestionAttachment{
+		{ID: "q42", Text: "Help me interpret the data in this chart", Category: "agent2-ui", Icon: "📈", Attachments: []PresetQuestionAttachment{
 			{Type: "image", Name: "chart.png", MimeType: "image/png", Placeholder: "sample-chart"},
 		}},
 
@@ -335,19 +309,13 @@ func englishPresetQuestions() []PresetQuestion {
 		}},
 
 		// Agent 2 UI Demo - Document Analysis
-		{ID: "q45", Text: "Summarize the key data in this report", Category: "agent2-ui", Icon: "📋", Attachments: []PresetQuestionAttachment{
+		{ID: "q45", Text: "Analyze this sales report and provide recommendations", Category: "agent2-ui", Icon: "📋", Attachments: []PresetQuestionAttachment{
 			{Type: "file", Name: "report.txt", MimeType: "text/plain", Placeholder: "sample-document"},
-		}},
-		{ID: "q46", Text: "Analyze this sales report and provide recommendations", Category: "agent2-ui", Icon: "📄", Attachments: []PresetQuestionAttachment{
-			{Type: "file", Name: "sales-report.txt", MimeType: "text/plain", Placeholder: "sample-document"},
 		}},
 
 		// Agent 2 UI Demo - Image Analysis
 		{ID: "q47", Text: "Describe the content of this landscape image", Category: "agent2-ui", Icon: "🖼️", Attachments: []PresetQuestionAttachment{
 			{Type: "image", Name: "landscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-image"},
-		}},
-		{ID: "q48", Text: "Analyze the composition and color scheme of this image", Category: "agent2-ui", Icon: "🎨", Attachments: []PresetQuestionAttachment{
-			{Type: "image", Name: "cityscape.jpg", MimeType: "image/jpeg", Placeholder: "sample-scene"},
 		}},
 
 		// Agent 2 UI Demo - Data Analysis
@@ -360,18 +328,6 @@ func englishPresetQuestions() []PresetQuestion {
 		{ID: "q51", Text: "Find the bugs in this JavaScript code", Category: "agent2-ui", Icon: "🐛", Attachments: []PresetQuestionAttachment{
 			{Type: "file", Name: "buggy_calculator.js", MimeType: "text/javascript", Placeholder: "sample-js"},
 		}},
-
-		// Additional English questions
-		{ID: "q31", Text: "Help me translate this text", Category: "writing", Icon: "🌐"},
-		{ID: "q32", Text: "Write a simple JavaScript function", Category: "coding", Icon: "📜"},
-		{ID: "q33", Text: "How to learn a new programming language?", Category: "learning", Icon: "🎯"},
-		{ID: "q34", Text: "Help me create a meeting notes template", Category: "writing", Icon: "📋"},
-		{ID: "q35", Text: "Explain the difference between AI and deep learning", Category: "learning", Icon: "🤖"},
-		{ID: "q36", Text: "Recommend ways to improve focus", Category: "productivity", Icon: "🧘"},
-		{ID: "q37", Text: "Help me design a simple database schema", Category: "coding", Icon: "🗄️"},
-		{ID: "q38", Text: "How to configure SSH on Linux?", Category: "tech", Icon: "🔐"},
-		{ID: "q39", Text: "Help me write product introduction copy", Category: "creative", Icon: "✍️"},
-		{ID: "q40", Text: "Explain the Git workflow", Category: "coding", Icon: "🔀"},
 
 		// Flowchart
 		{ID: "q52", Text: "Draw a user registration and login flowchart", Category: "creative", Icon: "📐"},

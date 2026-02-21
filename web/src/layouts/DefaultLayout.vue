@@ -75,7 +75,7 @@ onUnmounted(() => {
     <AppHeader v-if="!isChatMobile" @toggle-sidebar="toggleSidebar" />
     <div class="flex flex-1 min-h-0">
       <AppSidebar ref="sidebarRef" />
-      <main class="flex-1 overflow-auto w-full" :class="{ 'p-4 sm:p-6': !noPadding }">
+      <main class="flex-1 overflow-auto w-full relative z-0" :class="{ 'p-4 sm:p-6': !noPadding }">
         <RouterView />
       </main>
     </div>

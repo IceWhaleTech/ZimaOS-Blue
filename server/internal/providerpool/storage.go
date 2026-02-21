@@ -162,8 +162,8 @@ func (s *FileStorage) LoadProvider(id string) (*Provider, error) {
 
 // LoadAllProviders loads all providers from storage
 func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	storage, err := s.loadProvidersInternal()
 	if err != nil {
@@ -174,6 +174,7 @@ func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
 	}
 
 	providers := make([]*Provider, 0, len(storage.Providers))
+	needsSave := false
 	for _, data := range storage.Providers {
 		provider := data.Provider
 		// Restore API keys
@@ -181,8 +182,19 @@ func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
 			if i < len(data.APIKeys) {
 				provider.APIKeys[i].Key = data.APIKeys[i]
 			}
+			// Backfill missing key IDs (pre-existing providers saved before key ID system)
+			if provider.APIKeys[i].ID == "" {
+				provider.APIKeys[i].ID = GenerateID("key")
+				needsSave = true
+			}
 		}
 		providers = append(providers, provider)
+	}
+
+	// Persist backfilled IDs so they're stable across restarts
+	if needsSave {
+		storage.UpdatedAt = time.Now()
+		_ = s.saveProvidersInternal(storage)
 	}
 
 	return providers, nil
