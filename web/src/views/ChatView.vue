@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
@@ -21,6 +22,7 @@ import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 import { formatTokens } from '@/utils/format'
 
 const { t } = useI18n()
+const router = useRouter()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
@@ -37,6 +39,7 @@ const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
+const isNarrowScreen = ref(false) // PC narrow screen (<768px)
 const pageStack = ref<string[]>([]) // Mobile page stack: conversation IDs
 const showListPage = computed(() => isMobile.value && pageStack.value.length === 0)
 const showRoutingMenu = ref(false)
@@ -127,16 +130,15 @@ const localActiveCount = computed(() =>
   providerPoolStore.localProviders.filter(p => p.status === 'active').length
 )
 
-// Check if mobile device (narrow screen + touch capability)
+// Check if mobile device (UA detection)
 function checkMobile() {
-  const isNarrowScreen = window.innerWidth < 768
-  const hasTouchCapability = (('ontouchstart' in window) ||
-    (navigator.maxTouchPoints > 0) ||
-    (navigator.msMaxTouchPoints > 0))
-  isMobile.value = isNarrowScreen && hasTouchCapability
-  // Auto-show sidebar on desktop
+  const ua = navigator.userAgent.toLowerCase()
+  const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
+  isMobile.value = isMobileUA
+  isNarrowScreen.value = window.innerWidth < 768
+  // Auto-show sidebar on desktop wide screen, hide on narrow
   if (!isMobile.value) {
-    showSidebar.value = true
+    showSidebar.value = !isNarrowScreen.value
   }
 }
 
@@ -289,6 +291,8 @@ function handleRegenerate() {
 async function handleSelectConversation(id: string) {
   if (isMobile.value) {
     pageStack.value.push(id)
+    // Set query param to trigger AppHeader hide
+    await router.push({ query: { conversationId: id } })
   }
   await chatStore.selectConversation(id)
 }
@@ -321,6 +325,8 @@ function toggleSidebar() {
     // Mobile: return to list page
     pageStack.value = []
     chatStore.currentConversationId = null
+    // Clear query param to show AppHeader
+    router.push({ query: {} })
   } else {
     showSidebar.value = !showSidebar.value
   }
@@ -454,21 +460,20 @@ onUnmounted(() => {
 
 <template>
   <div class="chat-view h-full flex relative" :class="themeStyleClass">
-    <!-- Overlay for mobile sidebar -->
+    <!-- Overlay for narrow screen sidebar -->
     <div
-      v-if="showSidebar && isMobile"
-      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
+      v-if="!isMobile && isNarrowScreen && showSidebar"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30"
       @click="toggleSidebar"
     />
 
-    <!-- Conversation sidebar -->
+    <!-- Desktop: Sidebar (always visible on wide screen, collapsible on narrow) -->
     <aside
-      class="conversation-sidebar flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar z-40"
+      v-if="!isMobile"
+      class="conversation-sidebar flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar z-40 w-80"
       :class="{
-        'w-80': !isMobile,
-        'w-[85vw] max-w-80 fixed left-0 top-0 h-full': isMobile,
-        '-translate-x-full': !showSidebar && isMobile,
-        'translate-x-0': showSidebar || !isMobile,
+        'fixed left-0 top-0 h-full': isNarrowScreen,
+        '-translate-x-full': isNarrowScreen && !showSidebar
       }"
     >
       <ConversationList
@@ -485,13 +490,42 @@ onUnmounted(() => {
       />
     </aside>
 
-    <!-- Main chat area -->
-    <main
-      class="flex-1 flex flex-col min-w-0 relative"
-      @dragover.prevent="chatInputRef?.handleDragOver($event)"
-      @dragleave="chatInputRef?.handleDragLeave()"
-      @drop.prevent="chatInputRef?.handleDrop($event)"
+    <!-- Mobile: Conversation list page (default) -->
+    <div
+      v-if="isMobile && showListPage"
+      class="flex-1 flex flex-col min-w-0"
     >
+      <ConversationList
+        :conversations="chatStore.sortedConversations"
+        :current-id="chatStore.currentConversationId"
+        :loading="chatStore.loading"
+        :searching="chatStore.searching"
+        @select="handleSelectConversation"
+        @create="handleCreateConversation"
+        @delete="handleDeleteConversation"
+        @search="handleSearch"
+        @pin="handlePinConversation"
+        @unpin="handleUnpinConversation"
+      />
+    </div>
+
+    <!-- Main chat area (Desktop: flex-1, Mobile: fixed overlay with animation) -->
+    <Transition
+      name="slide-fade"
+      mode="out-in"
+    >
+      <main
+        v-if="!isMobile || !showListPage"
+        key="chat-main"
+        class="flex flex-col min-w-0 relative"
+        :class="{
+          'flex-1': !isMobile,
+          'fixed inset-0 z-50 bg-surface-base': isMobile && !showListPage
+        }"
+        @dragover.prevent="chatInputRef?.handleDragOver($event)"
+        @dragleave="chatInputRef?.handleDragLeave()"
+        @drop.prevent="chatInputRef?.handleDrop($event)"
+      >
       <!-- Chat header -->
       <header class="flex items-center justify-between p-2 sm:p-4 border-b border-gray-200 dark:border-glass-border glass-header gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -1049,6 +1083,7 @@ onUnmounted(() => {
         @transcript="handleVoiceTranscript"
       />
     </main>
+    </Transition>
   </div>
 </template>
 
@@ -1062,6 +1097,25 @@ onUnmounted(() => {
   .chat-view {
     padding-bottom: env(safe-area-inset-bottom);
   }
+}
+
+/* Slide and fade animation for mobile chat overlay */
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.3s ease-in;
+}
+
+.slide-fade-enter-from {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.slide-fade-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
 }
 
 .conversation-sidebar {

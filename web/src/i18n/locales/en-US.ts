@@ -440,6 +440,10 @@ export default {
     noProviderConfigured: 'No provider configured. Click to add one.',
     allProvidersFailed: 'All providers failed. Click to check settings.',
     noStreamData: 'No response received. Please check your LLM provider configuration or try again later.',
+    streamEmpty: 'Stream connection closed without receiving data. Please check your provider configuration.',
+    providerNoResponse: 'LLM provider did not return any response. Please verify your API key and try again.',
+    providerReturnedEmpty: 'LLM provider returned an empty response. Please try again or check provider status.',
+    noResponseBody: 'No response body received from server. Please check your network connection.',
     providerActive: 'Provider is active and ready.',
     providerPending: 'Provider status is being checked...',
     // Trial quota

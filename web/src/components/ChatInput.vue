@@ -42,6 +42,7 @@ const dragOver = ref(false)
 
 // Compact mode state (for narrow screens, including non-mobile)
 const isCompact = ref(false)
+const isMobile = ref(false)
 const showMobileMenu = ref(false)
 const mobileMenuRef = ref<HTMLDivElement | null>(null)
 
@@ -486,9 +487,11 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-// Check if compact mode (narrow screen)
+// Check if compact mode (narrow screen) and mobile device (UA)
 function checkMobile() {
   isCompact.value = window.innerWidth < 768
+  const ua = navigator.userAgent.toLowerCase()
+  isMobile.value = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
   if (!isCompact.value) {
     showMobileMenu.value = false
   }
@@ -549,14 +552,16 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
 <template>
   <div
     class="chat-input-wrapper"
-    :class="isCompact ? 'px-0 pb-0 pt-0' : 'px-3 sm:px-4 pb-3 sm:pb-4 pt-2'"
+    :class="isMobile ? 'px-0 pb-0 pt-0' : (isCompact ? 'px-0 pb-0 pt-0' : 'px-3 sm:px-4 pb-3 sm:pb-4 pt-2')"
   >
     <div
       class="chat-input-container p-3 sm:p-4 max-w-4xl mx-auto"
       :class="[
-        isCompact
+        isMobile
           ? 'border-t border-gray-200 dark:border-glass-border bg-white dark:bg-gray-800/80'
-          : 'glass-card shadow-lg rounded-2xl',
+          : (isCompact
+            ? 'border-t border-gray-200 dark:border-glass-border bg-white dark:bg-gray-800/80'
+            : 'glass-card shadow-lg rounded-2xl'),
         { 'ring-2 ring-accent': dragOver }
       ]"
     >
@@ -734,6 +739,19 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
             </svg>
           </button>
         </div>
+
+        <!-- PC Narrow: Send button (between textarea and + button) -->
+        <button
+          v-if="isCompact && !isMobile && !streaming"
+          :disabled="!canSend"
+          class="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
+          :title="t('chat.send')"
+          @click="handleSend"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
+        </button>
 
         <!-- Right: + button for extensions (or Cancel during streaming) -->
         <button
@@ -934,6 +952,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
           v-model="message"
           :disabled="disabled || streaming"
           :placeholder="placeholder"
+          enterkeyhint="send"
           class="chat-textarea w-full glass-input text-gray-900 dark:text-white px-3 pr-12 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
           rows="1"
           @keydown="handleKeydown"

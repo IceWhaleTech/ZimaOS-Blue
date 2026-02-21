@@ -124,7 +124,7 @@ export class SSEClient {
         if (done) {
           // Stream closed without [DONE] - check if we received any data
           if (!receivedData) {
-            options.onError?.(new Error('NO_STREAM_DATA'))
+            options.onError?.(new Error('STREAM_EMPTY'))
           } else if (finalChunkData) {
             // Stream closed after done:true but before [DONE] — still complete
             options.onComplete?.(finalChunkData)
@@ -144,7 +144,7 @@ export class SSEClient {
               // [DONE] arrives after the server has persisted the message to DB.
               // Fire onComplete here (not on done:true) so fetchMessages sees the saved data.
               if (!receivedData) {
-                options.onError?.(new Error('NO_STREAM_DATA'))
+                options.onError?.(new Error('PROVIDER_NO_RESPONSE'))
               } else {
                 options.onComplete?.(finalChunkData)
               }
@@ -171,7 +171,7 @@ export class SSEClient {
                 // but do NOT fire onComplete yet — wait for [DONE] which arrives
                 // after the server has persisted the message to the database.
                 if (!receivedData && !chunk.delta) {
-                  options.onError?.(new Error('NO_STREAM_DATA'))
+                  options.onError?.(new Error('PROVIDER_RETURNED_EMPTY'))
                   this.isConnected = false
                   break
                 }

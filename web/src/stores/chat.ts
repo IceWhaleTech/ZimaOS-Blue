@@ -336,9 +336,17 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onError: (err) => {
-          // Handle special error for no stream data
-          if (err.message === 'NO_STREAM_DATA') {
-            streamError.value = 'NO_STREAM_DATA'
+          // Map error codes to i18n keys for accurate error messages
+          const errorMap: Record<string, string> = {
+            'STREAM_EMPTY': 'streamEmpty',
+            'PROVIDER_NO_RESPONSE': 'providerNoResponse',
+            'PROVIDER_RETURNED_EMPTY': 'providerReturnedEmpty',
+            'No response body': 'noResponseBody',
+          }
+
+          const errorKey = errorMap[err.message]
+          if (errorKey) {
+            streamError.value = errorKey
           } else {
             streamError.value = err.message
           }

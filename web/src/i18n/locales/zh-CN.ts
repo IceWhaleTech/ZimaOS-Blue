@@ -429,6 +429,10 @@ export default {
     noProviderConfigured: '未配置提供商，点击添加。',
     allProvidersFailed: '所有提供商均失败，点击检查设置。',
     noStreamData: '未收到响应数据，请检查 LLM 提供商配置或稍后重试。',
+    streamEmpty: '流连接关闭但未收到数据。请检查您的提供商配置。',
+    providerNoResponse: 'LLM 提供商未返回任何响应。请验证您的 API 密钥并重试。',
+    providerReturnedEmpty: 'LLM 提供商返回了空响应。请重试或检查提供商状态。',
+    noResponseBody: '未从服务器收到响应体。请检查您的网络连接。',
     providerActive: '提供商已就绪。',
     providerPending: '正在检查提供商状态...',
     // Trial quota

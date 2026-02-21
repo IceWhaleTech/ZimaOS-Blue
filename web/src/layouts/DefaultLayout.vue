@@ -22,17 +22,17 @@ const route = useRoute()
 const noPadding = computed(() => route.meta.noPadding === true)
 const hideLayout = computed(() => route.meta.hideLayout === true)
 
-// On mobile chat page, hide AppHeader (chat page has its own header)
+// On mobile chat page, hide AppHeader when viewing conversation
 const windowWidth = ref(window.innerWidth)
 const isMobileDevice = computed(() => {
-  const isNarrowScreen = windowWidth.value < 768
-  const hasTouchCapability = (('ontouchstart' in window) ||
-    (navigator.maxTouchPoints > 0) ||
-    (navigator.msMaxTouchPoints > 0))
-  return isNarrowScreen && hasTouchCapability
+  const ua = navigator.userAgent.toLowerCase()
+  return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
 })
 const isChatMobile = computed(() => {
-  return false // Always show AppHeader
+  // Hide AppHeader when mobile device is on chat page with conversation selected
+  if (route.path !== '/chat' || !isMobileDevice.value) return false
+  // Check if conversation is selected (not showing list page)
+  return route.query.conversationId !== undefined
 })
 
 function onResize() { windowWidth.value = window.innerWidth }

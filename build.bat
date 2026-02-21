@@ -185,10 +185,8 @@ if errorlevel 1 exit /b 1
 
 echo [INFO] Starting web dev server...
 cd /d "%PROJECT_ROOT%web"
-if not exist "node_modules" (
-    echo [INFO] Installing Node dependencies...
-    call npm install
-)
+echo [INFO] Installing Node dependencies...
+call npm install
 call npm run dev
 goto :eof
 
@@ -258,7 +256,7 @@ call :check_prereqs
 if errorlevel 1 exit /b 1
 
 echo [INFO] Production run: build web, copy to server/internal/web, start server...
-
+call npm install
 :: Check production dependencies for vulnerabilities
 echo [INFO] Checking production dependencies for vulnerabilities...
 cd /d "%PROJECT_ROOT%web"
@@ -272,7 +270,6 @@ echo.
 :: Build web
 echo [INFO] Building web frontend...
 cd /d "%PROJECT_ROOT%web"
-if not exist "node_modules" call npm install
 call npm run build
 if errorlevel 1 (
     echo [ERROR] Failed to build web
