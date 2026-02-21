@@ -53,7 +53,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
@@ -1137,9 +1136,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	} else {
 		myGroup.GET("/usage", featureDisabled("metrics"))
 	}
-
-	// Static routes (must be last)
-	web.RegisterStaticRoutes(e)
 
 	logger.Info("All routes registered")
 	return apiProtected

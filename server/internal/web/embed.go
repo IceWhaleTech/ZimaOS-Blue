@@ -219,6 +219,23 @@ func RegisterStaticRoutes(e *echo.Echo) {
 			}
 			path = "index.html"
 		}
+
+		// Set cache headers based on file type
+		// Versioned assets (with hash) get long-term caching
+		// index.html gets no caching to ensure fresh content
+		if path == "index.html" {
+			// Never cache index.html - always fetch fresh version
+			c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Response().Header().Set("Pragma", "no-cache")
+			c.Response().Header().Set("Expires", "0")
+		} else if isVersionedAsset(path) {
+			// Versioned assets (with hash in filename) can be cached forever
+			c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Other files: short cache with revalidation
+			c.Response().Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
+		}
+
 		return c.Blob(http.StatusOK, getContentType(path), content)
 	})
 }

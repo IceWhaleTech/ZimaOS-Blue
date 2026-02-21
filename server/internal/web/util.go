@@ -13,6 +13,43 @@ func isAssetPath(path string) bool {
 	return false
 }
 
+// isVersionedAsset returns true if the path contains a hash (versioned asset).
+// Vite generates files like: app-abc123.js, style-def456.css
+// These files have content hashes and can be cached forever.
+func isVersionedAsset(path string) bool {
+	// Check if filename contains a hash pattern: name-[hash].ext
+	// Hash is typically 8+ alphanumeric characters
+	parts := strings.Split(path, "/")
+	filename := parts[len(parts)-1]
+
+	// Remove extension
+	dotIdx := strings.LastIndex(filename, ".")
+	if dotIdx == -1 {
+		return false
+	}
+	nameWithoutExt := filename[:dotIdx]
+
+	// Check if name contains a dash followed by hash-like string
+	dashIdx := strings.LastIndex(nameWithoutExt, "-")
+	if dashIdx == -1 {
+		return false
+	}
+
+	potentialHash := nameWithoutExt[dashIdx+1:]
+	// Hash should be at least 8 characters and alphanumeric
+	if len(potentialHash) < 8 {
+		return false
+	}
+
+	for _, c := range potentialHash {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // getContentType returns the content type for a file path.
 func getContentType(path string) string {
 	switch {

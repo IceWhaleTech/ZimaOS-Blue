@@ -43,6 +43,10 @@ struct WAVHeader {
 struct TTSContext {
     ISpVoice* voice;
     CRITICAL_SECTION cs; // Critical section for thread safety
+    ISpObjectToken* cachedVoiceToken; // Cached voice token for reuse
+    char* cachedVoiceId; // ID of cached voice
+    long cachedRate; // Cached rate to avoid redundant SetRate calls
+    USHORT cachedVolume; // Cached volume to avoid redundant SetVolume calls
 };
 
 void* tts_create() {
@@ -54,6 +58,10 @@ void* tts_create() {
 
     TTSContext* ctx = new TTSContext();
     ctx->voice = nullptr;
+    ctx->cachedVoiceToken = nullptr;
+    ctx->cachedVoiceId = nullptr;
+    ctx->cachedRate = 0;
+    ctx->cachedVolume = 100;
     InitializeCriticalSection(&ctx->cs);
 
     hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL, IID_ISpVoice, (void**)&ctx->voice);
@@ -70,6 +78,8 @@ void tts_destroy(void* handle) {
     if (handle) {
         TTSContext* ctx = static_cast<TTSContext*>(handle);
         if (ctx->voice) ctx->voice->Release();
+        if (ctx->cachedVoiceToken) ctx->cachedVoiceToken->Release();
+        if (ctx->cachedVoiceId) delete[] ctx->cachedVoiceId;
         DeleteCriticalSection(&ctx->cs);
         delete ctx;
     }
@@ -132,41 +142,76 @@ int tts_synthesize(void* handle, const char* text, const char* voice_id, float s
     HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     bool needsUninit = SUCCEEDED(hrInit);
 
-    // Set voice if specified
+    // Set voice if specified (use cached token to avoid repeated lookups)
     if (voice_id && strlen(voice_id) > 0) {
-        int voiceLen = MultiByteToWideChar(CP_UTF8, 0, voice_id, -1, nullptr, 0);
-        wchar_t* wvoice = new wchar_t[voiceLen];
-        MultiByteToWideChar(CP_UTF8, 0, voice_id, -1, wvoice, voiceLen);
-        ISpObjectToken* token = nullptr;
-        HRESULT hr = CoCreateInstance(CLSID_SpObjectToken, NULL, CLSCTX_ALL, __uuidof(ISpObjectToken), (void**)&token);
-        if (SUCCEEDED(hr) && token) {
-            hr = token->SetId(NULL, wvoice, FALSE);
-            if (SUCCEEDED(hr)) {
-                ctx->voice->SetVoice(token);
-            }
-            token->Release();
+        // Check if voice is already cached
+        bool needsUpdate = true;
+        if (ctx->cachedVoiceId && strcmp(ctx->cachedVoiceId, voice_id) == 0 && ctx->cachedVoiceToken) {
+            // Voice is cached, reuse token
+            ctx->voice->SetVoice(ctx->cachedVoiceToken);
+            needsUpdate = false;
         }
-        delete[] wvoice;
+
+        if (needsUpdate) {
+            // Create and cache new voice token
+            int voiceLen = MultiByteToWideChar(CP_UTF8, 0, voice_id, -1, nullptr, 0);
+            wchar_t* wvoice = new wchar_t[voiceLen];
+            MultiByteToWideChar(CP_UTF8, 0, voice_id, -1, wvoice, voiceLen);
+
+            ISpObjectToken* token = nullptr;
+            HRESULT hr = CoCreateInstance(CLSID_SpObjectToken, NULL, CLSCTX_ALL, __uuidof(ISpObjectToken), (void**)&token);
+            if (SUCCEEDED(hr) && token) {
+                hr = token->SetId(NULL, wvoice, FALSE);
+                if (SUCCEEDED(hr)) {
+                    ctx->voice->SetVoice(token);
+
+                    // Cache the token
+                    if (ctx->cachedVoiceToken) ctx->cachedVoiceToken->Release();
+                    ctx->cachedVoiceToken = token;
+                    ctx->cachedVoiceToken->AddRef(); // Keep reference
+
+                    // Cache the voice ID
+                    if (ctx->cachedVoiceId) delete[] ctx->cachedVoiceId;
+                    ctx->cachedVoiceId = new char[strlen(voice_id) + 1];
+                    strcpy(ctx->cachedVoiceId, voice_id);
+                }
+                token->Release();
+            }
+            delete[] wvoice;
+        }
     }
 
-    // Set voice parameters
+    // Set voice parameters (only if changed to avoid redundant calls)
     long rate = (long)((speed - 1.0f) * 10.0f);
-    ctx->voice->SetRate(rate);
+    if (rate < -10) rate = -10;
+    if (rate > 10) rate = 10;
+    if (rate != ctx->cachedRate) {
+        ctx->voice->SetRate(rate);
+        ctx->cachedRate = rate;
+    }
+
     USHORT vol = (USHORT)(volume * 100.0f);
-    ctx->voice->SetVolume(vol);
+    if (vol > 100) vol = 100;
+    if (vol != ctx->cachedVolume) {
+        ctx->voice->SetVolume(vol);
+        ctx->cachedVolume = vol;
+    }
 
     // Reset output to ensure clean state
     ctx->voice->SetOutput(NULL, TRUE);
 
-    // Convert text to wide string
+    // Convert text to wide string (optimize: pre-calculate size)
     int textLen = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
     wchar_t* wtext = new wchar_t[textLen];
     MultiByteToWideChar(CP_UTF8, 0, text, -1, wtext, textLen);
 
-    // Create memory stream first
+    // Create memory stream with pre-allocated size hint (estimate: ~10KB per second of speech)
+    int estimatedSize = textLen * 500; // Rough estimate
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, estimatedSize);
     IStream* memStream = nullptr;
-    HRESULT hr = CreateStreamOnHGlobal(NULL, TRUE, &memStream);
+    HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, &memStream);
     if (FAILED(hr) || !memStream) {
+        if (hMem) GlobalFree(hMem);
         delete[] wtext;
         if (needsUninit) CoUninitialize();
         RETURN_ERROR(ctx, -2);
@@ -192,7 +237,7 @@ int tts_synthesize(void* handle, const char* text, const char* voice_id, float s
     wfex.nAvgBytesPerSec = wfex.nSamplesPerSec * wfex.nBlockAlign;
     wfex.cbSize = 0;
 
-    // SetBaseStream with SPDFID_WaveFormatEx should add WAV header
+    // SetBaseStream with SPDFID_WaveFormatEx
     hr = stream->SetBaseStream(memStream, SPDFID_WaveFormatEx, &wfex);
     if (FAILED(hr)) {
         stream->Release();
@@ -202,7 +247,7 @@ int tts_synthesize(void* handle, const char* text, const char* voice_id, float s
         RETURN_ERROR(ctx, -3);
     }
 
-    // Set output stream - FALSE means we manage the stream lifetime
+    // Set output stream
     hr = ctx->voice->SetOutput(stream, FALSE);
     if (FAILED(hr)) {
         stream->Release();
@@ -212,126 +257,91 @@ int tts_synthesize(void* handle, const char* text, const char* voice_id, float s
         RETURN_ERROR(ctx, -4);
     }
 
-    // Speak the text asynchronously first, then wait
-    hr = ctx->voice->Speak(wtext, SPF_ASYNC | SPF_IS_NOT_XML, NULL);
+    // Speak the text asynchronously
+    hr = ctx->voice->Speak(wtext, SPF_ASYNC | SPF_IS_NOT_XML | SPF_PURGEBEFORESPEAK, NULL);
+    delete[] wtext; // Free text immediately after Speak
+
     if (FAILED(hr)) {
         stream->Release();
         memStream->Release();
-        delete[] wtext;
         if (needsUninit) CoUninitialize();
         RETURN_ERROR(ctx, -5);
     }
 
-    // Wait for speech to complete
-    hr = ctx->voice->WaitUntilDone(INFINITE);
+    // Wait for speech to complete (with timeout)
+    hr = ctx->voice->WaitUntilDone(30000); // 30 second timeout
     if (FAILED(hr)) {
         stream->Release();
         memStream->Release();
-        delete[] wtext;
         if (needsUninit) CoUninitialize();
         RETURN_ERROR(ctx, -5);
     }
 
-    // Close the stream to flush any pending data
-    hr = stream->Close();
-    if (FAILED(hr)) {
-        stream->Release();
-        memStream->Release();
-        delete[] wtext;
-        if (needsUninit) CoUninitialize();
-        RETURN_ERROR(ctx, -5);
-    }
+    // Close the stream to flush data
+    stream->Close();
 
-    // Get the size of the data in the memory stream
+    // Get stream size
     STATSTG stat;
     memset(&stat, 0, sizeof(stat));
     hr = memStream->Stat(&stat, STATFLAG_NONAME);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || stat.cbSize.QuadPart <= 0) {
         stream->Release();
         memStream->Release();
-        delete[] wtext;
         if (needsUninit) CoUninitialize();
         RETURN_ERROR(ctx, -6);
     }
 
     *audio_size = (int)stat.cbSize.QuadPart;
 
-    // Debug: Check if size is actually 0
-    if (*audio_size <= 0) {
-        // Try to get current position to see if anything was written
-        LARGE_INTEGER zero = {0};
-        ULARGE_INTEGER currentPos;
-        memStream->Seek(zero, STREAM_SEEK_CUR, &currentPos);
-
-        stream->Release();
-        memStream->Release();
-        delete[] wtext;
-        if (needsUninit) CoUninitialize();
-        RETURN_ERROR(ctx, -6);
-    }
-
-    // Seek to the beginning of the stream
+    // Seek to beginning
     LARGE_INTEGER pos = {0};
-    hr = memStream->Seek(pos, STREAM_SEEK_SET, NULL);
-    if (FAILED(hr)) {
-        stream->Release();
-        memStream->Release();
-        delete[] wtext;
-        if (needsUninit) CoUninitialize();
-        RETURN_ERROR(ctx, -6);
-    }
+    memStream->Seek(pos, STREAM_SEEK_SET, NULL);
 
-    // Read audio data (PCM data without WAV header from SAPI)
+    // Read PCM data directly into final buffer
     char* pcmData = new char[*audio_size];
     ULONG bytesRead = 0;
     hr = memStream->Read(pcmData, *audio_size, &bytesRead);
+
+    // Release streams immediately
+    stream->Release();
+    memStream->Release();
+
     if (FAILED(hr) || bytesRead != (ULONG)*audio_size) {
         delete[] pcmData;
-        stream->Release();
-        memStream->Release();
-        delete[] wtext;
         if (needsUninit) CoUninitialize();
         RETURN_ERROR(ctx, -7);
     }
 
-    // Create WAV file with header
+    // Create WAV file with header (single allocation)
     int pcmSize = *audio_size;
     int wavSize = sizeof(WAVHeader) + pcmSize;
     *audio_data = new char[wavSize];
 
-    // Fill WAV header
-    WAVHeader* header = (WAVHeader*)*audio_data;
+    // Build WAV header
+    WAVHeader* header = reinterpret_cast<WAVHeader*>(*audio_data);
     memcpy(header->riff, "RIFF", 4);
     header->fileSize = wavSize - 8;
     memcpy(header->wave, "WAVE", 4);
     memcpy(header->fmt, "fmt ", 4);
     header->fmtSize = 16;
-    header->audioFormat = 1; // PCM
-    header->numChannels = 1;
-    header->sampleRate = 22050;
-    header->bitsPerSample = 16;
-    header->blockAlign = (header->numChannels * header->bitsPerSample) / 8;
-    header->byteRate = header->sampleRate * header->blockAlign;
+    header->audioFormat = 1;
+    header->numChannels = wfex.nChannels;
+    header->sampleRate = wfex.nSamplesPerSec;
+    header->byteRate = wfex.nAvgBytesPerSec;
+    header->blockAlign = wfex.nBlockAlign;
+    header->bitsPerSample = wfex.wBitsPerSample;
     memcpy(header->data, "data", 4);
     header->dataSize = pcmSize;
 
-    // Copy PCM data after header
+    // Copy PCM data
     memcpy(*audio_data + sizeof(WAVHeader), pcmData, pcmSize);
     delete[] pcmData;
 
     *audio_size = wavSize;
-    *sample_rate = 22050;
+    *sample_rate = wfex.nSamplesPerSec;
 
-    stream->Release();
-    memStream->Release();
-    delete[] wtext;
-
-    // Don't uninitialize COM here as it may be needed by other operations
-    // The caller's thread will handle cleanup
-
-    // Unlock
+    if (needsUninit) CoUninitialize();
     LeaveCriticalSection(&ctx->cs);
-
     return 0;
 }
 

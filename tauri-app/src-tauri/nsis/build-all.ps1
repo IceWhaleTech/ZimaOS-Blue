@@ -50,7 +50,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Production dependencies have vulnerabilities"
 }
 
-npm run build
+# Use npx to ensure vite is found
+npx vite build
 if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 Write-Host "[OK] Frontend built"
 

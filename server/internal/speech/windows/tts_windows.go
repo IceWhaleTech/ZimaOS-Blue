@@ -12,13 +12,16 @@ package windows
 import "C"
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
+	"time"
 	"unsafe"
 )
 
 // WindowsTTSProvider implements TTS using Windows.Media.SpeechSynthesis
 type WindowsTTSProvider struct {
 	handle unsafe.Pointer
+	cache  *TTSCache
 }
 
 // NewWindowsTTSProvider creates a new Windows TTS provider
@@ -27,7 +30,10 @@ func NewWindowsTTSProvider() *WindowsTTSProvider {
 	if handle == nil {
 		return nil
 	}
-	return &WindowsTTSProvider{handle: handle}
+	return &WindowsTTSProvider{
+		handle: handle,
+		cache:  NewTTSCache(100, 5*time.Minute), // Cache up to 100 items for 5 minutes
+	}
 }
 
 // ListVoices returns available TTS voices
@@ -68,9 +74,6 @@ func (p *WindowsTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequ
 		return nil, fmt.Errorf("text is empty")
 	}
 
-	cText := C.CString(req.Text)
-	defer C.free(unsafe.Pointer(cText))
-
 	// Auto-select voice based on language if not specified
 	voice := req.Voice
 	if voice == "" {
@@ -80,13 +83,7 @@ func (p *WindowsTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequ
 		}
 	}
 
-	cVoice := C.CString(voice)
-	defer C.free(unsafe.Pointer(cVoice))
-
-	var audioData *C.char
-	var audioSize C.int
-	var sampleRate C.int
-
+	// Generate cache key
 	speed := req.Speed
 	if speed == 0 {
 		speed = 1.0
@@ -99,6 +96,29 @@ func (p *WindowsTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequ
 	if volume == 0 {
 		volume = 1.0
 	}
+
+	cacheKey := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s|%s|%.2f|%.2f|%.2f", req.Text, voice, speed, pitch, volume))))
+
+	// Check cache
+	if p.cache != nil {
+		if cached, ok := p.cache.Get(cacheKey); ok {
+			return &SynthesizeResponse{
+				Audio:       cached.Audio,
+				ContentType: "audio/wav",
+				SampleRate:  cached.SampleRate,
+			}, nil
+		}
+	}
+
+	cText := C.CString(req.Text)
+	defer C.free(unsafe.Pointer(cText))
+
+	cVoice := C.CString(voice)
+	defer C.free(unsafe.Pointer(cVoice))
+
+	var audioData *C.char
+	var audioSize C.int
+	var sampleRate C.int
 
 	result := C.tts_synthesize(
 		p.handle,
@@ -142,6 +162,11 @@ func (p *WindowsTTSProvider) Synthesize(ctx context.Context, req *SynthesizeRequ
 
 	audio := C.GoBytes(unsafe.Pointer(audioData), audioSize)
 	C.tts_free_audio(audioData)
+
+	// Store in cache
+	if p.cache != nil {
+		p.cache.Set(cacheKey, audio, int(sampleRate))
+	}
 
 	return &SynthesizeResponse{
 		Audio:       audio,

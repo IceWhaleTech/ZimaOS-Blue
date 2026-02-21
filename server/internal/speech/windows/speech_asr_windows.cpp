@@ -15,16 +15,32 @@ struct ASRContext {
     ISpRecognizer* recognizer;
     ISpRecoContext* context;
     ISpRecoGrammar* grammar;
+    bool grammarLoaded; // Track if grammar is already loaded
 };
 
 void* asr_create(const char* language) {
     CoInitialize(NULL);
     ASRContext* ctx = new ASRContext();
-    ctx->recognizer = nullptr; ctx->context = nullptr; ctx->grammar = nullptr;
+    ctx->recognizer = nullptr;
+    ctx->context = nullptr;
+    ctx->grammar = nullptr;
+    ctx->grammarLoaded = false;
+
     HRESULT hr = CoCreateInstance(CLSID_SpInprocRecognizer, NULL, CLSCTX_ALL, IID_ISpRecognizer, (void**)&ctx->recognizer);
     if (FAILED(hr)) { delete ctx; return nullptr; }
+
     hr = ctx->recognizer->CreateRecoContext(&ctx->context);
     if (FAILED(hr)) { ctx->recognizer->Release(); delete ctx; return nullptr; }
+
+    // Pre-create and load grammar to avoid repeated loading
+    hr = ctx->context->CreateGrammar(0, &ctx->grammar);
+    if (SUCCEEDED(hr) && ctx->grammar) {
+        hr = ctx->grammar->LoadDictation(NULL, SPLO_STATIC);
+        if (SUCCEEDED(hr)) {
+            ctx->grammarLoaded = true;
+        }
+    }
+
     return ctx;
 }
 
@@ -40,26 +56,31 @@ void asr_destroy(void* handle) {
 }
 
 int asr_recognize(void* handle, const char* audio_data, int audio_size, char** result_text, float* confidence) {
-    if (!handle || !audio_data || !result_text) return -1;
+    if (!handle || !audio_data || !result_text || audio_size <= 0) return -1;
 
     ASRContext* ctx = static_cast<ASRContext*>(handle);
 
-    // Create a memory stream for the audio data
-    IStream* stream = nullptr;
-    HRESULT hr = CreateStreamOnHGlobal(NULL, TRUE, &stream);
-    if (FAILED(hr)) return -2;
+    // Pre-allocate memory for the stream
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, audio_size);
+    if (!hMem) return -2;
 
-    // Write audio data to stream
-    ULONG written = 0;
-    hr = stream->Write(audio_data, audio_size, &written);
-    if (FAILED(hr) || written != (ULONG)audio_size) {
-        stream->Release();
-        return -3;
+    void* pMem = GlobalLock(hMem);
+    if (!pMem) {
+        GlobalFree(hMem);
+        return -2;
     }
 
-    // Reset stream position
-    LARGE_INTEGER pos = {0};
-    stream->Seek(pos, STREAM_SEEK_SET, NULL);
+    // Copy audio data
+    memcpy(pMem, audio_data, audio_size);
+    GlobalUnlock(hMem);
+
+    // Create stream from memory
+    IStream* stream = nullptr;
+    HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, &stream);
+    if (FAILED(hr)) {
+        GlobalFree(hMem);
+        return -2;
+    }
 
     // Create SAPI stream
     ISpStream* spStream = nullptr;
@@ -69,7 +90,7 @@ int asr_recognize(void* handle, const char* audio_data, int audio_size, char** r
         return -4;
     }
 
-    // Set up wave format (assuming 16kHz, 16-bit, mono)
+    // Set up wave format (16kHz, 16-bit, mono - standard for speech recognition)
     WAVEFORMATEX wfex;
     wfex.wFormatTag = WAVE_FORMAT_PCM;
     wfex.nChannels = 1;
@@ -94,8 +115,17 @@ int asr_recognize(void* handle, const char* audio_data, int audio_size, char** r
         return -6;
     }
 
-    // Create dictation grammar
-    if (!ctx->grammar) {
+    // Activate grammar if already loaded, otherwise create and load
+    if (ctx->grammarLoaded && ctx->grammar) {
+        // Grammar already loaded, just activate it
+        hr = ctx->grammar->SetDictationState(SPRS_ACTIVE);
+        if (FAILED(hr)) {
+            spStream->Release();
+            stream->Release();
+            return -9;
+        }
+    } else if (!ctx->grammar) {
+        // Grammar not created yet, create and load it
         hr = ctx->context->CreateGrammar(0, &ctx->grammar);
         if (FAILED(hr)) {
             spStream->Release();
@@ -114,24 +144,31 @@ int asr_recognize(void* handle, const char* audio_data, int audio_size, char** r
             stream->Release();
             return -9;
         }
+        ctx->grammarLoaded = true;
     }
 
     // Set interest in recognition events
-    hr = ctx->context->SetInterest(SPFEI(SPEI_RECOGNITION), SPFEI(SPEI_RECOGNITION));
+    hr = ctx->context->SetInterest(SPFEI(SPEI_RECOGNITION) | SPFEI(SPEI_END_SR_STREAM),
+                                    SPFEI(SPEI_RECOGNITION) | SPFEI(SPEI_END_SR_STREAM));
     if (FAILED(hr)) {
         spStream->Release();
         stream->Release();
         return -10;
     }
 
-    // Wait for recognition event
+    // Wait for recognition event (optimized: shorter polling interval, timeout based on audio length)
     SPEVENT event;
     bool gotResult = false;
     std::wstring resultText;
     float conf = 0.0f;
 
-    // Wait up to 10 seconds for recognition
-    for (int i = 0; i < 100; i++) {
+    // Calculate timeout based on audio length (audio_size / bytes_per_second + 2 seconds buffer)
+    int timeoutMs = (audio_size / (wfex.nAvgBytesPerSec / 1000)) + 2000;
+    if (timeoutMs > 30000) timeoutMs = 30000; // Max 30 seconds
+    if (timeoutMs < 2000) timeoutMs = 2000;   // Min 2 seconds
+
+    int iterations = timeoutMs / 50; // Check every 50ms instead of 100ms
+    for (int i = 0; i < iterations; i++) {
         hr = ctx->context->GetEvents(1, &event, NULL);
         if (hr == S_OK) {
             if (event.eEventId == SPEI_RECOGNITION) {
@@ -156,10 +193,13 @@ int asr_recognize(void* handle, const char* audio_data, int audio_size, char** r
                     result->Release();
                 }
                 break;
+            } else if (event.eEventId == SPEI_END_SR_STREAM) {
+                // Stream ended without recognition
+                break;
             }
         }
         if (gotResult) break;
-        Sleep(100);
+        Sleep(50); // Reduced from 100ms to 50ms for faster response
     }
 
     spStream->Release();
@@ -169,8 +209,12 @@ int asr_recognize(void* handle, const char* audio_data, int audio_size, char** r
         return -11; // No recognition result
     }
 
-    // Convert wstring to UTF-8
+    // Convert wstring to UTF-8 (optimized: single allocation)
     int utf8Len = WideCharToMultiByte(CP_UTF8, 0, resultText.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (utf8Len <= 0) {
+        return -12;
+    }
+
     *result_text = new char[utf8Len];
     WideCharToMultiByte(CP_UTF8, 0, resultText.c_str(), -1, *result_text, utf8Len, nullptr, nullptr);
     *confidence = conf;
