@@ -17,6 +17,9 @@ import (
 // kvKeyTTSProvider is the kvstore key for the persisted TTS provider.
 const kvKeyTTSProvider = "speech.tts.provider"
 
+// kvKeyEditBeforeSend is the kvstore key for the persisted edit-before-send setting.
+const kvKeyEditBeforeSend = "speech.asr.edit_before_send"
+
 // Handler handles unified speech HTTP requests.
 type Handler struct {
 	service        Service
@@ -55,6 +58,20 @@ func (h *Handler) GetPersistedTTSProvider() string {
 	return ""
 }
 
+// RestoreEditBeforeSend restores the persisted edit-before-send setting from kvstore.
+func (h *Handler) RestoreEditBeforeSend() {
+	if h.kv == nil {
+		return
+	}
+	val, err := h.kv.Get(context.Background(), kvKeyEditBeforeSend)
+	if err != nil {
+		return
+	}
+	if enabled, ok := val.(bool); ok {
+		h.service.SetEditBeforeSend(enabled)
+	}
+}
+
 // RegisterRoutes registers unified speech management routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Lazy initialization endpoint
@@ -69,6 +86,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	asr.POST("/download/cancel", h.CancelASRDownload)
 	asr.POST("/switch", h.SwitchASRModel)
 	asr.POST("/on-device", h.SetASROnDevice)
+	asr.POST("/edit-before-send", h.SetEditBeforeSend)
 	asr.GET("/offline-languages", h.GetOfflineLanguages)
 
 	// TTS management
@@ -337,6 +355,29 @@ func (h *Handler) GetOfflineLanguages(c echo.Context) error {
 	// Other providers don't have offline languages
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"offline_languages": []string{},
+	})
+}
+
+// SetEditBeforeSend toggles the edit-before-send setting for ASR.
+func (h *Handler) SetEditBeforeSend(c echo.Context) error {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "invalid request",
+		})
+	}
+
+	h.service.SetEditBeforeSend(req.Enabled)
+
+	// Persist to kvstore
+	if h.kv != nil {
+		_ = h.kv.Set(context.Background(), kvKeyEditBeforeSend, req.Enabled, 0)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"edit_before_send": req.Enabled,
 	})
 }
 

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { providerSettingsApi } from '@/api/providers'
 import type { ProviderConfigResponse } from '@/api/providers'
 
-const { t } = useI18n()
+const { t, locale: i18nLocale } = useI18n()
 
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
@@ -94,7 +94,7 @@ async function loadProviders() {
     loading.value = true
     error.value = null
     // Pass current locale to get localized provider order
-    const locale = t('$locale') || 'en-US'
+    const locale = i18nLocale.value || 'en-US'
     const response = await providerSettingsApi.list(locale)
     providers.value = response.data
     // Select first provider by default

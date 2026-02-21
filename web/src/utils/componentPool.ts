@@ -101,6 +101,7 @@ class ComponentPool {
       video: () => import('@/components/typeless/CardVideo.vue'),
       mermaid: () => import('@/components/typeless/CardMermaid.vue'),
       search: () => import('@/components/typeless/CardSearch.vue'),
+      'ui-review': () => import('@/components/typeless/CardUIReview.vue'),
     }
 
     const loader = componentMap[cardType]

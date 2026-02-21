@@ -115,6 +115,9 @@ export const speechApi = {
   setASROnDevice: (onDeviceOnly: boolean) =>
     api.post<{ on_device_only: boolean; on_device_supported: boolean; dictation_available?: boolean; error?: string }>('/speech/asr/on-device', { on_device_only: onDeviceOnly }),
 
+  setEditBeforeSend: (enabled: boolean) =>
+    api.post<{ edit_before_send: boolean }>('/speech/asr/edit-before-send', { enabled }),
+
   getOfflineLanguages: () =>
     api.get<{ offline_languages: string[] }>('/speech/asr/offline-languages'),
 

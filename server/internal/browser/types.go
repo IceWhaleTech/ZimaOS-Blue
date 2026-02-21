@@ -526,6 +526,33 @@ type PageInfo struct {
 	Title string
 }
 
+// AccessibilityTreeResponse represents the accessibility tree of a page.
+type AccessibilityTreeResponse struct {
+	// Tree is the DSL representation of the accessibility tree.
+	// Format: @ref [role] "name" properties
+	// The @ref can be used in Act() to target elements.
+	Tree string `json:"tree"`
+	// URL is the page URL.
+	URL string `json:"url"`
+	// Title is the page title.
+	Title string `json:"title"`
+	// TargetID is the tab ID.
+	TargetID string `json:"target_id"`
+	// RefMap maps @ref numbers to backend DOM node IDs for action targeting.
+	RefMap map[int]int `json:"ref_map,omitempty"`
+}
+
+// InteractiveElementsResponse represents the interactive elements extracted via JS.
+// Lighter than the full accessibility tree — only returns actionable elements.
+type InteractiveElementsResponse struct {
+	Tree     string         `json:"tree"`
+	URL      string         `json:"url"`
+	Title    string         `json:"title"`
+	TargetID string         `json:"target_id"`
+	RefMap   map[int]string `json:"ref_map,omitempty"`
+	Count    int            `json:"count"`
+}
+
 // Viewport represents browser viewport dimensions.
 type Viewport struct {
 	Width  int

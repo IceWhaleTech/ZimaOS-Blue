@@ -59,6 +59,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
 var (
@@ -388,6 +389,13 @@ func runServer() {
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
 	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
 
+	// Wire autoreply service into skill
+	if arSkill := skillRegistry.Get("autoreply"); arSkill != nil {
+		if ar, ok := arSkill.(*builtin.AutoReply); ok {
+			ar.SetAutoreplyService(autoreply.NewSkillAdapter(autoreplyService))
+		}
+	}
+
 	// Initialize independent services in parallel for faster startup
 	var (
 		metricsCollector   *metrics.Collector
@@ -512,6 +520,13 @@ func runServer() {
 		return svc
 	})
 
+	// Wire workflow service into skill (lazy — triggers workflow init on first skill call)
+	if wfSkill := skillRegistry.Get("workflows"); wfSkill != nil {
+		if ws, ok := wfSkill.(*builtin.Workflows); ok {
+			ws.SetWorkflowService(workflow.NewSkillAdapter(workflowHandler.GetService))
+		}
+	}
+
 	// Async initialization for MFA handler
 	go func() {
 		mfaHandler = mfa.NewHandler(nil, nil)
@@ -527,6 +542,13 @@ func runServer() {
 		} else {
 			sandboxHandler = sandbox.NewHandler(sandboxManager)
 			logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
+
+			// Wire sandbox into skill
+			if sbSkill := skillRegistry.Get("sandbox"); sbSkill != nil {
+				if sb, ok := sbSkill.(*builtin.Sandbox); ok {
+					sb.SetSandboxService(sandbox.NewSkillAdapter(sandboxManager))
+				}
+			}
 		}
 	}
 
@@ -534,12 +556,53 @@ func runServer() {
 	cronHandler = cron.NewLazyHandler(func() *cron.Service {
 		svc := cron.NewService(cron.DefaultConfig(), zapLogger)
 		svc.RegisterBuiltinHandlers()
+		// Enable command handler for scheduler skill (whitelisted commands only)
+		svc.RegisterCommandHandler(cron.CommandSecurityConfig{
+			Enabled:          true,
+			RequireAdminRole: true,
+		})
 		if err := svc.Start(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to start cron service")
 		}
 		return svc
 	}, zapLogger)
 	logger.Info().Msg("Cron service configured for lazy initialization")
+
+	// Wire cron service into scheduler skill (lazy — triggers cron init on first skill call)
+	if schedulerSkill := skillRegistry.Get("scheduler"); schedulerSkill != nil {
+		if ss, ok := schedulerSkill.(*builtin.Scheduler); ok {
+			cronAdapter := cron.NewSkillAdapter(cronHandler.GetService)
+			ss.SetCronService(cronAdapter)
+		}
+	}
+
+	// Wire browser service into browser skill (lazy — creates rod service on first skill call)
+	if browserSkill := skillRegistry.Get("browser"); browserSkill != nil {
+		if bs, ok := browserSkill.(*builtin.Browser); ok {
+			var browserOnce sync.Once
+			var browserSvc *browser.RodService
+			lazyBrowserSvc := func() *browser.RodService {
+				browserOnce.Do(func() {
+					svc, err := browser.NewService(nil)
+					if err != nil {
+						logger.Warn().Err(err).Msg("Failed to create browser service for skill")
+						return
+					}
+					browserSvc = svc
+					logger.Info().Msg("Browser service initialized for skill")
+				})
+				return browserSvc
+			}
+			bs.SetBrowserService(browser.NewLazySkillAdapter(lazyBrowserSvc))
+
+			// Wire UI reviewer with same lazy browser service
+			if uiSkill := skillRegistry.Get("ui_reviewer"); uiSkill != nil {
+				if ur, ok := uiSkill.(*builtin.UIReviewer); ok {
+					ur.SetBrowserService(browser.NewLazySkillAdapter(lazyBrowserSvc))
+				}
+			}
+		}
+	}
 
 	initPool.Go(func() {
 		haService = homeassistant.NewHAService()
@@ -759,6 +822,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 	speechHandler := speech.NewHandler(speechService, speechKV, dataDir)
 
+	// Restore persisted settings from kvstore
+	speechHandler.RestoreEditBeforeSend()
+
 	// Restore persisted TTS provider from kvstore
 	if ttsService != nil {
 		if saved := speechHandler.GetPersistedTTSProvider(); saved != "" {
@@ -827,11 +893,21 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Warn("No ASR provider configured")
 	}
 
+	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
+	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
+	if err := workspaceMgr.EnsureWorkspace(); err != nil {
+		logger.Warn("Failed to initialize workspace", zap.Error(err))
+	}
+
 	// Initialize Claude Code handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
 	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: dataDir})
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
+	systemPromptBuilder.SetWorkspace(workspaceMgr)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
+
+	// Register workspace_file tool so the agent can update workspace files via conversation
+	toolRegistry.Register(workspace.NewWorkspaceTool(workspaceMgr))
 
 	// Initialize memory handler with lazy init (vector_memory.db created on first request)
 	var memoryHandler *server.MemoryHandler
@@ -858,7 +934,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			// Initialize markdown backend inside lazy init (must happen after SetUnifiedService)
 			memoryDir := cfg.Memory.MarkdownDir
 			if memoryDir == "" {
-				memoryDir = filepath.Join(dataDir, "memory")
+				memoryDir = workspaceMgr.MemoryDir() // Use workspace memory directory
 			}
 			if mdBackend, mdErr := memory.NewPureMarkdownBackend(memoryDir); mdErr != nil {
 				logger.Warn("Failed to initialize markdown backend", zap.Error(mdErr))
@@ -902,6 +978,9 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			logger.Info("Vector memory store initialized lazily")
 			return nil
 		})
+		// Trigger init eagerly so LayeredMemoryService is available for chat recall/extraction
+		// without waiting for the first /memory/* API call.
+		memoryHandler.Init()
 	} else {
 		logger.Info("Vector memory store disabled by config")
 	}
@@ -1019,6 +1098,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		ChannelConfigStore: channelConfigStore,
 		SharedCache:        sharedCache,
 		HotReloader:        hotReloader,
+		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 	}
 
 	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
@@ -1077,6 +1157,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Heartbeat runner + handler (needs channelManager, so created after bootstrap)
 	hbCfg := convertHeartbeatConfig(&cfg.Heartbeat)
+	hbCfg.WorkspaceDir = workspaceMgr.Dir() // Use workspace directory for HEARTBEAT.md
 	hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
 		Config: hbCfg,
 		ChatFn: func() heartbeat.ChatFunc {

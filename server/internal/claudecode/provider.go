@@ -9,6 +9,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
 // Provider implements the llm.Provider interface using Claude Code CLI.
@@ -57,6 +58,11 @@ func NewProvider(config *ClaudeCodeConfig) *Provider {
 // SetToolRegistry sets the tool registry for including tool descriptions in system prompts.
 func (p *Provider) SetToolRegistry(registry *tools.Registry) {
 	p.promptBuilder.SetToolRegistry(registry)
+}
+
+// SetWorkspace sets the workspace manager for injecting workspace files into system prompts.
+func (p *Provider) SetWorkspace(mgr *workspace.Manager) {
+	p.promptBuilder.SetWorkspace(mgr)
 }
 
 // SetCompanionManager sets the companion manager for event tracking.

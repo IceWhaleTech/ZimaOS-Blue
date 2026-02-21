@@ -6,8 +6,9 @@ import (
 	"time"
 )
 
-// InitializeDefaultPersonality creates the default personality from SOUL.md
-func InitializeDefaultPersonality(dataDir string) error {
+// InitializeDefaultPersonality creates the default personality from SOUL.md.
+// workspaceDir is the workspace directory containing SOUL.md (optional, falls back to dataDir heuristic).
+func InitializeDefaultPersonality(dataDir string, workspaceDir ...string) error {
 	storage, err := NewFileStorage(dataDir)
 	if err != nil {
 		return err
@@ -35,11 +36,16 @@ func InitializeDefaultPersonality(dataDir string) error {
 		return nil // Already exists
 	}
 
-	// Read SOUL.md
-	soulPath := filepath.Join(dataDir, "..", "..", "SOUL.md")
-	soulContent, err := os.ReadFile(soulPath)
-	if err != nil {
-		// Fallback if SOUL.md not found
+	// Read SOUL.md from workspace directory first, then fallback
+	var soulContent []byte
+	if len(workspaceDir) > 0 && workspaceDir[0] != "" {
+		soulContent, err = os.ReadFile(filepath.Join(workspaceDir[0], "SOUL.md"))
+	}
+	if len(soulContent) == 0 {
+		// Legacy fallback path
+		soulContent, err = os.ReadFile(filepath.Join(dataDir, "..", "..", "SOUL.md"))
+	}
+	if err != nil || len(soulContent) == 0 {
 		soulContent = []byte(defaultSoulContent)
 	}
 

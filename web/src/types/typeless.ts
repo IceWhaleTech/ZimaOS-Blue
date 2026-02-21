@@ -34,6 +34,7 @@ export type TypelessCardType =
   | 'video'
   | 'mermaid'
   | 'search'
+  | 'ui-review'
 
 export interface TypelessCardBase {
   type: TypelessCardType
@@ -512,6 +513,49 @@ export interface TypelessCardSearch extends TypelessCardBase {
   provider?: string
 }
 
+// UI Review Card - Display UI quality review results with collapsible steps
+export interface UIReviewStep {
+  id: string
+  name: string
+  status: 'success' | 'failed' | 'skipped'
+  score?: number
+  message?: string
+  issues?: number
+}
+
+export interface UIReviewScoreDetail {
+  score: number
+  details?: Record<string, number>
+}
+
+export interface UIReviewIssue {
+  severity: 'critical' | 'major' | 'minor'
+  category: string
+  rule?: string
+  element?: string
+  description: string
+  location?: string
+}
+
+export interface TypelessCardUIReview extends TypelessCardBase {
+  type: 'ui-review'
+  url?: string
+  overall?: number
+  pass?: boolean
+  threshold?: number
+  visual?: UIReviewScoreDetail
+  functional?: UIReviewScoreDetail
+  accessibility?: UIReviewScoreDetail
+  issues?: UIReviewIssue[]
+  suggestions?: string[]
+  steps?: UIReviewStep[]
+  viewports?: string[]
+  screenshot?: string
+  status?: string
+  message?: string
+  actions?: ActionButton[]
+}
+
 // Union type for all card types
 export type TypelessCard =
   | TypelessCardInfo
@@ -545,6 +589,7 @@ export type TypelessCard =
   | TypelessCardVideo
   | TypelessCardMermaid
   | TypelessCardSearch
+  | TypelessCardUIReview
 
 // Card parsing result
 export interface ParsedContent {

@@ -355,6 +355,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Model endpoints
 	g.GET("/:id/models", h.ListProviderModels)
 	g.POST("/:id/models/fetch", h.FetchProviderModels)
+	g.POST("/:id/models/probe", h.ProbeProviderModels)
 
 	// API Key endpoints
 	g.POST("/:id/keys", h.AddAPIKey)
@@ -1078,6 +1079,43 @@ func (h *Handler) FetchProviderModels(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"models": resp,
 		"total":  len(resp),
+	})
+}
+
+// ProbeProviderModels probes all models for a provider to check which are actually configured.
+// This sends a minimal request (max_tokens:1) to each model in parallel and disables
+// models that return "not configured" errors.
+func (h *Handler) ProbeProviderModels(c echo.Context) error {
+	id := c.Param("id")
+
+	var req struct {
+		Concurrency int `json:"concurrency"`
+	}
+	_ = c.Bind(&req)
+	if req.Concurrency <= 0 {
+		req.Concurrency = 5
+	}
+
+	results, err := h.pool.Discovery.ProbeModels(c.Request().Context(), id, req.Concurrency)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Rebuild candidates after probing
+	h.pool.Router.RebuildCandidates()
+
+	available := 0
+	for _, r := range results {
+		if r.Available {
+			available++
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"results":     results,
+		"total":       len(results),
+		"available":   available,
+		"unavailable": len(results) - available,
 	})
 }
 

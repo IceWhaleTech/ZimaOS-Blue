@@ -85,11 +85,17 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 		NewNotifications(),
 		NewUnitConverter(),
 
-		// System skills (4)
+		// System skills (10)
 		NewFiles(filesBaseDir),
 		NewNetwork(),
 		NewProcesses(),
 		NewDocker(dockerConfig),
+		NewScheduler(),
+		NewWorkflows(),
+		NewAutoReply(),
+		NewSandbox(),
+		NewBrowser(),
+		NewUIReviewer(),
 
 		// Communication skills (3)
 		NewEmail(emailConfig),
@@ -119,6 +125,6 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 26 // 5 + 4 + 3 + 4 + 3 + 3 + 4 = 26 skills
+	return 32 // 5 + 4 + 3 + 10 + 3 + 3 + 4 = 32 skills
 }
 

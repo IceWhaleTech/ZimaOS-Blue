@@ -13,12 +13,11 @@ import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
-import HeartbeatSettings from '@/components/settings/HeartbeatSettings.vue'
+import WorkspaceSettings from '@/components/settings/WorkspaceSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
-import PersonalityManager from '@/components/PersonalityManager.vue'
 import { useTauri } from '@/composables/useTauri'
 import { serviceApi } from '@/api/service'
 import type { ServiceInfo } from '@/api/service'
@@ -39,7 +38,7 @@ const autoStartLoading = ref(false)
 const autoStartEnabled = computed(() => serviceInfo.value?.installed && serviceInfo.value?.enabled)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata' | 'backup'
+type TabType = 'general' | 'llm' | 'network' | 'speech' | 'userdata'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 
@@ -49,8 +48,7 @@ const tabIcons: Record<TabType, string> = {
   llm: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a5 5 0 0 0-4.8 3.6A3.5 3.5 0 0 0 4 9a3.5 3.5 0 0 0 1.1 2.5A4 4 0 0 0 4 14a4 4 0 0 0 2.6 3.8C7 19.7 8.8 21 11 21h1V2h-1z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a5 5 0 0 1 4.8 3.6A3.5 3.5 0 0 1 20 9a3.5 3.5 0 0 1-1.1 2.5A4 4 0 0 1 20 14a4 4 0 0 1-2.6 3.8C17 19.7 15.2 21 13 21h-1"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9h4m-4 4h4m4-4h-4m4 4h-4"/>',
   speech: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>',
   network: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>',
-  userdata: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>',
-  backup: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>',
+  userdata: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>',
 }
 
 // Timezone
@@ -129,7 +127,7 @@ function switchTab(tab: TabType) {
   router.replace({ query: { tab } })
 
   // Load data for specific tabs
-  if (tab === 'backup' && backups.value.length === 0) {
+  if (tab === 'userdata' && backups.value.length === 0) {
     fetchBackups()
   }
 }
@@ -192,16 +190,6 @@ async function deleteBackup(id: string) {
   }
 }
 
-function _formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleString()
-}
-
-function _formatBytes(bytes: number) {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
 onMounted(async () => {
   await settingsStore.fetchProviders()
   fetchServiceInfo()
@@ -231,7 +219,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata', 'backup'] as const"
+        v-for="tab in ['general', 'llm', 'speech', 'network', 'userdata'] as const"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 flex items-center gap-1.5"
         :class="
@@ -370,24 +358,15 @@ onMounted(async () => {
 
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
+      <!-- Workspace Files -->
+      <div class="glass-card p-4">
+        <WorkspaceSettings @status-change="showSaveStatus" />
+      </div>
+
       <!-- Memory Management -->
       <MemoryManager @status-change="showSaveStatus" />
 
-      <!-- Personality Management Section -->
-      <div class="glass-card p-4">
-        <PersonalityManager @status-change="showSaveStatus" />
-      </div>
-
-      <!-- Heartbeat -->
-      <div class="glass-card p-4">
-        <HeartbeatSettings @status-change="showSaveStatus" />
-      </div>
-
-      <UserDataExport @status-change="showSaveStatus" />
-    </div>
-
-    <!-- Backup Tab -->
-    <div v-if="activeTab === 'backup'">
+      <!-- Backup -->
       <BackupManager
         :backups="backups"
         :loading="backupsLoading"
@@ -397,6 +376,8 @@ onMounted(async () => {
         @delete="deleteBackup"
         @download="onBackupDownload"
       />
+
+      <UserDataExport @status-change="showSaveStatus" />
     </div>
 
   </div>

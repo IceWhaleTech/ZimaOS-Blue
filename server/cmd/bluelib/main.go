@@ -55,6 +55,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
 var (
@@ -603,6 +604,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	ngrokConfigStore := ngrok.NewConfigStore(dataDir)
 	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
 
+	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
+	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
+	if err := workspaceMgr.EnsureWorkspace(); err != nil {
+		zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
+	}
+
 	// Initialize claudecode handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
 
@@ -611,7 +618,11 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		WorkspaceDir: dataDir,
 	})
 	systemPromptBuilder.SetToolRegistry(services.ToolRegistry)
+	systemPromptBuilder.SetWorkspace(workspaceMgr)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
+
+	// Register workspace_file tool
+	services.ToolRegistry.Register(workspace.NewWorkspaceTool(workspaceMgr))
 
 	// Initialize channel config store
 	channelConfigStore := server.NewChannelConfigStore(dataDir)
@@ -641,7 +652,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		h.SetUnifiedService(unifiedService)
 
 		// Initialize LayeredMemoryService for dual-layer memory architecture
-		memoryDir := filepath.Join(dataDir, "memory")
+		memoryDir := workspaceMgr.MemoryDir() // Use workspace memory directory
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 			BaseDir:            memoryDir,
 			DailyRetentionDays: 30,
@@ -707,6 +718,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		SharedCache:        sharedCache,
 		MemoryHandler:      memoryHandler,
 		HotReloader:        hotReloader,
+		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 	})
 
 	// Start HTTP server with explicit listener (to capture actual port)

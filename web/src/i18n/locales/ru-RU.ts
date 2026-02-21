@@ -143,6 +143,8 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'Ответ прерван',
+    contextPruned: 'Контекст сокращён, сэкономлено {tokens} токенов',
+    contextCompacted: 'Контекст сжат: {before} → {after} сообщений',
     newChat: 'Новый чат',
     newConversation: 'Новый разговор',
     sendMessage: 'Отправить сообщение',
@@ -1940,6 +1942,19 @@ export default {
     },
   },
 
+  skills: {
+    ...enUS.skills,
+    builtin: {
+      ...enUS.skills.builtin,
+      scheduler: { name: 'Планировщик', description: 'Создание, управление и запуск запланированных задач (Cron)' },
+      browser: { name: 'Браузер', description: 'Просмотр веб-страниц с помощью headless-браузера, чтение страниц и взаимодействие с элементами' },
+      sandbox: { name: 'Песочница', description: 'Выполнение команд в изолированной среде с ограничениями ресурсов' },
+      'ui-reviewer': { name: 'Проверка UI', description: 'Автоматическая проверка качества UI с проверкой доступности и визуальной оценкой' },
+      autoreply: { name: 'Автоответ', description: 'Создание и управление правилами автоответа с триггерами по ключевым словам' },
+      workflows: { name: 'Рабочие процессы', description: 'Создание и выполнение автоматизаций рабочих процессов в стиле n8n' },
+    },
+  },
+
     personality: {
     ...enUS.personality,
     title: 'Личности',
@@ -2559,6 +2574,12 @@ export default {
       'Memory Store': 'Сохранение в память',
       'Memory Get': 'Получение из памяти',
       'Memory Stats': 'Статистика памяти',
+      'Scheduler': 'Планировщик',
+      'Browser': 'Браузер',
+      'Sandbox': 'Песочница',
+      'UI Reviewer': 'Проверка UI',
+      'Auto Reply': 'Автоответ',
+      'Workflows': 'Рабочие процессы',
     },
     params: {
       query: 'Запрос',
@@ -2584,5 +2605,48 @@ export default {
   },
   search: {
     resultCount: '{count} результатов',
+  },
+  workspace: {
+    title: 'Файлы рабочего пространства',
+    description: 'Эти файлы определяют личность, память и поведение Blue.',
+    saved: '{name} сохранён',
+    empty: '(пусто)',
+    noFiles: 'Файлы рабочего пространства не найдены.',
+    tokens: '~{count} токенов',
+    chars: '{count} символов',
+    label: {
+      soul: 'Душа',
+      user: 'Владелец',
+      identity: 'Личность',
+      memory: 'Память',
+      agents: 'Правила',
+      heartbeat: 'Пульс',
+    },
+    desc: {
+      soul: 'Основная личность и ценности',
+      user: 'О вас — предпочтения и контекст',
+      identity: 'Имя, стиль и эмодзи ассистента',
+      memory: 'Долговременная память и усвоенные уроки',
+      agents: 'Правила рабочего пространства и руководства сессий',
+      heartbeat: 'Настройка периодической проверки',
+    },
+  },
+  uiReview: {
+    title: 'Обзор UI',
+    error: 'Ошибка обзора UI',
+    visual: 'Визуальный',
+    functional: 'Функциональный',
+    accessibility: 'Доступность',
+    issues: 'проблем',
+    issuesTitle: 'Проблемы',
+    suggestions: 'Предложения',
+    skipped: 'пропущено',
+    showScreenshot: 'Показать скриншот',
+    hideScreenshot: 'Скрыть скриншот',
+    actions: {
+      recheck: 'Перепроверить',
+      check_a11y: 'Только доступность',
+      full_report: 'Полный отчёт',
+    },
   },
 }

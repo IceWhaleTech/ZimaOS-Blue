@@ -161,6 +161,18 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 	return result, nil
 }
 
+// HasModel returns true if any provider in the snapshot can serve the given model.
+// This is a fast, lock-free check used by routing rules to verify a target model
+// is actually available before committing to a model swap.
+func (r *Router) HasModel(modelID string) bool {
+	snapVal := r.candidates.Load()
+	if snapVal == nil {
+		return false
+	}
+	snap := snapVal.(*candidateSnapshot)
+	return len(snap.byModel[modelID]) > 0
+}
+
 // getCandidatesFromSnapshot returns candidates from the precomputed snapshot.
 // Returns a fresh copy so callers can sort/filter without affecting the snapshot.
 // Applies runtime filters (cooldown, exclude, routing mode) that can't be precomputed.

@@ -558,6 +558,9 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   let text = content
   const cardIndex = { value: startCardIndex }
 
+  // Valid card type check — reject empty or clearly invalid types during streaming
+  const isValidCardType = (type: string) => type.length > 0 && type.length < 30 && /^[a-z][a-z0-9-]*$/.test(type)
+
   // First, parse special XML-like tags
   text = parseSpecialTags(text, cards, cardIndex)
 
@@ -577,7 +580,7 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
       const card = JSON.parse(jsonStr) as TypelessCard
 
       // Validate card has required type field
-      if (card && typeof card.type === 'string') {
+      if (card && typeof card.type === 'string' && isValidCardType(card.type)) {
         // Assign ID if not present
         if (!card.id) {
           card.id = `card-${cardIndex.value++}`
@@ -609,7 +612,7 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
       // Only try to parse if it looks like JSON (starts with {)
       if (jsonStr.startsWith('{')) {
         const partialCard = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
-        if (partialCard && typeof partialCard.type === 'string') {
+        if (partialCard && typeof partialCard.type === 'string' && isValidCardType(partialCard.type)) {
           // Mark as streaming/incomplete
           partialCard._streaming = true
           if (!partialCard.id) {
@@ -651,69 +654,81 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   return { text, cards }
 }
 
+// Pre-compiled regexes for hasTypelessCards — avoids re-creating RegExp objects on every call
+const RE_CODE_FENCE = /```[a-z]/i
+const RE_IMAGE_LINE = /^\s*!\[[^\]]*\]\([^)]+\)\s*$/m
+const RE_URL_LINE = /^\s*https?:\/\/[^\s]+\s*$/m
+const RE_FILE_PATH_LINE = /^\s*([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)\s*$/m
+const RE_SEPARATOR_LINE = /^[\s|:-]+$/
+const RE_UNORDERED_LIST = /^(\s*)[-*+]\s+/
+const RE_ORDERED_LIST = /^(\s*)\d+\.\s+/
+
 /**
  * Check if content contains any typeless cards or markdown elements that will be converted.
+ * Optimized with fast string checks before regex, and pre-compiled regexes.
  */
 export function hasTypelessCards(content: string): boolean {
-  // Check for explicit typeless blocks
+  // Fast path: check for explicit typeless blocks (cheapest check)
   if (content.includes(TYPELESS_MARKER_START)) {
     return true
   }
 
-  // Check for terminal blocks
-  if (/```(terminal|console|shell-output|ansi|cli-output)\n[\s\S]*?```/i.test(content)) {
+  // Fast path: code fences (covers terminal, mermaid, and regular code blocks)
+  // Use includes('```') as a cheap gate before regex
+  if (content.includes('```') && RE_CODE_FENCE.test(content)) {
     return true
   }
 
-  // Check for mermaid blocks
-  if (/```mermaid\n[\s\S]*?```/i.test(content)) {
+  // Fast path: markdown images — gate with '!['
+  if (content.includes('![') && RE_IMAGE_LINE.test(content)) {
     return true
   }
 
-  // Check for markdown code blocks (but not typeless, terminal, or mermaid blocks)
-  if (/```(?!typeless|terminal|console|shell-output|ansi|cli-output|mermaid)[a-z]*\n[\s\S]*?```/i.test(content)) {
+  // Fast path: standalone URLs — gate with 'http'
+  if (content.includes('http') && RE_URL_LINE.test(content)) {
     return true
   }
 
-  // Check for markdown images (standalone on a line)
-  if (/^\s*!\[[^\]]*\]\([^)]+\)\s*$/m.test(content)) {
+  // Fast path: file paths — gate with common path separators
+  if ((content.includes(':\\') || content.includes('/')) && RE_FILE_PATH_LINE.test(content)) {
     return true
   }
 
-  // Check for standalone URLs
-  if (/^\s*https?:\/\/[^\s]+\s*$/m.test(content)) {
-    return true
+  // Tables and lists require line-by-line scan — gate with cheap checks
+  const hasPipe = content.includes('|')
+  const hasDash = content.includes('- ') || content.includes('* ') || content.includes('+ ')
+  const hasDigitDot = /\d+\.\s/.test(content)
+
+  if (!hasPipe && !hasDash && !hasDigitDot) {
+    return false
   }
 
-  // Check for file paths (Windows or Unix with extension)
-  if (/^\s*([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)\s*$/m.test(content)) {
-    return true
-  }
+  // Single line split for both table and list detection
+  const lines = content.split('\n')
 
   // Check for markdown tables (at least 2 rows with pipes)
-  const lines = content.split('\n')
-  let tableRowCount = 0
-  for (const line of lines) {
-    if (line.includes('|') && !line.match(/^[\s|:-]+$/)) {
-      tableRowCount++
-      if (tableRowCount >= 2) {
-        return true
+  if (hasPipe) {
+    let tableRowCount = 0
+    for (const line of lines) {
+      if (line.includes('|') && !RE_SEPARATOR_LINE.test(line)) {
+        tableRowCount++
+        if (tableRowCount >= 2) return true
+      } else if (tableRowCount > 0 && line.trim() !== '' && !RE_SEPARATOR_LINE.test(line)) {
+        tableRowCount = 0
       }
-    } else if (tableRowCount > 0 && line.trim() !== '' && !line.match(/^[\s|:-]+$/)) {
-      tableRowCount = 0
     }
   }
 
   // Check for markdown lists (at least 2 items)
-  let listItemCount = 0
-  for (const line of lines) {
-    if (line.match(/^(\s*)[-*+]\s+/) || line.match(/^(\s*)\d+\.\s+/)) {
-      listItemCount++
-      if (listItemCount >= 2) {
-        return true
+  if (hasDash || hasDigitDot) {
+    let listItemCount = 0
+    for (const line of lines) {
+      if (RE_UNORDERED_LIST.test(line) || RE_ORDERED_LIST.test(line)) {
+        listItemCount++
+        if (listItemCount >= 2) return true
+      } else if (line.trim() !== '') {
+        listItemCount = 0
       }
-    } else if (line.trim() !== '') {
-      listItemCount = 0
     }
   }
 

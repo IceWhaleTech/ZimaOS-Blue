@@ -1169,6 +1169,8 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'Antwoord onderbroken',
+    contextPruned: 'Context opgeschoond, {tokens} tokens bespaard',
+    contextCompacted: 'Context gecomprimeerd: {before} → {after} berichten',
     trialExhausted: 'Het proefquotum is opgebruikt. Configureer uw eigen AI-provider om door te gaan.',
     trialServiceBusy: 'De proefservice is momenteel druk bezet vanwege hoge vraag. Probeer het over een moment opnieuw. Als dit aanhoudt, bezoek onze community voor hulp.',
     configureProvider: 'Provider configureren',
@@ -1444,6 +1446,41 @@ export default {
 
   skills: {
     ...enUS.skills,
+    builtin: {
+      ...enUS.skills.builtin,
+      'discord-skill': { name: 'Discord', description: 'Discord-serverbewerkingen' },
+      scheduler: { name: 'Planner', description: 'Geplande taken (Cron-jobs) aanmaken, beheren en uitvoeren' },
+      browser: { name: 'Browser', description: 'Surfen op het web met een headless browser, paginas lezen en interactie met elementen' },
+      sandbox: { name: 'Sandbox', description: 'Opdrachten uitvoeren in een geïsoleerde omgeving met resourcelimieten' },
+      'ui-reviewer': { name: 'UI-beoordeling', description: 'Geautomatiseerde UI-kwaliteitsbeoordeling met toegankelijkheidscontroles en visuele score' },
+      autoreply: { name: 'Automatisch antwoord', description: 'Automatische antwoordregels aanmaken en beheren met trefwoord-triggers' },
+      workflows: { name: 'Workflows', description: 'n8n-achtige workflow-automatiseringen aanmaken en uitvoeren' },
+    },
+  },
+  workspace: {
+    title: 'Werkruimtebestanden',
+    description: 'Deze bestanden definiëren de persoonlijkheid, het geheugen en het gedrag van Blue.',
+    saved: '{name} opgeslagen',
+    empty: '(leeg)',
+    noFiles: 'Geen werkruimtebestanden gevonden.',
+    tokens: '~{count} tokens',
+    chars: '{count} tekens',
+    label: {
+      soul: 'Ziel',
+      user: 'Eigenaar',
+      identity: 'Identiteit',
+      memory: 'Geheugen',
+      agents: 'Regels',
+      heartbeat: 'Hartslag',
+    },
+    desc: {
+      soul: 'Kernpersoonlijkheid en waarden',
+      user: 'Over jou — voorkeuren en context',
+      identity: 'Assistentnaam, stijl en emoji',
+      memory: 'Langetermijngeheugen en geleerde lessen',
+      agents: 'Werkruimteregels en sessierichtlijnen',
+      heartbeat: 'Periodieke controleconfiguratie',
+    },
   },
   backup: {
     ...enUS.backup,
@@ -1691,6 +1728,12 @@ export default {
       'Memory Store': 'Geheugen opslaan',
       'Memory Get': 'Geheugen ophalen',
       'Memory Stats': 'Geheugenstatistieken',
+      'Scheduler': 'Planner',
+      'Browser': 'Browser',
+      'Sandbox': 'Sandbox',
+      'UI Reviewer': 'UI-beoordeling',
+      'Auto Reply': 'Automatisch antwoord',
+      'Workflows': 'Workflows',
     },
     params: {
       query: 'Zoekopdracht',
@@ -1716,5 +1759,23 @@ export default {
   },
   search: {
     resultCount: '{count} resultaten',
+  },
+  uiReview: {
+    title: 'UI-beoordeling',
+    error: 'UI-beoordeling mislukt',
+    visual: 'Visueel',
+    functional: 'Functioneel',
+    accessibility: 'Toegankelijkheid',
+    issues: 'problemen',
+    issuesTitle: 'Problemen',
+    suggestions: 'Suggesties',
+    skipped: 'overgeslagen',
+    showScreenshot: 'Screenshot tonen',
+    hideScreenshot: 'Screenshot verbergen',
+    actions: {
+      recheck: 'Opnieuw controleren',
+      check_a11y: 'Alleen toegankelijkheid',
+      full_report: 'Volledig rapport',
+    },
   },
 }

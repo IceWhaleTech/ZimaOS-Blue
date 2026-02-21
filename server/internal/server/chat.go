@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
@@ -26,6 +27,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
@@ -1179,241 +1181,6 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 	return results
 }
 
-// formatToolResultsAsTypeless converts tool results into typeless card blocks
-// that can be appended to the assistant's text content for frontend rendering.
-func formatToolResultsAsTypeless(toolCalls []llm.ToolCall, toolResults []llm.Message) string {
-	var sb strings.Builder
-	for i, tc := range toolCalls {
-		if i >= len(toolResults) {
-			break
-		}
-		content := toolResults[i].Content
-		card := toolResultToCard(tc.Name, content)
-		if card != nil {
-			cardJSON, _ := json.Marshal(card)
-			sb.WriteString("\n\n```typeless\n")
-			sb.Write(cardJSON)
-			sb.WriteString("\n```")
-		}
-	}
-	return sb.String()
-}
-
-// toolResultToCard converts a single tool result into a typeless card map.
-// Returns nil if no card should be rendered.
-func toolResultToCard(toolName, content string) map[string]interface{} {
-	switch toolName {
-	case "web_search":
-		return webSearchCard(content)
-	case "calculator":
-		return calculatorCard(content)
-	case "current_time":
-		return currentTimeCard(content)
-	case "file_read":
-		return fileReadCard(content)
-	case "file_write":
-		return fileWriteCard(content)
-	case "system_info":
-		return systemInfoCard(content)
-	case "memory_search":
-		return memorySearchCard(content)
-	default:
-		return genericToolCard(toolName, content)
-	}
-}
-
-func webSearchCard(content string) map[string]interface{} {
-	var resp struct {
-		Query      string            `json:"query"`
-		Results    []json.RawMessage `json:"results"`
-		TotalCount int               `json:"total_count"`
-	}
-	if json.Unmarshal([]byte(content), &resp) != nil || len(resp.Results) == 0 {
-		return nil
-	}
-	var results []interface{}
-	for _, r := range resp.Results {
-		var item interface{}
-		json.Unmarshal(r, &item)
-		results = append(results, item)
-	}
-	return map[string]interface{}{
-		"type":        "search",
-		"query":       resp.Query,
-		"total_count": resp.TotalCount,
-		"results":     results,
-	}
-}
-
-func calculatorCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "Calculator",
-			"status":  "error",
-			"message": errMsg,
-		}
-	}
-	expr, _ := data["expression"].(string)
-	result := fmt.Sprintf("%v", data["result"])
-	details := []map[string]interface{}{}
-	if expr != "" {
-		details = append(details, map[string]interface{}{"label": "Expression", "value": expr})
-	}
-	details = append(details, map[string]interface{}{"label": "Result", "value": result, "copyable": true})
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "Calculator",
-		"status":  "success",
-		"message": result,
-		"details": details,
-	}
-}
-
-func currentTimeCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-	details := []map[string]interface{}{}
-	for _, key := range []string{"datetime", "timezone", "unix"} {
-		if v, ok := data[key]; ok {
-			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
-		}
-	}
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "Current Time",
-		"status":  "info",
-		"details": details,
-	}
-}
-
-func fileReadCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "File Read",
-			"status":  "error",
-			"message": errMsg,
-		}
-	}
-	fileContent, _ := data["content"].(string)
-	filePath, _ := data["path"].(string)
-	if fileContent == "" {
-		return nil
-	}
-	return map[string]interface{}{
-		"type":     "collapsible-code",
-		"title":    "File Read",
-		"filename": filePath,
-		"code":     fileContent,
-	}
-}
-
-func fileWriteCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-	status := "success"
-	msg := "File written successfully"
-	if errMsg, ok := data["error"].(string); ok {
-		status = "error"
-		msg = errMsg
-	} else if m, ok := data["message"].(string); ok {
-		msg = m
-	}
-	details := []map[string]interface{}{}
-	if p, ok := data["path"].(string); ok {
-		details = append(details, map[string]interface{}{"label": "Path", "value": p})
-	}
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "File Write",
-		"status":  status,
-		"message": msg,
-		"details": details,
-	}
-}
-
-func systemInfoCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-	details := []map[string]interface{}{}
-	for _, key := range []string{"os", "arch", "hostname", "cpu_cores", "memory_total", "go_version"} {
-		if v, ok := data[key]; ok {
-			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
-		}
-	}
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "System Info",
-		"status":  "info",
-		"details": details,
-	}
-}
-
-func memorySearchCard(content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "Memory Search",
-			"status":  "error",
-			"message": errMsg,
-		}
-	}
-	msg := "Search completed"
-	if results, ok := data["results"].([]interface{}); ok {
-		msg = fmt.Sprintf("Found %d results", len(results))
-	}
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "Memory Search",
-		"status":  "success",
-		"message": msg,
-	}
-}
-
-// genericToolCard creates a result card for any unrecognized tool.
-func genericToolCard(toolName, content string) map[string]interface{} {
-	var data map[string]interface{}
-	if json.Unmarshal([]byte(content), &data) == nil {
-		if errMsg, ok := data["error"].(string); ok {
-			return map[string]interface{}{
-				"type":    "result",
-				"title":   toolName,
-				"status":  "error",
-				"message": errMsg,
-			}
-		}
-	}
-	display := content
-	if len(display) > 500 {
-		display = display[:500] + "..."
-	}
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   toolName,
-		"status":  "info",
-		"message": display,
-	}
-}
-
 // extractMemory extracts important information from conversation messages and saves to daily log.
 // source is "im" or "web" for tagging. Returns true if memory was saved.
 func (h *ChatHandler) extractMemory(convID, source string) bool {
@@ -1440,12 +1207,13 @@ func (h *ChatHandler) extractMemory(convID, source string) bool {
 	}
 
 	// Use LLM to extract structured facts
-	provider, _, _, err := h.getDefaultProvider()
+	provider, _, model, err := h.getDefaultProvider()
 	if err != nil {
 		return false
 	}
 
 	req := llm.ChatRequest{
+		Model: model,
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: `You are a memory extraction assistant. Extract important facts from this conversation as short, structured bullet points.
 Focus on: user preferences, personal info, decisions, key facts, action items, technical choices.
@@ -1874,9 +1642,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				for j := i + 1; j < len(chatReq.Messages) && chatReq.Messages[j].Role == llm.RoleTool; j++ {
 					toolResults = append(toolResults, chatReq.Messages[j])
 				}
-				cards := formatToolResultsAsTypeless(msg.ToolCalls, toolResults)
-				if cards != "" {
-					resp.Message.Content += cards
+				cardBlocks := cards.FormatTypeless(msg.ToolCalls, toolResults)
+				if cardBlocks != "" {
+					resp.Message.Content += cardBlocks
 				}
 				break
 			}
@@ -2087,6 +1855,61 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/tools", h.ListTools)
 	g.GET("/streams/active", h.ListActiveStreams)
 	g.POST("/streams/cancel-all", h.CancelAllStreams)
+	g.POST("/conversations/:id/messages/:msgid/card-action", h.HandleCardAction)
+}
+
+// HandleCardAction processes an interactive card button click.
+// It maps the action to a user-facing message that the frontend can send as a new turn.
+func (h *ChatHandler) HandleCardAction(c echo.Context) error {
+	convID := c.Param("id")
+	if _, err := h.checkConversationOwnership(c, convID); err != nil {
+		return err
+	}
+
+	var req struct {
+		CardID      string `json:"card_id"`
+		ActionID    string `json:"action_id"`
+		ActionLabel string `json:"action_label"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.CardID == "" || req.ActionID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "card_id and action_id required")
+	}
+
+	// Map card action to a user message
+	message := h.mapCardAction(req.CardID, req.ActionID, req.ActionLabel)
+	if message == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "unknown action")
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": message,
+	})
+}
+
+// mapCardAction converts a card action into a user message string.
+func (h *ChatHandler) mapCardAction(cardID, actionID, actionLabel string) string {
+	// UI Review cards: "ui-review-<url>"
+	if strings.HasPrefix(cardID, "ui-review-") {
+		url := strings.TrimPrefix(cardID, "ui-review-")
+		switch actionID {
+		case "recheck":
+			return "Please re-run the UI review for " + url
+		case "check_a11y":
+			return "Run accessibility check only for " + url
+		case "full_report":
+			return "Show full human-readable UI review report for " + url
+		}
+	}
+
+	// Generic fallback: use action label if available
+	if actionLabel != "" {
+		return actionLabel
+	}
+	return ""
 }
 
 // StreamMessage sends a message and streams the response.
@@ -2246,8 +2069,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Apply context compaction if needed
+	beforeCount := len(llmMessages)
 	compactedMessages, summary, _ := h.compactMessages(c.Request().Context(), llmMessages, provider)
-	if summary != "" {
+	compacted := summary != ""
+	if compacted {
 		// Prepend summary as system context
 		summaryMsg := llm.Message{
 			Role:    llm.RoleSystem,
@@ -2289,6 +2114,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	h.streamController.Register(streamID, cancel)
 	defer h.streamController.Unregister(streamID)
+
+	// Attach prune stats slot so the proxy pruner can populate it
+	pruneStats := &pruner.RequestPruneStats{}
+	ctx = pruner.WithPruneStats(ctx, pruneStats)
 
 	// Set SSE headers before starting stream
 	c.Response().Header().Set("Content-Type", "text/event-stream")
@@ -2344,6 +2173,27 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		// Track first chunk time for TTFT calculation
 		if firstChunkTime.IsZero() && chunk.Delta != "" {
 			firstChunkTime = time.Now()
+
+			// On first content chunk, send pruning/compaction info if applicable
+			if pruneStats.Pruned {
+				pruneJSON := fmt.Sprintf(`{"pruned":true,"messages_pruned":%d,"tokens_before":%d,"tokens_after":%d}`,
+					pruneStats.MessagesPruned, pruneStats.TokensBefore, pruneStats.TokensAfter)
+				sseBuffer.Reset()
+				sseBuffer.WriteString("data: ")
+				sseBuffer.WriteString(pruneJSON)
+				sseBuffer.WriteString("\n\n")
+				c.Response().Write(sseBuffer.Bytes())
+				flusher.Flush()
+			}
+			if compacted {
+				compactJSON := fmt.Sprintf(`{"compacted":true,"before":%d,"after":%d}`, beforeCount, len(compactedMessages))
+				sseBuffer.Reset()
+				sseBuffer.WriteString("data: ")
+				sseBuffer.WriteString(compactJSON)
+				sseBuffer.WriteString("\n\n")
+				c.Response().Write(sseBuffer.Bytes())
+				flusher.Flush()
+			}
 		}
 
 		// Capture actual model/provider from response if provided
@@ -2624,12 +2474,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				for j := i + 1; j < len(chatReq.Messages) && chatReq.Messages[j].Role == llm.RoleTool; j++ {
 					toolResults = append(toolResults, chatReq.Messages[j])
 				}
-				cards := formatToolResultsAsTypeless(msg.ToolCalls, toolResults)
-				if cards != "" {
-					fullContent += cards
+				cardBlocks := cards.FormatTypeless(msg.ToolCalls, toolResults)
+				if cardBlocks != "" {
+					fullContent += cardBlocks
 					// Stream the typeless card to client
 					cardData, _ := json.Marshal(map[string]interface{}{
-						"delta":     cards,
+						"delta":     cardBlocks,
 						"done":      false,
 						"stream_id": streamID,
 					})

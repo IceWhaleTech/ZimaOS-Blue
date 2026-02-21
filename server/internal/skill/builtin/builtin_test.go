@@ -271,15 +271,49 @@ func TestRegisterAll(t *testing.T) {
 	// We can't directly test RegisterAll without importing skill package
 	// This test verifies the built-in skills can be created
 	skills := []interface{}{
+		// Original (5)
 		NewCalculator(),
 		NewSystemInfo(),
 		NewDateTime(),
 		NewWeather(nil),
 		NewSearch(),
+		// Productivity (4)
+		NewTimer(),
+		NewReminders(),
+		NewNotes(),
+		NewTasks(),
+		// Utility (3)
+		NewTranslate(),
+		NewNotifications(),
+		NewUnitConverter(),
+		// System (9)
+		NewFiles(""),
+		NewNetwork(),
+		NewProcesses(),
+		NewDocker(nil),
+		NewScheduler(),
+		NewWorkflows(),
+		NewAutoReply(),
+		NewSandbox(),
+		NewBrowser(),
+		// Communication (3)
+		NewEmail(nil),
+		NewCalendar(nil),
+		NewContacts(nil),
+		// Information (3)
+		NewNews(nil),
+		NewStocks(nil),
+		NewCrypto(nil),
+		// Integration (4)
+		NewGitHub(nil),
+		NewNotion(nil),
+		NewSlackSkill(nil),
+		NewDiscordSkill(nil),
 	}
 
-	if len(skills) != 5 {
-		t.Errorf("expected 5 built-in skills, got %d", len(skills))
+	expected := GetSkillCount()
+	if len(skills) != expected {
+		t.Errorf("expected %d built-in skills, got %d", expected, len(skills))
 	}
 
 	_ = registry // Use registry to avoid unused variable error

@@ -120,6 +120,11 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	s.SkillRegistry = skill.NewRegistry()
 	builtin.RegisterAll(s.SkillRegistry)
 
+	// Bridge skills that should be callable by the LLM into the tool registry.
+	if uiReviewer := s.SkillRegistry.Get("ui_reviewer"); uiReviewer != nil {
+		tools.RegisterSkill(s.ToolRegistry, uiReviewer)
+	}
+
 	// Worker pool (shared by echo and echolib)
 	s.WorkerPool = worker.NewPool(context.Background(), 10)
 

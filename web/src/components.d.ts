@@ -52,6 +52,7 @@ declare module 'vue' {
     CardSteps: typeof import('./components/typeless/CardSteps.vue')['default']
     CardTable: typeof import('./components/typeless/CardTable.vue')['default']
     CardTerminal: typeof import('./components/typeless/CardTerminal.vue')['default']
+    CardUIReview: typeof import('./components/typeless/CardUIReview.vue')['default']
     CardVideo: typeof import('./components/typeless/CardVideo.vue')['default']
     CardWeather: typeof import('./components/typeless/CardWeather.vue')['default']
     ChannelCard: typeof import('./components/channels/ChannelCard.vue')['default']
@@ -165,5 +166,6 @@ declare module 'vue' {
     VoiceCustomizer: typeof import('./components/tts/VoiceCustomizer.vue')['default']
     VoicePackManager: typeof import('./components/tts/VoicePackManager.vue')['default']
     WebAuthnSettings: typeof import('./components/WebAuthnSettings.vue')['default']
+    WorkspaceSettings: typeof import('./components/settings/WorkspaceSettings.vue')['default']
   }
 }

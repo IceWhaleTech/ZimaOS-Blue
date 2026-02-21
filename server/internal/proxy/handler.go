@@ -336,6 +336,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Apply context pruner to reduce token usage (if enabled)
 	if ph.prunerMw != nil && ph.prunerMw.Enabled() {
+		// Read prune stats slot from context (set by chat handler before bridge call).
+		// If present, the middleware populates it with per-request stats.
 		if pruned, err := ph.prunerMw.ProcessRequest(r.Context(), bodyBytes); err == nil {
 			bodyBytes = pruned
 		}
@@ -1321,10 +1323,18 @@ func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
 
 		decision := ph.ruleEngine.Evaluate(&req)
 		if decision != nil && decision.Matched {
-			pr.routed = decision
-			pr.model = decision.Model
-			pr.body = replaceModelInBody(pr.body, decision.Model)
-			return
+			// Verify the target model is actually available in the provider pool
+			// before committing to the swap. If no provider supports the target model,
+			// skip the routing and keep the original model.
+			if ph.providerPool != nil && ph.providerPool.Router != nil && !ph.providerPool.Router.HasModel(decision.Model) {
+				slog.Debug("[proxy] routing rule matched but target model not available, skipping",
+					"rule", decision.Rule, "target", decision.Model, "original", pr.model)
+			} else {
+				pr.routed = decision
+				pr.model = decision.Model
+				pr.body = replaceModelInBody(pr.body, decision.Model)
+				return
+			}
 		}
 	}
 
@@ -1333,8 +1343,14 @@ func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
 		isBackground := ph.modelRouter.IsBackgroundRequest(r)
 		route, err := ph.modelRouter.RouteModel(pr.model, isBackground)
 		if err == nil && route.TargetModel != pr.model {
-			pr.model = route.TargetModel
-			pr.body = replaceModelInBody(pr.body, route.TargetModel)
+			// Verify the target model is available before swapping
+			if ph.providerPool != nil && ph.providerPool.Router != nil && !ph.providerPool.Router.HasModel(route.TargetModel) {
+				slog.Debug("[proxy] model router target not available, keeping original",
+					"target", route.TargetModel, "original", pr.model)
+			} else {
+				pr.model = route.TargetModel
+				pr.body = replaceModelInBody(pr.body, route.TargetModel)
+			}
 		}
 	}
 }

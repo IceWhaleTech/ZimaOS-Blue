@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -927,6 +928,596 @@ func (s *RodService) Console(ctx context.Context, req *ConsoleRequest) (*Console
 	return &ConsoleResponse{
 		Messages: messages,
 	}, nil
+}
+
+// getTab returns the tab for the given targetID, or the active tab if targetID is empty.
+func (s *RodService) getTab(targetID string) (*tabInfo, error) {
+	s.tabsMu.RLock()
+	defer s.tabsMu.RUnlock()
+	if targetID != "" {
+		tab := s.tabs[targetID]
+		if tab == nil || tab.page == nil {
+			return nil, ErrTabNotFound
+		}
+		return tab, nil
+	}
+	for _, t := range s.tabs {
+		if t.active {
+			if t.page == nil {
+				return nil, ErrTabNotFound
+			}
+			return t, nil
+		}
+	}
+	return nil, ErrTabNotFound
+}
+
+// AccessibilityTree returns a compact DSL representation of the page's accessibility tree.
+// This is much more token-efficient than raw HTML for LLM consumption.
+// Each interactive element gets an @ref that can be used in Act() to target it.
+func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (*AccessibilityTreeResponse, error) {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	depth := maxDepth
+	if depth <= 0 {
+		depth = 10
+	}
+
+	result, err := proto.AccessibilityGetFullAXTree{Depth: &depth}.Call(tab.page)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get accessibility tree: %w", err)
+	}
+
+	// Build DSL with @ref references
+	builder := newAXTreeBuilder(result.Nodes)
+	tree := builder.build()
+
+	info, _ := tab.page.Info()
+
+	return &AccessibilityTreeResponse{
+		Tree:     tree,
+		URL:      info.URL,
+		Title:    info.Title,
+		TargetID: tab.targetID,
+		RefMap:   builder.refMap,
+	}, nil
+}
+
+// axTreeBuilder builds a compact DSL from accessibility tree nodes.
+//
+// Output format (each interactive element gets an @ref):
+//
+//	[document] "My Page"
+//	  [nav] "Main Nav"
+//	    @1 [link] "Home" href=/
+//	    @2 [link] "About" href=/about
+//	  [main]
+//	    [heading:1] "Welcome"
+//	    @3 [textbox] "Search..." focused
+//	    @4 [button] "Submit"
+//
+// The @ref numbers map to backend DOM node IDs via RefMap,
+// so the LLM can say "click @4" and we resolve it to the actual element.
+type axTreeBuilder struct {
+	nodeMap  map[string]*proto.AccessibilityAXNode
+	childMap map[string][]string
+	rootID   string
+	refMap   map[int]int // @ref → backend DOM node ID
+	nextRef  int
+	buf      []byte
+}
+
+func newAXTreeBuilder(nodes []*proto.AccessibilityAXNode) *axTreeBuilder {
+	b := &axTreeBuilder{
+		nodeMap:  make(map[string]*proto.AccessibilityAXNode, len(nodes)),
+		childMap: make(map[string][]string, len(nodes)),
+		refMap:   make(map[int]int),
+		nextRef:  1,
+	}
+
+	for _, node := range nodes {
+		id := string(node.NodeID)
+		b.nodeMap[id] = node
+		if node.ParentID == "" {
+			b.rootID = id
+		} else {
+			pid := string(node.ParentID)
+			b.childMap[pid] = append(b.childMap[pid], id)
+		}
+	}
+
+	if b.rootID == "" && len(nodes) > 0 {
+		b.rootID = string(nodes[0].NodeID)
+	}
+
+	return b
+}
+
+// interactiveSelector is the CSS selector for interactive elements.
+// Used by CountInteractiveElements, InteractiveElements, and ActByInteractiveRef.
+const interactiveSelector = `a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [onclick], [contenteditable="true"]`
+
+// interactiveRoles are roles that get @ref assignments for LLM targeting.
+var interactiveRoles = map[string]bool{
+	"link":          true,
+	"button":        true,
+	"textbox":       true,
+	"searchbox":     true,
+	"combobox":      true,
+	"checkbox":      true,
+	"radio":         true,
+	"switch":        true,
+	"slider":        true,
+	"spinbutton":    true,
+	"tab":           true,
+	"menuitem":      true,
+	"menuitemcheckbox": true,
+	"menuitemradio": true,
+	"option":        true,
+	"treeitem":      true,
+}
+
+// skipRoles are roles that add noise without useful info for LLM.
+var skipRoles = map[string]bool{
+	"none":          true,
+	"generic":       true,
+	"InlineTextBox": true,
+	"LineBreak":     true,
+}
+
+func (b *axTreeBuilder) build() string {
+	b.appendNode(b.rootID, 0)
+
+	// Cap at ~8K chars to stay token-friendly
+	if len(b.buf) > 8192 {
+		b.buf = b.buf[:8192]
+		b.buf = append(b.buf, "\n... (truncated)"...)
+	}
+
+	return string(b.buf)
+}
+
+// axValueStr converts a CDP AXValue (interface{}) to string without fmt.Sprintf.
+func axValueStr(v interface{}) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case float64:
+		return strconv.FormatFloat(s, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(s)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func (b *axTreeBuilder) appendNode(id string, depth int) {
+	node, ok := b.nodeMap[id]
+	if !ok {
+		return
+	}
+
+	// Skip ignored nodes but still process children
+	if node.Ignored {
+		for _, childID := range b.childMap[id] {
+			b.appendNode(childID, depth)
+		}
+		return
+	}
+
+	role := ""
+	if node.Role != nil {
+		role = axValueStr(node.Role.Value)
+	}
+
+	// Skip noisy roles but process children
+	if skipRoles[role] {
+		for _, childID := range b.childMap[id] {
+			b.appendNode(childID, depth)
+		}
+		return
+	}
+
+	name := ""
+	if node.Name != nil {
+		name = axValueStr(node.Name.Value)
+	}
+
+	value := ""
+	if node.Value != nil {
+		value = axValueStr(node.Value.Value)
+	}
+
+	// Skip empty leaf nodes
+	if role == "" && name == "" && value == "" && len(b.childMap[id]) == 0 {
+		return
+	}
+
+	// Indent
+	for i := 0; i < depth; i++ {
+		b.buf = append(b.buf, ' ', ' ')
+	}
+
+	// Assign @ref for interactive elements
+	if interactiveRoles[role] && node.BackendDOMNodeID != 0 {
+		ref := b.nextRef
+		b.nextRef++
+		b.refMap[ref] = int(node.BackendDOMNodeID)
+		b.buf = append(b.buf, '@')
+		b.buf = append(b.buf, strconv.Itoa(ref)...)
+		b.buf = append(b.buf, ' ')
+	}
+
+	// Role (with level suffix for headings)
+	if role != "" {
+		b.buf = append(b.buf, '[')
+		b.buf = append(b.buf, role...)
+		// Append level for headings inline: [heading:2]
+		for _, prop := range node.Properties {
+			if prop != nil && string(prop.Name) == "level" && prop.Value != nil {
+				b.buf = append(b.buf, ':')
+				b.buf = append(b.buf, axValueStr(prop.Value.Value)...)
+				break
+			}
+		}
+		b.buf = append(b.buf, ']')
+	}
+
+	// Name
+	if name != "" {
+		b.buf = append(b.buf, ' ', '"')
+		b.buf = append(b.buf, name...)
+		b.buf = append(b.buf, '"')
+	}
+
+	// Value (for inputs, if different from name)
+	if value != "" && value != name {
+		b.buf = append(b.buf, " val="...)
+		b.buf = append(b.buf, value...)
+	}
+
+	// Key properties (skip level — already in role suffix)
+	for _, prop := range node.Properties {
+		if prop == nil || prop.Name == "" {
+			continue
+		}
+		switch string(prop.Name) {
+		case "focused":
+			if prop.Value != nil && axValueStr(prop.Value.Value) == "true" {
+				b.buf = append(b.buf, " focused"...)
+			}
+		case "checked":
+			if prop.Value != nil {
+				b.buf = append(b.buf, " checked="...)
+				b.buf = append(b.buf, axValueStr(prop.Value.Value)...)
+			}
+		case "disabled":
+			if prop.Value != nil && axValueStr(prop.Value.Value) == "true" {
+				b.buf = append(b.buf, " disabled"...)
+			}
+		case "required":
+			if prop.Value != nil && axValueStr(prop.Value.Value) == "true" {
+				b.buf = append(b.buf, " required"...)
+			}
+		case "url":
+			if prop.Value != nil {
+				b.buf = append(b.buf, " href="...)
+				b.buf = append(b.buf, axValueStr(prop.Value.Value)...)
+			}
+		}
+	}
+
+	b.buf = append(b.buf, '\n')
+
+	// Children
+	for _, childID := range b.childMap[id] {
+		b.appendNode(childID, depth+1)
+	}
+}
+
+// ActByRef performs an action on an element identified by @ref from the accessibility tree DSL.
+// This resolves the ref to a backend DOM node ID and uses CDP to interact with it.
+func (s *RodService) ActByRef(ctx context.Context, targetID string, ref int, refMap map[int]int, action string, value string) (*ActResponse, error) {
+	backendNodeID, ok := refMap[ref]
+	if !ok {
+		return nil, fmt.Errorf("unknown ref @%d", ref)
+	}
+
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve backend node ID to a rod Element
+	el, err := tab.page.ElementFromNode(&proto.DOMNode{
+		BackendNodeID: proto.DOMBackendNodeID(backendNodeID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve @%d: %w", ref, err)
+	}
+
+	switch action {
+	case "click":
+		err = el.Click(proto.InputMouseButtonLeft, 1)
+	case "type":
+		err = el.Input(value)
+	case "focus":
+		_, err = el.Eval(`() => this.focus()`)
+	case "hover":
+		err = el.Hover()
+	case "scroll":
+		err = el.ScrollIntoView()
+	case "select":
+		err = el.Select([]string{value}, true, rod.SelectorTypeText)
+	default:
+		return nil, fmt.Errorf("unsupported action: %s (use click, type, focus, hover, scroll, select)", action)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &ActResponse{Success: true}, nil
+}
+
+// CountInteractiveElements returns the count of interactive elements on the page.
+// This is a lightweight JS call — no DSL building, no ref map.
+func (s *RodService) CountInteractiveElements(ctx context.Context, targetID string) (int, error) {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := tab.page.Eval(`() => {
+		const selectors = '` + interactiveSelector + `';
+		const els = document.querySelectorAll(selectors);
+		let count = 0;
+		for (let i = 0; i < els.length; i++) {
+			const el = els[i];
+			if (el.offsetParent === null && el.tagName !== 'INPUT' && el.type !== 'hidden') continue;
+			const rect = el.getBoundingClientRect();
+			if (rect.width === 0 && rect.height === 0) continue;
+			count++;
+		}
+		return count;
+	}`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count interactive elements: %w", err)
+	}
+
+	return result.Value.Int(), nil
+}
+
+// ScreenshotTab takes a screenshot of an existing tab by target ID.
+func (s *RodService) ScreenshotTab(ctx context.Context, targetID string) (string, error) {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := tab.page.Screenshot(true, nil)
+	if err != nil {
+		return "", fmt.Errorf("screenshot failed: %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// InteractiveElements extracts only interactive elements from the page using JS.
+// Much lighter than the full accessibility tree — returns a compact DSL with @ref IDs.
+// Each @ref maps to a CSS selector for action targeting.
+func (s *RodService) InteractiveElements(ctx context.Context, targetID string) (*InteractiveElementsResponse, error) {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	page := tab.page
+
+	// Wait for page to be stable before extracting
+	_ = page.WaitStable(500 * time.Millisecond)
+
+	// JS extraction: only interactive elements
+	result, err := page.Eval(`() => {
+		const selectors = '` + interactiveSelector + `';
+		const els = document.querySelectorAll(selectors);
+		const items = [];
+		for (let i = 0; i < els.length; i++) {
+			const el = els[i];
+			if (el.offsetParent === null && el.tagName !== 'INPUT' && el.type !== 'hidden') continue; // skip hidden
+			const rect = el.getBoundingClientRect();
+			if (rect.width === 0 && rect.height === 0) continue; // skip zero-size
+			const item = {
+				tag: el.tagName.toLowerCase(),
+				text: (el.innerText || el.textContent || '').trim().slice(0, 80),
+				role: el.getAttribute('role') || '',
+				type: el.type || '',
+				name: el.name || '',
+				placeholder: el.placeholder || '',
+				href: el.href || '',
+				value: el.value || '',
+				checked: el.checked || false,
+				disabled: el.disabled || false,
+				ariaLabel: el.getAttribute('aria-label') || '',
+			};
+			items.push(item);
+		}
+		return { items: items, url: location.href, title: document.title };
+	}`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract interactive elements: %w", err)
+	}
+
+	url := result.Value.Get("url").Str()
+	title := result.Value.Get("title").Str()
+	rawItems := result.Value.Get("items").Arr()
+
+	var b interactiveBuilder
+	b.refMap = make(map[int]string)
+	b.grow(len(rawItems) * 40)
+
+	for i, item := range rawItems {
+		ref := i + 1
+		tag := item.Get("tag").Str()
+		text := item.Get("text").Str()
+		role := item.Get("role").Str()
+		typ := item.Get("type").Str()
+		placeholder := item.Get("placeholder").Str()
+		href := item.Get("href").Str()
+		ariaLabel := item.Get("ariaLabel").Str()
+		disabled := item.Get("disabled").Bool()
+		checked := item.Get("checked").Bool()
+
+		b.writeRef(ref)
+
+		// Tag/role
+		if role != "" {
+			b.writeString("[" + role + "]")
+		} else {
+			b.writeString("[" + tag + "]")
+		}
+
+		// Label: prefer aria-label > text > placeholder
+		label := ariaLabel
+		if label == "" {
+			label = text
+		}
+		if label == "" {
+			label = placeholder
+		}
+		if label != "" {
+			b.writeString(" \"" + label + "\"")
+		}
+
+		// Type info for inputs
+		if typ != "" && typ != "submit" && typ != "button" {
+			b.writeString(" type=" + typ)
+		}
+
+		// Href for links
+		if href != "" && tag == "a" {
+			b.writeString(" href=" + href)
+		}
+
+		// State
+		if disabled {
+			b.writeString(" disabled")
+		}
+		if checked {
+			b.writeString(" checked")
+		}
+
+		b.writeString("\n")
+
+		// Build selector for this element (by index in querySelectorAll result)
+		b.refMap[ref] = fmt.Sprintf("__interactive_ref_%d", i)
+	}
+
+	return &InteractiveElementsResponse{
+		Tree:     b.String(),
+		URL:      url,
+		Title:    title,
+		TargetID: tab.targetID,
+		RefMap:   b.refMap,
+		Count:    len(rawItems),
+	}, nil
+}
+
+// ActByInteractiveRef performs an action on an element identified by @ref from InteractiveElements.
+func (s *RodService) ActByInteractiveRef(ctx context.Context, targetID string, ref int, refMap map[int]string, action string, value string) (*ActResponse, error) {
+	selectorKey, ok := refMap[ref]
+	if !ok {
+		return nil, fmt.Errorf("unknown ref @%d", ref)
+	}
+
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the index from the selector key
+	var idx int
+	if _, err := fmt.Sscanf(selectorKey, "__interactive_ref_%d", &idx); err != nil {
+		return nil, fmt.Errorf("invalid ref selector: %s", selectorKey)
+	}
+
+	// Use JS to find and act on the element by index
+	page := tab.page
+	jsAction := ""
+	switch action {
+	case "click":
+		jsAction = "el.click()"
+	case "focus":
+		jsAction = "el.focus()"
+	case "hover":
+		jsAction = "el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}))"
+	case "scroll":
+		jsAction = "el.scrollIntoView({behavior: 'smooth', block: 'center'})"
+	case "type":
+		// For type, we use rod's Input method for proper event dispatch
+	case "select":
+		// For select, we use rod's Select method
+	default:
+		return nil, fmt.Errorf("unsupported action: %s", action)
+	}
+
+	if action == "type" || action == "select" {
+		// Use rod element for these — need proper event dispatch
+		selector := fmt.Sprintf(`document.querySelectorAll('%s')[%d]`, interactiveSelector, idx)
+		el, err := page.ElementByJS(rod.Eval(fmt.Sprintf(`() => %s`, selector)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to find element @%d: %w", ref, err)
+		}
+		if action == "type" {
+			_ = el.SelectAllText()
+			_ = el.Input(value)
+		} else {
+			_ = el.Select([]string{value}, true, rod.SelectorTypeText)
+		}
+	} else {
+		_, err := page.Eval(fmt.Sprintf(`() => {
+			const els = document.querySelectorAll('%s');
+			const el = els[%d];`, interactiveSelector, idx) + `
+			if (!el) throw new Error('element not found');
+			` + jsAction + `;
+		}`)
+		if err != nil {
+			return nil, fmt.Errorf("action %s on @%d failed: %w", action, ref, err)
+		}
+	}
+
+	return &ActResponse{Success: true}, nil
+}
+
+// interactiveBuilder builds the compact DSL for interactive elements.
+type interactiveBuilder struct {
+	buf    []byte
+	refMap map[int]string
+}
+
+func (b *interactiveBuilder) grow(n int) {
+	if cap(b.buf)-len(b.buf) < n {
+		newBuf := make([]byte, len(b.buf), len(b.buf)+n)
+		copy(newBuf, b.buf)
+		b.buf = newBuf
+	}
+}
+
+func (b *interactiveBuilder) writeString(s string) {
+	b.buf = append(b.buf, s...)
+}
+
+func (b *interactiveBuilder) writeRef(ref int) {
+	b.buf = append(b.buf, '@')
+	b.buf = append(b.buf, strconv.Itoa(ref)...)
+	b.buf = append(b.buf, ' ')
+}
+
+func (b *interactiveBuilder) String() string {
+	return string(b.buf)
 }
 
 // Close closes the browser service.

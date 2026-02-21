@@ -91,17 +91,16 @@ function handleLogout() {
         </button>
         
         <!-- Logo/Brand -->
-        <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-2 sm:space-x-3">
           <img
             src="/logo.svg"
             alt="Logo"
-            class="h-10 w-10 rounded-full object-contain drop-shadow-lg dark:brightness-150"
+            class="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-contain drop-shadow-lg dark:brightness-150"
           />
-          <div class="hidden sm:block">
-            <h1 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('brand.name') }}</h1>
-            <p class="text-xs text-gray-500 dark:text-slate-400">{{ t('brand.tagline') }}</p>
+          <div>
+            <h1 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white leading-tight">{{ t('brand.name') }}</h1>
+            <p class="text-xs text-gray-500 dark:text-slate-400 leading-tight">{{ t('brand.tagline') }}</p>
           </div>
-          <h1 class="sm:hidden text-lg font-semibold text-gray-900 dark:text-white">{{ t('brand.name') }}</h1>
         </div>
         <span
           v-if="health"

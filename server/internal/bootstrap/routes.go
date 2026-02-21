@@ -47,6 +47,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -58,6 +59,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
 // routesStartTime records when the server started, used for uptime calculation
@@ -121,6 +123,7 @@ type RoutesDeps struct {
 	ChannelConfigStore *server.ChannelConfigStore
 	SharedCache        *proxy.CCCache
 	HotReloader        *config.HotReloader
+	WorkspaceHandler   *workspace.Handler
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance.
@@ -877,6 +880,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		bridge := proxybridge.NewBridge(proxyHandler)
 		deps.ChatHandler.SetProxyBridge(bridge)
 
+		// Wire bridge into UI reviewer skill for VLM calls
+		if uiSkill := s.SkillRegistry.Get("ui_reviewer"); uiSkill != nil {
+			if ur, ok := uiSkill.(*builtin.UIReviewer); ok {
+				ur.SetBridge(bridge)
+			}
+		}
+
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
 		v1ProxyGroup.Any("/completions", echo.WrapHandler(proxyHandler))
@@ -1080,8 +1090,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if err != nil {
 		logger.Error("Failed to initialize personality storage", zap.Error(err))
 	} else {
-		// Initialize default personality from SOUL.md
-		if err := model.InitializeDefaultPersonality(cfg.DataDir); err != nil {
+		// Initialize default personality from workspace SOUL.md
+		var wsDir string
+		if deps.WorkspaceHandler != nil {
+			wsDir = filepath.Join(cfg.DataDir, "workspace")
+		}
+		if err := model.InitializeDefaultPersonality(cfg.DataDir, wsDir); err != nil {
 			logger.Warn("Failed to initialize default personality", zap.Error(err))
 		}
 		personalityService := controller.NewService(personalityStorage)
@@ -1089,6 +1103,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		personalityGroup := protected.Group("/personalities")
 		personalityHandler.RegisterRoutes(personalityGroup)
 		logger.Info("Personality routes registered")
+	}
+
+	// Workspace routes (protected) — SOUL.md, USER.md, IDENTITY.md, etc.
+	if deps.WorkspaceHandler != nil {
+		workspaceGroup := protected.Group("/workspace")
+		deps.WorkspaceHandler.RegisterRoutes(workspaceGroup)
+		logger.Info("Workspace routes registered")
 	}
 
 	// OTA Update routes (always register, handler checks if enabled)

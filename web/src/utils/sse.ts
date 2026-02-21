@@ -7,6 +7,7 @@ export interface SSEClientOptions {
   onComplete?: (finalChunk?: StreamChunk) => void
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
+  onContextTrimmed?: (info: { type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number }) => void
 }
 
 export class SSEClient {
@@ -154,6 +155,25 @@ export class SSEClient {
 
             try {
               const chunk: StreamChunk = JSON.parse(data)
+              // Check for context pruning event (sent on first content chunk)
+              if (chunk.pruned) {
+                options.onContextTrimmed?.({
+                  type: 'pruned',
+                  messagesPruned: chunk.messages_pruned,
+                  tokensBefore: chunk.tokens_before,
+                  tokensAfter: chunk.tokens_after,
+                })
+                continue
+              }
+              // Check for context compaction event (sent on first content chunk)
+              if (chunk.compacted) {
+                options.onContextTrimmed?.({
+                  type: 'compacted',
+                  before: chunk.before,
+                  after: chunk.after,
+                })
+                continue
+              }
               // Check for error in chunk
               if (chunk.error) {
                 options.onError?.(new Error(chunk.error))

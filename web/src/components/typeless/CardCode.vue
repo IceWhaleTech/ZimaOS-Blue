@@ -109,7 +109,7 @@ function getLanguageDisplay(): string {
             :class="{ 'bg-yellow-500/20': isHighlighted(index + 1) }"
           ><span
               v-if="card.showLineNumbers !== false && card.language"
-              class="inline-block w-8 text-right mr-4 text-gray-500 select-none"
+              class="inline-block w-8 text-right mr-4 text-gray-600 select-none"
             >{{ index + 1 }}</span><span v-html="line"></span>
 </span></template></code></pre>
     </div>

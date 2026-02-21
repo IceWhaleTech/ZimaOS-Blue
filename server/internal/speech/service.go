@@ -34,6 +34,8 @@ type Service interface {
 	GetTTSService() tts.Service
 	// IsEditBeforeSendEnabled returns whether edit-before-send is enabled.
 	IsEditBeforeSendEnabled() bool
+	// SetEditBeforeSend enables or disables edit-before-send.
+	SetEditBeforeSend(enabled bool)
 	// Initialize initializes TTS/STT services lazily.
 	Initialize() error
 	// IsInitialized returns whether services have been initialized.
@@ -504,6 +506,13 @@ func (s *service) GetTTSService() tts.Service {
 // IsEditBeforeSendEnabled returns whether edit-before-send is enabled.
 func (s *service) IsEditBeforeSendEnabled() bool {
 	return s.config.ASR.EditBeforeSend
+}
+
+// SetEditBeforeSend enables or disables edit-before-send.
+func (s *service) SetEditBeforeSend(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.config.ASR.EditBeforeSend = enabled
 }
 
 // SetASRProvider sets the ASR provider and updates the config to match.

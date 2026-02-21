@@ -101,9 +101,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
       @select="handleSelect"
     />
 
-    <!-- Fallback for unknown types -->
-    <div v-else class="text-red-500 text-sm p-2">
-      Unknown card type: {{ card.type }}
-    </div>
+    <!-- Fallback for unknown types: hide silently (streaming may produce partial/invalid types) -->
+    <template v-else />
   </div>
 </template>

@@ -6,6 +6,33 @@ import (
 	"fmt"
 )
 
+// contextKey is a private type for context keys in this package.
+type contextKey struct{}
+
+// pruneStatsKey is the context key for per-request pruning stats.
+var pruneStatsKey = contextKey{}
+
+// RequestPruneStats holds per-request pruning statistics.
+type RequestPruneStats struct {
+	Pruned         bool `json:"pruned"`
+	MessagesPruned int  `json:"messages_pruned"`
+	TokensBefore   int  `json:"tokens_before"`
+	TokensAfter    int  `json:"tokens_after"`
+}
+
+// WithPruneStats returns a new context with pruning stats attached.
+func WithPruneStats(ctx context.Context, stats *RequestPruneStats) context.Context {
+	return context.WithValue(ctx, pruneStatsKey, stats)
+}
+
+// GetPruneStats retrieves per-request pruning stats from context, or nil.
+func GetPruneStats(ctx context.Context) *RequestPruneStats {
+	if v, ok := ctx.Value(pruneStatsKey).(*RequestPruneStats); ok {
+		return v
+	}
+	return nil
+}
+
 // openaiMessage represents a message in the OpenAI chat completions format.
 type openaiMessage struct {
 	Role       string `json:"role"`
@@ -39,6 +66,7 @@ func NewMiddleware(backend Backend, cfg Config, stats *Stats) *Middleware {
 // ProcessRequest scans the request body for tool messages containing code,
 // prunes them, and returns the modified body. Returns the original body
 // unchanged if no pruning was applied or on any error.
+// If a *RequestPruneStats is attached to ctx via WithPruneStats, it will be populated.
 func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, error) {
 	if !m.config.Enabled || m.backend == nil {
 		return body, nil
@@ -61,6 +89,7 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 	}
 
 	modified := false
+	var totalBefore, totalAfter, msgsPruned int
 	for i, msg := range messages {
 		// Determine if this message is prunable
 		switch msg.Role {
@@ -110,11 +139,22 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 		if m.stats != nil {
 			m.stats.Record(result)
 		}
+		totalBefore += result.OriginalTokens
+		totalAfter += result.PrunedTokens
+		msgsPruned++
 		modified = true
 	}
 
 	if !modified {
 		return body, nil
+	}
+
+	// Populate per-request stats if context has a slot
+	if stats := GetPruneStats(ctx); stats != nil {
+		stats.Pruned = true
+		stats.MessagesPruned = msgsPruned
+		stats.TokensBefore = totalBefore
+		stats.TokensAfter = totalAfter
 	}
 
 	// Re-serialize messages back into the raw map

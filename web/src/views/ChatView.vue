@@ -57,6 +57,27 @@ const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
 // Theme style selector state
 const showStyleSelector = ref(false)
 const styleButtonRef = ref<HTMLElement | null>(null)
+
+// Context trim indicator with 1-second delay
+const showContextTrim = ref(false)
+let contextTrimTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => chatStore.contextTrimInfo, (info) => {
+  if (contextTrimTimer) { clearTimeout(contextTrimTimer); contextTrimTimer = null }
+  if (info) {
+    // Show after 1s delay (only if still streaming)
+    contextTrimTimer = setTimeout(() => {
+      if (chatStore.streaming || info) showContextTrim.value = true
+    }, 1000)
+  } else {
+    showContextTrim.value = false
+  }
+})
+// Auto-hide after streaming ends (with a short delay so user can read it)
+watch(() => chatStore.streaming, (val) => {
+  if (!val && showContextTrim.value) {
+    setTimeout(() => { showContextTrim.value = false }, 3000)
+  }
+})
 const styleSelectorPosition = ref({ x: 0, y: 0 })
 
 // Talk mode state
@@ -840,6 +861,26 @@ onUnmounted(() => {
             </div>
           </div>
 
+          <!-- Context trim indicator (pruning/compaction) -->
+          <Transition name="fade">
+            <div
+              v-if="showContextTrim"
+              class="flex justify-center py-2"
+            >
+              <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 bg-gray-100/50 dark:bg-gray-800/50 rounded-full">
+                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span v-if="chatStore.contextTrimInfo?.type === 'pruned'">
+                  {{ t('chat.contextPruned', { tokens: (chatStore.contextTrimInfo.tokensBefore ?? 0) - (chatStore.contextTrimInfo.tokensAfter ?? 0) }) }}
+                </span>
+                <span v-else-if="chatStore.contextTrimInfo?.type === 'compacted'">
+                  {{ t('chat.contextCompacted', { before: chatStore.contextTrimInfo.before ?? 0, after: chatStore.contextTrimInfo.after ?? 0 }) }}
+                </span>
+              </div>
+            </div>
+          </Transition>
+
           <!-- Stream error display (shown in chat area with gray text) -->
           <div
             v-if="chatStore.streamError"
@@ -1289,6 +1330,15 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 .chat-view {
   min-height: 0;
   flex: 1;

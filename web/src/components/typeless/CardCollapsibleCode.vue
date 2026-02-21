@@ -131,7 +131,7 @@ function getLanguageDisplay(): string {
       <div class="overflow-x-auto">
         <pre class="p-4 text-sm leading-relaxed"><code class="text-gray-100"><template v-for="(line, index) in displayedLines" :key="index"><span class="inline-block w-full"><span
               v-if="card.showLineNumbers !== false"
-              class="inline-block w-8 text-right mr-4 text-gray-500 select-none"
+              class="inline-block w-8 text-right mr-4 text-gray-600 select-none"
             >{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
       </div>

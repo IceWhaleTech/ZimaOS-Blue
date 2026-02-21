@@ -16,7 +16,7 @@ import {
 } from '@/api/remote-access'
 import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
 
-const { t, te } = useI18n()
+const { t, te, locale: i18nLocale } = useI18n()
 const settingsStore = useSettingsStore()
 
 interface ChannelFieldDef {
@@ -64,8 +64,8 @@ const showMoreChannels = ref(getInitialShowMoreState())
 
 // Localized channel ordering based on user's language/region
 const getLocalizedChannelOrder = (): string[] => {
-  // Priority 1: Use backend settings locale
-  const locale = settingsStore.backendSettings.locale || t('$locale') || 'en-US'
+  // Priority 1: Use backend settings locale, fallback to current i18n locale
+  const locale = settingsStore.backendSettings.locale || i18nLocale.value || 'en-US'
 
   // Chinese regions (Mainland China)
   if (locale === 'zh-CN') {

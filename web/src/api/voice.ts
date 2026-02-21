@@ -562,7 +562,7 @@ function preprocessForSpeech(text: string, locale: string = 'en-US'): string {
 
 // Streaming TTS Queue Manager - plays sentences as they arrive
 class StreamingTTSManager {
-  private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean; playedLocally?: boolean; fetching?: boolean }> = []
+  private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean; playedLocally?: boolean; fetching?: boolean; _retried?: boolean }> = []
   private playIndex = 0 // cursor: next item to play
   private fetchIndex = 0 // cursor: next item to fetch
   private isPlaying = false
@@ -670,10 +670,11 @@ class StreamingTTSManager {
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
       const es = new EventSource(`/api/v1/voice/synthesize/stream?text=${encodeURIComponent(text)}${tokenParam}`)
       let received = false
+      let closed = false
 
       es.addEventListener('audio', (e) => {
-        if (gen !== this.generation) { es.close(); onDone(); return }
-        if (this.isStopped) { es.close(); onDone(); return }
+        if (gen !== this.generation) { es.close(); closed = true; onDone(); return }
+        if (this.isStopped) { es.close(); closed = true; onDone(); return }
         received = true
         const data = JSON.parse(e.data)
         if (this.queue[index]) {
@@ -686,6 +687,7 @@ class StreamingTTSManager {
           this.queue[index].fetching = false
         }
         es.close()
+        closed = true
         onDone()
 
         this.fetchNext()
@@ -693,7 +695,9 @@ class StreamingTTSManager {
       })
 
       es.addEventListener('error', () => {
+        if (closed) return // Ignore error events after intentional close
         es.close()
+        closed = true
         if (gen !== this.generation) { onDone(); return }
         if (!received && this.queue[index]) {
           this.queue[index].failed = true
@@ -708,6 +712,7 @@ class StreamingTTSManager {
 
       es.addEventListener('done', () => {
         es.close()
+        closed = true
       })
     } catch (e) {
       onDone()
@@ -733,6 +738,20 @@ class StreamingTTSManager {
     const item = this.queue[this.playIndex]
 
     if (item.failed) {
+      // Retry failed fetches once before skipping
+      if (!item._retried) {
+        item._retried = true
+        item.failed = false
+        item.fetching = false
+        // Re-fetch this item
+        this.fetchAudio(item.text, this.playIndex)
+        // Wait for re-fetch with polling
+        const retryGen = this.generation
+        setTimeout(() => {
+          if (retryGen === this.generation) this.playNext()
+        }, 200)
+        return
+      }
       this.playIndex++
       this.playNext()
       return

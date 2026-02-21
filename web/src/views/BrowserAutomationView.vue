@@ -444,17 +444,21 @@ const canCreateTask = computed(() => newTask.value.name && newTask.value.steps.l
 // Methods
 async function loadTasks() {
   try {
-    tasks.value = await browserApi.getTasks()
+    const result = await browserApi.getTasks()
+    tasks.value = Array.isArray(result) ? result : []
   } catch (error) {
     console.error('Failed to load tasks:', error)
+    tasks.value = []
   }
 }
 
 async function loadSessions() {
   try {
-    sessions.value = await browserApi.getSessions()
+    const result = await browserApi.getSessions()
+    sessions.value = Array.isArray(result) ? result : []
   } catch (error) {
     console.error('Failed to load sessions:', error)
+    sessions.value = []
   }
 }
 

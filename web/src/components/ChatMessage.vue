@@ -76,11 +76,12 @@ const interruptedIndicatorHtml = computed(() =>
   `<div class="response-interrupted-indicator"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t('chat.responseInterrupted')}</span></div>`
 )
 
+const RE_INTERRUPTED = /\n?\n?\[Response interrupted\]\s*$/
+
 // Strip [Response interrupted] marker from content, returns { content, interrupted }
 function stripInterruptedMarker(content: string): { content: string; interrupted: boolean } {
-  const re = /\n?\n?\[Response interrupted\]\s*$/
-  if (re.test(content)) {
-    return { content: content.replace(re, ''), interrupted: true }
+  if (RE_INTERRUPTED.test(content)) {
+    return { content: content.replace(RE_INTERRUPTED, ''), interrupted: true }
   }
   return { content, interrupted: false }
 }
@@ -95,16 +96,19 @@ function renderSegmentHtml(text: string): string {
   return html
 }
 
+// Cache stripped content to avoid double stripFirstLineHeading + SILENT_REPLY replacement
+const strippedContent = computed(() => {
+  if (isUser.value) return props.message.content
+  let content = stripFirstLineHeading(props.message.content)
+  content = content.replace(/\[SILENT_REPLY\]/g, '💤')
+  return content
+})
+
 const renderedContent = computed(() => {
   if (isUser.value) {
     return props.message.content
   }
-  // Strip first line if it's a markdown heading (used as conversation title)
-  let content = stripFirstLineHeading(props.message.content)
-  // Replace [SILENT_REPLY] marker with icon (may appear without typeless cards)
-  content = content.replace(/\[SILENT_REPLY\]/g, '💤')
-  // Replace [Response interrupted] with styled indicator
-  const { content: cleaned, interrupted } = stripInterruptedMarker(content)
+  const { content: cleaned, interrupted } = stripInterruptedMarker(strippedContent.value)
   let html = renderMarkdown(cleaned)
   if (interrupted) {
     html += interruptedIndicatorHtml.value
@@ -115,16 +119,15 @@ const renderedContent = computed(() => {
 // Parse typeless cards from assistant messages
 // Use incremental parsing for streaming messages, regular parsing for completed messages
 const parsedContent = computed(() => {
-  const content = isUser.value ? props.message.content : stripFirstLineHeading(props.message.content)
-  if (isUser.value || !hasTypelessCards(content)) {
+  if (isUser.value || !hasTypelessCards(strippedContent.value)) {
     return null
   }
   // Use incremental parsing for streaming to avoid re-parsing entire content
   // Pass conversation_id to ensure cache key uniqueness across conversations
   if (props.isStreaming) {
-    return parseTypelessContentIncremental(content, props.message.id, props.message.conversation_id)
+    return parseTypelessContentIncremental(strippedContent.value, props.message.id, props.message.conversation_id)
   }
-  return parseTypelessContent(content)
+  return parseTypelessContent(strippedContent.value)
 })
 
 // Get content segments (text and cards interleaved) with unique keys
@@ -314,14 +317,18 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
       const completeSentences = sentences.join('')
       const remaining = textContent.slice(completeSentences.length).trim()
 
+      // Set onComplete BEFORE streamAndPlay to avoid race where queue
+      // drains synchronously before the callback is set
+      streamingTTSManager.onComplete = () => {
+        isSpeaking.value = false
+        hasAutoPlayed.value = false
+        lastPlayedLength.value = 0
+        streamingTTSManager.onComplete = null
+      }
+
       if (remaining) {
         // Append remaining text to the streaming queue (non-blocking)
         streamingTTSManager.streamAndPlay(remaining)
-      }
-      // Set onComplete to clear isSpeaking when all audio finishes
-      streamingTTSManager.onComplete = () => {
-        isSpeaking.value = false
-        streamingTTSManager.onComplete = null
       }
     } else {
       // Play full text if nothing was played during streaming
@@ -329,11 +336,9 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
       isSpeaking.value = true
       await playTTSAudio(textContent)
       isSpeaking.value = false
+      hasAutoPlayed.value = false
+      lastPlayedLength.value = 0
     }
-
-    // Reset for next message
-    lastPlayedLength.value = 0
-    hasAutoPlayed.value = false
   }
 })
 
@@ -353,13 +358,17 @@ async function handleCardAction(actionId: string, cardId?: string) {
   cardActionError.value = null
 
   try {
-    await cardActionApi.submit(props.message.conversation_id, props.message.id, {
+    const res = await cardActionApi.submit(props.message.conversation_id, props.message.id, {
       card_id: cardId,
       action_id: actionId,
       action_label: actionLabel,
     })
     // Emit event to parent for potential UI updates
     emit('cardAction', props.message.conversation_id, props.message.id, cardId, actionId, actionLabel)
+    // Auto-send the mapped message to trigger a new streaming turn
+    if (res.data?.message) {
+      await chatStore.sendMessage(res.data.message)
+    }
   } catch (error) {
     console.error('Card action failed:', error)
     cardActionError.value = error instanceof Error ? error.message : 'Action failed'

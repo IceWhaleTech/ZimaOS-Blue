@@ -222,7 +222,7 @@ function handleSubmit(): void {
             v-for="variable in templateVariables"
             :key="variable.name"
             type="button"
-            class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded text-xs transition-colors"
+            class="px-2 py-1 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300 rounded text-xs transition-colors"
             :title="t(variable.descKey)"
             @click="insertVariable(variable.name, 0)"
           >
@@ -274,7 +274,7 @@ function handleSubmit(): void {
     <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
       <button
         type="button"
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg transition-colors"
+        class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg transition-colors"
         :disabled="loading"
         @click="emit('cancel')"
       >
@@ -282,7 +282,7 @@ function handleSubmit(): void {
       </button>
       <button
         type="submit"
-        class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         :disabled="loading || !isValid"
       >
         {{ loading ? t('autoReply.saving') : rule ? t('autoReply.updateRule') : t('autoReply.createRule') }}

@@ -27,6 +27,7 @@ export const useChatStore = defineStore('chat', () => {
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
   const trialExhausted = ref(false) // Trial quota exhausted flag
+  const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
 
   // Pagination state
   const hasMoreMessages = ref(false)
@@ -306,6 +307,7 @@ export const useChatStore = defineStore('chat', () => {
       streamingContent.value = ''
       error.value = null
       securityBlocked.value = null
+      contextTrimInfo.value = null
 
       // Add placeholder for assistant message
       const assistantMessage: Message = {
@@ -319,6 +321,7 @@ export const useChatStore = defineStore('chat', () => {
 
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
+          if (!chunk.delta) return
           streamingContent.value += chunk.delta
           // Update the last message (assistant's response) - use shallowRef properly
           const lastIndex = messages.value.length - 1
@@ -352,8 +355,19 @@ export const useChatStore = defineStore('chat', () => {
           }
           // Log error to server
           systemApi.writeLog('error', `Chat stream error: ${err.message}`, 'chat').catch(() => {})
-          // Remove the placeholder message on error
-          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+          // If streaming message has content, keep it and mark as interrupted
+          // Otherwise remove the empty placeholder
+          const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
+          if (streamingMsg && streamingMsg.content.trim()) {
+            const newMessages = [...messages.value]
+            const idx = newMessages.indexOf(streamingMsg)
+            if (idx >= 0) {
+              newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+              messages.value = newMessages
+            }
+          } else {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+          }
           streaming.value = false
         },
         onBlocked: (message, threatLevel) => {
@@ -371,6 +385,9 @@ export const useChatStore = defineStore('chat', () => {
           messages.value = messages.value.filter(
             (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
           )
+        },
+        onContextTrimmed: (info) => {
+          contextTrimInfo.value = info
         },
         onComplete: (finalChunk) => {
           streaming.value = false
@@ -410,10 +427,20 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to send message'
-      // Remove placeholder messages on error
-      messages.value = messages.value.filter(
-        (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
-      )
+      // Keep streaming message with content, mark as interrupted; remove empty placeholders
+      const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
+      if (streamingMsg && streamingMsg.content.trim()) {
+        const newMessages = messages.value.filter((m) => !m.id.startsWith('temp-'))
+        const idx = newMessages.findIndex((m) => m.id === streamingMsg.id)
+        if (idx >= 0) {
+          newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+        }
+        messages.value = newMessages
+      } else {
+        messages.value = messages.value.filter(
+          (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+        )
+      }
     } finally {
       sending.value = false
       streaming.value = false
@@ -455,6 +482,7 @@ export const useChatStore = defineStore('chat', () => {
 
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
+          if (!chunk.delta) return
           streamingContent.value += chunk.delta
           // Update the last message
           const lastIndex = messages.value.length - 1
@@ -568,6 +596,7 @@ export const useChatStore = defineStore('chat', () => {
 
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
+          if (!chunk.delta) return
           streamingContent.value += chunk.delta
           const lastIndex = messages.value.length - 1
           if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
@@ -584,7 +613,18 @@ export const useChatStore = defineStore('chat', () => {
         },
         onError: (err) => {
           error.value = err.message
-          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+          // Keep message with content, mark as interrupted
+          const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
+          if (streamingMsg && streamingMsg.content.trim()) {
+            const newMessages = [...messages.value]
+            const idx = newMessages.indexOf(streamingMsg)
+            if (idx >= 0) {
+              newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+              messages.value = newMessages
+            }
+          } else {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+          }
         },
         onBlocked: (message, threatLevel) => {
           securityBlocked.value = { message, threatLevel }
@@ -619,7 +659,17 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to regenerate message'
-      messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
+      if (streamingMsg && streamingMsg.content.trim()) {
+        const newMessages = [...messages.value]
+        const idx = newMessages.indexOf(streamingMsg)
+        if (idx >= 0) {
+          newMessages[idx] = { ...streamingMsg, content: streamingMsg.content + '\n\n[Response interrupted]' }
+          messages.value = newMessages
+        }
+      } else {
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      }
     } finally {
       sending.value = false
       streaming.value = false
@@ -769,6 +819,7 @@ export const useChatStore = defineStore('chat', () => {
     streamError,
     securityBlocked,
     trialExhausted,
+    contextTrimInfo,
     hasMoreMessages,
     loadingMore,
     searchQuery,

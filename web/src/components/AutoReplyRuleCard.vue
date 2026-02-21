@@ -27,12 +27,12 @@ function getTriggerTypeLabel(type: string): string {
 function getTriggerTypeColor(type: string): string {
   const colors: Record<string, string> = {
     keyword: 'bg-gray-200 dark:bg-gray-600/20 text-gray-900 dark:text-white',
-    regex: 'bg-purple-500/20 text-purple-400',
-    contains: 'bg-green-500/20 text-green-400',
-    prefix: 'bg-yellow-500/20 text-yellow-400',
-    suffix: 'bg-orange-500/20 text-orange-400',
+    regex: 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400',
+    contains: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
+    prefix: 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
+    suffix: 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400',
   }
-  return colors[type] || 'bg-gray-500/20 text-gray-400'
+  return colors[type] || 'bg-gray-200 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400'
 }
 
 function formatDate(dateStr: string): string {
@@ -127,7 +127,7 @@ function formatDate(dateStr: string): string {
         Edit
       </button>
       <button
-        class="flex-1 px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-sm transition-colors"
+        class="flex-1 px-3 py-1.5 bg-gray-800 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-400 text-white rounded text-sm transition-colors"
         :disabled="loading"
         @click="emit('test')"
       >

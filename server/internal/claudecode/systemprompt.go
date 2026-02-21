@@ -6,27 +6,69 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
+
+// DefaultMaxContextTokens is the default token budget for workspace context files.
+const DefaultMaxContextTokens = 4096
+
+// ContextStats records token usage for workspace context injection.
+type ContextStats struct {
+	Files        []ContextFileStat `json:"files"`
+	TotalTokens  int               `json:"total_tokens"`
+	BudgetTokens int               `json:"budget_tokens"`
+	Trimmed      bool              `json:"trimmed"`
+}
+
+// ContextFileStat records per-file token info.
+type ContextFileStat struct {
+	Name     string `json:"name"`
+	Tokens   int    `json:"tokens"`
+	Included bool   `json:"included"`
+	Trimmed  bool   `json:"trimmed,omitempty"`
+}
 
 // SystemPromptBuilder builds system prompts for Claude Code CLI.
 type SystemPromptBuilder struct {
-	config       *ClaudeCodeConfig
-	toolRegistry *tools.Registry
+	config           *ClaudeCodeConfig
+	toolRegistry     *tools.Registry
+	workspace        *workspace.Manager
+	maxContextTokens int
+	lastContextStats atomic.Pointer[ContextStats]
 }
 
 // NewSystemPromptBuilder creates a new SystemPromptBuilder.
 func NewSystemPromptBuilder(config *ClaudeCodeConfig) *SystemPromptBuilder {
-	return &SystemPromptBuilder{config: config}
+	return &SystemPromptBuilder{config: config, maxContextTokens: DefaultMaxContextTokens}
 }
 
 // SetToolRegistry sets the tool registry for including tool descriptions.
 func (b *SystemPromptBuilder) SetToolRegistry(registry *tools.Registry) {
 	b.toolRegistry = registry
+}
+
+// SetWorkspace sets the workspace manager for injecting workspace files into the prompt.
+func (b *SystemPromptBuilder) SetWorkspace(mgr *workspace.Manager) {
+	b.workspace = mgr
+}
+
+// SetMaxContextTokens sets the token budget for workspace context files.
+// 0 means unlimited.
+func (b *SystemPromptBuilder) SetMaxContextTokens(n int) {
+	b.maxContextTokens = n
+}
+
+// LastContextStats returns the stats from the most recent buildProjectContext call.
+func (b *SystemPromptBuilder) LastContextStats() *ContextStats {
+	return b.lastContextStats.Load()
 }
 
 // Build builds the complete system prompt.
@@ -55,6 +97,14 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 		toolsInfo := b.buildToolsInfo()
 		if toolsInfo != "" {
 			parts = append(parts, toolsInfo)
+		}
+	}
+
+	// Add workspace context files (SOUL.md, USER.md, IDENTITY.md, etc.)
+	if b.workspace != nil {
+		contextFiles := b.workspace.LoadContextFiles()
+		if len(contextFiles) > 0 {
+			parts = append(parts, b.buildProjectContext(contextFiles))
 		}
 	}
 
@@ -262,35 +312,99 @@ func (b *SystemPromptBuilder) buildContextFileSection(name, content string) stri
 	return strings.Join(lines, "\n")
 }
 
-// buildProjectContext builds project context from multiple files.
-func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string) string {
-	var lines []string
+// contextFilePriority defines injection priority (lower = higher priority, trimmed last).
+var contextFilePriority = map[string]int{
+	"SOUL.md":      0,
+	"USER.md":      1,
+	"AGENTS.md":    2,
+	"IDENTITY.md":  3,
+	"HEARTBEAT.md": 4,
+	"MEMORY.md":    5,
+	"BOOTSTRAP.md": 1, // Same priority as USER during first-run
+}
 
+// buildProjectContext builds project context from multiple files with token budgeting.
+// Files are prioritized: SOUL > USER/BOOTSTRAP > AGENTS > IDENTITY > HEARTBEAT > MEMORY > daily logs.
+// If total tokens exceed the budget, low-priority files are dropped first.
+func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string) string {
+	budget := b.maxContextTokens
+
+	// Build file list with token estimates, sorted by priority
+	type fileEntry struct {
+		name     string
+		content  string
+		tokens   int
+		priority int
+	}
+	entries := make([]fileEntry, 0, len(contextFiles))
+	for name, content := range contextFiles {
+		if content == "" {
+			continue
+		}
+		prio, ok := contextFilePriority[name]
+		if !ok {
+			prio = 10 // Daily logs and unknown files get lowest priority
+		}
+		entries = append(entries, fileEntry{
+			name:     name,
+			content:  content,
+			tokens:   pruner.EstimateTokens(content),
+			priority: prio,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].priority < entries[j].priority
+	})
+
+	// Select files within budget
+	stats := &ContextStats{
+		Files:        make([]ContextFileStat, 0, len(entries)),
+		BudgetTokens: budget,
+	}
+	var included []fileEntry
+	totalTokens := 0
+
+	for _, e := range entries {
+		if budget > 0 && totalTokens+e.tokens > budget && len(included) > 0 {
+			// Over budget — skip this file
+			stats.Files = append(stats.Files, ContextFileStat{
+				Name: e.name, Tokens: e.tokens, Included: false, Trimmed: true,
+			})
+			stats.Trimmed = true
+			continue
+		}
+		included = append(included, e)
+		totalTokens += e.tokens
+		stats.Files = append(stats.Files, ContextFileStat{
+			Name: e.name, Tokens: e.tokens, Included: true,
+		})
+	}
+	stats.TotalTokens = totalTokens
+	b.lastContextStats.Store(stats)
+
+	if len(included) == 0 {
+		return ""
+	}
+
+	// Build the prompt section
+	var lines []string
 	lines = append(lines, "# Project Context")
 	lines = append(lines, "")
 	lines = append(lines, "The following project context files have been loaded:")
 
 	// Check for SOUL.md
-	hasSoulFile := false
-	for name := range contextFiles {
-		if strings.ToLower(name) == "soul.md" {
-			hasSoulFile = true
+	for _, e := range included {
+		if strings.ToLower(e.name) == "soul.md" {
+			lines = append(lines, "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
 			break
 		}
 	}
 
-	if hasSoulFile {
-		lines = append(lines, "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
-	}
-
 	lines = append(lines, "")
 
-	// Add each context file
-	for name, content := range contextFiles {
-		if content != "" {
-			lines = append(lines, b.buildContextFileSection(name, content))
-			lines = append(lines, "")
-		}
+	for _, e := range included {
+		lines = append(lines, b.buildContextFileSection(e.name, e.content))
+		lines = append(lines, "")
 	}
 
 	return strings.Join(lines, "\n")

@@ -101,9 +101,16 @@ function isProviderAvailable(provider: string) {
 const editBeforeSend = computed({
   get: () => status.value?.asr?.edit_before_send ?? false,
   set: async (value: boolean) => {
-    // TODO: Add API call to update edit_before_send setting
     if (status.value?.asr) {
       status.value.asr.edit_before_send = value
+    }
+    try {
+      await speechApi.setEditBeforeSend(value)
+    } catch (e) {
+      // Revert on failure
+      if (status.value?.asr) {
+        status.value.asr.edit_before_send = !value
+      }
     }
   }
 })

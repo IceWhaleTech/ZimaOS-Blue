@@ -1,11 +1,13 @@
 package providerpool
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -1039,4 +1041,162 @@ func mergeBuiltinPricing(providerID string, models []*Model) {
 			}
 		}
 	}
+}
+
+// ProbeResult holds the result of probing a single model.
+type ProbeResult struct {
+	ModelID    string        `json:"model_id"`
+	Available  bool          `json:"available"`
+	StatusCode int           `json:"status_code"`
+	Error      string        `json:"error,omitempty"`
+	Latency    time.Duration `json:"latency"`
+}
+
+// ProbeModels sends a minimal chat completion request to each model in parallel
+// to determine which ones are actually configured and usable. Models that return
+// a "not configured" error (HTTP 400/404 with model-not-found patterns) are
+// marked as Enabled=false. Returns the probe results for all models.
+//
+// concurrency controls how many probes run in parallel (0 = len(models)).
+func (d *ModelDiscovery) ProbeModels(ctx context.Context, providerID string, concurrency int) ([]ProbeResult, error) {
+	provider, err := d.registry.Get(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	models, err := d.GetModels(providerID)
+	if err != nil {
+		return nil, err
+	}
+
+	apiKey, _ := d.registry.GetAPIKey(providerID)
+
+	if concurrency <= 0 || concurrency > len(models) {
+		concurrency = len(models)
+	}
+
+	results := make([]ProbeResult, len(models))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for i, model := range models {
+		wg.Add(1)
+		go func(idx int, m *Model) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			result := d.probeModel(ctx, provider, apiKey, m)
+			results[idx] = result
+
+			if !result.Available {
+				m.Enabled = false
+			}
+		}(i, model)
+	}
+
+	wg.Wait()
+
+	// Update cache with probed models
+	d.mu.Lock()
+	d.cache[providerID] = models
+	d.cacheAt[providerID] = time.Now()
+	d.mu.Unlock()
+
+	// Persist to storage
+	_ = d.storage.SaveModels(providerID, models)
+
+	// Log summary
+	available := 0
+	for _, r := range results {
+		if r.Available {
+			available++
+		}
+	}
+	slog.Info("[model-probe] probe complete",
+		"provider", providerID,
+		"total", len(models),
+		"available", available,
+		"unavailable", len(models)-available)
+
+	return results, nil
+}
+
+// probeModel sends a minimal chat completion request to test if a model is configured.
+func (d *ModelDiscovery) probeModel(ctx context.Context, provider *Provider, apiKey *APIKey, model *Model) ProbeResult {
+	result := ProbeResult{ModelID: model.ID}
+	start := time.Now()
+
+	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
+	var endpoint string
+	if strings.HasSuffix(baseURL, "/v1") {
+		endpoint = baseURL + "/chat/completions"
+	} else {
+		endpoint = baseURL + "/v1/chat/completions"
+	}
+
+	// Minimal request body — max_tokens:1 to minimize cost
+	body := []byte(`{"model":"` + model.ID + `","messages":[{"role":"user","content":"hi"}],"max_tokens":1}`)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		result.Error = err.Error()
+		result.Latency = time.Since(start)
+		return result
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != nil && apiKey.Key != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey.Key)
+	}
+
+	resp, err := d.clientFor(provider).Do(req)
+	if err != nil {
+		result.Error = err.Error()
+		result.Latency = time.Since(start)
+		return result
+	}
+	defer resp.Body.Close()
+
+	result.StatusCode = resp.StatusCode
+	result.Latency = time.Since(start)
+
+	if resp.StatusCode == http.StatusOK {
+		io.Copy(io.Discard, resp.Body)
+		result.Available = true
+		return result
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	errMsg := string(respBody)
+	result.Error = errMsg
+
+	result.Available = !isModelNotConfiguredError(resp.StatusCode, errMsg)
+	return result
+}
+
+// isModelNotConfiguredError checks if the error indicates the model is not configured
+// on this provider endpoint (as opposed to a transient error like rate limiting).
+func isModelNotConfiguredError(statusCode int, errMsg string) bool {
+	lower := strings.ToLower(errMsg)
+
+	if statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound {
+		patterns := []string{
+			"未配置模型",
+			"not configured",
+			"model not found",
+			"does not exist",
+			"not available",
+			"invalid model",
+			"unknown model",
+			"unsupported model",
+			"no such model",
+		}
+		for _, p := range patterns {
+			if strings.Contains(lower, p) {
+				return true
+			}
+		}
+	}
+
+	return false
 }

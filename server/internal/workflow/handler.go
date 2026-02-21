@@ -39,6 +39,11 @@ func (h *Handler) svc() *WorkflowService {
 	return h.service
 }
 
+// GetService returns the workflow service, triggering lazy init if needed.
+func (h *Handler) GetService() *WorkflowService {
+	return h.svc()
+}
+
 // getContextString safely gets a string value from echo context with a default fallback.
 func getContextString(c echo.Context, key, defaultValue string) string {
 	if val := c.Get(key); val != nil {

@@ -46,6 +46,13 @@ func (h *MemoryHandler) ensureInit() {
 	}
 }
 
+// Init triggers lazy initialization eagerly (e.g. at startup).
+// This is needed so that LayeredMemoryService is available for chat recall/extraction
+// without waiting for the first /memory/* API call.
+func (h *MemoryHandler) Init() {
+	h.ensureInit()
+}
+
 // SetService sets the core memory service.
 func (h *MemoryHandler) SetService(svc *memory.MemoryService) {
 	h.service = svc

@@ -76,6 +76,15 @@ export interface StreamChunk {
   stream_id?: string
   provider?: string
   model?: string
+  // Context pruning info (sent on first content chunk)
+  pruned?: boolean
+  messages_pruned?: number
+  tokens_before?: number
+  tokens_after?: number
+  // Context compaction info (sent on first content chunk)
+  compacted?: boolean
+  before?: number
+  after?: number
   stats?: {
     input_tokens: number
     output_tokens: number
@@ -147,6 +156,7 @@ export interface CardActionRequest {
 export interface CardActionResponse {
   success: boolean
   message_id?: string
+  message?: string
   error?: string
 }
 

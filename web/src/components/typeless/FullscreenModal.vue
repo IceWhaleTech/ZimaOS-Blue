@@ -281,7 +281,7 @@ const languageDisplay = computed(() => {
         <div class="flex-1 overflow-auto">
           <!-- Code / Terminal content -->
           <template v-if="fullscreenContent.type === 'code' || fullscreenContent.type === 'terminal'">
-            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-gray-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-gray-700/50"><span class="inline-block w-12 text-right mr-6 text-gray-500 select-none">{{ index + 1 }}</span>{{ line }}
+            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-gray-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-gray-700/50"><span class="inline-block w-12 text-right mr-6 text-gray-600 select-none">{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
           </template>
 
@@ -290,7 +290,7 @@ const languageDisplay = computed(() => {
             <pre class="text-sm min-h-full"><code><template v-for="(line, index) in diffLines" :key="index"><div
                   class="flex hover:bg-gray-700/30"
                   :class="getLineClass(line.type)"
-                ><span class="w-16 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
+                ><span class="w-16 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
                     class="w-8 text-center flex-shrink-0"
                     :class="{
                       'text-green-400': line.type === 'added',
@@ -308,7 +308,7 @@ const languageDisplay = computed(() => {
                 <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
                       class="flex hover:bg-gray-700/30"
                       :class="line ? getLineClass(line.type) : 'bg-gray-700/50'"
-                    ><span class="w-14 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
+                    ><span class="w-14 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
                         :class="line.type === 'removed' ? 'text-red-400' : 'text-gray-500'"
@@ -319,7 +319,7 @@ const languageDisplay = computed(() => {
                 <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
                       class="flex hover:bg-gray-700/30"
                       :class="line ? getLineClass(line.type) : 'bg-gray-700/50'"
-                    ><span class="w-14 px-4 text-right text-gray-500 select-none border-r border-gray-700 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
+                    ><span class="w-14 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
                         :class="line.type === 'added' ? 'text-green-400' : 'text-gray-500'"
