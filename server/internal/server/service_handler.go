@@ -573,15 +573,40 @@ func (h *ServiceHandler) getWindowsStatus() (status string, running, installed, 
 }
 
 func (h *ServiceHandler) installWindowsService() (string, error) {
+	// Check if running in Tauri mode (embedded library)
+	if h.isTauriMode() {
+		return "", fmt.Errorf("service installation must be done through the GUI application's settings")
+	}
 	// Use the executable's install command
 	return h.runCommand(h.execPath, "install")
 }
 
 func (h *ServiceHandler) uninstallWindowsService() (string, error) {
+	// Check if running in Tauri mode (embedded library)
+	if h.isTauriMode() {
+		return "", fmt.Errorf("service uninstallation must be done through the GUI application's settings")
+	}
 	// Stop the service first
 	h.runCommand("sc", "stop", h.serviceName)
 	// Use the executable's uninstall command
 	return h.runCommand(h.execPath, "uninstall")
+}
+
+// isTauriMode checks if running as embedded library in Tauri
+func (h *ServiceHandler) isTauriMode() bool {
+	// In Tauri mode, the executable is blue.exe (GUI) not a CLI binary
+	// Check if --help returns CLI-style output
+	if !strings.Contains(strings.ToLower(h.execPath), ".exe") {
+		return false
+	}
+	cmd := exec.Command(h.execPath, "--help")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return true // Assume Tauri if --help fails
+	}
+	// CLI binaries have "Commands:" or "COMMANDS:" in help output
+	outputStr := string(output)
+	return !strings.Contains(outputStr, "Commands:") && !strings.Contains(outputStr, "COMMANDS:")
 }
 
 // macOS launchd-specific functions

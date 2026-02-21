@@ -48,9 +48,35 @@ export const serviceApi = {
 
   checkInstall: () => api.get<InstallCheckResult>('/service/install/check'),
 
-  install: () => api.post<ServiceResponse>('/service/install'),
+  install: async () => {
+    // Check if running in Tauri (Windows GUI mode)
+    if (window.__TAURI_INTERNALS__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const result = await invoke<string>('install_windows_service')
+        return { success: true, message: result }
+      } catch (error) {
+        return { success: false, message: String(error) }
+      }
+    }
+    // Fallback to HTTP API for standalone CLI mode
+    return api.post<ServiceResponse>('/service/install')
+  },
 
-  uninstall: () => api.post<ServiceResponse>('/service/uninstall'),
+  uninstall: async () => {
+    // Check if running in Tauri (Windows GUI mode)
+    if (window.__TAURI_INTERNALS__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const result = await invoke<string>('uninstall_windows_service')
+        return { success: true, message: result }
+      } catch (error) {
+        return { success: false, message: String(error) }
+      }
+    }
+    // Fallback to HTTP API for standalone CLI mode
+    return api.post<ServiceResponse>('/service/uninstall')
+  },
 
   start: () => api.post<ServiceResponse>('/service/start'),
 

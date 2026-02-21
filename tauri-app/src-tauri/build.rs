@@ -22,9 +22,15 @@ fn main() {
             println!("cargo:rustc-link-lib=static=espeak-ng");
             println!("cargo:rustc-link-lib=static=ucd");
             println!("cargo:rustc-link-lib=static=speechPlayer");
+            // Link C++ standard library for speechPlayer (C++ code)
+            println!("cargo:rustc-link-lib=stdc++");
+            println!("cargo:rerun-if-changed=../../third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a");
         }
 
+        // Force rebuild when libblue.a changes
         println!("cargo:rerun-if-changed=lib/libblue.a");
+        // Also watch the lib directory
+        println!("cargo:rerun-if-changed=lib");
     }
 
     #[cfg(target_os = "macos")]

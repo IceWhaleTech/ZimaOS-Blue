@@ -100,6 +100,7 @@ type ASRStatus struct {
 	DictationAvailable   bool              `json:"dictation_available,omitempty"`
 	OfflineLanguages     []string          `json:"offline_languages,omitempty"`
 	Models               []interface{}     `json:"models"`
+	AvailableProviders   []string          `json:"available_providers,omitempty"`
 }
 
 // DownloadStatus represents a single model download status.

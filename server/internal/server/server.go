@@ -241,6 +241,10 @@ func (s *Server) Start() error {
 		Int("configured_port", s.config.Port).
 		Msg("Server listening")
 
+	logger.Info().
+		Str("url", fmt.Sprintf("http://localhost:%d", tcpAddr.Port)).
+		Msg("Open in browser to access the web interface")
+
 	// Limit concurrent connections to prevent resource exhaustion
 	ln = netutil.LimitListener(ln, 10000)
 

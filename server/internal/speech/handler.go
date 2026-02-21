@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"runtime"
 
 	"github.com/labstack/echo/v4"
 
@@ -137,8 +138,9 @@ func (h *Handler) DownloadASRModel(c echo.Context) error {
 	// Check if provider is Whisper (supports model downloads)
 	whisperProvider, ok := provider.(*stt.WhisperProvider)
 	if !ok {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "current provider does not support model downloads",
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":  "ready",
+			"message": "Current provider does not require model downloads (system native)",
 		})
 	}
 
@@ -178,15 +180,8 @@ func (h *Handler) CancelASRDownload(c echo.Context) error {
 	})
 }
 
-// SwitchASRModel switches to a different ASR model.
+// SwitchASRModel switches to a different ASR model or provider.
 func (h *Handler) SwitchASRModel(c echo.Context) error {
-	provider := h.service.GetASRProvider()
-	if provider == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "ASR provider not configured",
-		})
-	}
-
 	var req SwitchRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
@@ -194,7 +189,45 @@ func (h *Handler) SwitchASRModel(c echo.Context) error {
 		})
 	}
 
-	// Already on the requested model — no-op success
+	// Check if switching to a native provider
+	if req.ModelType == "windows-native" || req.ModelType == "macos-native" {
+		if svc, ok := h.service.(*service); ok {
+			svc.mu.Lock()
+			svc.config.ASR.Provider = req.ModelType
+
+			// Close old provider if it has Close method
+			if svc.asrProvider != nil {
+				if closer, ok := svc.asrProvider.(interface{ Close() error }); ok {
+					closer.Close()
+				}
+			}
+
+			// Create new provider
+			if req.ModelType == "windows-native" && runtime.GOOS == "windows" {
+				svc.asrProvider = NewWindowsNativeASR()
+			} else if req.ModelType == "macos-native" && runtime.GOOS == "darwin" {
+				macosSTT := NewMacOSNativeSTT()
+				if err := macosSTT.Initialize(); err == nil {
+					svc.asrProvider = macosSTT
+				}
+			}
+			svc.mu.Unlock()
+		}
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":  "switched",
+			"message": "Switched to " + req.ModelType,
+		})
+	}
+
+	// Otherwise, handle whisper model switching
+	provider := h.service.GetASRProvider()
+	if provider == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "ASR provider not configured",
+		})
+	}
+
+	// Already on the requested model
 	if string(provider.Type()) == req.ModelType {
 		return c.JSON(http.StatusOK, map[string]string{
 			"status":  "switched",
@@ -271,8 +304,8 @@ func (h *Handler) SetASROnDevice(c echo.Context) error {
 	})
 }
 
-// GetOfflineLanguages returns installed offline dictation languages (macOS only).
-// Separated from /status because it reads NSUserDefaults which is non-critical info.
+// GetOfflineLanguages returns installed offline dictation languages (macOS/Windows native).
+// Separated from /status because it reads system settings which is non-critical info.
 func (h *Handler) GetOfflineLanguages(c echo.Context) error {
 	provider := h.service.GetASRProvider()
 	if provider == nil {
@@ -280,18 +313,32 @@ func (h *Handler) GetOfflineLanguages(c echo.Context) error {
 			"offline_languages": []string{},
 		})
 	}
-	macosSTT, ok := provider.(*MacOSNativeSTT)
-	if !ok {
+
+	// Check for macOS native STT
+	if macosSTT, ok := provider.(*MacOSNativeSTT); ok {
+		langs := macosSTT.OfflineDictationLanguages()
+		if langs == nil {
+			langs = []string{}
+		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"offline_languages": []string{},
+			"offline_languages": langs,
 		})
 	}
-	langs := macosSTT.OfflineDictationLanguages()
-	if langs == nil {
-		langs = []string{}
+
+	// Check for Windows native ASR
+	if windowsASR, ok := provider.(*windowsNativeASR); ok {
+		langs := windowsASR.InstalledLanguages()
+		if langs == nil {
+			langs = []string{}
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"offline_languages": langs,
+		})
 	}
+
+	// Other providers don't have offline languages
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"offline_languages": langs,
+		"offline_languages": []string{},
 	})
 }
 

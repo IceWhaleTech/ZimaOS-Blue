@@ -1,9 +1,12 @@
+//go:build whisper
+
 package stt
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -192,6 +195,7 @@ func (m *WhisperModelManager) isModelDownloaded(modelType string) bool {
 
 // DownloadModel downloads a whisper model using the shared downloader.
 func (m *WhisperModelManager) DownloadModel(ctx context.Context, modelType string) error {
+	log.Printf("[WhisperModelManager] Download request for model: %s", modelType)
 	var modelInfo *WhisperModelInfo
 	for _, model := range whisperModels {
 		if model.ID == modelType {
@@ -200,7 +204,21 @@ func (m *WhisperModelManager) DownloadModel(ctx context.Context, modelType strin
 		}
 	}
 	if modelInfo == nil {
+		log.Printf("[WhisperModelManager] Unknown model: %s", modelType)
 		return fmt.Errorf("unknown model: %s", modelType)
+	}
+
+	log.Printf("[WhisperModelManager] Model info: %s (%s) - %s", modelInfo.Name, modelInfo.Filename, modelInfo.Size)
+	log.Printf("[WhisperModelManager] Primary URL: %s", modelInfo.URL)
+
+	// Add HuggingFace mirrors for fallback
+	mirrors := []string{
+		fmt.Sprintf("https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/%s", modelInfo.Filename),
+		fmt.Sprintf("https://modelscope.cn/models/ggerganov/whisper.cpp/resolve/main/%s", modelInfo.Filename),
+	}
+	log.Printf("[WhisperModelManager] Configured %d mirrors:", len(mirrors))
+	for i, mirror := range mirrors {
+		log.Printf("[WhisperModelManager]   Mirror %d: %s", i+1, mirror)
 	}
 
 	files := []downloader.ModelFile{
@@ -208,9 +226,17 @@ func (m *WhisperModelManager) DownloadModel(ctx context.Context, modelType strin
 			Filename: modelInfo.Filename,
 			URL:      modelInfo.URL,
 			Size:     modelInfo.Size,
+			Mirrors:  mirrors,
 		},
 	}
-	return m.dl.Download(ctx, files)
+	log.Printf("[WhisperModelManager] Starting download...")
+	err := m.dl.Download(ctx, files)
+	if err != nil {
+		log.Printf("[WhisperModelManager] Download failed: %v", err)
+	} else {
+		log.Printf("[WhisperModelManager] Download completed successfully")
+	}
+	return err
 }
 
 // CancelDownload cancels the current download.

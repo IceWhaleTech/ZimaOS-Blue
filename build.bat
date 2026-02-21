@@ -59,75 +59,14 @@ echo [OK] Dependencies installed
 exit /b 0
 
 :build_third_party
-echo [INFO] Building third_party native libraries...
+echo [INFO] Skipping third_party native libraries (Windows uses native TTS/ASR only)...
 
-:: Build espeak-ng
-if not exist "%PROJECT_ROOT%third_party\espeak-ng\build\src\libespeak-ng\libespeak-ng.a" (
-    echo [INFO] Building espeak-ng...
-    cd /d "%PROJECT_ROOT%third_party\espeak-ng"
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
-    if errorlevel 1 (
-        echo [ERROR] Failed to configure espeak-ng
-        exit /b 1
-    )
-    cmake --build build --config Release
-    if errorlevel 1 (
-        echo [ERROR] Failed to build espeak-ng
-        exit /b 1
-    )
-    echo [OK] espeak-ng built
-) else (
-    echo [INFO] espeak-ng already built, skipping...
-)
+:: Windows uses native SAPI for TTS/ASR, no need to build:
+:: - espeak-ng (replaced by Windows native TTS)
+:: - whisper.cpp (replaced by Windows native ASR)
+:: - opus (not needed for Windows native)
 
-:: Build libsonic.a from espeak-ng's compiled object if missing
-if not exist "%PROJECT_ROOT%third_party\espeak-ng\build\libsonic.a" (
-    if exist "%PROJECT_ROOT%third_party\espeak-ng\build\CMakeFiles\sonic.dir\_deps\sonic-git-src\sonic.c.o" (
-        echo [INFO] Creating libsonic.a...
-        ar rcs "%PROJECT_ROOT%third_party\espeak-ng\build\libsonic.a" "%PROJECT_ROOT%third_party\espeak-ng\build\CMakeFiles\sonic.dir\_deps\sonic-git-src\sonic.c.o"
-        echo [OK] libsonic.a created
-    )
-)
-
-:: Build whisper.cpp
-if not exist "%PROJECT_ROOT%third_party\whisper.cpp\build\src\libwhisper.a" (
-    echo [INFO] Building whisper.cpp...
-    cd /d "%PROJECT_ROOT%third_party\whisper.cpp"
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
-    if errorlevel 1 (
-        echo [ERROR] Failed to configure whisper.cpp
-        exit /b 1
-    )
-    cmake --build build --config Release
-    if errorlevel 1 (
-        echo [ERROR] Failed to build whisper.cpp
-        exit /b 1
-    )
-    echo [OK] whisper.cpp built
-) else (
-    echo [INFO] whisper.cpp already built, skipping...
-)
-
-:: Build opus
-if not exist "%PROJECT_ROOT%third_party\opus-src\build\libopus.a" (
-    echo [INFO] Building opus...
-    cd /d "%PROJECT_ROOT%third_party\opus-src"
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
-    if errorlevel 1 (
-        echo [ERROR] Failed to configure opus
-        exit /b 1
-    )
-    cmake --build build --config Release
-    if errorlevel 1 (
-        echo [ERROR] Failed to build opus
-        exit /b 1
-    )
-    echo [OK] opus built
-) else (
-    echo [INFO] opus already built, skipping...
-)
-
-echo [OK] Third_party libraries ready
+echo [OK] Third_party libraries not needed on Windows
 exit /b 0
 
 :run

@@ -121,6 +121,8 @@ func (s *service) Initialize() error {
 	if s.config.TTS.Provider == "" {
 		if runtime.GOOS == "darwin" {
 			s.config.TTS.Provider = "macos-native"
+		} else if runtime.GOOS == "windows" {
+			s.config.TTS.Provider = "windows-native"
 		} else {
 			s.config.TTS.Provider = "edge-tts"
 		}
@@ -133,6 +135,10 @@ func (s *service) Initialize() error {
 	// On macOS, always use native STT — whisper is not available in macOS builds
 	if runtime.GOOS == "darwin" {
 		s.config.ASR.Provider = "macos-native"
+	} else if runtime.GOOS == "windows" {
+		if s.config.ASR.Provider == "" {
+			s.config.ASR.Provider = "windows-native"
+		}
 	} else if s.config.ASR.Provider == "" {
 		s.config.ASR.Provider = "none"
 	}
@@ -145,6 +151,14 @@ func (s *service) Initialize() error {
 		} else {
 			s.asrPermDenied = true
 			s.asrPermError = err.Error()
+		}
+	}
+
+	// Create Windows native ASR provider if configured
+	if s.config.ASR.Provider == "windows-native" && runtime.GOOS == "windows" {
+		windowsASR := NewWindowsNativeASR()
+		if windowsASR != nil {
+			s.asrProvider = windowsASR
 		}
 	}
 
@@ -289,12 +303,27 @@ func (s *service) GetStatus() *StatusResponse {
 			resp.ASR.OnDeviceSupported = macosSTT.SupportsOnDevice()
 			resp.ASR.OnDeviceOnly = macosSTT.RequireOnDevice()
 			resp.ASR.DictationAvailable = macosSTT.DictationAvailable()
-			// OfflineLanguages fetched separately via /asr/offline-languages
+		}
+		// Report Windows native available languages
+		if _, ok := s.asrProvider.(*windowsNativeASR); ok && s.ttsService != nil {
+			// Get languages from TTS service voices
+			if providers := s.ttsService.ListProviders(); len(providers) > 0 {
+				for _, pt := range providers {
+					if string(pt) == "windows-native" {
+						// Windows native languages will be shown
+						resp.ASR.OfflineLanguages = []string{"en-US", "zh-CN", "ja-JP", "ko-KR"}
+						break
+					}
+				}
+			}
 		}
 	}
 
 	// Populate ASR models
 	resp.ASR.Models = s.listASRModels(resp)
+
+	// Populate available ASR providers
+	resp.ASR.AvailableProviders = s.listAvailableASRProviders()
 
 	// Populate TTS models
 	resp.TTS.Models = s.listTTSModels()
@@ -302,25 +331,31 @@ func (s *service) GetStatus() *StatusResponse {
 	return resp
 }
 
+// listAvailableASRProviders returns available ASR providers based on platform.
+func (s *service) listAvailableASRProviders() []string {
+	providers := []string{}
+
+	// Add platform-specific native providers
+	if runtime.GOOS == "darwin" {
+		providers = append(providers, "macos-native")
+	} else if runtime.GOOS == "windows" {
+		providers = append(providers, "windows-native")
+	}
+
+	// Whisper is only available on Linux
+	if runtime.GOOS == "linux" {
+		providers = append(providers, "whisper")
+	}
+
+	return providers
+}
+
 // listASRModels returns ASR models for the status response.
-// On macOS, only the native model is returned; otherwise whisper models.
+// Native providers (macOS/Windows) return empty list when ready.
 func (s *service) listASRModels(st *StatusResponse) []interface{} {
-	isMacOS := runtime.GOOS == "darwin"
-	isMacOSProvider := st.ASR.Provider == "macos-native"
-	if isMacOS || isMacOSProvider {
-		model := map[string]interface{}{
-			"id":          "macos-native",
-			"name":        "speech.macosNativeName",
-			"description": "speech.macosNativeDesc",
-			"size":        "",
-			"downloaded":  true,
-			"active":      s.asrProvider != nil && s.asrProvider.Type() == ProviderMacOSNative,
-		}
-		if st.ASR.PermissionDenied {
-			model["permission_denied"] = true
-			model["active"] = false
-		}
-		return []interface{}{model}
+	// Native providers don't need model list when ready
+	if (st.ASR.Provider == "macos-native" || st.ASR.Provider == "windows-native") && st.ASR.Ready {
+		return []interface{}{}
 	}
 
 	// Whisper models

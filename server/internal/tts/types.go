@@ -45,6 +45,8 @@ const (
 	ProviderEdge ProviderType = "edge-tts"
 	// ProviderMacOSNative is macOS native TTS using AVSpeechSynthesizer.
 	ProviderMacOSNative ProviderType = "macos-native"
+	// ProviderWindowsNative is Windows native TTS using WinRT SpeechSynthesis.
+	ProviderWindowsNative ProviderType = "windows-native"
 )
 
 // AudioFormat represents the output audio format.

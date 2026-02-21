@@ -72,12 +72,34 @@ async function checkASRModelReady(): Promise<boolean> {
 async function connect() {
   if (voiceWs?.isConnected) return
 
+  // Check if we're in a secure context (HTTPS or localhost)
+  if (!window.isSecureContext) {
+    error.value = t('chat.voiceSecureContextError')
+    return
+  }
+
+  // Check if getUserMedia is supported
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    error.value = t('chat.voiceNotSupportedError')
+    return
+  }
+
   // Pre-request mic permission so the browser dialog doesn't interrupt recording
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     stream.getTracks().forEach(t => t.stop())
-  } catch {
-    error.value = t('chat.voiceMicrophoneError')
+  } catch (err: any) {
+    console.error('Microphone access error:', err)
+    // Provide more specific error messages
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      error.value = t('chat.voiceMicrophonePermissionDenied')
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      error.value = t('chat.voiceMicrophoneNotFound')
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      error.value = t('chat.voiceMicrophoneInUse')
+    } else {
+      error.value = t('chat.voiceMicrophoneError')
+    }
     return
   }
 

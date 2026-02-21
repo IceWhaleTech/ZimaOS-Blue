@@ -163,9 +163,9 @@ async function fetchStatus() {
   try {
     const res = await speechApi.getStatus()
     status.value = res.data
-    // Populate models from status response
+    // Populate models from status response, filter out native providers (shown separately)
     asrModels.value = (res.data?.asr?.models || []).filter(
-      (m: ASRModel) => m.id !== 'macos-native'
+      (m: ASRModel) => m.id !== 'macos-native' && m.id !== 'windows-native'
     )
     // Sync provider from server when no local preference is set
     if (!selectedProvider.value && res.data?.tts?.provider && res.data.tts.provider !== 'none') {
@@ -427,6 +427,23 @@ onMounted(async () => {
           </div>
           <!-- Offline dictation languages (shown when on-device is enabled and dictation is available) -->
           <div v-if="status?.asr?.on_device_only && status?.asr?.dictation_available && offlineLanguages.length > 0" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+
+      <!-- Windows Native STT Status -->
+      <div v-if="status?.asr?.provider === 'windows-native'" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-100 dark:bg-blue-900/30">
+              <!-- Windows icon -->
+              <svg class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+            </div>
+            <div>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.windowsNativeName') }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.windowsNativeASRDesc') }}</p>
+            </div>
+          </div>
+          <span v-if="status?.asr?.ready" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">{{ t('speech.ready') }}</span>
+        </div>
+      </div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('speech.offlineLanguages') }}</span>
               <span v-if="currentLangOfflineInstalled" class="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
@@ -465,6 +482,23 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+
+      <!-- Windows Native STT Status -->
+      <div v-if="status?.asr?.provider === 'windows-native'" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+            </div>
+            <div>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.windowsNativeName') }}</span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.windowsNativeASRDesc') }}</p>
+            </div>
+          </div>
+          <span v-if="status?.asr?.ready" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">{{ t('speech.ready') }}</span>
+        </div>
+      </div>
+
       <div v-if="asrModels.length > 0" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.asrModels') }}
@@ -488,6 +522,8 @@ onMounted(async () => {
                   <svg v-if="model.permission_denied" class="w-4 h-4 text-amber-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
                   <!-- Apple icon for macOS native -->
                   <svg v-else-if="model.id === 'macos-native'" class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+                  <!-- Windows icon for Windows native -->
+                  <svg v-else-if="model.id === 'windows-native'" class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
                   <!-- Whisper / AI icon -->
                   <svg v-else class="w-4 h-4 text-gray-600 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                   <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
@@ -511,7 +547,7 @@ onMounted(async () => {
               </span>
               <!-- Download button (right side) -->
               <button v-else-if="!model.downloaded && !isModelDownloading(model.id)"
-                class="px-3 py-1 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-black dark:hover:bg-gray-600 text-xs font-medium flex-shrink-0 ml-2"
+                class="px-3 py-1 bg-gray-900 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 text-xs font-medium flex-shrink-0 ml-2"
                 @click.prevent="downloadASRModel(model.id)">
                 {{ t('common.download') }}
               </button>
@@ -588,6 +624,23 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.macosNativeDesc') }}</p>
             </div>
             <span v-if="selectedProvider === 'macos-native'" class="text-gray-900 dark:text-white">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            </span>
+          </label>
+          <label
+            v-if="isProviderAvailable('windows-native')"
+            class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
+            :class="selectedProvider === 'windows-native' ? 'border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-700/30' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+            <input v-model="selectedProvider" type="radio" value="windows-native" class="sr-only" @change="saveProvider" />
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.windowsNativeName') }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{{ t('speech.systemNative') }}</span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.windowsNativeDesc') }}</p>
+            </div>
+            <span v-if="selectedProvider === 'windows-native'" class="text-gray-900 dark:text-white">
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
             </span>
           </label>

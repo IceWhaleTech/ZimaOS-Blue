@@ -9,11 +9,37 @@ Write-Host "Go: $(go version)"
 Write-Host "Cargo: $(cargo --version)"
 Write-Host ""
 
+# Step 0: Clean old builds
+Write-Host "[STEP 0] Cleaning old builds..."
+$tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
+if (Test-Path "$tauriDir\target") {
+    Write-Host "Cleaning Rust target directory..."
+    Remove-Item -Recurse -Force "$tauriDir\target\release" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force "$tauriDir\target\x86_64-pc-windows-msvc\release" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force "$tauriDir\target\x86_64-pc-windows-gnu\release" -ErrorAction SilentlyContinue
+}
+if (Test-Path "$tauriDir\lib\libblue.a") {
+    Write-Host "Removing old libblue.a..."
+    Remove-Item -Force "$tauriDir\lib\libblue.a"
+}
+$skinDir = "$tauriDir\nsis\skin-installer"
+if (Test-Path "$skinDir\FilesToInstall") {
+    Write-Host "Cleaning FilesToInstall directory..."
+    Remove-Item -Recurse -Force "$skinDir\FilesToInstall"
+    New-Item -ItemType Directory "$skinDir\FilesToInstall" -Force | Out-Null
+}
+if (Test-Path "$skinDir\Output") {
+    Write-Host "Cleaning Output directory..."
+    Remove-Item -Recurse -Force "$skinDir\Output"
+}
+Write-Host "[OK] Old builds cleaned"
+Write-Host ""
+
 # Step 1: Build frontend
 Write-Host "[STEP 1] Building frontend..."
 Set-Location "g:\GitHub\ZimaOS-Blue\web"
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }
-npm install --omit=dev
+npm install
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
 # Check production dependencies for vulnerabilities
@@ -40,17 +66,44 @@ if (Test-Path $embedDir) {
 
 # Step 2: Build Go library (c-archive, whisper via FFI)
 Write-Host "[STEP 2] Building Go library..."
-Set-Location "g:GitHubZimaOS-Blueserver"
-$tauriDir = "g:GitHubZimaOS-Blue\tauri-appsrc-tauri"
-if (!(Test-Path "$tauriDirib")) { New-Item -ItemType Directory "$tauriDirib" -Force | Out-Null }
+Set-Location "g:\GitHub\ZimaOS-Blue\server"
+$tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
+if (!(Test-Path "$tauriDir\lib")) { New-Item -ItemType Directory "$tauriDir\lib" -Force | Out-Null }
 $env:CGO_ENABLED = "1"
 $goLdflags = "-s -w"
 if ($env:ZIMAOS_TRIAL_LICENSE) {
     $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
 }
-go build -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDiribibblue.a" ./cmd/bluelib/
+# Build without espeak, kokoro, and whisper tags (Windows native only)
+go build -tags "fts5" -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/
 if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
-Write-Host "[OK] libblue.a built (whisper via FFI)"
+Write-Host "[OK] libblue.a built (with fts5 support, Windows native TTS/ASR only)"
+
+# Step 3: Build Tauri application
+Write-Host "[STEP 3] Building Tauri application..."
+Set-Location $tauriDir
+cargo build --release
+if ($LASTEXITCODE -ne 0) { throw "Cargo build failed" }
+Write-Host "[OK] Tauri application built"
+
+# Step 4: Verify executable exists
+Write-Host "[STEP 4] Verifying executable..."
+$releaseDirs = @("$tauriDir\target\release", "$tauriDir\target\x86_64-pc-windows-msvc\release", "$tauriDir\target\x86_64-pc-windows-gnu\release")
+$foundExe = $false
+foreach ($rd in $releaseDirs) {
+    if (Test-Path "$rd\blue.exe") {
+        Write-Host "[OK] Found blue.exe in $rd"
+        $foundExe = $true
+        break
+    } elseif (Test-Path "$rd\zimaos-blue.exe") {
+        Write-Host "[OK] Found zimaos-blue.exe in $rd"
+        $foundExe = $true
+        break
+    }
+}
+if (!$foundExe) {
+    throw "Executable not found in any release directory"
+}
 
 # Step 5: Copy to FilesToInstall
 Write-Host "[STEP 5] Preparing NSIS files..."

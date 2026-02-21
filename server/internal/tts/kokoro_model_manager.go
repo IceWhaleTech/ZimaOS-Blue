@@ -1,4 +1,4 @@
-//go:build kokoro
+//go:build kokoro && !windows
 
 package tts
 

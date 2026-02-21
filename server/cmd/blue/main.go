@@ -745,6 +745,8 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	asrProvider := "whisper"
 	if runtime.GOOS == "darwin" {
 		asrProvider = "macos-native"
+	} else if runtime.GOOS == "windows" {
+		asrProvider = "windows-native"
 	}
 	speechService := speech.NewService(&speech.Config{
 		TTS: speech.TTSConfig{Provider: "edge", Model: ""},
@@ -789,6 +791,26 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			speechService.SetASRPermissionDenied(err.Error())
 			if sttService != nil {
 				if wp := sttService.GetWhisperProvider(); wp != nil && wp.IsInitialized() {
+					speechService.SetASRProvider(wp)
+				}
+			}
+		}
+	} else if runtime.GOOS == "windows" {
+		logger.Info("Windows detected, initializing native ASR...")
+		windowsASR := speech.NewWindowsNativeASR()
+		if windowsASR != nil {
+			speechService.SetASRProvider(windowsASR)
+			// Also update voice service to use Windows native ASR for /voice/transcribe
+			if voiceHandler != nil {
+				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(windowsASR))
+			}
+			logger.Info("Windows native ASR initialized OK",
+				zap.String("providerType", string(windowsASR.Type())),
+				zap.String("providerName", windowsASR.Name()))
+		} else {
+			logger.Warn("Windows native ASR init failed, falling back to whisper")
+			if sttService != nil {
+				if wp := sttService.GetWhisperProvider(); wp != nil {
 					speechService.SetASRProvider(wp)
 				}
 			}

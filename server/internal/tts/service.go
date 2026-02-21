@@ -33,7 +33,7 @@ func NewService(cfg *ServiceConfig) (Service, error) {
 		defaultProvider: cfg.DefaultProvider,
 		speed:           1.0,
 		pitch:           0,
-		volume:          100,
+		volume:          1.0,
 		dataPath:        cfg.DataPath,
 	}
 
@@ -80,6 +80,12 @@ func createProvider(cfg ProviderConfig, dataPath string) (Provider, error) {
 		return NewEdgeTTSProvider(), nil
 	case ProviderMacOSNative:
 		return NewMacOSNativeTTS(), nil
+	case ProviderWindowsNative:
+		provider := NewWindowsNativeTTSProvider()
+		if provider == nil {
+			return nil, fmt.Errorf("failed to create Windows native TTS provider")
+		}
+		return provider, nil
 	case ProviderKokoro:
 		return NewKokoroProvider(dataPath), nil
 	default:
@@ -150,6 +156,9 @@ func (s *service) ListProviders() []ProviderType {
 	}
 	if (&MacOSNativeTTS{}).Available() {
 		result = append(result, ProviderMacOSNative)
+	}
+	if WindowsNativeAvailable() {
+		result = append(result, ProviderWindowsNative)
 	}
 	// Kokoro is listed only when compiled in
 	if KokoroAvailable() {

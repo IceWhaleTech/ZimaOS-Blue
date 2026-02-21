@@ -4,6 +4,9 @@
 mod server;
 mod tray;
 
+#[cfg(target_os = "windows")]
+mod windows_service;
+
 // macOS & Windows: Use CGO library approach (FFI to Go static library)
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod blue_ffi;
@@ -102,11 +105,11 @@ fn graceful_quit(app_handle: &tauri::AppHandle) {
 
     // 2. Stop the Go server (blocks until server is down or timeout).
     //    Internally this cancels all active SSE streams, closes WebSocket
-    //    connections, then shuts down the HTTP server.
+    //    connections, then shuts down the HTTP server, and performs cleanup.
     info!("Graceful quit: stopping Go server");
     let _ = blue_ffi::stop_server();
 
-    // 3. Final CGo resource cleanup
+    // 3. Final CGo resource cleanup (already done in BlueServerStop, but call again for safety)
     blue_ffi::cleanup();
 
     // 4. Exit via Tauri's event loop — this fires RunEvent::Exit for
@@ -171,6 +174,32 @@ fn set_close_behavior(behavior: String) {
     let minimize = behavior == "minimize";
     MINIMIZE_TO_TRAY.store(minimize, Ordering::SeqCst);
     info!("Close behavior set to: {}", behavior);
+}
+
+/// Install Windows service
+#[tauri::command]
+fn install_windows_service() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_service::install_service()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Service installation only supported on Windows".to_string())
+    }
+}
+
+/// Uninstall Windows service
+#[tauri::command]
+fn uninstall_windows_service() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_service::uninstall_service()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Service uninstallation only supported on Windows".to_string())
+    }
 }
 
 /// Start server with command-line arguments (macOS specific)
@@ -359,6 +388,8 @@ pub fn run() {
             get_server_port,
             open_url,
             set_close_behavior,
+            install_windows_service,
+            uninstall_windows_service,
             set_tray_locale,
             start_server_with_args,
             server::start_server,
@@ -499,6 +530,17 @@ pub fn run() {
                     Ok(_) => info!("Server started successfully"),
                     Err(e) => {
                         error!("Failed to start server: {}", e);
+                        // Show error dialog to user
+                        #[cfg(not(target_os = "linux"))]
+                        {
+                            use tauri::Manager;
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.eval(&format!(
+                                    "alert('Failed to start server: {}');",
+                                    e.replace("'", "\\'")
+                                ));
+                            }
+                        }
                         return;
                     }
                 }

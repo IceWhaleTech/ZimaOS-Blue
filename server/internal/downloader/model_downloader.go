@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -137,6 +138,10 @@ func (d *ModelDownloader) Download(ctx context.Context, files []ModelFile) error
 
 		// Try ModelScope first (fastest in China), then mirrors, then primary
 		urls := buildURLList(f)
+		log.Printf("[ModelDownloader] Downloading %s, trying %d URLs in order:", f.Filename, len(urls))
+		for idx, u := range urls {
+			log.Printf("[ModelDownloader]   %d. %s", idx+1, u)
+		}
 		if err := d.downloadWithFallback(ctx, urls, destPath); err != nil {
 			// Context canceled = user-initiated cancel, not an error
 			if ctx.Err() == context.Canceled {
@@ -216,28 +221,37 @@ func findSubstring(s, substr string) bool {
 
 func (d *ModelDownloader) downloadWithFallback(ctx context.Context, urls []string, destPath string) error {
 	var lastErr error
-	for _, u := range urls {
+	for idx, u := range urls {
+		log.Printf("[ModelDownloader] Attempt %d/%d: trying %s", idx+1, len(urls), u)
 		if err := d.downloadFile(ctx, u, destPath); err == nil {
+			log.Printf("[ModelDownloader] ✓ Successfully downloaded from %s", u)
 			return nil
 		} else {
+			log.Printf("[ModelDownloader] ✗ Failed to download from %s: %v", u, err)
 			lastErr = err
 		}
 	}
+	log.Printf("[ModelDownloader] All %d URLs failed, last error: %v", len(urls), lastErr)
 	return lastErr
 }
 
 func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string) error {
+	log.Printf("[ModelDownloader] Creating HTTP request for %s", url)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
+		log.Printf("[ModelDownloader] Failed to create request: %v", err)
 		return err
 	}
 
+	log.Printf("[ModelDownloader] Sending HTTP request...")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		log.Printf("[ModelDownloader] HTTP request failed: %v", err)
 		return err
 	}
 	defer resp.Body.Close()
 
+	log.Printf("[ModelDownloader] HTTP response: %s (Content-Length: %d)", resp.Status, resp.ContentLength)
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %s", resp.Status)
 	}
@@ -249,13 +263,17 @@ func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string
 
 	// Ensure parent directory exists for nested files (e.g. voices/af_heart.bin)
 	if dir := filepath.Dir(destPath); dir != d.destDir {
+		log.Printf("[ModelDownloader] Creating subdirectory: %s", dir)
 		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Printf("[ModelDownloader] Failed to create subdirectory: %v", err)
 			return fmt.Errorf("create subdirectory: %w", err)
 		}
 	}
 
+	log.Printf("[ModelDownloader] Creating temporary file: %s.tmp", destPath)
 	out, err := os.Create(destPath + ".tmp")
 	if err != nil {
+		log.Printf("[ModelDownloader] Failed to create temp file: %v", err)
 		return err
 	}
 	defer out.Close()
@@ -311,13 +329,20 @@ func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string
 			break
 		}
 		if err != nil {
+			log.Printf("[ModelDownloader] Read error: %v", err)
 			os.Remove(destPath + ".tmp")
 			return err
 		}
 	}
 
 	out.Close()
-	return os.Rename(destPath+".tmp", destPath)
+	log.Printf("[ModelDownloader] Download complete, renaming %s.tmp to %s", destPath, destPath)
+	if err := os.Rename(destPath+".tmp", destPath); err != nil {
+		log.Printf("[ModelDownloader] Failed to rename file: %v", err)
+		return err
+	}
+	log.Printf("[ModelDownloader] File saved successfully: %s", destPath)
+	return nil
 }
 
 // Cancel cancels the current download.
