@@ -37,7 +37,8 @@ const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const showSidebar = ref(false) // Default closed on mobile
 const isMobile = ref(false)
-const isMac = ref(false)
+const pageStack = ref<string[]>([]) // Mobile page stack: conversation IDs
+const showListPage = computed(() => isMobile.value && pageStack.value.length === 0)
 const showRoutingMenu = ref(false)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 const routingButtonRef = ref<HTMLElement | null>(null)
@@ -126,10 +127,13 @@ const localActiveCount = computed(() =>
   providerPoolStore.localProviders.filter(p => p.status === 'active').length
 )
 
-// Check if mobile on mount and resize
+// Check if mobile device (narrow screen + touch capability)
 function checkMobile() {
-  isMobile.value = window.innerWidth < 768
-  isMac.value = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+  const isNarrowScreen = window.innerWidth < 768
+  const hasTouchCapability = (('ontouchstart' in window) ||
+    (navigator.maxTouchPoints > 0) ||
+    (navigator.msMaxTouchPoints > 0))
+  isMobile.value = isNarrowScreen && hasTouchCapability
   // Auto-show sidebar on desktop
   if (!isMobile.value) {
     showSidebar.value = true
@@ -283,6 +287,9 @@ function handleRegenerate() {
 }
 
 async function handleSelectConversation(id: string) {
+  if (isMobile.value) {
+    pageStack.value.push(id)
+  }
   await chatStore.selectConversation(id)
 }
 
@@ -310,7 +317,13 @@ function handleSearch(query: string) {
 }
 
 function toggleSidebar() {
-  showSidebar.value = !showSidebar.value
+  if (isMobile.value && pageStack.value.length > 0) {
+    // Mobile: return to list page
+    pageStack.value = []
+    chatStore.currentConversationId = null
+  } else {
+    showSidebar.value = !showSidebar.value
+  }
 }
 
 function toggleRoutingMenu() {
@@ -427,8 +440,8 @@ onMounted(async () => {
     fetchClaudeCodeConfig(),
   ])
 
-  // Auto-select first conversation if available and none selected
-  if (!chatStore.currentConversationId && chatStore.sortedConversations.length > 0 && chatStore.sortedConversations[0]) {
+  // Auto-select first conversation if available and none selected (desktop only)
+  if (!isMobile.value && !chatStore.currentConversationId && chatStore.sortedConversations.length > 0 && chatStore.sortedConversations[0]) {
     await chatStore.selectConversation(chatStore.sortedConversations[0].id)
   }
 })
@@ -750,7 +763,14 @@ onUnmounted(() => {
               <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span class="break-all">{{ chatStore.streamError === 'NO_STREAM_DATA' ? t('chat.noStreamData') : chatStore.streamError === 'trial_service_busy' ? t('chat.trialServiceBusy') : chatStore.streamError }}</span>
+              <span class="break-all">{{
+                chatStore.streamError === 'streamEmpty' ? t('chat.streamEmpty') :
+                chatStore.streamError === 'providerNoResponse' ? t('chat.providerNoResponse') :
+                chatStore.streamError === 'providerReturnedEmpty' ? t('chat.providerReturnedEmpty') :
+                chatStore.streamError === 'noResponseBody' ? t('chat.noResponseBody') :
+                chatStore.streamError === 'trial_service_busy' ? t('chat.trialServiceBusy') :
+                chatStore.streamError
+              }}</span>
               <button
                 class="ml-2 text-gray-400 hover:text-gray-300 cursor-pointer"
                 @click="chatStore.clearStreamError"

@@ -25,6 +25,10 @@ const searchQuery = ref('')
 const searchActive = ref(false)
 const showDeleteConfirm = ref<string | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const longPressId = ref<string | null>(null)
+const showContextMenu = ref<string | null>(null)
+const contextMenuPos = ref({ x: 0, y: 0 })
 
 function toggleSearch() {
   searchActive.value = !searchActive.value
@@ -79,6 +83,27 @@ function handlePin(id: string, isPinned: boolean) {
   } else {
     emit('pin', id)
   }
+}
+
+// Long press handling for mobile - show context menu
+function startLongPress(id: string, event: MouseEvent | TouchEvent) {
+  longPressId.value = id
+  longPressTimer.value = setTimeout(() => {
+    const rect = (event.target as HTMLElement).getBoundingClientRect()
+    contextMenuPos.value = {
+      x: rect.left,
+      y: rect.bottom + 8
+    }
+    showContextMenu.value = id
+  }, 500) // 500ms long press
+}
+
+function cancelLongPress() {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+  longPressId.value = null
 }
 
 // Debounced search
@@ -186,6 +211,11 @@ watch(searchQuery, (query) => {
           <button
             class="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             @click="handleSelect(conversation.id)"
+            @mousedown="startLongPress(conversation.id, $event)"
+            @mouseup="cancelLongPress"
+            @mouseleave="cancelLongPress"
+            @touchstart="startLongPress(conversation.id, $event)"
+            @touchend="cancelLongPress"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex-1 min-w-0">
@@ -274,6 +304,31 @@ watch(searchQuery, (query) => {
               @click.stop="cancelDelete"
             >
               {{ t('common.no') }}
+            </button>
+          </div>
+
+          <!-- Long press context menu -->
+          <div
+            v-if="showContextMenu === conversation.id"
+            class="absolute inset-0 bg-white/95 dark:bg-gray-700/95 flex flex-col items-center justify-center gap-2 p-2 rounded"
+          >
+            <button
+              class="w-full px-3 py-2 bg-yellow-500 hover:bg-yellow-600 text-white text-sm rounded transition-colors"
+              @click.stop="handlePin(conversation.id, conversation.pinned || false); showContextMenu = null"
+            >
+              {{ conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation') }}
+            </button>
+            <button
+              class="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+              @click.stop="handleDelete(conversation.id); showContextMenu = null"
+            >
+              {{ t('chat.deleteConversation') }}
+            </button>
+            <button
+              class="w-full px-3 py-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-700 text-gray-900 dark:text-white text-sm rounded transition-colors"
+              @click.stop="showContextMenu = null"
+            >
+              {{ t('common.cancel') }}
             </button>
           </div>
         </div>
