@@ -138,9 +138,8 @@ func (s *service) Initialize() error {
 	if runtime.GOOS == "darwin" {
 		s.config.ASR.Provider = "macos-native"
 	} else if runtime.GOOS == "windows" {
-		if s.config.ASR.Provider == "" {
-			s.config.ASR.Provider = "windows-native"
-		}
+		// On Windows, always use native STT — whisper is not available in Windows builds
+		s.config.ASR.Provider = "windows-native"
 	} else if s.config.ASR.Provider == "" {
 		s.config.ASR.Provider = "none"
 	}
@@ -158,9 +157,19 @@ func (s *service) Initialize() error {
 
 	// Create Windows native ASR provider if configured
 	if s.config.ASR.Provider == "windows-native" && runtime.GOOS == "windows" {
+		fmt.Println("[Speech] Attempting to initialize Windows Native ASR...")
 		windowsASR := NewWindowsNativeASR()
 		if windowsASR != nil {
 			s.asrProvider = windowsASR
+			fmt.Println("[Speech] Windows Native ASR initialized successfully")
+		} else {
+			fmt.Println("[Speech] WARNING: Failed to initialize Windows Native ASR")
+			fmt.Println("[Speech] This may be due to:")
+			fmt.Println("  1. Windows Speech Recognition not installed")
+			fmt.Println("  2. Language pack not installed")
+			fmt.Println("  3. CGO not enabled or C++ compiler not available")
+			// Keep the provider setting so it shows in available providers
+			// but mark as not ready
 		}
 	}
 
@@ -254,6 +263,8 @@ func (s *service) GetStatus() *StatusResponse {
 		resp.ASR.Provider = s.config.ASR.Provider
 		if s.asrProvider != nil {
 			resp.ASR.Ready = true
+			// Use the actual provider type from the provider object, not the config
+			resp.ASR.Provider = string(s.asrProvider.Type())
 			resp.ASR.ModelName = string(s.asrProvider.Type())
 
 			// Get download status from Whisper provider

@@ -1,8 +1,6 @@
 #[cfg(target_os = "windows")]
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
-use std::path::PathBuf;
-#[cfg(target_os = "windows")]
 use windows_service::{
     service::{
         ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceState,
@@ -12,7 +10,7 @@ use windows_service::{
 };
 
 #[cfg(target_os = "windows")]
-const SERVICE_NAME: &str = "ZimaOSBlue";
+const SERVICE_NAME: &str = "ZimaOS-Blue";
 #[cfg(target_os = "windows")]
 const SERVICE_DISPLAY_NAME: &str = "ZimaOS Blue";
 
@@ -24,8 +22,23 @@ pub fn install_service() -> Result<String, String> {
     )
     .map_err(|e| format!("Failed to open service manager: {}", e))?;
 
-    let exe_path = std::env::current_exe()
+    // For Tauri GUI app, the service should use the embedded blue.exe
+    // which is located in the same directory as the Tauri executable
+    let tauri_exe_path = std::env::current_exe()
         .map_err(|e| format!("Failed to get executable path: {}", e))?;
+
+    let exe_dir = tauri_exe_path.parent()
+        .ok_or_else(|| "Failed to get executable directory".to_string())?;
+
+    // Look for blue.exe in the same directory
+    let service_exe_path = exe_dir.join("blue.exe");
+
+    if !service_exe_path.exists() {
+        return Err(format!(
+            "Service executable not found at: {}. Please ensure blue.exe is in the same directory as the application.",
+            service_exe_path.display()
+        ));
+    }
 
     let service_info = ServiceInfo {
         name: OsString::from(SERVICE_NAME),
@@ -33,8 +46,8 @@ pub fn install_service() -> Result<String, String> {
         service_type: ServiceType::OWN_PROCESS,
         start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,
-        executable_path: exe_path,
-        launch_arguments: vec![OsString::from("--service")],
+        executable_path: service_exe_path,
+        launch_arguments: vec![],
         dependencies: vec![],
         account_name: None,
         account_password: None,

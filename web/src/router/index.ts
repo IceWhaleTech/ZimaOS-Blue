@@ -6,6 +6,31 @@ import { useAuthStore } from '@/stores/auth'
 // Detect if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
 
+// Get server URL from Tauri (supports both HTTP and HTTPS)
+async function getServerUrl(): Promise<string> {
+  if (isTauri && (window as any).__TAURI__?.core?.invoke) {
+    try {
+      const url = await (window as any).__TAURI__.core.invoke('get_server_url')
+      return url
+    } catch (e) {
+      console.warn('Failed to get server URL from Tauri, falling back to http://localhost', e)
+    }
+  }
+  return 'http://localhost'
+}
+
+// Cache the server URL
+let cachedServerUrl: string | null = null
+async function getBaseUrl(): Promise<string> {
+  if (!isTauri) {
+    return ''
+  }
+  if (!cachedServerUrl) {
+    cachedServerUrl = await getServerUrl()
+  }
+  return cachedServerUrl
+}
+
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false
 let isPreviewMode = false
@@ -16,7 +41,8 @@ let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 5000)
-  const url = isTauri ? 'http://localhost/api/v1/system/mode' : '/api/v1/system/mode'
+  const baseUrl = await getBaseUrl()
+  const url = isTauri ? `${baseUrl}/api/v1/system/mode` : '/api/v1/system/mode'
   try {
     const response = await fetch(url, { signal: controller.signal })
     clearTimeout(timeoutId)
@@ -88,7 +114,8 @@ async function fetchPreviewToken(): Promise<void> {
 
   try {
     // Use absolute URL in Tauri, relative URL in browser
-    const url = isTauri ? 'http://localhost/api/v1/preview/token' : '/api/v1/preview/token'
+    const baseUrl = await getBaseUrl()
+    const url = isTauri ? `${baseUrl}/api/v1/preview/token` : '/api/v1/preview/token'
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

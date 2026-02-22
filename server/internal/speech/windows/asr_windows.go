@@ -4,7 +4,8 @@ package windows
 
 /*
 #cgo CXXFLAGS: -std=c++17 -I${SRCDIR}
-#cgo LDFLAGS: -lole32 -loleaut32 -luuid
+#cgo LDFLAGS: -lole32 -loleaut32 -luuid -lstdc++
+#cgo CXXFLAGS: -DUNICODE -D_UNICODE
 
 #include <stdlib.h>
 #include "speech_asr_windows.h"
@@ -29,8 +30,14 @@ func NewWindowsASRProvider(language string) *WindowsASRProvider {
 
 	handle := C.asr_create(cLang)
 	if handle == nil {
+		fmt.Printf("[Windows ASR] Failed to create ASR provider for language: %s\n", language)
+		fmt.Println("[Windows ASR] This may be due to:")
+		fmt.Println("  1. Windows Speech Recognition not installed")
+		fmt.Println("  2. Language pack not installed")
+		fmt.Println("  3. COM initialization failure")
 		return nil
 	}
+	fmt.Printf("[Windows ASR] Successfully created ASR provider for language: %s\n", language)
 	return &WindowsASRProvider{handle: handle}
 }
 

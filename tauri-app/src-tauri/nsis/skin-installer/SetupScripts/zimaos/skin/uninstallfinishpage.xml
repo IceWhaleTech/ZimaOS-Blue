@@ -2,9 +2,9 @@
 <Windows>
 <!-- 完成 -->
   <VerticalLayout >
-     <VerticalLayout width="480" height="240" bkimage="file='form\pic.png' corner='5,5,5,5'">
+    <VerticalLayout width="480" height="240" bkimage="file='form\pic.png' corner='5,5,5,5'">
 	</VerticalLayout>
-	<VerticalLayout bkcolor="#FFFFFFFF" height="133">
+	<VerticalLayout bkcolor="#FFFFFFFF" height="160">
 	<HorizontalLayout padding="0,30,0,0" height="25">
 	  <Control />
 	  <Label name="lblUninstallComplete" font="8" width="200" normaltextcolor="#ff666666" text="ZimaOS Blue 已卸载" align="center" />

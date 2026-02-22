@@ -220,19 +220,22 @@ func RegisterStaticRoutes(e *echo.Echo) {
 		}
 
 		// Set cache headers based on file type
-		// Versioned assets (with hash) get long-term caching
-		// index.html gets no caching to ensure fresh content
-		if path == "index.html" {
-			// Never cache index.html - always fetch fresh version
+		// Strategy:
+		// 1. Images: cache for 24 hours
+		// 2. Versioned assets (JS/CSS with hash): cache forever (immutable)
+		// 3. All other files (HTML, non-versioned JS/CSS, JSON): no-cache
+		if isImageFile(path) {
+			// Images can be cached for a reasonable time
+			c.Response().Header().Set("Cache-Control", "public, max-age=86400") // 24 hours
+		} else if isVersionedAsset(path) {
+			// Versioned assets (with hash in filename) can be cached forever
+			// These files have content hashes and will never change
+			c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable") // 1 year
+		} else {
+			// All other files: no cache to ensure users always get latest version
 			c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			c.Response().Header().Set("Pragma", "no-cache")
 			c.Response().Header().Set("Expires", "0")
-		} else if isVersionedAsset(path) {
-			// Versioned assets (with hash in filename) can be cached forever
-			c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			// Other files: short cache with revalidation
-			c.Response().Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
 		}
 
 		return c.Blob(http.StatusOK, getContentType(path), content)

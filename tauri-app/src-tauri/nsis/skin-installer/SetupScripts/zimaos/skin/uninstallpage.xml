@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Windows>
    <VerticalLayout >
-    <VerticalLayout width="480" height="220" bkimage="file='form\pic.png' corner='5,5,5,5'">
+    <VerticalLayout width="480" height="240" bkimage="file='form\pic.png' corner='5,5,5,5'">
 	</VerticalLayout>
-	<VerticalLayout bkcolor="#FFFFFFFF" height="180">
+	<VerticalLayout bkcolor="#FFFFFFFF" height="160">
 	<Label font="8" width="400" height="25" padding="30,30,0,0" textcolor="#ff333333" name="lblUninstallConfirm" text="" />
 	<HorizontalLayout padding="0,30,0,0" height="30" >
 	  <Control />

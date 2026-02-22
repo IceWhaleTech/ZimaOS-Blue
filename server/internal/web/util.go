@@ -50,6 +50,17 @@ func isVersionedAsset(path string) bool {
 	return true
 }
 
+// isImageFile returns true if the path is an image file.
+func isImageFile(path string) bool {
+	imageExts := []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".bmp"}
+	for _, ext := range imageExts {
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // getContentType returns the content type for a file path.
 func getContentType(path string) string {
 	switch {

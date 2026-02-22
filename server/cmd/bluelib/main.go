@@ -527,6 +527,8 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	asrProvider := "whisper"
 	if runtime.GOOS == "darwin" {
 		asrProvider = "macos-native"
+	} else if runtime.GOOS == "windows" {
+		asrProvider = "windows-native"
 	}
 	speechKV, _ := kvstore.NewSQLiteStoreWithDB(services.DB)
 	speechService := speech.NewService(&speech.Config{
@@ -567,6 +569,24 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		} else {
 			zapLogger.Warn("macOS native STT init failed, no ASR available", zap.Error(err))
 			speechService.SetASRPermissionDenied(err.Error())
+		}
+	} else if runtime.GOOS == "windows" {
+		zapLogger.Info("Windows detected, initializing native ASR...")
+		windowsASR := speech.NewWindowsNativeASR()
+		if windowsASR != nil {
+			speechService.SetASRProvider(windowsASR)
+			// Also update voice service to use Windows native ASR for /voice/transcribe
+			if voiceHandler != nil {
+				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(windowsASR))
+			}
+			zapLogger.Info("Windows native ASR initialized OK",
+				zap.String("providerType", string(windowsASR.Type())),
+				zap.String("providerName", windowsASR.Name()))
+		} else {
+			zapLogger.Warn("Windows native ASR init failed, falling back to whisper")
+			if whisperASRProvider != nil {
+				speechService.SetASRProvider(whisperASRProvider)
+			}
 		}
 	} else if whisperASRProvider != nil {
 		speechService.SetASRProvider(whisperASRProvider)
