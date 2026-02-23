@@ -112,9 +112,13 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 				}
 			}
 			bm.Content = parts
-		} else {
+		} else if m.Content != "" {
 			bm.Content = m.Content
 		}
+		// else: Content stays nil → serializes as "content": null
+		// This is important for assistant messages with tool_calls:
+		// OpenAI spec requires content=null (not ""), and many relays
+		// (e.g. tribios) fail to convert tool_calls when content="".
 		if len(m.ToolCalls) > 0 {
 			bm.ToolCalls = make([]bridgeToolCall, len(m.ToolCalls))
 			for j, tc := range m.ToolCalls {

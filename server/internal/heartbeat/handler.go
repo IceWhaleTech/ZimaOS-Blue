@@ -63,6 +63,14 @@ func (h *Handler) Trigger(c echo.Context) error {
 		})
 	}
 
+	// Early check: skip if HEARTBEAT.md is effectively empty
+	if data, err := os.ReadFile(h.heartbeatFilePath()); err == nil && IsEffectivelyEmpty(string(data)) {
+		return c.JSON(http.StatusOK, map[string]string{
+			"status": "skipped",
+			"reason": "empty-heartbeat-file",
+		})
+	}
+
 	h.runner.RequestNow("manual")
 	return c.JSON(http.StatusOK, map[string]string{
 		"status": "triggered",

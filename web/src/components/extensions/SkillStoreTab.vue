@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { skillApi, type RemoteSkill, type SearchParams, type SyncStatus } from '@/api/skill'
+import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 
 const { t } = useI18n()
 
@@ -15,6 +16,7 @@ const filterCategory = ref<string>('all')
 const sortBy = ref<'downloads' | 'rating' | 'updated' | 'name'>('downloads')
 const categories = ref<string[]>([])
 const installing = ref<Set<string>>(new Set())
+const installProgress = ref<Map<string, number>>(new Map())
 
 // Sync progress state
 const syncing = ref(false)
@@ -101,13 +103,18 @@ async function fetchCategories() {
 async function installSkill(skill: RemoteSkill) {
   if (installing.value.has(skill.id)) return
   installing.value.add(skill.id)
+  installProgress.value.set(skill.id, 0)
+
   try {
+    // Regular POST — progress comes via unified SSE events
     await skillApi.install(skill.id)
+    installProgress.value.set(skill.id, 100)
     skill.installed = true
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to install skill'
   } finally {
     installing.value.delete(skill.id)
+    setTimeout(() => installProgress.value.delete(skill.id), 800)
   }
 }
 
@@ -208,14 +215,44 @@ function stopSyncPolling() {
   }
 }
 
+// SSE event handlers for install progress
+function onInstallProgress(data: any) {
+  if (data.id && typeof data.percent === 'number') {
+    installProgress.value.set(data.id, data.percent)
+  }
+}
+
+function onInstallComplete(data: any) {
+  if (data.id) {
+    installProgress.value.set(data.id, 100)
+    // Mark skill as installed in the list
+    const s = skills.value.find(sk => sk.id === data.id)
+    if (s) s.installed = true
+  }
+}
+
+function onInstallError(data: any) {
+  if (data.id) {
+    installing.value.delete(data.id)
+    installProgress.value.delete(data.id)
+    if (data.error) error.value = data.error
+  }
+}
+
 onMounted(() => {
   fetchSkills()
   fetchCategories()
   triggerSync()
+  onSSEEvent('skill.install.progress', onInstallProgress)
+  onSSEEvent('skill.install.complete', onInstallComplete)
+  onSSEEvent('skill.install.error', onInstallError)
 })
 
 onUnmounted(() => {
   stopSyncPolling()
+  offSSEEvent('skill.install.progress', onInstallProgress)
+  offSSEEvent('skill.install.complete', onInstallComplete)
+  offSSEEvent('skill.install.error', onInstallError)
 })
 </script>
 
@@ -366,11 +403,16 @@ onUnmounted(() => {
           <div class="item-footer">
             <button
               v-if="!skill.installed"
-              class="btn-install"
+              :class="['btn-install', { 'btn-installing': installing.has(skill.id) }]"
               :disabled="installing.has(skill.id)"
               @click.stop="installSkill(skill)"
             >
-              <span v-if="installing.has(skill.id)" class="spinner-small"></span>
+              <template v-if="installing.has(skill.id)">
+                <div class="install-progress-bar">
+                  <div class="install-progress-fill" :style="{ width: (installProgress.get(skill.id) || 0) + '%' }"></div>
+                </div>
+                <span class="install-progress-text">{{ installProgress.get(skill.id) || 0 }}%</span>
+              </template>
               <span v-else>{{ t('skillStore.install') }}</span>
             </button>
             <span v-else class="installed-badge">{{ t('skillStore.installed') }}</span>
@@ -498,6 +540,41 @@ onUnmounted(() => {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
+  min-width: 72px;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-install.btn-installing {
+  padding: 6px 8px;
+  min-width: 96px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1f2937;
+}
+
+.install-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.install-progress-fill {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.install-progress-text {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .btn-install:hover:not(:disabled) {

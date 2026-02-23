@@ -132,11 +132,11 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 		"file_write":  true,
 		"web_search":  true,
 		"ui_reviewer": true,
-		// Media generation tools — registered in routes.go after provider pool init
+		// Media generation tools — conditionally registered in routes.go based on enabled providers
 		"image_generate": true,
 		"video_generate": true,
 		// Native service-backed skills — registered explicitly below
-		"reminders": true,
+		"push_notification": true,
 		"scheduler": true,
 		"autoreply": true,
 		"sandbox":   true,

@@ -138,6 +138,15 @@ fi
 
 print_step "Frontend copied to server/internal/web/dist ($(ls -1 "$EMBED_DIR" | wc -l | tr -d ' ') files)"
 
+# Step 3: Copy canonical skills to server/internal/skill/embedded/skills/ for go:embed
+print_step "Copying skills from assets/skills/ to server/internal/skill/embedded/skills/..."
+SKILLS_SRC="$PROJECT_ROOT/assets/skills"
+SKILLS_EMBED="$PROJECT_ROOT/server/internal/skill/embedded/skills"
+rm -rf "$SKILLS_EMBED"
+mkdir -p "$SKILLS_EMBED"
+cp -r "$SKILLS_SRC/"* "$SKILLS_EMBED/"
+print_step "Skills copied ($(ls -1 "$SKILLS_EMBED" | wc -l | tr -d ' ') skills)"
+
 # Step 4: Build backend (platform-specific)
 if [ "$GOOS" = "darwin" ]; then
     # macOS: Build Go static library for CGO integration
@@ -282,6 +291,18 @@ if [ "$GOOS" = "darwin" ]; then
         print_warning "Embed dist not found at $EMBED_DIR — .app will not have web UI"
     fi
 
+    # ── Copy skills into .app Resources ──
+    RESOURCES_SKILLS="$RESOURCES_DIR/.claude/skills"
+    if [ -d "$PROJECT_ROOT/assets/skills" ]; then
+        print_step "Copying skills into .app Resources..."
+        rm -rf "$RESOURCES_SKILLS"
+        mkdir -p "$RESOURCES_SKILLS"
+        cp -r "$PROJECT_ROOT/assets/skills/"* "$RESOURCES_SKILLS/"
+        print_step "Skills copied to $RESOURCES_SKILLS ($(ls -1 "$RESOURCES_SKILLS" | wc -l | tr -d ' ') skills)"
+    else
+        print_warning "assets/skills/ not found — .app will not have bundled skills"
+    fi
+
     # ── macOS Code Signing ──
     # Requires: APPLE_SIGNING_IDENTITY env var (e.g. "Developer ID Application: Your Name (TEAMID)")
     if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
@@ -405,7 +426,12 @@ if [ "$GOOS" = "windows" ]; then
     fi
 fi
 
-# Step 8: Print build results
+# Step 8: Clean up build artifacts
+print_step "Cleaning up build artifacts..."
+rm -rf "$PROJECT_ROOT/server/internal/skill/embedded/skills"
+print_step "Cleaned server/internal/skill/embedded/skills (build artifact)"
+
+# Step 9: Print build results
 echo ""
 echo "=========================================="
 echo "Build Complete!"

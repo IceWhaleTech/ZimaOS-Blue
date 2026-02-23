@@ -3,8 +3,10 @@ import { onMounted } from 'vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useEventStream } from '@/composables/useEventStream'
+import { useWebPush } from '@/composables/useWebPush'
 
 const { connect: connectEventStream } = useEventStream()
+const { subscribe: subscribeWebPush } = useWebPush()
 
 // Show window after content loads (prevents startup flash on Tauri)
 onMounted(async () => {
@@ -17,10 +19,8 @@ onMounted(async () => {
     }
   }
 
-  // Request desktop notification permission
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission()
-  }
+  // Subscribe to Web Push notifications (also requests permission)
+  subscribeWebPush().catch(() => {})
 
   // Connect to SSE event stream for real-time updates
   connectEventStream()

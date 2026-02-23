@@ -3,6 +3,7 @@ package mediagen
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -11,6 +12,22 @@ import (
 // ImageGenerateTool implements tools.Tool for LLM-driven image generation.
 type ImageGenerateTool struct {
 	manager *Manager
+}
+
+// availableImageModels returns a comma-separated list of image model IDs
+// from currently registered providers. Falls back to a static list.
+func (t *ImageGenerateTool) availableImageModels() string {
+	models := t.manager.Models()
+	var names []string
+	for _, m := range models {
+		if m.Type == MediaTypeImage {
+			names = append(names, m.ID)
+		}
+	}
+	if len(names) == 0 {
+		return "dall-e-3, nano-banana-pro, qwen-image-max, midjourney, gemini-2.0-flash-exp-image-generation"
+	}
+	return strings.Join(names, ", ")
 }
 
 // NewImageGenerateTool creates a new image generation tool.
@@ -22,7 +39,7 @@ func NewImageGenerateTool(manager *Manager) *ImageGenerateTool {
 func (t *ImageGenerateTool) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
 		Name:        "image_generate",
-		Description: "Generate images from text descriptions. Supports multiple providers: Gemini, Qwen Image (DashScope), DALL-E (MuleRouter). Returns URLs of generated images.",
+		Description: "Generate images from text descriptions. Default model: nano-banana-pro (recommended). IMPORTANT: Image generation takes 15-60 seconds — do NOT call this tool multiple times for the same request. If the result shows status 'processing', tell the user to wait. Returns URLs of generated images saved to the media gallery.",
 		Icon:        "image",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -37,11 +54,19 @@ func (t *ImageGenerateTool) Definition() tools.ToolDefinition {
 				},
 				"model": map[string]interface{}{
 					"type":        "string",
-					"description": "Model to use. Options: gemini-2.0-flash-exp-image-generation, qwen-image-max, dall-e-3, wanx-v1",
+					"description": "Model to use (default: nano-banana-pro). Available: " + t.availableImageModels(),
 				},
 				"size": map[string]interface{}{
 					"type":        "string",
-					"description": "Image size (e.g., '1024x1024', '1024x1792', '1792x1024')",
+					"description": "Image size (e.g., '1024x1024', '1024x1792', '1792x1024'). For nano-banana-pro, this is auto-converted to aspect_ratio.",
+				},
+				"aspect_ratio": map[string]interface{}{
+					"type":        "string",
+					"description": "Aspect ratio for nano-banana-pro (e.g., '1:1', '16:9', '9:16', '4:3', '3:4', '5:4', '4:5'). Takes precedence over size.",
+				},
+				"resolution": map[string]interface{}{
+					"type":        "string",
+					"description": "Resolution for nano-banana-pro: '1K', '2K', or '4K' (default: '2K')",
 				},
 				"n": map[string]interface{}{
 					"type":        "number",
@@ -68,7 +93,10 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	if v, ok := args["prompt"].(string); ok {
 		req.Prompt = v
 	} else {
-		return nil, fmt.Errorf("prompt is required")
+		return map[string]interface{}{
+			"status":  "error",
+			"message": "prompt is required",
+		}, nil
 	}
 	if v, ok := args["negative_prompt"].(string); ok {
 		req.NegativePrompt = v
@@ -88,22 +116,57 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	if v, ok := args["style"].(string); ok {
 		req.Style = v
 	}
-
-	task, err := t.manager.Generate(ctx, req)
-	if err != nil {
-		return nil, err
+	if v, ok := args["aspect_ratio"].(string); ok {
+		if req.Extra == nil {
+			req.Extra = make(map[string]any)
+		}
+		req.Extra["aspect_ratio"] = v
+	}
+	if v, ok := args["resolution"].(string); ok {
+		if req.Extra == nil {
+			req.Extra = make(map[string]any)
+		}
+		req.Extra["resolution"] = v
 	}
 
-	// Wait for completion (with timeout)
-	waitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	start := time.Now()
+	task, err := t.manager.Generate(ctx, req)
+	if err != nil {
+		return map[string]interface{}{
+			"status":  "error",
+			"message": fmt.Sprintf("Failed to start image generation: %s. Please check that a media provider is configured and enabled.", err.Error()),
+		}, nil
+	}
+
+	// Wait for completion — image generation typically takes 15-60s.
+	// Use a generous timeout to avoid premature cancellation.
+	waitCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	task, err = t.manager.WaitForTask(waitCtx, task.ID)
+	elapsed := time.Since(start).Round(time.Millisecond)
+
 	if err != nil {
+		taskID := ""
+		if task != nil {
+			taskID = task.ID
+		}
 		return map[string]interface{}{
-			"error":   err.Error(),
-			"task_id": task.ID,
-			"status":  string(task.Status),
+			"status":     "failed",
+			"message":    fmt.Sprintf("Image generation failed after %s: %s. The task may still be running in the background.", elapsed, err.Error()),
+			"task_id":    taskID,
+			"elapsed_ms": elapsed.Milliseconds(),
+		}, nil
+	}
+
+	// WaitForTask may return a still-processing task on context timeout (nil error).
+	// Tell the LLM to inform the user and NOT retry.
+	if task.Status != TaskStatusSucceeded {
+		return map[string]interface{}{
+			"status":     "processing",
+			"message":    fmt.Sprintf("Image generation is still in progress (waited %s). This is normal — it can take 30-120 seconds. The image will appear automatically when ready. Do NOT call image_generate again for this request.", elapsed),
+			"task_id":    task.ID,
+			"elapsed_ms": elapsed.Milliseconds(),
 		}, nil
 	}
 
@@ -114,6 +177,9 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 			img := map[string]interface{}{
 				"url": r.URL,
 			}
+			if r.ThumbnailURL != "" {
+				img["thumbnail_url"] = r.ThumbnailURL
+			}
 			if r.RevisedPrompt != "" {
 				img["revised_prompt"] = r.RevisedPrompt
 			}
@@ -122,7 +188,9 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	}
 
 	return map[string]interface{}{
-		"images": images,
+		"status":     "success",
+		"images":     images,
+		"elapsed_ms": elapsed.Milliseconds(),
 	}, nil
 }
 

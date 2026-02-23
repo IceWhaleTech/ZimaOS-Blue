@@ -147,12 +147,20 @@ function stripInterruptedMarker(content: string): { content: string; interrupted
 }
 
 // Render segment text with [Response interrupted] handling
+// Uses a simple cache to avoid re-running renderMarkdown on unchanged text
+const _segmentHtmlCache = new Map<string, string>()
+
 function renderSegmentHtml(text: string): string {
+  const cached = _segmentHtmlCache.get(text)
+  if (cached !== undefined) return cached
   const { content, interrupted } = stripInterruptedMarker(text)
   let html = renderMarkdown(content)
   if (interrupted) {
     html += interruptedIndicatorHtml.value
   }
+  // Keep cache bounded
+  if (_segmentHtmlCache.size > 50) _segmentHtmlCache.clear()
+  _segmentHtmlCache.set(text, html)
   return html
 }
 
@@ -1040,21 +1048,34 @@ async function handleMobileDelete() {
                 <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
               </div>
             </div>
+            <!-- Waiting timer card (>3s with no content) -->
+            <div v-if="showWaitingTimer" class="waiting-card my-3 -mx-1">
+              <div class="waiting-card-inner">
+                <div class="waiting-card-header">
+                  <svg class="waiting-card-spinner" width="20" height="20" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" opacity="0.15" />
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="url(#waitGrad)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40 23" />
+                    <defs>
+                      <linearGradient id="waitGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#818cf8" />
+                        <stop offset="100%" stop-color="#c084fc" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <span class="waiting-card-title">{{ t('chat.waitingThinking', 'Thinking...') }}</span>
+                  <span class="waiting-card-timer tabular-nums">{{ waitingElapsed }}s</span>
+                </div>
+                <div class="waiting-card-bar">
+                  <div class="waiting-card-bar-fill" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Streaming indicator -->
-        <div v-if="isStreaming && isAssistant && !chatStore.toolExecuting" class="streaming-indicator mt-2">
-          <!-- Waiting timer (>3s with no content) -->
-          <div v-if="showWaitingTimer" class="waiting-timer-pill">
-            <svg class="waiting-timer-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span class="waiting-timer-value tabular-nums">{{ waitingElapsed }}s</span>
-          </div>
-          <!-- Default bouncing dots -->
-          <span v-else class="inline-flex gap-1">
+        <div v-if="isStreaming && isAssistant && !chatStore.toolExecuting && !showWaitingTimer" class="streaming-indicator mt-2">
+          <span class="inline-flex gap-1">
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms" />
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 150ms" />
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 300ms" />
@@ -1514,40 +1535,96 @@ async function handleMobileDelete() {
 }
 
 /* Waiting timer pill — appears after 3s of no response */
-.waiting-timer-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 0.75rem;
+/* Waiting timer card */
+.waiting-card {
   animation: waiting-fade-in 0.3s ease;
 }
 
-:root.dark .waiting-timer-pill,
-[data-theme="dark"] .waiting-timer-pill {
-  background: #1e293b;
-  color: #94a3b8;
+.waiting-card-inner {
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(135deg, #818cf8, #c084fc, #f472b6) border-box;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 1px 3px rgba(129, 140, 248, 0.12);
 }
 
-.waiting-timer-icon {
-  opacity: 0.7;
-  animation: waiting-pulse 2s ease-in-out infinite;
+:root.dark .waiting-card-inner,
+[data-theme="dark"] .waiting-card-inner {
+  background:
+    linear-gradient(#1e293b, #1e293b) padding-box,
+    linear-gradient(135deg, #818cf8, #c084fc, #f472b6) border-box;
+  box-shadow: 0 1px 6px rgba(129, 140, 248, 0.15);
 }
 
-.waiting-timer-value {
+.waiting-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.waiting-card-spinner {
+  animation: waiting-spin 1.2s linear infinite;
+  color: #818cf8;
+  flex-shrink: 0;
+}
+
+.waiting-card-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #6366f1;
+  flex: 1;
+}
+
+:root.dark .waiting-card-title,
+[data-theme="dark"] .waiting-card-title {
+  color: #a5b4fc;
+}
+
+.waiting-card-timer {
+  font-size: 0.75rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: #a78bfa;
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.waiting-card-bar {
+  margin-top: 0.5rem;
+  height: 3px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+:root.dark .waiting-card-bar,
+[data-theme="dark"] .waiting-card-bar {
+  background: #334155;
+}
+
+.waiting-card-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #818cf8, #c084fc, #f472b6);
+  animation: waiting-bar-slide 2s ease-in-out infinite;
+  width: 40%;
+}
+
+@keyframes waiting-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes waiting-bar-slide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(150%); }
+  100% { transform: translateX(-100%); }
 }
 
 @keyframes waiting-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes waiting-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
 }
 </style>

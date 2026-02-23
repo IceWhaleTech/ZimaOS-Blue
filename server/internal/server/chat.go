@@ -933,6 +933,17 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed")
 			return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
 		}
+
+		// Pin provider+model after first successful round with tool calls
+		if imRound == 0 && len(resp.Message.ToolCalls) > 0 {
+			if resp.Model != "" {
+				req.Model = resp.Model
+			}
+			if resp.ProviderID != "" {
+				ctx = proxy.WithPinnedProvider(ctx, resp.ProviderID)
+			}
+		}
+
 		if len(resp.Message.ToolCalls) == 0 {
 			break
 		}
@@ -987,7 +998,7 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string) st
 	var sb strings.Builder
 	sb.WriteString("Relevant memories about the user:\n")
 	for _, r := range results {
-		if r.CombinedScore < 0.3 || r.Chunk.Content == "" {
+		if r.Score < 0.3 || r.Chunk.Content == "" {
 			continue
 		}
 		sb.WriteString("- ")
@@ -1397,10 +1408,17 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	defer putMessageSlice(llmMessagesPtr)
 	llmMessages := *llmMessagesPtr
 	for _, msg := range messages {
-		llmMessages = append(llmMessages, llm.Message{
-			Role:    llm.Role(msg.Role),
-			Content: msg.Content,
-		})
+		m := llm.Message{
+			Role:       llm.Role(msg.Role),
+			Content:    msg.Content,
+			ToolCallID: msg.ToolCallID,
+		}
+		for _, tc := range msg.ToolCalls {
+			m.ToolCalls = append(m.ToolCalls, llm.ToolCall{
+				ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments,
+			})
+		}
+		llmMessages = append(llmMessages, m)
 	}
 
 	// Apply context compaction if needed
@@ -1462,11 +1480,30 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	toolCtx = tools.WithUserID(toolCtx, h.getUserID(c))
 
+	// llmCtx is used for LLM calls — enriched with pinned provider after first round
+	llmCtx := c.Request().Context()
+
 	for round := 0; round < maxToolRounds; round++ {
-		resp, err = h.chatOnce(c.Request().Context(), chatReq)
+		resp, err = h.chatOnce(llmCtx, chatReq)
 		if err != nil || resp == nil {
 			break
 		}
+
+		// Pin provider+model after first successful round with tool calls
+		// so subsequent rounds use the same provider (sticky routing)
+		if round == 0 && len(resp.Message.ToolCalls) > 0 {
+			if resp.Model != "" {
+				chatReq.Model = resp.Model
+			}
+			if resp.ProviderID != "" {
+				llmCtx = proxy.WithPinnedProvider(llmCtx, resp.ProviderID)
+				logger.Debug().
+					Str("pinned_provider", resp.ProviderID).
+					Str("pinned_model", resp.Model).
+					Msg("[chat] pinned provider+model for tool rounds")
+			}
+		}
+
 		// No tool calls — done
 		if len(resp.Message.ToolCalls) == 0 {
 			break
@@ -1855,10 +1892,17 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	defer putMessageSlice(llmMessagesPtr)
 	llmMessages := *llmMessagesPtr
 	for _, msg := range messages {
-		llmMessages = append(llmMessages, llm.Message{
-			Role:    llm.Role(msg.Role),
-			Content: msg.Content,
-		})
+		m := llm.Message{
+			Role:       llm.Role(msg.Role),
+			Content:    msg.Content,
+			ToolCallID: msg.ToolCallID,
+		}
+		for _, tc := range msg.ToolCalls {
+			m.ToolCalls = append(m.ToolCalls, llm.ToolCall{
+				ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments,
+			})
+		}
+		llmMessages = append(llmMessages, m)
 	}
 
 	// Add attachments to the last user message (current request) as ContentParts
@@ -1986,6 +2030,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var firstChunkTime time.Time
 	var actualModel string    // Track actual model from response
 	var actualProvider string // Track actual provider from response
+	var actualProviderID string // Track actual provider ID for sticky routing
 	userID := h.getUserID(c)
 
 	// Pre-allocate buffer for SSE writes to reduce allocations
@@ -2042,6 +2087,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		if chunk.Provider != "" && actualProvider == "" {
 			actualProvider = chunk.Provider
+		}
+		if chunk.ProviderID != "" && actualProviderID == "" {
+			actualProviderID = chunk.ProviderID
 		}
 
 		// Collect tool calls from stream chunks (merge partial arguments)
@@ -2285,6 +2333,21 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 	} else {
 		err = fmt.Errorf("no proxy bridge configured")
+	}
+
+	// Pin provider+model after first successful round with tool calls
+	// so subsequent rounds use the same provider (sticky routing)
+	if err == nil && toolRound == 0 && len(streamToolCalls) > 0 {
+		if actualModel != "" {
+			chatReq.Model = actualModel
+		}
+		if actualProviderID != "" {
+			ctx = proxy.WithPinnedProvider(ctx, actualProviderID)
+			logger.Debug().
+				Str("pinned_provider_id", actualProviderID).
+				Str("pinned_model", actualModel).
+				Msg("[chat] stream: pinned provider+model for tool rounds")
+		}
 	}
 
 	// If stream had tool calls, execute them and loop back

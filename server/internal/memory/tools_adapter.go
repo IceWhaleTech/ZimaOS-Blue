@@ -2,15 +2,13 @@ package memory
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // ToolsAdapter adapts UnifiedMemoryService to tools.MemoryServiceInterface.
 type ToolsAdapter struct {
-	service             *UnifiedMemoryService
-	progressiveSearcher *ProgressiveSearcher
+	service *UnifiedMemoryService
 }
 
 // NewToolsAdapter creates a new tools adapter for the memory service.
@@ -35,9 +33,8 @@ func (a *ToolsAdapter) Recall(ctx context.Context, query string, limit int) ([]t
 				CreatedAt: r.Chunk.CreatedAt,
 				UpdatedAt: r.Chunk.UpdatedAt,
 			},
-			VectorScore:   r.VectorScore,
 			KeywordScore:  r.KeywordScore,
-			CombinedScore: r.CombinedScore,
+			CombinedScore: r.Score,
 			MatchTypes:    r.MatchTypes,
 		}
 	}
@@ -45,7 +42,7 @@ func (a *ToolsAdapter) Recall(ctx context.Context, query string, limit int) ([]t
 	return toolsResults, nil
 }
 
-// Get retrieves a memory by ID and returns it in the tools interface format.
+// Get retrieves a memory by ID.
 func (a *ToolsAdapter) Get(ctx context.Context, id string) (*tools.MemoryChunkResult, error) {
 	chunk, err := a.service.Get(ctx, id)
 	if err != nil {
@@ -61,7 +58,7 @@ func (a *ToolsAdapter) Get(ctx context.Context, id string) (*tools.MemoryChunkRe
 	}, nil
 }
 
-// Stats returns memory statistics in the tools interface format.
+// Stats returns memory statistics.
 func (a *ToolsAdapter) Stats(ctx context.Context) (*tools.MemoryStatsResult, error) {
 	stats, err := a.service.Stats(ctx)
 	if err != nil {
@@ -82,7 +79,7 @@ func (a *ToolsAdapter) GetActiveBackend() string {
 	return a.service.GetActiveBackend()
 }
 
-// Remember stores a new memory and returns it in the tools interface format.
+// Remember stores a new memory.
 func (a *ToolsAdapter) Remember(ctx context.Context, content string, tags []string) (*tools.MemoryChunkResult, error) {
 	chunk, err := a.service.Remember(ctx, content, tags)
 	if err != nil {
@@ -103,29 +100,5 @@ func (a *ToolsAdapter) Forget(ctx context.Context, id string) error {
 	return a.service.Forget(ctx, id)
 }
 
-// SetProgressiveSearcher sets the progressive searcher for the adapter.
-func (a *ToolsAdapter) SetProgressiveSearcher(ps *ProgressiveSearcher) {
-	a.progressiveSearcher = ps
-}
-
-// ProgressiveSearch implements tools.ProgressiveSearchInterface.
-func (a *ToolsAdapter) ProgressiveSearch(ctx context.Context, query string, depth int, ids []string, limit int) (interface{}, error) {
-	if a.progressiveSearcher == nil {
-		return nil, fmt.Errorf("progressive search not available")
-	}
-
-	req := ProgressiveSearchRequest{
-		Query: query,
-		Depth: SearchDepth(depth),
-		IDs:   ids,
-		Limit: limit,
-	}
-
-	return a.progressiveSearcher.Search(ctx, req)
-}
-
 // Ensure ToolsAdapter implements tools.MemoryServiceInterface
 var _ tools.MemoryServiceInterface = (*ToolsAdapter)(nil)
-
-// Ensure ToolsAdapter implements tools.ProgressiveSearchInterface
-var _ tools.ProgressiveSearchInterface = (*ToolsAdapter)(nil)

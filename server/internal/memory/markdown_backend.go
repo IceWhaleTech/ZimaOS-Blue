@@ -102,22 +102,22 @@ func (b *PureMarkdownBackend) appendToDaily(path string, content string, tags []
 }
 
 // Recall searches memories using keyword matching.
-func (b *PureMarkdownBackend) Recall(ctx context.Context, query string, limit int) ([]HybridSearchResult, error) {
+func (b *PureMarkdownBackend) Recall(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	mdResults, err := b.store.Search(ctx, query, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]HybridSearchResult, len(mdResults))
+	results := make([]SearchResult, len(mdResults))
 	for i, r := range mdResults {
-		results[i] = HybridSearchResult{
+		results[i] = SearchResult{
 			Chunk: MemoryChunk{
 				ID:      r.FilePath,
 				Content: r.Content,
 			},
-			CombinedScore: r.Score,
-			KeywordScore:  r.Score,
-			MatchTypes:    []string{r.MatchType},
+			Score:        r.Score,
+			KeywordScore: r.Score,
+			MatchTypes:   []string{r.MatchType},
 		}
 	}
 	return results, nil

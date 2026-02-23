@@ -11,7 +11,7 @@ func mockToolDefs() []ToolDefinition {
 		{Name: "weather", Description: "Get current weather information for a location including temperature, humidity, and conditions."},
 		{Name: "datetime", Description: "Get current date, time, timezone information, and format dates."},
 		{Name: "notes", Description: "Create, read, update, search, and delete notes with tags."},
-		{Name: "reminders", Description: "Create, list, and manage reminders with time-based triggers."},
+		{Name: "push_notification", Description: "Send push notifications and manage scheduled alerts."},
 		{Name: "tasks", Description: "Create, manage, and track tasks with priorities and status."},
 		{Name: "translate", Description: "Translate text between languages."},
 		{Name: "search", Description: "Search through text content using contains, regex, or fuzzy matching."},
@@ -89,8 +89,8 @@ func TestToolSelector_ReminderQuery(t *testing.T) {
 
 	selected := ts.Select("提醒我明天下午3点开会", defs)
 
-	if !containsToolName(selected, "reminders") {
-		t.Errorf("expected reminders for reminder query, got: %v", toolNames(selected))
+	if !containsToolName(selected, "push_notification") {
+		t.Errorf("expected push_notification for reminder query, got: %v", toolNames(selected))
 	}
 	t.Logf("Reminder query selected %d tools: %v", len(selected), toolNames(selected))
 }

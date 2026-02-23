@@ -21,6 +21,8 @@ CLAUDE_CODE_DIR := $(SERVER_DIR)/internal/claudecode/bin
 DIST_DIR := $(PROJECT_ROOT)/dist
 TAURI_DIR := $(PROJECT_ROOT)/tauri-app
 TAURI_LIB_DIR := $(TAURI_DIR)/src-tauri/lib
+SKILLS_SRC := $(PROJECT_ROOT)/assets/skills
+SKILLS_EMBED := $(SERVER_DIR)/internal/skill/embedded/skills
 
 # Claude Code CLI embedding options (default: no embedding, download on first use)
 EMBED_CLAUDE_CODE ?= false
@@ -38,12 +40,12 @@ all: build
 
 # Build everything (frontend + backend)
 # Claude Code CLI is downloaded on first use by default
-build: build-frontend copy-frontend prepare-claude-code-dir build-backend
+build: build-frontend copy-frontend copy-skills prepare-claude-code-dir build-backend
 	@echo "Build complete! Binary at $(DIST_DIR)/zimaos-blue"
 
 # Build with embedded Claude Code CLI
 build-embedded: EMBED_CLAUDE_CODE=true
-build-embedded: build-frontend copy-frontend download-claude-code build-backend
+build-embedded: build-frontend copy-frontend copy-skills download-claude-code build-backend
 	@echo "Build complete with embedded Claude Code CLI! Binary at $(DIST_DIR)/zimaos-blue"
 
 # Build frontend only
@@ -59,6 +61,13 @@ copy-frontend:
 	@cd $(WEB_DIR)/dist && find . -type f ! -name '*.map' -exec cp --parents {} $(EMBED_DIR)/ \; 2>/dev/null || \
 		cd $(WEB_DIR)/dist && rsync -av --exclude='*.map' . $(EMBED_DIR)/ 2>/dev/null || \
 		(cd $(WEB_DIR)/dist && for f in $$(find . -type f ! -name '*.map'); do mkdir -p $(EMBED_DIR)/$$(dirname $$f) && cp $$f $(EMBED_DIR)/$$f; done)
+
+# Copy canonical skills from assets/skills/ to server/internal/skill/embedded/skills/ for go:embed
+copy-skills:
+	@echo "Copying skills to server/internal/skill/embedded/skills..."
+	@rm -rf $(SKILLS_EMBED)
+	@mkdir -p $(SKILLS_EMBED)
+	@cp -r $(SKILLS_SRC)/* $(SKILLS_EMBED)/
 
 # Prepare Claude Code CLI directory (create .gitkeep for go:embed)
 prepare-claude-code-dir:
@@ -99,33 +108,33 @@ dev:
 	@echo "Run 'cd server && go run -tags dev ./cmd/blue' in another terminal"
 
 # Cross-compilation targets
-build-linux: build-frontend copy-frontend prepare-claude-code-dir
+build-linux: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building for Linux (amd64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
 
-build-linux-arm64: build-frontend copy-frontend prepare-claude-code-dir
+build-linux-arm64: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building for Linux (arm64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
 
-build-darwin: build-frontend copy-frontend prepare-claude-code-dir
+build-darwin: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building for macOS (amd64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
 
-build-darwin-arm64: build-frontend copy-frontend prepare-claude-code-dir
+build-darwin-arm64: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
 
-build-windows: build-frontend copy-frontend prepare-claude-code-dir
+build-windows: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building for Windows (amd64)..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 
 # Build for all platforms
-build-all: build-frontend copy-frontend prepare-claude-code-dir
+build-all: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building for all platforms..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
@@ -139,7 +148,7 @@ build-all: build-frontend copy-frontend prepare-claude-code-dir
 # Build for all platforms with embedded Claude Code CLI
 build-all-embedded: EMBED_CLAUDE_CODE=true
 build-all-embedded: EMBED_ALL_PLATFORMS=true
-build-all-embedded: build-frontend copy-frontend download-claude-code
+build-all-embedded: build-frontend copy-frontend copy-skills download-claude-code
 	@echo "Building for all platforms with embedded Claude Code CLI..."
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
@@ -155,6 +164,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(DIST_DIR)
 	@rm -rf $(EMBED_DIR)
+	@rm -rf $(SKILLS_EMBED)
 	@rm -rf $(WEB_DIR)/dist
 	@rm -rf $(WEB_DIR)/node_modules/.cache
 	@rm -f $(CLAUDE_CODE_DIR)/claude-*
@@ -170,12 +180,12 @@ release-check:
 	@goreleaser check
 
 # Build snapshot release (for testing, no publish)
-release-snapshot: build-frontend copy-frontend prepare-claude-code-dir
+release-snapshot: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building snapshot release..."
 	@goreleaser release --snapshot --clean
 
 # Build and publish release (requires GITHUB_TOKEN)
-release: build-frontend copy-frontend prepare-claude-code-dir
+release: build-frontend copy-frontend copy-skills prepare-claude-code-dir
 	@echo "Building and publishing release..."
 	@goreleaser release --clean
 
@@ -184,7 +194,7 @@ TAURI_DIR := $(PROJECT_ROOT)/tauri-app
 TAURI_BIN_DIR := $(TAURI_DIR)/src-tauri/bin
 
 # Build Go sidecar for Tauri (current platform)
-tauri-sidecar: build-frontend copy-frontend
+tauri-sidecar: build-frontend copy-frontend copy-skills
 	@echo "Building Go sidecar for Tauri..."
 	@mkdir -p $(TAURI_BIN_DIR)
 ifeq ($(shell uname -s),Darwin)
@@ -236,7 +246,7 @@ tauri-clean:
 	@echo "Tauri clean complete!"
 
 # Build Tauri app using the full build script (recommended)
-tauri-package: build-frontend copy-frontend
+tauri-package: build-frontend copy-frontend copy-skills
 	@echo "Building Tauri package..."
 	@chmod +x $(TAURI_DIR)/build.sh
 	@$(TAURI_DIR)/build.sh
@@ -368,7 +378,7 @@ endif
 	@ls -lh $(TAURI_LIB_DIR)/libblue.a
 
 # Build Tauri app for macOS with CGO library (no sidecar)
-tauri-build-macos-cgo: build-frontend copy-frontend build-blue-lib-macos
+tauri-build-macos-cgo: build-frontend copy-frontend copy-skills build-blue-lib-macos
 	@echo "Building Tauri app for macOS with CGO library..."
 	@cd $(TAURI_DIR) && npm install && npm run build
 	@echo "macOS app built with embedded Go library"

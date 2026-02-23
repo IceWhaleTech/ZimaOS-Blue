@@ -34,7 +34,7 @@ func NewMediaStorage(baseDir, baseURL string) *MediaStorage {
 
 // EnsureDirs creates the storage directories if they don't exist.
 func (s *MediaStorage) EnsureDirs() error {
-	for _, sub := range []string{"images", "videos"} {
+	for _, sub := range []string{"images", "videos", "thumbnails"} {
 		if err := os.MkdirAll(filepath.Join(s.baseDir, sub), 0755); err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func (s *MediaStorage) Cleanup(maxAge time.Duration) (int, error) {
 	cutoff := time.Now().Add(-maxAge)
 	removed := 0
 
-	for _, subdir := range []string{"images", "videos"} {
+	for _, subdir := range []string{"images", "videos", "thumbnails"} {
 		dir := filepath.Join(s.baseDir, subdir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -127,6 +127,15 @@ func (s *MediaStorage) Cleanup(maxAge time.Duration) (int, error) {
 // ServeHTTP serves stored media files.
 func (s *MediaStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.Dir(s.baseDir)).ServeHTTP(w, r)
+}
+
+// localPathFromURL converts a served URL back to a local file path.
+// e.g., "/api/media/generated/images/abc.png" → "{baseDir}/images/abc.png"
+func (s *MediaStorage) localPathFromURL(servedURL string) string {
+	// Strip the baseURL prefix to get the relative path
+	rel := strings.TrimPrefix(servedURL, s.baseURL)
+	rel = strings.TrimPrefix(rel, "/")
+	return filepath.Join(s.baseDir, rel)
 }
 
 func subdirForType(t MediaType) string {

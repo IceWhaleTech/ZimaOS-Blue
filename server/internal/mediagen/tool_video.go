@@ -3,6 +3,7 @@ package mediagen
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -11,6 +12,22 @@ import (
 // Unlike image generation, video gen returns a task ID immediately since it takes 30-60s.
 type VideoGenerateTool struct {
 	manager *Manager
+}
+
+// availableVideoModels returns a comma-separated list of video model IDs
+// from currently registered providers.
+func (t *VideoGenerateTool) availableVideoModels() string {
+	models := t.manager.Models()
+	var names []string
+	for _, m := range models {
+		if m.Type == MediaTypeVideo {
+			names = append(names, m.ID)
+		}
+	}
+	if len(names) == 0 {
+		return "wan2.6-t2v, wan2.6-i2v, wan2-spark-t2v, midjourney-video"
+	}
+	return strings.Join(names, ", ")
 }
 
 // NewVideoGenerateTool creates a new video generation tool.
@@ -33,7 +50,7 @@ func (t *VideoGenerateTool) Definition() tools.ToolDefinition {
 				},
 				"model": map[string]interface{}{
 					"type":        "string",
-					"description": "Model to use (e.g., 'mr-wan2.6-t2v' for text-to-video)",
+					"description": "Model to use. Available: " + t.availableVideoModels(),
 				},
 				"duration": map[string]interface{}{
 					"type":        "number",
@@ -56,7 +73,10 @@ func (t *VideoGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	if v, ok := args["prompt"].(string); ok {
 		req.Prompt = v
 	} else {
-		return nil, fmt.Errorf("prompt is required")
+		return map[string]interface{}{
+			"status":  "error",
+			"message": "prompt is required",
+		}, nil
 	}
 	if v, ok := args["model"].(string); ok {
 		req.Model = v
@@ -70,12 +90,15 @@ func (t *VideoGenerateTool) Execute(ctx context.Context, args map[string]interfa
 
 	// Default model for video
 	if req.Model == "" {
-		req.Model = "mr-wan2.6-t2v"
+		req.Model = "wan2.6-t2v"
 	}
 
 	task, err := t.manager.Generate(ctx, req)
 	if err != nil {
-		return nil, err
+		return map[string]interface{}{
+			"status":  "error",
+			"message": fmt.Sprintf("Failed to start video generation: %s. Please check that a media provider is configured and enabled.", err.Error()),
+		}, nil
 	}
 
 	return map[string]interface{}{

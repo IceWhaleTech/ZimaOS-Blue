@@ -103,10 +103,9 @@ func TestMemoryTool_Search(t *testing.T) {
 					CreatedAt: now,
 					UpdatedAt: now,
 				},
-				VectorScore:   0.9,
 				KeywordScore:  0.8,
 				CombinedScore: 0.87,
-				MatchTypes:    []string{"vector", "keyword"},
+				MatchTypes:    []string{"keyword"},
 			},
 		},
 		backend: "local",
@@ -135,42 +134,6 @@ func TestMemoryTool_Search(t *testing.T) {
 	}
 	if response["backend"] != "local" {
 		t.Errorf("expected backend 'local', got '%v'", response["backend"])
-	}
-}
-
-func TestMemoryTool_Search_MinScore(t *testing.T) {
-	now := time.Now()
-	mockService := &mockMemoryService{
-		recallResults: []MemorySearchResult{
-			{
-				Chunk:         MemoryChunkResult{ID: "high-score", Content: "High score", CreatedAt: now, UpdatedAt: now},
-				CombinedScore: 0.9,
-			},
-			{
-				Chunk:         MemoryChunkResult{ID: "low-score", Content: "Low score", CreatedAt: now, UpdatedAt: now},
-				CombinedScore: 0.3,
-			},
-		},
-		backend: "local",
-	}
-
-	tool := NewMemoryTool(mockService)
-
-	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action":    "search",
-		"query":     "test",
-		"min_score": float64(0.5),
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var response map[string]interface{}
-	json.Unmarshal([]byte(result.(string)), &response)
-
-	if response["count"].(float64) != 1 {
-		t.Errorf("expected 1 result after min_score filter, got %v", response["count"])
 	}
 }
 

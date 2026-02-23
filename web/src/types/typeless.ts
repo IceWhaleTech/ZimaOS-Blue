@@ -35,6 +35,7 @@ export type TypelessCardType =
   | 'mermaid'
   | 'search'
   | 'ui-review'
+  | 'media-generate'
 
 export interface TypelessCardBase {
   type: TypelessCardType
@@ -556,6 +557,17 @@ export interface TypelessCardUIReview extends TypelessCardBase {
   actions?: ActionButton[]
 }
 
+// Media generation card — shows placeholder during generation, image/video on completion
+export interface TypelessCardMediaGenerate extends TypelessCardBase {
+  type: 'media-generate'
+  media_type: 'image' | 'video'
+  status: 'generating' | 'success' | 'error'
+  task_id?: string
+  message?: string
+  elapsed_ms?: number
+  images?: GalleryImage[]
+}
+
 // Union type for all card types
 export type TypelessCard =
   | TypelessCardInfo
@@ -590,6 +602,7 @@ export type TypelessCard =
   | TypelessCardMermaid
   | TypelessCardSearch
   | TypelessCardUIReview
+  | TypelessCardMediaGenerate
 
 // Card parsing result
 export interface ParsedContent {

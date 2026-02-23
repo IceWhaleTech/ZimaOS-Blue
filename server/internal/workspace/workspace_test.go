@@ -17,7 +17,7 @@ func TestEnsureWorkspace(t *testing.T) {
 
 	// All template files should exist
 	for name := range getTemplates("en").templateMap() {
-		path := filepath.Join(dir, name)
+		path := mgr.resolveFilePath(name)
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("expected %s to exist: %v", name, err)
 		}

@@ -28,6 +28,11 @@ type CronService interface {
 	DeleteJob(id string) error
 }
 
+// WebPushSender sends Web Push notifications to subscribed browsers.
+type WebPushSender interface {
+	SendToUser(ctx context.Context, userID, title, body string) error
+}
+
 // Service coordinates reminder persistence, cron scheduling, and notification delivery.
 type Service struct {
 	store     *Store
@@ -37,6 +42,7 @@ type Service struct {
 	injector  MessageInjector
 	publisher EventPublisher
 	notifier  Notifier
+	webpush   WebPushSender
 }
 
 // NewService creates a new reminder service.
@@ -76,6 +82,13 @@ func (s *Service) SetNotifier(n Notifier) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.notifier = n
+}
+
+// SetWebPushSender wires the Web Push sender.
+func (s *Service) SetWebPushSender(wp WebPushSender) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.webpush = wp
 }
 
 // Add creates a new reminder with cron scheduling.
@@ -244,13 +257,14 @@ func (s *Service) fireReminder(ctx context.Context, r *Reminder) {
 	inj := s.injector
 	pub := s.publisher
 	notif := s.notifier
+	wp := s.webpush
 	c := s.cron
 	s.mu.RUnlock()
 
 	// Inject message into conversation
 	var conversationID string
 	if inj != nil {
-		content := fmt.Sprintf("🔔 Reminder: %s", r.Message)
+		content := fmt.Sprintf("⏰ Reminder: %s", r.Message)
 		var err error
 		conversationID, err = inj.InjectReminderMessage(ctx, r.OwnerID, r.SessionID, content)
 		if err != nil {
@@ -275,6 +289,13 @@ func (s *Service) fireReminder(ctx context.Context, r *Reminder) {
 	if notif != nil {
 		if err := notif.Notify(ctx, "Reminder", r.Message); err != nil {
 			s.logger.Warn("native notification failed", zap.String("id", r.ID), zap.Error(err))
+		}
+	}
+
+	// Web Push notification (best-effort, for closed browser tabs)
+	if wp != nil {
+		if err := wp.SendToUser(ctx, r.OwnerID, "⏰ Reminder", r.Message); err != nil {
+			s.logger.Warn("web push failed", zap.String("id", r.ID), zap.Error(err))
 		}
 	}
 

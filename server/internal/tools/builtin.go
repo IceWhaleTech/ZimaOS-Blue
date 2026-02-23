@@ -560,8 +560,6 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewFileWriteTool(nil, 0))
 	// Web search with default settings (DuckDuckGo)
 	registry.Register(NewWebSearchTool(WebSearchConfig{}))
-	// UI reviewer (browser + VLM dependencies injected later)
-	registry.Register(NewUIReviewerTool())
 }
 
 // RegisterBuiltinToolsWithConfig registers all built-in tools with custom configuration.
@@ -572,8 +570,6 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
 	registry.Register(NewWebSearchTool(webSearchConfig))
-	// UI reviewer (browser + VLM dependencies injected later)
-	registry.Register(NewUIReviewerTool())
 }
 
 // GetUIReviewerTool retrieves the UIReviewerTool from the registry for dependency injection.
@@ -597,11 +593,6 @@ func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterfac
 	registry.Register(NewMemoryTool(memoryService))
 }
 
-// SetProgressiveSearchTool is a no-op kept for backward compatibility.
-// Progressive search is now integrated into the unified memory tool.
-// Deprecated: progressive search is handled via memory tool's progressive_search action.
-func SetProgressiveSearchTool(tool Tool) {}
-
 // MemoryServiceInterface defines the interface for memory service used by tools.
 // This avoids circular imports with the memory package.
 type MemoryServiceInterface interface {
@@ -616,7 +607,6 @@ type MemoryServiceInterface interface {
 // MemorySearchResult represents a search result from memory service.
 type MemorySearchResult struct {
 	Chunk         MemoryChunkResult
-	VectorScore   float32
 	KeywordScore  float32
 	CombinedScore float32
 	MatchTypes    []string

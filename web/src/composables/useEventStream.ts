@@ -3,6 +3,21 @@ import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
 import { ensureFreshToken } from '@/api/client'
 
+// Global event listeners — components can subscribe to specific event types.
+type EventCallback = (data: any) => void
+const listeners = new Map<string, Set<EventCallback>>()
+
+/** Register a callback for a specific SSE event type (e.g. "skill.install.progress"). */
+export function onSSEEvent(type: string, cb: EventCallback) {
+  if (!listeners.has(type)) listeners.set(type, new Set())
+  listeners.get(type)!.add(cb)
+}
+
+/** Unregister a previously registered callback. */
+export function offSSEEvent(type: string, cb: EventCallback) {
+  listeners.get(type)?.delete(cb)
+}
+
 /**
  * useEventStream connects to the SSE event endpoint and dispatches
  * incoming events to the appropriate stores (chat refresh, toast, desktop notification).
@@ -90,6 +105,14 @@ export function useEventStream() {
   }
 
   function handleEvent(type: string, data: any) {
+    // Dispatch to global listeners first
+    const cbs = listeners.get(type)
+    if (cbs) {
+      for (const cb of cbs) {
+        try { cb(data) } catch { /* ignore listener errors */ }
+      }
+    }
+
     const chatStore = useChatStore()
     const notificationStore = useNotificationStore()
 

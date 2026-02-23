@@ -67,7 +67,7 @@ func (h *UserProviderHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:name/test", h.Test)
 }
 
-func getUserIDFromContext(c echo.Context) string {
+func getUserIDStrict(c echo.Context) string {
 	if claims := auth.GetUserFromContext(c); claims != nil {
 		return claims.UserID
 	}
@@ -76,7 +76,7 @@ func getUserIDFromContext(c echo.Context) string {
 
 // List returns all provider configs for the current user, merged with available providers.
 func (h *UserProviderHandler) List(c echo.Context) error {
-	userID := getUserIDFromContext(c)
+	userID := getUserIDStrict(c)
 	if userID == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
@@ -135,7 +135,7 @@ type UserProviderConfigResponse struct {
 
 // Get returns a single provider config for the current user.
 func (h *UserProviderHandler) Get(c echo.Context) error {
-	userID := getUserIDFromContext(c)
+	userID := getUserIDStrict(c)
 	if userID == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
@@ -176,7 +176,7 @@ type UpsertRequest struct {
 
 // Upsert creates or updates a provider config for the current user.
 func (h *UserProviderHandler) Upsert(c echo.Context) error {
-	userID := getUserIDFromContext(c)
+	userID := getUserIDStrict(c)
 	if userID == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
@@ -232,7 +232,7 @@ func (h *UserProviderHandler) Upsert(c echo.Context) error {
 
 // Delete removes a provider config for the current user.
 func (h *UserProviderHandler) Delete(c echo.Context) error {
-	userID := getUserIDFromContext(c)
+	userID := getUserIDStrict(c)
 	if userID == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
@@ -251,7 +251,7 @@ func (h *UserProviderHandler) Delete(c echo.Context) error {
 
 // Test tests a provider connection using the user's API key.
 func (h *UserProviderHandler) Test(c echo.Context) error {
-	userID := getUserIDFromContext(c)
+	userID := getUserIDStrict(c)
 	if userID == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}

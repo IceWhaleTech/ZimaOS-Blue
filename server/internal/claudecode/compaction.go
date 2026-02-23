@@ -39,7 +39,7 @@ func DefaultCompactionConfig() CompactionConfig {
 	return CompactionConfig{
 		MaxContextTokens: DefaultContextTokens,
 		MaxHistoryShare:  0.5,
-		ReserveTokens:    4096,
+		ReserveTokens:    20000, // system prompt + memory + tools + response headroom
 	}
 }
 
@@ -57,15 +57,120 @@ func NewCompactor(config CompactionConfig, provider llm.Provider) *Compactor {
 	}
 }
 
-// EstimateTokens estimates the number of tokens in a message.
-// This is a rough estimate based on character count.
-func EstimateTokens(msg llm.Message) int {
-	// Rough estimate: ~4 characters per token for English text
-	content := msg.Content
-	if content == "" {
+// countTokensInString estimates tokens using a hybrid heuristic:
+//   - Short ASCII words (≤10 bytes): 1 token each
+//   - Long ASCII words (>10 bytes, e.g. URLs, JSON): ceil(len/4)
+//   - Non-ASCII runes (CJK, emoji): ~1 token each
+//   - ASCII bytes adjacent to non-ASCII: ceil(len/4)
+//
+// Optimized: starts in fast ASCII-only mode, falls back to mixed-mode
+// mid-word only when a high-bit byte is encountered.
+func countTokensInString(s string) int {
+	n := len(s)
+	if n == 0 {
 		return 0
 	}
-	return len(content) / 4
+	count := 0
+	i := 0
+	for i < n {
+		c := s[i]
+		// skip whitespace
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			i++
+			continue
+		}
+		// start of a word — try ASCII fast path
+		start := i
+		for i < n {
+			c = s[i]
+			if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+				break
+			}
+			if c&0x80 != 0 {
+				// hit non-ASCII mid-word: switch to mixed counting for this word
+				asciiBytes := i - start
+				nonASCIIRunes := 0
+				if asciiBytes > 0 {
+					count += (asciiBytes + 3) / 4
+					asciiBytes = 0
+				}
+				for i < n {
+					c = s[i]
+					if c <= ' ' && (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+						break
+					}
+					if c&0x80 == 0 {
+						asciiBytes++
+						i++
+					} else {
+						if asciiBytes > 0 && nonASCIIRunes > 0 {
+							count += (asciiBytes + 3) / 4
+							asciiBytes = 0
+						}
+						i++
+						for i < n && s[i]&0xC0 == 0x80 {
+							i++
+						}
+						nonASCIIRunes++
+					}
+				}
+				count += nonASCIIRunes
+				if asciiBytes > 0 {
+					count += (asciiBytes + 3) / 4
+				}
+				goto nextWord
+			}
+			i++
+		}
+		// pure ASCII word
+		{
+			wordLen := i - start
+			if wordLen > 10 {
+				count += (wordLen + 3) / 4
+			} else {
+				count++
+			}
+		}
+	nextWord:
+	}
+	return count
+}
+
+// EstimateTokens estimates the number of tokens in a message.
+// Uses a hybrid whitespace-split + byte-length heuristic for better accuracy
+// across English, CJK, and mixed content.
+// It accounts for Content, ContentParts (multimodal), and ToolCalls.
+func EstimateTokens(msg llm.Message) int {
+	total := 0
+
+	// Primary content field
+	if msg.Content != "" {
+		total += countTokensInString(msg.Content)
+	}
+
+	// ContentParts (used for multimodal messages where Content is cleared)
+	for _, part := range msg.ContentParts {
+		switch part.Type {
+		case "text":
+			total += countTokensInString(part.Text)
+		case "image":
+			// Images consume ~85 tokens for low-res, ~765 for high-res.
+			// Use a conservative estimate since we can't know the resolution.
+			total += 765
+		}
+	}
+
+	// ToolCalls (assistant requesting tool use)
+	for _, tc := range msg.ToolCalls {
+		total += countTokensInString(tc.Name) + countTokensInString(tc.Arguments) + 10 // +10 for structural overhead
+	}
+
+	// Minimum 4 tokens per message for role/structural overhead
+	if total == 0 && (msg.Role != "" || msg.ToolCallID != "") {
+		total = 4
+	}
+
+	return total
 }
 
 // EstimateMessagesTokens estimates the total tokens in a slice of messages.
@@ -211,6 +316,15 @@ func PruneHistoryForContextShare(messages []llm.Message, maxContextTokens int, m
 	for len(keptMessages) > 0 && EstimateMessagesTokens(keptMessages) > budgetTokens {
 		chunks := SplitMessagesByTokenShare(keptMessages, normalizedParts)
 		if len(chunks) <= 1 {
+			// Single chunk still over budget — drop oldest messages one by one
+			for len(keptMessages) > 1 && EstimateMessagesTokens(keptMessages) > budgetTokens {
+				dropped := keptMessages[0]
+				keptMessages = keptMessages[1:]
+				droppedChunks++
+				droppedCount++
+				droppedTokens += EstimateTokens(dropped)
+				allDroppedMessages = append(allDroppedMessages, dropped)
+			}
 			break
 		}
 
@@ -290,7 +404,13 @@ func (c *Compactor) Summarize(ctx context.Context, messages []llm.Message, previ
 // CompactMessages compacts messages to fit within context limits.
 func (c *Compactor) CompactMessages(ctx context.Context, messages []llm.Message) ([]llm.Message, string, error) {
 	totalTokens := EstimateMessagesTokens(messages)
-	budgetTokens := int(float64(c.config.MaxContextTokens) * c.config.MaxHistoryShare)
+	// Reserve space for system prompt, memory context, tools, and response.
+	// These are injected AFTER compaction, so we must account for them here.
+	reserveTokens := c.config.ReserveTokens
+	if reserveTokens < 4096 {
+		reserveTokens = 4096
+	}
+	budgetTokens := int(float64(c.config.MaxContextTokens)*c.config.MaxHistoryShare) - reserveTokens
 
 	// If within budget, no compaction needed
 	if totalTokens <= budgetTokens {

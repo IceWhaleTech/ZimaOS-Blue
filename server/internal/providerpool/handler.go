@@ -653,10 +653,16 @@ func sanitizeTrialProviders(providers []*Provider) []*Provider {
 
 // AddProvider adds a new custom provider
 func (h *Handler) AddProvider(c echo.Context) error {
-	var provider Provider
-	if err := c.Bind(&provider); err != nil {
+	// Use a wrapper struct to capture the optional api_key string field
+	// that the frontend sends alongside the standard Provider fields.
+	var req struct {
+		Provider
+		APIKeyStr string `json:"api_key"`
+	}
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
+	provider := req.Provider
 
 	// Validate
 	if provider.Name == "" {
@@ -680,6 +686,16 @@ func (h *Handler) AddProvider(c echo.Context) error {
 		provider.Location = ProviderLocationCloud
 	} else if provider.Location != ProviderLocationCloud && provider.Location != ProviderLocationLocal {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
+	}
+
+	// If an api_key string was provided, create an APIKey entry
+	if req.APIKeyStr != "" {
+		provider.APIKeys = append(provider.APIKeys, APIKey{
+			ID:      GenerateID("key"),
+			Key:     req.APIKeyStr,
+			KeyHash: HashAPIKey(req.APIKeyStr),
+			Enabled: true,
+		})
 	}
 
 	if err := h.pool.Registry.Register(&provider); err != nil {
@@ -1099,10 +1115,14 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 func (h *Handler) FetchProviderModels(c echo.Context) error {
 	id := c.Param("id")
 
+	// Bound the fetch so it doesn't hang for minutes on unreachable endpoints
+	fetchCtx, cancel := context.WithTimeout(c.Request().Context(), 30*time.Second)
+	defer cancel()
+
 	// Use singleflight to deduplicate concurrent requests for the same provider
 	key := fmt.Sprintf("fetch_models:%s", id)
 	result, err, _ := h.sfGroup.Do(key, func() (interface{}, error) {
-		return h.pool.Discovery.FetchModels(c.Request().Context(), id)
+		return h.pool.Discovery.FetchModels(fetchCtx, id)
 	})
 
 	if err != nil {
@@ -1131,7 +1151,11 @@ func (h *Handler) ProbeProviderModels(c echo.Context) error {
 		req.Concurrency = 5
 	}
 
-	results, err := h.pool.Discovery.ProbeModels(c.Request().Context(), id, req.Concurrency)
+	// Use a bounded context so the entire probe doesn't hang forever
+	probeCtx, cancel := context.WithTimeout(c.Request().Context(), 60*time.Second)
+	defer cancel()
+
+	results, err := h.pool.Discovery.ProbeModels(probeCtx, id, req.Concurrency)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

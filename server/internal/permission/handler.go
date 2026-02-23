@@ -1,6 +1,7 @@
 package permission
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -60,6 +61,14 @@ func (h *Handler) GetMyPermissions(c echo.Context) error {
 
 	perms, err := h.service.GetEffectivePermissions(c.Request().Context(), userID)
 	if err != nil {
+		// If user not found, return role-based defaults instead of 500
+		if errors.Is(err, user.ErrUserNotFound) {
+			return c.JSON(http.StatusOK, &PermissionsResponse{
+				UserID:      userID,
+				Role:        claims.Role,
+				Permissions: h.service.GetDefaultPermissionsForRole(claims.Role),
+			})
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get permissions")
 	}
 
@@ -84,6 +93,9 @@ func (h *Handler) GetUserPermissions(c echo.Context) error {
 	}
 
 	// Get user to include role
+	if h.userRepo == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "user service not available")
+	}
 	u, err := h.userRepo.GetByID(c.Request().Context(), userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "user not found")
@@ -115,6 +127,9 @@ func (h *Handler) SetUserPermissions(c echo.Context) error {
 	}
 
 	// Check if target user exists
+	if h.userRepo == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "user service not available")
+	}
 	u, err := h.userRepo.GetByID(c.Request().Context(), userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "user not found")

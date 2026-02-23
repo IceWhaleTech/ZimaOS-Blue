@@ -5,19 +5,35 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"time"
 )
 
 // ErrNotFound is returned when a memory is not found.
 var ErrNotFound = errors.New("memory not found")
+
+// MemoryChunk represents a unit of stored memory.
+type MemoryChunk struct {
+	ID        string            `json:"id"`
+	Content   string            `json:"content"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+}
+
+// SearchResult represents a memory search result.
+type SearchResult struct {
+	Chunk        MemoryChunk `json:"chunk"`
+	Score        float32     `json:"score"`
+	KeywordScore float32     `json:"keyword_score,omitempty"`
+	MatchTypes   []string    `json:"match_types"`
+}
 
 // MemoryBackend defines the interface for memory storage backends.
 type MemoryBackend interface {
 	// Remember stores a new memory.
 	Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error)
 	// Recall retrieves relevant memories.
-	Recall(ctx context.Context, query string, limit int) ([]HybridSearchResult, error)
+	Recall(ctx context.Context, query string, limit int) ([]SearchResult, error)
 	// Forget removes a memory by ID.
 	Forget(ctx context.Context, id string) error
 	// ForgetAll removes all memories.
@@ -41,221 +57,95 @@ type MemoryStats struct {
 	Backend        string `json:"backend"`
 }
 
-// UnifiedMemoryService provides a unified interface that can switch between backends.
+// UnifiedMemoryService provides a unified interface backed by PureMarkdownBackend.
 type UnifiedMemoryService struct {
-	localBackend    *MemoryService
-	markdownBackend *PureMarkdownBackend
-	activeBackend   MemoryBackend
-	mu              sync.RWMutex
+	backend *PureMarkdownBackend
+	mu      sync.RWMutex
 }
 
-// NewUnifiedMemoryService creates a new unified memory service.
-func NewUnifiedMemoryService(localService *MemoryService, cfg config.MemoryConfig) *UnifiedMemoryService {
-	svc := &UnifiedMemoryService{
-		localBackend: localService,
-	}
-
-	if localService != nil {
-		svc.activeBackend = &LocalBackendAdapter{service: localService}
-	}
-
-	return svc
-}
-
-// SetBackend switches the active backend.
-func (s *UnifiedMemoryService) SetBackend(backend string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	switch backend {
-	case "local":
-		if s.localBackend == nil {
-			return fmt.Errorf("local backend not available")
-		}
-		s.activeBackend = &LocalBackendAdapter{service: s.localBackend}
-	case "markdown":
-		if s.markdownBackend == nil {
-			return fmt.Errorf("markdown backend not available")
-		}
-		s.activeBackend = s.markdownBackend
-	case "mixed":
-		if s.localBackend == nil {
-			return fmt.Errorf("local backend not available")
-		}
-		if s.markdownBackend == nil {
-			return fmt.Errorf("markdown backend not available")
-		}
-		s.activeBackend = NewDualWriteBackend(
-			&LocalBackendAdapter{service: s.localBackend},
-			s.markdownBackend,
-		)
-	default:
-		return fmt.Errorf("unknown backend: %s", backend)
-	}
-
-	return nil
-}
-
-// SetMarkdownBackend sets the markdown backend for dual-write and markdown modes.
-func (s *UnifiedMemoryService) SetMarkdownBackend(md *PureMarkdownBackend) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.markdownBackend = md
-}
-
-// GetLocalBackend returns the local MemoryService (for progressive search).
-func (s *UnifiedMemoryService) GetLocalBackend() *MemoryService {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.localBackend
+// NewUnifiedMemoryService creates a new unified memory service with a markdown backend.
+func NewUnifiedMemoryService(md *PureMarkdownBackend) *UnifiedMemoryService {
+	return &UnifiedMemoryService{backend: md}
 }
 
 // GetActiveBackend returns the name of the active backend.
 func (s *UnifiedMemoryService) GetActiveBackend() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.activeBackend == nil {
-		return ""
-	}
-	return s.activeBackend.Name()
+	return "markdown"
 }
 
-// Remember stores a new memory using the active backend.
+// Remember stores a new memory.
 func (s *UnifiedMemoryService) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return nil, fmt.Errorf("no memory backend available")
 	}
-	return backend.Remember(ctx, content, tags)
+	return b.Remember(ctx, content, tags)
 }
 
-// Recall retrieves relevant memories using the active backend.
-func (s *UnifiedMemoryService) Recall(ctx context.Context, query string, limit int) ([]HybridSearchResult, error) {
+// Recall retrieves relevant memories.
+func (s *UnifiedMemoryService) Recall(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return nil, fmt.Errorf("no memory backend available")
 	}
-	return backend.Recall(ctx, query, limit)
+	return b.Recall(ctx, query, limit)
 }
 
-// Forget removes a memory by ID using the active backend.
+// Forget removes a memory by ID.
 func (s *UnifiedMemoryService) Forget(ctx context.Context, id string) error {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return fmt.Errorf("no memory backend available")
 	}
-	return backend.Forget(ctx, id)
+	return b.Forget(ctx, id)
 }
 
-// ForgetAll removes all memories using the active backend.
+// ForgetAll removes all memories.
 func (s *UnifiedMemoryService) ForgetAll(ctx context.Context) error {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return fmt.Errorf("no memory backend available")
 	}
-	return backend.ForgetAll(ctx)
+	return b.ForgetAll(ctx)
 }
 
-// Get retrieves a memory by ID using the active backend.
+// Get retrieves a memory by ID.
 func (s *UnifiedMemoryService) Get(ctx context.Context, id string) (*MemoryChunk, error) {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return nil, fmt.Errorf("no memory backend available")
 	}
-	return backend.Get(ctx, id)
+	return b.Get(ctx, id)
 }
 
-// Prune removes old memories using the active backend.
+// Prune removes old memories.
 func (s *UnifiedMemoryService) Prune(ctx context.Context) (int, error) {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return 0, fmt.Errorf("no memory backend available")
 	}
-	return backend.Prune(ctx)
+	return b.Prune(ctx)
 }
 
-// Stats returns memory statistics from the active backend.
+// Stats returns memory statistics.
 func (s *UnifiedMemoryService) Stats(ctx context.Context) (*MemoryStats, error) {
 	s.mu.RLock()
-	backend := s.activeBackend
+	b := s.backend
 	s.mu.RUnlock()
-
-	if backend == nil {
+	if b == nil {
 		return nil, fmt.Errorf("no memory backend available")
 	}
-	return backend.Stats(ctx)
-}
-
-// LocalBackendAdapter adapts MemoryService to MemoryBackend interface.
-type LocalBackendAdapter struct {
-	service *MemoryService
-}
-
-func (a *LocalBackendAdapter) Name() string {
-	return "local"
-}
-
-func (a *LocalBackendAdapter) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
-	return a.service.Remember(ctx, content, tags)
-}
-
-func (a *LocalBackendAdapter) Recall(ctx context.Context, query string, limit int) ([]HybridSearchResult, error) {
-	return a.service.Recall(ctx, query, limit)
-}
-
-func (a *LocalBackendAdapter) Forget(ctx context.Context, id string) error {
-	return a.service.Forget(ctx, id)
-}
-
-func (a *LocalBackendAdapter) ForgetAll(ctx context.Context) error {
-	return a.service.ForgetAll(ctx)
-}
-
-func (a *LocalBackendAdapter) Get(ctx context.Context, id string) (*MemoryChunk, error) {
-	return a.service.Get(ctx, id)
-}
-
-func (a *LocalBackendAdapter) Prune(ctx context.Context) (int, error) {
-	return a.service.Prune(ctx)
-}
-
-func (a *LocalBackendAdapter) Stats(ctx context.Context) (*MemoryStats, error) {
-	stats, err := a.service.Stats(ctx)
-	if err != nil {
-		return nil, err
-	}
-	oldestStr := ""
-	newestStr := ""
-	if !stats.VectorStoreStats.OldestChunk.IsZero() {
-		oldestStr = stats.VectorStoreStats.OldestChunk.Format("2006-01-02T15:04:05Z07:00")
-	}
-	if !stats.VectorStoreStats.NewestChunk.IsZero() {
-		newestStr = stats.VectorStoreStats.NewestChunk.Format("2006-01-02T15:04:05Z07:00")
-	}
-	return &MemoryStats{
-		TotalChunks:    stats.VectorStoreStats.ChunkCount,
-		TotalSizeBytes: 0, // Not tracked in local backend
-		OldestChunk:    oldestStr,
-		NewestChunk:    newestStr,
-		Backend:        "local",
-	}, nil
+	return b.Stats(ctx)
 }

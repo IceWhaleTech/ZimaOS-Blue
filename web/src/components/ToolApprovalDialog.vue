@@ -27,6 +27,10 @@ function approve() {
   chatStore.resolveApproval('approve')
 }
 
+function alwaysAllow() {
+  chatStore.resolveApproval('approve', true)
+}
+
 function deny() {
   chatStore.resolveApproval('deny')
 }
@@ -80,18 +84,24 @@ function deny() {
           </div>
 
           <!-- Actions -->
-          <div class="flex gap-3 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <div class="flex gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
             <button
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
               @click="deny"
             >
               {{ t('approval.deny', 'Deny') }}
             </button>
             <button
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors cursor-pointer"
+              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors cursor-pointer"
               @click="approve"
             >
               {{ t('approval.allow', 'Allow') }}
+            </button>
+            <button
+              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors cursor-pointer"
+              @click="alwaysAllow"
+            >
+              {{ t('approval.alwaysAllow', 'Always Allow') }}
             </button>
           </div>
         </div>

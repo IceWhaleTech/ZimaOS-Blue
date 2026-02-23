@@ -4,6 +4,7 @@ package workspace
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -383,4 +384,37 @@ func writeIfMissing(path, content string) error {
 	defer f.Close()
 	_, err = f.WriteString(content)
 	return err
+}
+
+// ReleaseSkills writes embedded SKILL.md files to {workspace}/.claude/skills/{name}/SKILL.md.
+// Each file is overwritten on every startup to keep skills in sync with the binary.
+func (m *Manager) ReleaseSkills(fsys fs.FS) error {
+	entries, err := fs.ReadDir(fsys, "skills")
+	if err != nil {
+		return fmt.Errorf("workspace: read embedded skills: %w", err)
+	}
+
+	skillsDir := filepath.Join(m.dir, ".claude", "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		return fmt.Errorf("workspace: mkdir %s: %w", skillsDir, err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		data, err := fs.ReadFile(fsys, "skills/"+entry.Name()+"/SKILL.md")
+		if err != nil {
+			continue
+		}
+		dir := filepath.Join(skillsDir, entry.Name())
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("workspace: mkdir %s: %v", dir, err)
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), data, 0o644); err != nil {
+			log.Printf("workspace: write %s/SKILL.md: %v", entry.Name(), err)
+		}
+	}
+	return nil
 }

@@ -23,8 +23,9 @@ import (
 // ResolvedRoute carries the actual provider/model chosen by the router.
 // Callers embed a pointer in the request context; the proxy handler populates it.
 type ResolvedRoute struct {
-	Provider string
-	Model    string
+	Provider   string // display name
+	ProviderID string // internal ID (for sticky routing)
+	Model      string
 }
 
 type resolvedRouteKeyType struct{}
@@ -38,6 +39,21 @@ func WithResolvedRoute(ctx context.Context, rr *ResolvedRoute) context.Context {
 func getResolvedRoute(ctx context.Context) *ResolvedRoute {
 	rr, _ := ctx.Value(resolvedRouteKeyType{}).(*ResolvedRoute)
 	return rr
+}
+
+// Pinned provider context — used for sticky routing during tool rounds.
+type pinnedProviderKeyType struct{}
+
+// WithPinnedProvider returns a context carrying a preferred provider ID.
+// The proxy handler reads this to set RouteRequest.PreferredProviderID.
+func WithPinnedProvider(ctx context.Context, providerID string) context.Context {
+	return context.WithValue(ctx, pinnedProviderKeyType{}, providerID)
+}
+
+// GetPinnedProvider returns the pinned provider ID from context, or "".
+func GetPinnedProvider(ctx context.Context) string {
+	v, _ := ctx.Value(pinnedProviderKeyType{}).(string)
+	return v
 }
 
 // GetResolvedRouteFromContext is the exported version of getResolvedRoute.
@@ -356,6 +372,77 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 		}
 	}
 	slog.Info("[proxy] auth warmup complete", "providers", len(providers))
+
+	// Phase 2: probe tool call support on each provider
+	ph.warmToolCallSupport(providers)
+}
+
+// toolCallProbeBody is a minimal OpenAI chat completion request with a tool definition.
+// Used to detect whether a provider supports function calling (tool_use).
+// The request is intentionally minimal to minimize cost — most providers reject or
+// return a very short response. We only care about the HTTP status code.
+var toolCallProbeBody = []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"noop","description":"no-op","parameters":{"type":"object","properties":{}}}}],"max_tokens":1}`)
+
+// warmToolCallSupport sends a minimal tool-bearing request to each provider to detect
+// whether it supports native function calling. Results are cached in ProviderMemory
+// so the routing layer can skip providers that would 422 on tool_calls.
+func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) {
+	pool := ph.providerPool
+	if pool == nil || pool.Registry == nil {
+		return
+	}
+
+	for _, p := range providers {
+		// Skip if already probed
+		if _, ok := ph.providerMemory.RecallToolCap(p.ID, p.BaseURL); ok {
+			continue
+		}
+
+		apiKey, _ := pool.Registry.GetAPIKey(p.ID)
+		if apiKey == nil || apiKey.Key == "" {
+			continue
+		}
+
+		// Recall auth strategy (just probed in phase 1)
+		authStrat, _ := ph.authProber.Recall(p.ID, p.BaseURL)
+
+		probeURL := strings.TrimSuffix(p.BaseURL, "/") + "/v1/chat/completions"
+		req, err := http.NewRequest(http.MethodPost, probeURL, io.NopCloser(bytes.NewReader(toolCallProbeBody)))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		ph.authProber.Apply(req, authStrat, apiKey, p)
+
+		var client *http.Client
+		if p.SkipTLSVerify {
+			client = ph.connPool.GetInsecureClient(p.Name)
+		} else {
+			client = ph.connPool.GetClient(p.Name)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		req = req.WithContext(ctx)
+		resp, err := client.Do(req)
+		cancel()
+		if err != nil {
+			slog.Debug("[proxy] tool probe failed", "provider", p.ID, "error", err)
+			continue
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+
+		if isFormatMismatchError(resp.StatusCode, nil) || resp.StatusCode == 400 {
+			// 422 or 400 with tools → provider doesn't support function calling
+			ph.providerMemory.RememberToolCap(p.ID, p.BaseURL, ToolCapNone)
+			slog.Info("[proxy] tool probe: no tool support", "provider", p.ID, "status", resp.StatusCode)
+		} else {
+			// Any other response (200, 401, 429, 500, etc.) means tools are accepted
+			ph.providerMemory.RememberToolCap(p.ID, p.BaseURL, ToolCapNative)
+			slog.Debug("[proxy] tool probe: tools supported", "provider", p.ID, "status", resp.StatusCode)
+		}
+	}
+	slog.Info("[proxy] tool call probe complete")
 }
 
 // extractRoutingMode extracts routing mode from API key scopes.
@@ -439,8 +526,16 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode, "body", string(pr.body))
 
 	routeReq := &providerpool.RouteRequest{
-		ModelID: pr.model,
-		Mode:    providerpool.RoutingMode(routingMode),
+		ModelID:             pr.model,
+		Mode:                providerpool.RoutingMode(routingMode),
+		PreferredProviderID: GetPinnedProvider(r.Context()),
+	}
+
+	// When the request includes tools, require providers that support function calling.
+	// This prevents routing to providers/models that would reject tool_calls.
+	hasTools := gjson.GetBytes(pr.body, "tools").Exists()
+	if hasTools {
+		routeReq.RequireCap = &providerpool.ModelCapabilities{FunctionCall: true}
 	}
 
 	// Failover is enabled by default; only disabled when explicitly configured off
@@ -450,6 +545,15 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	executeOnProvider := func(result *providerpool.RouteResult) error {
 		pid := result.Provider.ID
 		burl := result.Provider.BaseURL
+
+		// Tool cap check: skip providers known to not support function calling.
+		// This avoids wasting a round-trip on providers that will 422.
+		if hasTools {
+			if cap, ok := ph.providerMemory.RecallToolCap(pid, burl); ok && cap == ToolCapNone {
+				slog.Debug("[proxy] skipping provider (no tool support)", "provider", pid)
+				return fmt.Errorf("provider %s does not support tool calls", pid)
+			}
+		}
 
 		// Throttle check: skip provider if recently 429'd
 		if ph.providerMemory.IsThrottled(pid, burl) {
@@ -461,6 +565,15 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp, format, _, tryErr := ph.tryOnProvider(r, result, pr)
 		if tryErr != nil {
 			return tryErr
+		}
+		if resp == nil {
+			// All format/model combos failed. If request had tools, remember this
+			// provider doesn't support tool calls so we skip it on future requests.
+			if hasTools {
+				ph.providerMemory.RememberToolCap(pid, burl, ToolCapNone)
+				slog.Info("[proxy] learned: provider has no tool support", "provider", pid)
+			}
+			return fmt.Errorf("provider %s returned no response", pid)
 		}
 
 		// For streaming responses, peek at the first bytes to detect empty streams.
@@ -481,6 +594,10 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if format == providerpool.APIFormatAnthropic {
 			pr.upstreamFormat = ProviderTypeAnthropic
 		}
+		// Remember tool support on success
+		if hasTools {
+			ph.providerMemory.RememberToolCap(pid, burl, ToolCapNative)
+		}
 		// Capture resolved provider/model for downstream headers
 		pr.resolvedProvider = result.Provider.Name
 		if pr.resolvedProvider == "" {
@@ -492,6 +609,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Also propagate via context for callers that can't read response headers
 		if rr := getResolvedRoute(r.Context()); rr != nil {
 			rr.Provider = pr.resolvedProvider
+			rr.ProviderID = result.Provider.ID
 			rr.Model = pr.resolvedModel
 		}
 		finalResp = resp
@@ -718,6 +836,22 @@ func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, f
 	}
 }
 
+// clearDetectedFormat clears the persisted format when a format mismatch is detected.
+// This prevents the wrong format from being loaded again after restart.
+func (ph *ProxyHandler) clearDetectedFormat(provider *providerpool.Provider) {
+	if provider.DetectedFormat == "" {
+		return // nothing to clear
+	}
+	provider.DetectedFormat = ""
+	if ph.providerPool != nil && ph.providerPool.Registry != nil {
+		go func(p *providerpool.Provider) {
+			if err := ph.providerPool.Registry.Update(p); err != nil {
+				slog.Warn("[proxy] failed to clear detected format", "provider", p.ID, "error", err)
+			}
+		}(provider)
+	}
+}
+
 // allModelsForProvider returns model candidates to try for a provider.
 // Remembered alias first, then original model, then ModelAliases.
 // Uses stack-allocated array for the common case (≤8 candidates).
@@ -808,8 +942,10 @@ func (ph *ProxyHandler) tryOnProvider(
 
 	// Fast path: single model + single format + model matches request (most common happy path).
 	// Avoids loop overhead, sjson.SetBytes, and slice iteration.
+	var fastPathTriedFormat providerpool.APIFormat // track what fast path already tried
 	if nModels == 1 && nFormats == 1 && modelsBuf[0] == pr.model {
 		format := formatsBuf[0]
+		fastPathTriedFormat = format
 		slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
 		resp, probeErr := ph.authProber.ProbeAndForward(
 			result.Provider,
@@ -838,6 +974,7 @@ func (ph *ProxyHandler) tryOnProvider(
 			slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
 				"provider", pid, "format", format, "model", pr.model)
 			ph.providerMemory.ForgetFormat(pid, burl)
+			ph.clearDetectedFormat(result.Provider)
 			nFormats = allFormats
 		}
 		// Fall through to error handling in the general loop
@@ -854,8 +991,13 @@ func (ph *ProxyHandler) tryOnProvider(
 			}
 		}
 
+		allFormatsMismatch := true // tracks if every format failed with format mismatch
 		for fi := 0; fi < nFormats; fi++ {
 			format := formatsBuf[fi]
+			// Skip format already tried (and failed) on fast path for the same model
+			if fastPathTriedFormat != "" && format == fastPathTriedFormat && model == pr.model {
+				continue
+			}
 			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", model)
 
 			resp, probeErr := ph.authProber.ProbeAndForward(
@@ -873,6 +1015,7 @@ func (ph *ProxyHandler) tryOnProvider(
 			)
 			if probeErr != nil {
 				lastErr = probeErr
+				allFormatsMismatch = false
 				continue
 			}
 
@@ -918,6 +1061,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				// If we're on the last format and there are more available, expand
 				if fi == nFormats-1 && allFormats > nFormats {
 					ph.providerMemory.ForgetFormat(pid, burl)
+					ph.clearDetectedFormat(result.Provider)
 					nFormats = allFormats
 				}
 				continue
@@ -930,6 +1074,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				// Blacklist THIS model on THIS provider (per-provider scope) so we don't retry it
 				ph.providerMemory.BlacklistModel(pid, burl, model)
 				lastErr = fmt.Errorf("model %s not configured on provider %s: %s", model, pid, errStr)
+				allFormatsMismatch = false
 				// Skip remaining formats for this model — if model isn't configured,
 				// trying a different format won't help
 				break
@@ -940,6 +1085,18 @@ func (ph *ProxyHandler) tryOnProvider(
 				"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 			ph.providerMemory.BlacklistModel(pid, burl, model)
 			lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+			allFormatsMismatch = false
+		}
+		// If every format returned format mismatch for this model, the provider
+		// doesn't understand any of our formats — skip remaining model aliases.
+		if allFormatsMismatch {
+			triedFormats := make([]string, 0, nFormats)
+			for fi := 0; fi < nFormats; fi++ {
+				triedFormats = append(triedFormats, string(formatsBuf[fi]))
+			}
+			slog.Warn("[proxy] all formats returned mismatch, skipping remaining models",
+				"provider", pid, "model", model, "tried_formats", triedFormats, "last_error", lastErr)
+			break
 		}
 	}
 	return nil, "", "", lastErr
@@ -980,7 +1137,12 @@ func isModelNotConfiguredError(statusCode int, body []byte) bool {
 	if statusCode != 400 && statusCode != 403 && statusCode != 404 && statusCode != 422 {
 		return false
 	}
+	return isModelNotConfiguredBody(body)
+}
 
+// isModelNotConfiguredBody checks if the error body contains model-not-configured patterns.
+// Separated from isModelNotConfiguredError so isFormatMismatchError can also use it.
+func isModelNotConfiguredBody(body []byte) bool {
 	lower := toLowerBytes(body)
 
 	for _, pattern := range notConfiguredPatternsEN {
@@ -1012,11 +1174,17 @@ var formatMismatchPatterns = [][]byte{
 // isFormatMismatchError returns true if the error indicates a request format mismatch
 // rather than a model configuration issue. These errors should trigger format fallback,
 // not model blacklisting.
+// NOTE: Must be called BEFORE isModelNotConfiguredError since both match 422/404.
 func isFormatMismatchError(statusCode int, body []byte) bool {
 	if statusCode != 400 && statusCode != 404 && statusCode != 422 {
 		return false
 	}
-	// 422 is almost always a format mismatch
+	// If the body mentions model-not-configured, it's NOT a format mismatch —
+	// even on 422. Let isModelNotConfiguredError handle it.
+	if isModelNotConfiguredBody(body) {
+		return false
+	}
+	// 422 without model-not-configured patterns is almost always a format mismatch
 	if statusCode == 422 {
 		return true
 	}

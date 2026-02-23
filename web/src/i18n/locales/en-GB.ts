@@ -31,9 +31,6 @@ export default {
     personality: {
     ...enUS.personality,
   },
-  memoryService: {
-    ...enUS.memoryService,
-  },
   tools: {
     names: {
       'Web Search': 'Web Search',
@@ -614,16 +611,6 @@ export default {
       running: 'Running',
       completed: 'Completed',
       activeSessions: 'Active Sessions',
-    },
-    capabilities: {
-      chat: 'Chat',
-      vision: 'Vision',
-      function_call: 'Tools',
-      thinking: 'Thinking',
-      streaming: 'Stream',
-      image_generation: 'Image',
-      video_generation: 'Video',
-      audio_generation: 'Audio',
     },
     tabs: {
       tasks: 'Tasks',
@@ -1713,18 +1700,6 @@ export default {
   download: 'Download',
   downloaded: 'Downloaded',
   edit: 'Edit',
-  encryption: {
-    title: 'Memory Encryption',
-    desc: 'AES-256-GCM encryption for memory content at rest',
-    enabled: 'Encryption enabled',
-    disabled: 'Encryption disabled',
-    encrypted: 'Encrypted',
-    plaintext: 'Plaintext',
-    algorithm: 'Algorithm',
-    migrating: 'Migrating...',
-    passphrasePlaceholder: 'Enter passphrase',
-    confirm: 'Enable',
-  },
   end: 'End',
   errors: {
     notFound: 'Page not found',
@@ -2055,11 +2030,6 @@ export default {
     oldest: 'Oldest',
     newest: 'Newest',
     searchPlaceholder: 'Search memories...',
-    searchTypes: {
-      hybrid: 'Hybrid',
-      vector: 'Vector',
-      keyword: 'Keyword',
-    },
     searching: 'Searching...',
     score: 'Score',
     noResults: 'No memories found matching your query',
@@ -2070,23 +2040,7 @@ export default {
     clearAllTitle: 'Clear All Memories',
     clearAllWarning: 'This will permanently delete all memories. This action cannot be undone.',
     confirmDelete: 'Are you sure you want to delete this memory?',
-    backend: 'Backend',
-    localBackend: 'Local',
-    backendLabel: {
-      local: 'Local (SQLite)',
-      markdown: 'Markdown',
-      mixed: 'Mixed',
-    },
-    backendDesc: {
-      local: 'Store memories in local SQLite database',
-      markdown: 'Store memories as Markdown files',
-      mixed: 'Write to both SQLite and Markdown files',
-    },
     settingsTitle: 'Memory Settings',
-    apiKey: 'API Key',
-    baseUrl: 'Base URL',
-    testConnection: 'Test Connection',
-    connectionSuccess: 'Connection successful',
   },
   mermaid: {
     flowchart: 'Flowchart',

@@ -66,6 +66,10 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return webSearchCard(content)
 	case "ui_reviewer":
 		return uiReviewCard(content)
+	case "image_generate":
+		return imageGenerateCard(content)
+	case "video_generate":
+		return videoGenerateCard(content)
 	case "calculator":
 		return calculatorCard(content)
 	case "current_time":
@@ -415,4 +419,102 @@ func uiReviewCard(content string) map[string]interface{} {
 	}
 
 	return card
+}
+
+func imageGenerateCard(content string) map[string]interface{} {
+	var data struct {
+		Images []struct {
+			URL           string `json:"url"`
+			ThumbnailURL  string `json:"thumbnail_url"`
+			RevisedPrompt string `json:"revised_prompt"`
+		} `json:"images"`
+		Error   string `json:"error"`
+		TaskID  string `json:"task_id"`
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+
+	if data.Error != "" || data.Status == "failed" {
+		msg := data.Error
+		if msg == "" {
+			msg = data.Message
+		}
+		return map[string]interface{}{
+			"type":       "media-generate",
+			"media_type": "image",
+			"status":     "error",
+			"message":    msg,
+		}
+	}
+
+	// Still processing — show animated placeholder
+	if data.Status == "processing" || (data.TaskID != "" && len(data.Images) == 0) {
+		return map[string]interface{}{
+			"type":       "media-generate",
+			"media_type": "image",
+			"status":     "generating",
+			"task_id":    data.TaskID,
+		}
+	}
+
+	if len(data.Images) == 0 {
+		return nil
+	}
+
+	images := make([]map[string]interface{}, 0, len(data.Images))
+	for _, img := range data.Images {
+		entry := map[string]interface{}{
+			"src": img.URL,
+		}
+		if img.ThumbnailURL != "" {
+			entry["thumbnail"] = img.ThumbnailURL
+		}
+		if img.RevisedPrompt != "" {
+			entry["caption"] = img.RevisedPrompt
+		}
+		images = append(images, entry)
+	}
+
+	return map[string]interface{}{
+		"type":       "media-generate",
+		"media_type": "image",
+		"status":     "success",
+		"images":     images,
+	}
+}
+
+func videoGenerateCard(content string) map[string]interface{} {
+	var data struct {
+		TaskID  string `json:"task_id"`
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+
+	if data.Error != "" || data.Status == "failed" {
+		msg := data.Error
+		if msg == "" {
+			msg = data.Message
+		}
+		return map[string]interface{}{
+			"type":       "media-generate",
+			"media_type": "video",
+			"status":     "error",
+			"message":    msg,
+		}
+	}
+
+	return map[string]interface{}{
+		"type":       "media-generate",
+		"media_type": "video",
+		"status":     "generating",
+		"task_id":    data.TaskID,
+		"message":    data.Message,
+	}
 }

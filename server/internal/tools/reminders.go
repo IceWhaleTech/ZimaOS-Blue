@@ -25,12 +25,12 @@ type ReminderResult struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// RemindersTool is a native tool for managing reminders.
+// RemindersTool is a native tool for managing push notifications / reminders.
 type RemindersTool struct {
 	svc ReminderServiceInterface
 }
 
-// NewRemindersTool creates a new reminders tool.
+// NewRemindersTool creates a new push notification tool.
 func NewRemindersTool(svc ReminderServiceInterface) *RemindersTool {
 	return &RemindersTool{svc: svc}
 }
@@ -38,13 +38,13 @@ func NewRemindersTool(svc ReminderServiceInterface) *RemindersTool {
 // Definition returns the tool definition.
 func (r *RemindersTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name: "reminders",
-		Description: `Create, list, and manage reminders with time-based triggers. Actions:
-- add: Create a reminder (requires message + time)
-- list: List all reminders
-- delete: Delete a reminder by ID
-- clear: Delete all reminders`,
-		Icon: "reminders",
+		Name: "push_notification",
+		Description: `Send push notifications and manage scheduled alerts. Delivers via SSE, Web Push, and native OS notifications (macOS Notification Center, Linux notify-send, Windows toast). Actions:
+- add: Schedule a push notification (requires message + time)
+- list: List all scheduled notifications
+- delete: Delete a notification by ID
+- clear: Delete all notifications`,
+		Icon: "notifications",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

@@ -19,6 +19,10 @@ var (
 	markdownEdgeEnd   = regexp.MustCompile(`[*` + "`" + `~_]+$`)
 	// Collapses whitespace.
 	whitespacePattern = regexp.MustCompile(`\s+`)
+	// Matches HTML comment blocks (single-line).
+	htmlCommentPattern = regexp.MustCompile(`^<!--.*-->$`)
+	// Matches lines that are purely markdown emphasis/italic (meta-instructions).
+	emphasisOnlyPattern = regexp.MustCompile(`^[*_]{1,2}[^*_]+[*_]{1,2}$`)
 )
 
 // StripResult holds the result of stripping the HEARTBEAT_OK token.
@@ -29,19 +33,60 @@ type StripResult struct {
 }
 
 // IsEffectivelyEmpty checks if HEARTBEAT.md content has no actionable tasks.
-// A file is effectively empty if it contains only whitespace, markdown headers, or empty list items.
+// A file is effectively empty if it contains only whitespace, markdown headers,
+// empty list items, comments (HTML or //), YAML front matter, or emphasis-only
+// meta-instruction lines.
 func IsEffectivelyEmpty(content string) bool {
+	inFrontMatter := false
+	inHTMLComment := false
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
+
+		// YAML front matter block (--- ... ---)
+		if trimmed == "---" {
+			inFrontMatter = !inFrontMatter
+			continue
+		}
+		if inFrontMatter {
+			continue
+		}
+
+		// Multi-line HTML comment tracking
+		if !inHTMLComment && strings.Contains(trimmed, "<!--") {
+			if strings.Contains(trimmed, "-->") {
+				// Single-line HTML comment — skip entire line
+				continue
+			}
+			inHTMLComment = true
+			continue
+		}
+		if inHTMLComment {
+			if strings.Contains(trimmed, "-->") {
+				inHTMLComment = false
+			}
+			continue
+		}
+
 		if trimmed == "" {
 			continue
 		}
+		// Markdown headers: # ...
 		if headerPattern.MatchString(trimmed) {
 			continue
 		}
+		// Empty list items: - [ ] or - or * etc.
 		if emptyListPattern.MatchString(trimmed) {
 			continue
 		}
+		// Code-style comments: // ...
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		// Emphasis-only lines (meta-instructions): *text* or _text_
+		if emphasisOnlyPattern.MatchString(trimmed) {
+			continue
+		}
+
 		return false
 	}
 	return true

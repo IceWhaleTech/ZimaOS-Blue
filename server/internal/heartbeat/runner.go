@@ -2,6 +2,8 @@ package heartbeat
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -175,7 +177,27 @@ func (r *Runner) NextDue() time.Time {
 func (r *Runner) tick(ctx context.Context) {
 	r.mu.RLock()
 	deps := r.deps
+	cfg := r.cfg
 	r.mu.RUnlock()
+
+	// Early check: skip if HEARTBEAT.md is effectively empty (avoids LLM call)
+	workDir := cfg.WorkspaceDir
+	if workDir == "" {
+		workDir = "."
+	}
+	if data, err := os.ReadFile(filepath.Join(workDir, HeartbeatFilename)); err == nil && IsEffectivelyEmpty(string(data)) {
+		evt := &HeartbeatEvent{
+			Timestamp:     timeutil.NowTime(),
+			Status:        "skipped",
+			Reason:        "empty-heartbeat-file",
+			IndicatorType: ResolveIndicator("skipped"),
+		}
+		r.mu.Lock()
+		r.lastEvt = evt
+		r.mu.Unlock()
+		deps.Logger.Debug("heartbeat: tick skipped, file effectively empty")
+		return
+	}
 
 	result := RunOnce(ctx, deps)
 

@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-// MemoryTool is a unified tool for all memory operations: search, get, stats, and progressive search.
+// MemoryTool is a unified tool for memory operations: search, get, remember, forget, stats.
 type MemoryTool struct {
 	memoryService MemoryServiceInterface
 }
@@ -21,29 +21,28 @@ func NewMemoryTool(memoryService MemoryServiceInterface) *MemoryTool {
 func (m *MemoryTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "memory",
-		Description: `Persistent long-term memory: store, retrieve, search, and delete memories. Actions:
-- remember: Store a new memory (use when the user says "remember", "note this", "don't forget", "remind me next time")
-- search: Find relevant memories by query (returns scored results)
-- get: Retrieve a specific memory by ID (full content + metadata)
+		Description: `Mandatory recall step: search MEMORY.md + memory/*.md before answering questions about prior work, decisions, dates, people, preferences, or todos. Actions:
+- remember: Store a new memory (use when the user says "remember", "note this", "don't forget")
+- search: Find relevant memories by keyword query (returns scored snippets with path + lines)
+- get: Read a specific memory file by path (use after search to pull only the needed lines)
 - forget: Delete a specific memory by ID
-- stats: Get memory system statistics (total count, size, backend)
-- progressive_search: Token-efficient multi-depth search (depth 1=index, 2=context, 3=detail)`,
+- stats: Get memory system statistics`,
 		Icon: "brain",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"search", "get", "remember", "forget", "stats", "progressive_search"},
+					"enum":        []string{"search", "get", "remember", "forget", "stats"},
 					"description": "The memory operation to perform",
 				},
 				"query": map[string]interface{}{
 					"type":        "string",
-					"description": "Search query (required for 'search' and 'progressive_search')",
+					"description": "Search query (required for 'search')",
 				},
 				"id": map[string]interface{}{
 					"type":        "string",
-					"description": "Memory ID (required for 'get' and 'forget')",
+					"description": "Memory file path or ID (required for 'get' and 'forget')",
 				},
 				"content": map[string]interface{}{
 					"type":        "string",
@@ -56,21 +55,7 @@ func (m *MemoryTool) Definition() ToolDefinition {
 				},
 				"limit": map[string]interface{}{
 					"type":        "integer",
-					"description": "Max results (default: 10 for search, 20 for progressive depth 1)",
-				},
-				"min_score": map[string]interface{}{
-					"type":        "number",
-					"description": "Minimum similarity score 0.0-1.0 (for 'search', default: 0.0)",
-				},
-				"depth": map[string]interface{}{
-					"type":        "integer",
-					"enum":        []int{1, 2, 3},
-					"description": "Progressive search depth: 1=index, 2=context, 3=detail (for 'progressive_search')",
-				},
-				"ids": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Memory IDs to expand (for progressive_search depth 2/3)",
+					"description": "Max results (default: 10)",
 				},
 			},
 			"required": []string{"action"},
@@ -96,10 +81,8 @@ func (m *MemoryTool) Execute(ctx context.Context, args map[string]interface{}) (
 		return m.executeForget(ctx, args)
 	case "stats":
 		return m.executeStats(ctx)
-	case "progressive_search":
-		return m.executeProgressiveSearch(ctx, args)
 	default:
-		return nil, fmt.Errorf("unknown action: %s (use search, get, remember, forget, stats, or progressive_search)", action)
+		return nil, fmt.Errorf("unknown action: %s (use search, get, remember, forget, or stats)", action)
 	}
 }
 
@@ -119,16 +102,6 @@ func (m *MemoryTool) executeSearch(ctx context.Context, args map[string]interfac
 		}
 	}
 
-	minScore := float32(0.0)
-	if v, ok := args["min_score"].(float64); ok {
-		minScore = float32(v)
-		if minScore < 0 {
-			minScore = 0
-		} else if minScore > 1 {
-			minScore = 1
-		}
-	}
-
 	results, err := m.memoryService.Recall(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("memory search failed: %w", err)
@@ -136,18 +109,13 @@ func (m *MemoryTool) executeSearch(ctx context.Context, args map[string]interfac
 
 	filteredResults := make([]map[string]interface{}, 0, len(results))
 	for _, r := range results {
-		if r.CombinedScore < minScore {
-			continue
-		}
 		filteredResults = append(filteredResults, map[string]interface{}{
-			"id":            r.Chunk.ID,
-			"content":       r.Chunk.Content,
-			"score":         r.CombinedScore,
-			"vector_score":  r.VectorScore,
-			"keyword_score": r.KeywordScore,
-			"match_types":   r.MatchTypes,
-			"created_at":    r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			"metadata":      r.Chunk.Metadata,
+			"id":         r.Chunk.ID,
+			"content":    r.Chunk.Content,
+			"score":      r.CombinedScore,
+			"match_types": r.MatchTypes,
+			"created_at": r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			"metadata":   r.Chunk.Metadata,
 		})
 	}
 
@@ -249,46 +217,4 @@ func (m *MemoryTool) executeStats(ctx context.Context) (interface{}, error) {
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil
-}
-
-func (m *MemoryTool) executeProgressiveSearch(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	ps, ok := m.memoryService.(ProgressiveSearchInterface)
-	if !ok || ps == nil {
-		return nil, errors.New("progressive search not available")
-	}
-
-	query, _ := args["query"].(string)
-
-	depth := 1
-	if v, ok := args["depth"].(float64); ok {
-		depth = int(v)
-	}
-
-	var ids []string
-	if rawIDs, ok := args["ids"].([]interface{}); ok {
-		for _, id := range rawIDs {
-			if s, ok := id.(string); ok {
-				ids = append(ids, s)
-			}
-		}
-	}
-
-	limit := 0
-	if v, ok := args["limit"].(float64); ok {
-		limit = int(v)
-	}
-
-	result, err := ps.ProgressiveSearch(ctx, query, depth, ids, limit)
-	if err != nil {
-		return nil, fmt.Errorf("progressive search failed: %w", err)
-	}
-
-	jsonResult, _ := json.Marshal(result)
-	return string(jsonResult), nil
-}
-
-// ProgressiveSearchInterface is an optional interface for progressive search support.
-// The memory service can implement this to enable progressive_search action.
-type ProgressiveSearchInterface interface {
-	ProgressiveSearch(ctx context.Context, query string, depth int, ids []string, limit int) (interface{}, error)
 }

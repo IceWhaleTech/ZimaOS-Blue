@@ -27,6 +27,16 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/tasks/:id", h.GetTask)
 	g.GET("/tasks/:id/stream", h.StreamTask)
 	g.GET("/models", h.ListModels)
+
+	// Provider management
+	g.GET("/providers", h.ListProviders)
+	g.GET("/providers/:id", h.GetProvider)
+	g.PUT("/providers/:id", h.UpdateProvider)
+	g.POST("/providers/:id/enable", h.EnableProvider)
+	g.POST("/providers/:id/disable", h.DisableProvider)
+	g.POST("/providers/:id/keys", h.SetProviderKey)
+	g.DELETE("/providers/:id/keys", h.RemoveProviderKey)
+	g.POST("/providers/:id/test", h.TestProvider)
 }
 
 // RegisterStorageRoutes registers the static file serving route for generated media.
@@ -289,4 +299,96 @@ func writeSSE(w *echo.Response, event string, data interface{}) {
 	}
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload)
 	w.Flush()
+}
+
+// --- Provider management endpoints ---
+
+// ListProviders handles GET /providers.
+func (h *Handler) ListProviders(c echo.Context) error {
+	configs := h.manager.ListConfigs()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"providers": configs,
+	})
+}
+
+// GetProvider handles GET /providers/:id.
+func (h *Handler) GetProvider(c echo.Context) error {
+	cfg := h.manager.GetConfig(c.Param("id"))
+	if cfg == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+	}
+	return c.JSON(http.StatusOK, cfg)
+}
+
+// UpdateProvider handles PUT /providers/:id.
+func (h *Handler) UpdateProvider(c echo.Context) error {
+	id := c.Param("id")
+	cfg := h.manager.GetConfig(id)
+	if cfg == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+	}
+
+	var req struct {
+		BaseURL string `json:"base_url"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if req.BaseURL != "" {
+		cfg.BaseURL = req.BaseURL
+	}
+	return c.JSON(http.StatusOK, cfg)
+}
+
+// EnableProvider handles POST /providers/:id/enable.
+func (h *Handler) EnableProvider(c echo.Context) error {
+	if err := h.manager.Enable(c.Param("id")); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "enabled"})
+}
+
+// DisableProvider handles POST /providers/:id/disable.
+func (h *Handler) DisableProvider(c echo.Context) error {
+	if err := h.manager.Disable(c.Param("id")); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "disabled"})
+}
+
+// SetProviderKey handles POST /providers/:id/keys.
+func (h *Handler) SetProviderKey(c echo.Context) error {
+	id := c.Param("id")
+	var req struct {
+		Key string `json:"key"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if req.Key == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "key is required"})
+	}
+	if err := h.manager.SetAPIKey(id, req.Key); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	// Return updated config so frontend gets key_hash and models
+	cfg := h.manager.GetConfig(id)
+	if cfg != nil {
+		return c.JSON(http.StatusOK, cfg)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "key_set"})
+}
+
+// RemoveProviderKey handles DELETE /providers/:id/keys.
+func (h *Handler) RemoveProviderKey(c echo.Context) error {
+	if err := h.manager.RemoveAPIKey(c.Param("id")); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "key_removed"})
+}
+
+// TestProvider handles POST /providers/:id/test.
+func (h *Handler) TestProvider(c echo.Context) error {
+	result := h.manager.TestProvider(c.Param("id"))
+	return c.JSON(http.StatusOK, result)
 }

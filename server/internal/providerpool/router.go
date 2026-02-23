@@ -152,6 +152,22 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 
 	r.sortByStrategy(candidates, req.Strategy)
 
+	// Sticky routing: if a preferred provider is set (e.g., during tool rounds),
+	// move it to the front so it's tried first. Fallbacks remain available.
+	if req.PreferredProviderID != "" {
+		for i, c := range candidates {
+			if c.Provider.ID == req.PreferredProviderID {
+				if i > 0 {
+					// Move preferred to front, shift others down
+					preferred := candidates[i]
+					copy(candidates[1:i+1], candidates[:i])
+					candidates[0] = preferred
+				}
+				break
+			}
+		}
+	}
+
 	result := &RouteResult{
 		Provider: candidates[0].Provider,
 		Model:    candidates[0].Model,

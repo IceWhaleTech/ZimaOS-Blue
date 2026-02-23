@@ -3,9 +3,11 @@ package server
 import (
 	"database/sql"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -13,13 +15,13 @@ import (
 
 // UserSkillHandler handles per-user skill enable/disable.
 type UserSkillHandler struct {
-	db         *sql.DB
-	skillStore *skillstore.Store
+	db        *sql.DB
+	skillsDir string // {dataDir}/workspace/.claude/skills/
 }
 
 // NewUserSkillHandler creates a new user skill handler and runs migrations.
-func NewUserSkillHandler(db *sql.DB, skillStore *skillstore.Store) (*UserSkillHandler, error) {
-	h := &UserSkillHandler{db: db, skillStore: skillStore}
+func NewUserSkillHandler(db *sql.DB, skillsDir string) (*UserSkillHandler, error) {
+	h := &UserSkillHandler{db: db, skillsDir: skillsDir}
 	if err := h.migrate(); err != nil {
 		return nil, err
 	}
@@ -61,6 +63,65 @@ type UserSkillResponse struct {
 	UserToggled bool   `json:"user_toggled"` // true if user has explicit config
 }
 
+// installedSkillInfo holds minimal info parsed from SKILL.md frontmatter.
+type installedSkillInfo struct {
+	ID   string
+	Name string
+}
+
+// listInstalledSkills scans the skills directory for installed skills.
+func (h *UserSkillHandler) listInstalledSkills() []installedSkillInfo {
+	if h.skillsDir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(h.skillsDir)
+	if err != nil {
+		return nil
+	}
+	var skills []installedSkillInfo
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		skillPath := filepath.Join(h.skillsDir, entry.Name(), "SKILL.md")
+		if _, err := os.Stat(skillPath); err != nil {
+			continue
+		}
+		name := entry.Name()
+		// Try to parse name from frontmatter
+		if data, err := os.ReadFile(skillPath); err == nil {
+			if parsed := parseFrontmatterField(string(data), "name"); parsed != "" {
+				name = parsed
+			}
+		}
+		skills = append(skills, installedSkillInfo{ID: entry.Name(), Name: name})
+	}
+	return skills
+}
+
+// parseFrontmatterField extracts a field value from YAML frontmatter.
+func parseFrontmatterField(content, field string) string {
+	if !strings.HasPrefix(content, "---") {
+		return ""
+	}
+	end := strings.Index(content[3:], "---")
+	if end < 0 {
+		return ""
+	}
+	fm := content[3 : 3+end]
+	for _, line := range strings.Split(fm, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, field+":") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, field+":"))
+			if len(val) >= 2 && (val[0] == '"' || val[0] == '\'') {
+				val = val[1 : len(val)-1]
+			}
+			return val
+		}
+	}
+	return ""
+}
+
 // List returns all installed skills with user-specific enabled state.
 func (h *UserSkillHandler) List(c echo.Context) error {
 	userID := getUserIDFromContext(c)
@@ -68,15 +129,8 @@ func (h *UserSkillHandler) List(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
 
-	// Get installed skills from skill store
-	var skills []*skillstore.Skill
-	var err error
-	if h.skillStore != nil {
-		skills, err = h.skillStore.GetInstalledSkills(c.Request().Context())
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to list skills")
-		}
-	}
+	// Get installed skills from filesystem
+	skills := h.listInstalledSkills()
 
 	// Get user's skill configs
 	userConfigs := make(map[string]bool)
@@ -98,7 +152,7 @@ func (h *UserSkillHandler) List(c echo.Context) error {
 
 	result := make([]UserSkillResponse, 0, len(skills))
 	for _, s := range skills {
-		enabled := s.Enabled // default to system-level
+		enabled := true // default enabled
 		toggled := false
 		if v, ok := userConfigs[s.ID]; ok {
 			enabled = v
@@ -107,9 +161,6 @@ func (h *UserSkillHandler) List(c echo.Context) error {
 		result = append(result, UserSkillResponse{
 			ID:          s.ID,
 			Name:        s.Name,
-			Summary:     s.Summary,
-			Category:    s.Category,
-			Author:      s.Author,
 			Enabled:     enabled,
 			Installed:   true,
 			UserToggled: toggled,

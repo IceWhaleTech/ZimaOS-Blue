@@ -853,10 +853,22 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function resolveApproval(decision: Decision) {
+  async function resolveApproval(decision: Decision, alwaysAllow = false) {
     if (!pendingApproval.value) return
+    const toolName = pendingApproval.value.tool_name
     try {
       await approvalApi.resolve(pendingApproval.value.request_id, decision)
+      // If "Always Allow", set this tool's policy to auto
+      if (alwaysAllow && toolName) {
+        try {
+          const configRes = await approvalApi.getConfig()
+          const config = configRes.data
+          config.tool_policies[toolName] = 'auto'
+          await approvalApi.updateConfig(config)
+        } catch (e) {
+          console.error('Failed to update tool policy:', e)
+        }
+      }
     } finally {
       pendingApproval.value = null
     }

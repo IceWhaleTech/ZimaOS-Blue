@@ -48,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
+	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -62,6 +63,7 @@ import (
 
 	reminderPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reminder"
 	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	webpushPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 
 	blueAPI "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 )
@@ -593,6 +595,16 @@ func runServer() {
 	// SSE event broker — created early so reminder service can use it as EventPublisher
 	sseBroker := ssePkg.NewBroker()
 
+	// Wire Web Push notification support
+	var wpSender *webpushPkg.Sender
+	if vapidPriv, vapidPub, err := webpushPkg.GetOrCreateVAPIDKeys(dataDir); err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize VAPID keys")
+	} else if wpStore, err := webpushPkg.NewStore(db); err != nil {
+		logger.Warn().Err(err).Msg("Failed to initialize webpush store")
+	} else {
+		wpSender = webpushPkg.NewSender(vapidPriv, vapidPub, wpStore, zapLogger)
+	}
+
 	// Wire reminder service (SQLite + cron + message injection)
 	{
 		reminderStore, err := reminderPkg.NewStore(db)
@@ -613,6 +625,11 @@ func runServer() {
 
 			// Wire native OS notifier
 			reminderSvc.SetNotifier(reminderPkg.NewNotifier(zapLogger))
+
+			// Wire Web Push sender
+			if wpSender != nil {
+				reminderSvc.SetWebPushSender(wpSender)
+			}
 
 			// Register native reminders tool
 			remToolsAdapter := reminderPkg.NewToolsAdapter(func() *reminderPkg.Service { return reminderSvc })
@@ -956,6 +973,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Warn("Failed to initialize workspace", zap.Error(err))
 	}
 
+	// Release embedded SKILL.md files to {workspace}/.claude/skills/
+	if err := workspaceMgr.ReleaseSkills(skillEmbed.SkillsFS); err != nil {
+		logger.Warn("Failed to release embedded skills", zap.Error(err))
+	}
+
 	// Initialize Claude Code handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
 	workspaceDir := workspaceMgr.Dir() // {dataDir}/workspace/
@@ -968,81 +990,39 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register workspace_file tool so the agent can update workspace files via conversation
 	toolRegistry.Register(workspace.NewWorkspaceTool(workspaceMgr))
 
-	// Initialize memory handler with lazy init (vector_memory.db created on first request)
+	// Initialize memory handler (markdown-only, no vector store)
 	var memoryHandler *server.MemoryHandler
-	if cfg.Memory.VectorStore.Enabled {
-		memoryHandler = server.NewLazyMemoryHandler(func(h *server.MemoryHandler) error {
-			vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
-			vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
-				DBPath:       vectorDbPath,
-				EmbeddingDim: cfg.Memory.VectorStore.Dimensions,
-				MaxChunks:    10000,
-				EnableFTS:    true,
-				EnableVec:    true,
-			})
-			if err != nil {
-				logger.Warn("Failed to initialize vector store", zap.Error(err))
-				return err
-			}
-			hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
-			memoryService := memory.NewMemoryService(hybridSearcher)
-			unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
-			h.SetService(memoryService)
-			h.SetUnifiedService(unifiedService)
+	memoryHandler = server.NewLazyMemoryHandler(func(h *server.MemoryHandler) error {
+		memoryDir := cfg.Memory.MarkdownDir
+		if memoryDir == "" {
+			memoryDir = workspaceMgr.MemoryDir()
+		}
+		mdBackend, err := memory.NewPureMarkdownBackend(memoryDir)
+		if err != nil {
+			logger.Warn("Failed to initialize markdown backend", zap.Error(err))
+			return err
+		}
+		unifiedService := memory.NewUnifiedMemoryService(mdBackend)
+		h.SetUnifiedService(unifiedService)
 
-			// Initialize markdown backend inside lazy init (must happen after SetUnifiedService)
-			memoryDir := cfg.Memory.MarkdownDir
-			if memoryDir == "" {
-				memoryDir = workspaceMgr.MemoryDir() // Use workspace memory directory
-			}
-			if mdBackend, mdErr := memory.NewPureMarkdownBackend(memoryDir); mdErr != nil {
-				logger.Warn("Failed to initialize markdown backend", zap.Error(mdErr))
-			} else {
-				unifiedService.SetMarkdownBackend(mdBackend)
-			}
-
-			// Set backend mode from config
-			backendMode := "markdown"
-			if cfg.Memory.Backend != "" {
-				backendMode = cfg.Memory.Backend
-			}
-			if setErr := unifiedService.SetBackend(backendMode); setErr != nil {
-				logger.Warn("Failed to set memory backend mode", zap.String("mode", backendMode), zap.Error(setErr))
-			} else {
-				logger.Info("Memory backend configured", zap.String("mode", backendMode))
-			}
-
-			layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
-				BaseDir:            memoryDir,
-				DailyRetentionDays: 30,
-			})
-			if err != nil {
-				logger.Warn("Failed to initialize layered memory service", zap.Error(err))
-			} else {
-				h.SetLayeredService(layeredService)
-				chatHandler.SetLayeredMemory(layeredService)
-			}
-			toolsAdapter := memory.NewToolsAdapter(unifiedService)
-			tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
-
-			// Initialize progressive searcher
-			if localSvc := unifiedService.GetLocalBackend(); localSvc != nil {
-				ps := memory.NewProgressiveSearcher(localSvc.GetSearcher())
-				h.SetProgressiveSearcher(ps)
-				psTool := memory.NewMemoryProgressiveSearchTool(ps)
-				tools.SetProgressiveSearchTool(psTool)
-				logger.Info("Progressive search enabled")
-			}
-
-			logger.Info("Vector memory store initialized lazily")
-			return nil
+		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
+			BaseDir:            memoryDir,
+			DailyRetentionDays: 30,
 		})
-		// Trigger init eagerly so LayeredMemoryService is available for chat recall/extraction
-		// without waiting for the first /memory/* API call.
-		memoryHandler.Init()
-	} else {
-		logger.Info("Vector memory store disabled by config")
-	}
+		if err != nil {
+			logger.Warn("Failed to initialize layered memory service", zap.Error(err))
+		} else {
+			h.SetLayeredService(layeredService)
+			chatHandler.SetLayeredMemory(layeredService)
+		}
+		toolsAdapter := memory.NewToolsAdapter(unifiedService)
+		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
+
+		logger.Info("Memory service initialized (markdown backend)", zap.String("dir", memoryDir))
+		return nil
+	})
+	// Trigger init eagerly so LayeredMemoryService is available for chat recall/extraction
+	memoryHandler.Init()
 
 	// Initialize channel config store
 	channelConfigStore := server.NewChannelConfigStore(dataDir)
@@ -1130,6 +1110,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		ChannelConfigStore: channelConfigStore,
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
+		SSEBroker:          sseBroker,
 	}
 
 	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
@@ -1141,6 +1122,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Tool approval endpoints — /api/v1/approval/* (protected)
 	approvalHandler := blueAPI.NewApprovalHandler(sseBroker)
 	approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
+
+	// Web Push subscription endpoints — /api/v1/webpush/* (protected)
+	if vapidPriv, vapidPub, err := webpushPkg.GetOrCreateVAPIDKeys(dataDir); err == nil {
+		if wpStore, err := webpushPkg.NewStore(db); err == nil {
+			wpHandler := webpushPkg.NewHandler(wpStore, vapidPub)
+			wpHandler.RegisterRoutes(apiProtected.Group("/v1/webpush"))
+			_ = vapidPriv // used by sender in runServer
+		}
+	}
 
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)

@@ -161,17 +161,10 @@ type SearchQuery struct {
 
 // SearchFilters contains optional filters for search.
 type SearchFilters struct {
-	Categories   []string       `json:"categories,omitempty"`
-	Tags         []string       `json:"tags,omitempty"`
-	Source       string         `json:"source,omitempty"`
-	CreatedAfter *time.Time     `json:"created_after,omitempty"`
-	CreatedBefore *time.Time    `json:"created_before,omitempty"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
-}
-
-// SearchResult represents a single search result.
-type SearchResult struct {
-	Entry      *MemoryEntry `json:"entry"`
-	Score      float32      `json:"score"`
-	MatchTypes []string     `json:"match_types,omitempty"`
+	Categories    []string       `json:"categories,omitempty"`
+	Tags          []string       `json:"tags,omitempty"`
+	Source        string         `json:"source,omitempty"`
+	CreatedAfter  *time.Time     `json:"created_after,omitempty"`
+	CreatedBefore *time.Time     `json:"created_before,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }

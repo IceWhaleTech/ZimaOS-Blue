@@ -91,6 +91,15 @@ if (Test-Path $embedDir) {
     Write-Host "[OK] $embedDir does not exist"
 }
 
+# Step 1.6: Copy canonical skills to server/internal/skill/embedded/skills/ for go:embed
+Write-Host "[STEP 1.6] Copying skills for go:embed..."
+$skillsSrc = "g:\GitHub\ZimaOS-Blue\assets\skills"
+$skillsEmbed = "g:\GitHub\ZimaOS-Blue\server\internal\skill\embedded\skills"
+if (Test-Path $skillsEmbed) { Remove-Item -Recurse -Force $skillsEmbed }
+New-Item -ItemType Directory $skillsEmbed -Force | Out-Null
+Copy-Item -Recurse -Force "$skillsSrc\*" $skillsEmbed
+Write-Host "[OK] Skills copied to $skillsEmbed ($(((Get-ChildItem -Directory $skillsEmbed).Count)) skills)"
+
 # Step 2: Build Go library (c-archive, whisper via FFI)
 Write-Host "[STEP 2] Building Go library..."
 Set-Location "g:\GitHub\ZimaOS-Blue\server"
@@ -219,6 +228,18 @@ if (Test-Path $distSrc) {
     Write-Host "[WARN] Frontend dist not found at $distSrc"
 }
 
+# Copy canonical skills to FilesToInstall/.claude/skills/ for NSIS packaging
+$skillsSrc = "g:\GitHub\ZimaOS-Blue\assets\skills"
+$skillsDest = "$filesDir\.claude\skills"
+if (Test-Path $skillsSrc) {
+    if (Test-Path $skillsDest) { Remove-Item -Recurse -Force $skillsDest }
+    New-Item -ItemType Directory $skillsDest -Force | Out-Null
+    Copy-Item -Recurse -Force "$skillsSrc\*" $skillsDest
+    Write-Host "[OK] Skills copied to FilesToInstall\.claude\skills\ ($(((Get-ChildItem -Directory $skillsDest).Count)) skills)"
+} else {
+    Write-Host "[WARN] Skills not found at $skillsSrc"
+}
+
 # Clean up build artifacts from FilesToInstall
 Write-Host "[STEP 6] Cleaning build artifacts..."
 Remove-Item -Force "$filesDir\dist\stats.html" -ErrorAction SilentlyContinue
@@ -296,6 +317,13 @@ Get-ChildItem "$outputDir\ZimaOS-*_*.exe" | ForEach-Object {
 }
 if (-not $signed) {
     Write-Host "[WARN] No installers were signed - code signing certificate not found"
+}
+
+# Clean up embedded skills (build artifact)
+$skillsEmbed = "g:\GitHub\ZimaOS-Blue\server\internal\skill\embedded\skills"
+if (Test-Path $skillsEmbed) {
+    Remove-Item -Recurse -Force $skillsEmbed
+    Write-Host "[OK] Cleaned server\internal\skill\embedded\skills (build artifact)"
 }
 
 Write-Host ""

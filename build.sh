@@ -280,6 +280,17 @@ codesign_binary() {
     success "Binary signed: $(codesign -dv "$target" 2>&1 | head -1)"
 }
 
+# Copy canonical skills from assets/skills/ to server/internal/skill/embedded/skills/ for go:embed
+copy_skills() {
+    info "Copying skills from assets/skills/ to server/internal/skill/embedded/skills/..."
+    local src="$PROJECT_ROOT/assets/skills"
+    local dst="$PROJECT_ROOT/server/internal/skill/embedded/skills"
+    rm -rf "$dst"
+    mkdir -p "$dst"
+    cp -r "$src/"* "$dst/"
+    success "Skills copied ($(ls -1 "$dst" | wc -l) skills)"
+}
+
 # Build for production
 build_all() {
     check_prereqs
@@ -299,6 +310,9 @@ build_all() {
         info "Building shared libraries for FFI..."
         "$PROJECT_ROOT/scripts/build-libs.sh"
     fi
+
+    # Copy skills for go:embed
+    copy_skills
 
     # Build server
     info "Building Go server..."
@@ -368,6 +382,9 @@ prd_run() {
     cp -r "$PROJECT_ROOT/web/dist" "$PROJECT_ROOT/server/internal/web/dist"
     success "Web assets copied to server/internal/web/dist"
 
+    # Copy skills for go:embed
+    copy_skills
+
     # Build server with pack-dist (signs before packing, appends web assets to binary)
     info "Building Go server (production mode)..."
     cd "$PROJECT_ROOT/server"
@@ -392,6 +409,9 @@ clean_all() {
     rm -rf "$PROJECT_ROOT/web/dist"
     rm -rf "$PROJECT_ROOT/web/node_modules"
     rm -rf "$PROJECT_ROOT/server/internal/web/dist"
+
+    # Clean embedded skills (build artifact)
+    rm -rf "$PROJECT_ROOT/server/internal/skill/embedded/skills"
 
     success "Clean complete!"
 }

@@ -401,7 +401,7 @@ async function addCustomProvider() {
   addingProvider.value = true
   addingStep.value = 'adding'
   try {
-    // Step 1: Create provider (with optional API key — backend handles it)
+    // Step 1: Create provider (with optional API key — backend saves it atomically)
     const provider = await store.addProvider({
       name: newProvider.value.name,
       base_url: newProvider.value.base_url,
@@ -413,26 +413,38 @@ async function addCustomProvider() {
 
     const providerId = provider.id
 
-    // Step 2: Probe models to find which are available
+    // Step 2: Fetch & probe models (with timeout so UI doesn't hang)
     addingStep.value = 'probing'
-
-    // First fetch models (backend already started async fetch, but let's ensure)
-    const fetchResult = await store.refreshModels(providerId)
 
     let available = 0
     let total = 0
 
-    if (fetchResult.success && fetchResult.models && fetchResult.models.length > 0) {
-      // Models fetched — now probe to check actual availability
-      const probeResult = await store.probeModels(providerId)
-      if (probeResult.success) {
-        available = probeResult.available
-        total = probeResult.total
-      } else {
-        // Probe failed but we have models from fetch
-        total = fetchResult.models.length
-        available = total // Assume all available if probe fails
+    try {
+      // Race the fetch against a 15s timeout
+      const fetchResult = await Promise.race([
+        store.refreshModels(providerId),
+        new Promise<{ success: false; error: string; models: never[] }>(resolve =>
+          setTimeout(() => resolve({ success: false, error: 'timeout', models: [] }), 15000)
+        ),
+      ])
+
+      if (fetchResult.success && fetchResult.models && fetchResult.models.length > 0) {
+        const probeResult = await Promise.race([
+          store.probeModels(providerId),
+          new Promise<{ success: false; error: string; total: number; available: number; unavailable: number; results: never[] }>(resolve =>
+            setTimeout(() => resolve({ success: false, error: 'timeout', total: 0, available: 0, unavailable: 0, results: [] }), 20000)
+          ),
+        ])
+        if (probeResult.success) {
+          available = probeResult.available
+          total = probeResult.total
+        } else {
+          total = fetchResult.models.length
+          available = total
+        }
       }
+    } catch {
+      // Fetch/probe failed — provider is still saved, just no model info yet
     }
 
     // Step 3: Auto-enable if we found available models
@@ -510,6 +522,13 @@ async function addAPIKey() {
           )
         }
       })
+    }
+    // Auto-test media provider keys
+    if (provider && provider.type === 'media') {
+      const keyId = apiKey?.id
+      if (keyId) {
+        testConnection(providerId, keyId)
+      }
     }
   } catch (e) {
     console.error('Failed to add API key:', e)
@@ -792,17 +811,20 @@ function handleModelDragEnd() {
 
 const capabilityKeys = ['chat', 'vision', 'function_call', 'thinking', 'streaming', 'image_generation', 'video_generation', 'audio_generation']
 
+const capabilityEmoji: Record<string, string> = {
+  chat: '💬',
+  vision: '👁',
+  function_call: '🔧',
+  thinking: '🧠',
+  streaming: '⚡',
+  image_generation: '🖼',
+  video_generation: '🎬',
+  audio_generation: '🔊',
+}
+
 function isMediaModel(model: Model): boolean {
   const caps = model.capabilities || []
   return caps.some(c => c === 'image_generation' || c === 'video_generation' || c === 'audio_generation')
-}
-
-function formatCapabilities(caps: Model['capabilities']) {
-  if (!caps || !caps.length) return ''
-  return caps
-    .map(c => capabilityKeys.includes(c) ? t(`providerPool.capabilities.${c}`) : c)
-    .filter(Boolean)
-    .join(', ')
 }
 
 function openPricingModal(model?: Model) {
@@ -1610,8 +1632,8 @@ onMounted(() => {
                     <span v-else-if="keyTestResults[key.id]?.healthy === false" class="text-red-400" :title="keyTestResults[key.id]?.error || 'Failed'">✗</span>
                     <!-- Test button (only for custom providers — builtin auto-tests on key add) -->
                     <button
-                      v-if="currentTabSelectedProvider!.type === 'custom'"
-                      :disabled="testingKeyId === key.id || !currentTabSelectedProvider!.base_url"
+                      v-if="currentTabSelectedProvider!.type === 'custom' || currentTabSelectedProvider!.type === 'media'"
+                      :disabled="testingKeyId === key.id"
                       class="px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded disabled:opacity-50"
                       :title="!currentTabSelectedProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
                       @click.stop="testConnection(currentTabSelectedProvider!.id, key.id)"
@@ -1725,6 +1747,7 @@ onMounted(() => {
                 </span>
               </h3>
               <button
+                v-if="currentTabSelectedProvider!.type !== 'media'"
                 class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs"
                 @click="openAllowedModelsModal"
               >
@@ -1748,6 +1771,14 @@ onMounted(() => {
                   <div class="flex items-center flex-1 min-w-0 gap-1.5">
                     <span class="text-gray-400 cursor-grab select-none" title="Drag to reorder">⠿</span>
                     <span class="text-gray-900 dark:text-white font-medium">{{ model.display_name || model.name }}</span>
+                    <span v-if="model.capabilities?.length" class="flex gap-0.5 ml-0.5">
+                      <span
+                        v-for="cap in model.capabilities"
+                        :key="cap"
+                        class="text-[10px] leading-none"
+                        :title="cap"
+                      >{{ capabilityEmoji[cap] || '•' }}</span>
+                    </span>
                     <span class="text-gray-500 ml-1 truncate">{{ model.id }}</span>
                   </div>
                   <div class="flex items-center gap-2 ml-2">
@@ -2154,6 +2185,9 @@ onMounted(() => {
               />
               <div class="flex-1 min-w-0">
                 <span class="text-sm text-gray-900 dark:text-white">{{ model.display_name || model.name }}</span>
+                <span v-if="model.capabilities?.length" class="inline-flex gap-0.5 ml-0.5">
+                  <span v-for="cap in model.capabilities" :key="cap" class="text-[10px]" :title="cap">{{ capabilityEmoji[cap] || '•' }}</span>
+                </span>
                 <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
               </div>
               <span v-if="model.context_window" class="text-xs text-gray-400">

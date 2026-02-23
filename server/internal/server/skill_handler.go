@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
@@ -47,13 +51,20 @@ type RemoteSkill struct {
 	Installed   bool     `json:"installed"`
 }
 
+// SkillEventPublisher publishes events to connected SSE clients.
+type SkillEventPublisher interface {
+	Publish(userID string, eventType string, data any)
+}
+
 // SkillHandler handles skill-related HTTP requests
 type SkillHandler struct {
 	registry            *skill.Registry
-	store               *skillstore.Store                // Local database store for skills
+	store               *skillstore.Store                // Local database store for skills (browse/search only)
 	syncService         *skillstore.SyncService          // Sync service for periodic updates
 	featuredLoader      *skillstore.FeaturedSkillsLoader // Featured skills fallback
 	localScanner        *skillstore.LocalSkillScanner    // Local skill discovery
+	skillsDir           string                           // {dataDir}/workspace/.claude/skills/
+	eventBroker         SkillEventPublisher              // Unified SSE event broker
 	sources             map[string]*SkillSource
 	remoteSkills        map[string]*RemoteSkill
 	mu                  sync.RWMutex
@@ -129,6 +140,36 @@ func (h *SkillHandler) SetLocalScanner(scanner *skillstore.LocalSkillScanner) {
 	h.localScanner = scanner
 }
 
+// SetSkillsDir sets the directory where skills are installed as {name}/SKILL.md.
+func (h *SkillHandler) SetSkillsDir(dir string) {
+	h.skillsDir = dir
+}
+
+// SetEventBroker sets the unified SSE event broker for publishing install progress.
+func (h *SkillHandler) SetEventBroker(broker SkillEventPublisher) {
+	h.eventBroker = broker
+}
+
+// publishEvent publishes an event to all connected SSE clients for the given user.
+// If no broker is configured or userID is empty, the event is silently dropped.
+func (h *SkillHandler) publishEvent(userID, eventType string, data any) {
+	if h.eventBroker == nil {
+		return
+	}
+	if userID == "" {
+		userID = "default"
+	}
+	h.eventBroker.Publish(userID, eventType, data)
+}
+
+// getUserID extracts the user ID from the echo context JWT claims.
+func getUserIDFromContext(c echo.Context) string {
+	if claims, ok := c.Get("user").(*auth.Claims); ok && claims != nil {
+		return claims.UserID
+	}
+	return "default"
+}
+
 // SetUseMockData enables or disables mock data fallback
 // When enabled, mock data is returned if the API fails
 // This is useful for development and demo purposes
@@ -191,56 +232,51 @@ type SkillResponse struct {
 	Outputs     []skill.Parameter `json:"outputs,omitempty"`
 }
 
-// ListSkills returns all registered skills
+// ListSkills returns all skills from the .claude/skills/ directory.
 func (h *SkillHandler) ListSkills(c echo.Context) error {
-	skills := h.registry.List()
-	response := make([]SkillResponse, 0, len(skills))
+	response := make([]SkillResponse, 0)
 
-	for _, s := range skills {
-		m := s.Manifest
-		response = append(response, SkillResponse{
-			ID:          m.ID,
-			Name:        m.Name,
-			Version:     m.Version,
-			Description: m.Description,
-			Author:      m.Author,
-			Category:    m.Category,
-			Icon:        m.Icon,
-			Tags:        m.Tags,
-			Enabled:     s.Enabled,
-			Builtin:     s.Builtin,
-			Inputs:      m.Inputs,
-			Outputs:     m.Outputs,
-		})
+	if h.localScanner != nil {
+		for _, ls := range h.localScanner.GetAll() {
+			response = append(response, SkillResponse{
+				ID:          ls.ID,
+				Name:        ls.Name,
+				Version:     ls.Version,
+				Description: ls.Description,
+				Author:      ls.Author,
+				Category:    ls.Category,
+				Tags:        ls.Tags,
+				Enabled:     true,
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, response)
 }
 
-// GetSkill returns a specific skill
+// GetSkill returns a specific skill from the .claude/skills/ directory.
 func (h *SkillHandler) GetSkill(c echo.Context) error {
 	id := c.Param("id")
-	info := h.registry.GetInfo(id)
-	if info == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "skill not found",
-		})
+
+	if h.localScanner != nil {
+		for _, ls := range h.localScanner.GetAll() {
+			if ls.ID == id {
+				return c.JSON(http.StatusOK, SkillResponse{
+					ID:          ls.ID,
+					Name:        ls.Name,
+					Version:     ls.Version,
+					Description: ls.Description,
+					Author:      ls.Author,
+					Category:    ls.Category,
+					Tags:        ls.Tags,
+					Enabled:     true,
+				})
+			}
+		}
 	}
 
-	m := info.Manifest
-	return c.JSON(http.StatusOK, SkillResponse{
-		ID:          m.ID,
-		Name:        m.Name,
-		Version:     m.Version,
-		Description: m.Description,
-		Author:      m.Author,
-		Category:    m.Category,
-		Icon:        m.Icon,
-		Tags:        m.Tags,
-		Enabled:     info.Enabled,
-		Builtin:     info.Builtin,
-		Inputs:      m.Inputs,
-		Outputs:     m.Outputs,
+	return c.JSON(http.StatusNotFound, map[string]string{
+		"error": "skill not found",
 	})
 }
 
@@ -251,6 +287,24 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 
 	// First check if skill exists in registry
 	info := h.registry.GetInfo(id)
+
+	// Try to read SKILL.md from directory
+	if h.skillsDir != "" {
+		path := filepath.Join(h.skillsDir, id, "SKILL.md")
+		if data, err := os.ReadFile(path); err == nil {
+			name := id
+			if info != nil {
+				name = info.Manifest.Name
+			}
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"id":      id,
+				"name":    name,
+				"content": string(data),
+				"source":  "directory",
+			})
+		}
+	}
+
 	if info == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{
 			"error": "skill not found",
@@ -673,141 +727,350 @@ func (h *SkillHandler) skillToRemoteSkill(s *skillstore.Skill, installedIDs map[
 	}
 }
 
-// InstallSkill installs a skill from a remote source with retry logic
+// gitHubContentEntry represents a file/dir entry from GitHub Contents API.
+type gitHubContentEntry struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Type        string `json:"type"` // "file" or "dir"
+	DownloadURL string `json:"download_url,omitempty"`
+	Content     string `json:"content,omitempty"`
+	Encoding    string `json:"encoding,omitempty"`
+	Size        int    `json:"size"`
+	URL         string `json:"url"` // API URL for this entry
+}
+
+// gitHubURLPattern matches github.com/{owner}/{repo}/tree/{ref}/{path}
+var gitHubURLPattern = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)$`)
+
+// parseGitHubDirURL parses a GitHub tree URL into API components.
+// Returns (owner, repo, ref, path, ok).
+func parseGitHubDirURL(u string) (string, string, string, string, bool) {
+	m := gitHubURLPattern.FindStringSubmatch(u)
+	if m == nil {
+		return "", "", "", "", false
+	}
+	return m[1], m[2], m[3], m[4], true
+}
+
+// isGitHubDirURL returns true if the URL points to a GitHub directory (tree).
+func isGitHubDirURL(u string) bool {
+	_, _, _, _, ok := parseGitHubDirURL(u)
+	return ok
+}
+
+// downloadGitHubDirectory downloads all files from a GitHub directory into destDir.
+// It calls progressFn(downloaded, total) after each file is written.
+func (h *SkillHandler) downloadGitHubDirectory(ctx context.Context, ghURL, destDir string, progressFn func(downloaded, total int)) error {
+	owner, repo, ref, path, ok := parseGitHubDirURL(ghURL)
+	if !ok {
+		return fmt.Errorf("not a valid GitHub directory URL: %s", ghURL)
+	}
+
+	// Collect all files first (recursive)
+	type fileEntry struct {
+		RelPath     string // relative to the skill root
+		DownloadURL string
+	}
+	var files []fileEntry
+
+	var walk func(apiPath, relBase string) error
+	walk = func(apiPath, relBase string) error {
+		apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, apiPath, ref)
+		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+		resp, err := h.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("GitHub API request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("GitHub API returned %d for %s", resp.StatusCode, apiURL)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		var entries []gitHubContentEntry
+		if err := json.Unmarshal(body, &entries); err != nil {
+			// Might be a single file response
+			var single gitHubContentEntry
+			if err2 := json.Unmarshal(body, &single); err2 == nil && single.Type == "file" {
+				files = append(files, fileEntry{RelPath: filepath.Join(relBase, single.Name), DownloadURL: single.DownloadURL})
+				return nil
+			}
+			return fmt.Errorf("failed to parse GitHub contents: %w", err)
+		}
+
+		for _, e := range entries {
+			switch e.Type {
+			case "file":
+				files = append(files, fileEntry{RelPath: filepath.Join(relBase, e.Name), DownloadURL: e.DownloadURL})
+			case "dir":
+				if err := walk(e.Path, filepath.Join(relBase, e.Name)); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := walk(path, ""); err != nil {
+		return err
+	}
+
+	if len(files) == 0 {
+		return fmt.Errorf("no files found in GitHub directory")
+	}
+
+	// Download each file
+	for i, f := range files {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		destPath := filepath.Join(destDir, f.RelPath)
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", f.DownloadURL, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := h.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to download %s: %w", f.RelPath, err)
+		}
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", f.RelPath, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("HTTP %d downloading %s", resp.StatusCode, f.RelPath)
+		}
+
+		if err := os.WriteFile(destPath, data, 0o644); err != nil {
+			return err
+		}
+
+		if progressFn != nil {
+			progressFn(i+1, len(files))
+		}
+	}
+
+	return nil
+}
+
+// findRemoteSkill looks up a RemoteSkill by ID from store, memory, or featured.
+func (h *SkillHandler) findRemoteSkill(ctx context.Context, id string) *RemoteSkill {
+	if h.store != nil {
+		sk, err := h.store.GetSkill(ctx, id)
+		if err == nil && sk != nil {
+			installedIDs := h.getInstalledSkillIDs()
+			return h.skillToRemoteSkill(sk, installedIDs)
+		}
+	}
+	h.mu.RLock()
+	memSkill, exists := h.remoteSkills[id]
+	h.mu.RUnlock()
+	if exists {
+		return memSkill
+	}
+	return nil
+}
+
+// downloadSkillMD downloads SKILL.md content for a skill with retry.
+func (h *SkillHandler) downloadSkillMD(ctx context.Context, id string, rs *RemoteSkill) ([]byte, error) {
+	const maxRetries = 3
+	var lastErr error
+
+	urls := []string{
+		fmt.Sprintf("https://www.clawhub.ai/api/v1/skills/%s/skill-md", id),
+	}
+	if rs.DownloadURL != "" {
+		urls = append(urls, rs.DownloadURL)
+	}
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		for _, u := range urls {
+			req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+			if err != nil {
+				continue
+			}
+			resp, err := h.httpClient.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if resp.StatusCode == http.StatusOK {
+				data, err := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if err == nil {
+					return data, nil
+				}
+				lastErr = err
+			} else {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, u)
+			}
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(1<<(attempt-1)) * time.Second):
+			}
+		}
+	}
+
+	// Fallback: generate minimal SKILL.md
+	_ = lastErr // all download attempts failed, use fallback
+	return []byte(fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n# %s\n\n%s\n",
+		rs.Name, rs.Description, rs.Name, rs.Description)), nil
+}
+
+// InstallSkill installs a skill by downloading files to the skills directory.
+// Supports both single SKILL.md downloads and full GitHub directory downloads.
+// Publishes progress events via the unified SSE broker.
 func (h *SkillHandler) InstallSkill(c echo.Context) error {
 	id := c.Param("id")
-	ctx := c.Request().Context()
+	userID := getUserIDFromContext(c)
 
-	// Check if already installed
-	if h.registry.Get(id) != nil {
+	if h.skillsDir == "" {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "skills directory not configured",
+		})
+	}
+
+	// Check if already installed (directory exists with SKILL.md)
+	skillDir := filepath.Join(h.skillsDir, id)
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil {
 		return c.JSON(http.StatusConflict, map[string]string{
 			"error": "skill already installed",
 		})
 	}
 
-	var rs *RemoteSkill
-
-	// Try to get skill from database first
-	if h.store != nil {
-		skill, err := h.store.GetSkill(ctx, id)
-		if err == nil && skill != nil {
-			installedIDs := h.getInstalledSkillIDs()
-			rs = h.skillToRemoteSkill(skill, installedIDs)
-		}
-	}
-
-	// Fallback to in-memory storage
+	ctx := c.Request().Context()
+	rs := h.findRemoteSkill(ctx, id)
 	if rs == nil {
-		h.mu.RLock()
-		memSkill, exists := h.remoteSkills[id]
-		h.mu.RUnlock()
-
-		if !exists {
-			return c.JSON(http.StatusNotFound, map[string]string{
-				"error": "skill not found in store",
-			})
-		}
-		rs = memSkill
-	}
-
-	// Download skill manifest from source with retry logic
-	const maxRetries = 3
-	var manifest *skill.Manifest
-	var lastErr error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		manifest, lastErr = h.downloadSkillManifest(ctx, rs)
-		if lastErr == nil {
-			break
-		}
-
-		// Check if context is cancelled
-		if ctx.Err() != nil {
-			return c.JSON(http.StatusRequestTimeout, map[string]string{
-				"error":   "request cancelled",
-				"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
-			})
-		}
-
-		// Wait before retry (exponential backoff: 1s, 2s, 4s)
-		if attempt < maxRetries {
-			select {
-			case <-ctx.Done():
-				return c.JSON(http.StatusRequestTimeout, map[string]string{
-					"error":   "request cancelled during retry",
-					"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
-				})
-			case <-time.After(time.Duration(1<<(attempt-1)) * time.Second):
-				// Continue to next retry
-			}
-		}
-	}
-
-	if lastErr != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error":       fmt.Sprintf("failed to download skill after %d attempts: %v", maxRetries, lastErr),
-			"retry_count": fmt.Sprintf("%d", maxRetries),
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": "skill not found in store",
 		})
 	}
 
-	// Create and register the skill
-	remoteSkill := NewRemoteSkillAdapter(manifest)
-	if err := h.registry.Register(remoteSkill, false); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": fmt.Sprintf("failed to register skill: %v", err),
-		})
+	// Publish start event
+	h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+		"id": id, "percent": 0, "message": "Starting install...",
+	})
+
+	// Check if this is a GitHub directory skill
+	ghURL := rs.Homepage
+	if ghURL == "" {
+		ghURL = rs.DownloadURL
 	}
 
-	// Update installed status in database
-	// If this fails, rollback the registration
-	if h.store != nil {
-		if err := h.store.SetInstalled(ctx, id, true); err != nil {
-			// Rollback: unregister the skill
-			h.registry.Unregister(id)
+	if isGitHubDirURL(ghURL) {
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
 			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error":    fmt.Sprintf("failed to update database: %v", err),
-				"rollback": "skill registration rolled back",
+				"error": fmt.Sprintf("failed to create skill directory: %v", err),
 			})
 		}
+		err := h.downloadGitHubDirectory(ctx, ghURL, skillDir, func(downloaded, total int) {
+			pct := int(float64(downloaded) / float64(total) * 100)
+			h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+				"id": id, "percent": pct, "message": fmt.Sprintf("Downloading %d/%d", downloaded, total),
+			})
+		})
+		if err != nil {
+			os.RemoveAll(skillDir)
+			h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to download from GitHub: %v", err),
+			})
+		}
+		h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("skill %s installed from GitHub", rs.Name),
+			"skill":   rs,
+		})
 	}
 
+	// Non-GitHub: download SKILL.md
+	h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+		"id": id, "percent": 30, "message": "Downloading SKILL.md...",
+	})
+	skillContent, err := h.downloadSkillMD(ctx, id, rs)
+	if err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to download: %v", err),
+		})
+	}
+
+	h.publishEvent(userID, "skill.install.progress", map[string]interface{}{
+		"id": id, "percent": 80, "message": "Writing files...",
+	})
+
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to create skill directory: %v", err),
+		})
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), skillContent, 0o644); err != nil {
+		os.RemoveAll(skillDir)
+		h.publishEvent(userID, "skill.install.error", map[string]interface{}{"id": id, "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to write SKILL.md: %v", err),
+		})
+	}
+
+	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("skill %s installed successfully", rs.Name),
+		"message": fmt.Sprintf("skill %s installed to %s", rs.Name, skillDir),
 		"skill":   rs,
 	})
 }
 
-// UninstallSkill uninstalls a skill
+// UninstallSkill uninstalls a skill by removing its directory.
 func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 	id := c.Param("id")
-	ctx := c.Request().Context()
 
-	info := h.registry.GetInfo(id)
-	if info == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "skill not found",
-		})
-	}
-
-	// Don't allow uninstalling builtin skills
-	if info.Builtin {
-		return c.JSON(http.StatusForbidden, map[string]string{
-			"error": "cannot uninstall builtin skill",
-		})
-	}
-
-	if err := h.registry.Unregister(id); err != nil {
+	if h.skillsDir == "" {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
+			"error": "skills directory not configured",
 		})
 	}
 
-	// Update installed status in database
-	if h.store != nil {
-		// Ignore error - skill is already unregistered from memory
-		_ = h.store.SetInstalled(ctx, id, false)
+	skillDir := filepath.Join(h.skillsDir, id)
+	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"error": "skill not installed",
+		})
 	}
+
+	if err := os.RemoveAll(skillDir); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("failed to remove skill: %v", err),
+		})
+	}
+
+	// Also unregister from in-memory registry if present
+	h.registry.Unregister(id)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
@@ -1826,125 +2089,111 @@ type InstallFromURLRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
-// InstallFromURL installs a skill from a URL (GitHub raw URL or direct link) with retry logic
+// InstallFromURL installs a skill from a URL. Supports both direct SKILL.md URLs
+// and GitHub directory URLs (downloads all files in the directory).
 func (h *SkillHandler) InstallFromURL(c echo.Context) error {
 	var req InstallFromURLRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid request body",
-		})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
-
 	if req.URL == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "URL is required",
-		})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "URL is required"})
+	}
+	if h.skillsDir == "" {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "skills directory not configured"})
 	}
 
 	ctx := c.Request().Context()
 
-	// Fetch the skill content from URL with retry logic
+	// Check if this is a GitHub directory URL
+	if isGitHubDirURL(req.URL) {
+		// Extract skill ID from the URL path (last segment)
+		_, _, _, ghPath, _ := parseGitHubDirURL(req.URL)
+		parts := strings.Split(strings.TrimSuffix(ghPath, "/"), "/")
+		skillID := parts[len(parts)-1]
+		if req.Name != "" {
+			skillID = strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
+		}
+
+		skillDir := filepath.Join(h.skillsDir, skillID)
+		if _, err := os.Stat(skillDir); err == nil {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "skill already installed"})
+		}
+
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir: %v", err)})
+		}
+
+		err := h.downloadGitHubDirectory(ctx, req.URL, skillDir, nil)
+		if err != nil {
+			os.RemoveAll(skillDir)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("GitHub download failed: %v", err)})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"skill":   map[string]interface{}{"id": skillID, "path": skillDir},
+		})
+	}
+
+	// Non-GitHub: download single file
 	const maxRetries = 3
 	var body []byte
 	var lastErr error
-
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		httpReq, err := http.NewRequestWithContext(ctx, "GET", req.URL, nil)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("invalid URL: %v", err),
-			})
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid URL: %v", err)})
 		}
-
 		resp, err := h.httpClient.Do(httpReq)
 		if err != nil {
-			lastErr = fmt.Errorf("failed to fetch skill: %v", err)
-		} else {
-			if resp.StatusCode == http.StatusOK {
-				body, lastErr = io.ReadAll(resp.Body)
-				resp.Body.Close()
-				if lastErr == nil {
-					break // Success
-				}
-				lastErr = fmt.Errorf("failed to read skill content: %v", lastErr)
-			} else {
-				resp.Body.Close()
-				lastErr = fmt.Errorf("failed to fetch skill: HTTP %d", resp.StatusCode)
+			lastErr = err
+		} else if resp.StatusCode == http.StatusOK {
+			body, lastErr = io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if lastErr == nil {
+				break
 			}
+		} else {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 		}
-
-		// Check if context is cancelled
 		if ctx.Err() != nil {
-			return c.JSON(http.StatusRequestTimeout, map[string]string{
-				"error":   "request cancelled",
-				"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
-			})
+			return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "request cancelled"})
 		}
-
-		// Wait before retry (exponential backoff: 1s, 2s, 4s)
 		if attempt < maxRetries {
 			select {
 			case <-ctx.Done():
-				return c.JSON(http.StatusRequestTimeout, map[string]string{
-					"error":   "request cancelled during retry",
-					"attempt": fmt.Sprintf("%d/%d", attempt, maxRetries),
-				})
+				return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "request cancelled"})
 			case <-time.After(time.Duration(1<<(attempt-1)) * time.Second):
-				// Continue to next retry
 			}
 		}
 	}
-
 	if lastErr != nil {
-		return c.JSON(http.StatusBadGateway, map[string]string{
-			"error":       fmt.Sprintf("failed after %d attempts: %v", maxRetries, lastErr),
-			"retry_count": fmt.Sprintf("%d", maxRetries),
-		})
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("failed after %d attempts: %v", maxRetries, lastErr)})
 	}
 
-	// Parse the skill content (expecting SKILL.md format)
-	skillID, skillManifest, err := h.parseSkillContent(string(body), req.URL, req.Name, req.Description)
+	skillID, _, err := h.parseSkillContent(string(body), req.URL, req.Name, req.Description)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": fmt.Sprintf("failed to parse skill: %v", err),
-		})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse skill: %v", err)})
 	}
 
-	// Check if already installed
-	if h.registry.Get(skillID) != nil {
-		return c.JSON(http.StatusConflict, map[string]string{
-			"error": "skill already installed",
-		})
+	skillDir := filepath.Join(h.skillsDir, skillID)
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "skill already installed"})
 	}
 
-	// Create and register the skill
-	adapter := NewRemoteSkillAdapter(skillManifest)
-	if err := h.registry.Register(adapter, false); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": fmt.Sprintf("failed to register skill: %v", err),
-		})
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("mkdir: %v", err)})
 	}
-
-	// Update installed status in database
-	if h.store != nil {
-		if err := h.store.SetInstalled(ctx, skillID, true); err != nil {
-			// Rollback: unregister the skill
-			h.registry.Unregister(skillID)
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error":    fmt.Sprintf("failed to update database: %v", err),
-				"rollback": "skill registration rolled back",
-			})
-		}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), body, 0o644); err != nil {
+		os.RemoveAll(skillDir)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("write: %v", err)})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
-		"skill": map[string]interface{}{
-			"id":          skillManifest.ID,
-			"name":        skillManifest.Name,
-			"version":     skillManifest.Version,
-			"description": skillManifest.Description,
-		},
+		"skill":   map[string]interface{}{"id": skillID, "path": skillDir},
 	})
 }
 

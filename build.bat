@@ -175,6 +175,16 @@ if errorlevel 1 (
 )
 echo [OK] Web assets copied to server\internal\web\dist
 
+:: Copy canonical skills from assets\skills to server\internal\skill\embedded\skills (required for go:embed)
+echo [INFO] Copying skills to server\internal\skill\embedded\skills...
+if exist "%PROJECT_ROOT%server\internal\skill\embedded\skills" rmdir /s /q "%PROJECT_ROOT%server\internal\skill\embedded\skills"
+xcopy /E /I /Y "%PROJECT_ROOT%assets\skills" "%PROJECT_ROOT%server\internal\skill\embedded\skills" >nul
+if errorlevel 1 (
+    echo [ERROR] Failed to copy skills
+    exit /b 1
+)
+echo [OK] Skills copied to server\internal\skill\embedded\skills
+
 :: Build server with pack-dist (appends web assets to binary)
 echo [INFO] Building Go server...
 cd /d "%PROJECT_ROOT%server"
@@ -232,6 +242,16 @@ if errorlevel 1 (
 )
 echo [OK] Web assets copied to server\internal\web\dist
 
+:: Copy canonical skills from assets\skills to server\internal\skill\embedded\skills (required for go:embed)
+echo [INFO] Copying skills to server\internal\skill\embedded\skills...
+if exist "%PROJECT_ROOT%server\internal\skill\embedded\skills" rmdir /s /q "%PROJECT_ROOT%server\internal\skill\embedded\skills"
+xcopy /E /I /Y "%PROJECT_ROOT%assets\skills" "%PROJECT_ROOT%server\internal\skill\embedded\skills" >nul
+if errorlevel 1 (
+    echo [ERROR] Failed to copy skills
+    exit /b 1
+)
+echo [OK] Skills copied to server\internal\skill\embedded\skills
+
 :: Build server with pack-dist (appends web assets to binary)
 echo [INFO] Building Go server (production mode)...
 cd /d "%PROJECT_ROOT%server"
@@ -261,6 +281,7 @@ if exist "%PROJECT_ROOT%server\blue.exe" del /f "%PROJECT_ROOT%server\blue.exe"
 if exist "%PROJECT_ROOT%server\data" rmdir /s /q "%PROJECT_ROOT%server\data"
 if exist "%PROJECT_ROOT%web\dist" rmdir /s /q "%PROJECT_ROOT%web\dist"
 if exist "%PROJECT_ROOT%server\internal\web\dist" rmdir /s /q "%PROJECT_ROOT%server\internal\web\dist"
+if exist "%PROJECT_ROOT%server\internal\skill\embedded\skills" rmdir /s /q "%PROJECT_ROOT%server\internal\skill\embedded\skills"
 
 echo [OK] Clean complete!
 goto :eof

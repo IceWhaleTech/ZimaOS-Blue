@@ -46,7 +46,34 @@ func NewStore(db *sql.DB) (*Store, error) {
 }
 
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(`
+	// Check if existing table has the expected schema (fire_at column).
+	// If the table exists with an old schema, drop and recreate.
+	var hasFireAt bool
+	rows, err := s.db.Query(`PRAGMA table_info(reminders)`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var cid int
+			var name, typ string
+			var notNull int
+			var dflt sql.NullString
+			var pk int
+			if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+				break
+			}
+			if name == "fire_at" {
+				hasFireAt = true
+			}
+		}
+		rows.Close()
+	}
+
+	// Table exists but missing fire_at → old schema, drop it
+	if !hasFireAt {
+		s.db.Exec(`DROP TABLE IF EXISTS reminders`)
+	}
+
+	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS reminders (
 			id TEXT PRIMARY KEY,
 			owner_id TEXT NOT NULL,

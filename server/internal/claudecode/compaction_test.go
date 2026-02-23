@@ -1,10 +1,24 @@
 package claudecode
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
+
+// generateLargeText creates a string with approximately n whitespace-separated words.
+func generateLargeText(n int) string {
+	var sb strings.Builder
+	sb.Grow(n * 5) // ~5 chars per word
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString("word")
+	}
+	return sb.String()
+}
 
 func TestEstimateTokens(t *testing.T) {
 	tests := []struct {
@@ -20,12 +34,12 @@ func TestEstimateTokens(t *testing.T) {
 		{
 			name:     "short message",
 			msg:      llm.Message{Content: "Hello"},
-			expected: 1, // 5 chars / 4 = 1
+			expected: 1, // 1 word
 		},
 		{
 			name:     "longer message",
 			msg:      llm.Message{Content: "This is a longer message with more content"},
-			expected: 10, // 43 chars / 4 = 10
+			expected: 8, // 8 words
 		},
 	}
 
@@ -43,11 +57,11 @@ func TestEstimateMessagesTokens(t *testing.T) {
 	messages := []llm.Message{
 		{Content: "Hello"},    // 1 token
 		{Content: "World"},    // 1 token
-		{Content: "Test1234"}, // 2 tokens
+		{Content: "Test1234"}, // 1 token (single word)
 	}
 
 	result := EstimateMessagesTokens(messages)
-	expected := 4 // 1 + 1 + 2
+	expected := 3 // 1 + 1 + 1
 
 	if result != expected {
 		t.Errorf("EstimateMessagesTokens() = %d, want %d", result, expected)
@@ -173,7 +187,7 @@ func TestIsOversizedForSummary(t *testing.T) {
 		},
 		{
 			name:          "large message",
-			msg:           llm.Message{Content: string(make([]byte, 200000))}, // 200k chars
+			msg:           llm.Message{Content: generateLargeText(200000)}, // ~200k words
 			contextWindow: 100000,
 			expected:      true,
 		},
@@ -191,10 +205,10 @@ func TestIsOversizedForSummary(t *testing.T) {
 
 func TestPruneHistoryForContextShare(t *testing.T) {
 	messages := []llm.Message{
-		{Content: string(make([]byte, 10000))}, // ~2500 tokens
-		{Content: string(make([]byte, 10000))}, // ~2500 tokens
-		{Content: string(make([]byte, 10000))}, // ~2500 tokens
-		{Content: string(make([]byte, 10000))}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
+		{Content: generateLargeText(2500)}, // ~2500 tokens
 	}
 
 	// With max 5000 tokens budget (10000 * 0.5), should drop some messages
@@ -211,6 +225,152 @@ func TestPruneHistoryForContextShare(t *testing.T) {
 
 	if result.KeptTokens > result.BudgetTokens {
 		t.Errorf("Kept tokens (%d) exceeds budget (%d)", result.KeptTokens, result.BudgetTokens)
+	}
+}
+
+// oldEstimateTokens is the previous len/4 implementation for benchmarking comparison.
+func oldEstimateTokens(msg llm.Message) int {
+	total := 0
+	if msg.Content != "" {
+		total += len(msg.Content) / 4
+	}
+	for _, part := range msg.ContentParts {
+		switch part.Type {
+		case "text":
+			total += len(part.Text) / 4
+		case "image":
+			total += 765
+		}
+	}
+	for _, tc := range msg.ToolCalls {
+		total += len(tc.Name)/4 + len(tc.Arguments)/4 + 10
+	}
+	if total == 0 && (msg.Role != "" || msg.ToolCallID != "") {
+		total = 4
+	}
+	return total
+}
+
+func BenchmarkEstimateTokens(b *testing.B) {
+	short := []llm.Message{
+		{Role: llm.RoleUser, Content: "Hello, how are you doing today?"},
+		{Role: llm.RoleAssistant, Content: "I'm doing well, thanks for asking! How can I help you?"},
+		{Role: llm.RoleUser, Content: "This is a medium length message with some code: func main() { fmt.Println(\"hello\") }"},
+		{Role: llm.RoleAssistant, Content: "Sure, let me help you with that function. Here's an improved version with error handling."},
+	}
+	long := []llm.Message{
+		{Role: llm.RoleUser, Content: generateLargeText(500)},
+		{Role: llm.RoleAssistant, Content: generateLargeText(2000)},
+	}
+
+	b.Run("short/old_len_div4", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range short {
+				oldEstimateTokens(msg)
+			}
+		}
+	})
+	b.Run("short/new_whitespace_split", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range short {
+				EstimateTokens(msg)
+			}
+		}
+	})
+	b.Run("long/old_len_div4", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range long {
+				oldEstimateTokens(msg)
+			}
+		}
+	})
+	b.Run("long/new_whitespace_split", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, msg := range long {
+				EstimateTokens(msg)
+			}
+		}
+	})
+}
+
+// TestEstimateTokensAccuracy compares old (len/4) vs new (whitespace-split)
+// against known token counts from real tokenizers.
+// Reference token counts obtained from OpenAI tiktoken (cl100k_base).
+func TestEstimateTokensAccuracy(t *testing.T) {
+	tests := []struct {
+		name           string
+		content        string
+		expectedTokens int // ground truth from tiktoken
+	}{
+		{
+			name:           "english_sentence",
+			content:        "The quick brown fox jumps over the lazy dog",
+			expectedTokens: 9, // tiktoken: 9
+		},
+		{
+			name:           "code_snippet",
+			content:        "func main() {\n\tfmt.Println(\"Hello, World!\")\n}",
+			expectedTokens: 15, // tiktoken: ~15
+		},
+		{
+			name:           "chinese_text",
+			content:        "今天天气真好，我们一起去公园散步吧",
+			expectedTokens: 14, // tiktoken: ~14
+		},
+		{
+			name:           "mixed_en_cn",
+			content:        "Hello 你好 World 世界",
+			expectedTokens: 6, // tiktoken: ~6
+		},
+		{
+			name:           "json_payload",
+			content:        `{"name":"test","value":42,"tags":["a","b","c"]}`,
+			expectedTokens: 21, // tiktoken: ~21
+		},
+		{
+			name:           "long_english_paragraph",
+			content:        "Large language models are neural networks trained on massive text datasets. They can generate human-like text, answer questions, write code, and perform many other language tasks. The transformer architecture enables these models to process long sequences efficiently.",
+			expectedTokens: 44, // tiktoken: ~44
+		},
+	}
+
+	t.Logf("%-25s %8s %8s %8s %8s %8s", "Case", "Truth", "Old", "OldErr%", "New", "NewErr%")
+	t.Logf("%-25s %8s %8s %8s %8s %8s", "----", "-----", "---", "-------", "---", "-------")
+
+	totalOldErr := 0.0
+	totalNewErr := 0.0
+
+	for _, tt := range tests {
+		msg := llm.Message{Content: tt.content}
+		oldResult := oldEstimateTokens(msg)
+		newResult := EstimateTokens(msg)
+
+		oldErrPct := float64(oldResult-tt.expectedTokens) / float64(tt.expectedTokens) * 100
+		newErrPct := float64(newResult-tt.expectedTokens) / float64(tt.expectedTokens) * 100
+
+		if oldErrPct < 0 {
+			totalOldErr += -oldErrPct
+		} else {
+			totalOldErr += oldErrPct
+		}
+		if newErrPct < 0 {
+			totalNewErr += -newErrPct
+		} else {
+			totalNewErr += newErrPct
+		}
+
+		t.Logf("%-25s %8d %8d %+7.1f%% %8d %+7.1f%%",
+			tt.name, tt.expectedTokens, oldResult, oldErrPct, newResult, newErrPct)
+	}
+
+	avgOldErr := totalOldErr / float64(len(tests))
+	avgNewErr := totalNewErr / float64(len(tests))
+	t.Logf("")
+	t.Logf("Average absolute error: old=%.1f%%, new=%.1f%%", avgOldErr, avgNewErr)
+
+	// New method should have lower average error than old
+	if avgNewErr > avgOldErr {
+		t.Errorf("New method (avg err %.1f%%) should be more accurate than old (avg err %.1f%%)", avgNewErr, avgOldErr)
 	}
 }
 

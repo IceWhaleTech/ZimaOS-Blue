@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus, type OAuthQuotaInfo } from '@/api/providerPool'
+import { mediaProviderApi, type MediaProviderConfig } from '@/api/mediaProviders'
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
   // State
@@ -87,13 +88,58 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     return provider?.name || providerId
   }
 
+  // Convert MediaProviderConfig to Provider for unified UI
+  function mediaConfigToProvider(cfg: MediaProviderConfig): Provider {
+    const provider: Provider = {
+      id: cfg.id,
+      name: cfg.name,
+      type: 'media',
+      location: 'cloud',
+      enabled: cfg.enabled,
+      status: cfg.enabled && cfg.has_api_key ? 'active' : 'inactive',
+      base_url: cfg.base_url,
+      icon: cfg.icon,
+      description: cfg.description,
+      website: cfg.website,
+      api_key_url: cfg.api_key_url,
+      priority: 0,
+      api_keys: cfg.has_api_key ? [{ id: 'default', key_hash: cfg.key_hash || '***', usage_count: 0, created_at: '', enabled: true }] : [],
+      is_builtin: true,
+    }
+    // Map media models to provider models
+    if (cfg.models?.length) {
+      provider.models = cfg.models.map(m => ({
+        id: m.id,
+        provider_id: cfg.id,
+        name: m.name,
+        display_name: m.name,
+        enabled: true,
+        capabilities: [m.type],
+      }))
+    }
+    return provider
+  }
+
   // Actions
   async function fetchProviders() {
     loading.value = true
     error.value = null
     try {
       const response = await providerPoolApi.listProviders()
-      providers.value = response.data.providers || []
+      const llmProviders = response.data.providers || []
+
+      // Also fetch media providers and merge
+      let mediaAsProviders: Provider[] = []
+      try {
+        const mediaResp = await mediaProviderApi.list()
+        const mediaConfigs = mediaResp.data.providers || []
+        mediaAsProviders = mediaConfigs.map(mediaConfigToProvider)
+      } catch {
+        // Media API may not be available — ignore
+      }
+
+      providers.value = [...llmProviders, ...mediaAsProviders]
+
       // Populate models from inlined provider data
       const allModels: Model[] = []
       for (const p of providers.value) {
@@ -300,10 +346,17 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function enableProvider(id: string) {
     try {
-      await providerPoolApi.enableProvider(id)
       const provider = providers.value.find(p => p.id === id)
+      if (provider?.type === 'media') {
+        await mediaProviderApi.enable(id)
+      } else {
+        await providerPoolApi.enableProvider(id)
+      }
       if (provider) {
         provider.enabled = true
+        if (provider.type === 'media' && provider.api_keys?.length) {
+          provider.status = 'active'
+        }
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to enable provider'
@@ -313,8 +366,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function disableProvider(id: string) {
     try {
-      await providerPoolApi.disableProvider(id)
       const provider = providers.value.find(p => p.id === id)
+      if (provider?.type === 'media') {
+        await mediaProviderApi.disable(id)
+      } else {
+        await providerPoolApi.disableProvider(id)
+      }
       if (provider) {
         provider.enabled = false
         provider.status = 'inactive'
@@ -327,8 +384,18 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function testProvider(id: string, keyId?: string) {
     try {
-      const response = await providerPoolApi.testProvider(id, keyId)
       const provider = providers.value.find(p => p.id === id)
+      if (provider?.type === 'media') {
+        const response = await mediaProviderApi.test(id)
+        if (provider) {
+          provider.status = response.data.healthy ? 'active' : 'error'
+          if (response.data.error) {
+            provider.last_error = response.data.error
+          }
+        }
+        return response.data
+      }
+      const response = await providerPoolApi.testProvider(id, keyId)
       if (provider) {
         provider.status = response.data.healthy ? 'active' : 'error'
         provider.last_health_check = response.data.checked_at
@@ -418,8 +485,29 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function addAPIKey(providerId: string, key: string, label?: string) {
     try {
-      const response = await providerPoolApi.addAPIKey(providerId, key, label)
       const provider = providers.value.find(p => p.id === providerId)
+      if (provider?.type === 'media') {
+        const resp = await mediaProviderApi.setKey(providerId, key)
+        const cfg = resp.data
+        const keyHash = cfg.key_hash || '***'
+        if (provider) {
+          provider.api_keys = [{ id: 'default', key_hash: keyHash, usage_count: 0, created_at: '', enabled: true }]
+          if (provider.enabled) provider.status = 'active'
+          // Update models from response
+          if (cfg.models?.length) {
+            provider.models = cfg.models.map(m => ({
+              id: m.id,
+              provider_id: providerId,
+              name: m.name,
+              display_name: m.name,
+              enabled: true,
+              capabilities: [m.type],
+            }))
+          }
+        }
+        return { id: 'default', key_hash: keyHash, usage_count: 0, created_at: '', enabled: true }
+      }
+      const response = await providerPoolApi.addAPIKey(providerId, key, label)
       if (provider) {
         if (!provider.api_keys) {
           provider.api_keys = []
@@ -441,8 +529,16 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function removeAPIKey(providerId: string, keyId: string) {
     try {
-      await providerPoolApi.removeAPIKey(providerId, keyId)
       const provider = providers.value.find(p => p.id === providerId)
+      if (provider?.type === 'media') {
+        await mediaProviderApi.removeKey(providerId)
+        if (provider) {
+          provider.api_keys = []
+          provider.status = 'inactive'
+        }
+        return
+      }
+      await providerPoolApi.removeAPIKey(providerId, keyId)
       if (provider && provider.api_keys) {
         provider.api_keys = provider.api_keys.filter(k => k.id !== keyId)
       }

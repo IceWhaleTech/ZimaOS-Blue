@@ -403,8 +403,13 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
 	var errors []string
 
+	// Use a per-strategy timeout so we don't spend 30s on each failed attempt
+	strategyTimeout := 8 * time.Second
+
 	// Strategy 1: Try OpenAI-compatible endpoints
-	models, err := d.fetchOpenAIModels(ctx, provider, apiKey)
+	s1Ctx, s1Cancel := context.WithTimeout(ctx, strategyTimeout)
+	models, err := d.fetchOpenAIModels(s1Ctx, provider, apiKey)
+	s1Cancel()
 	if err == nil && len(models) > 0 {
 		// Auto-detect API format
 		if provider.APIFormat == "" {
@@ -418,7 +423,9 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 	}
 
 	// Strategy 2: Try Ollama-style endpoint (/api/tags)
-	models, err = d.tryOllamaStyleEndpoint(ctx, baseURL, provider)
+	s2Ctx, s2Cancel := context.WithTimeout(ctx, strategyTimeout)
+	models, err = d.tryOllamaStyleEndpoint(s2Ctx, baseURL, provider)
+	s2Cancel()
 	if err == nil && len(models) > 0 {
 		// Mark models with provider ID
 		for _, m := range models {
@@ -436,7 +443,9 @@ func (d *ModelDiscovery) fetchCustomProviderModels(ctx context.Context, provider
 	}
 
 	// Strategy 3: Try LiteLLM-style endpoint (/model/info)
-	models, err = d.tryLiteLLMStyleEndpoint(ctx, baseURL, apiKey, provider)
+	s3Ctx, s3Cancel := context.WithTimeout(ctx, strategyTimeout)
+	models, err = d.tryLiteLLMStyleEndpoint(s3Ctx, baseURL, apiKey, provider)
+	s3Cancel()
 	if err == nil && len(models) > 0 {
 		for _, m := range models {
 			m.ProviderID = provider.ID
@@ -1166,10 +1175,14 @@ func (d *ModelDiscovery) probeModel(ctx context.Context, provider *Provider, api
 		endpoint = baseURL + "/v1/chat/completions"
 	}
 
+	// Per-probe timeout: 10s is enough for a single model check
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// Minimal request body — max_tokens:1 to minimize cost
 	body := []byte(`{"model":"` + model.ID + `","messages":[{"role":"user","content":"hi"}],"max_tokens":1}`)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		result.Error = err.Error()
 		result.Latency = timeutil.SinceTime(start)

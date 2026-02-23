@@ -284,7 +284,7 @@ func (s *LayeredMemoryService) GetConfig() LayeredMemoryConfig {
 }
 
 // Recall searches relevant memories via the base service.
-func (s *LayeredMemoryService) Recall(ctx context.Context, query string, limit int) ([]HybridSearchResult, error) {
+func (s *LayeredMemoryService) Recall(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	if s.baseService == nil {
 		return nil, nil
 	}

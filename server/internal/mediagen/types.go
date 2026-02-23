@@ -43,6 +43,7 @@ type MediaRequest struct {
 // MediaResult represents a single generated media item.
 type MediaResult struct {
 	URL           string `json:"url,omitempty"`
+	ThumbnailURL  string `json:"thumbnail_url,omitempty"`
 	B64JSON       string `json:"b64_json,omitempty"`
 	OriginalURL   string `json:"-"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`

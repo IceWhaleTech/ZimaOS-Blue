@@ -52,13 +52,13 @@ type Reminders struct {
 func NewReminders() *Reminders {
 	return &Reminders{
 		manifest: &skill.Manifest{
-			ID:          "reminders",
-			Name:        "Reminders",
+			ID:          "push_notification",
+			Name:        "Push Notification",
 			Version:     "2.0.0",
-			Description: "Create, list, and manage reminders with time-based triggers. Supports relative times (1h, 30m) and absolute times (2026-01-04 09:00, tomorrow 9:00). Reminders are persisted and fire even after restart.",
+			Description: "Send push notifications and manage scheduled alerts. Delivers via SSE, Web Push, and native OS notifications (macOS Notification Center, Linux notify-send, Windows toast). Supports relative times (1h, 30m) and absolute times (2026-01-04 09:00, tomorrow 9:00).",
 			Category:    "productivity",
-			Icon:        "reminders",
-			Tags:        []string{"reminder", "alert", "schedule", "productivity"},
+			Icon:        "notifications",
+			Tags:        []string{"push", "notification", "alert", "schedule", "productivity"},
 			Inputs: []skill.Parameter{
 				{
 					Name:        "action",

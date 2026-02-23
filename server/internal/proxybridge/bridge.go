@@ -90,6 +90,9 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		if resolved.Provider != "" {
 			resp.Provider = resolved.Provider
 		}
+		if resolved.ProviderID != "" {
+			resp.ProviderID = resolved.ProviderID
+		}
 		if resolved.Model != "" && resp.Model == "" {
 			resp.Model = resolved.Model
 		}
@@ -196,6 +199,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		// via context before any data is written to the pipe, so it's safe to read here).
 		if chunk.Provider == "" && resolved.Provider != "" {
 			chunk.Provider = resolved.Provider
+		}
+		if chunk.ProviderID == "" && resolved.ProviderID != "" {
+			chunk.ProviderID = resolved.ProviderID
 		}
 		if chunk.Model == "" && resolved.Model != "" {
 			chunk.Model = resolved.Model

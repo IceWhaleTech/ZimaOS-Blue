@@ -4,6 +4,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,7 +30,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
@@ -47,9 +47,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
@@ -80,6 +80,21 @@ func featureDisabled(feature string) echo.HandlerFunc {
 			"message": feature + " is not enabled",
 		})
 	}
+}
+
+// readLocaleFromSettings reads the locale from settings.json without creating a full SettingsHandler.
+func readLocaleFromSettings(dataDir string) string {
+	data, err := os.ReadFile(filepath.Join(dataDir, "settings.json"))
+	if err != nil {
+		return ""
+	}
+	var s struct {
+		Locale string `json:"locale"`
+	}
+	if json.Unmarshal(data, &s) != nil {
+		return ""
+	}
+	return s.Locale
 }
 
 // RoutesDeps holds all dependencies needed for route registration
@@ -125,6 +140,7 @@ type RoutesDeps struct {
 	ChannelConfigStore *server.ChannelConfigStore
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
+	SSEBroker          *sse.Broker
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance.
@@ -214,44 +230,27 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	_ = os.MkdirAll(mediaDir, 0750)
 	v1.Static("/media", mediaDir)
 
-	// Media generation (image/video/audio) — reads from ProviderTypeMedia providers
+	// Media generation (image/video/audio) — self-contained, no dependency on ProviderPool
 	{
 		mediaGenDir := filepath.Join(dataDir, "media", "generated")
 		mediaStorage := mediagen.NewMediaStorage(mediaGenDir, "/api/media/generated")
 		if err := mediaStorage.EnsureDirs(); err != nil {
 			logger.Warn("Failed to create media generation dirs", zap.Error(err))
 		}
-		mediaManager := mediagen.NewManager(mediaStorage)
 
-		// Register providers from provider pool (media-type providers)
-		if deps.ProviderPool != nil {
-			for _, p := range deps.ProviderPool.Registry.List() {
-				if p.Type != providerpool.ProviderTypeMedia || !p.Enabled {
-					continue
-				}
-				var apiKey string
-				for _, k := range p.APIKeys {
-					if k.Enabled && k.Key != "" {
-						apiKey = k.Key
-						break
-					}
-				}
-				if apiKey == "" {
-					continue
-				}
-				switch p.ID {
-				case "gemini-image":
-					mediaManager.RegisterProvider(mediagen.NewGeminiProvider(apiKey, p.BaseURL))
-				case "dashscope-image":
-					mediaManager.RegisterProvider(mediagen.NewDashScopeProvider(apiKey, p.BaseURL))
-				case "mulerouter":
-					mediaManager.RegisterProvider(mediagen.NewMuleRouterProvider(apiKey, p.BaseURL))
-				}
-				logger.Info("Registered media provider", zap.String("id", p.ID))
-			}
-		}
+		configStore := mediagen.NewConfigStore(filepath.Join(dataDir, "media"))
 
-		// Register tools
+		// One-time migration from provider pool (if media providers were configured there)
+		mediagen.MigrateFromProviderPool(filepath.Join(dataDir, "providerpool"), filepath.Join(dataDir, "media"))
+
+		// Read locale from settings for priority ordering
+		locale := readLocaleFromSettings(dataDir)
+
+		mediaManager := mediagen.NewManager(mediaStorage, configStore, locale)
+		mediaManager.InitConfigs()
+
+		// Always register media tools — they check for available providers at execution time.
+		// This ensures tools appear in the tool list even if providers are added after startup.
 		s.ToolRegistry.Register(mediagen.NewImageGenerateTool(mediaManager))
 		s.ToolRegistry.Register(mediagen.NewVideoGenerateTool(mediaManager))
 
@@ -351,7 +350,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	usersGroup.POST("/:id/reset-password", deps.UserHandler.ResetPassword)
 
 	// Permission routes
-	permRepo, _ := permission.NewRepository(s.DB)
+	permRepo, permErr := permission.NewRepository(s.DB)
+	if permErr != nil {
+		logger.Error("Failed to initialize permission repository", zap.Error(permErr))
+	}
 	permService := permission.NewService(permRepo, s.UserRepo)
 	permHandler := permission.NewHandler(permService, s.UserRepo)
 	permHandler.RegisterRoutes(protected)
@@ -431,51 +433,27 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Skill routes
 	skillHandler := server.NewSkillHandler(s.SkillRegistry)
 
-	// Initialize skill store for database persistence
+	// Initialize skill store for browse/search (catalog only, no install state)
 	skillStoreDb, err := skillstore.NewStore(deps.DB)
 	if err != nil {
 		logger.Warn("Failed to initialize skill store", zap.Error(err))
 	} else {
 		skillHandler.SetStore(skillStoreDb)
-		logger.Info("Skill store initialized")
+		logger.Info("Skill store initialized (catalog only)")
 
-		// Load installed skills from database and register them
-		installedSkills, err := skillStoreDb.GetInstalledSkills(context.Background())
-		if err != nil {
-			logger.Warn("Failed to load installed skills from database", zap.Error(err))
-		} else {
-			loadedCount := 0
-			for _, sk := range installedSkills {
-				manifest := &skill.Manifest{
-					ID:          sk.ID,
-					Name:        sk.Name,
-					Version:     sk.Version,
-					Description: sk.Summary,
-					Author:      sk.Author,
-					Category:    sk.Category,
-					Tags:        strings.Split(sk.Tags, ","),
-					Metadata: map[string]string{
-						"source_id":   sk.SourceID,
-						"source_name": sk.SourceName,
-						"homepage":    sk.Homepage,
-					},
-				}
-				adapter := server.NewRemoteSkillAdapter(manifest)
-				if err := s.SkillRegistry.Register(adapter, false); err != nil {
-					logger.Warn("Failed to register installed skill", zap.String("skill_id", sk.ID), zap.Error(err))
-				} else {
-					loadedCount++
-				}
-			}
-			logger.Info("Installed skills loaded from database", zap.Int("count", loadedCount))
-		}
-
-		// Initialize sync service for periodic skill updates
+		// Initialize sync service for periodic skill catalog updates
 		syncConfig := skillstore.DefaultSyncServiceConfig()
 		syncService := skillstore.NewSyncService(skillStoreDb, syncConfig, slog.Default())
 		skillHandler.SetSyncService(syncService)
 		syncService.Start(deps.Ctx)
 		logger.Info("Skill sync service started")
+	}
+
+	// Set skills directory for install/uninstall (filesystem-based)
+	skillsDir := filepath.Join(cfg.DataDir, "workspace", ".claude", "skills")
+	skillHandler.SetSkillsDir(skillsDir)
+	if deps.SSEBroker != nil {
+		skillHandler.SetEventBroker(deps.SSEBroker)
 	}
 
 	// Initialize featured skills loader
@@ -489,9 +467,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Initialize local skill scanner
-	localScanner := skillstore.NewLocalSkillScanner("")
+	localScanner := skillstore.NewLocalSkillScanner(skillsDir)
 	skillHandler.SetLocalScanner(localScanner)
-	logger.Info("Local skill scanner initialized")
+	// Initial scan to discover released skills
+	if err := localScanner.Scan(); err != nil {
+		logger.Warn("Initial local skill scan failed", zap.Error(err))
+	} else {
+		logger.Info("Local skill scanner initialized", zap.Int("count", localScanner.Count()))
+	}
 
 	skillHandler.RegisterRoutes(v1)
 
@@ -1159,47 +1142,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Memory routes
 	if deps.MemoryHandler != nil {
 		deps.MemoryHandler.RegisterRoutes(v1)
-
-		// Initialize markdown backend for dual-write and backend switching
-		mdDir := ""
-		if deps.Config != nil {
-			mdDir = deps.Config.Memory.MarkdownDir
-		}
-		if mdDir == "" {
-			mdDir = filepath.Join(dataDir, "memory")
-		}
-		mdBackend, mdErr := memory.NewPureMarkdownBackend(mdDir)
-		if mdErr != nil {
-			logger.Warn("Failed to initialize markdown backend", zap.Error(mdErr))
-		} else if deps.MemoryHandler.GetUnifiedService() != nil {
-			uSvc := deps.MemoryHandler.GetUnifiedService()
-			uSvc.SetMarkdownBackend(mdBackend)
-
-			// Set backend mode from config (default: "markdown")
-			backendMode := "markdown"
-			if deps.Config != nil && deps.Config.Memory.Backend != "" {
-				backendMode = deps.Config.Memory.Backend
-			}
-			if setErr := uSvc.SetBackend(backendMode); setErr != nil {
-				logger.Warn("Failed to set memory backend mode", zap.String("mode", backendMode), zap.Error(setErr))
-			} else {
-				logger.Info("Memory backend configured", zap.String("mode", backendMode))
-			}
-
-			// Register unified memory tool in tool registry
-			memAdapter := memory.NewToolsAdapter(uSvc)
-
-			// Initialize progressive searcher if local backend available
-			if localSvc := uSvc.GetLocalBackend(); localSvc != nil {
-				ps := memory.NewProgressiveSearcher(localSvc.GetSearcher())
-				deps.MemoryHandler.SetProgressiveSearcher(ps)
-				memAdapter.SetProgressiveSearcher(ps)
-				logger.Info("Progressive search enabled")
-			}
-
-			tools.RegisterMemoryTools(s.ToolRegistry, memAdapter)
-			logger.Info("Unified memory tool registered")
-		}
 	} else {
 		stub := featureDisabled("memory")
 		memGroup := v1.Group("/memory")
@@ -1207,60 +1149,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		memGroup.GET("/backend", stub)
 		memGroup.POST("/search", stub)
 		memGroup.Any("/*", stub)
-	}
-
-	// Memory Service v2 routes (versioned entries, namespaces)
-	// Reuse the main database (blue.db) — v2 tables have distinct names and use IF NOT EXISTS.
-	{
-		memDB := deps.DB
-		memRepo, err := memory.NewMemoryRepository(memDB)
-		if err != nil {
-			logger.Error("Failed to initialize memory service repository", zap.Error(err))
-		} else {
-			memNS, err := memory.NewNamespaceStore(memDB)
-			if err != nil {
-				logger.Error("Failed to initialize memory namespace store", zap.Error(err))
-			} else {
-				memAPIHandler := memory.NewAPIHandler(memRepo, memNS)
-				memAPIHandler.RegisterRoutes(v1)
-				logger.Info("Memory Service routes registered")
-
-				// Initialize content encryption if configured
-				var memEncryptor *memory.ContentEncryptor
-				if deps.Config != nil {
-					encCfg := deps.Config.Security.Encryption
-					memEncryptor, err = memory.NewContentEncryptor(
-						encCfg.Passphrase, encCfg.KeyPath, encCfg.Enabled,
-					)
-					if err != nil {
-						logger.Warn("Failed to initialize memory encryption", zap.Error(err))
-					} else {
-						memRepo.SetEncryptor(memEncryptor)
-						if encCfg.Enabled {
-							logger.Info("Memory encryption enabled (AES-256-GCM)")
-						}
-					}
-				}
-				if memEncryptor == nil {
-					memEncryptor, _ = memory.NewContentEncryptor("", "", false)
-				}
-
-				// Register encryption management routes
-				encHandler := memory.NewEncryptionHandler(memRepo, memEncryptor)
-				encHandler.RegisterRoutes(v1)
-
-				// Start background purge scheduler
-				purgeScheduler := memory.NewPurgeScheduler(memRepo, 6*time.Hour)
-				purgeScheduler.Start(deps.Ctx)
-				logger.Info("Memory Service purge scheduler started")
-
-				// Create v2 bridge for existing memory system
-				bridge := memory.NewV2Bridge(memRepo)
-				if deps.MemoryHandler != nil {
-					deps.MemoryHandler.SetV2Bridge(bridge)
-				}
-			}
-		}
 	}
 
 	// Personality routes (protected)
@@ -1346,7 +1234,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Per-user skill config
-	userSkillHandler, err := server.NewUserSkillHandler(deps.DB, skillStoreDb)
+	userSkillHandler, err := server.NewUserSkillHandler(deps.DB, skillsDir)
 	if err != nil {
 		logger.Warn("Failed to initialize user skill handler", zap.Error(err))
 	} else {

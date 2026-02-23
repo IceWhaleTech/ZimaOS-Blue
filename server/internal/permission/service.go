@@ -25,6 +25,11 @@ func NewService(repo *Repository, userRepo user.Repository) *Service {
 // GetEffectivePermissions returns all effective permissions for a user
 // This combines role-based defaults with custom permissions
 func (s *Service) GetEffectivePermissions(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	// Guard against nil userRepo (typed nil interface can still dispatch and panic)
+	if s.userRepo == nil {
+		return s.GetDefaultPermissionsForRole("guest"), nil
+	}
+
 	// Get user to check role
 	u, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -32,6 +37,9 @@ func (s *Service) GetEffectivePermissions(ctx context.Context, userID uuid.UUID)
 	}
 
 	// Get custom permissions from database
+	if s.repo == nil {
+		return s.GetDefaultPermissionsForRole(string(u.Role)), nil
+	}
 	customPerms, err := s.repo.GetUserPermissions(ctx, userID)
 	if err != nil {
 		// If error fetching permissions (e.g., table doesn't exist in old versions),

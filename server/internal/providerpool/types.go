@@ -306,11 +306,12 @@ const (
 
 // RouteRequest represents a routing request
 type RouteRequest struct {
-	ModelID    string             `json:"model_id"`
-	Strategy   RoutingStrategy    `json:"strategy,omitempty"`
-	Mode       RoutingMode        `json:"mode,omitempty"`        // Location preference: auto, cloud, local
-	Exclude    []string           `json:"exclude,omitempty"`     // Provider IDs to exclude
-	RequireCap *ModelCapabilities `json:"require_cap,omitempty"` // Required capabilities
+	ModelID             string             `json:"model_id"`
+	Strategy            RoutingStrategy    `json:"strategy,omitempty"`
+	Mode                RoutingMode        `json:"mode,omitempty"`                  // Location preference: auto, cloud, local
+	Exclude             []string           `json:"exclude,omitempty"`               // Provider IDs to exclude
+	RequireCap          *ModelCapabilities `json:"require_cap,omitempty"`           // Required capabilities
+	PreferredProviderID string             `json:"preferred_provider_id,omitempty"` // Sticky routing: try this provider first (tool rounds)
 }
 
 // RouteResult represents the routing decision
